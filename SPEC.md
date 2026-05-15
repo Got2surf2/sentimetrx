@@ -1,43 +1,52 @@
-# SentimetrX Platform Specification
+# Sentimetrx Platform Specification
 
-**Version**: 2026-05-10
+**Version**: 2026-05-15
 **Status**: Production
 
 ---
 
 ## Overview
 
-SentimetrX is a SaaS platform for conversational surveys and AI-powered text analytics. It combines a chatbot-style survey engine with deep text mining, theme extraction, and visual analytics. The platform serves market researchers, CX teams, and brand managers who need to collect and analyze qualitative feedback at scale.
+Sentimetrx is a SaaS platform for conversational surveys, AI-moderated live group conversations (PulseIQ), AI agents, social media monitoring, and AI-powered text analytics across multiple qualitative data sources. It serves market researchers, CX teams, brand managers, and consumer-insight teams who need to collect, ingest, and analyze qualitative feedback at scale.
 
-**Repo**: `sentimetrx` — single repo. Pushes to `main` trigger Vercel production builds.
+**Repo**: `sentimetrx` — single repo on `main`. Pushes to `main` trigger Vercel production builds. Staging is retired.
 
-**Stack**: Next.js 14, React, TypeScript, Supabase (PostgreSQL + Auth + Storage), Anthropic Claude API, Vercel serverless, Resend email, DataForSEO.
+**Stack**: Next.js 14 App Router, React 18, TypeScript (strict), Supabase (PostgreSQL + Auth + Storage with RLS), pluggable AI providers (Anthropic Claude default, OpenAI, Azure OpenAI) routed through `lib/ai.ts`, Vercel serverless / Fluid Compute, Resend (default email), SendGrid / AWS SES / SMTP / Twilio SMS, DataForSEO (Google + Tripadvisor reviews), Reddit / Substack / Regulations.gov APIs.
 
 ---
 
 ## Architecture
 
 ```
-Browser ─── Next.js (Vercel) ─── Supabase (PostgreSQL)
-                │                      │
-                ├── Anthropic Claude    ├── Auth (PKCE)
-                ├── DataForSEO         ├── Storage (logos, avatars)
-                ├── Resend / SES       └── Row-level security
-                └── Vercel Cron
+Browser ─── Next.js (Vercel Fluid) ─── Supabase (PostgreSQL + Auth + Storage)
+                │                          │
+                ├── lib/ai.ts (provider     ├── PKCE auth
+                │  router: Anthropic /      ├── RLS-enforced multi-tenancy
+                │  OpenAI / Azure OpenAI)   └── pgvector / GIN / tsvector
+                ├── DataForSEO (Google + Tripadvisor reviews)
+                ├── Reddit / Substack / Regulations.gov APIs
+                ├── Resend / SendGrid / SES / SMTP / Twilio SMS
+                ├── Social provider APIs (FB / IG / Reddit / X / etc.)
+                └── Vercel Cron (9 jobs)
 ```
 
 ### Data Flow
 - **Surveys**: Public widget (`/s/[guid]`) → `/api/respond` → `responses` table → analytics
-- **Datasets**: CSV upload or Google Reviews → `dataset_rows_flat` table → analytics compute → Charts/TextMine/Stats
-- **Campaigns**: Template + CSV recipients → Resend API → webhook tracking → respondent status
-- **Google Reviews**: DataForSEO search → location picker → async task submit → poll results → dataset rows
+- **PulseIQ**: Participant link (`/th/[sessionId]`) → `/api/townhall/chat` → `townhall_turns` → live theme detection (auto/manual)
+- **Agents** (internal: `bots`): Embeddable widget (`/b/[slug]`) → `/api/bots/[id]/chat` → `bot_conversation_turns` → conversation review cron
+- **Datasets**: CSV / Google + Tripadvisor reviews / Reddit threads / Substack comments / Regulations.gov comments / Social media exports → `dataset_rows_flat` → analytics compute → Charts/TextMine/Stats/Entities/Search
+- **Campaigns**: Template + recipient list → Resend / SendGrid / SES / SMTP / Twilio SMS → webhook tracking → respondent status
+- **Social moderation**: OAuth-connected accounts → `social-sync` cron pulls comments → AI tags sentiment + intent → optional auto-reply / hide / DM
+- **Brand profiles**: `collections.kind='brand'` rows act as the brand profile; entity catalog drives mention extraction across all sources
 
 ### Key Design Decisions
-- **No sampling under 50K rows** — TextMine loads all rows client-side for instant filtering
+- **No sampling under 50K rows** — TextMine loads all rows client-side for instant filtering. Above 50K, deterministic per-dataset sampling.
 - **Two-phase async for reviews** — DataForSEO tasks take 30-90s, so submit/check pattern across multiple sync calls
-- **Server-side theme counting** — `/api/datasets/[id]/theme-counts` for accurate full-dataset counts (avoids sampling bias)
+- **Server-side theme counting** — `/api/datasets/[datasetId]/theme-counts` for accurate full-dataset counts (avoids sampling bias)
 - **Value aliases** — Schema fields can define `valueAliases: Record<string, string>` to remap raw data values to display labels, applied via shared `lib/aliasUtils.ts`
-- **Flat row table** — `dataset_rows_flat` stores one row per JSON document, GIN-indexed on `data` for JSONB lookups and on `tsv` for full-text search. Source of truth (legacy `dataset_rows` batched table was removed in May 2026).
+- **Flat row table** — `dataset_rows_flat` is the sole source of truth: one row per JSON document, GIN-indexed on `data` for JSONB lookups and on `tsv` for full-text search. Legacy `dataset_rows` batched table was removed in May 2026.
+- **Pluggable AI** — All AI calls go through `lib/ai.ts → callAI()` which routes to Anthropic (default), OpenAI, or Azure OpenAI based on per-org config (`org.config.ai_provider`) or BYO-key. `lib/usageLog.ts` records every call.
+- **Multi-tenancy invariants** — Every `public` table has RLS enabled + an org-scoped `SELECT` policy. Service-role queries must pair `id` with `org_id` (`.eq('id', x).eq('org_id', orgId)`) — never trust the path id alone. Internal-only routes (deck exports, governance, admin) wrap with `requireAdmin` from day one.
 
 ---
 
@@ -47,8 +56,15 @@ Browser ─── Next.js (Vercel) ─── Supabase (PostgreSQL)
 | Table | Purpose |
 |-------|---------|
 | `users` | Authenticated users (org_id, role, email, full_name) |
-| `organizations` | Workspaces (name, plan, features JSON, logo_url, is_admin_org) |
+| `organizations` | Workspaces (name, plan, features JSON, logo_url, is_admin_org, ai provider config) |
+| `clients` | Sub-clients owned by an org (multi-tenant SaaS reseller flow) |
 | `invites` | Team invitations (token, email, org_id, status) |
+| `user_logins` | Login event log (user_id, ts, ip, user_agent) |
+| `user_events` | Generic per-user activity events |
+| `org_transfers` | Cross-org transfer log (for admin re-parenting) |
+| `admin_action_log` | Audit trail of admin-only mutations |
+| `ai_consent_audit` | AI consent acceptance per user |
+| `rate_limit_buckets` | Token-bucket state for per-IP / per-org rate limits |
 
 ### Studies & Responses
 | Table | Purpose |
@@ -72,44 +88,94 @@ Browser ─── Next.js (Vercel) ─── Supabase (PostgreSQL)
 | `datasets` | Dataset metadata (name, source, row_count, schema JSON, org_id) |
 | `dataset_rows_flat` | Individual rows as JSON documents (dataset_id, row_index, data JSONB). Source of truth — every read and write goes here. GIN-indexed `tsv` column for full-text search. |
 | `dataset_state` | Computation state (status, theme_model JSON, analytics JSON) |
+| `archived_dataset_rows_flat` | Archive snapshot of `dataset_rows_flat` for retention / deletion safety |
 
-### Google Reviews
+### Reviews / Locations (Google + Tripadvisor)
 | Table | Purpose |
 |-------|---------|
-| `review_sources` | Brand configs (org_id, brand_name, dataset_id, sync_frequency_hours) |
-| `review_source_locations` | Locations (place_id, name, address, rating, review_count, error_message) |
+| `review_sources` | Brand configs (org_id, brand_name, dataset_id, sync_frequency_hours, `source` ∈ {google, tripadvisor}) |
+| `review_source_locations` | Locations (place_id or url_path, name, address, rating, review_count, error_message) |
 | `user_locations` | User-to-location assignment for filtered access |
+| `review_downloads` | Per-org rolling-window download counter for cost limits |
+
+### Data Sources (non-review)
+| Table | Purpose |
+|-------|---------|
+| `reddit_sources` | Subreddit watch list (org_id, subreddit, dataset_id, sync_frequency_hours) |
+| `reddit_source_threads` | Threads fetched per source with sync state |
+
+Substack and Regulations.gov sources do not have their own tables — they write directly into `datasets` + `dataset_rows_flat`.
+
+### Brands, Collections & Entities
+| Table | Purpose |
+|-------|---------|
+| `collections` | Generic group entity (org_id, name, kind ∈ {collection, brand, ...}). Brand profiles are rows with `kind='brand'`. |
+| `collection_members` | Membership table linking entities (e.g. datasets) into a collection |
+| `entity_catalog` | Per-org catalog of brand-relevant entities (id, label, type, status, aliases) |
+| `entity_catalog_refresh` | Refresh job state for the entity catalog |
+| `entity_mentions` | Per-row entity hits across datasets (dataset_id, row_index, entity_id, count, span) |
+
+### AI Agents (internal: `bots`)
+| Table | Purpose |
+|-------|---------|
+| `bots` | Agent configs (org_id, name, slug, persona, knowledge sources, behavior) |
+| `bot_knowledge_chunks` | Embedded RAG chunks for agent knowledge bases |
+| `bot_conversation_turns` | Per-turn message log (session_id, role, content, language) |
+| `bot_conversation_reviews` | AI-generated review of each conversation (themes, sentiment, intent) |
+| `bot_session_personas` | Inferred persona attributes per conversation session |
+
+### Social Media Monitoring
+| Table | Purpose |
+|-------|---------|
+| `social_connections` | OAuth-connected social accounts per org (provider, access_token, refresh_token, scopes) |
+| `social_comments` | Comments / mentions pulled from connected accounts, with AI tags |
+| `social_moderation_log` | Actions taken on comments (reply / hide / delete / DM) |
+| `social_alert_rules` | Per-org alerting rules (keyword, sentiment threshold, etc.) |
+| `social_alerts_sent` | Delivery log of alerts to prevent duplicates |
+| `social_dm_log` | Outbound DM history (templating, recipient) |
+
+### Usage Accounting
+| Table | Purpose |
+|-------|---------|
+| `usage_logs` | Per-call AI usage (org_id, provider, model, input_tokens, output_tokens, cost, tier, feature) |
 
 ### Sharing
 | Table | Purpose |
 |-------|---------|
-| `shared_links` | Public share tokens (type, target_id, expires_at, last_accessed_at) |
+| `shared_links` | Public share tokens (type ∈ {study, campaign, townhall, dataset-html-export, ...}, target_id, expires_at, last_accessed_at, org_id) |
+| `deck_download_log` | Audit log of internal deck-export downloads |
+
+### Observability
+| Table | Purpose |
+|-------|---------|
+| `sentry_snapshots` | Periodic Sentry issue digest snapshots (read by daily digest cron) |
 
 ---
 
 ## Feature Modules
 
-### 1. Survey Creator (9-step wizard)
+### 1. Survey Creator (10-step wizard)
 
 **Route**: `/studies/new`, `/studies/[id]/edit`
 
 Steps:
-1. **Basics** — name, bot emoji, brand colors, multi-language (15 langs), response limits
+1. **Basics** — name, bot emoji, brand colors, multi-language (16 langs), response limits
 2. **Opening** — NPS, experience rating, 5-point custom scales, sentiment-adaptive variants
 3. **Conversation** — Q3/Q4 open-ended follow-up questions
 4. **Clarifiers** — keyword bank, AI follow-ups, smart deflection
-5. **Questions** — 15 question types (open, radio, checkbox, dropdown, likert, date, rating, numeric, hidden, email, phone, zip, state, message), drag-reorder, skip logic
-6. **Psychographics** — industry presets + custom fields
+5. **Questions** — 14 question types (`open`, `radio`, `checkbox`, `dropdown`, `likert`, `date`, `rating`, `numeric`, `hidden`, `email`, `phone`, `zip_code`, `us_state`, `message`), drag-reorder, skip logic
+6. **Psychographics** — industry presets (19 industries) + custom fields
 7. **Demographics** — age, gender, zip, custom fields
 8. **Contact** — email, phone, field ordering
-9. **Review & Publish**
+9. **Closing** — thank-you message, redirect URL, post-submit canned messages
+10. **Review & Publish**
 
 **Survey Widget** (`/s/[guid]`):
 - Client-side conversation engine (no server round-trips per question)
 - Animated typing with configurable speed (0.25x-2x)
 - Language selection, partial auto-save (resumable)
 - Device fingerprint duplicate prevention
-- AI-powered clarification and smart deflection (Claude API)
+- AI-powered clarification and smart deflection via `lib/ai.ts` (provider configurable)
 - Rate limiting (120 req/min per IP)
 
 ### 2. Campaign Manager
@@ -159,7 +225,7 @@ Color palettes: 7 built-in (Hermes, Ocean, Sunset, Earth, Pastel, Vivid, Mono).
 
 **Sub-tabs**: Themes, Theme Clouds, Compare, Comments
 
-- **Theme Discovery**: Server-side NLP clustering via `/api/datasets/[id]/mine-themes`
+- **Theme Discovery**: Server-side NLP clustering via `/api/datasets/[datasetId]/mine-themes`
 - **Theme Editor**: Rename, merge, add/remove keywords, keyword expansion
 - **Word Cloud**: Interactive, clickable — shows opinion popover on click
 - **Opinion Mining** (`lib/opinionMining.ts`): Clause-aware extraction, adjective→noun mode, conjunction barriers, 2-word window
@@ -186,17 +252,21 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 - Value aliases applied to filter labels
 
 #### Export
-- **PPTX** (`/api/datasets/[id]/export/pptx`): Branded consulting-quality deck with bar charts, theme slides, AI-generated narratives, comment highlights. Accepts `skipAI` body param — when true, skips AI narratives and comment scoring (uses auto-generated text fallbacks). All text elements use `autoFit: true` to prevent overflow.
-- **HTML** (`/api/datasets/[id]/export/html`): Reveal.js interactive presentation. Same `skipAI` support.
+- **PPTX** (`/api/datasets/[datasetId]/export/pptx`): Branded consulting-quality deck with bar charts, theme slides, AI-generated narratives, comment highlights. Caps rows at 10K unfiltered / 30K filtered. Accepts `skipAI` body param — when true, skips AI narratives and comment scoring (uses auto-generated text fallbacks). All text elements use `autoFit: true` to prevent overflow. `maxDuration = 120s`.
+- **HTML** (`/api/datasets/[datasetId]/export/html`): Reveal.js interactive presentation. Same `skipAI` support.
+- **Signals PPTX** (`/api/datasets/[datasetId]/export/signals-pptx`): Signals-tier branded export.
+- **Entity Analysis Deck** (`/api/entity-analysis-deck`): Per-entity PPTX export for brand profiles.
 - **ExportModal**: Reads AI toggle from localStorage; shows amber warning when AI is off; sends `skipAI: !aiEnabled` in request body
 - **Shared Links**: Public URLs with 24h/7d/30d expiry, last-accessed tracking
 
-### 4. Google Reviews Integration
+### 4. Google + Tripadvisor Reviews Integration
 
 **Routes**: `/api/review-sources/*`, `LocationManager.tsx`, `GoogleReviewsWizard.tsx`
 
+`review_sources.source` discriminates Google (default) from Tripadvisor; the per-location identifier column is reused (Google `place_id` for Google, Tripadvisor `url_path` for Tripadvisor).
+
 **Flow**:
-1. Search brand name → DataForSEO Maps API returns locations
+1. Search brand name → DataForSEO Maps API (Google) or Tripadvisor URL flow returns locations
 2. User selects locations → stored in `review_source_locations`
 3. Sync triggers: manual or scheduled (configurable hours)
 4. Two-phase async: submit `task_post` → poll `task_get` (30-90s processing)
@@ -213,28 +283,31 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 - Retry Failed button clears errors for re-submission
 - Auto-sync polling every 10s during download
 
-**Limits**: 4,490 reviews per location (DataForSEO max), 10 locations per batch.
+**Limits**: 4,490 reviews per location (DataForSEO max). Per-org cost ceiling enforced via `review_downloads`.
 
-### 5. AI Town Hall
+### 5. PulseIQ (internal: `townhall`)
 
-**Routes**: `/townhall/*`, `/th/[sessionId]`, `/api/townhall/*`
+**Routes**: `/townhall/*` (admin), `/th/[sessionId]` (public participant), `/api/townhall/*`
 
-AI-moderated group discussions. Participants join via link/QR and chat with a named AI bot. Facilitator pre-loads discussion guide topics.
+AI-moderated live group discussions. Participants join via link/QR and chat with a named AI agent. Facilitator pre-loads a discussion guide of topics. (User-facing name is **PulseIQ**; tables and routes remain `townhall_*` internally.)
 
 **Chat Engine** (`/api/townhall/chat`):
 - Opening question flow → AI matches response to best topic → follows thread → transitions
 - iMessage UI: blue user bubbles, gray bot bubbles, typing dots
-- Multi-language: language picker, bot messages auto-translated, user responses translated to English for analytics
+- Multi-language: language picker, bot messages auto-translated, user responses translated to English for analytics (`townhall_turns.user_message_en`)
 - Configurable bot name, emoji, opening/closing messages, canned post-session messages
 - Response targets per topic with auto-deactivation
 - Shared guardrails (`lib/guardrails.ts`)
+- Pluggable AI provider via `callAI()`
 
 **Live Theme Detection** (`lib/townhallThemeDetection.ts`):
-- Manual trigger (facilitator clicks "Detect Themes") or auto (cron every 5 min)
-- Samples corpus, calls Claude Sonnet, deduplicates vs existing themes (>50% keyword overlap = skip)
+- Manual trigger (facilitator clicks "Detect Themes") or auto (cron `/api/cron/townhall-theme-detection` every 15 min)
+- Samples corpus, calls AI provider, deduplicates vs existing themes (>50% keyword overlap = skip)
 - Scores sentiment via lexicon (`lib/themeUtils.ts`)
 - Detected themes appear as `state='detected'` — facilitator approves/dismisses
 - Config: `engine.theme_detection_mode` (off/manual/auto) + interval
+
+**Simulator**: `/admin/simulator/townhall` generates synthetic participants for load testing the chat engine.
 
 **Admin Analytics Panel** (tab in facilitator console):
 - Per-theme: keywords, sentiment badges, match counts, percentages, top quotes, keyword frequency
@@ -253,22 +326,64 @@ AI-moderated group discussions. Participants join via link/QR and chat with a na
 
 **DB Tables**: `townhall_sessions`, `townhall_themes` (keywords, sentiment, detection lifecycle), `townhall_turns` (user_message + user_message_en), `townhall_participant_responses`
 
-### 6. Shared Dashboards
+### 6. Agents (internal: `bots`)
+
+**Routes**: `/bots/*` (admin), `/b/[slug]` (public embeddable widget), `/api/bots/*`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat`
+
+Embeddable AI agents with a configurable persona, knowledge base, and behavior. (User-facing name is **agents**; tables and routes remain `bots`/`bot_*` internally.)
+
+- **Persona & behavior**: name, emoji, system prompt, opening message, language, guardrails (`lib/guardrails.ts`, `lib/contentGuard.ts`)
+- **Knowledge** (`bot_knowledge_chunks`): URL ingest, deep crawl, paste/upload — embedded into pgvector chunks for RAG via `lib/embeddings.ts`. Routes: `/api/bots/deep-crawl`, `/api/bots/fetch-url`, `/api/bots/research`, `/api/bots/[id]/knowledge`.
+- **Conversations**: `/api/bots/[id]/chat` (CSRF-bypassed wildcard-CORS embed endpoint), turns logged to `bot_conversation_turns`. Session personas inferred into `bot_session_personas`.
+- **Conversation review**: cron `/api/cron/bot-conversation-review` every 4h scans new turns and writes themes/sentiment/intent into `bot_conversation_reviews`. Exposed via `/api/bots/[id]/conversations/reviews` and `/api/bots/[id]/conversations/insights-deck`.
+- **Specialty agents**: pre-configured agents — `clara` (clarification), `nora` (NPS-style), embeddable via `/api/clara-chat`, `/api/nora-chat`.
+
+### 7. Social Media Monitoring
+
+**Routes**: `/social/*`, `/api/social/*`
+
+OAuth-connected social account moderation across Facebook, Instagram, Reddit, X, and others. AI tags every inbound comment with sentiment + intent; rules engine optionally auto-replies, hides, or sends DMs.
+
+- **OAuth flow**: `/api/social/connect` → provider authorize → `/api/social/callback` (state HMAC-signed via `lib/oauthState.ts`). Tokens stored in `social_connections` with refresh logic on `social-token-refresh` cron (daily 6 UTC).
+- **Sync**: `social-sync` cron (every 15 min) pulls comments per active connection into `social_comments`, tagging via `lib/socialTagging.ts`.
+- **Moderation actions**: reply / hide / delete / DM — each writes to `social_moderation_log`. Endpoints: `/api/social/comments/[id]/{reply,hide,delete,dm,handle,ai-reply}`.
+- **Webhooks**: `/api/social/webhook` receives provider push events with HMAC verification (CSRF-bypassed).
+- **Alerts**: `social_alert_rules` → `social_alerts_sent` (dedupe). `/api/social/alerts`.
+- **Export to dataset**: `/api/social/export-dataset` converts a comment set into a regular dataset for full Analyze tooling.
+- **Demo mode**: `/api/social/demo` for sales walkthroughs.
+
+### 8. Data Sources
+
+**Routes**: `/api/review-sources/*`, `/api/reddit-sources/*`, `/api/substack-sources/*`, `/api/regulations-sources/*`
+
+Pluggable ingest pipelines that feed `dataset_rows_flat` from external qualitative sources. All sources produce the same flat-row shape so the rest of Analyze treats them identically.
+
+- **Google Reviews + Tripadvisor** (DataForSEO) — see § 9 below for the detailed two-phase async flow.
+- **Reddit** (`lib/reddit.ts`, `lib/redditSync.ts`) — subreddit watch list (`reddit_sources`), threads landed in `reddit_source_threads`, comments flattened into rows. Routes: search, sync, download-thread.
+- **Substack** (`lib/substack.ts`) — paste publication URL → list posts → download all comments per post into rows. No source table; writes directly to a dataset.
+- **Regulations.gov** (`lib/regulations.ts`) — search dockets → batch-download comments into a dataset.
+
+Per-org cost limits enforced via `review_downloads` (rolling window).
+
+### 9. Shared Dashboards
 
 **Route**: `/shared/[token]`
 
 - **Study dashboard**: response count, rating charts, score breakdown
 - **Campaign dashboard**: delivery funnel, open/click rates, target progress
-- **Town Hall dashboard**: theme cards with sentiment/keywords, distribution, aggregated stats
+- **PulseIQ dashboard**: theme cards with sentiment/keywords, distribution, aggregated stats (no individual turns exposed)
+- **Dataset HTML export**: shareable Reveal.js presentation
 - No authentication required
 - Link expiry (24h/7d/30d), last-accessed tracking, refresh button
-- Cleanup cron daily at 3am UTC
+- Cleanup cron `/api/cron/cleanup-shared-links` daily at 3am UTC
 
-### 7. AI Features
+### 10. AI Features
 
-All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in localStorage) controls all analytics AI:
+All AI calls route through `lib/ai.ts → callAI()`, which dispatches to the configured provider (Anthropic Claude default, OpenAI, or Azure OpenAI) per-org. BYO-key flow lets an org provide its own provider credentials. Every call is logged in `usage_logs` via `lib/usageLog.ts`.
 
-**Toggle behavior**: Header toggle in `DatasetHeader.tsx` sets `localStorage.sentimetrx_ai_enabled` to `'1'`/`'0'`. All AI-consuming components poll localStorage every 2s for real-time sync.
+**AI toggle** (`sentimetrx_ai_enabled` in localStorage) controls all analytics AI:
+
+**Toggle behavior**: Header toggle in `app/analyze/[datasetId]/DatasetHeader.tsx` sets `localStorage.sentimetrx_ai_enabled` to `'1'`/`'0'`. All AI-consuming components poll localStorage every 2s for real-time sync. `useOrgAiMode` hook syncs with `/api/me/ai-mode` (org-level override).
 
 **When AI is OFF — zero AI calls are made:**
 - TextMine: "Mine" button disabled, ThemeEditor keyword expansion blocked (apiKey withheld)
@@ -279,43 +394,53 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 **AI-powered features:**
 - **In-survey clarification** (`/api/clarify`) — follow-up on vague answers
 - **Smart deflection** (`/api/deflect`) — redirect off-topic responses
-- **Study generation** (`/api/ai/study-suggest`) — AI-generated survey config from description
-- **Translation** (`/api/translate`) — 15 languages
+- **Study generation** (`/api/ai/study-suggest`, `/api/suggest`) — AI-generated survey config from description
+- **Translation** (`/api/translate`, `/api/translate-responses`) — 16 languages
 - **Export narratives** — AI-generated insights for PPTX/HTML slides (requires AI toggle ON)
-- **Theme mining** — NLP-based keyword clustering (requires AI toggle ON)
-- **Keyword expansion** — synonym detection for theme keywords (requires AI toggle ON)
+- **Theme mining + keyword expansion + merge** (`mine-themes`, `expand-keywords`, `merge-themes`) (requires AI toggle ON)
+- **Entity discovery** — auto-extract brand-relevant entities per dataset (`discover-entities`, weekly `entity-discovery` cron)
 - **Comment scoring** — AI relevance scoring for theme quotes in exports (requires AI toggle ON)
+- **Agent chat** — `/api/bots/[id]/chat`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat`
+- **PulseIQ chat + theme detection** — `/api/townhall/chat` and the theme-detection cron
+- **Social auto-tagging + reply suggestions** — sentiment, intent, AI reply drafts on inbound comments
+- **Conversation review** — `bot-conversation-review` cron
 
-### 8. Admin & Settings
+### 11. Admin & Settings
 
-**Routes**: `/admin/*`, `/settings/team`
+**Routes**: `/admin/*`, `/settings/team`, `/api/admin/*`, `/api/settings/*`
 
-- Organization management (create, edit, feature toggles)
-- User management (invite, roles, remove)
+- Organization management (create, edit, feature toggles, primary industries, AI provider/key)
+- User management (invite, roles, remove, bulk-invite via CSV)
 - Global question bank (reusable questions across studies)
-- Feature flags per org (analyze, campaigns, bot, etc.)
-- Client management (for multi-tenant SaaS)
+- Feature flags per org — 9 module toggles (surveys, campaigns, analyze, agents, pulseiq, social, brands, decks, governance)
+- Client management (sub-clients owned by an org for multi-tenant SaaS)
+- Admin-only deck routes (gated by `requireAdmin`): pitch, rollup, architecture, engineering-reality, agent-capabilities, entity-analysis, pulseiq, signal-tiers, restaurant-expansion. Downloads logged to `deck_download_log`.
+- Health: `/admin/health`, content-guard tester, agent tester, simulators (PulseIQ load), Sentry digest viewer, usage estimator, governance reports.
 
 ---
 
 ## API Routes Summary
 
-| Category | Count | Examples |
-|----------|-------|---------|
-| Studies & Surveys | 10 | `/api/studies`, `/api/study/[guid]`, `/api/respond` |
-| Campaigns & Email | 14 | `/api/campaigns/[id]/send`, `/api/campaigns/webhooks/resend` |
-| Datasets & Analytics | 14 | `/api/datasets/[id]/rows`, `/api/datasets/[id]/aggregate` |
-| Dataset Export | 3 | `/api/datasets/[id]/export/pptx`, `/api/datasets/[id]/export/html` |
-| Google Reviews | 9 | `/api/review-sources/search`, `/api/review-sources/[id]/sync` |
-| Town Hall | 10 | `/api/townhall/chat`, `/api/townhall/join/[id]`, `/api/townhall/themes/detect` |
-| AI Features | 6 | `/api/clarify`, `/api/deflect`, `/api/translate` |
-| Sharing | 2 | `/api/share` (study, campaign, townhall) |
-| Chat/Bot | 3 | `/api/bot-chat`, `/api/nora-chat`, `/api/clara-chat` |
-| Org & Users | 8 | `/api/orgs`, `/api/invite`, `/api/settings/profile` |
-| Admin | 8 | `/api/admin/orgs`, `/api/admin/questions` |
-| Cron Jobs | 9 | `/api/cron/campaign-scheduler`, `/api/cron/review-sync`, `/api/cron/townhall-theme-detection`, `/api/cron/entity-discovery` |
+| Category | Examples |
+|----------|---------|
+| Studies & Surveys | `/api/studies`, `/api/studies/[id]/{analytics,analyze,responses,design-export}`, `/api/study/[guid]`, `/api/respond` |
+| Campaigns & Email | `/api/campaigns`, `/api/campaigns/[id]/{send,clone,emails,export,respondents,stats,test-send}`, `/api/campaigns/{click,unsubscribe,unsubscribe/[token],webhooks/resend}` |
+| Datasets & Analytics | `/api/datasets`, `/api/datasets/[datasetId]/{rows,aggregate,filter-options,refresh-schema,state,sync,compute,auto-setup,trim,mine-themes,merge-themes,expand-keywords,theme-counts,theme-impact,search,search-interest,signal-stats,user-location-filter,discover-entities,entities,rows-by-entity,collection-check}`, `/api/datasets/{insights,signal-stats-batch}` |
+| Dataset Export | `/api/datasets/[datasetId]/export/{pptx,html,html/share,signals-pptx}` |
+| Reviews (Google + Tripadvisor) | `/api/review-sources`, `/api/review-sources/{search,[sourceId]/{locations,sync,user-locations}}` |
+| Other Data Sources | `/api/reddit-sources/*`, `/api/substack-sources/*`, `/api/regulations-sources/*` |
+| PulseIQ | `/api/townhall/{chat,join/[sessionId],live/[sessionId],sessions/[id]/{analyze,duplicate,export,export/pptx},sessions/search,themes/{detect,custom,[id]},stats/[sessionId],status/[sessionId],simulate,suggest-guide,suggest-sensitive,suggest-topic,expand-terms,grade-description,responses}` |
+| Agents (bots) | `/api/bots`, `/api/bots/[id]/{chat,analyze,conversations/*,intents-stats,knowledge,knowledge/[chunkId]}`, `/api/bots/{deep-crawl,fetch-url,research}`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat` |
+| Social | `/api/social/{connect,callback,connections,connections/[id],webhook,sync,demo,stats,alerts,auto-config,comments,comments/[id]/{reply,ai-reply,hide,delete,dm,handle},comments/bulk,dm-templates,export-dataset}` |
+| Brands & Entities | `/api/brands`, `/api/collections`, `/api/collections/[id]`, `/api/industry-themes` |
+| AI Features | `/api/ai/study-suggest`, `/api/clarify`, `/api/deflect`, `/api/translate`, `/api/translate-responses`, `/api/suggest`, `/api/ana/render-deck`, `/api/ask-ana` |
+| Decks (admin-only) | `/api/{pitch,rollup,architecture,engineering-reality,agent-capabilities,entity-analysis,pulseiq,signal-tiers,restaurant-expansion}-deck` |
+| Sharing | `/api/share`, `/api/share/analytics` |
+| Org & Users | `/api/orgs`, `/api/orgs/[id]`, `/api/orgs/[id]/users`, `/api/org`, `/api/org/{logo,settings,users}`, `/api/me`, `/api/me/ai-mode`, `/api/invite`, `/api/invite/[id]`, `/api/invite/[id]/resend`, `/api/invite/register`, `/api/auth/{log-login,magic-link,signout}`, `/api/settings/{profile,team,team/disable,team/features}` |
+| Admin | `/api/admin/{orgs,orgs/[id]/users,orgs/[id]/ai-key,users,users/[id],clients,clients/[id],questions,questions/[id],bulk-invite,invite-preview,agent-tester,content-guard-test,sentry,sentry/issues,usage}` |
+| Cron Jobs (9) | `/api/cron/{campaign-scheduler,cleanup-shared-links,review-sync,entity-discovery,townhall-theme-detection,bot-conversation-review,social-sync,social-token-refresh,sentry-digest}` |
 
-**Total**: ~91 API routes
+**Total**: ~190 API routes (192 at last count).
 
 ---
 
@@ -323,18 +448,38 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 
 | Module | Purpose |
 |--------|---------|
+| `lib/ai.ts` | Unified AI client (`callAI`) — provider routing (Anthropic / OpenAI / Azure OpenAI), tiering, BYO-key, usage logging |
+| `lib/aiKey.ts` | Per-org AI key resolution |
+| `lib/usageLog.ts` / `lib/usageRates.ts` | Usage accounting (writes `usage_logs`, computes cost) |
+| `lib/auth/*` | Auth helpers (`requireUser`, `requireAdmin`) |
+| `lib/resolveOrg.ts` / `lib/userContext.ts` | Org resolution and caller-org gating helpers |
+| `lib/rateLimit.ts` | Token-bucket rate limiting backed by `rate_limit_buckets` |
+| `lib/guardrails.ts` / `lib/contentGuard.ts` / `lib/moderation.ts` | Shared input/output validation (surveys, PulseIQ, agents) |
 | `lib/aliasUtils.ts` | Value alias resolution (resolveAlias, aliasedCounts, buildAliasMap) |
 | `lib/scaleUtils.ts` | Ordinal scale detection, smart ordering, direction labels |
 | `lib/filterUtils.ts` | Filter application, serialization, count helpers |
 | `lib/themeUtils.ts` | Theme matching, keyword regex, lemma expansion, lexicon sentiment scoring (no AI) |
-| `lib/psychoBank.ts` | Shared psychographic question bank (15 general-purpose questions) |
-| `lib/townhallThemeDetection.ts` | Server-side live theme detection for Town Hall sessions |
-| `lib/guardrails.ts` | Shared input/output validation (surveys + town halls) |
-| `lib/statsUtils.ts` | Significance testing (z-score, chi-square, effect sizes) |
-| `lib/opinionMining.ts` | Aspect-opinion extraction, clause splitting, stop words |
+| `lib/sentimentLexicon.ts` | Lexicon-based sentiment scoring |
+| `lib/psychoBank.ts` | Shared psychographic question bank (general-purpose) |
+| `lib/townhallThemeDetection.ts` | Server-side live theme detection for PulseIQ sessions |
+| `lib/statsUtils.ts` / `lib/signalStats.ts` / `lib/signalTier.ts` | Significance testing (z-score, chi-square, effect sizes), signal tiering |
+| `lib/opinionMining.ts` / `lib/personaExtractor.ts` | Aspect-opinion extraction, clause splitting, persona inference |
 | `lib/analyticsCompute.ts` | Field summary computation (counts, histograms, topN) |
-| `lib/dataforseo.ts` | DataForSEO API client (search, submit tasks, check results) |
-| `lib/reviewSync.ts` | Google Reviews sync orchestration |
+| `lib/dataforseo.ts` / `lib/reviewSync.ts` / `lib/reviewLimits.ts` | DataForSEO client, review sync orchestration, per-org cost caps |
+| `lib/reddit.ts` / `lib/redditSync.ts` | Reddit ingest |
+| `lib/substack.ts` | Substack ingest |
+| `lib/regulations.ts` | Regulations.gov ingest |
+| `lib/socialTagging.ts` / `lib/oauthState.ts` / `lib/safeFetch.ts` | Social moderation tagging, HMAC OAuth state, SSRF-safe fetch |
+| `lib/brandMatch.ts` / `lib/brandRules.ts` / `lib/collectionSchema.ts` | Brand profile rules and matching |
+| `lib/entityDiscovery.ts` / `lib/entityFilter.ts` / `lib/entityVariants.ts` | Entity discovery and filtering |
+| `lib/embeddings.ts` | Embedding generation for agent knowledge / RAG |
+| `lib/cronAuth.ts` | Cron bearer-token auth (`CRON_SECRET`) |
+| `lib/sentry.ts` | Sentry init / wrapping |
+| `lib/loginLog.ts` / `lib/userEvents.ts` | Login + user-event logging |
+| `lib/governanceReports.ts` | Weekly governance report generation |
+| `lib/industryDefaults.ts` / `lib/industryThemes.ts` / `lib/surveyBlueprints.ts` | Industry presets and survey blueprints |
+| `lib/studyDraft.ts` / `lib/smartStudyGenerator.ts` | Survey draft + AI-generated study suggestion |
+| `lib/xlsxExport.ts` | Excel export helpers |
 | `lib/useSessionState.ts` | SessionStorage-backed React state hook |
 
 ---
@@ -343,33 +488,63 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 
 | Constraint | Value | Notes |
 |-----------|-------|-------|
-| Supabase max rows per request | 1,000 | Pagination required for larger datasets |
-| TextMine sample cap | 50,000 rows | No sampling below this |
+| Supabase max rows per request | 1,000 | Default; paginate for larger reads |
+| TextMine sample cap | 50,000 rows | No sampling below this; deterministic per-dataset sampling above |
 | DataForSEO review limit | 4,490 per location | Google API hard cap |
 | DataForSEO batch size | 10 locations per sync call | Prevents serverless timeout |
-| Serverless function timeout | 120s (export routes) | Vercel Pro plan |
+| Serverless function timeout | 120s (export routes, default 300s on plan) | Vercel Pro / Fluid |
 | PPTX row cap | 10K (no filter), 30K (filtered) | Memory constraint |
-| Campaign send rate | Resend free tier: 100/day | Configurable provider |
+| Campaign send rate | Provider-dependent | Resend / SendGrid / SES / SMTP / Twilio SMS |
+| Survey widget rate limit | 120 req/min per IP | `lib/rateLimit.ts`, applied in `/api/respond` |
 | Analytics topN | 20 values | Field summary value lists |
+| Review download cost cap | Per-org rolling window | Enforced via `review_downloads` |
 
 ---
 
 ## Environment Variables
+
+Authoritative list of platform env vars; provider-specific ones (SMTP_*, social OAuth client IDs/secrets, etc.) are set as needed per integration.
 
 | Variable | Purpose |
 |----------|---------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (server only) |
-| `ANTHROPIC_API_KEY` | Claude API key |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key (default AI provider) |
+| `OPENAI_API_KEY` | OpenAI provider key (optional) |
+| `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI (optional) |
 | `RESEND_API_KEY` | Resend email provider |
-| `DATAFORSEO_LOGIN` | DataForSEO username |
-| `DATAFORSEO_PASSWORD` | DataForSEO password |
+| `SENDGRID_API_KEY` | SendGrid (optional) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `SES_REGION` | AWS SES (optional) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Generic SMTP (optional) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | Twilio SMS (optional) |
+| `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | DataForSEO (Google + Tripadvisor reviews) |
+| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Reddit API |
+| `REGULATIONS_API_KEY` | Regulations.gov API |
+| `SOCIAL_*_CLIENT_ID` / `SOCIAL_*_CLIENT_SECRET` | Social provider OAuth credentials (per provider) |
+| `OAUTH_STATE_SECRET` | HMAC secret for OAuth state signing |
+| `CRON_SECRET` | Bearer token shared by Vercel cron and the cron endpoints |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry error reporting |
+| `INTERNAL_API_KEY` | Internal-only deck route auth (in addition to `requireAdmin`) |
 | `NEXT_PUBLIC_BASE_URL` | Public URL for links |
 
 ---
 
 ## Deployment
 
-- **Production**: push to `main` → Vercel auto-deploys.
-- **DB Migrations**: SQL files in `sql/` directory, applied manually to Supabase via the dashboard SQL Editor.
+- **Production**: push to `main` → Vercel auto-deploys. Single repo on `main`; staging is retired.
+- **DB Migrations**: numbered SQL files in `sql/` (`sql/NNN_name.sql`). Apply to production with `supabase db query --linked --file sql/NNN_name.sql` — the CLI is already linked. CI does not run migrations.
+- **Specs**: docs under `docs/` and this top-level `SPEC.md` must be updated in the same commit as any behavior change. The Monday governance routine reads `docs/weekly-reports/YYYY-WXX-devlog.md`.
+
+---
+
+## Multi-Tenancy Invariants
+
+Every CRITICAL security finding so far has reduced to one of these. Treat them as non-negotiable:
+
+1. **Every new `public` table needs RLS enabled + an org-scoped `SELECT` policy.** `npm run test:rls` catches the policy-exists half.
+2. **Service-role queries must pair `id` with `org_id`** — `service.from(t).eq('id', x).eq('org_id', orgId)`, or use a `gate*Access` helper. A bare `id` lookup with the service-role client is a cross-tenant leak.
+3. **Internal-only routes** (deck exports, governance, internal exports, admin tools) wrap with `requireAdmin` from day one. URL obscurity is not a defense.
+4. **Route-handler org filters are not covered by RLS tests.** Service-role + explicit `.eq('org_id', orgId)` failure modes need their own egress tests (`test:egress`).
+
+See `docs/SECURITY.md` for the full threat model and `CLAUDE.md` for ongoing project-level guardrails.

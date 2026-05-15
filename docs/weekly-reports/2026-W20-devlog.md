@@ -2,7 +2,26 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
-## 2026-05-15 (Thu, latest) — Spec audit pass 13: FEATURES.md vs current code
+## 2026-05-15 (Thu, latest) — Spec audit pass 14 (final): SPEC.md vs current code
+
+- **Why:** doc 14 of 14 — the last and biggest pass in the sequential spec audit ([[project-spec-audit-queue]]). SPEC.md is the top-level platform spec, the canonical buyer-DD doc, and it had drifted the most of any doc in the queue because module-level docs were getting kept current by prior audits while SPEC.md hadn't been touched in ~5 days and predated several feature ships.
+- **Edits applied (~263 inserts / 88 deletes):**
+  - **Branding & version:** `SentimetrX` → `Sentimetrx` everywhere; 2026-05-10 → 2026-05-15; rewrote Overview/Stack to mention pluggable AI router, multiple email providers, multiple data sources, PulseIQ, Agents, Social.
+  - **Architecture diagram** redrawn to show the actual current surface (Fluid Compute, RLS, `lib/ai.ts` provider router, social providers, 9 crons).
+  - **Database Tables**: added ~25 missing tables — Agents (5 tables), Social (6), Brands/Collections/Entities (5), Reddit (2), Usage (1), Observability (1), plus User/Org infrastructure (clients, user_logins, user_events, org_transfers, admin_action_log, ai_consent_audit, rate_limit_buckets) and review_downloads / deck_download_log / archived_dataset_rows_flat.
+  - **Feature Modules: 8 → 11 sections.** § 1 wizard 9→**10** steps (added Closing), 15→**16** langs, 15→**14** question types, 19 industries. § 4 "Google Reviews" → "Google + Tripadvisor Reviews Integration" reflecting migration 065. § 5 "AI Town Hall" → "**PulseIQ** (internal: `townhall`)" per user-facing naming. **Three brand-new sections** § 6 Agents, § 7 Social Media Monitoring, § 8 Data Sources — entire modules that had no SPEC representation. § 10 AI Features no longer claims Anthropic-only; documents `lib/ai.ts` provider dispatch + BYO-key + usage logging; translation 15→16.
+  - **Route params** `/api/datasets/[id]/...` → `[datasetId]` in 4 surviving spots.
+  - **API Routes Summary** replaced wrong "~91 total" with current "~190" and listed actual paths by category (Agents ~16, Social ~20, Brands & Entities, Decks, Other Data Sources, Reviews); cron list expanded from 4 examples to all 9.
+  - **Shared Utilities** added the major libs that had been missed: `lib/ai.ts`, `usageLog`, `auth/*`, `resolveOrg`, `userContext`, `rateLimit`, `contentGuard`, `moderation`, all data-source libs, social moderation libs, brand + entity libs, embeddings, cronAuth, sentry, governance.
+  - **Constraints & Limits** added the survey rate-limit row (120/min/IP); noted Vercel default 300s; review-cap row references `review_downloads`.
+  - **Env Vars** expanded from 8 → ~22, covering all email providers, all data-source providers, social OAuth, OAUTH_STATE_SECRET, CRON_SECRET, Sentry DSNs, INTERNAL_API_KEY.
+  - **Deployment** fixed: "SQL Editor" → `supabase db query --linked --file sql/NNN_name.sql` per CLAUDE.md.
+  - **NEW section: Multi-Tenancy Invariants** — added at the bottom (RLS, service-role id-pair, requireAdmin, egress test gap) so SPEC stands alone for buyer DD.
+- **Not in the doc but real:** none new in this pass — every real-eng item that surfaced during the 14-doc run is already tracked in [[project-open-work-queue]] and the per-doc audit memos.
+- **Audit record:** [[project-spec-audit-2026-05-15]].
+- **Audit run is closed.** 14 of 14 docs reviewed in one day; corrections in 13 docs (+ none-needed on TESTING was the only doc-only pass with zero real-eng items). ~12 substantive engineering follow-ups queued in Open TBD #1–#24.
+
+## 2026-05-15 (Thu) — Spec audit pass 13: FEATURES.md vs current code
 
 - **Why:** doc 13 of 14 in the sequential spec audit ([[project-spec-audit-queue]]). FEATURES.md is the top-level inventory and had drifted furthest of any spec — six entire modules (PulseIQ, Agents, Social, Search, Data Sources, Usage) were unmentioned, the doc still opened with "SentimetRx", and almost every count was off.
 - **Edits applied (~241 inserts / 30 deletes):**
