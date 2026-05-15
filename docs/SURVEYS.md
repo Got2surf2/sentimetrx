@@ -94,14 +94,16 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - Rules: max 25 words, no repetition, only probe if vague
 
 ### Deflection (`POST /api/deflect`)
+- Rate limited: 10/min per IP
 - Detects off-topic questions
 - Returns custom redirect message + optional link
 - Config: `questionRedirect.enabled`, `.message`, `.linkText`, `.linkUrl`
 
 ### Guardrails (`lib/guardrails.ts`)
-- Input validation: block unsafe content before AI
-- Output validation: verify AI response before returning
-- Content safety: profanity, slurs, threats, PII detection
+- Input validation: block unsafe content before AI (`isInputSafe`)
+- Output validation: verify AI response is question-shaped and clean (`isOutputSafe` / `isOutputClean`)
+- Refusal/leak detection: `looksLikeAIRefusal`, `looksLikeMetaPromptLeak`, `sanitizeBotReply`
+- `SKIP_PATTERNS`: profanity, violence, sexual content, slurs, URLs (spam/phishing). PII detection is **not** implemented today.
 
 ---
 
@@ -151,20 +153,17 @@ A `responses` row is created on the first partial save and upserted by `session_
 
 ## Admin Tools
 
-### AI Tester (`/admin/testing`)
-- Test clarifier and deflector behavior with pre-populated examples
-- Batch mode for automated testing
-- Debug mode shows AI reasoning
+### `/admin/testing` (tabbed)
+Three tabs in a single page (`TestingClient.tsx`):
+- **AI Tester** — test clarifier / deflector behavior against a real study; pre-populated examples + debug-mode reasoning
+- **Load Simulator** — embedded synthetic-response runner (same pool as `/admin/simulator`)
+- **Leakage Test** — runs the same question repeatedly, detects prompt-injection / leaked-data patterns in outputs
 
 ### Load Simulator (`/admin/simulator`)
-- Generate 1-1000 synthetic responses
-- Configurable sentiment mix (realistic/positive/negative/uniform)
+- Generate 1–500 synthetic responses per run (UI `<input max={500}>`)
+- Configurable sentiment mix (realistic / positive / negative / uniform)
 - Random demographics from realistic pools
-
-### Leakage Tester
-- Detect prompt injection vulnerabilities
-- Send same question repeatedly, measure output variance
-- Pattern detection for leaked data
+- Calls the public `/api/respond` endpoint with `status:'complete'` payloads
 
 ---
 
@@ -174,7 +173,7 @@ A `responses` row is created on the first partial save and upserted by `session_
 |------|---------|
 | `app/studies/new/` | Creator wizard (10 steps) |
 | `components/survey/SurveyWidget.tsx` | Widget wrapper |
-| `components/survey/useSurveyEngine.ts` | Core conversation logic (2680 lines) |
+| `components/survey/useSurveyEngine.ts` | Core conversation logic (~2.6k lines) |
 | `components/creator/SmartStudyWizard.tsx` | AI-powered study generation |
 | `app/api/clarify/route.ts` | AI follow-up generation |
 | `app/api/respond/route.ts` | Response submission |
