@@ -1,6 +1,6 @@
 // GET /api/pulseiq-deck
-// PulseIQ pitch for engineering consulting firms that run public engagement.
-// Positioned honestly: useful under specific high-stakes conditions.
+// PulseIQ pitch for engineering consulting firms that run NEPA public engagement.
+// Organized by the three standard NEPA meeting formats.
 
 import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
@@ -15,7 +15,7 @@ const C = {
   navy:      '0D2B45',
   teal:      '0F7173',
   tealMid:   '4DBFC1',
-  tealLight: 'D0ECEC',
+  tealLight: 'E0F0F0',
   orange:    'E8632A',
   gold:      'E8B84B',
   white:     'FFFFFF',
@@ -25,7 +25,6 @@ const C = {
   mid:       '374151',
   faint:     '9CA3AF',
   green:     '059669',
-  greenLight:'D1FAE5',
   red:       'DC2626',
   purple:    '7C3AED',
 }
@@ -62,6 +61,37 @@ function card(slide: any, x: number, y: number, w: number, h: number, title: str
   slide.addText(body, { x: x + 0.22, y: y + 0.57, w: w - 0.38, h: h - 0.7, fontSize: 13, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.4 })
 }
 
+// Two-panel layout used for each meeting-type slide
+function meetingSlide(
+  pptx: any, title: string, sub: string, pageNum: number,
+  sessionPoints: string[], pulsePoints: string[], accent = C.teal
+) {
+  const s = pptx.addSlide()
+  s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(s, title, sub)
+  ftr(s, pageNum)
+
+  const panelY = 1.28
+  const panelH = H - panelY - 0.5
+  const midX   = 6.55
+
+  // Left panel — the session
+  s.addShape('roundRect', { x: 0.4, y: panelY, w: midX - 0.65, h: panelH, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  s.addText('THE SESSION', { x: 0.6, y: panelY + 0.18, w: midX - 1.0, h: 0.3, fontSize: 9, fontFace: 'Arial', color: C.slate, bold: true, charSpacing: 3 })
+  sessionPoints.forEach(function(pt, i) {
+    s.addText('· ' + pt, { x: 0.65, y: panelY + 0.6 + i * 1.2, w: midX - 1.1, h: 1.1, fontSize: 14, fontFace: 'Arial', color: C.white, wrap: true, lineSpacingMultiple: 1.4 })
+  })
+
+  // Right panel — PulseIQ
+  s.addShape('roundRect', { x: midX + 0.1, y: panelY, w: W - midX - 0.5, h: panelH, rectRadius: 0.1, fill: { color: accent + '1A' }, line: { color: accent + '50', width: 0.8 } })
+  s.addText('WHERE PULSEIQ FITS', { x: midX + 0.3, y: panelY + 0.18, w: W - midX - 0.8, h: 0.3, fontSize: 9, fontFace: 'Arial', color: accent, bold: true, charSpacing: 3 })
+  pulsePoints.forEach(function(pt, i) {
+    s.addText('→ ' + pt, { x: midX + 0.3, y: panelY + 0.6 + i * 1.2, w: W - midX - 0.75, h: 1.1, fontSize: 14, fontFace: 'Arial', color: C.ink, wrap: true, lineSpacingMultiple: 1.4 })
+  })
+
+  return s
+}
+
 export async function GET() {
   const denied = await requireAdmin()
   if (denied) return denied
@@ -69,7 +99,7 @@ export async function GET() {
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'
-  pptx.title = 'PulseIQ — Community Intelligence for High-Stakes Projects'
+  pptx.title = 'PulseIQ — Community Intelligence for NEPA Engagement'
   let p = 0
 
   // ═══ SLIDE 1: Title ═══
@@ -77,198 +107,232 @@ export async function GET() {
   s1.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.navy } })
   s1.addShape('rect', { x: 0, y: 0, w: 0.22, h: H, fill: { color: C.teal } })
   s1.addShape('rect', { x: 0, y: 3.9, w: W, h: 0.05, fill: { color: C.gold } })
-  s1.addText('PulseIQ', { x: 0.9, y: 0.9, w: 11, h: 1.3, fontSize: 68, fontFace: 'Arial', color: C.white, bold: true })
-  s1.addText('Community Intelligence for\nHigh-Stakes Project Approvals', { x: 0.9, y: 2.2, w: 11, h: 1.5, fontSize: 26, fontFace: 'Arial', color: C.tealMid, lineSpacingMultiple: 1.4 })
-  s1.addText('For engineering consultants who run public engagement — and need the outcome to go right.', { x: 0.9, y: 4.05, w: 10.5, h: 0.6, fontSize: 15, fontFace: 'Arial', color: C.slate })
+  s1.addText('PulseIQ', { x: 0.9, y: 0.85, w: 11, h: 1.3, fontSize: 68, fontFace: 'Arial', color: C.white, bold: true })
+  s1.addText('Community Intelligence\nfor NEPA Engagement', { x: 0.9, y: 2.15, w: 11, h: 1.55, fontSize: 28, fontFace: 'Arial', color: C.tealMid, lineSpacingMultiple: 1.4 })
+  s1.addText('Purpose-built for engineering consultants who run open houses, public hearings, and community workshops.', {
+    x: 0.9, y: 4.05, w: 10.5, h: 0.65, fontSize: 15, fontFace: 'Arial', color: C.slate, wrap: true,
+  })
   wordmark(s1)
   s1.addText(new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), { x: 0.9, y: H - 0.9, w: 4, h: 0.4, fontSize: 12, fontFace: 'Arial', color: C.slate })
 
-  // ═══ SLIDE 2: Honest Positioning ═══
+  // ═══ SLIDE 2: The Three NEPA Meeting Formats ═══
   p++
   const s2 = pptx.addSlide()
   s2.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s2, 'Not for every project. A few specific ones.')
+  hdr(s2, 'Three formats. Same underlying problem.', 'NEPA requires meaningful public participation — but the tools haven\'t kept up')
   ftr(s2, p)
 
-  s2.addText('PulseIQ changes the outcome when three conditions are true:', {
-    x: 0.6, y: 1.3, w: 12, h: 0.5, fontSize: 16, fontFace: 'Arial', color: C.mid,
-  })
-
-  const conditions = [
-    { num: '1', title: 'Organized opposition can kill or delay the permit', body: 'A small vocal group dominates public meetings. The silent majority never shows. The record looks one-sided — and it becomes the official record.' },
-    { num: '2', title: 'A legal comment period creates a compliance obligation', body: 'NEPA, SEPA, or state equivalents require a documented, defensible response to public input. Volume and tight timelines make this genuinely hard.' },
-    { num: '3', title: 'You need to know what the community actually thinks — not who showed up', body: 'Attendance at a 7 PM English-language meeting is not a representative sample. Async digital engagement captures the people who don\'t come.' },
+  const formats = [
+    {
+      label: '01', title: 'Open House',
+      tag: 'Most common',
+      body: 'Stations around the room. Maps, renderings, staff. Comment cards or digital kiosks. Semi-formal, conversational. People self-select what they engage with — and many walk through without saying anything.',
+      accent: C.teal,
+    },
+    {
+      label: '02', title: 'Formal Public Hearing',
+      tag: 'Legally significant',
+      body: 'Structured testimony. 2–5 minutes per speaker. Court reporter. Everything enters the administrative record. Closer to a quasi-legal proceeding than a community conversation. Often politically charged.',
+      accent: C.orange,
+    },
+    {
+      label: '03', title: 'Workshop / Charrette',
+      tag: 'Early planning',
+      body: 'Small group discussions. Table facilitators. Sticky-note exercises, prioritization voting, scenario comparisons. Rich qualitative data — almost all of it lost or inconsistently transcribed.',
+      accent: C.purple,
+    },
   ]
-  conditions.forEach(function(c, i) {
-    const y = 2.0 + i * 1.65
-    s2.addShape('roundRect', { x: 0.5, y, w: 12.3, h: 1.45, rectRadius: 0.1, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
-    s2.addShape('ellipse', { x: 0.78, y: y + 0.43, w: 0.58, h: 0.58, fill: { color: C.teal } })
-    s2.addText(c.num, { x: 0.78, y: y + 0.43, w: 0.58, h: 0.58, fontSize: 20, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
-    s2.addText(c.title, { x: 1.55, y: y + 0.1, w: 11, h: 0.44, fontSize: 16, fontFace: 'Arial', color: C.navy, bold: true })
-    s2.addText(c.body, { x: 1.55, y: y + 0.56, w: 11, h: 0.75, fontSize: 13, fontFace: 'Arial', color: C.mid, wrap: true })
+  formats.forEach(function(f, i) {
+    const x = 0.45 + i * 4.3
+    s2.addShape('roundRect', { x, y: 1.35, w: 4.05, h: 5.65, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+    s2.addShape('roundRect', { x, y: 1.35, w: 4.05, h: 1.1, rectRadius: 0.12, fill: { color: f.accent }, line: { color: f.accent, width: 0 } })
+    s2.addShape('rect', { x, y: 1.95, w: 4.05, h: 0.5, fill: { color: f.accent }, line: { color: f.accent, width: 0 } })
+    s2.addText(f.label, { x, y: 1.38, w: 4.05, h: 0.4, fontSize: 11, fontFace: 'Arial', color: C.white + '99', bold: true, align: 'center' })
+    s2.addText(f.title, { x, y: 1.72, w: 4.05, h: 0.5, fontSize: 22, fontFace: 'Arial', color: C.white, bold: true, align: 'center' })
+    s2.addShape('roundRect', { x: x + 0.6, y: 2.6, w: 2.85, h: 0.35, rectRadius: 0.04, fill: { color: f.accent + '25' }, line: { color: f.accent + '60', width: 0.4 } })
+    s2.addText(f.tag, { x: x + 0.6, y: 2.6, w: 2.85, h: 0.35, fontSize: 10, fontFace: 'Arial', color: f.accent, bold: true, align: 'center', valign: 'middle' })
+    s2.addText(f.body, { x: x + 0.2, y: 3.1, w: 3.65, h: 3.7, fontSize: 12.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.45 })
   })
 
-  // ═══ SLIDE 3: Four Scenarios Overview ═══
+  // ═══ SLIDE 3: Open House ═══
   p++
-  const s3 = pptx.addSlide()
-  s3.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s3, 'Where engineering consultants use it', 'Four recurring project types where community dynamics shape the outcome')
-  ftr(s3, p)
+  meetingSlide(
+    pptx,
+    'Open House',
+    'The most common format — and the one with the biggest participation gap',
+    p,
+    [
+      'Attendees self-select which stations they visit',
+      'Comment cards capture only those who stop to write',
+      'Staff conversations go unrecorded',
+      'No way to reach people who couldn\'t attend that evening',
+    ],
+    [
+      'QR code at every station — capture feedback at the point of interest',
+      'Async link extends participation before and after the event',
+      'Every comment auto-tagged by topic — no manual sorting',
+      'Responses from the room and remote participants in one unified record',
+    ],
+    C.teal
+  )
 
-  const scenarios = [
-    { title: 'Transmission & Substation Siting', body: 'Organized opposition from immediate neighbors vs. broader public support for grid reliability. Traditional meetings capture the former — not the latter.', accent: C.teal },
-    { title: 'Highway & Transit Corridor Approvals', body: 'NEPA public comment periods generate large submission volumes in tight windows. AI synthesis is the only practical path to a defensible response matrix.', accent: C.orange },
-    { title: 'Industrial Facility Permitting', body: 'Battery storage, solar farms, data centers. Opposition often concentrates in a few blocks; the broader community is neutral. Standard meetings won\'t show you that split.', accent: C.purple },
-    { title: 'Utility Rate Cases & Public Hearings', body: 'Rate commissions require evidence of genuine public input. Capturing the specific concerns — affordability vs. reliability — lets your client tailor testimony before the hearing.', accent: C.gold },
-  ]
-  scenarios.forEach(function(sc, i) {
-    const col = i % 2
-    const row = Math.floor(i / 2)
-    card(s3, 0.5 + col * 6.45, 1.35 + row * 2.95, 6.1, 2.65, sc.title, sc.body, sc.accent)
-  })
-
-  // ═══ SLIDE 4: Traditional vs. PulseIQ ═══
+  // ═══ SLIDE 4: Formal Public Hearing ═══
   p++
-  const s4 = pptx.addSlide()
-  s4.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s4, 'Who actually participates', 'The structural problem with traditional public engagement')
-  ftr(s4, p)
+  meetingSlide(
+    pptx,
+    'Formal Public Hearing',
+    'The administrative record is built here — and gaps in it become litigation risk',
+    p,
+    [
+      '2–5 minute speaking slots; most affected residents never testify',
+      'Court reporter captures spoken testimony only',
+      'Agency must respond to every substantive comment on record',
+      'High volume of submissions + tight response deadlines',
+    ],
+    [
+      'Pre-hearing engagement captures voices who won\'t stand at a microphone',
+      'AI synthesizes all input into themes for the agency response matrix',
+      'Full transcript with timestamps, topic mapping, and sentiment scores',
+      'Structured export formatted for NEPA administrative record requirements',
+    ],
+    C.orange
+  )
 
-  // Column headers
-  s4.addShape('roundRect', { x: 0.5, y: 1.3, w: 5.85, h: 0.55, rectRadius: 0.06, fill: { color: 'FEE2E2' }, line: { color: 'FECACA', width: 0.5 } })
-  s4.addText('Traditional Public Meeting', { x: 0.5, y: 1.3, w: 5.85, h: 0.55, fontSize: 15, fontFace: 'Arial', color: C.red, bold: true, align: 'center', valign: 'middle' })
-
-  s4.addShape('roundRect', { x: 6.98, y: 1.3, w: 5.85, h: 0.55, rectRadius: 0.06, fill: { color: C.tealLight }, line: { color: '99D4D5', width: 0.5 } })
-  s4.addText('With PulseIQ', { x: 6.98, y: 1.3, w: 5.85, h: 0.55, fontSize: 15, fontFace: 'Arial', color: C.teal, bold: true, align: 'center', valign: 'middle' })
-
-  // VS divider
-  s4.addShape('ellipse', { x: 6.19, y: 1.32, w: 0.55, h: 0.52, fill: { color: C.navy } })
-  s4.addText('VS', { x: 6.19, y: 1.32, w: 0.55, h: 0.52, fontSize: 10, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
-
-  const rows = [
-    { label: 'Who participates', bad: 'Whoever can attend on a weeknight', good: 'Anyone with a phone — at any time' },
-    { label: 'Language', bad: 'English (translation rarely arranged)', good: 'Automatically in any language the participant chooses' },
-    { label: 'Timing', bad: 'One evening, one location, fixed window', good: 'Before, during, and after — 24 / 7' },
-    { label: "What's captured", bad: 'Verbal comments — manually summarized if at all', good: 'Full transcript, AI-synthesized, timestamped, exportable' },
-    { label: 'The official record', bad: 'Who showed up and who spoke loudest', good: 'The breadth of the affected community' },
-  ]
-
-  rows.forEach(function(row, i) {
-    const y = 2.0 + i * 1.02
-    const bg = i % 2 === 0 ? C.white : C.slateCard
-
-    // Row background
-    s4.addShape('rect', { x: 0.5, y, w: 12.33, h: 0.98, fill: { color: bg }, line: { color: 'E5E7EB', width: 0.3 } })
-
-    // Row label (left quarter)
-    s4.addText(row.label, { x: 0.65, y, w: 2.8, h: 0.98, fontSize: 12, fontFace: 'Arial', color: C.navy, bold: true, valign: 'middle', wrap: true })
-
-    // Bad column (middle)
-    s4.addText('✗  ' + row.bad, { x: 3.55, y, w: 3.3, h: 0.98, fontSize: 12, fontFace: 'Arial', color: '#991B1B', valign: 'middle', wrap: true })
-
-    // Good column (right)
-    s4.addText('✓  ' + row.good, { x: 6.98, y, w: 5.7, h: 0.98, fontSize: 12, fontFace: 'Arial', color: C.teal, valign: 'middle', wrap: true })
-  })
-
-  // ═══ SLIDE 5: Process Flow ═══
+  // ═══ SLIDE 5: Workshop / Charrette ═══
   p++
-  const s5 = pptx.addSlide()
-  s5.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s5, 'How it works', 'From project kickoff to defensible record — no new infrastructure required')
-  ftr(s5, p)
+  meetingSlide(
+    pptx,
+    'Workshop / Charrette',
+    'Rich local knowledge enters the room — and most of it never makes it to the EIS',
+    p,
+    [
+      'Table facilitators capture notes inconsistently',
+      'Sticky-note exercises produce data that\'s hard to quantify or cite',
+      'Scenario preferences and priority votes rarely get aggregated rigorously',
+      'The people at the table aren\'t a representative sample',
+    ],
+    [
+      'Structured digital prompts replace sticky-note exercises — same feel, searchable output',
+      'Priority rankings quantified across all participants, not just vocal table members',
+      'Every response captured verbatim, timestamped, and attributed to a discussion topic',
+      'Data ready for the EIS the next morning — not weeks of manual synthesis',
+    ],
+    C.purple
+  )
 
-  const steps = [
-    { num: '1', label: 'Deploy', color: C.teal, points: ['Generate a QR code or link in minutes', 'Post at the venue, email the mailing list, share on social', 'No app. No account. Any device.'] },
-    { num: '2', label: 'Engage', color: C.orange, points: ['AI moderator guides each participant through your discussion topics', 'Asks follow-up questions to draw out nuance', 'Runs 24/7 — before, during, and after the public meeting'] },
-    { num: '3', label: 'Analyze', color: C.purple, points: ['Themes surface automatically as responses arrive', 'Sentiment scored per topic', 'Representative quotes extracted and attributed'] },
-    { num: '4', label: 'Act', color: C.navy, points: ['Real-time dashboard for your team', 'AI-written summary ready for the permit record', 'Export PPTX, CSV, or shareable link'] },
-  ]
-
-  const boxW = 2.9
-  const boxH = 5.0
-  const startX = 0.55
-  const gap = 0.35
-
-  steps.forEach(function(st, i) {
-    const x = startX + i * (boxW + gap)
-
-    // Card
-    s5.addShape('roundRect', { x, y: 1.35, w: boxW, h: boxH, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
-
-    // Color top bar
-    s5.addShape('roundRect', { x, y: 1.35, w: boxW, h: 0.85, rectRadius: 0.12, fill: { color: st.color }, line: { color: st.color, width: 0 } })
-    // Square off the bottom corners of the top bar
-    s5.addShape('rect', { x, y: 1.6, w: boxW, h: 0.6, fill: { color: st.color }, line: { color: st.color, width: 0 } })
-
-    // Step number + label
-    s5.addText(st.num, { x, y: 1.38, w: boxW, h: 0.45, fontSize: 11, fontFace: 'Arial', color: C.white + 'AA', bold: true, align: 'center' })
-    s5.addText(st.label, { x, y: 1.72, w: boxW, h: 0.45, fontSize: 20, fontFace: 'Arial', color: C.white, bold: true, align: 'center' })
-
-    // Bullet points
-    st.points.forEach(function(pt, j) {
-      s5.addText('· ' + pt, { x: x + 0.18, y: 2.38 + j * 1.2, w: boxW - 0.35, h: 1.1, fontSize: 13, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.35 })
-    })
-
-    // Arrow to next step
-    if (i < steps.length - 1) {
-      const arrowX = x + boxW + 0.06
-      s5.addText('›', { x: arrowX, y: 3.35, w: gap + 0.08, h: 0.6, fontSize: 28, fontFace: 'Arial', color: C.faint, align: 'center', valign: 'middle' })
-    }
-  })
-
-  // ═══ SLIDE 6: Multilingual ═══
+  // ═══ SLIDE 6: Traditional vs. PulseIQ ═══
   p++
   const s6 = pptx.addSlide()
   s6.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s6, 'Every voice — not just the English-speaking ones', 'Why language access changes who gets heard')
+  hdr(s6, 'Who actually participates', 'Across all three formats, the structural gap is the same')
   ftr(s6, p)
 
-  // Big statement
-  s6.addShape('roundRect', { x: 0.5, y: 1.3, w: 12.3, h: 1.35, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
-  s6.addText('In Florida, 1 in 4 residents speaks a language other than English at home.', {
-    x: 0.7, y: 1.35, w: 11.9, h: 1.25, fontSize: 22, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', wrap: true,
-  })
+  s6.addShape('roundRect', { x: 0.5, y: 1.28, w: 5.85, h: 0.55, rectRadius: 0.06, fill: { color: 'FEE2E2' }, line: { color: 'FECACA', width: 0.5 } })
+  s6.addText('Traditional Public Engagement', { x: 0.5, y: 1.28, w: 5.85, h: 0.55, fontSize: 14, fontFace: 'Arial', color: C.red, bold: true, align: 'center', valign: 'middle' })
 
-  s6.addText('Spanish, Haitian Creole, Portuguese, Vietnamese. They live in the project corridor. Their property values are affected. They will not come to a 7 PM English-language meeting — and their absence will be used as consent.', {
-    x: 0.6, y: 2.82, w: 12, h: 0.85, fontSize: 14, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.45,
-  })
+  s6.addShape('ellipse', { x: 6.19, y: 1.3, w: 0.55, h: 0.52, fill: { color: C.navy } })
+  s6.addText('VS', { x: 6.19, y: 1.3, w: 0.55, h: 0.52, fontSize: 10, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
 
-  const langItems = [
-    { title: 'Participant chooses their language at join', body: 'Spanish, Haitian Creole, Portuguese, French, Vietnamese — and more. The entire conversation happens in that language, with no translation friction.', accent: C.teal },
-    { title: 'Facilitators see everything in English', body: 'All responses are auto-translated in real time on the dashboard. Your team manages one unified view regardless of how many languages are active.', accent: C.orange },
-    { title: 'The record is complete — not just who happened to show up', body: 'A public comment process that excludes non-English speakers creates legal and reputational exposure. PulseIQ removes that gap by design.', accent: C.purple },
+  s6.addShape('roundRect', { x: 6.98, y: 1.28, w: 5.85, h: 0.55, rectRadius: 0.06, fill: { color: C.tealLight }, line: { color: '99D4D5', width: 0.5 } })
+  s6.addText('With PulseIQ', { x: 6.98, y: 1.28, w: 5.85, h: 0.55, fontSize: 14, fontFace: 'Arial', color: C.teal, bold: true, align: 'center', valign: 'middle' })
+
+  const compRows = [
+    { label: 'Who participates',  bad: 'Whoever can attend on a weeknight',                good: 'Anyone with a phone — any time, any location' },
+    { label: 'Language',          bad: 'English (translation rarely arranged)',              good: 'Automatically in any language the participant chooses' },
+    { label: 'Timing',            bad: 'One window — fixed date and location',              good: 'Before, during, and after the session — 24/7' },
+    { label: "What's captured",   bad: 'Verbal comments, manually summarized if at all',    good: 'Full transcript, AI-synthesized, timestamped, exportable' },
+    { label: 'The official record', bad: 'Who showed up and who spoke loudest',             good: 'The breadth of the affected community' },
   ]
-  langItems.forEach(function(item, i) {
-    card(s6, 0.5 + i * 4.3, 3.83, 4.0, 3.22, item.title, item.body, item.accent)
+  compRows.forEach(function(row, i) {
+    const y = 2.0 + i * 1.0
+    const bg = i % 2 === 0 ? C.white : C.slateCard
+    s6.addShape('rect', { x: 0.5, y, w: 12.33, h: 0.96, fill: { color: bg }, line: { color: 'E5E7EB', width: 0.3 } })
+    s6.addText(row.label, { x: 0.65, y, w: 2.7, h: 0.96, fontSize: 12, fontFace: 'Arial', color: C.navy, bold: true, valign: 'middle', wrap: true })
+    s6.addText('✗  ' + row.bad,  { x: 3.45, y, w: 3.35, h: 0.96, fontSize: 12, fontFace: 'Arial', color: '#991B1B', valign: 'middle', wrap: true })
+    s6.addText('✓  ' + row.good, { x: 6.98, y, w: 5.7,  h: 0.96, fontSize: 12, fontFace: 'Arial', color: C.teal,    valign: 'middle', wrap: true })
   })
 
-  // ═══ SLIDE 7: Privacy ═══
+  // ═══ SLIDE 7: Process Flow ═══
   p++
   const s7 = pptx.addSlide()
   s7.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s7, 'Privacy by design — not by policy', 'Built for public-facing engagement where trust is the product')
+  hdr(s7, 'How it works', 'From project kickoff to defensible record — no new infrastructure required')
   ftr(s7, p)
 
-  const privacyItems = [
-    { title: 'No PII required', body: 'No name. No email. No phone number. No account creation. Participants join with a QR scan or link — nothing identifying is collected or requested.', accent: C.teal },
-    { title: 'Anonymous session tokens', body: 'Each participant receives a random session-scoped ID. There is no linkage between the token and any real-world identity — by system design, not just policy.', accent: C.teal },
-    { title: 'Self-reported demographics only', body: 'Optional demographic questions (age range, zip code) are answered by the participant. We never infer, append, or enrich from third-party sources.', accent: C.orange },
-    { title: 'Data stays in the platform', body: 'Responses are never shared with third parties, sold, or used for advertising. Each organization\'s data is isolated — no cross-client access is architecturally possible.', accent: C.orange },
-    { title: 'No AI training on responses', body: 'Participant conversations are never used to train AI models — not ours, not our vendors\'. What participants say stays inside your project record.', accent: C.purple },
-    { title: 'Legally defensible record', body: 'Full audit log of every response, timestamp, and topic mapping. Exportable for NEPA and state-equivalent administrative filings. Retained per your data policy.', accent: C.purple },
+  const steps = [
+    { num: '1', label: 'Deploy',  color: C.teal,   points: ['QR code or link — generated in minutes', 'Post at venue, email the mailing list, share on social', 'No app. No account. Any device.'] },
+    { num: '2', label: 'Engage',  color: C.orange,  points: ['AI moderator guides each participant through your discussion topics', 'Asks follow-up questions to draw out nuance', 'Runs 24/7 — before, during, and after the session'] },
+    { num: '3', label: 'Analyze', color: C.purple,  points: ['Themes surface automatically as responses arrive', 'Sentiment scored per topic', 'Representative quotes extracted and attributed'] },
+    { num: '4', label: 'Act',     color: C.navy,    points: ['Real-time dashboard for your team', 'AI-written summary ready for the permit record', 'Export PPTX, CSV, or shareable link'] },
   ]
-  privacyItems.forEach(function(item, i) {
-    const col = i % 3
-    const row = Math.floor(i / 3)
-    card(s7, 0.4 + col * 4.3, 1.35 + row * 2.9, 4.05, 2.6, item.title, item.body, item.accent)
+
+  const bW = 2.9, bH = 5.0, sX = 0.55, gp = 0.35
+  steps.forEach(function(st, i) {
+    const x = sX + i * (bW + gp)
+    s7.addShape('roundRect', { x, y: 1.35, w: bW, h: bH, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+    s7.addShape('roundRect', { x, y: 1.35, w: bW, h: 0.9, rectRadius: 0.12, fill: { color: st.color }, line: { color: st.color, width: 0 } })
+    s7.addShape('rect', { x, y: 1.65, w: bW, h: 0.6, fill: { color: st.color }, line: { color: st.color, width: 0 } })
+    s7.addText(st.num, { x, y: 1.38, w: bW, h: 0.4, fontSize: 11, fontFace: 'Arial', color: C.white + '99', bold: true, align: 'center' })
+    s7.addText(st.label, { x, y: 1.72, w: bW, h: 0.45, fontSize: 20, fontFace: 'Arial', color: C.white, bold: true, align: 'center' })
+    st.points.forEach(function(pt, j) {
+      s7.addText('· ' + pt, { x: x + 0.18, y: 2.38 + j * 1.2, w: bW - 0.35, h: 1.1, fontSize: 13, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.35 })
+    })
+    if (i < steps.length - 1) {
+      s7.addText('›', { x: x + bW + 0.04, y: 3.3, w: gp + 0.1, h: 0.65, fontSize: 30, fontFace: 'Arial', color: C.faint, align: 'center', valign: 'middle' })
+    }
   })
 
-  // ═══ SLIDE 8: What You Walk Away With ═══
+  // ═══ SLIDE 8: Multilingual ═══
   p++
   const s8 = pptx.addSlide()
   s8.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s8, 'What you walk away with', 'Four outputs your team and your client can use')
+  hdr(s8, 'Environmental justice starts with language access', 'NEPA requires outreach to affected communities — including non-English speakers')
   ftr(s8, p)
+
+  s8.addShape('roundRect', { x: 0.5, y: 1.28, w: 12.3, h: 1.4, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  s8.addText('In Florida, 1 in 4 residents speaks a language other than English at home.', {
+    x: 0.7, y: 1.32, w: 11.9, h: 1.32, fontSize: 22, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', wrap: true,
+  })
+  s8.addText('Spanish, Haitian Creole, Portuguese, Vietnamese. They live in the project corridor. Their property values are affected. A 7 PM English-language meeting does not reach them — and their absence becomes the record.', {
+    x: 0.6, y: 2.85, w: 12, h: 0.85, fontSize: 14, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.45,
+  })
+
+  const langItems = [
+    { title: 'Participant chooses their language at join', body: 'Spanish, Haitian Creole, Portuguese, French, Vietnamese and more. The entire conversation happens in that language — no translation friction, no missed nuance.', accent: C.teal },
+    { title: 'Facilitators see everything in English', body: 'All responses auto-translated in real time on the dashboard. One unified view regardless of how many languages are active in the room.', accent: C.orange },
+    { title: 'A complete record, not a filtered one', body: 'NEPA\'s environmental justice mandate requires demonstrating outreach to affected communities. PulseIQ closes the gap — and documents that it was closed.', accent: C.purple },
+  ]
+  langItems.forEach(function(item, i) {
+    card(s8, 0.5 + i * 4.3, 3.85, 4.0, 3.18, item.title, item.body, item.accent)
+  })
+
+  // ═══ SLIDE 9: Privacy ═══
+  p++
+  const s9 = pptx.addSlide()
+  s9.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(s9, 'Privacy by design — not by policy', 'Built for public-facing engagement where trust is the product')
+  ftr(s9, p)
+
+  const privItems = [
+    { title: 'No PII required', body: 'No name, email, phone, or account creation. Participants join via QR scan or link — nothing identifying is collected or requested.', accent: C.teal },
+    { title: 'Anonymous session tokens', body: 'Each participant gets a random session-scoped ID. No linkage to any real-world identity — by system design, not just policy.', accent: C.teal },
+    { title: 'Self-reported demographics only', body: 'Optional questions (age range, zip code) are answered by the participant. We never infer, append, or enrich from third-party sources.', accent: C.orange },
+    { title: 'Data stays in the platform', body: 'Responses are never shared with third parties or used for advertising. Each organization\'s data is isolated — no cross-client access is architecturally possible.', accent: C.orange },
+    { title: 'No AI training on responses', body: 'Participant conversations are never used to train AI models — not ours, not our vendors\'. What participants say stays inside your project record.', accent: C.purple },
+    { title: 'Legally defensible record', body: 'Full audit log of every response, timestamp, and topic mapping. Exportable for NEPA and state-equivalent administrative filings.', accent: C.purple },
+  ]
+  privItems.forEach(function(item, i) {
+    const col = i % 3
+    const row = Math.floor(i / 3)
+    card(s9, 0.4 + col * 4.3, 1.35 + row * 2.9, 4.05, 2.6, item.title, item.body, item.accent)
+  })
+
+  // ═══ SLIDE 10: What You Walk Away With ═══
+  p++
+  const s10 = pptx.addSlide()
+  s10.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(s10, 'What you walk away with', 'Four outputs your team and your client can use')
+  ftr(s10, p)
 
   const outputs = [
     { title: 'Real-Time Sentiment Dashboard', body: 'Live view of themes, sentiment breakdown, and response volume as the session runs. Share with client leadership before the meeting ends.', accent: C.teal },
@@ -279,26 +343,26 @@ export async function GET() {
   outputs.forEach(function(o, i) {
     const col = i % 2
     const row = Math.floor(i / 2)
-    card(s8, 0.5 + col * 6.45, 1.35 + row * 2.95, 6.1, 2.65, o.title, o.body, o.accent)
+    card(s10, 0.5 + col * 6.45, 1.35 + row * 2.95, 6.1, 2.65, o.title, o.body, o.accent)
   })
 
-  // ═══ SLIDE 9: Close ═══
+  // ═══ SLIDE 11: Close ═══
   p++
-  const s9 = pptx.addSlide()
-  s9.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.navy } })
-  s9.addShape('rect', { x: 0, y: 0, w: 0.22, h: H, fill: { color: C.teal } })
-  s9.addShape('rect', { x: 0, y: 4.3, w: W, h: 0.05, fill: { color: C.gold } })
-  s9.addText('The community has opinions\nabout your project.', {
-    x: 0.9, y: 0.9, w: 11.5, h: 2.2, fontSize: 44, fontFace: 'Arial', color: C.white, bold: true, lineSpacingMultiple: 1.4,
+  const s11 = pptx.addSlide()
+  s11.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.navy } })
+  s11.addShape('rect', { x: 0, y: 0, w: 0.22, h: H, fill: { color: C.teal } })
+  s11.addShape('rect', { x: 0, y: 4.25, w: W, h: 0.05, fill: { color: C.gold } })
+  s11.addText('The community has opinions\nabout your project.', {
+    x: 0.9, y: 0.85, w: 11.5, h: 2.2, fontSize: 44, fontFace: 'Arial', color: C.white, bold: true, lineSpacingMultiple: 1.4,
   })
-  s9.addText('You decide whether to collect them before the hearing — or after.', {
-    x: 0.9, y: 3.15, w: 11.5, h: 0.85, fontSize: 23, fontFace: 'Arial', color: C.tealMid,
+  s11.addText('You decide whether to collect them before the hearing — or after.', {
+    x: 0.9, y: 3.1, w: 11.5, h: 0.85, fontSize: 23, fontFace: 'Arial', color: C.tealMid,
   })
-  s9.addText('Let\'s run it on your next contentious project.', {
-    x: 0.9, y: 4.5, w: 11.5, h: 0.55, fontSize: 16, fontFace: 'Arial', color: C.slate,
+  s11.addText("Let's run it on your next contentious project.", {
+    x: 0.9, y: 4.45, w: 11.5, h: 0.55, fontSize: 16, fontFace: 'Arial', color: C.slate,
   })
-  wordmark(s9)
-  s9.addText('datanautix.com', { x: 0.9, y: H - 0.85, w: 4, h: 0.4, fontSize: 13, fontFace: 'Arial', color: C.slate })
+  wordmark(s11)
+  s11.addText('datanautix.com', { x: 0.9, y: H - 0.85, w: 4, h: 0.4, fontSize: 13, fontFace: 'Arial', color: C.slate })
 
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
   return new NextResponse(new Uint8Array(buffer), {
