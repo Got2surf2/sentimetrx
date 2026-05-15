@@ -4,7 +4,7 @@
 // Fetches rows from the paginated rows API, mines themes via server proxy,
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
@@ -880,6 +880,38 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   )
 }
 
+// ─── Entity highlight helpers ─────────────────────────────────────────────────
+
+const ENTITY_CAT_COLOR: Record<string, string> = {
+  food: '#EA580C', drink: '#7C3AED', place: '#0F7173',
+  person: '#1E40AF', brand: '#B45309', other: '#8FA3AE',
+}
+
+function escapeRE(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightEntityTerms(text: string, terms: string[]): ReactNode {
+  const cleaned = Array.from(new Set(
+    terms.map(t => t.trim()).filter(t => t.length >= 2)
+  )).sort((a, b) => b.length - a.length)
+  if (!cleaned.length || !text) return text
+  let re: RegExp
+  try {
+    re = new RegExp('\\b(' + cleaned.map(escapeRE).join('|') + ')\\b', 'gi')
+  } catch { return text }
+  const out: ReactNode[] = []
+  let last = 0; let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    out.push(<mark key={m.index} style={{ background: '#ffe4d6', color: '#9a3412', borderRadius: 3, padding: '0 2px', fontWeight: 600 }}>{m[0]}</mark>)
+    last = m.index + m[0].length
+    if (m.index === re.lastIndex) re.lastIndex++
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
 export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary, initialOpenEditor }: Props) {
@@ -950,6 +982,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [colorMode, setColorMode] = useState<'sentiment' | 'rating'>('sentiment')
   const [hideFlagged, setHideFlagged] = useState(false)
   const [restoredFromSession, setRestoredFromSession] = useState(false)
+
+  // Entity drill mode — set when user clicks an entity pill in EntitiesCard.
+  // Comments tab enters entity mode: shows API-fetched rows instead of client filteredRows.
+  const [drillEntity, setDrillEntity] = useState<{ slug: string; canonical: string; category: string; aliases: string[] } | null>(null)
+  const [entityRows, setEntityRows]   = useState<Array<{ id: number; dataset_id: string; row_index: number; data: Record<string, unknown> }>>([])
+  const [entityTotal, setEntityTotal] = useState(0)
+  const [entityLoading, setEntityLoading] = useState(false)
+  const [entityError, setEntityError]     = useState('')
 
   // After mount, restore persisted UI state. Gating on restoredFromSession
   // ensures the writer-effect below doesn't overwrite sessionStorage with
@@ -1460,6 +1500,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleSubTab(tab: SubTab) {
     if (tab === 'comments') setPreviousTab(subTab)
     setSubTab(tab)
+    // Always clear entity mode when the user navigates tabs explicitly.
+    setDrillEntity(null)
     if (tab !== 'comments') { setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
   }
 
@@ -1475,7 +1517,27 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setDrillTheme(null)
     setSelectedThemes([])
     setDrillGroup(null)
+    setDrillEntity(null)
     setSubTab(previousTab)
+  }
+
+  async function handleDrillEntity(entity: { slug: string; canonical: string; category: string; aliases: string[] }) {
+    setPreviousTab(subTab)
+    setDrillEntity(entity)
+    setDrillTheme(null); setSelectedThemes([]); setDrillGroup(null)
+    setSubTab('comments')
+    setEntityLoading(true); setEntityError(''); setEntityRows([]); setEntityTotal(0)
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/rows-by-entity?entity=' + encodeURIComponent(entity.slug) + '&limit=100')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Failed to load comments')
+      setEntityRows(data.rows || [])
+      setEntityTotal(typeof data.total === 'number' ? data.total : (data.rows || []).length)
+    } catch (err: any) {
+      setEntityError(err?.message || 'Failed to load comments')
+    } finally {
+      setEntityLoading(false)
+    }
   }
 
   function handleThemeEditorApply(themeArr: Theme[], libName: string, source: string) {
@@ -1851,7 +1913,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       </div>
 
                       {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
-                      <EntitiesCard datasetId={datasetId} schema={schema} />
+                      <EntitiesCard datasetId={datasetId} onDrillEntity={handleDrillEntity} />
 
                       {/* ── Distribution view ─── */}
                       {themesView === 'distribution' && (
@@ -2189,7 +2251,86 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                {hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
+                {drillEntity ? (
+                  // ── Entity mode: entity context bar replaces theme strip, rows from API ──
+                  <>
+                    <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <button onClick={handleBackFromComments}
+                        style={{ fontSize: 11, fontWeight: 600, color: T.textMid, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        {'\u2190 Back'}
+                      </button>
+                      <span style={{ width: 1, height: 14, background: T.border, flexShrink: 0 }} />
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: ENTITY_CAT_COLOR[drillEntity.category] || ENTITY_CAT_COLOR.other, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{drillEntity.canonical}</span>
+                      {!entityLoading && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, padding: '1px 8px' }}>
+                          {entityTotal.toLocaleString()} comment{entityTotal !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {drillEntity.aliases && drillEntity.aliases.length > 0 && (
+                        <span style={{ fontSize: 10, color: T.textFaint }}>Also matched: {drillEntity.aliases.join(', ')}</span>
+                      )}
+                    </div>
+                    <div style={{ padding: '12px 20px', flex: 1 }}>
+                      {entityLoading && (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+                          <LottieLoader size={80} message="Loading comments…" />
+                        </div>
+                      )}
+                      {!entityLoading && entityError && (
+                        <div style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '8px 12px' }}>
+                          {entityError}
+                        </div>
+                      )}
+                      {!entityLoading && !entityError && entityRows.length === 0 && (
+                        <div style={{ fontSize: 12, color: T.textFaint, fontStyle: 'italic', padding: '8px 0' }}>No comments found for this entity.</div>
+                      )}
+                      {!entityLoading && !entityError && entityRows.map(function(row) {
+                        var hlTerms = [drillEntity.canonical].concat(drillEntity.aliases || [])
+                        var texts = openFields
+                          .map(function(f) { return { label: f.label || f.field, value: String(row.data[f.field] ?? '').trim() } })
+                          .filter(function(t) { return t.value.length > 0 })
+                        var meta = schema.fields
+                          .filter(function(f) { return f.type === 'categorical' || f.type === 'numeric' || f.type === 'date' })
+                          .map(function(f) { return { label: f.label || f.field, value: String(row.data[f.field] ?? '').trim() } })
+                          .filter(function(t) { return t.value.length > 0 })
+                          .slice(0, 4)
+                        return (
+                          <div key={row.dataset_id + ':' + row.row_index}
+                            style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+                            {texts.map(function(t, i) {
+                              return (
+                                <div key={i} style={{ marginBottom: i < texts.length - 1 ? 6 : 0 }}>
+                                  {openFields.length > 1 && (
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>{t.label}</div>
+                                  )}
+                                  <div style={{ fontSize: 13, color: T.textMid, lineHeight: 1.55 }}>
+                                    {highlightEntityTerms(t.value, hlTerms)}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {texts.length === 0 && (
+                              <div style={{ fontSize: 12, color: T.textFaint, fontStyle: 'italic' }}>(no text in this row)</div>
+                            )}
+                            {meta.length > 0 && (
+                              <div style={{ fontSize: 10, color: T.textFaint, marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
+                                {meta.map(function(m, i) {
+                                  return <span key={i}><span style={{ fontWeight: 700 }}>{m.label}:</span> {m.value}</span>
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {!entityLoading && !entityError && entityTotal > entityRows.length && (
+                        <div style={{ fontSize: 11, color: T.textFaint, textAlign: 'center', padding: '4px 0 8px' }}>
+                          Showing first {entityRows.length.toLocaleString()} of {entityTotal.toLocaleString()} matching comments.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
                   <>
                     {/* Breadcrumb + Theme strip — multi-select */}
                     <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

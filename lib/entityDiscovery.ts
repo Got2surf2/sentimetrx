@@ -331,7 +331,10 @@ async function canonicaliseDiscovered(
   const mapping: Record<string, { canonical: string; category: string }> = {}
   let inputTokens = 0
   let outputTokens = 0
-  const BATCH = 200
+  // Small batches: the JSON output is ~25-30 tokens per entity, so a large
+  // batch overruns maxTokens, truncates, and JSON.parse throws — silently
+  // dropping the whole batch. 50 keeps each response well within budget.
+  const BATCH = 50
   const rawList = entries.map(e => e.canonical)
   for (let i = 0; i < rawList.length; i += BATCH) {
     const batch = rawList.slice(i, i + BATCH)
@@ -340,7 +343,7 @@ async function canonicaliseDiscovered(
         tier: 'fast',
         system: 'You are a precise data normaliser. Output valid JSON only.',
         messages: [{ role: 'user', content: canonicalisePrompt(batch) }],
-        maxTokens: 4000,
+        maxTokens: 6000,
         timeoutMs: 30_000,
         usage: orgId
           ? { org_id: orgId, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' }
@@ -356,12 +359,16 @@ async function canonicaliseDiscovered(
       for (const [k, v] of Object.entries(parsed)) {
         const vv = v as any
         if (vv && typeof vv.canonical === 'string' && vv.canonical.trim().length >= 2) {
-          mapping[k] = {
+          const entry = {
             canonical: vv.canonical.trim(),
             category: CATEGORIES.includes(String(vv.category || '').toLowerCase())
               ? String(vv.category).toLowerCase()
               : '',
           }
+          // Key under both the verbatim and a normalised form — the model
+          // doesn't always echo the input key byte-for-byte.
+          mapping[k] = entry
+          mapping[k.trim().toLowerCase()] = entry
         }
       }
     } catch {
@@ -373,7 +380,7 @@ async function canonicaliseDiscovered(
   // own canonical/category.
   const merged = new Map<string, DiscoveredEntity>()
   for (const e of entries) {
-    const m = mapping[e.canonical]
+    const m = mapping[e.canonical] || mapping[e.canonical.trim().toLowerCase()]
     const canonical = m && m.canonical ? m.canonical : e.canonical
     const category = m && m.category ? m.category : e.category
     const slug = slugify(canonical)
