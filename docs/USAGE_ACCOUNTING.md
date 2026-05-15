@@ -1,7 +1,7 @@
 # Sentimetrx — AI Usage Accounting & Cost Estimation Spec
 
-**Module:** `lib/ai.ts`, `lib/usageLog.ts`, `/app/api/admin/usage/`, `/app/admin/usage/`, `/app/admin/estimator/`
-**Storage:** `usage_logs` (migration `030_usage_logs.sql`; RLS hardened in `032_enable_rls_everywhere.sql`)
+**Module:** `lib/ai.ts`, `lib/usageLog.ts`, `lib/usageRates.ts`, `/app/api/admin/usage/`, `/app/admin/usage/`, `/app/admin/estimator/`
+**Storage:** `usage_logs` (migration `030_usage_logs.sql`; service-write policy dropped in `032_enable_rls_everywhere.sql`)
 **External APIs:** Anthropic, OpenAI, Azure OpenAI (model APIs whose token counts get logged)
 **Feature gate:** none — admin-only dashboard, available to admin-org members regardless of features
 
@@ -9,7 +9,7 @@
 > full DDL, the `callAI` ↔ `logUsage` integration, hardcoded cost-rate tables,
 > the admin dashboard (page + API), the forward-looking cost estimator, every
 > integration site table, and the cron jobs that produce usage. Source of
-> truth is the code — this spec is current as of 2026-05-06 and should be
+> truth is the code — this spec is current as of 2026-05-15 and should be
 > refreshed after any substantive changes (especially when model rates move).
 
 ---
@@ -22,7 +22,7 @@ The `usage_logs` table is then read by:
 - **`/admin/usage`** — historical dashboard for admins. Total spend, breakdown by module / event / model / day, top resources by cost.
 - **`/admin/estimator`** — forward-looking calculator that takes scenario inputs ("X town halls × Y participants × Z turns") and returns a projected monthly AI bill.
 
-Cost figures everywhere are computed in JavaScript from a single rate table in `lib/usageLog.ts:estimateCost()`. The estimator's rates are duplicated in `app/admin/estimator/page.tsx` and must move together when prices change.
+Cost figures everywhere are computed in JavaScript from a single rate table in `lib/usageRates.ts` (`RATES`, `TIER_DEFAULT_MODEL`, `estimateCost`). Both `lib/usageLog.ts` (server-side logger) and `app/admin/estimator/EstimatorClient.tsx` (forward-looking calculator) import from that one file, so the rate table lives in exactly one place.
 
 ---
 
@@ -60,7 +60,7 @@ ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 | `org_id` | nullable UUID | Caller's org. NULL for system-level calls (e.g. cron-driven moderation that isn't tied to a specific org). |
 | `resource_type` | `'bot' \| 'townhall' \| 'social' \| 'dataset' \| 'system'` | Which module made the call. Drives the dashboard's "By Module" breakdown. |
 | `resource_id` | nullable UUID | The specific bot / session / dataset. NULL for `system`-type calls. |
-| `event_type` | free TEXT | What the call did. Examples: `chat`, `summary`, `deflect`, `intent`, `mine_themes`, `expand_keywords`, `merge_themes`, `search`, `search_rerank`, `pptx`, `html_export`, `signals_pptx`, `insights`, `report`, `review`, `auto_reply`, `ai_reply`, `translate`, `clarify`, `study_suggest`, `persona`, `demographics`, `theme_detect`, `knowledge_classify`, `simulate`, `expand_terms`, `grade_description`, `suggest_guide`, `suggest_topic`, `suggest_sensitive`, `ana`, `demo`. |
+| `event_type` | free TEXT | What the call did. Examples: `chat`, `summary`, `deflect`, `intent`, `mine_themes`, `expand_keywords`, `merge_themes`, `search`, `search_rerank`, `pptx`, `html_export`, `signals_pptx`, `insights`, `insights_deck`, `report`, `review`, `auto_reply`, `ai_reply`, `translate`, `clarify`, `study_suggest`, `persona`, `demographics`, `theme_detect`, `knowledge_classify`, `simulate`, `expand_terms`, `grade_description`, `suggest_guide`, `suggest_topic`, `suggest_sensitive`, `ana`, `demo`, `ghost_suggest`, `entity_discovery`, `score_comments`. |
 | `model` | TEXT | Resolved model string (e.g. `claude-haiku-4-5-20251001`). Used for cost lookup. |
 | `provider` | `'anthropic' \| 'openai' \| 'azure-openai'` | Which API was actually called. |
 | `tier` | `'fast' \| 'standard' \| 'advanced'` | Echoes the caller's `tier` choice. |
@@ -70,9 +70,13 @@ ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 
 ### Authorization model
 
-**RLS is enabled** but **no policies are defined** after migration 032 (the original `usage_logs_service_write FOR ALL USING (true)` policy was a public leak and got dropped). Result: only the service-role client can read or write. The admin dashboard route uses the service-role client; auth-client `.from('usage_logs')` calls return zero rows.
+**RLS is enabled.** Migration 030 created two policies; migration 032 dropped the broken `usage_logs_service_write FOR ALL USING (true)` (a public leak) but kept `usage_logs_org_read FOR SELECT USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()))`. Result:
 
-This is intentional — usage data is admin-only, and per-org members shouldn't see it without an admin endpoint.
+- The **service-role client** writes (and reads) freely — it bypasses RLS entirely. Both `logUsage` and the admin dashboard API use the service role.
+- The **auth client** can `SELECT` rows for the caller's own org only (the surviving `usage_logs_org_read` policy). Cross-org reads return zero rows.
+- The admin dashboard itself uses the service role (admin-gated via `requireAdmin()`), so it doesn't depend on the auth policy.
+
+No `INSERT`/`UPDATE`/`DELETE` policy is defined for the auth client, so writes from the auth client fail closed. Usage data is effectively admin-visible only — the auth-client read policy exists but is not surfaced anywhere in the UI today.
 
 ---
 
@@ -116,9 +120,15 @@ export interface AIUsageContext {
   event_type:     string
 }
 
+// A system prompt may be a plain string or split into blocks. Marking a block
+// `cache: true` enables Anthropic prompt caching (cache_control: ephemeral) so
+// repeated prefixes don't count against the input-tokens-per-minute rate limit
+// or the per-call cost. Non-Anthropic providers receive the blocks joined.
+export type SystemBlock = { type: 'text'; text: string; cache?: boolean }
+
 export interface AIRequestOptions {
   tier:            ModelTier
-  system?:         string
+  system?:         string | SystemBlock[]
   messages:        Array<{ role: 'user' | 'assistant'; content: string }>
   maxTokens?:      number
   timeoutMs?:      number
@@ -172,10 +182,20 @@ const DEFAULT_MAX_TOKENS: Record<ModelTier, number> = {
 }
 ```
 
+### Per-org AI gate (runs before provider resolution)
+
+When `opts.usage?.org_id` is set, `callAI` consults `resolveOrgAiConfig(orgId)` from `lib/aiKey.ts` (cached 60s per org). Three modes:
+
+- `off` — throws `AIDisabledError`. No outbound vendor call. Used to fully disable AI for an org (e.g. paused billing).
+- `byo` — caller's customer brings their own key. `callAI` forces `providerConfig` to the configured provider + key, overriding any `opts.apiKey` the caller passed. This prevents export routes that hardcode `ANTHROPIC_API_KEY` from bypassing the BYOK redirect.
+- `platform` (default) — falls through to standard env-key resolution.
+
+The gate fires unconditionally when `org_id` is present, even if the caller passed an explicit `apiKey`.
+
 ### Provider resolution (in order)
 
-1. `opts.providerConfig` if given (explicit override).
-2. `opts.apiKey` + `process.env.AI_PROVIDER` (default `'anthropic'`) — used when a customer brings their own key (per-org or per-user).
+1. `opts.providerConfig` if given (explicit override, or set by the BYOK gate above).
+2. `opts.apiKey` + `process.env.AI_PROVIDER` (default `'anthropic'`) — used when a customer brings their own key.
 3. Default: provider from `AI_PROVIDER` env, key from the matching `*_API_KEY` env.
 
 ### Response parsing
@@ -195,28 +215,29 @@ This is fire-and-forget — never blocks the response, never throws.
 
 ### Default `timeoutMs`
 
-15 000 ms. Override per call (search re-rank uses 20 s, deck generation 30 s).
+15 000 ms. Overridden per call where needed — search initial pass 5 s, search re-rank 20 s, PPTX export 38 s, HTML export 45 s, entity-analysis-deck batch 30 s.
 
 ---
 
-## 5. The Usage Logger — `lib/usageLog.ts`
+## 5. The Usage Logger — `lib/usageLog.ts` + `lib/usageRates.ts`
 
-Two exports: `logUsage(context, usage)` and `estimateCost(model, input, output, cache_read)`.
+Constants and helpers are split between two files:
+
+- **`lib/usageRates.ts`** — pure module (no server-only imports). Exports `RATES`, `TIER_DEFAULT_MODEL`, `estimateCost`. Safe to import from client components — the estimator page does.
+- **`lib/usageLog.ts`** — server-only. Exports `logUsage` and re-exports `RATES` / `TIER_DEFAULT_MODEL` / `estimateCost` from `usageRates` for existing server callers.
 
 ### `logUsage(context, usage)`
 
 ```typescript
-export async function logUsage(
-  context: UsageContext,
-  usage:   AIUsage | undefined
-): Promise<void>
+export function logUsage(context: UsageContext, usage: AIUsage | undefined): void
 ```
 
-Behavior (lines 18-43):
+Behavior (lines 25–50):
 - Returns early if `usage` is undefined.
 - Returns early if both `input_tokens` and `output_tokens` are 0.
 - Inserts a row into `usage_logs` via `createServiceRoleClient()`.
-- Catches all exceptions — logs to `console.error('[usageLog] failed:', e)` and swallows. Never throws or blocks the caller.
+- Fire-and-forget: the `.insert(...).then(...)` chain is not awaited, so the caller is never blocked.
+- All exceptions are swallowed. Failures log `[usage] log error: ...` (synchronous throw) or `[usage] log failed: ...` (insert resolved with `error`).
 
 ### `estimateCost(model, input_tokens, output_tokens, cache_read_tokens)`
 
@@ -238,32 +259,38 @@ cost = ((input_tokens - cache_read_tokens) / 1_000_000) * rate.input
 
 Returned as a USD number rounded to 6 decimals (`Math.round(n * 1e6) / 1e6`). Unknown models fall back to Haiku rates.
 
-### Hardcoded rate table — `lib/usageLog.ts` (snapshot 2025-05)
+### Hardcoded rate table — `lib/usageRates.ts` (snapshot May 2025)
 
 ```typescript
-const RATES: Record<string, { input: number; output: number; cache_read: number }> = {
+export const RATES: Record<string, { input: number; output: number; cache_read: number }> = {
   'claude-haiku-4-5-20251001': { input: 0.80, output:  4.00, cache_read: 0.08 },
   'claude-sonnet-4-20250514':  { input: 3.00, output: 15.00, cache_read: 0.30 },
   'claude-sonnet-4-6':         { input: 3.00, output: 15.00, cache_read: 0.30 },
   'gpt-4o-mini':               { input: 0.15, output:  0.60, cache_read: 0.075 },
   'gpt-4o':                    { input: 2.50, output: 10.00, cache_read: 1.25 },
 }
+
+export const TIER_DEFAULT_MODEL: Record<'fast' | 'standard' | 'advanced', string> = {
+  fast:     'claude-haiku-4-5-20251001',
+  standard: 'claude-sonnet-4-20250514',
+  advanced: 'claude-sonnet-4-6',
+}
 ```
 
 Rates are **per 1M tokens, USD**. `cache_creation_tokens` are not billed — providers haven't standardized creation-vs-read cache pricing across the board.
 
-**Maintenance note:** the estimator (`/admin/estimator`) duplicates these rates in `RATES` of `app/admin/estimator/page.tsx`. They must be updated together.
+**One source of truth:** `/admin/usage` and `/admin/estimator` both import from `lib/usageRates.ts`, so updating the rate table in one file propagates to both surfaces.
 
 ---
 
 ## 6. Admin API — `GET /api/admin/usage?days=N`
 
-**Auth:** caller's org must have `is_admin_org = true`. Else 403.
+**Auth:** wrapped with `requireAdmin()` from `lib/auth/requireAdmin`. Returns a 401/403 response if the caller isn't authenticated or their org doesn't have `is_admin_org = true`.
 
 **Query params:** `days` (number, default 30). Window is `now() - days * 86400000`.
 
 **Implementation:**
-1. Resolves user's org → checks admin.
+1. `requireAdmin()` gates the request; bail with its response if denied.
 2. Fetches up to 10 000 rows from `usage_logs` since the cutoff via service role, ordered by `created_at DESC`.
 3. Aggregates in JavaScript across five dimensions (no GROUP BY — done in memory because dataset is bounded by the row cap):
    - Totals: calls, input tokens, output tokens, summed cost.
@@ -349,47 +376,56 @@ The cog-menu and `/admin` panel both link to `/admin/usage` (added 2026-05-06).
 
 ## 8. Cost Estimator — `/admin/estimator`
 
-A forward-looking calculator. Takes scenario inputs and returns a projected monthly AI bill. Used pre-sale to size deals and pick markup; not connected to live usage data.
+A forward-looking calculator. Takes scenario inputs and returns a projected monthly AI bill plus a margin / breakeven view. Used pre-sale to size deals and pick markup; not connected to live usage data.
 
-### Hardcoded rates (must move with `lib/usageLog.ts`)
+### Rates — imported, not duplicated
 
-```typescript
-const RATES = {
-  haiku:  { input: 0.80, output:  4.00, label: 'Haiku 4.5 (fast tier)' },
-  sonnet: { input: 3.00, output: 15.00, label: 'Sonnet 4.6 (standard tier)' },
-}
-```
+The client component (`app/admin/estimator/EstimatorClient.tsx`) imports `RATES` and `TIER_DEFAULT_MODEL` from `@/lib/usageRates`. A profile resolves to a model via `TIER_DEFAULT_MODEL[profile.tier]`, then to per-1M-token prices via `RATES[model]`. Update the rates in `lib/usageRates.ts` and both `/admin/usage` and `/admin/estimator` move in lockstep.
+
+A separate constant covers storage: `STORAGE_RATE_PER_GB = 0.023` (Supabase/S3 standard).
 
 ### Profile library
 
-15 pre-defined call profiles — average tokens per call, by tier — covering every event type the platform actually produces.
+23 pre-defined call profiles — average tokens per call, by tier — covering every event type the platform produces.
 
 | Profile | Input tok | Output tok | Tier | Used for |
 |---|---|---|---|---|
-| `th_chat` | 800 | 150 | haiku | PulseIQ chat response |
-| `th_deflect` | 200 | 50 | haiku | PulseIQ deflection check |
-| `th_compress` | 1200 | 300 | haiku | PulseIQ context compression |
-| `th_translate` | 400 | 200 | haiku | PulseIQ multilingual translation |
-| `th_theme` | 1800 | 400 | haiku | PulseIQ theme detection |
-| `bot_chat` | 1200 | 300 | haiku | Bot chat response |
-| `bot_deflect` | 250 | 60 | haiku | Bot deflection |
-| `bot_intent` | 350 | 30 | haiku | Bot intent detection |
-| `bot_persona` | 800 | 200 | haiku | Bot persona extraction |
-| `bot_compress` | 1500 | 200 | haiku | Bot history compression |
-| `survey_clarify` | 600 | 100 | haiku | Survey clarification |
-| `survey_deflect` | 300 | 80 | haiku | Survey deflection |
-| `social_reply` | 500 | 150 | haiku | Social auto-reply |
-| `ana_chat` | 4000 | 800 | sonnet | Ask Ana query |
-| `ana_sample` | 2500 | 200 | haiku | Ana sampling decision |
+| `th_chat` | 800 | 150 | fast | PulseIQ chat response |
+| `th_deflect` | 400 | 80 | fast | PulseIQ deflection check |
+| `th_compress` | 600 | 100 | fast | PulseIQ context compression |
+| `th_translate` | 300 | 200 | fast | PulseIQ translation |
+| `th_theme` | 1500 | 300 | fast | PulseIQ theme detection |
+| `bot_chat` | 1200 | 300 | fast | Agent chat response |
+| `bot_deflect` | 400 | 80 | fast | Agent deflection |
+| `bot_intent` | 300 | 30 | fast | Agent intent detection |
+| `bot_persona` | 500 | 200 | fast | Agent persona extraction |
+| `bot_demo` | 500 | 150 | fast | Agent demographics |
+| `bot_compress` | 600 | 100 | fast | Agent context compression |
+| `bot_translate` | 300 | 200 | fast | Agent translation |
+| `survey_clarify` | 600 | 150 | fast | Survey clarification |
+| `survey_deflect` | 400 | 80 | fast | Survey deflection |
+| `survey_translate` | 300 | 200 | fast | Survey translation |
+| `social_reply` | 500 | 150 | fast | Social AI reply |
+| `social_theme` | 3000 | 800 | standard | Social theme mining |
+| `ds_theme_mine` | 3000 | 800 | standard | Dataset theme mining |
+| `search_rerank` | 2500 | 400 | standard | Search re-rank |
+| `ana_chat` | 4000 | 800 | advanced | Ask Ana query |
+| `ana_sample` | 2000 | 400 | advanced | Ana sampling decision |
+| `insights_deck` | 5000 | 2000 | advanced | Insights deck / report |
+| `insights_export` | 3000 | 1500 | advanced | HTML/PPTX export |
 
 ### Cost computation per profile instance
 
 ```typescript
-function profileCost(profile, count) {
-  const rate = RATES[profile.tier]
+function costForCalls(profileKey, count) {
+  const p = PROFILES[profileKey]
+  if (!p || count <= 0) return 0
+  const model = TIER_DEFAULT_MODEL[p.tier]
+  const rates = RATES[model]
+  if (!rates) return 0
   return count * (
-    (profile.input  / 1_000_000) * rate.input +
-    (profile.output / 1_000_000) * rate.output
+    (p.input  / 1_000_000) * rates.input +
+    (p.output / 1_000_000) * rates.output
   )
 }
 ```
@@ -398,23 +434,29 @@ function profileCost(profile, count) {
 
 | Module | Inputs | Formulas |
 |---|---|---|
-| **PulseIQ** | sessions, participants/session, turns/participant, deflection % (fixed 30%), compression % (10%), translation enabled (bool, 100% if yes), theme detection (one per ceil(participants/10) per session) | `chat = sessions × participants × turns`, `deflect = chat × 0.3`, etc. |
-| **Agents** | conversations, turns/conversation, intent enabled, persona enabled, demographic enabled | `chat = convos × turns`, `intent = chat × 0.2`, `persona = convos`, `demographics = convos` if enabled |
-| **Surveys** | responses, questions, clarify rate (50%), deflect rate (20%) | `clarify = responses × questions × 0.5`, `deflect = ... × 0.2` |
-| **Social** | comments/month, auto_reply % | `auto_reply = comments × pct / 100` |
-| **Ask Ana** | queries/month | `ana_chat = queries`, `ana_sample = queries × 0.3` |
-| **Pricing** | duration (months), markup (%) | total = monthly_ai × months × (1 + markup/100) |
+| **PulseIQ** | sessions, participants/session, turns/participant, topics/session, multilingual %, theme re-runs per session | `chat = sessions × participants × turns`, `deflect = chat × 0.3`, `compress = chat × 0.1`, `translate = chat × pct/100`, `theme = sessions × ceil(participants/10) × max(1, reruns)` |
+| **Agents** | conversations/mo, avg turns/convo, P95 turns/convo, multilingual %, intent toggle, demographic toggle | `chat = convos × turns`, `deflect = chat × 0.3`, `intent = chat × 0.2` (if enabled), `persona = convos`, `demo = convos` (if enabled), `compress = chat × clamp((P95-mean)/40, 0.05, 0.25)`, `translate = chat × pct/100` |
+| **Surveys** | responses, questions/survey, multilingual % | `clarify = responses × questions × 0.5`, `deflect = ... × 0.2`, `translate = ... × pct/100` |
+| **Social** | comments/mo, auto-reply %, theme mining runs/mo | `auto_reply = comments × pct/100`, `theme = runs` |
+| **Datasets & Search** | search queries/mo, re-rank %, theme mining runs/mo | `rerank = queries × pct/100`, `theme = runs` |
+| **Ask Ana** | queries/mo | `ana_chat = queries`, `ana_sample = queries × 0.3` |
+| **Insights & Exports** | decks/mo, HTML/PPTX exports/mo | one call per item |
+| **Storage** | storage GB | `storage_cost = GB × 0.023` per month |
+| **Pricing** | duration (months), markup %, quoted price (optional) | `total = (ai + storage) × months`; `with_markup = total × (1 + markup/100)` |
+
+Each top-level module has an enable/disable toggle; disabled modules contribute nothing.
 
 ### Outputs
 
-- Line-item breakdown (one row per profile instance with count + cost).
-- Total AI calls.
-- Monthly AI cost.
-- Total over duration with markup.
+- Line-item table — one row per profile instance with count + monthly cost, plus a storage line.
+- Summary cards — total AI calls, total cost over duration, total with markup.
+- Monthly cost / monthly with markup (when `duration > 1`).
+- **Margin block** (when `quotedPrice > 0`) — gross margin $, gross margin %, cost / quote ratio. Color-coded green ≥ 50 %, amber ≥ 20 %, red below.
+- **Marginal cost cards** — incremental cost of one more bot conversation (chat × turns + persona + compression) and one more PulseIQ participant (chat + deflect at the configured turns).
 
-### Known gaps (queued as task #18)
+### Forward roadmap
 
-The current estimator misses a handful of cost drivers — see the project task list for the beef-up plan: multilingual %, theme-mining frequency, insights deck generation, search re-rank usage, bot conversation length distribution, webhook + cron-driven AI events, storage costs. Plus a margin/breakeven view.
+Embedding token logging (see § 11), per-org budget alerts, and breakeven-by-utilization curves are still queued — see the project task list. The known-gaps from earlier iterations (multilingual %, theme freq, insights deck, search re-rank, storage, margin view) are all now wired up.
 
 ---
 
@@ -429,7 +471,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/bots/[id]/conversations/report` | bot | `report` | fast / standard |
 | `/api/bots/[id]/conversations/insights-deck` | bot | `insights_deck` | standard |
 | `/api/cron/bot-conversation-review` | bot | `review` | fast |
-| `/api/townhall/chat` | townhall | varies | fast |
+| `/api/townhall/chat` | townhall | `chat` (single ctx for the request) | fast |
 | `/api/townhall/join/[sessionId]` | townhall | `translate` | fast |
 | `/api/townhall/expand-terms` | townhall | `expand_terms` | fast |
 | `/api/townhall/grade-description` | townhall | `grade_description` | fast |
@@ -437,16 +479,19 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/townhall/suggest-topic` | townhall | `suggest_topic` | fast |
 | `/api/townhall/suggest-sensitive` | townhall | `suggest_sensitive` | fast |
 | `/api/townhall/simulate` | townhall | `simulate` | fast |
-| `/api/datasets/[id]/mine-themes` | dataset | `mine_themes` | standard |
-| `/api/datasets/[id]/expand-keywords` | dataset | `expand_keywords` | fast |
-| `/api/datasets/[id]/merge-themes` | dataset | `merge_themes` | fast |
-| `/api/datasets/[id]/search` | dataset | `search`, `search_rerank` | fast |
-| `/api/datasets/[id]/export/html` | dataset | `html_export` | standard |
-| `/api/datasets/[id]/export/pptx` | dataset | `pptx` | standard |
-| `/api/datasets/[id]/export/signals-pptx` | dataset | `signals_pptx` | standard |
+| `lib/townhallThemeDetection.ts` (invoked from `/api/townhall/chat` and `/api/cron/townhall-theme-detection`) | townhall | `theme_detect` | fast |
+| `/api/datasets/[datasetId]/mine-themes` | dataset | `mine_themes` | standard |
+| `/api/datasets/[datasetId]/expand-keywords` | dataset | `expand_keywords` | fast |
+| `/api/datasets/[datasetId]/merge-themes` | dataset | `merge_themes` | fast |
+| `/api/datasets/[datasetId]/search` | dataset | `search`, `search_rerank` | fast |
+| `/api/datasets/[datasetId]/export/html` | dataset | `html_export` | standard |
+| `/api/datasets/[datasetId]/export/pptx` | dataset | `pptx` | standard |
+| `/api/datasets/[datasetId]/export/signals-pptx` | dataset | `signals_pptx` | standard |
+| `lib/export/scoreComments.ts` (invoked from export routes) | dataset | `score_comments` | fast |
+| `lib/entityDiscovery.ts` (invoked from entity rebuild API + `/api/cron/entity-discovery`) | dataset | `entity_discovery` | fast |
 | `/api/datasets/insights` | dataset | `insights` | standard |
-| `/api/clara-chat` | dataset | `ana` | fast |
-| `/api/nora-chat` | dataset | `ana` | standard |
+| `/api/clara-chat` | dataset | `ana` (no `org_id` set) | fast |
+| `/api/nora-chat` | dataset | `ana` (no `org_id` set) | standard |
 | `/api/social/comments/[id]/ai-reply` | social | `ai_reply` | fast |
 | `/api/social/demo` | social | `demo` | standard |
 | `/api/cron/social-sync` | social | `auto_reply` | fast |
@@ -456,9 +501,14 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/clarify` | system | `clarify` | fast |
 | `/api/ai/study-suggest` | system | `study_suggest` | fast |
 | `/api/bot-chat` | system | `chat` | fast |
-| `/api/ask-ana` | system | `ana` | varies |
+| `/api/suggest` | system | `ghost_suggest` | fast |
 
-If a route doesn't appear here, its calls aren't billed against any org — they show up in the `system` bucket only if the route passes `resource_type: 'system'`. **A best practice when adding a new AI call: always pass `usage:`.**
+**Unlogged AI calls** — these helpers call `callAI()` without a `usage:` context, so they don't appear in the dashboard or get billed against any org:
+
+- `/api/architecture-deck`, `/api/engineering-reality-deck` — no live `callAI`, narrative slides only.
+- `/api/entity-analysis-deck` — does call `callAI` (entity canonicalisation batch, 30 s timeout) without `usage:`. Worth wiring up if entity-deck volume grows.
+
+> **Best practice when adding a new AI call: always pass `usage:`.** Routes that omit it are invisible to the dashboard and to BYOK / off-mode gating.
 
 ---
 
@@ -471,12 +521,14 @@ From `vercel.json`:
 | `/api/cron/campaign-scheduler` | `*/15 * * * *` | no |
 | `/api/cron/cleanup-shared-links` | `0 3 * * *` | no |
 | `/api/cron/review-sync` | `0 */6 * * *` | no |
-| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | no (SQL aggregation only) |
+| `/api/cron/entity-discovery` | `0 5 * * 0` (Sun 05:00 UTC) | **yes** — `entity_discovery` events on `dataset` (via `lib/entityDiscovery.ts`) |
+| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` (via `lib/townhallThemeDetection.ts`) |
 | `/api/cron/bot-conversation-review` | `0 */4 * * *` | **yes** — `review` events on `bot` |
 | `/api/cron/social-sync` | `*/15 * * * *` | **yes** — `auto_reply` events on `social` (only when org has auto-reply enabled) |
 | `/api/cron/social-token-refresh` | `0 6 * * *` | no |
+| `/api/cron/sentry-digest` | `0 13 * * *` | no |
 
-The two AI-emitting crons need authoritative `org_id` set on every log row so usage is attributed correctly. `/api/cron/social-sync` already does (per-connection org). `/api/cron/bot-conversation-review` does (per-bot org).
+AI-emitting crons need authoritative `org_id` set on every log row so usage is attributed correctly. `/api/cron/social-sync` does (per-connection org), `/api/cron/bot-conversation-review` does (per-bot org), and `/api/cron/entity-discovery` does (per-dataset org). `/api/cron/townhall-theme-detection` calls the lib helper without supplying `org_id` today — the resulting rows attribute to `townhall` resource but have a null `org_id`. Worth fixing if per-org usage attribution matters.
 
 ---
 
@@ -494,12 +546,13 @@ The two AI-emitting crons need authoritative `org_id` set on every log row so us
 
 1. Run migration `030_usage_logs.sql` to create the table + indexes.
 2. Apply RLS hardening (`032_enable_rls_everywhere.sql` if rebuilding the whole database, or just `ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY` if you're isolating just this module).
-3. Implement `lib/ai.ts` per § 4 — provider resolution, model map, response parsing, auto-logging via `logUsage`.
-4. Implement `lib/usageLog.ts` per § 5 — `logUsage(context, usage)` and `estimateCost(model, in, out, cache_read)`. Maintain the rate table.
-5. Pass `usage:` context from every AI call site (§ 9).
-6. Build `/api/admin/usage/route.ts` per § 6 — admin gate + service-role read + JS aggregation.
-7. Build `/admin/usage/page.tsx` per § 7 — fetch + render summary, by-module, daily trend, by-event, by-model, top resources.
-8. Build `/admin/estimator/page.tsx` per § 8 — duplicate the rate table; wire profile library + scenario inputs + outputs.
-9. Add nav links to both pages from the cog menu and `/admin` panel.
+3. Implement `lib/ai.ts` per § 4 — provider resolution (including the per-org AI gate), model map, response parsing, auto-logging via `logUsage`.
+4. Implement `lib/usageRates.ts` (pure constants) and `lib/usageLog.ts` (server-only logger) per § 5.
+5. Pass `usage:` context from every AI call site (§ 9). Helpers under `lib/` that issue AI calls (`townhallThemeDetection`, `entityDiscovery`, `personaExtractor`, `export/scoreComments`) must accept caller-supplied org/resource context and log their own rows.
+6. Build `/api/admin/usage/route.ts` per § 6 — wrap with `requireAdmin()`, then service-role read + JS aggregation.
+7. Build `/admin/usage/page.tsx` per § 7 — server wrapper + `UsageClient` rendering summary, by-module, daily trend, by-event, by-model, top resources.
+8. Build `/admin/estimator/page.tsx` per § 8 — server wrapper + `EstimatorClient` importing `RATES` / `TIER_DEFAULT_MODEL` from `lib/usageRates`. Wire profile library + scenario inputs + storage + margin.
+9. Add nav links to both pages from `TopNav` (cog menu) and the `/admin` panel.
 10. (Optional) Add per-org usage panel to `/admin/clients/[id]`.
 11. (Optional) Add budget-alert cron.
+12. (Optional) Wire `lib/embeddings.ts` and `lib/contentGuard.ts` (moderation API) through usage logging if those costs ever stop being negligible.
