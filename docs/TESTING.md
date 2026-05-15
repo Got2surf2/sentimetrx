@@ -16,7 +16,9 @@ npm run test:rls          # env-gated: cross-org RLS isolation (real Supabase)
 npm run test:egress       # env-gated: cross-org data egress per table (real Supabase)
 npm run test:auth-flows   # env-gated: real Supabase auth round-trips
 npm run test:campaign-egress # env-gated: campaign-by-id route handlers
-npm run test:dataset-egress  # env-gated: dataset sync + regulations download route handlers
+npm run test:dataset-egress  # env-gated: dataset sync + auto-setup + regulations download + org/logo route handlers
+npm run loadtest:k6          # k6 — concurrent Town Hall API load (manual)
+npm run loadtest:browsers    # Playwright — concurrent Town Hall browser load (manual)
 ```
 
 CI runs the first two on every push and PR.
@@ -28,20 +30,27 @@ tests/
 ├── setup.ts              # global setup (env stubs, next/headers shim)
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload
+│   ├── brandMatch.test.ts
 │   ├── guardrails.test.ts
 │   ├── personaExtractor.test.ts
 │   ├── rateLimit.test.ts
+│   ├── sentiment-slang.test.ts
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
-│   ├── decks.test.ts                # 4 admin-only deck routes × {anon, admin}
-│   ├── respond.test.ts              # public survey-response endpoint
-│   ├── high-traffic-routes.test.ts  # clara/nora/bot/townhall chat + study/[guid]
-│   ├── rls-isolation.test.ts        # env-gated, real Supabase — RLS coverage
-│   ├── cross-org-egress.test.ts     # env-gated, real Supabase — per-table egress
-│   ├── auth-flows.test.ts           # env-gated, real Supabase — auth round-trips
-│   └── campaign-routes-egress.test.ts # env-gated — service-role route handler gates
-└── e2e/
-    └── deck-download.spec.ts  # Playwright, env-gated
+│   ├── decks.test.ts                  # 4 admin-only deck routes × {anon, admin}
+│   ├── respond.test.ts                # public survey-response endpoint
+│   ├── high-traffic-routes.test.ts    # clara/nora/bot/townhall chat + study/[guid]
+│   ├── rls-isolation.test.ts          # env-gated, real Supabase — RLS coverage
+│   ├── cross-org-egress.test.ts       # env-gated, real Supabase — per-table egress
+│   ├── auth-flows.test.ts             # env-gated, real Supabase — auth round-trips
+│   ├── campaign-routes-egress.test.ts # env-gated — service-role campaign-by-id routes
+│   └── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+├── e2e/
+│   └── deck-download.spec.ts # Playwright, env-gated
+└── loadtest/
+    ├── townhall.k6.js        # k6 — concurrent Town Hall participant API load
+    ├── townhall.spec.ts      # Playwright — concurrent Town Hall browser load
+    └── playwright.config.ts  # config for the browser load test
 ```
 
 We chose `tests/` at repo root rather than colocated `__tests__/` directories.
@@ -58,6 +67,8 @@ makes the suite easy to reason about as a unit.
 | Rate limiting | `rateLimit` bucket exhaustion + reset | Public endpoints (respond) need real protection |
 | Persona extraction | `personaExtractor` shape + missing fields + AI failure | We mock the LLM at `lib/ai`'s boundary; we want the parser robust to garbage |
 | Usage logging | `usageLog` non-blocking | Usage logging must never crash a paid AI call |
+| Brand-match scoring | `scoreBrandMatch` exact match, lookalike rejection, chain consensus | DataforSEO returns lookalikes ("Chuy's de Mexico") alongside the real brand; the scorer must rank the real chain `strong` and qualifier-prefixed lookalikes `weak` even when the chain's actual name differs from the user-typed brand |
+| Sentiment slang + negation | `contentGuard.scoreSentimentFull` Gen-Z lexicon + negation valence-shifter | Modern slang ("mid", "lit", "ate", "sus") and "not"-style negations must score correctly; otherwise the sentiment column reads neutral on a large fraction of restaurant reviews |
 | Deck routes | `/api/{pitch,architecture,engineering-reality,rollup}-deck` × {anon, admin} | Confirms each route both calls `requireAdmin` AND emits a real PPTX |
 | Public survey endpoint | `/api/respond` happy + missing-field + invalid-JSON + inactive-study + 404 | This endpoint accepts traffic from anywhere — its validation is load-bearing |
 | High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |
@@ -115,11 +126,12 @@ factory is mocked before any module that calls it is imported.
 
 ## Env-gated tests
 
-Four suites need real infrastructure and are **skipped** unless the
-environment is configured. All four follow the same prefix/cleanup pattern:
-test rows carry a unique `_<name>test_<runId>_` marker so partial failures
-are findable and deletable by hand. None run in CI — service-role keys do
-not belong in GitHub Actions.
+Six suites need real infrastructure and are **skipped** unless the
+environment is configured: four Vitest egress/RLS suites, auth-flows, and
+one Playwright e2e. All follow the same prefix/cleanup pattern: test rows
+carry a unique `_<name>test_<runId>_` marker so partial failures are
+findable and deletable by hand. None run in CI — service-role keys do not
+belong in GitHub Actions.
 
 ### RLS isolation (`tests/integration/rls-isolation.test.ts`)
 
@@ -185,6 +197,43 @@ so that the two paths which actually send mail (`resetPasswordForEmail`,
 `signInWithOtp`) deliver instead of NXDOMAIN-bouncing back to the
 project's configured sender.
 
+### Campaign route egress (`tests/integration/campaign-routes-egress.test.ts`)
+
+RLS doesn't apply to service-role queries, so handler-level org_id gates
+on the `/api/campaigns/[id]/*` family need their own safety net. This
+suite mocks `@/lib/supabase/server` to return real signed-in clients
+(Org B for `createClient`, service-role for `createServiceRoleClient`),
+then drives the route handlers in-process to assert that a cross-org
+caller receives 404 and that the owning org receives 200.
+
+```bash
+npm run test:campaign-egress
+```
+
+Sets `CAMPAIGN_EGRESS_TEST=1`. Test data prefixed `_campaignroute_<runId>_`.
+
+### Dataset / regulations / org route egress (`tests/integration/dataset-routes-egress.test.ts`)
+
+Sister suite to campaign-egress, covering the service-role routes that
+mutate datasets, regulations downloads, and org-level state. Locks the
+W19-audit "bare-id lookup" pattern on four route handlers:
+
+- `POST /api/datasets/[datasetId]/sync`
+- `POST /api/datasets/[datasetId]/auto-setup`
+- `POST /api/regulations-sources/download-comments` (batch + finalize)
+- `DELETE /api/org/logo`
+
+Each route is asserted to 404/403 for a cross-org caller and to NOT-404
+for the owning org (control). The control assertions are loose on
+purpose — sync/auto-setup may legitimately 400 on a test study with an
+empty config; what matters is that the wrong code path doesn't fire.
+
+```bash
+npm run test:dataset-egress
+```
+
+Sets `DATASET_EGRESS_TEST=1`. Test data prefixed `_datasetroute_<runId>_`.
+
 ### Playwright e2e (`tests/e2e/deck-download.spec.ts`)
 
 Requires an admin login on a running instance:
@@ -198,6 +247,35 @@ npm run test:e2e
 
 When the env vars are not set, the test calls `test.skip(...)` and the
 suite reports the reason inline.
+
+## Load testing (Town Hall)
+
+PulseIQ (`/th/[guid]`) is the highest-throughput public surface — a venue
+of N participants can fire chat messages, joins, and response submissions
+at full LLM rate. Two parallel load drivers live in `tests/loadtest/`:
+
+- `townhall.k6.js` — k6 hits `/api/townhall/join`, `/api/townhall/chat`,
+  and `/api/townhall/responses` as raw HTTP. Tunable via `VUS`,
+  `ITERATIONS_PER_VU`, `RAMP_UP_S`. Exercises the per-participant 20/min
+  chat cap, the per-IP 600/min backstop, and Anthropic provider limits.
+- `townhall.spec.ts` — Playwright drives N real Chromium browsers against
+  `/th/[guid]`, mirroring the actual participant journey (visit, type,
+  send via Enter). Catches UI-layer breakage that HTTP-only load can't.
+- `playwright.config.ts` — a load-specific Playwright config (separate
+  from the e2e config) with no built-in webServer and tunable workers.
+
+Run:
+
+```bash
+SESSION_ID=<uuid-or-slug> TARGET=http://localhost:3000 npm run loadtest:k6
+SESSION_ID=<uuid-or-slug> TARGET_BASE_URL=http://localhost:3000 BROWSERS=5 \
+  npm run loadtest:browsers
+```
+
+Neither runs in CI — they cost real Anthropic spend and real DB writes.
+Both refuse to start without `SESSION_ID`, which must be a Town Hall
+session you've already created via the UI and clearly named (e.g.
+"Load Test — DO NOT USE").
 
 ## CI
 
