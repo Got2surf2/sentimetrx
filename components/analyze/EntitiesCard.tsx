@@ -9,7 +9,7 @@
 // Entity data is fetched by the parent (TextMineModule) so it survives tab
 // switches without re-fetching. This component is purely display.
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export interface EntityRow {
   slug:      string
@@ -50,16 +50,31 @@ const CATEGORY_COLOR: Record<string, string> = {
   brand:  NEUTRAL,
   other:  NEUTRAL,
 }
-const MIN_MENTIONS = 10
+const MIN_MENTIONS  = 10
+const ROW_CAP_PX    = 112  // ~4 rows of pills at current type metrics
 
 export default function EntitiesCard({ entities, totalDistinct, scopeType, loading, error, onDrillEntity }: Props) {
+  // Two independent toggles:
+  //   rowsExpanded — visual row cap (4 rows when collapsed)
+  //   showAll       — include low-frequency entities (<10 mentions)
+  const [rowsExpanded, setRowsExpanded] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+  const pillsRef = useRef<HTMLDivElement>(null)
 
   if (loading || error || entities.length === 0) return null
 
   const aboveThreshold = entities.filter(function(e) { return e.mentions >= MIN_MENTIONS })
-  const shownRows = showAll ? entities : aboveThreshold
-  const hiddenCount = entities.length - aboveThreshold.length
+  const lowCount       = entities.length - aboveThreshold.length
+  const displayed      = showAll ? entities : aboveThreshold
+
+  // Detect whether the 4-row cap is actually hiding anything (so we only show
+  // "More" when there's something to expand to).
+  useEffect(function() {
+    var el = pillsRef.current
+    if (!el) return
+    setIsOverflowing(el.scrollHeight > el.clientHeight + 2)
+  }, [displayed.length, rowsExpanded])
 
   return (
     <div style={{ background: P.white, border: '1px solid ' + P.border, borderRadius: 10, padding: '16px 20px', marginBottom: 20 }}>
@@ -80,9 +95,14 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
         The named things reviewers talk about {'—'} dishes, drinks, people, competitor brands. Click any entity to read the comments that mention it. Discover or re-run entities on the Schema tab.
       </div>
 
-      {/* Flat pill list — each pill tinted by its own category color */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {shownRows.map(function(e) {
+      {/* Flat pill list — each pill tinted by its own category color.
+          Collapsed to ~4 rows by default; "More" expands. */}
+      <div ref={pillsRef}
+        style={Object.assign(
+          { display: 'flex', flexWrap: 'wrap' as const, gap: 4 },
+          rowsExpanded ? {} : { maxHeight: ROW_CAP_PX, overflow: 'hidden' as const },
+        )}>
+        {displayed.map(function(e) {
           const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
           const aliasHint = e.aliases && e.aliases.length > 0
             ? '\nAlso matched: ' + e.aliases.join(', ')
@@ -106,15 +126,28 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
           )
         })}
       </div>
-      {(hiddenCount > 0 || showAll) && (
-        <button onClick={function() { setShowAll(function(v) { return !v }) }}
-          style={{
-            marginTop: 8, fontSize: 11, fontWeight: 600, color: P.accent,
-            background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
-          }}>
-          {showAll ? 'Show fewer' : 'Show all ' + entities.length.toLocaleString() + ' (includes low-frequency) →'}
-        </button>
-      )}
+
+      {/* Action row: More / Show fewer + low-frequency toggle */}
+      <div style={{ marginTop: 8, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!rowsExpanded && isOverflowing && (
+          <button onClick={function() { setRowsExpanded(true) }}
+            style={{ fontSize: 11, fontWeight: 600, color: P.accent, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+            More →
+          </button>
+        )}
+        {rowsExpanded && (
+          <button onClick={function() { setRowsExpanded(false); setShowAll(false) }}
+            style={{ fontSize: 11, fontWeight: 600, color: P.accent, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Show fewer ↑
+          </button>
+        )}
+        {rowsExpanded && lowCount > 0 && (
+          <button onClick={function() { setShowAll(function(v) { return !v }) }}
+            style={{ fontSize: 11, fontWeight: 600, color: P.textMute, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {showAll ? 'Hide low-frequency' : 'Include low-frequency (' + lowCount.toLocaleString() + ' more) →'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
