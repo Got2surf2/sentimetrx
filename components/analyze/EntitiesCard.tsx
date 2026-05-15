@@ -40,14 +40,15 @@ const P = {
   accentBg:  '#fff4ef',
 }
 
-// Categories from lib/entityDiscovery.ts: food | drink | place | person | brand | other
+// High-confidence categories get a distinct color; ambiguous ones share a neutral.
+const NEUTRAL = '#8FA3AE'
 const CATEGORY_COLOR: Record<string, string> = {
-  food:   '#EA580C',
-  drink:  '#7C3AED',
-  place:  '#0F7173',
-  person: '#1E40AF',
-  brand:  '#B45309',
-  other:  '#8FA3AE',
+  food:   '#EA580C',   // dishes / menu items — high confidence
+  person: '#1E40AF',   // named people — high confidence
+  drink:  NEUTRAL,
+  place:  NEUTRAL,
+  brand:  NEUTRAL,
+  other:  NEUTRAL,
 }
 const MIN_MENTIONS = 10
 
