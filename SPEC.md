@@ -149,6 +149,7 @@ Substack and Regulations.gov sources do not have their own tables — they write
 | Table | Purpose |
 |-------|---------|
 | `sentry_snapshots` | Periodic Sentry issue digest snapshots (read by daily digest cron) |
+| `webhook_events` | Idempotency ledger for inbound signed webhooks. `UNIQUE (source, svix_id)` short-circuits Resend retries before any campaign state mutates. |
 
 ---
 

@@ -19,9 +19,10 @@ npm run test:campaign-egress # env-gated: campaign-by-id route handlers
 npm run test:dataset-egress  # env-gated: dataset sync + auto-setup + regulations download + org/logo route handlers
 npm run loadtest:k6          # k6 — concurrent Town Hall API load (manual)
 npm run loadtest:browsers    # Playwright — concurrent Town Hall browser load (manual)
+npm run check:sql-tx         # fails when a new sql/NNN_*.sql lacks BEGIN/COMMIT
 ```
 
-CI runs the first two on every push and PR.
+CI runs `typecheck`, `check:sql-tx`, and `test` on every push and PR.
 
 ## Layout
 
