@@ -99,7 +99,7 @@ export async function POST(req: Request, { params }: Params) {
           updated_by: user.id,
         }).eq('dataset_id', params.datasetId)
       } catch (err) {
-        console.error('[trim] analytics recompute failed:', err)
+        console.error({ at: 'trim', msg: "analytics recompute failed", err: err })
       }
     }
 
@@ -108,7 +108,7 @@ export async function POST(req: Request, { params }: Params) {
       remaining: totalRemaining || (dataset.row_count - deleteCount),
     })
   } catch (err: any) {
-    console.error('[trim] error:', err)
+    console.error({ at: 'trim', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Trim failed' }, { status: 500 })
   }
 }

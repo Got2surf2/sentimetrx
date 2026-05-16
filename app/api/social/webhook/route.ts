@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN
   if (!verifyToken) {
-    console.error('[social/webhook] META_WEBHOOK_VERIFY_TOKEN not configured')
+    console.error({ at: 'social/webhook', msg: "META_WEBHOOK_VERIFY_TOKEN not configured" })
     return NextResponse.json({ error: 'Not configured' }, { status: 500 })
   }
 
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const appSecret = process.env.META_APP_SECRET
   if (!appSecret) {
-    console.error('[social/webhook] META_APP_SECRET not configured')
+    console.error({ at: 'social/webhook', msg: "META_APP_SECRET not configured" })
     return NextResponse.json({ error: 'App secret not configured' }, { status: 503 })
   }
 
@@ -133,7 +133,7 @@ async function processComment(
 
   const res = await fetch(`https://graph.facebook.com/v19.0/${commentId}?fields=${fields}&access_token=${connection.access_token}`)
   if (!res.ok) {
-    console.error('[social/webhook] Failed to fetch comment:', commentId, await res.text())
+    console.error({ at: 'social/webhook', msg: 'Failed to fetch comment', commentId, body: await res.text() })
     return
   }
 
@@ -166,7 +166,7 @@ async function processComment(
 
   const { error } = await service.from('social_comments').insert(row)
   if (error) {
-    console.error('[social/webhook] Insert error:', error.message)
+    console.error({ at: 'social/webhook', msg: "Insert error", err: error.message })
   } else {
     console.log('[social/webhook] Ingested comment:', commentId, '| sentiment:', sentFull.label, '| flags:', audit.flags.length)
   }

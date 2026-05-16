@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     .limit(5) // Process up to 5 per run to stay within timeout
 
   if (error) {
-    console.error('[cron/review-sync] query error:', error)
+    console.error({ at: 'cron/review-sync', msg: "query error", err: error })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       })
       consecutiveErrors = 0
     } catch (err: any) {
-      console.error('[cron/review-sync] source', source.id, 'failed:', err)
+      console.error({ at: 'cron/review-sync', msg: 'source failed', sourceId: source.id, err })
       results.push({ brand: source.brand_name, synced: 0, errors: 1 })
       consecutiveErrors++
 

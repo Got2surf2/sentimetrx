@@ -79,7 +79,7 @@ function verifySvixSignature(secret: string, id: string, timestamp: string, body
 export async function POST(req: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET
   if (!secret) {
-    console.error('[resend/webhook] RESEND_WEBHOOK_SECRET not configured')
+    console.error({ at: 'resend/webhook', msg: "RESEND_WEBHOOK_SECRET not configured" })
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 503 })
   }
 

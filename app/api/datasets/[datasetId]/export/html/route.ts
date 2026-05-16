@@ -1012,7 +1012,7 @@ export async function POST(req: Request, { params }: Params) {
   }
   if (!skipAI) {
     try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
-    catch (e) { console.error('[export/html] AI error:', e) }
+    catch (e) { console.error({ at: 'export/html', msg: "AI error", err: e }) }
   }
 
   // Per-request mutable state (no module-level sharing)

@@ -164,7 +164,7 @@ export async function POST(req: Request) {
       status:     'active',
     }, { status: 201 })
   } catch (err: any) {
-    console.error('[review-sources] create error:', err)
+    console.error({ at: 'review-sources', msg: "create error", err: err })
     return NextResponse.json({ error: err?.message || 'Failed to create review source' }, { status: 500 })
   }
 }

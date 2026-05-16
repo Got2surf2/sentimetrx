@@ -410,12 +410,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       var { data: chunks, error: rpcErr } = await service.rpc(rpcName, rpcParams)
       // If semantic search fails (RPC not available), fall back to basic search
       if (rpcErr && rpcName === 'search_knowledge_semantic') {
-        console.error('[bot-chat] Semantic search failed, falling back:', rpcErr.message)
+        console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: rpcErr.message })
         var fallback = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 })
         chunks = fallback.data
         rpcErr = fallback.error
       }
-      if (rpcErr) console.error('[bot-chat] RAG search error:', rpcErr.message)
+      if (rpcErr) console.error({ at: 'bot-chat', msg: "RAG search error", err: rpcErr.message })
 
       if (chunks && chunks.length > 0) {
         const negMode = (bot as any).negative_content_mode || 'deflect'
@@ -491,7 +491,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         }
       }
     } catch (e: any) {
-      console.error('[bot-chat] RAG search exception:', e?.message)
+      console.error({ at: 'bot-chat', msg: "RAG search exception", err: e?.message })
     }
   }
   if (!knowledgeInjected && bot.knowledge_base) {
@@ -638,9 +638,9 @@ export async function POST(req: NextRequest, { params }: Params) {
           turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' })
 
           const { error: insertErr } = await service.from('bot_conversation_turns').insert(turnsToInsert)
-          if (insertErr) console.error('[bot-chat] turn insert error:', insertErr.message)
+          if (insertErr) console.error({ at: 'bot-chat', msg: "turn insert error", err: insertErr.message })
         } catch (e: any) {
-          console.error('[bot-chat] turn storage failed:', e?.message)
+          console.error({ at: 'bot-chat', msg: "turn storage failed", err: e?.message })
         }
       })()
     }

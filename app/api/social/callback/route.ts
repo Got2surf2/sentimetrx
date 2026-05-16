@@ -25,7 +25,7 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
   })
   if (!res.ok) {
     const errBody = await res.text()
-    console.error('[social/callback] token exchange failed:', res.status, errBody)
+    console.error({ at: 'social/callback', msg: 'token exchange failed', status: res.status, errBody })
     throw new Error('Failed to exchange code: ' + errBody)
   }
   return res.json()
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   // is set in every deployed environment; refuse to redirect if it isn't.
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
   if (!siteUrl) {
-    console.error('[social/callback] NEXT_PUBLIC_SITE_URL not configured')
+    console.error({ at: 'social/callback', msg: "NEXT_PUBLIC_SITE_URL not configured" })
     return NextResponse.json({ error: 'Site URL not configured' }, { status: 503 })
   }
 
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
         token_expires_at: expiresAt,
         connected_by: userId,
       })
-      if (fbErr) console.error('[social/callback] FB insert error:', fbErr.message)
+      if (fbErr) console.error({ at: 'social/callback', msg: "FB insert error", err: fbErr.message })
       else console.log('[social/callback] Stored FB page:', page.name, page.id)
 
       // Check for linked Instagram Business account
@@ -145,13 +145,13 @@ export async function GET(req: NextRequest) {
           token_expires_at: expiresAt,
           connected_by: userId,
         })
-        if (igErr) console.error('[social/callback] IG insert error:', igErr.message)
+        if (igErr) console.error({ at: 'social/callback', msg: "IG insert error", err: igErr.message })
       }
     }
 
     return NextResponse.redirect(`${siteUrl}/social?connected=true`)
   } catch (err: any) {
-    console.error('[social/callback] OAuth error:', err)
+    console.error({ at: 'social/callback', msg: "OAuth error", err: err })
     return NextResponse.redirect(`${siteUrl}/social?error=oauth_failed`)
   }
 }

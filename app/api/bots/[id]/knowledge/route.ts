@@ -120,7 +120,7 @@ export async function POST(req: Request, { params }: Params) {
         }
       }
     } catch (e: any) {
-      console.error('[knowledge] Embedding generation failed (chunks still usable):', e?.message)
+      console.error({ at: 'knowledge', msg: "Embedding generation failed (chunks still usable)", err: e?.message })
     }
 
     // Sentiment + opponent classification
@@ -180,7 +180,7 @@ export async function POST(req: Request, { params }: Params) {
           }
         }
       } catch (e: any) {
-        console.error('[knowledge] Classification failed (chunks still usable):', e?.message)
+        console.error({ at: 'knowledge', msg: "Classification failed (chunks still usable)", err: e?.message })
       }
     }
   }

@@ -56,14 +56,14 @@ export async function POST(req: Request, { params }: Params) {
     upsert:      false,
   })
   if (uploadErr) {
-    console.error('[share] upload error:', uploadErr)
+    console.error({ at: 'share', msg: "upload error", err: uploadErr })
     return NextResponse.json({ error: 'Upload failed: ' + uploadErr.message }, { status: 502 })
   }
 
   const { data: signed, error: signErr } = await service.storage.from(BUCKET)
     .createSignedUrl(path, EXPIRY_SECONDS)
   if (signErr || !signed?.signedUrl) {
-    console.error('[share] presign error:', signErr)
+    console.error({ at: 'share', msg: "presign error", err: signErr })
     return NextResponse.json({ error: 'Could not generate share link: ' + (signErr?.message || 'unknown') }, { status: 502 })
   }
 

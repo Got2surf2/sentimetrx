@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })
     if (!res.ok) {
       const err = await res.text()
-      console.error('[social/delete] Meta API error:', err)
+      console.error({ at: 'social/delete', msg: "Meta API error", err: err })
       return NextResponse.json({ error: 'Failed to delete on platform' }, { status: 502 })
     }
   }

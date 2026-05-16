@@ -80,7 +80,7 @@ export async function POST(_req: Request, { params }: Params) {
         await service.from('dataset_state').update({
           analytics, updated_at: new Date().toISOString(),
         }).eq('dataset_id', datasetId)
-      } catch (err) { console.error('[reddit/sync] analytics compute failed:', err) }
+      } catch (err) { console.error({ at: 'reddit/sync', msg: "analytics compute failed", err: err }) }
     }
 
     return NextResponse.json({
@@ -90,7 +90,7 @@ export async function POST(_req: Request, { params }: Params) {
       errored: errored,
     })
   } catch (err: any) {
-    console.error('[reddit-sources/sync] error:', err)
+    console.error({ at: 'reddit-sources/sync', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Finalize failed' }, { status: 500 })
   }
 }

@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       locations,
     })
   } catch (err: any) {
-    console.error('[review-sources/search] error:', err)
+    console.error({ at: 'review-sources/search', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Search failed' }, { status: 500 })
   }
 }

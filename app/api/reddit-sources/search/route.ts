@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       posts,
     })
   } catch (err: any) {
-    console.error('[reddit-sources/search] error:', err)
+    console.error({ at: 'reddit-sources/search', msg: "error", err: err })
     if (err?.message?.includes('404')) {
       return NextResponse.json({ error: 'Subreddit "r/' + subName + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
     }

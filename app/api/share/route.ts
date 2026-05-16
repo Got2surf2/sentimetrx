@@ -388,7 +388,7 @@ export async function DELETE(req: NextRequest) {
     .eq('token', token)
 
   if (error) {
-    console.error('[share] delete error:', error.message)
+    console.error({ at: 'share', msg: "delete error", err: error.message })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

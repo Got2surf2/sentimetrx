@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const deleted = data?.length || 0
 
   if (error) {
-    console.error('[cleanup-shared-links] error:', error.message)
+    console.error({ at: 'cleanup-shared-links', msg: "error", err: error.message })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

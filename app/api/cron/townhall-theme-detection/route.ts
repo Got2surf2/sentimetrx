@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       const result = await detectThemesForSession(s.id)
       totalDetected += result.inserted
     } catch (e) {
-      console.error('[cron/townhall-theme-detection] Error for session', s.id, e)
+      console.error({ at: 'cron/townhall-theme-detection', msg: 'detect error', sessionId: s.id, err: e })
     }
   }
 

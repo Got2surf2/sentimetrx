@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     try {
       suggestion = JSON.parse(jsonStr)
     } catch {
-      console.error('[study-suggest] JSON parse failed:', jsonStr.slice(0, 200))
+      console.error({ at: 'study-suggest', msg: "JSON parse failed", err: jsonStr.slice(0, 200) })
       return NextResponse.json({ error: 'AI returned invalid response' }, { status: 502 })
     }
 
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ suggestion: result })
 
   } catch (err: any) {
-    console.error('[study-suggest] error:', err)
+    console.error({ at: 'study-suggest', msg: "error", err: err })
     return NextResponse.json({ error: 'Failed to generate suggestions' }, { status: 500 })
   }
 }

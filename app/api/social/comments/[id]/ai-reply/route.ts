@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         body: JSON.stringify({ message: replyText, access_token: token }),
       })
       if (!res.ok) {
-        console.error('[social/ai-reply] Meta API error:', await res.text())
+        console.error({ at: 'social/ai-reply', msg: "Meta API error", err: await res.text() })
         // Still return the generated text even if posting failed
         return NextResponse.json({ reply: replyText, posted: false, error: 'Failed to post to platform' })
       }

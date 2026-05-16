@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       totalElements: result.totalElements,
     })
   } catch (err: any) {
-    console.error('[regulations-sources/search]', err)
+    console.error({ at: 'regulations-sources/search', err: err })
     return NextResponse.json({ error: err.message || 'Search failed' }, { status: 500 })
   }
 }

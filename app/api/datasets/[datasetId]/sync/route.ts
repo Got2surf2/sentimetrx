@@ -142,13 +142,13 @@ export async function POST(req: Request, { params }: Params) {
           .update({ analytics, updated_at: syncTimestamp, updated_by: user.id })
           .eq('dataset_id', dataset.id)
       } catch (err) {
-        console.error('[sync] analytics compute failed:', err)
+        console.error({ at: 'sync', msg: "analytics compute failed", err: err })
       }
     }
 
     return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })
   } catch (err: any) {
-    console.error('[sync] unhandled error:', err)
+    console.error({ at: 'sync', msg: "unhandled error", err: err })
     return NextResponse.json({ error: 'Internal sync error', detail: err?.message || String(err) }, { status: 500 })
   }
 }

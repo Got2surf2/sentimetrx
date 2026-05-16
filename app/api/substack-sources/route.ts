@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       status: 'created',
     }, { status: 201 })
   } catch (err: any) {
-    console.error('[substack-sources] create error:', err)
+    console.error({ at: 'substack-sources', msg: "create error", err: err })
     return NextResponse.json({ error: err?.message || 'Failed to create substack source' }, { status: 500 })
   }
 }

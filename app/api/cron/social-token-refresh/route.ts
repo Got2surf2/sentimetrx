@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
-    console.error('[social-token-refresh] query error:', error)
+    console.error({ at: 'social-token-refresh', msg: "query error", err: error })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       })
 
       if (!res.ok) {
-        console.error('[social-token-refresh] refresh failed for', conn.account_name, ':', await res.text())
+        console.error({ at: 'social-token-refresh', msg: 'refresh failed', account: conn.account_name, body: await res.text() })
         failed++
         continue
       }
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
       refreshed++
     } catch (err: any) {
-      console.error('[social-token-refresh] error for', conn.id, ':', err.message)
+      console.error({ at: 'social-token-refresh', msg: 'connection error', connectionId: conn.id, err })
       failed++
     }
   }

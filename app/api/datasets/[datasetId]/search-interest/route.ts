@@ -79,7 +79,7 @@ export async function POST(request: Request, { params }: Props) {
     }
     return NextResponse.json({ interests, trends })
   } catch (err: any) {
-    console.error('[search-interest] DataForSEO error:', err?.message)
+    console.error({ at: 'search-interest', msg: "DataForSEO error", err: err?.message })
     return NextResponse.json({ error: 'Failed to fetch search volume', detail: err?.message }, { status: 502 })
   }
 }

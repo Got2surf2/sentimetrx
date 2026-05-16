@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!res.ok) {
     const err = await res.text()
-    console.error('[social/reply] Meta API error:', err)
+    console.error({ at: 'social/reply', msg: "Meta API error", err: err })
     return NextResponse.json({ error: 'Failed to post reply' }, { status: 502 })
   }
 

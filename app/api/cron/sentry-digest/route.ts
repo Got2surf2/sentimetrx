@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
     error:            digest.ok ? null : (digest.reason || 'unknown'),
   })
   if (error) {
-    console.error('[cron/sentry-digest] insert error:', error)
+    console.error({ at: 'cron/sentry-digest', msg: "insert error", err: error })
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
 
@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
       await Promise.all(recipients.map(to => provider.send({ to, from: FROM, subject, html, text })))
       emailed = true
     } catch (e: any) {
-      console.error('[cron/sentry-digest] email send failed:', e?.message || e)
+      console.error({ at: 'cron/sentry-digest', msg: "email send failed", err: e?.message || e })
     }
   }
 

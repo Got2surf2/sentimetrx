@@ -129,7 +129,7 @@ export async function POST(req: Request, { params }: Params) {
       rows_inserted: rows.length,
     })
   } catch (err: any) {
-    console.error('[reddit/download-thread] error:', err)
+    console.error({ at: 'reddit/download-thread', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Download failed' }, { status: 500 })
   }
 }

@@ -40,7 +40,7 @@ export async function POST(_req: Request, { params }: Params) {
 
     return NextResponse.json(result)
   } catch (err: any) {
-    console.error('[review-sources/sync] error:', err)
+    console.error({ at: 'review-sources/sync', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Sync failed' }, { status: 500 })
   }
 }

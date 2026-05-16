@@ -114,7 +114,7 @@ export async function POST(req: Request) {
       status:     'created',
     }, { status: 201 })
   } catch (err: any) {
-    console.error('[reddit-sources] create error:', err)
+    console.error({ at: 'reddit-sources', msg: "create error", err: err })
     return NextResponse.json({ error: err?.message || 'Failed to create reddit source' }, { status: 500 })
   }
 }

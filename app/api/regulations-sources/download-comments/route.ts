@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         await service.from('dataset_state').update({ analytics, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
       }
     } catch (err) {
-      console.error('[regulations] analytics compute failed:', err)
+      console.error({ at: 'regulations', msg: "analytics compute failed", err: err })
     }
     // Mark download as complete in description
     try {
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', dataset_id)
       }
     } catch (err) {
-      console.error('[regulations] per-batch schema merge failed:', err)
+      console.error({ at: 'regulations', msg: "per-batch schema merge failed", err: err })
     }
   }
 

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     .limit(MAX_BRANDS_PER_RUN)
 
   if (error) {
-    console.error('[cron/entity-discovery] query error:', error)
+    console.error({ at: 'cron/entity-discovery', msg: "query error", err: error })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
         error:          r.error,
       })
     } catch (err: any) {
-      console.error('[cron/entity-discovery] brand', brand.slug, 'failed:', err)
+      console.error({ at: 'cron/entity-discovery', msg: 'brand failed', brand: brand.slug, err })
       results.push({
         brand:          brand.slug || brand.id,
         entities_new:   0,

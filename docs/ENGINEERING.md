@@ -446,11 +446,12 @@ are in `SECURITY.md`.
 19. **Risky-deploy manual gate:** wire a `deploy: manual` label
     that holds Vercel auto-deploy until owner approves on the
     preview URL. Land at first paying customer.
-20. **Structured-logging migration:** sweep
-    `app/api/**/*.ts` and replace the
-    `console.error('[label]', err)` interpolated pattern with the
-    single-object form (>95 occurrences). Pre-req for the eventual
-    `lib/log.ts` (item 12) so the migration target is consistent.
+20. ~~**Structured-logging migration:**~~ DONE 2026-05-16. All 85
+    `console.error('[label] ...', err)` sites in `app/api/**` now
+    use the single-object form `console.error({ at, msg, err })`.
+    Codemod handled 71 mechanical sites; 14 multi-arg sites were
+    hand-fixed. `lib/log.ts` (item 12) can swap `console.error`
+    for a structured emitter without touching call sites.
 21. ~~**Request-ID middleware:**~~ DONE 2026-05-16.
     `middleware.ts` now stamps every /api/* request with an
     `x-request-id` (preserved if the caller supplied one, else a

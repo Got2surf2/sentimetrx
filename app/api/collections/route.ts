@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       updated_by:    user.id,
     })
 
-  if (stErr) console.error('[collections] state insert error:', stErr.message)
+  if (stErr) console.error({ at: 'collections', msg: "state insert error", err: stErr.message })
 
   // 3. Create collection record
   const { data: collection, error: colErr } = await service

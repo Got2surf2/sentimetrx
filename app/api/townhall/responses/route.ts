@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }, { onConflict: 'session_id,participant_id' })
 
   if (error) {
-    console.error('[townhall/responses] upsert error:', error)
+    console.error({ at: 'townhall/responses', msg: "upsert error", err: error })
     return NextResponse.json({ error: 'Failed to save responses' }, { status: 500 })
   }
 

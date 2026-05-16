@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
         session_id: session.id, participant_id, turn_number: nextTurn, bot_message: warningMsg,
         user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
       })
-      if (guardInsertErr) console.error('[TH Chat] INSERT guard turn failed:', guardInsertErr.message)
+      if (guardInsertErr) console.error({ at: 'TH Chat', msg: "INSERT guard turn failed", err: guardInsertErr.message })
       return NextResponse.json({
         bot_message: warningMsg, theme_id, source: 'clarifier',
         is_final: !!check.shutdown, turn_number: nextTurn,
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
         session_id: session.id, participant_id, turn_number: nextTurn, bot_message: switchBotMsg,
         user_message: null, user_message_en: null, language: targetLang, theme_id, source: 'guide', skipped: false,
       })
-      if (langInsertErr) console.error('[TH Chat] INSERT language switch turn failed:', langInsertErr.message)
+      if (langInsertErr) console.error({ at: 'TH Chat', msg: "INSERT language switch turn failed", err: langInsertErr.message })
 
       return NextResponse.json({
         bot_message: switchBotMsg,
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
       .eq('session_id', session.id)
       .eq('participant_id', participant_id)
       .eq('turn_number', turn_number)
-    if (updateError) console.error('[TH Chat] UPDATE turn failed:', updateError.message, '| turn:', turn_number)
+    if (updateError) console.error({ at: 'TH Chat', msg: 'UPDATE turn failed', turn_number, err: updateError })
 
     // Note: topics that hit their response target stay active (facilitator manually closes).
     // The next-topic selection below deprioritizes target-reached topics.
@@ -338,12 +338,12 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
           if (deflectDebugInfo) deflectInsert.ai_thinking = deflectDebugInfo
           let { error: deflectInsertErr } = await supabase.from('townhall_turns').insert(deflectInsert)
           if (deflectInsertErr) {
-            console.error('[TH Chat] INSERT deflect turn failed:', deflectInsertErr.message)
+            console.error({ at: 'TH Chat', msg: "INSERT deflect turn failed", err: deflectInsertErr.message })
             // Retry: drop ai_thinking, fall back to 'clarifier' source (CHECK constraint compat)
             delete deflectInsert.ai_thinking
             deflectInsert.source = 'clarifier'
             const { error: retryErr } = await supabase.from('townhall_turns').insert(deflectInsert)
-            if (retryErr) console.error('[TH Chat] INSERT deflect retry also failed:', retryErr.message)
+            if (retryErr) console.error({ at: 'TH Chat', msg: "INSERT deflect retry also failed", err: retryErr.message })
           }
 
           return NextResponse.json({
@@ -686,7 +686,7 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
   if (testing && debug.length > 0) insertPayload.ai_thinking = debug
   const { error: insertError } = await supabase.from('townhall_turns').insert(insertPayload)
   if (insertError) {
-    console.error('[TH Chat] INSERT turn failed:', insertError.message, '| session:', session.id, '| participant:', participant_id, '| turn:', nextTurnNumber, '| source:', aiSource)
+    console.error({ at: 'TH Chat', msg: 'INSERT turn failed', sessionId: session.id, participantId: participant_id, turn: nextTurnNumber, source: aiSource, err: insertError })
     // Retry: drop ai_thinking, fall back source to 'guide' (CHECK constraint compat)
     delete insertPayload.ai_thinking
     const originalSource = insertPayload.source
@@ -694,7 +694,7 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
       insertPayload.source = 'guide'
     }
     const { error: retryError } = await supabase.from('townhall_turns').insert(insertPayload)
-    if (retryError) console.error('[TH Chat] INSERT retry also failed:', retryError.message)
+    if (retryError) console.error({ at: 'TH Chat', msg: "INSERT retry also failed", err: retryError.message })
   }
 
   return NextResponse.json({

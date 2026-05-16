@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest) {
   } catch (e: any) {
     // Non-fatal: even if the admin call fails, the public.users.disabled flag
     // means the app will reject the user (in pages that check). Log only.
-    console.error('[team/disable] admin updateUserById failed:', e?.message || e)
+    console.error({ at: 'team/disable', msg: "admin updateUserById failed", err: e?.message || e })
   }
 
   return NextResponse.json({ success: true, disabled })

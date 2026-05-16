@@ -21,7 +21,7 @@ async function fetchFacebookComments(pageId: string, token: string, since?: stri
 
   const postsRes = await fetch(postsUrl)
   if (!postsRes.ok) {
-    console.error('[social-sync] FB posts error:', await postsRes.text())
+    console.error({ at: 'social-sync', msg: "FB posts error", err: await postsRes.text() })
     return []
   }
 
@@ -59,7 +59,7 @@ async function fetchInstagramComments(igAccountId: string, token: string, since?
   const mediaUrl = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,caption,timestamp&limit=25&access_token=${token}`
   const mediaRes = await fetch(mediaUrl)
   if (!mediaRes.ok) {
-    console.error('[social-sync] IG media error:', await mediaRes.text())
+    console.error({ at: 'social-sync', msg: "IG media error", err: await mediaRes.text() })
     return []
   }
 
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
-    console.error('[social-sync] query error:', error)
+    console.error({ at: 'social-sync', msg: "query error", err: error })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
         .insert(rows)
 
       if (insertError) {
-        console.error('[social-sync] insert error for connection', conn.id, ':', insertError)
+        console.error({ at: 'social-sync', msg: 'insert error', connectionId: conn.id, err: insertError })
         continue
       }
 
@@ -222,7 +222,7 @@ export async function GET(req: NextRequest) {
               body: JSON.stringify({ is_hidden: true, access_token: conn.access_token }),
             })
           } catch (e: any) {
-            console.error('[social-sync] auto-hide error:', c.comment_id, e.message)
+            console.error({ at: 'social-sync', msg: 'auto-hide error', commentId: c.comment_id, err: e })
           }
         }
         if (toHide.length > 0) console.log('[social-sync] auto-hid', toHide.length, 'comments for connection', conn.id)
@@ -262,7 +262,7 @@ export async function GET(req: NextRequest) {
               logUsage({ org_id: conn.org_id, resource_type: 'social', event_type: 'auto_reply' }, result.usage)
               replyText = result.text.trim()
             } catch (e: any) {
-              console.error('[social-sync] AI reply error:', e.message)
+              console.error({ at: 'social-sync', msg: "AI reply error", err: e.message })
             }
           }
 
@@ -280,13 +280,13 @@ export async function GET(req: NextRequest) {
                 .eq('comment_id', c.comment_id)
                 .eq('org_id', conn.org_id)
             } catch (e: any) {
-              console.error('[social-sync] auto-reply error:', c.comment_id, e.message)
+              console.error({ at: 'social-sync', msg: 'auto-reply error', commentId: c.comment_id, err: e })
             }
           }
         }
       }
     } catch (err: any) {
-      console.error('[social-sync] error processing connection', conn.id, ':', err.message)
+      console.error({ at: 'social-sync', msg: 'error processing connection', connectionId: conn.id, err })
     }
   }
 

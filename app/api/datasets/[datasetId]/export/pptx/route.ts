@@ -2614,7 +2614,7 @@ export async function POST(req: Request, { params }: Params) {
   }
   if (!skipAI) {
     try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
-    catch (e) { console.error('[export/pptx] AI error:', e) }
+    catch (e) { console.error({ at: 'export/pptx', msg: "AI error", err: e }) }
   }
 
   // ── Build PPTX ─────────────────────────────────────────────────────────────
@@ -3098,7 +3098,7 @@ export async function POST(req: Request, { params }: Params) {
     } catch (provErr: any) {
       // __skip_closers__ is a deliberate skip — anything else is a real failure
       if (provErr !== '__skip_closers__') {
-        console.error('[export/pptx] provenance/custom-decks slide failed:', provErr?.message || provErr)
+        console.error({ at: 'export/pptx', msg: "provenance/custom-decks slide failed", err: provErr?.message || provErr })
       }
     }
 
@@ -3115,7 +3115,7 @@ export async function POST(req: Request, { params }: Params) {
       },
     })
   } catch (buildErr: any) {
-    console.error('[export/pptx] Build error:', buildErr)
+    console.error({ at: 'export/pptx', msg: "Build error", err: buildErr })
     return NextResponse.json({ error: 'PPTX build failed: ' + (buildErr?.message || String(buildErr)) }, { status: 500 })
   }
 }

@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       })
       if (!res.ok) {
         const err = await res.text()
-        console.error('[social/hide] Meta API error:', err)
+        console.error({ at: 'social/hide', msg: "Meta API error", err: err })
         return NextResponse.json({ error: 'Failed to update on platform' }, { status: 502 })
       }
     }

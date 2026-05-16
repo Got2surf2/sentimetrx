@@ -123,7 +123,7 @@ export async function POST(_req: Request, { params }: Params) {
       await service.from('datasets').update({ row_count: allRows.length, updated_at: new Date().toISOString() }).eq('id', params.datasetId)
       return NextResponse.json({ ok: true, totalRows: colAnalytics.totalRows, computedAt: colAnalytics.computedAt, fields: Object.keys(colAnalytics.fieldSummaries).length })
     } catch (err) {
-      console.error('[compute/collection] error:', err)
+      console.error({ at: 'compute/collection', msg: "error", err: err })
       return NextResponse.json({ error: String(err) }, { status: 500 })
     }
   }
@@ -132,7 +132,7 @@ export async function POST(_req: Request, { params }: Params) {
   try {
     analytics = await computeAnalyticsSQL(service, params.datasetId, schema)
   } catch (err) {
-    console.error('[compute] error:', err)
+    console.error({ at: 'compute', msg: "error", err: err })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 
@@ -156,7 +156,7 @@ export async function POST(_req: Request, { params }: Params) {
   // via waitUntil so it never adds latency to the compute response.
   waitUntil(
     discoverBrandEntitiesIfNeeded(service, params.datasetId).catch(err => {
-      console.error('[compute] brand entity discovery failed:', err)
+      console.error({ at: 'compute', msg: "brand entity discovery failed", err: err })
     }),
   )
 

@@ -215,7 +215,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         reranked = true
       }
     } catch (err) {
-      console.error('[search/rerank] failed, falling back to keyword order:', err)
+      console.error({ at: 'search/rerank', msg: "failed, falling back to keyword order", err: err })
     }
   }
 

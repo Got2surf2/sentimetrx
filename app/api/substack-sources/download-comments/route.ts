@@ -73,7 +73,7 @@ export async function POST(req: Request) {
       rows_inserted: rows.length,
     })
   } catch (err: any) {
-    console.error('[substack/download-comments] error:', err)
+    console.error({ at: 'substack/download-comments', msg: "error", err: err })
     return NextResponse.json({ error: err?.message || 'Download failed' }, { status: 500 })
   }
 }

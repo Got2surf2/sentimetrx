@@ -206,7 +206,7 @@ export async function POST(_req: Request, { params }: Params) {
       await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', datasetId)
     }
   } catch (err) {
-    console.error('[bots/analyze] schema merge failed:', err)
+    console.error({ at: 'bots/analyze', msg: "schema merge failed", err: err })
   }
 
   return NextResponse.json({ dataset_id: datasetId, synced: rows.length, total: newTotal, created })

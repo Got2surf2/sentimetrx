@@ -65,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!res.ok) {
     const err = await res.text()
-    console.error('[social/dm] Messenger API error:', err)
+    console.error({ at: 'social/dm', msg: "Messenger API error", err: err })
     return NextResponse.json({ error: 'Failed to send DM' }, { status: 502 })
   }
 
