@@ -588,10 +588,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
+    // TUESDAY DEMO 2026-05-19: bumped main response tier to Sonnet 4.6 for the
+    // Vindman demo. Auxiliary calls (summary/deflection/intent/persona) stay on
+    // Haiku since they don't need it. Revert to 'fast' after the demo to save
+    // ~3x on per-turn cost.
     const result = await callAI({
-      tier: 'fast',
+      tier: 'advanced',
       maxTokens: 400,
-      timeoutMs: 15000,
+      timeoutMs: 30000,
       messages: recentMessages,
       system: systemParts.join('\n'),
     })

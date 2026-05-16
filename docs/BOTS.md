@@ -369,7 +369,7 @@ The heart of the module. **No auth.** Rate-limited 30 req/60s per IP.
    - Merge logic: explicit-source overrides inferred; confidence only upgrades. `concerns[]` is union-deduplicated.
 10. **Knowledge retrieval** — see § 8. Skipped entirely when `intentHasAction === true`.
 11. **Prompt assembly** — see § 7 for the full system-prompt structure.
-12. **Main response** — `callAI({ tier: 'fast', maxTokens: 400, timeoutMs: 15000 })`.
+12. **Main response** — `callAI({ tier: 'advanced', maxTokens: 400, timeoutMs: 30000 })`. **Note:** the tier was temporarily bumped from `'fast'` (Haiku 4.5) to `'advanced'` (Sonnet 4.6) on 2026-05-16 for the Vindman demo. Auxiliary callAI invocations (summary compression, deflection, intent matching, persona extraction) remain on `'fast'`. Revert to `'fast'` here if ongoing Sonnet spend is not authorized post-demo.
 13. **Post-processing** — `sanitizeBotReply(text)` (from `lib/guardrails.ts`) scrubs leaked evaluator/meta-prompt scaffolding from the model output; if `leaked`, a safe fallback reply is served and a warning is logged. (`cleanDeflectResponse` is used only inside the deflection branch, step 7.)
 14. **Persist** — fire-and-forget update of `bots.last_session_at`. If `session_id` is provided, insert turns into `bot_conversation_turns`:
     - If this is the first turn for the session and the client sent an initial assistant greeting in `messages`, insert that greeting at `turn_number: 0` with `source: 'greeting'`.
