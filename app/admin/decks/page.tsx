@@ -59,6 +59,8 @@ export default async function DecksPage() {
     'engineering-reality-deck':    deckLastModified('app/api/engineering-reality-deck/route.ts'),
     'restaurant-expansion-deck:darden':  deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
     'restaurant-expansion-deck:bloomin': deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
+    'pulseiq-deck':                      deckLastModified('app/api/pulseiq-deck/route.ts'),
+    'nowocats-approach-deck':            deckLastModified('app/api/nowocats-approach-deck/route.ts'),
   }
 
   return (

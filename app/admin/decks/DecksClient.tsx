@@ -99,6 +99,17 @@ const DECKS: Deck[] = [
     logKey: 'pulseiq-deck',
   },
   {
+    href: '/api/nowocats-approach-deck',
+    filename: 'NOWOCATS-Engagement-Approach.pptx',
+    title: 'NOWOCATS — PM-2 Engagement Approach',
+    subtitle: 'Project-specific approach deck for VHB & Orange County Public Works. Pitches Sarina (the NOWOCATS Assistant) as the PM-2 digital companion, sourced entirely from public project materials.',
+    audience: 'VHB partners · Orange County Transportation Planning Division',
+    slides: '12 slides',
+    accent: '#1E5BA8',
+    badge: 'NOWOCATS',
+    logKey: 'nowocats-approach-deck',
+  },
+  {
     href: '/api/restaurant-expansion-deck?client=bloomin',
     filename: "Datanautix-Restaurant-Expansion-BlominBrands.pptx",
     title: "Restaurant Expansion — Bloomin' Brands",
