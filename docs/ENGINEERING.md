@@ -459,10 +459,13 @@ are in `SECURITY.md`.
     "inline button-busy indicator" exception in the a11y rule
     above. `CreatorNav.tsx` and `THCreatorNav.tsx` spinners
     annotated with `aria-hidden="true"` + explanatory comment.
-23. **Resend webhook idempotency:** add a `webhook_events` table
-    (Resend `svix-id` headers as the unique key) and dedupe in
-    `app/api/campaigns/webhooks/resend/route.ts` before
-    short-circuit-replaying delivery state into `campaign_sends`.
+23. ~~**Resend webhook idempotency:**~~ DONE 2026-05-16.
+    `sql/071_webhook_events.sql` adds `public.webhook_events
+    (source, svix_id)` with a unique constraint; the Resend route
+    inserts before mutating campaign state and short-circuits
+    23505 unique-violation as `{ deduped: true }`. Fail-open on
+    other insert errors. See `docs/CAMPAIGNS.md` for the
+    handler-side description.
 24. ~~**Migration tx-wrap enforcement:**~~ DONE 2026-05-16.
     `scripts/check-sql-tx-wrap.ts` enforces `BEGIN; … COMMIT;` on
     every new `sql/NNN_*.sql` after the SQL_TX_CUTOFF (currently 70 —

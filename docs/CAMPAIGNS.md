@@ -144,6 +144,8 @@ Status upgrades are one-way (never downgrades), except `bounced` which always ap
 
 **Security:** every webhook is verified against `RESEND_WEBHOOK_SECRET` using Svix-style HMAC (`v1`) over `<svix-id>.<svix-timestamp>.<rawBody>`. Requests outside a ±5-minute timestamp skew window are rejected to block replay.
 
+**Idempotency:** the `svix-id` header is recorded in `public.webhook_events (source='resend', svix_id)` with `UNIQUE (source, svix_id)`. Resend retries hit the unique constraint and short-circuit with `{ ok: true, deduped: true }` before any campaign state is mutated. Fail-open if the ledger insert fails for any non-unique reason — duplicates are no worse than the pre-dedup behavior. Applied in `sql/071_webhook_events.sql`.
+
 ### Click Tracking Fallback (`POST /api/campaigns/click`)
 
 For Resend free-plan users (no hosted click tracking), the survey page fires this endpoint with `{ rid: <recipient_guid> }` on load. It upgrades respondents in `pending|sent` to `clicked`. Unauthenticated by design; the `rid` is a UUID and the only effect is a one-way status upgrade.

@@ -121,6 +121,23 @@ export async function POST(req: NextRequest) {
   }
 
   const service = createServiceRoleClient()
+
+  // Dedup: Resend retries failed deliveries. The svix-id is stable across
+  // retries, so a unique (source, svix_id) insert short-circuits replays.
+  // Fail-open: if the ledger insert fails for any unexpected reason (table
+  // missing, transient db error) the handler still runs — duplicates are no
+  // worse than the pre-dedup behavior.
+  const { error: dedupErr } = await service
+    .from('webhook_events')
+    .insert({ source: 'resend', svix_id: svixId })
+  if (dedupErr) {
+    // Postgres 23505 = unique_violation → already processed.
+    if ((dedupErr as { code?: string }).code === '23505') {
+      return NextResponse.json({ ok: true, deduped: true })
+    }
+    // Otherwise log and continue — fail-open by design.
+    console.error({ at: 'resend/webhook/dedup', svixId, err: dedupErr })
+  }
   const providerMsgId = data.email_id
   const eventTime = data.created_at || new Date().toISOString()
 
