@@ -31,5 +31,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: SQL migration tx-wrap guard
+        run: npm run check:sql-tx
+
       - name: Unit + integration tests
         run: npm test

@@ -22,7 +22,8 @@
     "test:dataset-egress": "DATASET_EGRESS_TEST=1 vitest run dataset-routes-egress",
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
     "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts",
-    "spec-drift": "tsx scripts/spec-drift.ts"
+    "spec-drift": "tsx scripts/spec-drift.ts",
+    "check:sql-tx": "tsx scripts/check-sql-tx-wrap.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",

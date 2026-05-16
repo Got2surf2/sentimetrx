@@ -460,8 +460,10 @@ are in `SECURITY.md`.
     (Resend `svix-id` headers as the unique key) and dedupe in
     `app/api/campaigns/webhooks/resend/route.ts` before
     short-circuit-replaying delivery state into `campaign_sends`.
-24. **Migration tx-wrap enforcement:** add a pre-commit / CI grep
-    that fails when a new `sql/NNN_*.sql` lacks an explicit
-    `BEGIN; … COMMIT;` (unless an opt-out comment is present for
-    `CONCURRENTLY`-style cases). Promotes the existing convention
-    from practice to enforced rule.
+24. ~~**Migration tx-wrap enforcement:**~~ DONE 2026-05-16.
+    `scripts/check-sql-tx-wrap.ts` enforces `BEGIN; … COMMIT;` on
+    every new `sql/NNN_*.sql` after the SQL_TX_CUTOFF (currently 70 —
+    pre-existing files are grandfathered). Wired into CI as
+    `npm run check:sql-tx`. `CONCURRENTLY` cases still need a manual
+    bypass: bump the cutoff in the script or delete the new file's
+    BEGIN/COMMIT requirement deliberately.
