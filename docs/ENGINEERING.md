@@ -79,6 +79,14 @@ on any PR adding a service-role import.
   preserved when AI-assisted.
 - **No force-push to `main` ever.** No `--no-verify` ever (hooks
   exist for a reason).
+- **Spec-drift pre-commit hook.** `.githooks/pre-commit` runs
+  `npm run check:spec-staged`, which uses `scripts/specMap.ts` to
+  flag staged code that maps to a spec doc that isn't also staged.
+  Installed automatically by the `postinstall` script
+  (`git config core.hooksPath .githooks`). Bypass with
+  `SKIP_SPEC_CHECK=1 git commit ...` when the change is genuinely
+  doc-irrelevant (pure refactor, formatting). The Monday spec-drift
+  routine still runs as a weekly safety net.
 
 **How we verify:** GitHub branch protection rules on `main` +
 `gh pr view --json reviewers` audit at quarterly cadence.

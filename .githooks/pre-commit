@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Spec-drift pre-commit guard. See scripts/check-spec-drift-staged.ts.
+# Bypass: SKIP_SPEC_CHECK=1 git commit ...
+exec npx tsx scripts/check-spec-drift-staged.ts

@@ -23,7 +23,9 @@
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
     "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts",
     "spec-drift": "tsx scripts/spec-drift.ts",
-    "check:sql-tx": "tsx scripts/check-sql-tx-wrap.ts"
+    "check:sql-tx": "tsx scripts/check-sql-tx-wrap.ts",
+    "check:spec-staged": "tsx scripts/check-spec-drift-staged.ts",
+    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",

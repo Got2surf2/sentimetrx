@@ -57,6 +57,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'eslint.config.*',
     '.eslintrc*',
     '.github/workflows/**',
+    '.githooks/**',
     'sentry.client.config.ts',
     'sentry.server.config.ts',
     'sentry.edge.config.ts',
