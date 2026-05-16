@@ -1,7 +1,8 @@
 // middleware.ts
-// CSRF protection for cookie-authed mutating API routes.
+// CSRF protection for cookie-authed mutating API routes + per-request
+// correlation IDs for structured logging.
 //
-// Why: Next.js App Router route handlers don't have built-in CSRF
+// CSRF: Next.js App Router route handlers don't have built-in CSRF
 // protection. A malicious origin can `fetch(..., {credentials: 'include'})`
 // from another tab/site and the browser will send the user's session
 // cookie; without an Origin/Referer check the route happily acts on
@@ -9,15 +10,34 @@
 // the request host on every mutating verb (POST/PATCH/PUT/DELETE) and
 // reject mismatches.
 //
-// Routes we explicitly skip: webhooks (no Origin from third parties,
-// they auth via signed payloads), cron (Bearer token), and the public
-// embeddable chat endpoints (they use wildcard CORS, not cookies, so
-// there's nothing to CSRF).
+// Request ID: every request gets an `x-request-id` (preserved if the
+// caller supplied one, generated otherwise). It's stamped on both the
+// inbound request headers (so route handlers can read it via
+// `lib/requestContext.ts`) and the outbound response headers (so clients
+// + logs can correlate). See `lib/requestContext.ts`.
+//
+// Routes we explicitly skip CSRF for: webhooks (no Origin from third
+// parties, they auth via signed payloads), cron (Bearer token), and the
+// public embeddable chat endpoints (they use wildcard CORS, not cookies,
+// so there's nothing to CSRF). Request-ID stamping applies to every
+// request (no skip list).
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+const REQUEST_ID_HEADER = 'x-request-id'
+
+// Stamps `x-request-id` on the inbound request (so handlers can read it)
+// and returns a NextResponse that echoes it on the way out.
+function passWithRequestId(req: NextRequest, requestId: string): NextResponse {
+  const fwdHeaders = new Headers(req.headers)
+  fwdHeaders.set(REQUEST_ID_HEADER, requestId)
+  const res = NextResponse.next({ request: { headers: fwdHeaders } })
+  res.headers.set(REQUEST_ID_HEADER, requestId)
+  return res
+}
 
 // Exact paths that legitimately receive cross-origin requests. These
 // authenticate via mechanisms other than session cookies (HMAC-signed
@@ -51,10 +71,14 @@ function isBypassed(pathname: string): boolean {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  // Preserve a client-supplied request ID (lets external callers correlate
+  // traces) or generate one. UUIDs are cheap and globally unique.
+  const requestId = req.headers.get(REQUEST_ID_HEADER) || crypto.randomUUID()
+
   // Only API routes — let pages, _next/*, static assets pass through untouched.
-  if (!pathname.startsWith('/api/')) return NextResponse.next()
-  if (SAFE_METHODS.has(req.method)) return NextResponse.next()
-  if (isBypassed(pathname)) return NextResponse.next()
+  if (!pathname.startsWith('/api/')) return passWithRequestId(req, requestId)
+  if (SAFE_METHODS.has(req.method)) return passWithRequestId(req, requestId)
+  if (isBypassed(pathname)) return passWithRequestId(req, requestId)
 
   // Same-origin enforcement. Modern browsers always send Origin on
   // cross-origin requests; the rare case where Origin is missing is
@@ -69,33 +93,35 @@ export function middleware(req: NextRequest) {
   if (origin) {
     let originHost: string
     try { originHost = new URL(origin).host } catch {
-      return NextResponse.json({ error: 'CSRF: invalid Origin' }, { status: 403 })
+      return NextResponse.json({ error: 'CSRF: invalid Origin' }, { status: 403, headers: { [REQUEST_ID_HEADER]: requestId } })
     }
     if (originHost !== host) {
-      return NextResponse.json({ error: 'CSRF: cross-origin request blocked' }, { status: 403 })
+      return NextResponse.json({ error: 'CSRF: cross-origin request blocked' }, { status: 403, headers: { [REQUEST_ID_HEADER]: requestId } })
     }
-    return NextResponse.next()
+    return passWithRequestId(req, requestId)
   }
 
   // No Origin header. Trust Sec-Fetch-Site if present; otherwise fall back
   // to Referer (older browsers, some embedded webviews). If neither signal
   // identifies the request as same-origin, reject — better to break a
   // non-browser caller than to leave the door open.
-  if (sfs === 'same-origin' || sfs === 'none') return NextResponse.next()
-  if (sfs === 'same-site') return NextResponse.next()  // subdomains share a site
+  if (sfs === 'same-origin' || sfs === 'none') return passWithRequestId(req, requestId)
+  if (sfs === 'same-site') return passWithRequestId(req, requestId)  // subdomains share a site
 
   const referer = req.headers.get('referer')
   if (referer) {
     try {
       const refHost = new URL(referer).host
-      if (refHost === host) return NextResponse.next()
+      if (refHost === host) return passWithRequestId(req, requestId)
     } catch {}
   }
 
-  return NextResponse.json({ error: 'CSRF: cross-origin request blocked' }, { status: 403 })
+  return NextResponse.json({ error: 'CSRF: cross-origin request blocked' }, { status: 403, headers: { [REQUEST_ID_HEADER]: requestId } })
 }
 
 export const config = {
   // Run only on /api/* — skip pages, static, image optimizer.
+  // Page renders don't currently consume the request ID; expand the matcher
+  // if/when a server-component log call site needs it.
   matcher: ['/api/:path*'],
 }

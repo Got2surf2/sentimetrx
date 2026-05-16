@@ -451,10 +451,18 @@ are in `SECURITY.md`.
     `console.error('[label]', err)` interpolated pattern with the
     single-object form (>95 occurrences). Pre-req for the eventual
     `lib/log.ts` (item 12) so the migration target is consistent.
-21. **Request-ID middleware:** generate `crypto.randomUUID()` in
-    `middleware.ts`, set `x-request-id` on the response, and
-    expose it via async-local-storage so prod handlers can include
-    it in every structured log payload. Lands alongside item 20.
+21. ~~**Request-ID middleware:**~~ DONE 2026-05-16.
+    `middleware.ts` now stamps every /api/* request with an
+    `x-request-id` (preserved if the caller supplied one, else a
+    fresh `crypto.randomUUID()`). The ID is echoed on the response
+    and forwarded into the request scope so handlers can read it
+    via `lib/requestContext.ts:getRequestId()`. Used `headers()`
+    instead of AsyncLocalStorage because Next.js 14 middleware
+    runs in the Edge runtime and `next/headers` is already
+    request-scoped — equivalent ergonomics without a runtime split.
+    When `lib/log.ts` lands (item 12), it can call `getRequestId()`
+    inline. Matcher unchanged (/api/*); expand if/when a server
+    component log call site needs it.
 22. ~~**CSS spinner cleanup:**~~ DONE 2026-05-16 — formalized as
     "inline button-busy indicator" exception in the a11y rule
     above. `CreatorNav.tsx` and `THCreatorNav.tsx` spinners
