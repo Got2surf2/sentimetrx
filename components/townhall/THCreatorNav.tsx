@@ -158,9 +158,12 @@ export default function THCreatorNav({
         }
       >
         {saving ? (
-          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          // Inline-busy indicator exception to the LottieLoader-only rule:
+          // 12×12 inside a button label needs an instant, synchronous glyph.
+          // The adjacent savingLabel text is the accessible status; spinner is decorative.
+          <span aria-hidden="true" className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          <span>▶</span>
+          <span aria-hidden="true">▶</span>
         )}
         <span>{saving ? savingLabel : saveLabel}</span>
       </button>

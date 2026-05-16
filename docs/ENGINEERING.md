@@ -235,10 +235,15 @@ prototypes can lag.
 - **Images** have `alt` (descriptive or `""` if decorative).
 - **The `LottieLoader` component is the ONLY loader** for
   customer-facing surfaces — it already carries the right ARIA
-  semantics; don't write a CSS spinner. One legacy exception
-  remains (a `border-2 ... animate-spin` dot inside
-  `components/creator/CreatorNav.tsx:220`); replacing it is
-  Open `<TBD>` item 22.
+  semantics; don't write a CSS spinner. **Narrow exception:**
+  inline button-busy indicators (≤ 16px, rendered alongside a
+  visible "Saving…" / "Publishing…" text label) may use a plain
+  CSS spinner because (a) the Lottie JSON loads async and would
+  flicker, and (b) the morphing-particle animation has no useful
+  rendering at that size. The spinner element must carry
+  `aria-hidden="true"` — the adjacent text is the accessible
+  status. See `components/creator/CreatorNav.tsx` and
+  `components/townhall/THCreatorNav.tsx`.
 
 **How we verify (interim):**
 - Manual keyboard-only walkthrough of any customer-facing page
@@ -450,12 +455,10 @@ are in `SECURITY.md`.
     `middleware.ts`, set `x-request-id` on the response, and
     expose it via async-local-storage so prod handlers can include
     it in every structured log payload. Lands alongside item 20.
-22. **CSS spinner cleanup:** replace the
-    `border-2 ... animate-spin` dot in
-    `components/creator/CreatorNav.tsx:220` with a tiny
-    `LottieLoader` variant (or formally carve out a "navigation
-    inline-busy indicator" exception to the LottieLoader-only
-    rule and document it).
+22. ~~**CSS spinner cleanup:**~~ DONE 2026-05-16 — formalized as
+    "inline button-busy indicator" exception in the a11y rule
+    above. `CreatorNav.tsx` and `THCreatorNav.tsx` spinners
+    annotated with `aria-hidden="true"` + explanatory comment.
 23. **Resend webhook idempotency:** add a `webhook_events` table
     (Resend `svix-id` headers as the unique key) and dedupe in
     `app/api/campaigns/webhooks/resend/route.ts` before
