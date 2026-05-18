@@ -234,6 +234,19 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
   hits in each clause credited to every entity that appears in that clause).
   Category chips at the top filter the cloud; click any entity to drill into
   its comments (same flow as the pill list).
+- **TextMine → Themes tab → Breakdown** — **Entity Breakdown by &lt;field&gt;**
+  (`components/analyze/textmine/EntityBreakdownDist.tsx`), rendered below the
+  theme `BreakdownDist`. Stacked bars per group segmented by entity, plus a By
+  Entity view that flips the axis (each entity's prevalence across groups).
+  Significance markers (★) come from `sigTest` (2-proportion z-test) — same
+  module the theme chart uses, so over/under-representation signals are
+  comparable across both charts. Per-(group, entity) rating averages shown
+  when a rating field is selected, color-coded by delta vs the overall mean.
+  Top 25 entities shown by default with a Show all toggle to reveal the long
+  tail; a 1%-of-rows threshold keeps the chart legible. Matching uses the same
+  alternation regex over `canonical + aliases + expandEntityTerms` variants the
+  cloud does — built once per render and applied row-by-row to a per-row
+  match-set so every cell derives from O(rows + groups × entities) work.
 - **Ask Ana** — top 40 entities grouped by category appended to the system prompt.
 
 ### Tables (migrations 060–066)

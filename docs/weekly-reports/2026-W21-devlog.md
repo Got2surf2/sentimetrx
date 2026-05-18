@@ -79,3 +79,20 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Performance notes**: single alternation regex built once per useMemo; O(rows × regex pass) for both freq and sentiment scans. 45K rows × ~100 entity terms expected to run in <500ms on the existing TextMine "rows loaded client-side" model. If this becomes a bottleneck above 100K rows, fold both passes into one and move the regex build behind a useDeferredValue.
 
 **Next**: Bucket C (entity compare chart by group) and/or Bucket D (View by Theme | Entity toggle at the TextMine module top). With the cloud + sentiment live, the compare chart is the missing visualization piece before we can claim a full theme-functionality mirror.
+
+## 2026-05-18 — Entity Breakdown chart (Bucket C)
+
+**Why**: theme `BreakdownDist` shows theme prevalence across categorical groups with significance markers — "which group disproportionately mentions which theme." Entities deserve the same view: "which Fleming's location over-indexes on the Filet vs the Tomahawk." Without it, the only way to compare entities across a segment is to filter the cloud one segment at a time. The compare chart is what makes brand-rollup analysis useful.
+
+**What changed**:
+- `components/analyze/textmine/EntityBreakdownDist.tsx` (new, ~270 lines): mirror of `BreakdownDist.tsx` operating on the entity catalog instead of the theme model. Two views — **By Group** (each group's stacked bar segmented by entity, with per-entity rows + significance + rating delta) and **By Entity** (each entity's bar across groups, default view since entity counts are higher than theme counts).
+- Matching: same alternation regex over `canonical + aliases + expandEntityTerms` that `EntityCloud` builds, but computed once per render into a per-row → `Set<slug>` map. Every group×entity cell then derives from that map in O(rows + groups × entities) instead of O(rows × entities × groups).
+- Significance markers (★) reuse `lib/statsUtils::sigTest` (2-proportion z-test), so over/under-representation signals are comparable between the theme and entity charts. Rating deltas (when a rating field is set) are colored green / red around overall mean.
+- Top-25 cap by default + 1%-of-rows threshold (entities below get hidden behind a Show all toggle) keep the chart legible for catalogs with 100+ entries.
+- `components/analyze/TextMineModule.tsx`: dynamic-imports `EntityBreakdownDist`, mounts it below `BreakdownDist` on the Themes subtab behind the same `breakdownField && selectedValues.size > 0 && themesView !== 'signals'` gate plus `entityCatalogRows.length > 0 && effectiveFields.length > 0`. Reuses the existing `breakdownField` + `selectedValues` state — no new sidebar controls.
+
+**Why not generalize BreakdownDist instead of fork**: theme matching (`Theme.keywords + commentMatchesTheme`, with negation support) and entity matching (`canonical + aliases + plural variants`) don't unify cleanly without one side losing precision. The two charts share a ton of layout code but diverge in matching, which is the load-bearing part. Forked keeps both readable; the cost is two files that move together when the look-and-feel changes.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC on Fleming's pending.
+
+**Next**: Bucket D (View by Theme | Entity toggle at the TextMine module top) and Bucket E (category-restricted monthly discovery — skip food/drink in cron NER once a menu seed exists, saves ~half the AI cost). With C done, the theme-functionality mirror is complete; D and E are polish/cost optimization.

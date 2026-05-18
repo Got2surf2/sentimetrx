@@ -76,6 +76,19 @@ const EntityCloud = dynamic(
     },
   }
 )
+const EntityBreakdownDist = dynamic(
+  function() { return import('@/components/analyze/textmine/EntityBreakdownDist') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+          <LottieLoader size={48} />
+        </div>
+      )
+    },
+  }
+)
 const CommentsPanel = dynamic(
   function() { return import('@/components/analyze/textmine/CommentsPanel') },
   {
@@ -2207,6 +2220,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && themesView !== 'signals' && (
                         <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} ratingField={ratingField} />
+                      )}
+
+                      {/* Entity Breakdown — same controls (breakdown field +
+                          selected values), one chart below. Only when the
+                          scope actually has an entity catalog. */}
+                      {breakdownField && selectedValues.size > 0 && themesView !== 'signals' && entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
+                        <EntityBreakdownDist
+                          entities={entityCatalogRows}
+                          parsedData={filteredRows}
+                          fields={effectiveFields}
+                          breakdownField={breakdownField}
+                          selectedValues={selectedValues}
+                          scopeType={entityCatalogScopeType}
+                          ratingField={ratingField}
+                          onDrillEntity={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
+                        />
                       )}
                     </div>
                   )
