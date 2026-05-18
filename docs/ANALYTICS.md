@@ -214,7 +214,9 @@ The Manage Entities panel (Schema tab) drives these via:
   prevents a food entity from hiding a brand or place that shares a name.
   Response includes `entities_auto_hidden` count for visibility.
 - PATCH `/api/datasets/[id]/entities/[slug]` — toggle `hidden`, edit aliases,
-  canonical, category.
+  canonical, category. Exposed in the Manage Entities panel via a per-row **Edit**
+  button that swaps the row for an in-place form (name input, category dropdown,
+  aliases textarea); Save round-trips PATCH and reloads the catalog.
 - DELETE `/api/datasets/[id]/entities/[slug]` — hard-delete (`source='manual'` only;
   discovered rows must be hidden to survive re-discovery).
 - POST `/api/datasets/[id]/entities/reset-discovered` — escape hatch that wipes every

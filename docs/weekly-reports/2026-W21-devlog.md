@@ -156,3 +156,18 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Net effect on Fleming's**: cloud now shows the same Filet Mignon=519, Prime Bone-In Ribeye=302, Prime Tomahawk=310 the pill list shows. Threshold of 10 mentions surfaces dozens of entities instead of 3. "Show all" still reveals the long tail.
 
 **Acknowledged shipped-with limitation**: EntityBreakdownDist (the compare chart) inherently computes per-group counts client-side — that's intrinsic to a "by group" breakdown, not a bug. Its `total rows` column does sum the visible per-group counts (which can differ from the scope-wide `entity.mentions`). Considering: relabel as "rows in visible groups" to remove ambiguity, but didn't change in this commit — Bucket C isn't the locus of the credibility issue the user named.
+
+## 2026-05-18 — Manage Entities: inline edit, column alignment, chart label
+
+**Why**: visual QC of the Manage Entities panel surfaced three small but real issues. (1) No edit affordance — Hide / Unhide / Delete were the only per-row actions, so the only way to fix a wrong canonical or add a missing alias was to delete and re-add. (2) Column alignment drifted across rows — each row was its own grid container with `auto` Actions column, and rows with Hide+Delete (manual) had a wider Actions column than rows with just Unhide (discovered), shifting every preceding fixed-width column. (3) `EntityBreakdownDist`'s "rows total" badge was ambiguous — it sums visible-group counts, not the scope-wide `entity.mentions`, but the label invited the same credibility complaint the cloud just got fixed for.
+
+**What changed**:
+- `components/analyze/ExtractEntitiesPanel.tsx`:
+  - Added per-row **Edit** button. Clicking it swaps the row in-place for a form (canonical input, category dropdown, aliases textarea). Save calls `PATCH /api/datasets/[id]/entities/[slug]` and reloads; Cancel reverts. Error feedback inline if Save fails.
+  - Grid template flipped from `'1fr 70px 90px 60px auto'` to `'minmax(0,1fr) 90px 110px 90px 200px'` — fixed Actions column kills the row-to-row drift even when the action set differs (Edit + Hide + Delete vs Edit + Unhide). Entity name + aliases get a two-line layout in COL 1 so wide alias lists don't push the row taller via inline wrapping. minmax(0,1fr) plus `minWidth: 0` on the inner flex enforces ellipsis instead of growing the column.
+  - Mentions count right-aligned, tabular-nums, bold. Category capitalised. Source badge unchanged styling.
+- `components/analyze/textmine/EntityBreakdownDist.tsx`: per-entity "rows total" badge relabeled "**in shown groups**" with a tooltip explaining the source-of-truth (scope-wide `entity.mentions` is on the pill list, not the chart). Same data, clearer meaning.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Edit flow round-trips PATCH endpoint; existing Hide/Unhide/Delete unchanged.
+
+**Next**: still pending QC — confirm the Manage panel renders aligned in browser, and that Edit round-trips on a real catalog row. Then push the accumulated commits.

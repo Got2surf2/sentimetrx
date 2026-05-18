@@ -93,6 +93,17 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
   const [resetConfirm, setResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
 
+  // Inline edit state — at most one row in edit mode at a time. Editing
+  // toggles the row from a display layout to a form layout; Save calls PATCH
+  // /entities/[slug]; Cancel reverts. Aliases are edited as comma-separated
+  // text to match the bulk-paste convention.
+  const [editSlug, setEditSlug] = useState<string | null>(null)
+  const [editCanonical, setEditCanonical] = useState('')
+  const [editCategory, setEditCategory] = useState<typeof CATEGORIES[number]>('food')
+  const [editAliases, setEditAliases] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
   async function loadPreview() {
     setLoading(true)
     setError('')
@@ -220,6 +231,43 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       await loadPreview()
     } finally {
       setRowBusy(null)
+    }
+  }
+
+  function startEdit(row: EntityRow) {
+    setEditSlug(row.slug)
+    setEditCanonical(row.canonical)
+    setEditCategory((CATEGORIES as readonly string[]).includes(row.category) ? (row.category as typeof CATEGORIES[number]) : 'other')
+    setEditAliases((row.aliases || []).join(', '))
+    setEditError('')
+  }
+
+  function cancelEdit() {
+    setEditSlug(null)
+    setEditError('')
+  }
+
+  async function saveEdit() {
+    if (!editSlug) return
+    const canonical = editCanonical.trim()
+    if (canonical.length < 2) { setEditError('Name must be at least 2 characters.'); return }
+    const aliases = editAliases.split(',').map(function(a) { return a.trim() }).filter(function(a) { return a.length >= 2 })
+    setEditSaving(true)
+    setEditError('')
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/entities/' + encodeURIComponent(editSlug), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canonical: canonical, category: editCategory, aliases: aliases }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Save failed')
+      setEditSlug(null)
+      await loadPreview()
+    } catch (err: any) {
+      setEditError(err?.message || 'Save failed')
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -435,61 +483,147 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
         </div>
       )}
 
-      {/* Row view (manage mode) — denser, with per-row controls */}
-      {manageOpen && !loading && !discovering && entities.length > 0 && (
+      {/* Row view (manage mode) — denser, with per-row controls.
+          Fixed-width columns + minmax(0,1fr) on the Entity column keep every
+          row's category/source/mentions/actions at the same X. Earlier
+          revisions used `auto` for the Actions column which let row-specific
+          button sets (Hide+Edit+Delete vs Unhide only) drift the rest. */}
+      {manageOpen && !loading && !discovering && entities.length > 0 && (function() {
+        const GRID = 'minmax(0,1fr) 90px 110px 90px 200px'
+        return (
         <div style={{ border: '1px solid ' + P.border, borderRadius: 8, overflow: 'hidden' as const }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 60px auto', gap: 0, fontSize: 10, fontWeight: 700, color: P.textFaint, padding: '6px 10px', background: P.bg, borderBottom: '1px solid ' + P.border, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 0, fontSize: 10, fontWeight: 700, color: P.textFaint, padding: '8px 12px', background: P.bg, borderBottom: '1px solid ' + P.border, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
             <div>Entity</div>
             <div>Category</div>
             <div>Source</div>
             <div style={{ textAlign: 'right' as const }}>Mentions</div>
-            <div style={{ textAlign: 'right' as const, paddingLeft: 8 }}>Actions</div>
+            <div style={{ textAlign: 'right' as const }}>Actions</div>
           </div>
-          <div style={{ maxHeight: 360, overflowY: 'auto' as const, background: P.white }}>
+          <div style={{ maxHeight: 420, overflowY: 'auto' as const, background: P.white }}>
             {entities.map(function(e) {
               const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
               const isManual = e.source === 'manual'
               const isHidden = !!e.hidden
               const busy = rowBusy === e.slug
+              const isEditing = editSlug === e.slug
+
+              if (isEditing) {
+                // ── Edit form replaces the row in-place ─────────────────────
+                return (
+                  <div key={e.slug}
+                    style={{
+                      padding: '10px 12px',
+                      borderBottom: '1px solid ' + P.border,
+                      background: P.accentBg,
+                      display: 'flex', flexDirection: 'column' as const, gap: 8,
+                    }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px', gap: 8, alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        value={editCanonical}
+                        onChange={function(ev) { setEditCanonical(ev.target.value) }}
+                        placeholder="Entity name"
+                        style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit', minWidth: 0 }}
+                      />
+                      <select
+                        value={editCategory}
+                        onChange={function(ev) { setEditCategory(ev.target.value as typeof CATEGORIES[number]) }}
+                        style={{ fontSize: 12, padding: '6px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit' }}>
+                        {CATEGORIES.map(function(c) { return <option key={c} value={c}>{c}</option> })}
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: P.textFaint, marginBottom: 4 }}>Aliases (comma-separated)</div>
+                      <textarea
+                        value={editAliases}
+                        onChange={function(ev) { setEditAliases(ev.target.value) }}
+                        rows={2}
+                        placeholder="filet, the filet, mignon"
+                        style={{ width: '100%', fontSize: 12, padding: '6px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit', boxSizing: 'border-box' as const, resize: 'vertical' as const }}
+                      />
+                    </div>
+                    {editError && (
+                      <div style={{ fontSize: 11, color: P.danger }}>{editError}</div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' as const, gap: 6 }}>
+                      <button
+                        onClick={cancelEdit}
+                        disabled={editSaving}
+                        style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: P.white, color: P.textMid, border: '1px solid ' + P.border, cursor: editSaving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                        Cancel
+                      </button>
+                      <button
+                        onClick={saveEdit}
+                        disabled={editSaving || editCanonical.trim().length < 2}
+                        style={{
+                          fontSize: 11, fontWeight: 600, padding: '5px 14px', borderRadius: 6,
+                          background: (editSaving || editCanonical.trim().length < 2) ? P.bg : P.accent,
+                          color: (editSaving || editCanonical.trim().length < 2) ? P.textFaint : P.white,
+                          border: '1px solid ' + ((editSaving || editCanonical.trim().length < 2) ? P.border : P.accent),
+                          cursor: (editSaving || editCanonical.trim().length < 2) ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                        }}>
+                        {editSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+
+              // ── Display row ─────────────────────────────────────────────
               return (
                 <div key={e.slug}
                   style={{
-                    display: 'grid', gridTemplateColumns: '1fr 70px 90px 60px auto',
-                    gap: 0, fontSize: 11,
-                    padding: '7px 10px',
+                    display: 'grid', gridTemplateColumns: GRID,
+                    gap: 0, fontSize: 12,
+                    padding: '9px 12px',
                     borderBottom: '1px solid ' + P.border,
                     background: isHidden ? P.bg : P.white,
                     opacity: isHidden ? 0.6 : 1,
                     alignItems: 'center',
                   }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <span style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, color: P.text, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={e.canonical}>{e.canonical}</span>
-                    {e.aliases && e.aliases.length > 0 && (
-                      <span style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={'Aliases: ' + e.aliases.join(', ')}>
-                        ({e.aliases.slice(0, 3).join(', ')}{e.aliases.length > 3 ? '…' : ''})
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, minWidth: 0, gap: 1 }}>
+                      <span style={{ fontWeight: 600, color: P.text, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={e.canonical}>{e.canonical}</span>
+                      {e.aliases && e.aliases.length > 0 && (
+                        <span style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={'Aliases: ' + e.aliases.join(', ')}>
+                          {e.aliases.slice(0, 4).join(', ')}{e.aliases.length > 4 ? ' +' + (e.aliases.length - 4) + ' more' : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ color: P.textMid }}>{e.category}</div>
+                  <div style={{ color: P.textMid, textTransform: 'capitalize' as const }}>{e.category}</div>
                   <div>
                     <span style={{
-                      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                       background: isManual ? P.accentBg : P.bg,
                       color: isManual ? P.accent : P.textMute,
                       border: '1px solid ' + (isManual ? P.accent + '40' : P.border),
+                      letterSpacing: 0.2,
                     }}>
                       {isManual ? 'manual' : 'discovered'}
                     </span>
                   </div>
-                  <div style={{ textAlign: 'right' as const, color: P.textMid, fontVariantNumeric: 'tabular-nums' }}>{e.mentions.toLocaleString()}</div>
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' as const, paddingLeft: 8 }}>
+                  <div style={{ textAlign: 'right' as const, color: P.text, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{e.mentions.toLocaleString()}</div>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' as const }}>
+                    <button
+                      onClick={function() { startEdit(e) }}
+                      disabled={busy}
+                      title="Edit name, category, and aliases"
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 5,
+                        background: P.white, color: P.textMid,
+                        border: '1px solid ' + P.border, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                      }}>
+                      Edit
+                    </button>
                     <button
                       onClick={function() { toggleHidden(e) }}
                       disabled={busy}
                       title={isHidden ? 'Unhide (visible in cloud / compare / drill)' : 'Hide (excluded from cloud / compare / drill; survives re-discovery)'}
                       style={{
-                        fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
+                        fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 5,
                         background: P.white, color: P.textMid,
                         border: '1px solid ' + P.border, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
                       }}>
@@ -501,7 +635,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                         disabled={busy}
                         title="Delete this manual entry (cannot undo)"
                         style={{
-                          fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
+                          fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 5,
                           background: P.white, color: P.danger,
                           border: '1px solid #fecaca', cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
                         }}>
@@ -514,7 +648,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
             })}
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Reset-discovered escape hatch — admin action, two-step confirm */}
       {manageOpen && !loading && !discovering && (

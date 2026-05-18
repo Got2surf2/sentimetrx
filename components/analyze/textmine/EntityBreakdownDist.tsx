@@ -358,8 +358,8 @@ export default function EntityBreakdownDist({
                   <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '40' }}>
                     {x.entity.category}
                   </span>
-                  <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 'auto' as const }}>
-                    {x.total.toLocaleString()} rows total
+                  <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 'auto' as const }} title="Sum of mentions across the breakdown groups shown below — not the scope-wide total. The scope-wide mention count is on the Entities pill list.">
+                    {x.total.toLocaleString()} in shown groups
                   </span>
                   {onDrillEntity && (
                     <button
