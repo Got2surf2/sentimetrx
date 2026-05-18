@@ -340,6 +340,18 @@ Returns `{ processed: number, results: [{ botId, name, sessions, drift }] }` on 
 
 **There is no end-user authentication.** Sessions are identified by a client-generated `session_id` (`crypto.randomUUID()` stored in localStorage).
 
+### Two-step opener (askName flow)
+
+When `config.askName !== false` (the default), the widget asks the user's name and the topical opener as **two separate** assistant messages, not one concatenated double-question:
+
+1. **Message 1** — name-only ask, rendered client-side: `"Hi, I'm <config.name>! What's your name?"`
+2. **User** replies with their name. The client validates it (length 1–40, no profanity/slurs) and title-cases it.
+3. **Message 2** — topical opener. For English, rendered client-side as `"Nice to meet you, <name>. <config.initialMessage>"`. For non-English languages, the client calls `/api/bots/[id]/chat` once to translate `config.initialMessage` into the selected language and personalize it with the user's name.
+
+The first three messages (name-ask + name reply + topical opener) are tracked in `nameExchangeMessages` state and **sliced out** of every subsequent API call, so the server sees a clean conversation starting with the topical opener as turn 0 and the user's first real message as turn 1. This keeps `userTurnCount`-based features (`askProfile` profile-question injection in particular) firing on the correct turn.
+
+When `askName === false`, the topical opener (`config.initialMessage`) is the very first message and the name capture step is skipped (`userName` is initialised to `'_skip'`).
+
 ### Mandatory "Powered by DATANAUTIX" badge
 
 Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a hardcoded "powered by DATANAUTIX" wordmark stacked in the chat header (linking to `https://www.datanautix.com`), plus a "Powered by Datanautix" line in the footer area. It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the platform. The customer's own `websiteLabel` link (when configured) sits to its left.

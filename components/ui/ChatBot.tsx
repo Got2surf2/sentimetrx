@@ -118,10 +118,14 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [selectedLang, setSelectedLang] = useState<string | null>(multiLang ? null : (config.language || 'en'))
   const isNonEnglish = selectedLang !== null && selectedLang !== 'en'
 
+  // Opener flow: when askName is on, the FIRST message is a name-only ask;
+  // the topical opener (config.initialMessage) is rendered as the SECOND message
+  // after the user provides their name. Two clean prompts instead of one flaky
+  // double-question.
   const EN_INITIAL: Message = {
     role: 'assistant',
     content: askName
-      ? (config.initialMessage || ("Hi, I'm " + config.name + "!")) + " What's your name?"
+      ? "Hi, I'm " + (config.name || 'there') + "! What's your name?"
       : config.initialMessage,
   }
   const [messages, setMessages] = useState<Message[]>([EN_INITIAL])
@@ -131,6 +135,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [demoMode, setDemoMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
   const [userName, setUserName] = useState<string | null>(askName ? null : '_skip')
+  // Number of leading messages that belong to the name-capture exchange
+  // (name-ask + user's name reply + topical opener). When > 0, the API call
+  // for the user's first real message slices past these so the server sees
+  // a clean turn 1.
+  const [nameExchangeMessages, setNameExchangeMessages] = useState(0)
   // Tracks whether the user has sent their first "real" topic message
   // (not the name-capture step). Used solely to gate the suggestion chips
   // — chips show until the first real message, then disappear. The previous
@@ -168,6 +177,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setLoading(false)
     setUserName(askName ? null : '_skip')
     setHasFirstMessage(false)
+    setNameExchangeMessages(0)
     if (multiLang) setSelectedLang(null)
   }
   const rootRef = useRef<HTMLDivElement>(null)
@@ -232,17 +242,43 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       } else {
         const cleanName = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
         setUserName(cleanName)
-        // Always call the API for name greeting — lets the server inject profile question if enabled
-        setLoading(true)
-        fetch(config.apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [{ role: 'assistant', content: config.initialMessage }, { role: 'user', content: cleanName }], session_id: sessionId, language: selectedLang || 'en', user_name: cleanName }),
-        }).then(r => r.json()).then(data => {
-          setMessages(prev => [...prev, { role: 'assistant', content: data.reply || ('Great to meet you, ' + cleanName + '! How can I help you today?') }])
-        }).catch(function() {
-          setMessages(prev => [...prev, { role: 'assistant', content: 'Great to meet you, ' + cleanName + '! How can I help you today?' }])
-        }).finally(() => setLoading(false))
+        // Two-step opener: name-ask was step 1; now show the topical opener
+        // (config.initialMessage) as step 2. For English, render directly — no
+        // API call needed. For non-English, ask the API to translate the opener
+        // into the selected language and personalize it with the user's name.
+        if (isNonEnglish) {
+          setLoading(true)
+          fetch(config.apiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [{ role: 'user', content: 'The user just told you their name is "' + cleanName + '". Greet them warmly by name in one short sentence, then ask this opening question (translated naturally into the target language): "' + config.initialMessage + '". Return only the greeting + question, nothing else.' }],
+              session_id: sessionId,
+              language: selectedLang,
+              user_name: cleanName,
+            }),
+          }).then(r => r.json()).then(data => {
+            setMessages(prev => {
+              const next = [...prev, { role: 'assistant' as const, content: data.reply || (cleanName + ', ' + config.initialMessage) }]
+              setNameExchangeMessages(next.length - 1)
+              return next
+            })
+          }).catch(function() {
+            setMessages(prev => {
+              const next = [...prev, { role: 'assistant' as const, content: cleanName + ', ' + config.initialMessage }]
+              setNameExchangeMessages(next.length - 1)
+              return next
+            })
+          }).finally(() => setLoading(false))
+        } else {
+          setMessages(prev => {
+            const next = [...prev, { role: 'assistant' as const, content: 'Nice to meet you, ' + cleanName + '. ' + config.initialMessage }]
+            // Drop the name-ask (idx 0) and name reply (idx 1) from future API
+            // calls. Keep the topical opener (idx 2) as conversation context.
+            setNameExchangeMessages(next.length - 1)
+            return next
+          })
+        }
       }
       setTimeout(() => inputRef.current?.focus(), 100)
       return
@@ -256,10 +292,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setHasFirstMessage(true)
 
     try {
-      // Filter out the name-ask exchange from API messages to keep context clean
-      const apiMessages = newMessages
-        .filter(m => m.content !== EN_INITIAL.content)
-        .map(m => ({ role: m.role, content: m.content }))
+      // Drop the name-ask exchange from API messages so the server sees a clean
+      // conversation starting with the topical opener (askName flow) or with
+      // the user's first message (askName=false flow).
+      const apiMessages = (nameExchangeMessages > 0
+        ? newMessages.slice(nameExchangeMessages)
+        : newMessages.filter(m => m.content !== EN_INITIAL.content)
+      ).map(m => ({ role: m.role, content: m.content }))
 
       const res = await fetch(config.apiEndpoint, {
         method: 'POST',
