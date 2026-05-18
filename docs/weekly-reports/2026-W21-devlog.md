@@ -63,3 +63,19 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Menu seed verified in prod via the verify SELECT in the SQL file (52 food manual + 26 drink manual present, alongside reduced discovered counts).
 
 **Next**: Bucket B (entity cloud + per-entity sentiment using the clause-aware proximity scan).
+
+## 2026-05-18 — Entity Clouds + per-entity sentiment (Bucket B)
+
+**Why**: the pill list answers "what entities are mentioned" but not "how big is each in this view" or "how does sentiment feel per entity." The cloud is the visual layer themes already had at `components/analyze/textmine/WordCloud.tsx`; the entity catalog deserves the same. Per-entity sentiment is the bigger value — it's the answer to "is the steak getting good or bad reviews" without anyone reading 200 rows.
+
+**What changed**:
+- `components/analyze/textmine/EntityCloud.tsx` (new, ~280 lines): renders the scope's catalog as a sized + colored cloud. Two color modes — Category and Sentiment. Category chips at the top dim out everything not in the chip's category (mirrors WordCloud's theme-chip dimming). Words sized by per-entity row count *within the currently-filtered view* — so the cloud answers questions about the user's current slice, not the scope total. Click any entity → `handleDrillEntity` (existing wiring opens the EntityCommentsPanel modal with the rows that mention it).
+- Sentiment algorithm: per row → split text into clauses on `but / however / although / yet / though / while / whereas / comma` → for each clause, alternation-regex detect every entity term (canonical + aliases + plural variants from `lib/entityVariants.ts::expandEntityTerms`) → count opinion-word hits in the clause's tokens → credit each entity in that clause with the clause's pos/neg counts. Mixed-sentiment rows ("loved the steak but hated the wait") split correctly because the clause boundary is the credit boundary. Cheaper than WordCloud's per-token proximity scan and more apt for entities (the entity is usually the subject of its clause, so the whole clause's opinion words apply, not just neighbors).
+- `components/analyze/TextMineModule.tsx`: dynamic-imports `EntityCloud` (parallel to `WordCloud`), mounts it below WordCloud inside the `subTab === 'clouds'` branch behind an `entityCatalogRows.length > 0 && effectiveFields.length > 0` guard. Passes `parsedData=filteredRows` so the cloud respects current filters.
+- `docs/ANALYTICS.md`: "Where entities show up" entry for TextMine → Clouds documents the new view + sentiment method. Schema-tab entry updated to mention preview/manage modes.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC on the Fleming's dataset pending (would benefit from rendering the Clouds tab with the menu seed live).
+
+**Performance notes**: single alternation regex built once per useMemo; O(rows × regex pass) for both freq and sentiment scans. 45K rows × ~100 entity terms expected to run in <500ms on the existing TextMine "rows loaded client-side" model. If this becomes a bottleneck above 100K rows, fold both passes into one and move the regex build behind a useDeferredValue.
+
+**Next**: Bucket C (entity compare chart by group) and/or Bucket D (View by Theme | Entity toggle at the TextMine module top). With the cloud + sentiment live, the compare chart is the missing visualization piece before we can claim a full theme-functionality mirror.

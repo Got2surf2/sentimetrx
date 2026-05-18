@@ -63,6 +63,19 @@ const WordCloud = dynamic(
     },
   }
 )
+const EntityCloud = dynamic(
+  function() { return import('@/components/analyze/textmine/EntityCloud') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+          <LottieLoader size={48} />
+        </div>
+      )
+    },
+  }
+)
 const CommentsPanel = dynamic(
   function() { return import('@/components/analyze/textmine/CommentsPanel') },
   {
@@ -2244,6 +2257,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       hiddenFields={hiddenFields}
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
+                  )}
+                  {/* ── Entity Clouds ── same page as theme clouds; reuses the
+                       fetched entity catalog + the filtered row set for live
+                       per-entity counts and clause-aware sentiment. */}
+                  {entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
+                    <>
+                      <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '32px 0 16px' }}>Entity Clouds</h2>
+                      <EntityCloud
+                        entities={entityCatalogRows}
+                        parsedData={filteredRows}
+                        fields={effectiveFields}
+                        scopeType={entityCatalogScopeType}
+                        onEntityClick={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
+                      />
+                    </>
                   )}
                   </>
                 ) : hasThemes && themes && !rowsLoaded ? (

@@ -216,13 +216,24 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
   recheck as counting). `?limit` default 100 / max 500, `?offset`.
 
 ### Where entities show up
-- **Schema tab** — one per-dataset panel: Discover button, last-discovery timestamp,
-  catalog size, top-12 chip preview with live counts + category dots.
+- **Schema tab** — one per-dataset panel with two modes. Preview mode shows
+  last-discovery timestamp, catalog size, and a top-12 chip preview with live
+  counts + category dots. Manage mode (`?manage=1`) surfaces the full catalog
+  (including hidden rows + source flag) with per-row hide/unhide, single-add
+  form, bulk-paste textarea, and the "Reset discovered" admin action.
 - **TextMine → Themes tab** — a dedicated **Entities card** (`components/analyze/
   EntitiesCard.tsx`), scope-wide, grouped by category. Pills are styled like the theme
   keyword pills; clicking one opens a modal of the comments that mention it (via
   `rows-by-entity`). Entities are *not* shown per-theme-card — dishes co-occur with every
   theme, so a per-card list just repeated the same entities and added clutter.
+- **TextMine → Clouds tab** — **Entity Clouds** (`components/analyze/textmine/
+  EntityCloud.tsx`), rendered below the Theme Clouds. Words sized by per-entity
+  row count within the currently-filtered view, colored by category or by sentiment.
+  Sentiment is computed via a clause-aware proximity scan (text split on
+  but / however / although / yet / though / while / whereas / comma; opinion-word
+  hits in each clause credited to every entity that appears in that clause).
+  Category chips at the top filter the cloud; click any entity to drill into
+  its comments (same flow as the pill list).
 - **Ask Ana** — top 40 entities grouped by category appended to the system prompt.
 
 ### Tables (migrations 060–066)
