@@ -486,7 +486,10 @@ Where we are vs. common frameworks (none formally certified yet):
 | PCI DSS | Not in scope — no card data; payments will route via Stripe-hosted checkout when payments ship |
 
 **Customer-facing artifacts available on request:**
-- This document
+- `docs/SECURITY_OVERVIEW.md` — sanitized buyer-facing summary
+- `docs/DATA_FLOW.md` — actors, subprocessors, AI inference flow
+- `docs/CAIQ_LITE.md` — filled CAIQ-Lite self-assessment
+- This document (internal policy — under NDA)
 - `docs/AUDIT_FRAMEWORK.md`
 - `docs/AUDIT_2026_Q1.md`
 - `docs/security-review-2026-05-09.md`
