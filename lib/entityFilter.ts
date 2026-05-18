@@ -178,6 +178,11 @@ export interface EntityWithCount {
   /** Live full-text row count. Named `mentions` for back-compat with the
    *  theme-card + Schema-panel UI that already reads this field. */
   mentions:  number
+  /** Present only when getEntitiesWithCounts is called with includeHidden=true
+   *  (the Manage Entities panel). UI uses this to badge manual vs discovered
+   *  and to surface hide/unhide state. */
+  source?:   'discovered' | 'manual'
+  hidden?:   boolean
 }
 
 export interface EntitiesResult {
@@ -198,25 +203,34 @@ export async function getEntitiesWithCounts(opts: {
   themeKeywords?: string[]
   limit?:        number
   catalogLimit?: number
+  /** Manage Entities panel only. When true the read includes hidden rows
+   *  and returns source/hidden flags so the UI can show curation state.
+   *  All other callers (cloud, compare, drill) leave this off. */
+  includeHidden?: boolean
 }): Promise<EntitiesResult | { notFound: true }> {
-  const { service, datasetId } = opts
+  const { service, datasetId, includeHidden } = opts
   const limit        = Math.min(Math.max(opts.limit ?? 50, 1), 200)
   const catalogLimit = Math.min(Math.max(opts.catalogLimit ?? 300, 1), 500)
 
   const scope = await resolveEntityScope(service, datasetId)
   if (!scope.found) return { notFound: true }
 
-  // Catalog for this scope, most-sampled first.
-  const { data: catalog } = await service
+  // Catalog for this scope, most-sampled first. hidden rows are soft-deleted
+  // (lib/entityDiscovery.ts skips them on upsert; we drop them here so they
+  // never reach cloud / compare / drill UI). Manage Entities passes
+  // includeHidden=true to surface them for unhide/edit.
+  let catalogQuery = service
     .from('entity_catalog')
-    .select('slug, canonical, category, aliases, sample_count')
+    .select('slug, canonical, category, aliases, sample_count, source, hidden')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
     .order('sample_count', { ascending: false })
     .limit(catalogLimit)
+  if (!includeHidden) catalogQuery = catalogQuery.eq('hidden', false)
+  const { data: catalog } = await catalogQuery
 
   const entries = (catalog || []) as Array<{
-    slug: string; canonical: string; category: string; aliases: string[]; sample_count: number
+    slug: string; canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean
   }>
 
   // Latest refresh audit row — drives the "last refreshed" UI.
@@ -254,9 +268,11 @@ export async function getEntitiesWithCounts(opts: {
     }
   }
 
-  // Attach counts; drop zero-count entries — discovery sometimes surfaces a
-  // canonical too generic to match cleanly. The catalog self-heals on the
-  // next discovery run; meanwhile the UI only shows entities actually present.
+  // Attach counts. Default reads drop zero-count entries — discovery
+  // sometimes surfaces a canonical too generic to match cleanly, and the
+  // catalog self-heals on the next discovery run. Manage Entities keeps
+  // zeros visible so the user can see (and curate) entries that aren't yet
+  // matching against any row.
   const withCounts: EntityWithCount[] = entries
     .map(e => ({
       slug:      e.slug,
@@ -264,8 +280,9 @@ export async function getEntitiesWithCounts(opts: {
       category:  e.category,
       aliases:   e.aliases || [],
       mentions:  countByTerm.get(queryByEntity.get(e.slug) || '') || 0,
+      ...(includeHidden ? { source: (e.source as 'discovered' | 'manual') || 'discovered', hidden: !!e.hidden } : {}),
     }))
-    .filter(e => e.mentions > 0)
+    .filter(e => includeHidden || e.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
 
   const categoryAgg = new Map<string, number>()

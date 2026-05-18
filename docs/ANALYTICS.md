@@ -116,9 +116,10 @@ the brand-collection and syncs membership via DB triggers (migrations 060–062)
 fed to NER (they produce noise like "Florida" or "Texas"). Each open-ended field carries
 an opt-out flag, toggled per-field on the **Schema tab**: absent/true = included,
 `false` = skipped. `eligibleEntityFields()` resolves the set; a dataset with none
-selected contributes nothing. **Manual** runs (the Schema-tab "Discover" button) clear
-the scope's catalog first and rebuild — this is how a polluted catalog (entities found
-before field-selection existed) gets cleaned up. Cron / incremental modes accumulate.
+selected contributes nothing. **All discovery modes are additive** (manual, cron,
+incremental) — a re-run never wipes existing entries. Catalog cleanup is the explicit
+"Reset discovered entries" action (POST `/api/datasets/[id]/entities/reset-discovered`),
+which only deletes `source='discovered'` rows so hand-curated entries survive.
 
 **Subject context**: field selection stops *structured* location columns from reaching
 NER, but the subject brand and its cities are also genuinely written into review prose
@@ -167,10 +168,38 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   not refreshed on a schedule (bounds AI cost; brand-level analysis is the use case).
 - A run samples ≤1000 rows (default 500); ballpark a few cents per run.
 
+### Manual catalog curation (migration 073)
+The catalog is no longer NER-only. Two columns on `entity_catalog` separate curation
+from discovery:
+- `source` (`'discovered'` | `'manual'`, default `'discovered'`) — discovery upserts
+  never overwrite `manual` rows; the "Reset discovered entries" action only deletes
+  `discovered` rows.
+- `hidden` (boolean, default `false`) — soft-delete flag. Hidden rows are excluded
+  from cloud / compare / drill reads (`getEntitiesWithCounts` filters them out unless
+  `includeHidden=true`) and `lib/entityDiscovery.ts` skips them on re-discovery upsert,
+  so NER noise stays hidden across runs.
+
+The Manage Entities panel (Schema tab) drives these via:
+- POST `/api/datasets/[id]/entities` — single or bulk create with `source='manual'`.
+  Accepts `{ canonical, category?, aliases? }` or `{ entities: [...] }`. Bulk paste
+  format is `Canonical | category | alias1, alias2` per line.
+- PATCH `/api/datasets/[id]/entities/[slug]` — toggle `hidden`, edit aliases,
+  canonical, category.
+- DELETE `/api/datasets/[id]/entities/[slug]` — hard-delete (`source='manual'` only;
+  discovered rows must be hidden to survive re-discovery).
+- POST `/api/datasets/[id]/entities/reset-discovered` — escape hatch that wipes every
+  `source='discovered'` row in the scope; manual rows survive.
+
+Menu-PDF seeding is the canonical brand-bootstrap workflow: dump a menu PDF into
+Claude Code, extract dishes / drinks with categories + aliases, POST to the bulk
+endpoint. The brand-collection scope means one POST seeds every dataset in the brand.
+
 ### Read APIs (all scope-resolving)
 - `GET /api/datasets/[datasetId]/entities` → catalog entities with live counts + category
   rollup + `last_refresh`. `?theme=<themeId>` intersects counts with the theme's
-  keywords; `?limit=<n>` default 50, max 200.
+  keywords; `?limit=<n>` default 50, max 200. `?manage=1` returns the full catalog
+  including hidden rows, with `source` + `hidden` flags on each entry (drives the
+  Manage Entities panel).
 - `GET /api/datasets/[datasetId]/rows-by-entity?entity=<slug>` → the rows mentioning one
   entity, across the scope's members (via the `get_rows_by_entity` RPC, same open-ended
   recheck as counting). `?limit` default 100 / max 500, `?offset`.
@@ -205,6 +234,10 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   `top_entities_for_theme()`, and `datasets.entity_extraction_state` are gone. App
   reads exclusively from the catalog + live `count_entity_terms()`. (067 = review-download
   limits, 068 = response-timestamp backfill.)
+- **Manual curation (migration 073):** `entity_catalog.source` + `hidden` columns.
+  Discovery is fully additive; hand-curated entries survive re-runs; hidden rows stay
+  hidden across runs (NER skips them on upsert). Manage Entities panel + bulk-import
+  endpoint enable menu-PDF seeding as the brand bootstrap path.
 
 ### Existing deck export
 `/api/entity-analysis-deck?dataset=X&field=Y` predates the in-product feature and still

@@ -419,28 +419,26 @@ export async function discoverEntities(opts: {
     ? opts.sampleDatasetIds
     : scope.memberDatasetIds
 
-  // Manual runs rebuild the scope's catalog from scratch: this is how a user
-  // clears entities discovered before field-selection existed (e.g. location
-  // noise from a categorical column). Cron / incremental modes accumulate.
-  if (mode === 'manual') {
-    await service
-      .from('entity_catalog')
-      .delete()
-      .eq('scope_type', scope.scopeType)
-      .eq('scope_id', scope.scopeId)
-  }
+  // All modes are additive. The "Reset discovered entries" action is a
+  // separate, explicit endpoint — re-running discovery never destroys
+  // hand-curated (source='manual') rows, and never resurfaces entries a
+  // user has hidden.
 
   // Existing catalog — for before/new counts and alias/sample-count merge.
+  // Includes source + hidden so the upsert pass can skip manual rows entirely
+  // and leave hidden rows alone (no count bump, no un-hide).
   const { data: existing } = await service
     .from('entity_catalog')
-    .select('slug, canonical, category, aliases, sample_count')
+    .select('slug, canonical, category, aliases, sample_count, source, hidden')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
-  const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number }>()
+  const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean }>()
   for (const e of (existing || []) as any[]) {
     existingBySlug.set(e.slug, {
       canonical: e.canonical, category: e.category,
       aliases: e.aliases || [], sample_count: e.sample_count || 0,
+      source: e.source || 'discovered',
+      hidden: !!e.hidden,
     })
   }
   const entitiesBefore = existingBySlug.size
@@ -542,16 +540,35 @@ export async function discoverEntities(opts: {
   // First canonical/category wins (avoids flapping on re-discovery); aliases
   // union; sample_count accumulates. first_seen_at/id omitted so upsert keeps
   // them on conflict and defaults them on insert.
+  //
+  // Skip rows whose existing entry is source='manual' (hand-curated — discovery
+  // never overwrites curation) or hidden=true (user said "don't surface this",
+  // resurfacing it would defeat the soft-delete). The slug stays out of the
+  // upsert payload entirely.
   const nowIso = new Date().toISOString()
   let entitiesNew = 0
-  const upsertRows = discoveredList.map(([slug, disc]) => {
+  let skippedManual = 0
+  let skippedHidden = 0
+  const upsertRows: Array<{
+    scope_type: 'dataset' | 'collection'
+    scope_id: string
+    canonical: string
+    slug: string
+    category: string
+    aliases: string[]
+    sample_count: number
+    last_seen_at: string
+  }> = []
+  for (const [slug, disc] of discoveredList) {
     const prev = existingBySlug.get(slug)
+    if (prev?.source === 'manual') { skippedManual += 1; continue }
+    if (prev?.hidden)              { skippedHidden += 1; continue }
     if (!prev) entitiesNew += 1
     const aliasUnion = Array.from(new Set([
       ...(prev?.aliases || []),
       ...Array.from(disc.aliases),
     ])).slice(0, MAX_ALIASES)
-    return {
+    upsertRows.push({
       scope_type:   scope.scopeType,
       scope_id:     scope.scopeId,
       canonical:    prev?.canonical || disc.canonical,
@@ -560,8 +577,8 @@ export async function discoverEntities(opts: {
       aliases:      aliasUnion,
       sample_count: (prev?.sample_count || 0) + disc.sampleCount,
       last_seen_at: nowIso,
-    }
-  })
+    })
+  }
 
   for (let i = 0; i < upsertRows.length; i += 200) {
     const chunk = upsertRows.slice(i, i + 200)

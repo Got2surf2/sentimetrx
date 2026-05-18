@@ -26,3 +26,23 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 - Vindman agent (`bots.id = 78991aa1-…`) DB updates: `name`/`config.name` → `Axel`, `config.subtitle` → `Vindman for Senate`, `config.initialMessage` → `"Thanks for stopping by. What's on your mind?"`, full rewrite of `system_prompt` + `personality` from first-person avatar to third-person campaign surrogate ("Alex served…", "the colonel has said…"). Slug stays `alexvindman` (public URL).
 
 **Next**: QA the two-step opener on a couple of agents in production. Revisit Sonnet 4.6 → `fast` revert in the chat route once the Tuesday demo is past.
+
+## 2026-05-18 — Entity catalog: manual curation + soft-delete (Bucket A of entity-views build)
+
+**Why**: brand-level entity catalogs need a curation seam. NER discovery is sample-bound (default 500 rows) and produces both gaps (menu items the sample never saw) and noise (generic nouns slipping past the strict prompt). The pre-existing "Re-discover" button wiped the whole scope's catalog before rebuild, so any future hand-curation would have been destroyed on the next click. This blocks the broader entity-views feature (cloud, compare, sentiment) because there's no point visualising a catalog the user can't trust.
+
+**What changed**:
+- `sql/073_entity_catalog_source_hidden.sql`: adds `source TEXT NOT NULL DEFAULT 'discovered' CHECK IN ('discovered','manual')` and `hidden BOOLEAN NOT NULL DEFAULT false`, plus a partial index `WHERE hidden=false` for the read filter. Applied to prod.
+- `lib/entityDiscovery.ts`: drops the manual-mode DELETE entirely — all discovery modes are now additive. Upsert pass skips rows where existing `source='manual'` (curation never overwritten) and where `hidden=true` (NER cannot resurface what a user hid). Tracks `skippedManual` / `skippedHidden` counts.
+- `lib/entityFilter.ts`: `getEntitiesWithCounts` gains `includeHidden?: boolean`. Default reads hide soft-deleted entries; the Manage panel passes `true` to surface them with `source` + `hidden` flags. Zero-count rows are now retained when `includeHidden` so empty-but-curated entries are visible.
+- New API endpoints:
+  - `POST /api/datasets/[id]/entities` — single or bulk create. Accepts `{canonical,category?,aliases?}` or `{entities:[...]}` (max 500). Auth via `getCallerOrgContext` + paired `id+org_id` (CLAUDE.md multi-tenancy rule). Logs to `entity_catalog_refresh`.
+  - `PATCH /api/datasets/[id]/entities/[slug]` — toggle hidden, edit canonical / category / aliases.
+  - `DELETE /api/datasets/[id]/entities/[slug]` — hard-delete `source='manual'` rows only; discovered rows must use hidden.
+  - `POST /api/datasets/[id]/entities/reset-discovered` — escape hatch, only wipes `source='discovered'`.
+- `components/analyze/ExtractEntitiesPanel.tsx`: adds a "Manage" toggle that swaps the panel from top-12 pill preview to a denser row view with per-row hide/unhide + delete (manual only), inline single-add form, bulk-paste textarea (`Canonical | category | alias1, alias2` per line), and a two-step-confirmed "Reset discovered" admin button. Uses the existing `LottieLoader`.
+- `docs/ANALYTICS.md`: Entity Discovery section updated — discovery is fully additive, new "Manual catalog curation" subsection documents the API surface and the menu-PDF seeding workflow, migration 073 added to the migrations list.
+
+**Brand bootstrap workflow this unblocks**: drop a menu PDF into Claude Code, extract dishes / drinks with categories + aliases, POST to the bulk endpoint. Because the catalog is brand-collection-scoped, one POST seeds every dataset under the brand. Re-discovery then accumulates the long tail (competitors, people, off-menu items) on top without ever touching the menu seed.
+
+**Next (Bucket B-F of entity-views build)**: entity cloud (`EntityCloud.tsx` mirroring `WordCloud.tsx`), per-entity sentiment (adapt the clause-aware proximity scan at `WordCloud.tsx:206-240` for multi-word entity spans + alias expansion), entity compare chart (fork or generalise `BreakdownDist.tsx`), `View by Theme | Entity` toggle at the TextMine module top, category-restricted monthly discovery (skip food/drink once menu seed exists), person-at-collection suppression.

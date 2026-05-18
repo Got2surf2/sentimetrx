@@ -1,14 +1,23 @@
 'use client'
 
 // components/analyze/ExtractEntitiesPanel.tsx
-// One panel per dataset on the Schema tab. Triggers entity *discovery* for
-// the dataset's scope (its own catalog, or the shared brand-/collection
-// catalog it belongs to), shows the last-discovery state, and previews the
-// top entities with LIVE full-text counts.
+// One panel per dataset on the Schema tab. Two modes:
+//   Preview — shows the last-discovery state and the top entities with LIVE
+//             full-text counts. Re-discover button kicks NER.
+//   Manage  — full catalog with hide/unhide/edit per row, single-add form,
+//             bulk-paste textarea, and a "Reset discovered" admin action.
+//             Manual entries (source='manual') survive discovery; hidden
+//             rows stay hidden across runs (lib/entityDiscovery.ts skips
+//             them on upsert).
 //
 // Backend:
-//   POST /api/datasets/[id]/discover-entities
-//   GET  /api/datasets/[id]/entities?limit=12
+//   GET    /api/datasets/[id]/entities                — preview top entities
+//   GET    /api/datasets/[id]/entities?manage=1       — full catalog incl. hidden
+//   POST   /api/datasets/[id]/entities                — single or bulk create
+//   PATCH  /api/datasets/[id]/entities/[slug]         — hide/unhide / edit
+//   DELETE /api/datasets/[id]/entities/[slug]         — hard-delete manual only
+//   POST   /api/datasets/[id]/entities/reset-discovered — wipe discovered rows
+//   POST   /api/datasets/[id]/discover-entities       — run NER discovery
 
 import { useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -17,7 +26,10 @@ interface EntityRow {
   slug:      string
   canonical: string
   category:  string
+  aliases?:  string[]
   mentions:  number
+  source?:   'discovered' | 'manual'
+  hidden?:   boolean
 }
 
 interface LastRefresh {
@@ -41,9 +53,12 @@ const P = {
   textFaint: '#9ca3af',
   accent:    '#e8622a',
   accentBg:  '#fff4ef',
+  danger:    '#dc2626',
+  dangerBg:  '#fef2f2',
 }
 
 // Categories from lib/entityDiscovery.ts: food | drink | place | person | brand | other
+const CATEGORIES = ['food', 'drink', 'place', 'person', 'brand', 'other'] as const
 const CATEGORY_COLOR: Record<string, string> = {
   food:   '#EA580C',
   drink:  '#7C3AED',
@@ -63,11 +78,27 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
   const [scopeType, setScopeType]   = useState<'dataset' | 'collection' | null>(null)
   const [lastRefresh, setLastRefresh] = useState<LastRefresh | null>(null)
 
+  // Manage mode: fetches catalog with ?manage=1 (includes hidden, returns
+  // source flag). Preview mode keeps the cheap top-12 read.
+  const [manageOpen, setManageOpen] = useState(false)
+  const [addCanonical, setAddCanonical] = useState('')
+  const [addCategory, setAddCategory] = useState<typeof CATEGORIES[number]>('food')
+  const [addAliases, setAddAliases] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState('')
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [bulkResult, setBulkResult] = useState<string | null>(null)
+  const [rowBusy, setRowBusy] = useState<string | null>(null)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetting, setResetting] = useState(false)
+
   async function loadPreview() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/datasets/' + datasetId + '/entities?limit=12')
+      const qs = manageOpen ? '?manage=1' : '?limit=12'
+      const res = await fetch('/api/datasets/' + datasetId + '/entities' + qs)
       if (!res.ok) {
         setEntities([])
         setTotalDistinct(null)
@@ -88,7 +119,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
   useEffect(function() {
     loadPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId])
+  }, [datasetId, manageOpen])
 
   async function runDiscover() {
     setDiscovering(true)
@@ -108,6 +139,106 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
     }
   }
 
+  async function addOne() {
+    const canonical = addCanonical.trim()
+    if (canonical.length < 2) return
+    const aliases = addAliases.split(',').map(function(a) { return a.trim() }).filter(function(a) { return a.length >= 2 })
+    setAdding(true)
+    setError('')
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/entities', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canonical: canonical, category: addCategory, aliases: aliases }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Add failed')
+      setAddCanonical('')
+      setAddAliases('')
+      await loadPreview()
+    } catch (err: any) {
+      setError(err?.message || 'Add failed')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // Bulk paste: one entity per line. Format:
+  //   Canonical Name | category | alias1, alias2
+  // Pipe-separated for clarity. Category defaults to 'food', aliases optional.
+  async function submitBulk() {
+    const lines = bulkText.split('\n').map(function(l) { return l.trim() }).filter(function(l) { return l.length > 0 && !l.startsWith('#') })
+    if (lines.length === 0) return
+    const payload = lines.map(function(line) {
+      const parts = line.split('|').map(function(p) { return p.trim() })
+      const canonical = parts[0] || ''
+      const category = (parts[1] || 'food').toLowerCase()
+      const aliases = (parts[2] || '').split(',').map(function(a) { return a.trim() }).filter(function(a) { return a.length >= 2 })
+      return { canonical: canonical, category: category, aliases: aliases }
+    })
+    setBulkSubmitting(true)
+    setBulkResult(null)
+    setError('')
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/entities', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entities: payload }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Bulk add failed')
+      setBulkResult((data.entities_new || 0) + ' new, ' + (data.entities_merged || 0) + ' merged, ' + (data.rejected?.length || 0) + ' rejected')
+      setBulkText('')
+      await loadPreview()
+    } catch (err: any) {
+      setError(err?.message || 'Bulk add failed')
+    } finally {
+      setBulkSubmitting(false)
+    }
+  }
+
+  async function toggleHidden(row: EntityRow) {
+    setRowBusy(row.slug)
+    try {
+      await fetch('/api/datasets/' + datasetId + '/entities/' + encodeURIComponent(row.slug), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ hidden: !row.hidden }),
+      })
+      await loadPreview()
+    } finally {
+      setRowBusy(null)
+    }
+  }
+
+  async function deleteManual(row: EntityRow) {
+    if (row.source !== 'manual') return
+    if (!confirm('Delete "' + row.canonical + '"? This cannot be undone. (For discovered entries, hide instead.)')) return
+    setRowBusy(row.slug)
+    try {
+      await fetch('/api/datasets/' + datasetId + '/entities/' + encodeURIComponent(row.slug), { method: 'DELETE' })
+      await loadPreview()
+    } finally {
+      setRowBusy(null)
+    }
+  }
+
+  async function resetDiscovered() {
+    setResetting(true)
+    setError('')
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/entities/reset-discovered', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Reset failed')
+      setResetConfirm(false)
+      await loadPreview()
+    } catch (err: any) {
+      setError(err?.message || 'Reset failed')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   const hasRun = !!lastRefresh || entities.length > 0
 
   return (
@@ -117,7 +248,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
           <h3 style={{ fontSize: 14, fontWeight: 800, color: P.text, margin: 0 }}>Entities</h3>
           {totalDistinct != null && totalDistinct > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: P.accentBg, color: P.accent, border: '1px solid ' + P.accent + '40' }}>
-              {totalDistinct.toLocaleString()} found
+              {totalDistinct.toLocaleString()} {manageOpen ? 'in catalog' : 'found'}
             </span>
           )}
           {scopeType === 'collection' && (
@@ -133,6 +264,17 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
           {schemaDirty && !discovering && (
             <span style={{ fontSize: 11, color: P.textMute }}>Save schema first</span>
           )}
+          <button
+            onClick={function() { setManageOpen(function(v) { return !v }); setResetConfirm(false) }}
+            style={{
+              fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+              background: manageOpen ? P.accentBg : P.bg,
+              color: manageOpen ? P.accent : P.textMid,
+              border: '1px solid ' + (manageOpen ? P.accent + '40' : P.border),
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+            {manageOpen ? 'Done managing' : 'Manage'}
+          </button>
           <button
             onClick={runDiscover}
             disabled={discovering || !!schemaDirty}
@@ -151,12 +293,15 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       </div>
 
       <div style={{ fontSize: 11, color: P.textMute, lineHeight: 1.5, marginBottom: 8 }}>
-        Runs Claude Haiku over a sample of rows to find the named entities {'—'} dishes, places, people, brands {'—'} this data talks about. Only reads the open-ended fields enabled for entity extraction in the schema above. Counts are computed live from full-text search, so they stay accurate across the whole dataset. Re-discover rebuilds the catalog from scratch. Costs a few cents per run.
+        {manageOpen
+          ? <>Add menu items, competitor brands, or other named entities by hand. Manual entries survive re-discovery. Hide noisy discovered entries — they stay hidden so the next run does not resurface them.</>
+          : <>The named things reviewers talk about {'—'} dishes, drinks, named staff, competitor brands. Discovery runs Claude Haiku over a sample of rows. Counts are computed live from full-text search, so they stay accurate across the whole dataset. Costs a few cents per run.</>
+        }
       </div>
 
-      {lastRefresh && (
+      {lastRefresh && !manageOpen && (
         <div style={{ fontSize: 11, color: P.textFaint, marginBottom: 8 }}>
-          Last discovered {new Date(lastRefresh.triggered_at).toLocaleString()}
+          Last updated {new Date(lastRefresh.triggered_at).toLocaleString()}
           {lastRefresh.entities_after != null && (
             <> {'·'} {lastRefresh.entities_after.toLocaleString()} entities in catalog</>
           )}
@@ -164,7 +309,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       )}
 
       {error && (
-        <div style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: P.danger, background: P.dangerBg, border: '1px solid #fecaca', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
           {error}
         </div>
       )}
@@ -175,15 +320,101 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
         </div>
       )}
 
-      {!loading && !discovering && entities.length === 0 && !error && (
-        <div style={{ fontSize: 11, color: P.textFaint, fontStyle: 'italic' as const }}>
-          {hasRun
-            ? 'No entities surfaced yet. Re-discover to sample more rows.'
-            : 'No entities discovered yet. Click "Discover entities" to run.'}
+      {/* Manage-mode controls */}
+      {manageOpen && !loading && !discovering && (
+        <div style={{ marginBottom: 12 }}>
+          {/* Single-add form */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' as const, padding: '8px 10px', background: P.bg, border: '1px solid ' + P.border, borderRadius: 8, marginBottom: 8 }}>
+            <input
+              type="text"
+              value={addCanonical}
+              onChange={function(e) { setAddCanonical(e.target.value) }}
+              placeholder="Entity name (e.g. Filet Mignon)"
+              style={{ flex: '1 1 200px', minWidth: 160, fontSize: 12, padding: '5px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit' }}
+            />
+            <select
+              value={addCategory}
+              onChange={function(e) { setAddCategory(e.target.value as typeof CATEGORIES[number]) }}
+              style={{ fontSize: 12, padding: '5px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit' }}>
+              {CATEGORIES.map(function(c) { return <option key={c} value={c}>{c}</option> })}
+            </select>
+            <input
+              type="text"
+              value={addAliases}
+              onChange={function(e) { setAddAliases(e.target.value) }}
+              placeholder="Aliases, comma-separated (optional)"
+              style={{ flex: '1 1 200px', minWidth: 160, fontSize: 12, padding: '5px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit' }}
+            />
+            <button
+              onClick={addOne}
+              disabled={adding || addCanonical.trim().length < 2}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
+                background: (adding || addCanonical.trim().length < 2) ? P.bg : P.accent,
+                color: (adding || addCanonical.trim().length < 2) ? P.textFaint : P.white,
+                border: '1px solid ' + ((adding || addCanonical.trim().length < 2) ? P.border : P.accent),
+                cursor: (adding || addCanonical.trim().length < 2) ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+              }}>
+              {adding ? 'Adding…' : 'Add'}
+            </button>
+            <button
+              onClick={function() { setBulkOpen(function(v) { return !v }); setBulkResult(null) }}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6,
+                background: P.white, color: P.textMid,
+                border: '1px solid ' + P.border, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              {bulkOpen ? 'Hide bulk' : 'Bulk import'}
+            </button>
+          </div>
+
+          {/* Bulk paste */}
+          {bulkOpen && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: P.textFaint, marginBottom: 4 }}>
+                One entity per line. Format: <code>Canonical Name | category | alias1, alias2</code>. Category and aliases optional. Lines starting with # are skipped.
+              </div>
+              <textarea
+                value={bulkText}
+                onChange={function(e) { setBulkText(e.target.value) }}
+                rows={6}
+                placeholder={'Filet Mignon | food | filet, the filet\nOld Fashioned | drink\nOutback Steakhouse | brand'}
+                style={{ width: '100%', fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'monospace', boxSizing: 'border-box' as const }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <button
+                  onClick={submitBulk}
+                  disabled={bulkSubmitting || bulkText.trim().length === 0}
+                  style={{
+                    fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
+                    background: (bulkSubmitting || bulkText.trim().length === 0) ? P.bg : P.accent,
+                    color: (bulkSubmitting || bulkText.trim().length === 0) ? P.textFaint : P.white,
+                    border: '1px solid ' + ((bulkSubmitting || bulkText.trim().length === 0) ? P.border : P.accent),
+                    cursor: (bulkSubmitting || bulkText.trim().length === 0) ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
+                  }}>
+                  {bulkSubmitting ? 'Importing…' : 'Import all'}
+                </button>
+                {bulkResult && <span style={{ fontSize: 11, color: P.textMute }}>{bulkResult}</span>}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {!loading && !discovering && entities.length > 0 && (
+      {!loading && !discovering && entities.length === 0 && !error && (
+        <div style={{ fontSize: 11, color: P.textFaint, fontStyle: 'italic' as const }}>
+          {manageOpen
+            ? 'No entities yet. Add one above, or click "Discover entities" to run NER.'
+            : (hasRun
+              ? 'No entities surfaced yet. Re-discover to sample more rows.'
+              : 'No entities discovered yet. Click "Discover entities" to run.')}
+        </div>
+      )}
+
+      {/* Pill view (preview mode) — kept compact */}
+      {!manageOpen && !loading && !discovering && entities.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
           {entities.map(function(e) {
             const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
@@ -201,6 +432,118 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
               </span>
             )
           })}
+        </div>
+      )}
+
+      {/* Row view (manage mode) — denser, with per-row controls */}
+      {manageOpen && !loading && !discovering && entities.length > 0 && (
+        <div style={{ border: '1px solid ' + P.border, borderRadius: 8, overflow: 'hidden' as const }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 60px auto', gap: 0, fontSize: 10, fontWeight: 700, color: P.textFaint, padding: '6px 10px', background: P.bg, borderBottom: '1px solid ' + P.border, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+            <div>Entity</div>
+            <div>Category</div>
+            <div>Source</div>
+            <div style={{ textAlign: 'right' as const }}>Mentions</div>
+            <div style={{ textAlign: 'right' as const, paddingLeft: 8 }}>Actions</div>
+          </div>
+          <div style={{ maxHeight: 360, overflowY: 'auto' as const, background: P.white }}>
+            {entities.map(function(e) {
+              const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
+              const isManual = e.source === 'manual'
+              const isHidden = !!e.hidden
+              const busy = rowBusy === e.slug
+              return (
+                <div key={e.slug}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr 70px 90px 60px auto',
+                    gap: 0, fontSize: 11,
+                    padding: '7px 10px',
+                    borderBottom: '1px solid ' + P.border,
+                    background: isHidden ? P.bg : P.white,
+                    opacity: isHidden ? 0.6 : 1,
+                    alignItems: 'center',
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, color: P.text, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={e.canonical}>{e.canonical}</span>
+                    {e.aliases && e.aliases.length > 0 && (
+                      <span style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }} title={'Aliases: ' + e.aliases.join(', ')}>
+                        ({e.aliases.slice(0, 3).join(', ')}{e.aliases.length > 3 ? '…' : ''})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: P.textMid }}>{e.category}</div>
+                  <div>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                      background: isManual ? P.accentBg : P.bg,
+                      color: isManual ? P.accent : P.textMute,
+                      border: '1px solid ' + (isManual ? P.accent + '40' : P.border),
+                    }}>
+                      {isManual ? 'manual' : 'discovered'}
+                    </span>
+                  </div>
+                  <div style={{ textAlign: 'right' as const, color: P.textMid, fontVariantNumeric: 'tabular-nums' }}>{e.mentions.toLocaleString()}</div>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' as const, paddingLeft: 8 }}>
+                    <button
+                      onClick={function() { toggleHidden(e) }}
+                      disabled={busy}
+                      title={isHidden ? 'Unhide (visible in cloud / compare / drill)' : 'Hide (excluded from cloud / compare / drill; survives re-discovery)'}
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
+                        background: P.white, color: P.textMid,
+                        border: '1px solid ' + P.border, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                      }}>
+                      {isHidden ? 'Unhide' : 'Hide'}
+                    </button>
+                    {isManual && (
+                      <button
+                        onClick={function() { deleteManual(e) }}
+                        disabled={busy}
+                        title="Delete this manual entry (cannot undo)"
+                        style={{
+                          fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
+                          background: P.white, color: P.danger,
+                          border: '1px solid #fecaca', cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                        }}>
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Reset-discovered escape hatch — admin action, two-step confirm */}
+      {manageOpen && !loading && !discovering && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed ' + P.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' as const }}>
+          <span style={{ fontSize: 11, color: P.textFaint }}>
+            Reset discovered entries removes every <code style={{ fontSize: 10, background: P.bg, padding: '0 4px', borderRadius: 3 }}>discovered</code> row in this scope. Manual entries are kept.
+          </span>
+          {resetConfirm ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={function() { setResetConfirm(false) }}
+                disabled={resetting}
+                style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, background: P.white, color: P.textMid, border: '1px solid ' + P.border, cursor: resetting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+              <button
+                onClick={resetDiscovered}
+                disabled={resetting}
+                style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: P.danger, color: P.white, border: '1px solid ' + P.danger, cursor: resetting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                {resetting ? 'Resetting…' : 'Yes, reset discovered'}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={function() { setResetConfirm(true) }}
+              style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, background: P.white, color: P.danger, border: '1px solid #fecaca', cursor: 'pointer', fontFamily: 'inherit' }}>
+              Reset discovered
+            </button>
+          )}
         </div>
       )}
     </div>
