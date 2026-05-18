@@ -321,6 +321,10 @@ Selects up to 5 bots per run with `status = 'active'`, `review_interval_hours IS
 
 Returns `{ processed: number, results: [{ botId, name, sessions, drift }] }` on success, or `{ message: 'No bots due for review', processed: 0 }` when nothing is due. Usage is logged with `event_type: 'review'`.
 
+### Per-bot external-source refreshers (Guru bot)
+
+`/api/cron/temple-events-refresh` — weekly Monday 11:00 UTC (~7am ET). Fetches the HSCF temple's third-party calendar widget at `https://orlandohindutemple.mhsoftware.com/`, strips HTML, asks Haiku to extract events as `[{date, title, time}]`, groups by ISO week, and replaces every `bot_knowledge_chunks` row tagged `metadata.source = 'temple_events_cron'` for the Guru bot. Same `checkCronAuth` pattern. One Haiku call + ~6-8 chunk inserts per run, ~$0.002/run. Bot ID is hard-coded; generalise via a per-bot `external_source` config field when a second client needs the pattern. Usage logged with `event_type: 'cron_events_extract'`.
+
 ---
 
 ## 5. Public Bot Surface — `/b/[slug]`
