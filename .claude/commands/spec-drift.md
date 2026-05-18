@@ -30,6 +30,21 @@ If `$ARGUMENTS` is empty, the script defaults to "since 7 days ago". Otherwise p
 
 - The mapping lives in `scripts/specMap.ts`. If the report misses something (e.g., a new module dir not mapped to any spec) or over-counts (e.g., a glob that's too broad), edit `specMap.ts` directly. The map is the durable knob — the script is dumb.
 - This command intentionally does not auto-edit specs; spec content is a writing exercise, not a transformation. The script identifies *where* attention is needed; a human (or this command's "sweep now" flow) does the actual writing.
-- For the weekly automated pass, a scheduled routine runs this same script on Sunday and appends the report to the upcoming week's devlog.
+
+## Weekly routine variant
+
+When invoked by the Monday 02:00 ET routine (or any time a persistent weekly artifact is wanted), run with `--write-weekly`:
+
+```bash
+npx tsx scripts/spec-drift.ts --write-weekly
+```
+
+This writes `docs/weekly-reports/YYYY-WXX-drift.md` (the current ISO week), which is the parseable artifact powering the `/admin/control-reports/spec-drift` trend page. The Monday routine should:
+
+1. Run `npx tsx scripts/spec-drift.ts --write-weekly`
+2. `git add docs/weekly-reports/YYYY-WXX-drift.md`
+3. Commit and open a PR titled `chore(spec-drift): YYYY-WXX weekly drift report`
+
+The file format is the contract — let the standalone file accumulate week-over-week so the trend chart works. (Older flow appended to the devlog; that is now superseded.)
 
 $ARGUMENTS

@@ -10,6 +10,8 @@
 // Exit code: 0 always (drift is informational, not a build failure).
 
 import { execSync } from 'child_process'
+import { writeFileSync, mkdirSync } from 'fs'
+import path from 'path'
 import { SPEC_MAP, TOP_LEVEL_SPECS, type SpecKey } from './specMap'
 
 interface Commit {
@@ -203,19 +205,109 @@ function renderMarkdown(sinceRef: string, commits: Commit[], driftBySpec: Record
   return out.join('\n')
 }
 
+// ISO week number for a date (per ISO-8601: weeks start Monday, week 1 contains
+// the year's first Thursday). Matches the YYYY-WXX naming used by the weekly
+// governance reports in docs/weekly-reports/.
+function isoWeek(date: Date): { year: number; week: number; key: string } {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const day = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  const year = d.getUTCFullYear()
+  return { year, week, key: `${year}-W${String(week).padStart(2, '0')}` }
+}
+
+// Returns "May 18 to May 24" style range for the ISO week containing `date`.
+function isoWeekRange(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const day = d.getUTCDay() || 7
+  // Monday of the ISO week
+  const monday = new Date(d)
+  monday.setUTCDate(d.getUTCDate() - (day - 1))
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+  const fmt = (x: Date) => x.toLocaleString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
+  return `${fmt(monday)} to ${fmt(sunday)}`
+}
+
+function renderWeeklyMarkdown(
+  weekKey: string,
+  weekRange: string,
+  sinceRef: string,
+  commits: Commit[],
+  driftBySpec: Record<string, SpecDrift>,
+  anyModuleDrift: boolean,
+): string {
+  const driftSpecs   = Object.values(driftBySpec).filter(d => d.status === 'drift'   && !TOP_LEVEL_SPECS.includes(d.spec as (typeof TOP_LEVEL_SPECS)[number]))
+  const updatedSpecs = Object.values(driftBySpec).filter(d => d.status === 'updated' && !TOP_LEVEL_SPECS.includes(d.spec as (typeof TOP_LEVEL_SPECS)[number]))
+  const cleanSpecs   = Object.values(driftBySpec).filter(d => d.status === 'clean'   && !TOP_LEVEL_SPECS.includes(d.spec as (typeof TOP_LEVEL_SPECS)[number]))
+  const tracked = driftSpecs.length + updatedSpecs.length + cleanSpecs.length
+  const drifted = driftSpecs.length
+  const touched = drifted + updatedSpecs.length
+  const driftRate = touched > 0 ? (drifted / touched) * 100 : 0
+
+  const out: string[] = []
+  out.push(`# Weekly Spec Drift Report — ${weekKey} (Week of ${weekRange})`)
+  out.push(``)
+  out.push(`**Generated**: ${new Date().toISOString()}`)
+  out.push(`**Repository**: Got2surf2/sentimetrx`)
+  out.push(`**Status**: Pending human review (merge this PR to record the review)`)
+  out.push(`**Since ref**: \`${sinceRef.slice(0, 7)}\` — ${commits.length} commits in range`)
+  out.push(``)
+  out.push(`## Summary`)
+  out.push(``)
+  out.push(`| Metric | Value |`)
+  out.push(`|---|---|`)
+  out.push(`| Specs tracked | ${tracked} |`)
+  out.push(`| Drifted (code changed, spec not updated) | **${drifted}** |`)
+  out.push(`| Updated (code + spec changed together) | ${updatedSpecs.length} |`)
+  out.push(`| Clean (no code changes) | ${cleanSpecs.length} |`)
+  out.push(`| Drift rate (drifted / touched) | ${driftRate.toFixed(1)}% |`)
+  out.push(``)
+
+  // Reuse the existing per-section rendering for human readability.
+  // Strip the existing renderer's H1 + Date + Range + duplicate Summary
+  // table since we've replaced them with the richer weekly header above;
+  // resume from "## Top-level specs".
+  const inner = renderMarkdown(sinceRef, commits, driftBySpec, anyModuleDrift)
+    .replace(/^[\s\S]*?(?=## Top-level specs)/, '')
+  out.push(inner)
+  return out.join('\n')
+}
+
 function main() {
   const args = process.argv.slice(2)
   let sinceRef: string | undefined
   let asJson = false
+  let writeWeekly = false
+  let weekOverride: string | undefined
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--json') asJson = true
+    else if (a === '--write-weekly') writeWeekly = true
+    else if (a === '--week') weekOverride = args[++i]
     else if (a === '--since') sinceRef = execSync(`git log --until="${args[++i]}" --format=%H -n 1`, { encoding: 'utf8' }).trim()
     else if (!sinceRef) sinceRef = a
   }
   sinceRef = resolveSinceRef(sinceRef)
   const commits = getCommits(sinceRef)
   const { driftBySpec, anyModuleDrift } = analyzeDrift(commits)
+
+  if (writeWeekly) {
+    const now = new Date()
+    const w = isoWeek(now)
+    const weekKey = weekOverride || w.key
+    const weekRange = isoWeekRange(now)
+    const md = renderWeeklyMarkdown(weekKey, weekRange, sinceRef, commits, driftBySpec, anyModuleDrift)
+    const dir = path.join(process.cwd(), 'docs', 'weekly-reports')
+    mkdirSync(dir, { recursive: true })
+    const filename = path.join(dir, `${weekKey}-drift.md`)
+    writeFileSync(filename, md)
+    console.error(`Wrote ${filename}`)
+    if (!asJson) console.log(md)
+    return
+  }
 
   if (asJson) {
     console.log(JSON.stringify({ sinceRef, commitCount: commits.length, driftBySpec, anyModuleDrift }, null, 2))

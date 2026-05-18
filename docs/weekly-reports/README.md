@@ -1,4 +1,4 @@
-# Weekly Governance Reports
+# Weekly Control Reports
 
 This directory contains automatically-generated, human-reviewed weekly reports covering all development activity on the Sentimetrx codebase.
 
@@ -22,10 +22,11 @@ A scheduled remote agent (Claude Code routine) runs every Monday at 4am Eastern.
 
 A human (the project owner) reviews and merges the PR. **The merge itself is the governance signal**: AI generated the report, a human verified it, the resulting commit is in the audit trail.
 
-## Two file types
+## Three file types
 
 - **`YYYY-WXX-devlog.md`** — editorial dev log appended-to throughout the week. Captures the **why** behind each work session (intent, deferred items, surprises). Written by Claude Code sessions as work happens; can also be edited manually. **Source of the WHY.**
-- **`YYYY-WXX.md`** — the Monday governance report itself. Created by the routine; combines the dev log narrative + the 7-category audit + correlation + trend. **The merged audit artifact.**
+- **`YYYY-WXX.md`** — the Monday governance report (Control Report #1). Created by the 04:00 ET routine; combines the dev log narrative + the 7-category audit + correlation + trend. **The merged governance artifact.** Parsed by `lib/governanceReports.ts` and displayed at `/admin/control-reports/governance`.
+- **`YYYY-WXX-drift.md`** — the Monday spec-drift report (Control Report #2). Created by the 02:00 ET routine via `npx tsx scripts/spec-drift.ts --write-weekly`; lists which module specs drifted (code changed without the spec being updated) in the prior week. Parsed by `lib/specDriftReports.ts` and displayed at `/admin/control-reports/spec-drift`.
 
 ## Why Git, Not a Database
 
@@ -44,4 +45,7 @@ Reports live in version control because:
 
 ## File Naming
 
-`YYYY-WXX.md` where `WXX` is the ISO week number. Example: `2026-W19.md` is the report for the week of May 4–10, 2026.
+`YYYY-WXX[suffix].md` where `WXX` is the ISO week number. Example for the week of May 4–10, 2026:
+- `2026-W19-devlog.md` — running dev log
+- `2026-W19.md` — governance audit
+- `2026-W19-drift.md` — spec-drift report
