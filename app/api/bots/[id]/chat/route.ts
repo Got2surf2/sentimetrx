@@ -11,6 +11,7 @@ import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
+import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
 
 export const dynamic = 'force-dynamic'
 
@@ -639,7 +640,22 @@ export async function POST(req: NextRequest, { params }: Params) {
             userTurn.sentiment_score = sentResult.score
           }
           turnsToInsert.push(userTurn)
-          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' })
+          var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' }
+
+          // Prompt Focus: classify which focus(es) this reply addresses.
+          // Skips entirely (no AI call) when the bot has no focuses defined.
+          var botFocuses: BotFocus[] = (bot as any).focuses || []
+          if (botFocuses.length > 0) {
+            var focusResult = await classifyResponseFocuses(botFocuses, result.text)
+            if (focusResult.usage) {
+              logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'focus_classify' }, focusResult.usage)
+            }
+            if (focusResult.slugs.length > 0) {
+              assistantTurn.content_flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
+            }
+          }
+
+          turnsToInsert.push(assistantTurn)
 
           const { error: insertErr } = await service.from('bot_conversation_turns').insert(turnsToInsert)
           if (insertErr) console.error({ at: 'bot-chat', msg: "turn insert error", err: insertErr.message })

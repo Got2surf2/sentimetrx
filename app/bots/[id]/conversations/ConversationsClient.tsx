@@ -26,6 +26,9 @@ function getFlagStyle(f: string): { bg: string; color: string; label: string } {
   if (f.startsWith('intent:')) {
     return { bg: '#DBEAFE', color: '#1D4ED8', label: f.replace('intent:', '').replace(/_/g, ' ') }
   }
+  if (f.startsWith('focus:')) {
+    return { bg: '#ECFEFF', color: '#0E7B7B', label: f.replace('focus:', '').replace(/[-_]/g, ' ') }
+  }
   return { bg: '#F3F4F6', color: '#6b7280', label: f }
 }
 

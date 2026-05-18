@@ -181,6 +181,8 @@ function BotCreatorInner() {
   const [newSensitiveTopic, setNewSensitiveTopic] = useState('')
   const [newFocusTopic, setNewFocusTopic] = useState('')
   const [intents, setIntents] = useState<{ label: string; description: string; keywords: string; url: string; message: string; enabled: boolean }[]>([])
+  const [focuses, setFocuses] = useState<{ slug: string; label: string; description: string; enabled: boolean }[]>([])
+  const [suggestingFocuses, setSuggestingFocuses] = useState(false)
   const [demographicInference, setDemographicInference] = useState(false)
   const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
   const [step, setStep] = useState(0)
@@ -230,6 +232,9 @@ function BotCreatorInner() {
       if (Array.isArray(bot.intents)) setIntents(bot.intents.map(function(i: any) {
         return { label: i.label || '', description: i.description || '', keywords: (i.keywords || []).join(', '), url: i.url || '', message: i.message || '', enabled: i.enabled !== false }
       }))
+      if (Array.isArray(bot.focuses)) setFocuses(bot.focuses.map(function(f: any) {
+        return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: f.enabled !== false }
+      }))
     }).catch(function() {
       setError('Failed to load agent')
     }).finally(function() {
@@ -250,7 +255,7 @@ function BotCreatorInner() {
   }, [name, slug, systemPrompt, personality, knowledgeBase, trainingUrls, suggestions, config,
       reviewInterval, faq, facts, guardrails, subject, negativeContentMode, opponents,
       contrastMode, sensitiveTopics, focusTopics, deflectionEnabled, deflectionMessage,
-      askProfile, profileQuestion, intents, demographicInference])
+      askProfile, profileQuestion, intents, focuses, demographicInference])
 
   function autoSlug(n: string) {
     return n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
@@ -378,6 +383,9 @@ function BotCreatorInner() {
       demographic_inference: demographicInference,
       intents: intents.filter(function(i) { return i.label.trim() }).map(function(i) {
         return { label: i.label.trim(), description: i.description.trim(), keywords: i.keywords.split(',').map(function(k) { return k.trim() }).filter(Boolean), url: i.url.trim(), message: i.message.trim(), enabled: i.enabled }
+      }),
+      focuses: focuses.filter(function(f) { return f.slug.trim() && f.label.trim() }).map(function(f) {
+        return { slug: autoSlug(f.slug), label: f.label.trim(), description: f.description.trim(), enabled: f.enabled }
       }),
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
@@ -982,6 +990,66 @@ function BotCreatorInner() {
             })}
             <button onClick={function() { setIntents(function(prev) { return [...prev, { label: '', description: '', keywords: '', url: '', message: '', enabled: true }] }) }}
               style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #c4b5fd', background: '#F5F3FF', color: '#7C3AED', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add intent</button>
+          </Section>
+
+          <Section title="Prompt Focuses">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>Topics the agent is expected to cover. After each reply, an AI classifier tags which focus(es) the response addressed — so you can later filter conversations by &quot;people who got an answer about X.&quot; Different from Intents (which are user-side signals); Focuses are bot-side coverage.</p>
+            {editId && (
+              <div style={{ marginBottom: 12 }}>
+                <button onClick={async function() {
+                  if (suggestingFocuses) return
+                  if (!systemPrompt || systemPrompt.length < 100) { alert('System prompt is too short to suggest focuses from. Add a system prompt first.'); return }
+                  if (focuses.length > 0 && !confirm('This will replace your current ' + focuses.length + ' focus(es) with AI-suggested ones. Continue?')) return
+                  setSuggestingFocuses(true)
+                  try {
+                    var r = await fetch('/api/bots/' + editId + '/focuses-suggest', { method: 'POST' })
+                    var d = await r.json()
+                    if (!r.ok) { alert(d.error || 'Failed to suggest focuses'); return }
+                    if (Array.isArray(d.focuses)) {
+                      setFocuses(d.focuses.map(function(f: any) { return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: true } }))
+                    }
+                  } catch { alert('Failed to suggest focuses') }
+                  finally { setSuggestingFocuses(false) }
+                }} disabled={suggestingFocuses} style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #0E7B7B', background: suggestingFocuses ? '#f3f4f6' : '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 600, cursor: suggestingFocuses ? 'wait' : 'pointer' }}>
+                  {suggestingFocuses ? 'Analyzing prompt…' : '✨ Suggest focuses from system prompt'}
+                </button>
+                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>Saves nothing until you click Save Agent.</span>
+              </div>
+            )}
+            {focuses.map(function(focus, i) {
+              return (
+                <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <input type="checkbox" checked={focus.enabled}
+                        onChange={function(e) { var v = e.target.checked; setFocuses(function(prev) { var n = [...prev]; n[i] = { ...n[i], enabled: v }; return n }) }}
+                        style={{ width: 14, height: 14, accentColor: '#0E7B7B' }} />
+                      <input type="text" value={focus.label}
+                        onChange={function(e) { var v = e.target.value; setFocuses(function(prev) { var n = [...prev]; n[i] = { ...n[i], label: v, slug: prev[i].slug || autoSlug(v) }; return n }) }}
+                        placeholder="Label (e.g., Study Area Boundaries)"
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, fontWeight: 600, width: 260 }} />
+                      <input type="text" value={focus.slug}
+                        onChange={function(e) { var v = e.target.value; setFocuses(function(prev) { var n = [...prev]; n[i] = { ...n[i], slug: v }; return n }) }}
+                        onBlur={function(e) { var v = autoSlug(e.target.value); setFocuses(function(prev) { var n = [...prev]; n[i] = { ...n[i], slug: v }; return n }) }}
+                        placeholder="slug"
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11, fontFamily: 'monospace', color: '#6b7280', width: 200 }} />
+                    </label>
+                    <button onClick={function() { setFocuses(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16 }}>&times;</button>
+                  </div>
+                  <label style={{ display: 'block' }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>What this focus covers (used by the classifier)</span>
+                    <textarea value={focus.description}
+                      onChange={function(e) { var v = e.target.value; setFocuses(function(prev) { var n = [...prev]; n[i] = { ...n[i], description: v }; return n }) }}
+                      placeholder="e.g., Questions about the geographic limits of the study area — north, south, east, west boundaries"
+                      rows={2}
+                      style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, resize: 'vertical' }} />
+                  </label>
+                </div>
+              )
+            })}
+            <button onClick={function() { setFocuses(function(prev) { return [...prev, { slug: '', label: '', description: '', enabled: true }] }) }}
+              style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #99f6e4', background: '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add focus</button>
           </Section>
 
           <Section title="Hard Rules">

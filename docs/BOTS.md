@@ -77,7 +77,10 @@ CREATE TABLE bots (
   intents                 JSONB DEFAULT '[]'::JSONB,        -- see Intent shape below
 
   -- 028_demographic_inference.sql
-  demographic_inference   BOOLEAN DEFAULT false
+  demographic_inference   BOOLEAN DEFAULT false,
+
+  -- 072_bot_focuses.sql
+  focuses                 JSONB NOT NULL DEFAULT '[]'::JSONB  -- see Focus shape below
 );
 ALTER TABLE bots ENABLE ROW LEVEL SECURITY;
 -- Org-scoped SELECT and ALL policies (members of the bot's org).
@@ -99,6 +102,19 @@ interface Intent {
 }
 ```
 
+### Focus shape (stored in `bots.focuses` JSONB, added 072)
+
+Focuses are bot-side coverage topics — distinct from intents (which are user-side signals). When a bot has focuses defined, the chat route classifies each assistant reply against the list and appends `focus:<slug>` entries to that turn's `content_flags`. Used to filter conversations by which topic the bot's response addressed (e.g. "show me everyone who got an answer about study area boundaries"). Existing bots default to `[]` and incur zero AI cost until a list is defined.
+
+```ts
+interface Focus {
+  slug:        string   // lowercase kebab-case, max 40 chars, unique per bot
+  label:       string   // 2-5 word human label
+  description: string   // 1-sentence description used by the classifier
+  enabled:     boolean
+}
+```
+
 ### Conversation tables — cumulative state after 022/025/028/029
 
 `bot_conversation_turns` is created in 022 with the base shape; `content_flags`/`source` come from 025; `sentiment`/`sentiment_score` come from 029. `bot_session_personas` is created in 025; `demographics` is added in 028.
@@ -115,7 +131,7 @@ CREATE TABLE bot_conversation_turns (
   content_en      TEXT,                                        -- reserved for English translation; not populated today
   language        TEXT NOT NULL DEFAULT 'en',                  -- ISO 639-1 code (set from request, no translation performed)
   -- 025_bot_enhancements.sql
-  content_flags   JSONB,                                       -- audit flags + intent:<label> tags (no array default)
+  content_flags   JSONB,                                       -- audit flags + intent:<label> + focus:<slug> tags (no array default)
   source          TEXT NOT NULL DEFAULT 'normal',              -- 'normal' | 'greeting' | 'deflect' (no CHECK; enforced in code)
   -- 029_turn_sentiment.sql
   sentiment       TEXT,                                        -- 'positive' | 'negative' | 'neutral' (no CHECK)
@@ -264,6 +280,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 ### `sql/038_bot_session_counts.sql`
 - Creates `bot_session_counts_for_ids(p_bot_ids uuid[])` RPC returning `(bot_id, session_count)` via `count(DISTINCT session_id)`. Replaces a JS-side dedup in `GET /api/bots` that scaled with total turns.
 
+### `sql/072_bot_focuses.sql`
+- Adds `focuses JSONB NOT NULL DEFAULT '[]'` to `bots`. Non-destructive (default empty array = unchanged behavior for existing bots). See "Focus shape" above and pipeline step 14 for runtime behavior.
+
 ### Authorization model
 
 **RLS is enabled** on all bot tables, but the public chat endpoint uses the **service role** to bypass RLS (because end-users are not authenticated). Authorization is enforced at the application layer:
@@ -374,7 +393,8 @@ The heart of the module. **No auth.** Rate-limited 30 req/60s per IP.
 14. **Persist** — fire-and-forget update of `bots.last_session_at`. If `session_id` is provided, insert turns into `bot_conversation_turns`:
     - If this is the first turn for the session and the client sent an initial assistant greeting in `messages`, insert that greeting at `turn_number: 0` with `source: 'greeting'`.
     - Insert the user turn with `sentiment` + `sentiment_score` from `scoreSentimentFull()`, `content_flags`, `source: 'normal'`.
-    - Insert the assistant turn with `source: 'normal'`.
+    - **Focus classification (only when `bot.focuses.length > 0`)** — `classifyResponseFocuses(focuses, result.text)` from `lib/focusClassifier.ts` runs a `callAI({ tier: 'fast', maxTokens: 80, timeoutMs: 10000 })` to identify which focus slug(s) the assistant reply addresses, and appends `focus:<slug>` entries to the assistant turn's `content_flags`. Logged under `event_type: 'focus_classify'`. Skips entirely when no focuses defined.
+    - Insert the assistant turn with `source: 'normal'` (and `content_flags` if focuses matched).
 15. **Return** `{ reply, _debug?, _signals? }` with CORS headers. On AI exception, returns a friendly "I'm having trouble right now…" reply (still 200).
 
 > **Phantom feature note:** The `bot_conversation_turns.content_en` column exists for future translation work but is **not populated** today. The chat route propagates `botLang` only to inject a "respond in <language>" instruction into the system prompt; no actual translation step runs.
@@ -733,7 +753,13 @@ Generates a PPTX. `maxDuration: 60s`. Fetches up to 2000 turns. Computes session
 Returns CSV: `session_id, turn_number, role, content, language, created_at`.
 
 ### `GET /api/bots/[id]/intents-stats`
-Per-intent rollup: `detection_count, last_detected, recent_sessions[]`. Computed by scanning `content_flags` for `intent:LABEL` markers.
+Per-intent rollup: `detection_count, last_detected, recent_sessions[]`. Computed by scanning user-turn `content_flags` for `intent:LABEL` markers.
+
+### `GET /api/bots/[id]/focuses-stats`
+Per-focus rollup: `detection_count, session_count, last_detected, recent_sessions[]`. Computed by scanning **assistant-turn** `content_flags` for `focus:<slug>` markers. Mirrors `intents-stats` but turn-role-scoped to assistant since focus tagging happens on the bot reply.
+
+### `POST /api/bots/[id]/focuses-suggest`
+Body: `{}`. Reads `bot.system_prompt` and returns `{ focuses: [{slug, label, description, enabled}] }` — 10-20 candidate focuses proposed via `callAI({ tier: 'fast', maxTokens: 1500, timeoutMs: 25000 })`. Used by the editor's "✨ Suggest focuses" button. Nothing is saved server-side; the editor saves on the next bot PATCH.
 
 ### `GET /api/bots/[id]/conversations/reviews`
 Lists `bot_conversation_reviews` for the bot.
@@ -770,6 +796,11 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns`. First call:
 - Loads `/api/bots/[id]/intents-stats`.
 - For each intent: detection count, last detected, recent sessions (top 5).
 - Toggle enable; edit keywords/description/url/message → `PATCH /api/bots/[id]` with the updated intents JSONB.
+
+### Prompt Focuses editor — `app/bots/new/EditAgentClient.tsx` ("Prompt Focuses" section)
+- Lives in the main agent editor (same form as Name, System Prompt, Intents, etc.) — there is no separate `/bots/[id]/focuses` page; focuses are configured inline.
+- Each row: `enabled` checkbox + `label` text + `slug` text (auto-derived from label, editable) + `description` textarea.
+- "✨ Suggest focuses from system prompt" button (visible on existing bots only) → `POST /api/bots/[id]/focuses-suggest` → replaces the in-form focuses list with AI suggestions. Confirmation prompt if existing focuses would be overwritten. Save only persists when the user clicks "Save Agent" → PATCH includes `focuses: [...]`.
 
 ### `/bots/[id]/conversations` — `ConversationsClient.tsx`
 - Lists sessions with first message, turn count, user name, flag pills, deflection indicator, persona summary.
