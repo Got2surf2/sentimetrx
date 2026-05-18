@@ -198,9 +198,9 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   rebuilt lazily from current members in the compute route; `lib/brandRules.ts` is
   the brand-rules seam (`rebuildBrandSchema` + Phase 6's
   `discoverBrandEntitiesIfNeeded`), both invoked from the compute route.
-- **Pending (Phase 7, migration 069):** the v1 `entity_mentions` table,
-  `top_entities_for_theme()`, and `datasets.entity_extraction_state` are dropped once
-  this app code is verified — they are unused as of this rebuild. (067 = review-download
+- **Phase 7 (migration 069, applied 2026-05-18):** the v1 `entity_mentions` table,
+  `top_entities_for_theme()`, and `datasets.entity_extraction_state` are gone. App
+  reads exclusively from the catalog + live `count_entity_terms()`. (067 = review-download
   limits, 068 = response-timestamp backfill.)
 
 ### Existing deck export
