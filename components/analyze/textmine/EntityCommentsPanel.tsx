@@ -5,6 +5,7 @@ import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { T } from '@/lib/analyzeTheme'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
+import { expandEntityTerms } from '@/lib/entityVariants'
 
 const ENTITY_CAT_COLOR: Record<string, string> = {
   food: '#EA580C', drink: '#7C3AED', place: '#0F7173',
@@ -34,9 +35,10 @@ function escapeRE(s: string): string {
 }
 
 function highlightEntityTerms(text: string, terms: string[]) {
-  const cleaned = Array.from(new Set(
-    terms.map(t => t.trim()).filter(t => t.length >= 2)
-  )).sort((a, b) => b.length - a.length)
+  // Expand each term into plural/singular variants so "Brussels Sprout" highlights
+  // when the canonical is "Brussels Sprouts" (and irregulars like geese/goose).
+  const base = terms.map(t => t.trim()).filter(t => t.length >= 2)
+  const cleaned = expandEntityTerms(base).sort((a, b) => b.length - a.length)
   if (!cleaned.length || !text) return text
   let re: RegExp
   try {

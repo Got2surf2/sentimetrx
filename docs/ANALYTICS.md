@@ -34,6 +34,9 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 - Paginated comment browser with keyword highlighting
 - Filter by theme, sentiment, or custom criteria
 - Clause-boundary highlight expansion (not just the keyword, but surrounding context)
+- Entity highlights expand to plural/singular variants (`lib/entityVariants.ts`)
+  so "Brussels Sprout" matches when the canonical is "Brussels Sprouts", and
+  irregulars (geese/goose, leaves/leaf) are caught via `lib/lemmas.ts`
 
 ---
 
