@@ -123,3 +123,17 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Bucket scoreboard**: A ✅ B ✅ C ✅ D ✅ E ✅ F ✅. All six buckets of the entity-views build shipped. The full theme-functionality mirror is live for entities (cloud, sentiment, compare, drill-down, modal), plus the architectural foundation (manual curation, soft-delete, category-restricted discovery) that makes brand-bootstrap from a menu PDF realistic.
 
 **Next**: visual QC end-to-end on Fleming's, then push when ready. After that the open questions are the standard polish items — catalog telemetry on the admin panel, an entity version of CompareTab (multi-field breakdown), and possibly a "promote to brand" affordance for named-chef person entries that survived the collection-scope suppression.
+
+## 2026-05-18 — Cross-slug dedup bug fix on POST /entities
+
+**Why**: visual QC on Fleming's entities card surfaced obvious dupes — `Filet Mignon 519` + `Filet 515`, `Lobster Tail 326` + `Lobster 326`, `Tomahawk 310` + `Prime Tomahawk 310` + `Tomahawk Steak 310`, `Brussels Sprouts 162` + `Crispy Brussels Sprouts 164`. The `entity_catalog` UNIQUE key is `(scope_type, scope_id, slug)`, so a discovered "Filet" (slug `filet`) and a manual "Filet Mignon" (slug `filet_mignon`) coexist even though "filet" is in the manual entity's aliases. Without an explicit dedup step the cloud / compare / pill list shows both — which reads as a dedup bug to users, and rightly so.
+
+**What changed**:
+- `app/api/datasets/[datasetId]/entities/route.ts` (POST): after the manual-row upsert, slugify every alias on every upserted row and bulk-update `hidden=true` on any `source='discovered', hidden=false` row in the same scope + category whose slug matches one of those alias-slugs. Same-category guard so a food entity never hides a brand or place that happens to share a name. `entities_auto_hidden` count returned in the response for visibility.
+- One-shot cleanup on Fleming's brand-collection (`11daf03a-…`): ran the same alias-match rule via SQL against the 497-row catalog. 30 dupes hidden in the first pass.
+- Top-up of Fleming's manual aliases for cases the original seed didn't anticipate: `Prime Tomahawk` += "tomahawk steak"; `Prime Bone-In Ribeye` += "prime ribeye", "bone in rib eye", "rib eye"; `Japanese A5 Wagyu Strip` += "wagyu"; `Fleming's Potatoes` += "au gratin potatoes". 5 more dupes hidden after re-running the cleanup with expanded aliases.
+- `docs/ANALYTICS.md`: documents the auto-hide rule on POST `/entities`.
+
+**Limitation honest disclosure**: the rule is conservative — only matches when a discovered row's slug equals a (slugified) alias of a manual row. It does NOT catch token-overlap cases that aren't explicitly aliased (e.g., `Tomahawk Tuesday Special` vs `Prime Tomahawk` — neither is the other's alias). Three options for those: (a) user adds the variant as an alias via the Manage panel, (b) we build a separate "Find duplicates" admin button that runs Haiku canonicalisation across the whole catalog, (c) we accept a manual-curation step. For now (a) is the workflow.
+
+**Real menu items the original seed missed**: discovery surfaced a few that look like real Fleming's menu items I should add as manual entries (not dupes): Lava Cake (Chocolate Lava Cake on the dessert menu), Lobster Mac & Cheese (distinct from Chipotle Cheddar Mac & Cheese), Tomahawk Tuesday Special (recurring LTO). Logged here — adding requires user OK on what counts as "real menu" vs prose-only mention.

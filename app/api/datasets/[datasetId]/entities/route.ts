@@ -224,6 +224,46 @@ export async function POST(req: Request, { params }: Params) {
     }
   }
 
+  // ── Auto-hide alias-redundant discovered rows ────────────────────────────
+  // The catalog's UNIQUE key is (scope, slug), but slugs come straight from
+  // the canonical, so a discovered "Filet" (slug `filet`) and a manual
+  // "Filet Mignon" (slug `filet_mignon`) coexist even though "filet" is in
+  // the manual entity's aliases. Without this pass the cloud / compare /
+  // pill list shows both, which reads as a dedup bug to users.
+  //
+  // Rule: for each manual row we just upserted, slugify every alias and hide
+  // any discovered (source='discovered', hidden=false) row whose slug matches
+  // an alias-slug *in the same category*. Soft-delete so re-discovery doesn't
+  // resurface it; same-category guard so a food entity never hides a brand or
+  // place entity that happens to share a name.
+  const slugsToHideByCategory: Record<string, Set<string>> = {}
+  for (const row of upsertRows) {
+    const sluggedAliases = new Set<string>()
+    for (const alias of row.aliases) {
+      const s = slugify(alias)
+      if (s && s !== row.slug) sluggedAliases.add(s)
+    }
+    if (sluggedAliases.size === 0) continue
+    if (!slugsToHideByCategory[row.category]) slugsToHideByCategory[row.category] = new Set<string>()
+    sluggedAliases.forEach(function(s) { slugsToHideByCategory[row.category].add(s) })
+  }
+  let entitiesAutoHidden = 0
+  for (const category of Object.keys(slugsToHideByCategory)) {
+    const slugs = Array.from(slugsToHideByCategory[category])
+    if (slugs.length === 0) continue
+    const { data: hidden } = await service
+      .from('entity_catalog')
+      .update({ hidden: true, last_seen_at: nowIso })
+      .eq('scope_type', scope.scopeType)
+      .eq('scope_id', scope.scopeId)
+      .eq('source', 'discovered')
+      .eq('category', category)
+      .eq('hidden', false)
+      .in('slug', slugs)
+      .select('slug')
+    entitiesAutoHidden += (hidden || []).length
+  }
+
   // Append-only audit log entry so the Schema panel can show "Last updated"
   // covering manual edits as well as discovery runs.
   await service.from('entity_catalog_refresh').insert({
@@ -238,14 +278,17 @@ export async function POST(req: Request, { params }: Params) {
     entities_new:         entitiesNew,
     haiku_cost_est_cents: 0,
     duration_ms:          0,
-    error:                errors.length > 0 ? `${errors.length} of ${incoming.length} entries rejected` : null,
+    error:                errors.length > 0
+      ? `${errors.length} of ${incoming.length} entries rejected${entitiesAutoHidden > 0 ? `; ${entitiesAutoHidden} alias-redundant discovered rows auto-hidden` : ''}`
+      : (entitiesAutoHidden > 0 ? `${entitiesAutoHidden} alias-redundant discovered rows auto-hidden` : null),
   })
 
   return NextResponse.json({
-    accepted:        upsertRows.length,
-    entities_new:    entitiesNew,
-    entities_merged: entitiesMerged,
-    rejected:        errors,
-    scope_type:      scope.scopeType,
+    accepted:               upsertRows.length,
+    entities_new:           entitiesNew,
+    entities_merged:        entitiesMerged,
+    entities_auto_hidden:   entitiesAutoHidden,
+    rejected:               errors,
+    scope_type:             scope.scopeType,
   })
 }

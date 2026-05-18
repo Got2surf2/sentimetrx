@@ -205,7 +205,14 @@ from discovery:
 The Manage Entities panel (Schema tab) drives these via:
 - POST `/api/datasets/[id]/entities` — single or bulk create with `source='manual'`.
   Accepts `{ canonical, category?, aliases? }` or `{ entities: [...] }`. Bulk paste
-  format is `Canonical | category | alias1, alias2` per line.
+  format is `Canonical | category | alias1, alias2` per line. **Auto-hide**: after
+  upserting the manual rows, the endpoint slugifies every alias and soft-deletes
+  any `source='discovered'` row in the same scope + category whose slug matches
+  an alias-slug. This catches the cross-slug duplication case the UNIQUE index
+  can't (e.g. `Filet Mignon` and `Filet` have different slugs but are
+  conceptually the same — the alias rule hides the latter). Same-category guard
+  prevents a food entity from hiding a brand or place that shares a name.
+  Response includes `entities_auto_hidden` count for visibility.
 - PATCH `/api/datasets/[id]/entities/[slug]` — toggle `hidden`, edit aliases,
   canonical, category.
 - DELETE `/api/datasets/[id]/entities/[slug]` — hard-delete (`source='manual'` only;
