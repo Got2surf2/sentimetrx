@@ -39,8 +39,20 @@ keys; AWS-managed keys for S3 objects).
 ## 3. Tenant isolation
 
 Every customer organization (`org_id`) is a hard tenancy boundary.
-Isolation is enforced at two independent layers, both audited by
-automated tests on every change:
+
+**Summary.** Multi-tenancy is enforced at two independent layers:
+(1) Postgres Row-Level Security policies on every tenant-scoped
+table — a customer's users can only query rows where `org_id` equals
+their organization's id; (2) application-layer org-pairing on every
+service-role query (`id` + `org_id` pairing is required and is
+covered by an automated cross-tenant egress test suite). Production
+access to customer data is limited to the Datanautix principal
+today; admin actions are append-only logged in `admin_action_log`.
+The two layers are independent — even a bug in the application
+layer that omits an `org_id` filter cannot bypass RLS at the
+database.
+
+Both layers are audited by automated tests on every change:
 
 1. **Database (Row-Level Security).** Every customer-scoped table has
    Postgres RLS enabled with a policy that filters by `org_id`. A
