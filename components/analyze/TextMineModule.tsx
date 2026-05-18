@@ -971,6 +971,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [activeField, setActiveField] = useState<string | null>(null)
   const [activeFields, setActiveFields] = useState<string[]>([])
   const [subTab, setSubTab] = useState<SubTab>('themes')
+  // Theme | Entity view toggle. Themes (default) emphasises the AI-mined
+  // theme model on Themes / Clouds subtabs; Entity flips both to the
+  // catalog-driven views. Compare and Signals subtabs are theme-only —
+  // entity Compare lives in BreakdownDist on the Themes subtab.
+  const [viewBy, setViewBy] = useState<'theme' | 'entity'>('theme')
   const [themesView, setThemesView] = useState<'distribution' | 'cards' | 'signals'>('cards')
   const [signalCutoffs, setSignalCutoffs] = useState<{ mainstream: number; noise: number }>({ mainstream: 70, noise: 30 })
   const [showAllThemes, setShowAllThemes] = useState(false)
@@ -1035,6 +1040,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       if (saved.activeField !== undefined) setActiveField(saved.activeField)
       if (Array.isArray(saved.activeFields)) setActiveFields(saved.activeFields)
       if (saved.subTab) { setSubTab(saved.subTab); setPreviousTab(saved.subTab) }
+      if (saved.viewBy === 'theme' || saved.viewBy === 'entity') setViewBy(saved.viewBy)
       if (saved.themesView) setThemesView(saved.themesView)
       if (saved.signalCutoffs) setSignalCutoffs(saved.signalCutoffs)
       if (typeof saved.showAllThemes === 'boolean') setShowAllThemes(saved.showAllThemes)
@@ -1059,8 +1065,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
       ratingField: ratingField, colorMode: colorMode, hideFlagged: hideFlagged,
+      viewBy: viewBy,
     })
-  }, [restoredFromSession, activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
+  }, [restoredFromSession, activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, viewBy, _tmKey])
 
   // Listen for Ana theme mutations and refetch theme model
   useEffect(function() {
@@ -1703,6 +1710,34 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+              {/* View by Theme | Entity — gates which set of components renders
+                  on subtabs that have both (Themes, Clouds). Only shown when
+                  the scope actually has an entity catalog; otherwise the
+                  toggle would be a footgun (Entity view would render empty). */}
+              {(subTab === 'themes' || subTab === 'clouds') && entityCatalogRows.length > 0 && (
+                <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border, marginRight: 4 }}>
+                  {(['theme', 'entity'] as const).map(function(mode) {
+                    return (
+                      <button
+                        key={mode}
+                        onClick={function() { setViewBy(mode) }}
+                        title={mode === 'theme' ? 'Show AI-mined themes' : 'Show entity catalog (dishes, drinks, brands, places)'}
+                        style={{
+                          padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                          background: viewBy === mode ? T.bgCard : 'transparent',
+                          color: viewBy === mode ? T.accent : T.textMute,
+                          border: 'none', cursor: 'pointer',
+                          boxShadow: viewBy === mode ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                          textTransform: 'capitalize' as const,
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {mode === 'theme' ? 'Themes' : 'Entities'}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
               {themeSource && (
@@ -1873,7 +1908,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   return (
                     <div>
                       {/* AI-mined banner */}
-                      {themeSource === 'ai' && (
+                      {viewBy === 'theme' && themeSource === 'ai' && (
                         <div style={{ background: 'linear-gradient(135deg, #fff3ee, #ffe8db)', border: '1px solid #fed7aa', borderRadius: 12, padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ fontSize: 18 }}>{'\u2728'}</span>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#9a3412' }}>
@@ -1887,28 +1922,36 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>Themes</h2>
+                            <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>{viewBy === 'entity' ? 'Entities' : 'Themes'}</h2>
                           </div>
                           <p style={{ fontSize: 12, color: T.textMid, margin: '3px 0 0' }}>
-                            {effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {displayThemes!.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
+                            {viewBy === 'entity'
+                              ? <>{effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {entityCatalogTotal != null ? entityCatalogTotal.toLocaleString() + ' entities \u00B7 ' : ''}{totalResp.toLocaleString()} responses</>
+                              : <>{effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {displayThemes!.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses</>
+                            }
                           </p>
                         </div>
-                        <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
-                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards'], ...((datasetSource === 'reddit' || datasetSource === 'substack') ? [['signals', '\u26A1 Signals']] : [])].map(function(pair) {
-                            var v = pair[0]; var lbl = pair[1]
-                            return (
-                              <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards' | 'signals') }}
-                                style={{ fontSize: 12, fontWeight: themesView === v ? 700 : 500, padding: '5px 14px', borderRadius: 18, background: themesView === v ? T.accent : 'transparent', color: themesView === v ? 'white' : T.textMute, border: 'none', cursor: 'pointer', transition: 'background .15s' }}>
-                                {lbl}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer', flexShrink: 0 }}>
-                          <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
-                          Show all
-                        </label>
+                        {viewBy === 'theme' && (
+                          <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
+                            {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards'], ...((datasetSource === 'reddit' || datasetSource === 'substack') ? [['signals', '\u26A1 Signals']] : [])].map(function(pair) {
+                              var v = pair[0]; var lbl = pair[1]
+                              return (
+                                <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards' | 'signals') }}
+                                  style={{ fontSize: 12, fontWeight: themesView === v ? 700 : 500, padding: '5px 14px', borderRadius: 18, background: themesView === v ? T.accent : 'transparent', color: themesView === v ? 'white' : T.textMute, border: 'none', cursor: 'pointer', transition: 'background .15s' }}>
+                                  {lbl}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {viewBy === 'theme' && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer', flexShrink: 0 }}>
+                            <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
+                            Show all
+                          </label>
+                        )}
                       </div>
+                      {viewBy === 'theme' && (
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
                           {(function() {
@@ -1946,6 +1989,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Top Tone</div>
                         </div>
                       </div>
+                      )}
 
                       {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
                       <EntitiesCard
@@ -1958,7 +2002,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       />
 
                       {/* ── Distribution view ─── */}
-                      {themesView === 'distribution' && (
+                      {viewBy === 'theme' && themesView === 'distribution' && (
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 20 }}>
                           {/* Compute rounded max for axis */}
                           {(function() {
@@ -2016,7 +2060,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       )}
 
                       {/* ── Cards view (exact Ana.html style) ─── */}
-                      {themesView === 'cards' && (function() {
+                      {viewBy === 'theme' && themesView === 'cards' && (function() {
                         // Compute rating range for normalization when in rating color mode
                         var ratingMin = Infinity, ratingMax = -Infinity
                         if (colorMode === 'rating' && ratingField) {
@@ -2207,7 +2251,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       })()}
 
                       {/* ── Signals view (Reddit + Substack) ─── */}
-                      {themesView === 'signals' && (datasetSource === 'reddit' || datasetSource === 'substack') && (
+                      {viewBy === 'theme' && themesView === 'signals' && (datasetSource === 'reddit' || datasetSource === 'substack') && (
                         <SignalsView
                           rows={filteredRows}
                           mainstreamCutoff={signalCutoffs.mainstream}
@@ -2218,14 +2262,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       )}
 
                       {/* Breakdown distribution */}
-                      {breakdownField && selectedValues.size > 0 && themesView !== 'signals' && (
+                      {viewBy === 'theme' && breakdownField && selectedValues.size > 0 && themesView !== 'signals' && (
                         <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} ratingField={ratingField} />
                       )}
 
                       {/* Entity Breakdown — same controls (breakdown field +
                           selected values), one chart below. Only when the
                           scope actually has an entity catalog. */}
-                      {breakdownField && selectedValues.size > 0 && themesView !== 'signals' && entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
+                      {viewBy === 'entity' && breakdownField && selectedValues.size > 0 && entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
                         <EntityBreakdownDist
                           entities={entityCatalogRows}
                           parsedData={filteredRows}
@@ -2243,28 +2287,32 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               </div>
             )}
 
-            {/* ═══ THEME CLOUDS TAB ═══ */}
+            {/* ═══ CLOUDS TAB ═══ (Theme or Entity per viewBy) */}
             {subTab === 'clouds' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
-                <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>Theme Clouds</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>
+                  {viewBy === 'entity' ? 'Entity Clouds' : 'Theme Clouds'}
+                </h2>
                 {hasThemes && themes && rowsLoaded ? (
                   <>
-                  <WordCloud
-                    themes={(displayThemes || themes).themes}
-                    themeColors={themeColors}
-                    parsedData={filteredRows}
-                    activeField={activeField || themes!.fieldName}
-                    isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
-                    onWordClick={function(word, themeIdx, type) {
-                      // Word click: opinion popover. Theme title click: theme popover.
-                      if (type === 'theme') {
-                        setThemePopoverIdx(themePopoverIdx === themeIdx ? null : themeIdx)
-                      } else if (word) {
-                        setOpinionWord(opinionWord === word ? null : word)
-                      }
-                    }}
-                  />
-                  {opinionWord && (
+                  {viewBy === 'theme' && (
+                    <WordCloud
+                      themes={(displayThemes || themes).themes}
+                      themeColors={themeColors}
+                      parsedData={filteredRows}
+                      activeField={activeField || themes!.fieldName}
+                      isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
+                      onWordClick={function(word, themeIdx, type) {
+                        // Word click: opinion popover. Theme title click: theme popover.
+                        if (type === 'theme') {
+                          setThemePopoverIdx(themePopoverIdx === themeIdx ? null : themeIdx)
+                        } else if (word) {
+                          setOpinionWord(opinionWord === word ? null : word)
+                        }
+                      }}
+                    />
+                  )}
+                  {viewBy === 'theme' && opinionWord && (
                     <div style={{ marginTop: 12 }}>
                       <OpinionPopover
                         word={opinionWord}
@@ -2276,7 +2324,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       />
                     </div>
                   )}
-                  {themePopoverIdx !== null && themes && (displayThemes || themes).themes[themePopoverIdx] && (
+                  {viewBy === 'theme' && themePopoverIdx !== null && themes && (displayThemes || themes).themes[themePopoverIdx] && (
                     <ThemePopover
                       theme={(displayThemes || themes).themes[themePopoverIdx] as any}
                       rows={filteredRows}
@@ -2287,20 +2335,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
                   )}
-                  {/* ── Entity Clouds ── same page as theme clouds; reuses the
-                       fetched entity catalog + the filtered row set for live
-                       per-entity counts and clause-aware sentiment. */}
-                  {entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
-                    <>
-                      <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '32px 0 16px' }}>Entity Clouds</h2>
-                      <EntityCloud
-                        entities={entityCatalogRows}
-                        parsedData={filteredRows}
-                        fields={effectiveFields}
-                        scopeType={entityCatalogScopeType}
-                        onEntityClick={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
-                      />
-                    </>
+                  {/* Entity cloud — shown when viewBy is 'entity' and the
+                      scope has a catalog to render. */}
+                  {viewBy === 'entity' && entityCatalogRows.length > 0 && effectiveFields.length > 0 && (
+                    <EntityCloud
+                      entities={entityCatalogRows}
+                      parsedData={filteredRows}
+                      fields={effectiveFields}
+                      scopeType={entityCatalogScopeType}
+                      onEntityClick={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
+                    />
+                  )}
+                  {viewBy === 'entity' && entityCatalogRows.length === 0 && (
+                    <div style={{ textAlign: 'center' as const, padding: 40, color: T.textFaint, fontSize: 13 }}>
+                      No entities in this scope yet. Discover or seed entities on the Schema tab.
+                    </div>
                   )}
                   </>
                 ) : hasThemes && themes && !rowsLoaded ? (

@@ -198,16 +198,34 @@ Do NOT extract the subject brand(s) above, their formal or legal names, or any p
 `
 }
 
-function nerPrompt(texts: string[], ctx: DiscoveryContext): string {
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  food:   'named dishes and menu items ("Filet Mignon", "Lobster Mac & Cheese", "Caesar Salad") — NOT generic food words ("steak", "appetizer", "dessert", "the food")',
+  drink:  'named beverages, wines, cocktails ("Old Fashioned", "Caymus Cabernet", "Tito\'s")',
+  place:  'named locations, cities, neighborhoods, specific named venues ("Tysons Corner", "the DC location", "Times Square")',
+  person: 'named individuals — staff, managers, public figures ("our server Maria", "Chef Tony")',
+  brand:  'named companies, competitor brands, named products ("OpenTable", "DoorDash", "Yelp")',
+  other:  'any other specific named entity that fits none of the above',
+}
+
+function nerPrompt(texts: string[], ctx: DiscoveryContext, excludeCategories: string[] = []): string {
+  const excludeSet = new Set(excludeCategories.map(c => c.toLowerCase()).filter(c => CATEGORIES.includes(c)))
+  const activeCategories = CATEGORIES.filter(c => !excludeSet.has(c))
+  // Defence: if every category got excluded we'd hand the model a useless
+  // prompt. Fall back to the full set rather than ask for nothing.
+  const renderCats = activeCategories.length > 0 ? activeCategories : CATEGORIES
+  const extractList = renderCats.map(c => `- ${c}: ${CATEGORY_DESCRIPTIONS[c]}`).join('\n')
+
+  const excludeBlock = excludeSet.size > 0
+    ? `These categories already have a curated catalog (menu seed or prior manual additions). DO NOT extract entities of these categories — every result you produce in these categories is a duplicate or noise:
+${Array.from(excludeSet).map(c => `- ${c}`).join('\n')}
+
+`
+    : ''
+
   return `Extract NAMED ENTITIES from these customer review / survey / comment texts.
 
-${contextBlock(ctx)}Extract ONLY specific, named things a person could point to:
-- food: named dishes and menu items ("Filet Mignon", "Lobster Mac & Cheese", "Caesar Salad") — NOT generic food words ("steak", "appetizer", "dessert", "the food")
-- drink: named beverages, wines, cocktails ("Old Fashioned", "Caymus Cabernet", "Tito's")
-- place: named locations, cities, neighborhoods, specific named venues ("Tysons Corner", "the DC location", "Times Square")
-- person: named individuals — staff, managers, public figures ("our server Maria", "Chef Tony")
-- brand: named companies, competitor brands, named products ("OpenTable", "DoorDash", "Yelp")
-- other: any other specific named entity that fits none of the above
+${contextBlock(ctx)}${excludeBlock}Extract ONLY specific, named things a person could point to:
+${extractList}
 
 DO NOT extract:
 - adjectives or descriptions ("attentive", "delicious", "slow", "friendly")
@@ -219,7 +237,7 @@ If a text mentions no specific named entity, skip it — that is expected and fi
 
 For each distinct entity output:
 - "canonical": the cleanest standard form, properly capitalised
-- "category": one of food | drink | place | person | brand | other
+- "category": one of ${renderCats.join(' | ')}
 - "aliases": the raw variants seen in the text, lowercase, as written
 
 Merge obvious variants under one canonical ("filet", "the filet mignon" -> canonical "Filet Mignon", aliases ["filet","the filet mignon"]).
@@ -238,12 +256,12 @@ interface BatchResult {
   error: string | null
 }
 
-async function nerBatch(texts: string[], orgId: string | null, datasetId: string, ctx: DiscoveryContext): Promise<BatchResult> {
+async function nerBatch(texts: string[], orgId: string | null, datasetId: string, ctx: DiscoveryContext, excludeCategories: string[] = []): Promise<BatchResult> {
   try {
     const res = await callAI({
       tier: 'fast',
       system: NER_SYSTEM,
-      messages: [{ role: 'user', content: nerPrompt(texts, ctx) }],
+      messages: [{ role: 'user', content: nerPrompt(texts, ctx, excludeCategories) }],
       maxTokens: 1500,
       timeoutMs: 30_000,
       usage: orgId
@@ -254,6 +272,7 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
     const start = text.indexOf('{')
     const end = text.lastIndexOf('}')
     let entities: BatchResult['entities'] = []
+    const excludeSet = new Set(excludeCategories.map(c => c.toLowerCase()))
     if (start >= 0 && end > start) {
       const parsed = JSON.parse(text.slice(start, end + 1))
       if (Array.isArray(parsed?.entities)) {
@@ -268,6 +287,10 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
               ? e.aliases.filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().toLowerCase())
               : [],
           }))
+          // Defence: model occasionally hands back an excluded category despite
+          // the instruction. Drop those server-side so they never enter the
+          // catalog or pollute the curated set.
+          .filter((e: { category: string }) => !excludeSet.has(e.category))
       }
     }
     return {
@@ -407,6 +430,18 @@ export async function discoverEntities(opts: {
   triggeredByUser?: string | null
   sampleDatasetIds?: string[]
   sampleSize?:      number
+  /** Categories the NER should skip — e.g. ['food','drink'] when a scope
+   *  already has a curated menu seed. Survives the model occasionally
+   *  ignoring the instruction (post-filter drops any category in this list).
+   *  Default: empty (extract every category). */
+  excludeCategories?: string[]
+  /** Auto-detect curated categories by scanning the catalog for
+   *  source='manual' rows; any category with >= autoExcludeThreshold manual
+   *  rows is added to excludeCategories. Off by default — explicit caller
+   *  opt-in keeps the manual "Discover" button from silently skipping the
+   *  category the user might want to re-explore. */
+  autoExcludeFromCurated?: boolean
+  autoExcludeThreshold?:   number
 }): Promise<DiscoveryResult> {
   const { service, datasetId, mode } = opts
   const startedAt = Date.now()
@@ -418,6 +453,30 @@ export async function discoverEntities(opts: {
   const sampleFrom = (opts.sampleDatasetIds && opts.sampleDatasetIds.length > 0)
     ? opts.sampleDatasetIds
     : scope.memberDatasetIds
+
+  // ── Resolve excludeCategories (explicit override OR auto-detect) ─────────
+  // Manual ("Discover" button) callers leave both off — full extraction.
+  // Cron / incremental callers pass autoExcludeFromCurated=true to save AI
+  // cost on scopes that have a menu seed: no point asking Haiku to surface
+  // dish names when the brand collection already lists every item by hand.
+  let excludeCategories = (opts.excludeCategories || []).slice()
+  if (opts.autoExcludeFromCurated && excludeCategories.length === 0) {
+    const threshold = Math.max(1, opts.autoExcludeThreshold ?? 10)
+    const { data: curatedCounts } = await service
+      .from('entity_catalog')
+      .select('category')
+      .eq('scope_type', scope.scopeType)
+      .eq('scope_id', scope.scopeId)
+      .eq('source', 'manual')
+      .eq('hidden', false)
+    const perCategory: Record<string, number> = {}
+    for (const row of (curatedCounts || []) as Array<{ category: string }>) {
+      perCategory[row.category] = (perCategory[row.category] || 0) + 1
+    }
+    for (const cat of CATEGORIES) {
+      if ((perCategory[cat] || 0) >= threshold) excludeCategories.push(cat)
+    }
+  }
 
   // All modes are additive. The "Reset discovered entries" action is a
   // separate, explicit endpoint — re-running discovery never destroys
@@ -481,7 +540,7 @@ export async function discoverEntities(opts: {
   for (let i = 0; i < texts.length; i += ROWS_PER_BATCH) {
     batches.push(texts.slice(i, i + ROWS_PER_BATCH))
   }
-  const batchResults = await mapLimit(batches, NER_CONCURRENCY, b => nerBatch(b, scope.orgId, datasetId, context))
+  const batchResults = await mapLimit(batches, NER_CONCURRENCY, b => nerBatch(b, scope.orgId, datasetId, context, excludeCategories))
 
   let inputTokens = 0
   let outputTokens = 0

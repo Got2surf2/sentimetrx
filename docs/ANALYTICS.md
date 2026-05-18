@@ -121,6 +121,18 @@ incremental) — a re-run never wipes existing entries. Catalog cleanup is the e
 "Reset discovered entries" action (POST `/api/datasets/[id]/entities/reset-discovered`),
 which only deletes `source='discovered'` rows so hand-curated entries survive.
 
+**Category-restricted discovery** (`opts.excludeCategories`, `opts.autoExcludeFromCurated`):
+the NER prompt can be told to skip categories whose entities already have a curated
+catalog. The weekly cron and the per-dataset incremental run both pass
+`autoExcludeFromCurated=true`, which checks the scope for `source='manual'` rows by
+category and adds any category with ≥10 manual entries to the exclude list. Result:
+for a brand with a menu seed, the cron stops asking Haiku to surface dishes it
+already knows about — saves roughly half the AI cost on brand-collection re-runs
+since `food` and `drink` are the bulk of the catalog. The manual "Discover" button on
+the Schema tab does NOT auto-exclude (user may want to re-explore even curated
+categories). Post-filter on the NER result also drops any excluded-category entity
+the model returned despite the instruction.
+
 **Subject context**: field selection stops *structured* location columns from reaching
 NER, but the subject brand and its cities are also genuinely written into review prose
 ("we love Fleming's in Tampa") — a generic extractor flags them as `brand` / `place`

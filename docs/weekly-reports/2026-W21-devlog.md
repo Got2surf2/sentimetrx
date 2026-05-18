@@ -96,3 +96,30 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC on Fleming's pending.
 
 **Next**: Bucket D (View by Theme | Entity toggle at the TextMine module top) and Bucket E (category-restricted monthly discovery — skip food/drink in cron NER once a menu seed exists, saves ~half the AI cost). With C done, the theme-functionality mirror is complete; D and E are polish/cost optimization.
+
+## 2026-05-18 — View toggle + category-restricted discovery (Buckets D + E)
+
+**Why (D)**: with the cloud, sentiment, and compare chart now living as a parallel stack to the theme equivalents on the same TextMine subtabs, the page got visually noisy — both stacks competed for attention. A toggle promotes one set at a time, giving users a clean view that matches their current question ("am I looking at concepts or named things?").
+
+**Why (E)**: the weekly cron re-runs NER discovery across every brand-collection. For brands that have menu-PDF-seeded `source='manual'` food/drink, those Haiku calls produce mostly duplicates or noise — the catalog already has the right list. Auto-excluding curated categories drops the cron's AI cost roughly in half on seeded brands without losing the long-tail discovery for `brand`/`place`/`person`.
+
+**What changed**:
+- `components/analyze/TextMineModule.tsx`:
+  - New state `viewBy: 'theme' | 'entity'` (default `theme`), persisted in the same session-state object that already saves subTab/themesView/etc.
+  - Toggle button rendered in the subtab header's right-side action area, visible only on Themes / Clouds subtabs and only when an entity catalog exists for the scope (otherwise Entity mode would render empty).
+  - Themes subtab: AI banner, summary cards, themesView switcher (Distribution/Cards/Signals), the three themesView blocks, and BreakdownDist all gated to `viewBy === 'theme'`. EntityBreakdownDist gated to `viewBy === 'entity'`. EntitiesCard remains visible in both modes (it's the gateway/drill-in for entities).
+  - Clouds subtab: WordCloud + its opinion/theme popovers gated to `viewBy === 'theme'`; EntityCloud gated to `viewBy === 'entity'`. h2 title flips between "Theme Clouds" and "Entity Clouds". Fallback empty-state message when an entity-view scope has no catalog yet.
+- `lib/entityDiscovery.ts`:
+  - New opts: `excludeCategories?: string[]` (explicit list of categories to skip in the NER prompt) and `autoExcludeFromCurated?: boolean` (auto-detect from `source='manual'` row counts ≥ `autoExcludeThreshold` default 10).
+  - NER prompt rewritten to render only the active categories' descriptions in the "Extract" list and add a "Do NOT extract" block listing curated categories with the reason.
+  - Post-filter on NER results drops any entity in an excluded category (defence against the model ignoring the instruction).
+- `app/api/cron/entity-discovery/route.ts`: weekly cron now passes `autoExcludeFromCurated: true`.
+- `lib/brandRules.ts`: per-dataset incremental run (`discoverBrandEntitiesIfNeeded`) also passes `autoExcludeFromCurated: true` — same cost-saving logic at the point a new dataset lands in a brand.
+- Manual "Discover entities" button on the Schema tab does NOT pass the flag — when a user explicitly clicks Discover, give them everything (they may want to re-explore curated categories).
+- `docs/ANALYTICS.md`: "Category-restricted discovery" subsection added; "Where entities show up" entries updated for the view toggle.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC on the toggle pending — need to render Themes and Clouds subtabs against the Fleming's dataset in both modes to confirm the gating is clean.
+
+**Bucket scoreboard**: A ✅ B ✅ C ✅ D ✅ E ✅ F ✅. All six buckets of the entity-views build shipped. The full theme-functionality mirror is live for entities (cloud, sentiment, compare, drill-down, modal), plus the architectural foundation (manual curation, soft-delete, category-restricted discovery) that makes brand-bootstrap from a menu PDF realistic.
+
+**Next**: visual QC end-to-end on Fleming's, then push when ready. After that the open questions are the standard polish items — catalog telemetry on the admin panel, an entity version of CompareTab (multi-field breakdown), and possibly a "promote to brand" affordance for named-chef person entries that survived the collection-scope suppression.

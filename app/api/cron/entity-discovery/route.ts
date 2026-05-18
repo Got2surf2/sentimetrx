@@ -60,11 +60,17 @@ export async function GET(req: NextRequest) {
     try {
       // discoverEntities resolves the brand-collection's virtual dataset to
       // its ('collection', brandCollectionId) scope and samples across every
-      // member dataset.
+      // member dataset. autoExcludeFromCurated=true checks the scope's
+      // catalog for source='manual' rows by category and skips any category
+      // with a meaningful curated set (default >=10 rows) — saves AI cost on
+      // brands that already have a menu seed. Manual ("Discover" button) runs
+      // do NOT auto-exclude — the user may want to re-explore even curated
+      // categories.
       const r = await discoverEntities({
         service,
-        datasetId: brand.dataset_id,
-        mode:      'cron',
+        datasetId:              brand.dataset_id,
+        mode:                   'cron',
+        autoExcludeFromCurated: true,
       })
       results.push({
         brand:          brand.slug || brand.id,

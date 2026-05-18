@@ -105,5 +105,8 @@ export async function discoverBrandEntitiesIfNeeded(
     datasetId,
     mode: 'incremental',
     sampleDatasetIds: [datasetId],
+    // Same auto-skip logic the weekly cron uses: don't burn AI tokens on a
+    // category the brand has already curated by hand.
+    autoExcludeFromCurated: true,
   })
 }
