@@ -194,7 +194,7 @@ export async function GET() {
   p++
   const s5 = pptx.addSlide()
   s5.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s5, 'How a conversation flows', 'Every resident chooses their own path — both paths end at the official record')
+  hdr(s5, 'How a conversation flows', 'Two paths, one record — Sarina covers 8 information topics (Path 1) and learns 7 feedback topics (Path 2)')
   ftr(s5, p)
 
   // Top: opening
@@ -216,22 +216,24 @@ export async function GET() {
   s5.addShape('rect', { x: 0.5, y: pathY, w: 6.05, h: 0.55, fill: { color: C.orange }, line: { color: C.orange, width: 0 } })
   s5.addText('PATH 1 — INFORMATION', { x: 0.7, y: pathY, w: 5.7, h: 0.55, fontSize: 12, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
   s5.addText(
-    '· Sarina answers questions using the PM-1 Q&A + technical deck\n' +
+    '· First reply always points to www.nowocats.com for the full project record\n' +
+    '· Sarina then answers questions using the PM-1 Q&A + technical deck\n' +
     '· Tracks which of 8 core topics have been touched\n' +
     '· Every 2–3 turns offers a soft transition to feedback\n' +
     '· Around exchange 10, firmer nudge: "before you go, share your thoughts?"',
-    { x: 0.75, y: pathY + 0.75, w: 5.5, h: pathH - 0.95, fontSize: 12.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.6 }
+    { x: 0.75, y: pathY + 0.75, w: 5.5, h: pathH - 0.95, fontSize: 12, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.5 }
   )
 
   s5.addShape('roundRect', { x: 6.78, y: pathY, w: 6.05, h: pathH, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
   s5.addShape('rect', { x: 6.78, y: pathY, w: 6.05, h: 0.55, fill: { color: C.purple }, line: { color: C.purple, width: 0 } })
   s5.addText('PATH 2 — FEEDBACK', { x: 6.98, y: pathY, w: 5.7, h: 0.55, fontSize: 12, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
   s5.addText(
-    '· Straight into a guided 7-question conversation\n' +
-    '· Each answer is acknowledged before the next question\n' +
-    '· Free-text encouraged — no chips, no radio buttons\n' +
+    '· Open conversation — the resident leads, Sarina follows\n' +
+    '· She quietly tracks 7 topics and steers toward uncovered ones\n' +
+    '· Two anchor asks before closing (who you are + top priority)\n' +
+    '· No forms, no chips, no radio buttons — just a conversation\n' +
     '· Closes with the official record acknowledgment',
-    { x: 7.03, y: pathY + 0.75, w: 5.5, h: pathH - 0.95, fontSize: 12.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.6 }
+    { x: 7.03, y: pathY + 0.75, w: 5.5, h: pathH - 0.95, fontSize: 12, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.5 }
   )
 
   // Bottom: merge to record
@@ -309,37 +311,69 @@ export async function GET() {
   p++
   const s7 = pptx.addSlide()
   s7.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s7, 'Path 2 — Feedback', 'Seven questions, asked conversationally — not as a form')
+  hdr(s7, 'Path 2 — Feedback', 'An open conversation — 7 topics tracked quietly, 2 anchor asks before closing')
   ftr(s7, p)
 
-  // Top banner — conversational not survey
-  s7.addShape('roundRect', { x: 0.5, y: 1.28, w: 12.3, h: 0.85, rectRadius: 0.1, fill: { color: C.purpleTint }, line: { color: C.purpleLine, width: 0.6 } })
-  s7.addText('Conversational by design. Sarina asks one question at a time, acknowledges the answer, and lets the resident elaborate naturally. No chips. No radio buttons. No survey-feel.', {
-    x: 0.7, y: 1.32, w: 11.9, h: 0.78, fontSize: 13, fontFace: 'Arial', color: C.purple, valign: 'middle', wrap: true, lineSpacingMultiple: 1.4,
+  // Top banner — fluid, not a survey
+  s7.addShape('roundRect', { x: 0.5, y: 1.28, w: 12.3, h: 0.95, rectRadius: 0.1, fill: { color: C.purpleTint }, line: { color: C.purpleLine, width: 0.6 } })
+  s7.addText('The resident leads. Sarina follows their thread, asks natural follow-ups, and quietly tracks which of 7 topics have been covered. Before closing she ensures 2 anchor questions are answered — the only structured fields VHB needs for cross-resident analysis.', {
+    x: 0.7, y: 1.32, w: 11.9, h: 0.88, fontSize: 12, fontFace: 'Arial', color: C.purple, valign: 'middle', wrap: true, lineSpacingMultiple: 1.4,
   })
 
-  // Questions list
-  const qs = [
-    ['Q1', 'Which best describes you?', 'Resident · business owner · commuter · other'],
-    ['Q2', 'Where in NW Orange County do you live, work, or travel most?', 'Free-form — captures the corridor context naturally'],
-    ['Q3', 'How do you mostly get around?', 'Drive · transit · bike · walk'],
-    ['Q4', 'What\'s your biggest transportation frustration today?', 'Free-form — themed and entity-tagged automatically'],
-    ['Q5', 'Looking ahead to 2050, what concerns you most about growth?', 'Free-form — anchors responses against the build vs. no-build narrative'],
-    ['Q6', 'Of the six improvement categories, which one would make the biggest difference in your daily life?', 'Widening · new roads · safety · intersection · ped/bike · transit'],
-    ['Q7', 'A specific intersection or stretch of road to flag? Anything else?', 'Free-form — feeds the geographic hot-spot map for the Final Study Report'],
-  ]
-  qs.forEach(function(row, i) {
-    const y = 2.4 + i * 0.66
-    s7.addShape('rect', { x: 0.5, y, w: 12.3, h: 0.64, fill: { color: i % 2 === 0 ? C.white : C.slateCard }, line: { color: 'F3F4F6', width: 0.3 } })
-    s7.addShape('ellipse', { x: 0.62, y: y + 0.13, w: 0.4, h: 0.4, fill: { color: C.purple }, line: { color: C.purple, width: 0 } })
-    s7.addText(row[0], { x: 0.62, y: y + 0.13, w: 0.4, h: 0.4, fontSize: 10, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
-    s7.addText(row[1], { x: 1.2, y, w: 7.5, h: 0.64, fontSize: 12.5, fontFace: 'Arial', color: C.navy, valign: 'middle', bold: true, wrap: true })
-    s7.addText(row[2], { x: 8.8, y, w: 3.95, h: 0.64, fontSize: 10.5, fontFace: 'Arial', color: C.mid, italic: true, valign: 'middle', wrap: true })
+  // LEFT: 7 topics to cover (conversationally)
+  s7.addShape('roundRect', { x: 0.5, y: 2.4, w: 7.5, h: 4.6, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+  s7.addShape('rect', { x: 0.5, y: 2.4, w: 7.5, h: 0.5, fill: { color: C.teal }, line: { color: C.teal, width: 0 } })
+  s7.addText('7 TOPICS SARINA ENSURES GET COVERED', { x: 0.7, y: 2.4, w: 7.1, h: 0.5, fontSize: 11, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  s7.addText('In any order — extracted from conversation when possible, asked directly only if needed.', {
+    x: 0.7, y: 2.96, w: 7.1, h: 0.4, fontSize: 10.5, fontFace: 'Arial', color: C.mid, italic: true, wrap: true,
   })
+
+  const topics7 = [
+    'Who they are — resident, business, commuter, other',
+    'Where in NW Orange County they live, work, or travel',
+    'How they mostly get around — drive, transit, bike, walk',
+    'Biggest transportation frustration today',
+    '2050 growth concerns (build vs. no-build context)',
+    'Top priority improvement category (one of six)',
+    'Specific intersection or stretch of road to flag',
+  ]
+  topics7.forEach(function(t, i) {
+    const y = 3.5 + i * 0.48
+    s7.addShape('ellipse', { x: 0.7, y: y + 0.08, w: 0.28, h: 0.28, fill: { color: C.teal }, line: { color: C.teal, width: 0 } })
+    s7.addText(String(i + 1), { x: 0.7, y: y + 0.08, w: 0.28, h: 0.28, fontSize: 10, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
+    s7.addText(t, { x: 1.1, y, w: 6.8, h: 0.45, fontSize: 11.5, fontFace: 'Arial', color: C.mid, valign: 'middle', wrap: true })
+  })
+
+  // RIGHT: 2 anchor asks (always explicit before closing)
+  s7.addShape('roundRect', { x: 8.2, y: 2.4, w: 4.6, h: 4.6, rectRadius: 0.12, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  s7.addShape('rect', { x: 8.2, y: 2.4, w: 4.6, h: 0.5, fill: { color: C.gold }, line: { color: C.gold, width: 0 } })
+  s7.addText('2 ANCHOR ASKS BEFORE CLOSING', { x: 8.4, y: 2.4, w: 4.2, h: 0.5, fontSize: 10, fontFace: 'Arial', color: C.navy, bold: true, valign: 'middle', charSpacing: 1.5 })
+  s7.addText('The only two structured fields VHB needs every record to have. Asked explicitly if not already surfaced.', {
+    x: 8.4, y: 2.96, w: 4.2, h: 0.6, fontSize: 10.5, fontFace: 'Arial', color: C.slate, italic: true, wrap: true, lineSpacingMultiple: 1.3,
+  })
+
+  // Anchor 1
+  s7.addShape('roundRect', { x: 8.4, y: 3.7, w: 4.2, h: 1.55, rectRadius: 0.08, fill: { color: 'FFFFFF' }, line: { color: C.gold, width: 0.6 } })
+  s7.addText('A1 — USER TYPE', { x: 8.55, y: 3.78, w: 4.0, h: 0.28, fontSize: 9, fontFace: 'Arial', color: C.gold, bold: true, charSpacing: 1.5 })
+  s7.addText('"Which best describes you — resident, business owner, commuter, or other?"', {
+    x: 8.55, y: 4.05, w: 4.0, h: 0.65, fontSize: 11, fontFace: 'Arial', color: C.navy, italic: true, wrap: true, lineSpacingMultiple: 1.35,
+  })
+  s7.addText('Needed for every demographic cross-tab', { x: 8.55, y: 4.85, w: 4.0, h: 0.32, fontSize: 9, fontFace: 'Arial', color: C.mid, italic: true })
+
+  // Anchor 2
+  s7.addShape('roundRect', { x: 8.4, y: 5.35, w: 4.2, h: 1.55, rectRadius: 0.08, fill: { color: 'FFFFFF' }, line: { color: C.gold, width: 0.6 } })
+  s7.addText('A2 — PRIORITY CATEGORY', { x: 8.55, y: 5.43, w: 4.0, h: 0.28, fontSize: 9, fontFace: 'Arial', color: C.gold, bold: true, charSpacing: 1.5 })
+  s7.addText('"Of these six — widening, new roads, safety, intersections, ped/bike, transit — which would make the biggest difference for you?"', {
+    x: 8.55, y: 5.7, w: 4.0, h: 0.95, fontSize: 10, fontFace: 'Arial', color: C.navy, italic: true, wrap: true, lineSpacingMultiple: 1.3,
+  })
+  s7.addText('Maps directly to VHB\'s Final Study Report buckets', { x: 8.55, y: 6.55, w: 4.0, h: 0.3, fontSize: 9, fontFace: 'Arial', color: C.mid, italic: true })
 
   s7.addNotes(
-    'Walk through each question and explain the why. Q2 is the one that would have been a 25-item picklist in a survey tool. Free-form captures more — "I live in Wekiwa Springs but commute to Apopka on 441" tells you ' +
-    'where they live, where they work, and which corridor matters. A picklist would have lost that. Q6 is the only "pick one of six" question because the six improvement categories are how VHB will analyze priorities for the Final Study Report.'
+    'This is the slide where most pitches lose people because it looks like a form. Ours is not. Sarina starts with "what\'s on your mind about transportation in NW Orange County?" and follows their thread. ' +
+    'The 7 topics are a coverage checklist she tracks internally — she gently steers toward uncovered ones when the conversation lulls, but the resident sets the depth and order. ' +
+    'The 2 anchor asks are the only structured fields VHB needs every record to carry: user type for cross-tabs, and priority category because those six buckets are how VHB will organize the Final Study Report. ' +
+    'Everything else — corridor, mode, frustration, 2050 concern, intersection flag — is value-add prose, automatically themed and entity-tagged downstream. We get the structured data VHB needs AND a real conversation. ' +
+    'A high-engagement resident who wants to talk for 5 minutes about the 441/Apopka commute gets to. The current "Q1, Q2, Q3..." design would have cut them off.'
   )
 
   // ═══ SLIDE 8: Civic Tone & No Fabrication ═══
@@ -413,7 +447,61 @@ export async function GET() {
     'You get the synthesis on day one — themed, geo-tagged, quoted — and the raw transcript is there if you need to drill in.'
   )
 
-  // ═══ SLIDE 11: Timeline + What We Need ═══
+  // ═══ SLIDE 11: Recommendation — Sarina on www.nowocats.com ═══
+  p++
+  const s10b = pptx.addSlide()
+  s10b.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(s10b, 'Recommendation — Sarina belongs on www.nowocats.com too', 'The QR is one doorway. The project website is a doorway already open every day.')
+  ftr(s10b, p)
+
+  // Top rationale banner
+  s10b.addShape('roundRect', { x: 0.5, y: 1.28, w: 12.3, h: 1.0, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  s10b.addText('Every visitor who lands on www.nowocats.com is already asking "what is this project?" — the same question the postcard QR is designed to answer. Embedding Sarina as a chat widget on the project site turns that traffic into conversations instead of static page-reads. Same agent, same RAG corpus, same official record. No second build.', {
+    x: 0.7, y: 1.32, w: 11.9, h: 0.92, fontSize: 12, fontFace: 'Arial', color: C.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.45,
+  })
+
+  // Two columns — surfaces
+  const surfY = 2.5
+  const surfH = 3.4
+
+  // LEFT: Postcard QR
+  s10b.addShape('roundRect', { x: 0.5, y: surfY, w: 6.05, h: surfH, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+  s10b.addShape('rect', { x: 0.5, y: surfY, w: 6.05, h: 0.55, fill: { color: C.orange }, line: { color: C.orange, width: 0 } })
+  s10b.addText('SURFACE 1 — POSTCARD QR', { x: 0.7, y: surfY, w: 5.7, h: 0.55, fontSize: 11, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  s10b.addText(
+    '· Targeted PM-2 outreach — mailed households\n' +
+    '· Bounded around the meeting window\n' +
+    '· Normal Sarina cadence (Path 1 → Path 2 nudge)\n' +
+    '· Conversation tagged source = qr',
+    { x: 0.75, y: surfY + 0.75, w: 5.5, h: surfH - 0.95, fontSize: 12.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.6 }
+  )
+
+  // RIGHT: Website widget
+  s10b.addShape('roundRect', { x: 6.78, y: surfY, w: 6.05, h: surfH, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+  s10b.addShape('rect', { x: 6.78, y: surfY, w: 6.05, h: 0.55, fill: { color: C.teal }, line: { color: C.teal, width: 0 } })
+  s10b.addText('SURFACE 2 — www.nowocats.com WIDGET', { x: 6.98, y: surfY, w: 5.7, h: 0.55, fontSize: 11, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  s10b.addText(
+    '· Ambient site-wide explainer for any visitor\n' +
+    '· Always-on — before, during, and after PM-2\n' +
+    '· Soft-pedals the feedback nudge (web visitors aren\'t the targeted PM-2 list)\n' +
+    '· Conversation tagged source = web',
+    { x: 7.03, y: surfY + 0.75, w: 5.5, h: surfH - 0.95, fontSize: 12.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.6 }
+  )
+
+  // Bottom: one record
+  s10b.addShape('roundRect', { x: 3.4, y: surfY + surfH + 0.3, w: 6.55, h: 0.8, rectRadius: 0.1, fill: { color: C.gold }, line: { color: C.gold, width: 0 } })
+  s10b.addText('Two surfaces in. One record out. One agent to maintain.', {
+    x: 3.5, y: surfY + surfH + 0.3, w: 6.35, h: 0.8, fontSize: 14, fontFace: 'Arial', color: C.navy, bold: true, align: 'center', valign: 'middle',
+  })
+
+  s10b.addNotes(
+    'Pause on this slide. The postcard QR will deliver targeted engagement, but a project website that already exists is the second-biggest source of "tell me about NOWOCATS" intent. Right now that visitor reads static text and leaves. ' +
+    'With Sarina embedded as a chat widget, they get a conversation — and if they express any feedback intent, they end up in the same official record. ' +
+    'Critically: we are NOT proposing a second bot. Same Sarina, same corpus, same system prompt with one conditional that soft-pedals the feedback nudge for web visitors (since they were not specifically invited to PM-2). One agent, one dataset, two doorways. The marginal cost is the embed — that\'s it. ' +
+    'For VHB the win is clean attribution: every record has a source field, so you can report "X% of engagement came via the postcard, Y% via the website" in the Final Study Report.'
+  )
+
+  // ═══ SLIDE 12: Timeline + What We Need ═══
   p++
   const s11 = pptx.addSlide()
   s11.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
@@ -447,8 +535,8 @@ export async function GET() {
   s11.addText('WHAT WE NEED FROM VHB / ORANGE COUNTY', { x: 0.75, y: askY + 0.18, w: 12, h: 0.34, fontSize: 11, fontFace: 'Arial', color: C.tealMid, bold: true, charSpacing: 3 })
 
   const asks = [
-    { n: '1', title: 'Approve the 7 feedback questions',           body: 'Adjustable any time post-launch — but we need v1 locked to ship.' },
-    { n: '2', title: 'Confirm the QR placement',                   body: 'Postcard, signage at the open house, project website. Sole QR target.' },
+    { n: '1', title: 'Approve the 7 topics + 2 anchor asks',       body: 'Topics covered conversationally; user-type and priority-category asked explicitly. v1 locked to ship; adjustable post-launch.' },
+    { n: '2', title: 'Confirm both deployment surfaces',            body: 'Postcard QR + Sarina embedded as a chat widget on www.nowocats.com. Same agent, source-attributed.' },
     { n: '3', title: 'Approve the agent name and persona',         body: 'Currently "Sarina, the NOWOCATS Assistant." Easy to swap.' },
     { n: '4', title: 'PM-2 presentation slides on publication',    body: 'Ingest the moment they go live so Sarina cites the latest 2050 recommendations.' },
   ]
@@ -464,11 +552,11 @@ export async function GET() {
   })
 
   s11.addNotes(
-    'Close with the timeline. We can be live before the postcard mails. The four asks are small — a couple of approvals and a heads-up when their PM-2 slides drop. ' +
-    'No infrastructure on their side, no contract complications.'
+    'Close with the timeline. We can be live before the postcard mails. The four asks are small — a couple of approvals, the website embed (a single script tag on their side), and a heads-up when their PM-2 slides drop. ' +
+    'No infrastructure on their side beyond pasting the widget snippet, no contract complications.'
   )
 
-  // ═══ SLIDE 12: Close ═══
+  // ═══ SLIDE 13: Close ═══
   p++
   const s12 = pptx.addSlide()
   s12.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.navy } })
