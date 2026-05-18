@@ -168,6 +168,17 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   not refreshed on a schedule (bounds AI cost; brand-level analysis is the use case).
 - A run samples ≤1000 rows (default 500); ballpark a few cents per run.
 
+### Person suppression at collection scope
+Brand-collection catalogs cover many locations, so individual staff names
+("our server Maria") are noise — each appears in 1–2 reviews and dominates
+the catalog without adding brand-wide signal. `getEntitiesWithCounts` filters
+out `category='person'` rows when `scope.scopeType === 'collection'` for
+default reads (cloud, compare, drill, schema preview, Ask Ana). The Manage
+Entities panel (`includeHidden=true`) still sees them so users can hide
+specific entries or recategorise standout named chefs as `brand`. Standalone
+dataset scopes (single-location operators) keep person entities — there,
+named-server mention counts are real signal.
+
 ### Manual catalog curation (migration 073)
 The catalog is no longer NER-only. Two columns on `entity_catalog` separate curation
 from discovery:

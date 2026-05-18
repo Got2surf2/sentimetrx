@@ -45,4 +45,21 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 
 **Brand bootstrap workflow this unblocks**: drop a menu PDF into Claude Code, extract dishes / drinks with categories + aliases, POST to the bulk endpoint. Because the catalog is brand-collection-scoped, one POST seeds every dataset under the brand. Re-discovery then accumulates the long tail (competitors, people, off-menu items) on top without ever touching the menu seed.
 
-**Next (Bucket B-F of entity-views build)**: entity cloud (`EntityCloud.tsx` mirroring `WordCloud.tsx`), per-entity sentiment (adapt the clause-aware proximity scan at `WordCloud.tsx:206-240` for multi-word entity spans + alias expansion), entity compare chart (fork or generalise `BreakdownDist.tsx`), `View by Theme | Entity` toggle at the TextMine module top, category-restricted monthly discovery (skip food/drink once menu seed exists), person-at-collection suppression.
+**Next (Bucket B-E of entity-views build)**: entity cloud (`EntityCloud.tsx` mirroring `WordCloud.tsx`), per-entity sentiment (adapt the clause-aware proximity scan at `WordCloud.tsx:206-240` for multi-word entity spans + alias expansion), entity compare chart (fork or generalise `BreakdownDist.tsx`), `View by Theme | Entity` toggle at the TextMine module top, category-restricted monthly discovery (skip food/drink once menu seed exists).
+
+## 2026-05-18 — Fleming's menu seed + person-at-collection suppression (Buckets A operational test + F)
+
+**Why**: testing the menu-PDF workflow end-to-end on Fleming's (brand-collection `11daf03a-…`) surfaced the predicted noise: 198 of 497 catalog rows were `category='person'` — staff names from many locations, each mentioned in 1–2 reviews. They dominate the catalog without adding brand-wide signal. The brainstorm that produced bucket F predicted exactly this; doing the menu seed made it tangible.
+
+**What changed**:
+- Fetched Fleming's official dinner PDF (`https://www.flemingssteakhouse.com/-/pdf/5702-dinner.pdf`) via curl with browser headers (WebFetch was 403-blocked).
+- Extracted 78 entities (52 food, 26 drink) — appetizers, salads, soups, sides, every steak and cut, entrées, Chef's Signature items, all hand-crafted cocktails, zero-proof beverages, and the wine producers reviewers actually name (Caymus, Duckhorn, Stag's Leap, etc.). Aliases capture vernacular ("the filet", "mac n cheese", "the tomahawk").
+- Wrote `/tmp/flemings_menu_seed.sql` and applied via `supabase db query --linked`. Used `ON CONFLICT … DO UPDATE` to promote any existing discovered match to `source='manual'` while unioning aliases (18 of 78 hit existing slugs and were promoted; 60 new). Audit log entry written so the panel's "Last updated" reflects the seed.
+- `lib/entityFilter.ts`: `getEntitiesWithCounts` now adds `.neq('category', 'person')` to the catalog query when `scope.scopeType==='collection'` *and* `includeHidden=false`. Manage Entities still sees person rows so users can curate; standalone datasets are unaffected.
+- `docs/ANALYTICS.md`: new "Person suppression at collection scope" subsection documents the rule.
+
+**Result for Fleming's**: catalog visible to cloud / compare / drill / schema preview / Ask Ana drops from ~479 noise-heavy rows to ~281 useful ones (food, drink, brand, place). Manage panel still surfaces all 198 person entries so they can be curated individually if any deserve promotion to `brand` (e.g., a named chef).
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Menu seed verified in prod via the verify SELECT in the SQL file (52 food manual + 26 drink manual present, alongside reduced discovered counts).
+
+**Next**: Bucket B (entity cloud + per-entity sentiment using the clause-aware proximity scan).

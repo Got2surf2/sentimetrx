@@ -219,6 +219,15 @@ export async function getEntitiesWithCounts(opts: {
   // (lib/entityDiscovery.ts skips them on upsert; we drop them here so they
   // never reach cloud / compare / drill UI). Manage Entities passes
   // includeHidden=true to surface them for unhide/edit.
+  //
+  // At collection scope (brand-collections covering many locations), person
+  // entities are noise — staff names from hundreds of restaurants, each
+  // mentioned in 1–2 reviews. They dominate the catalog and add no brand-
+  // wide signal. Suppressed from default reads (cloud / compare / drill /
+  // schema preview / Ask Ana). The Manage panel keeps seeing them so users
+  // can hide specific ones or recategorise standout chefs as 'brand'.
+  // Standalone dataset scope (single-location operators) keeps person —
+  // there, "Maria got 40 mentions" is genuine signal.
   let catalogQuery = service
     .from('entity_catalog')
     .select('slug, canonical, category, aliases, sample_count, source, hidden')
@@ -227,6 +236,9 @@ export async function getEntitiesWithCounts(opts: {
     .order('sample_count', { ascending: false })
     .limit(catalogLimit)
   if (!includeHidden) catalogQuery = catalogQuery.eq('hidden', false)
+  if (!includeHidden && scope.scopeType === 'collection') {
+    catalogQuery = catalogQuery.neq('category', 'person')
+  }
   const { data: catalog } = await catalogQuery
 
   const entries = (catalog || []) as Array<{
