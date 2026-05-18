@@ -73,11 +73,10 @@ function getRowText(row: Record<string, unknown>, fields: string[]): string {
 
 interface Sentiment { positive: number; negative: number; neutral: number }
 
-function Entity({ entity, freq, maxFreq, total, sentiment, colorBy, onClick, dimmed }: {
+function Entity({ entity, freq, maxFreq, sentiment, colorBy, onClick, dimmed }: {
   entity:   EntityEntry
   freq:     number
   maxFreq:  number
-  total:    number
   sentiment?: Sentiment
   colorBy:  'category' | 'sentiment'
   onClick?: () => void
@@ -86,7 +85,6 @@ function Entity({ entity, freq, maxFreq, total, sentiment, colorBy, onClick, dim
   const [hov, setHov] = useState(false)
   const pal = CATEGORY_COLOR[entity.category] || CATEGORY_COLOR.other
   const size = 12 + Math.round((freq / Math.max(maxFreq, 1)) * 22)
-  const pct = total > 0 ? Math.round(freq / total * 100) : 0
 
   // Sentiment ramp — mirrors WordCloud's thresholds for visual parity.
   let sentColor = T.textMute
@@ -118,7 +116,7 @@ function Entity({ entity, freq, maxFreq, total, sentiment, colorBy, onClick, dim
   return (
     <span
       onClick={onClick}
-      title={entity.canonical + ' · ' + entity.category + ' · ' + freq + ' rows (' + pct + '%)' + sentLabel}
+      title={entity.canonical + ' · ' + entity.category + ' · ' + freq.toLocaleString() + ' rows mention this entity' + sentLabel}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
         color: wordColor, background: wordBg,
@@ -144,59 +142,22 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
   const [activeCategories, setActiveCategories] = useState<Set<string> | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // ── Live per-entity mention counts within the current filtered view ────
-  // The API hands us scope-wide mentions; the cloud reflects what's in the
-  // user's currently-filtered slice (so sentiment + size answer "in *this*
-  // view, what's prominent and how does it feel"). One alternation regex per
-  // render keeps this cheap — O(rows × terms) collapses to O(rows) regex
-  // scans.
-  const cloudData = useMemo(function() {
-    if (!entities.length || !fields.length || !parsedData.length) {
-      return { perEntityFreq: {} as Record<string, number>, total: 0, maxFreq: 1 }
-    }
-
-    // Build alternation of all entity terms + plural variants. Longest-first
-    // so "Filet Mignon" matches before "Filet" (preventing the substring from
-    // stealing the credit).
-    const termToSlugs: Record<string, string[]> = {}
-    for (const e of entities) {
-      const terms = expandEntityTerms([e.canonical].concat(e.aliases || []))
-      for (const t of terms) {
-        const key = t.toLowerCase()
-        if (!termToSlugs[key]) termToSlugs[key] = []
-        if (!termToSlugs[key].includes(e.slug)) termToSlugs[key].push(e.slug)
-      }
-    }
-    const allTerms = Object.keys(termToSlugs).sort(function(a, b) { return b.length - a.length })
-    if (!allTerms.length) {
-      return { perEntityFreq: {} as Record<string, number>, total: 0, maxFreq: 1 }
-    }
-    const re = new RegExp('\\b(' + allTerms.map(escapeRE).join('|') + ')\\b', 'gi')
-
-    const perEntityFreq: Record<string, number> = {}
-    for (const e of entities) perEntityFreq[e.slug] = 0
-    let total = 0
-
-    for (const row of parsedData) {
-      const text = getRowText(row, fields).toLowerCase()
-      if (!text) continue
-      total += 1
-      const seen = new Set<string>()
-      re.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = re.exec(text)) !== null) {
-        const slugs = termToSlugs[m[0].toLowerCase()] || []
-        for (const s of slugs) {
-          if (!seen.has(s)) { seen.add(s); perEntityFreq[s] = (perEntityFreq[s] || 0) + 1 }
-        }
-      }
-    }
-
-    let maxFreq = 1
-    for (const k in perEntityFreq) if (perEntityFreq[k] > maxFreq) maxFreq = perEntityFreq[k]
-
-    return { perEntityFreq, total, maxFreq }
-  }, [entities, parsedData, fields])
+  // ── Cloud sizing uses the SAME scope-wide mention counts the EntitiesCard
+  //    pill list shows (entity.mentions, computed live by count_entity_terms
+  //    in the API). Earlier versions of this file did a client-side regex
+  //    scan over parsedData to derive counts, which produced numbers that
+  //    diverged from the EntitiesCard counts (different denominator: scope
+  //    vs filtered view; different matcher: SQL FTS with stemming vs naive
+  //    word-boundary regex). Two views showing different numbers for the
+  //    same entity is a credibility killer; one source of truth wins.
+  //
+  //    Sentiment still scans parsedData below — we have no other source of
+  //    text on the client, and sentiment is intrinsically filter-aware.
+  const maxFreq = useMemo(function() {
+    let mx = 1
+    for (const e of entities) if (e.mentions > mx) mx = e.mentions
+    return mx
+  }, [entities])
 
   // ── Sentiment scan: clause-aware credit to every entity in the clause ──
   const entitySentiments = useMemo(function() {
@@ -254,17 +215,17 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
   // No data path — silent.
   if (!entities.length || !fields.length) return null
 
-  const { perEntityFreq, total, maxFreq } = cloudData
-
-  // 3% threshold mirroring WordCloud — keeps the cloud legible for big
-  // catalogs while "Show all" reveals the long tail.
-  const MIN_PCT = 3
+  // Absolute-mention threshold matching the EntitiesCard pill list (MIN_MENTIONS=10
+  // there). Show all toggle reveals everything. Sizes + counts come from
+  // `entity.mentions` (scope-wide) so the cloud's numbers match the pill
+  // list's exactly.
+  const MIN_MENTIONS = 10
   const withFreq = entities
-    .map(function(e) { return { entity: e, freq: perEntityFreq[e.slug] || 0 } })
+    .map(function(e) { return { entity: e, freq: e.mentions } })
     .filter(function(x) { return x.freq > 0 })
-  let visible = withFreq
-  if (!showAll && total > 0) {
-    const filtered = withFreq.filter(function(x) { return (x.freq / total * 100) >= MIN_PCT })
+  let visible: Array<{ entity: EntityEntry; freq: number }> = withFreq
+  if (!showAll) {
+    const filtered = withFreq.filter(function(x) { return x.freq >= MIN_MENTIONS })
     visible = filtered.length > 0 ? filtered : withFreq.slice(0, 12)
   }
 
@@ -307,8 +268,13 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Entity Clouds</span>
           {scopeType === 'collection' && (
-            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: T.bg, color: T.textMute, border: '1px solid ' + T.border }}>
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: T.bg, color: T.textMute, border: '1px solid ' + T.border }} title="Counts are scope-wide — match the Entities pill list and live across every dataset in this brand-collection.">
               brand-wide
+            </span>
+          )}
+          {colorBy === 'sentiment' && (
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: '#ecfdf5', color: '#059669', border: '1px solid #05966940' }} title="Sentiment colors are computed from the rows currently loaded into TextMine (respects active filters). Sizes are always scope-wide.">
+              sentiment from visible rows
             </span>
           )}
         </div>
@@ -321,7 +287,7 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
           </label>
           {!showAll && hiddenBelowThreshold > 0 && (
             <span style={{ fontSize: 10, color: T.textFaint }}>
-              ({hiddenBelowThreshold} below {MIN_PCT}% hidden)
+              ({hiddenBelowThreshold} below {MIN_MENTIONS} mentions hidden)
             </span>
           )}
           <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
@@ -396,7 +362,6 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
               entity={x.entity}
               freq={x.freq}
               maxFreq={maxFreq}
-              total={total}
               sentiment={entitySentiments[x.entity.slug]}
               colorBy={colorBy}
               dimmed={dimmed}

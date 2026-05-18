@@ -137,3 +137,22 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Limitation honest disclosure**: the rule is conservative — only matches when a discovered row's slug equals a (slugified) alias of a manual row. It does NOT catch token-overlap cases that aren't explicitly aliased (e.g., `Tomahawk Tuesday Special` vs `Prime Tomahawk` — neither is the other's alias). Three options for those: (a) user adds the variant as an alias via the Manage panel, (b) we build a separate "Find duplicates" admin button that runs Haiku canonicalisation across the whole catalog, (c) we accept a manual-curation step. For now (a) is the workflow.
 
 **Real menu items the original seed missed**: discovery surfaced a few that look like real Fleming's menu items I should add as manual entries (not dupes): Lava Cake (Chocolate Lava Cake on the dessert menu), Lobster Mac & Cheese (distinct from Chipotle Cheddar Mac & Cheese), Tomahawk Tuesday Special (recurring LTO). Logged here — adding requires user OK on what counts as "real menu" vs prose-only mention.
+
+## 2026-05-18 — EntityCloud counts now match EntitiesCard (credibility fix)
+
+**Why**: visual QC surfaced two views showing different counts for the same entity. EntitiesCard pill list: "Filet Mignon 519, Prime Bone-In Ribeye 302". EntityCloud on the Clouds tab: "Filet Mignon 510, Prime Bone-In Ribeye 250". User flagged this directly: "those CANNOT BE DIFFERENT otherwise we lose all credibility." Compounding issue: the cloud only rendered 3 entities even though the catalog has 281, because the 3%-of-filtered-rows threshold disqualified almost everything once the counts dropped relative to the API's scope-wide numbers.
+
+**Root cause**: `EntitiesCard` uses `entity.mentions` directly from `GET /api/datasets/[id]/entities` (scope-wide live FTS via `count_entity_terms`, which counts across every dataset in the brand-collection and uses Postgres English stemmer + tsvector field-restricted recheck per mig 070). `EntityCloud` was recomputing counts client-side by alternation-regex over `parsedData=filteredRows` — different denominator (one dataset, post-filter) and different matcher (naive word-boundary regex vs SQL FTS with stemming). The numbers were always going to drift.
+
+**What changed**:
+- `components/analyze/textmine/EntityCloud.tsx`:
+  - Dropped the `cloudData` useMemo that scanned `parsedData` for per-entity counts.
+  - Now sizes by `entity.mentions` directly. Single source of truth = the API, identical to the pill list.
+  - Threshold flipped from "3%-of-filtered-rows" to absolute `MIN_MENTIONS = 10`, matching `EntitiesCard`. The "(N below 3% hidden)" hint became "(N below 10 mentions hidden)".
+  - Sentiment scan kept as-is — sentiment is intrinsically filter-aware (it scans whatever text the client has), and clearly labeled with a new green "sentiment from visible rows" badge when `colorBy === 'sentiment'`. The "brand-wide" badge gets a tooltip clarifying that sizes/counts come from the API.
+  - Dropped the percentage label inside each entity chip (denominator no longer applies cleanly; mention count is the meaningful number).
+- `docs/ANALYTICS.md`: updated Clouds-tab entity description.
+
+**Net effect on Fleming's**: cloud now shows the same Filet Mignon=519, Prime Bone-In Ribeye=302, Prime Tomahawk=310 the pill list shows. Threshold of 10 mentions surfaces dozens of entities instead of 3. "Show all" still reveals the long tail.
+
+**Acknowledged shipped-with limitation**: EntityBreakdownDist (the compare chart) inherently computes per-group counts client-side — that's intrinsic to a "by group" breakdown, not a bug. Its `total rows` column does sum the visible per-group counts (which can differ from the scope-wide `entity.mentions`). Considering: relabel as "rows in visible groups" to remove ambiguity, but didn't change in this commit — Bucket C isn't the locus of the credibility issue the user named.
