@@ -43,6 +43,16 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 
 **Not done**: no contact / email-the-campaign intent. The campaign site doesn't expose a public contact email anywhere I could find — only social links — and per repo policy I don't fabricate addresses for shipped UI.
 
+## 2026-05-18 — Link-format guardrail for all agents (broken-anchor regression)
+
+**Why**: in QA on the Abel agent the assistant emitted a raw HTML anchor tag instead of a markdown link or bare URL. `ChatBot.formatHtml` HTML-escapes the input first (correctly — that's an XSS defense from the earlier security review), but the bare-URL auto-linker then matches the URL *inside* the escaped tag string and wraps it in a real `<a>`. The browser renders a mix of decoded entities + real anchor, which looks like attribute soup in the bubble (`href="…" target="_blank" style="…">…`). The root cause was a leftover "make links clickable" line in Abel's `system_prompt` (carried over from the original Vindman avatar), which Claude reads as license to emit HTML.
+
+**What changed**:
+- `app/api/bots/[id]/chat/route.ts`: new always-on `LINK FORMAT` system rule injected before `SAFEGUARDS` for every agent — plain URL or markdown only, no `<a>`, no `target`/`rel`/`style` attributes. Applies to all bots so any future copy-pasted prompt that hints at HTML is contained.
+- Abel `system_prompt`: replaced the "make links clickable" sentence with "Write URLs as plain text or markdown — never as HTML anchor tags."
+- Swept `bots` rows for `clickable` / `<a href` in `system_prompt` or `personality` — Abel was the only hit.
+- `docs/BOTS.md`: the prompt-assembly section now documents the LINK FORMAT block alongside SAFEGUARDS and EMOTIONAL RESET.
+
 ## 2026-05-18 — Entity catalog: manual curation + soft-delete (Bucket A of entity-views build)
 
 **Why**: brand-level entity catalogs need a curation seam. NER discovery is sample-bound (default 500 rows) and produces both gaps (menu items the sample never saw) and noise (generic nouns slipping past the strict prompt). The pre-existing "Re-discover" button wiped the whole scope's catalog before rebuild, so any future hand-curation would have been destroyed on the next click. This blocks the broader entity-views feature (cloud, compare, sentiment) because there's no point visualising a catalog the user can't trust.
