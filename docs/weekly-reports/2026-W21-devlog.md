@@ -260,3 +260,29 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC of the entity Compare view itself still pending — would benefit from rendering against Fleming's with multi-field selection enabled to confirm the chart layout matches the theme version.
 
 **Next**: real browser QC of all the entity views end-to-end on Fleming's. Then push the accumulated 15+ commits.
+
+## 2026-05-19 — Progressive Web App: installable iPhone status surface
+
+**Why**: Sanjay wanted a personal "check the status of things" app on iPhone — recent activity at a glance, no full feature parity with the web, no App Store overhead. Considered native Swift, React Native + Expo + TestFlight, and PWA; chose PWA: ~1–2 days of work, zero ongoing maintenance overhead, no $99 Apple Developer fee, no App Store review wait. Same codebase as the web means every fix to the website auto-updates on the phone.
+
+**What changed**:
+- `app/manifest.ts` (new): Next.js 14 file-convention PWA manifest, auto-served at `/manifest.webmanifest`. `start_url=/m`, `display=standalone`, theme color `#e8622a` (brand orange). Three icon sizes (180/192/512 PNG) plus a maskable 512 for Android adaptive icons.
+- `public/icons/icon-{180,192,512}.png` (new): rasterized from `public/favicon.svg` via macOS `sips`. The existing favicon was already a clean orange tile with a white "S", so the PWA got a recognisable launch icon for free.
+- `app/layout.tsx`: added `manifest` + `appleWebApp` metadata (capable, title, status-bar style) and a separate `viewport` export with `viewportFit=cover` so the page paints under the iPhone notch in standalone mode. apple-touch-icon switched from SVG to the 180×180 PNG (iOS rejects SVG for this slot).
+- `public/sw.js` (new): minimal install / activate / fetch service worker. No offline caching for v1 — the status surface reads live counts and a stale cache would lie. Present-but-passive is enough for iOS installability and unlocks web push later (iOS 16.4+).
+- `app/m/page.tsx` (new): mobile status surface, server component. Auth-gated via `supabase.auth.getUser` + redirect to `/login?next=/m`. Service-role reads paired with `org_id` for non-admin orgs (CLAUDE.md multi-tenancy rule). Parallel queries: per-section counts + 5 most recent items for Datasets, Agents, Surveys, Campaigns, PulseIQ. Heavy workflows (TextMine, builders, admin) deep-link out to the desktop UI rather than reimplementing on phone.
+- `app/m/MobileStatusClient.tsx` (new): client wrapper. Registers `/sw.js` on mount (scope `/`). Detects iOS Safari + standalone mode and shows an "Add to Home Screen" hint only when not yet installed. Stacked cards, ≥44px tap targets, `safe-area-inset` padding so the top of the page clears the iPhone notch. SW status indicator in the footer for debugging (remove once verified).
+- `SPEC.md`: new section 12 "Progressive Web App / Mobile Status".
+- `FEATURES.md`: new section 19 "Mobile / Progressive Web App".
+
+**Install path** (once deployed):
+1. Open the production URL in Safari on iPhone
+2. Share → Add to Home Screen
+3. Orange "S" icon lands on the home screen; tapping it opens `/m` full-screen with no Safari chrome
+
+**Not yet built / honest caveats**:
+- No offline caching (intentional for v1)
+- No web push notifications (the SW is positioned to add them later; iOS 16.4+ supports push for installed PWAs but the user has to explicitly enable notifications)
+- No biometric / Face ID login (uses standard cookie auth — fine for personal use)
+- SW status indicator in the footer is debug-tier; remove once the install flow is confirmed working on the phone
+- Local-only test; commits not yet pushed

@@ -673,6 +673,37 @@ DataForSEO Google reviews ≈ **$0.37 per 1,000** — see `[[reference-dataforse
 
 ---
 
+## 19. Mobile / Progressive Web App
+
+**Routes**: `/m`, `/manifest.webmanifest`, `/sw.js`. **Files**: `app/manifest.ts`, `app/m/page.tsx`, `app/m/MobileStatusClient.tsx`, `public/sw.js`, `public/icons/icon-{180,192,512}.png`.
+
+A personal-use, install-on-iPhone status surface. Designed as a "check the status of things" companion to the desktop UI — not a phone-rebuild of every feature. Installs via Safari → Share → **Add to Home Screen**; no App Store distribution.
+
+### Install path
+1. Open the production URL in Safari on iPhone
+2. Share → Add to Home Screen
+3. Orange "S" icon lands on home screen; tapping it opens `/m` full-screen with no Safari chrome
+4. iOS treats the install as a standalone app (own card in the app-switcher, own splash screen)
+
+### What `/m` shows
+Five stacked cards, each with a section count + the five most-recent items, deep-linking back to the desktop UI for drill:
+- **Datasets** — name + row count + source, sorted by `created_at DESC`
+- **Agents** — name + slug, sorted by `updated_at DESC`
+- **Surveys** — name + response count, sorted by `created_at DESC`
+- **Campaigns** — name + status, sorted by `created_at DESC`
+- **PulseIQ** — name + status, sorted by `started_at` / `created_at DESC`
+
+Plus an "Install this as an app" banner shown only when running in iOS Safari and not yet installed.
+
+### Architecture notes
+- **Auth**: standard Supabase auth on `/m`; redirects to `/login?next=/m` when unauthenticated. Service-role reads pair `id` with `org_id` (admin orgs bypass).
+- **Manifest**: `app/manifest.ts` uses the Next.js 14 file convention (served as `/manifest.webmanifest`). `start_url=/m`, `display=standalone`, `theme_color=#e8622a` (brand orange).
+- **Service worker**: `public/sw.js` is a minimal install/activate/fetch SW with no offline caching for v1 (the status surface reads live counts; cached counts would lie). Registered with scope `/` from the `/m` route only.
+- **iOS specifics**: root layout sets `appleWebApp.capable=true`, `viewportFit=cover` so the page paints under the iPhone notch in standalone mode. `apple-touch-icon` points at the 180×180 PNG (iOS rejects SVG for this slot).
+- **No native build, no Apple Developer account, no App Store review.** When/if push notifications or richer native integrations matter, the migration path is **Expo + EAS + TestFlight**.
+
+---
+
 ## Platform Summary
 
 | Dimension | Count |

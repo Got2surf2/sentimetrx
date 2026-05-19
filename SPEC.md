@@ -418,6 +418,18 @@ All AI calls route through `lib/ai.ts → callAI()`, which dispatches to the con
 - Admin-only deck routes (gated by `requireAdmin`): pitch, rollup, architecture, engineering-reality, agent-capabilities, entity-analysis, pulseiq, signal-tiers, restaurant-expansion. Downloads logged to `deck_download_log`.
 - Health: `/admin/health`, content-guard tester, agent tester, simulators (PulseIQ load), Sentry digest viewer, usage estimator, governance reports.
 
+### 12. Progressive Web App / Mobile Status
+
+**Routes**: `/m`, `/manifest.webmanifest`, `/sw.js`. **Files**: `app/manifest.ts`, `app/m/page.tsx`, `app/m/MobileStatusClient.tsx`, `public/sw.js`, `public/icons/icon-{180,192,512}.png`.
+
+A focused mobile-first status surface that installs as a home-screen app on iOS via Safari's **Add to Home Screen** (no App Store involvement). Provides a one-screen "check the status of things" view: per-section counts + the five most-recent items for **Datasets**, **Agents**, **Surveys**, **Campaigns**, **PulseIQ**. Heavy workflows (TextMine, builders, admin tables) deep-link back to the desktop UI rather than reimplementing on phone.
+
+- **Manifest** (`app/manifest.ts`): Next.js 14 file-convention manifest, served as `/manifest.webmanifest`. `start_url=/m`, `display=standalone`, theme color `#e8622a`. Three icon sizes (180/192/512 PNG, generated from `public/favicon.svg` via `sips`) plus a maskable 512 for Android adaptive icons.
+- **Service worker** (`public/sw.js`): minimal install/activate/fetch handlers, no offline caching for v1 (the status surface reads live counts; a stale cache would lie). Registered scope `/` on the `/m` route only. Present-but-passive is enough for iOS to treat the site as installable and to unlock web push later (iOS 16.4+).
+- **Auth + multi-tenancy**: standard Supabase auth on `/m` (redirects to `/login?next=/m` when unauthenticated). Service-role reads are filtered to the caller's `org_id`; admin orgs bypass per the standard CLAUDE.md multi-tenancy rule.
+- **iOS integration**: root `layout.tsx` exports `appleWebApp` metadata (capable, title, status-bar style) + viewport `viewportFit=cover` so the page paints under the iPhone notch in standalone mode. apple-touch-icon points at `/icons/icon-180.png`.
+- **No App Store distribution.** Install path is Share → Add to Home Screen on iOS Safari. If we later need broader distribution (TestFlight, App Store, push notifications beyond web push), the next step is Expo + EAS.
+
 ---
 
 ## API Routes Summary
