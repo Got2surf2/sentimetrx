@@ -20,6 +20,8 @@
 -- hidden=false — preserving today's behaviour. Index supports the read filter
 -- `WHERE scope_type=? AND scope_id=? AND hidden=false`.
 
+BEGIN;
+
 ALTER TABLE public.entity_catalog
   ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'discovered'
     CHECK (source IN ('discovered', 'manual')),
@@ -34,6 +36,8 @@ COMMENT ON COLUMN public.entity_catalog.source IS
 
 COMMENT ON COLUMN public.entity_catalog.hidden IS
   'Soft-delete flag. Hidden rows are excluded from cloud / compare / drill-down reads but persist so re-discovery does not resurface them. Toggle from the Schema tab.';
+
+COMMIT;
 
 -- ============================================================
 -- Verify
