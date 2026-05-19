@@ -89,6 +89,19 @@ const EntityBreakdownDist = dynamic(
     },
   }
 )
+const EntityCompareTab = dynamic(
+  function() { return import('@/components/analyze/textmine/EntityCompareTab') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+          <LottieLoader size={80} />
+        </div>
+      )
+    },
+  }
+)
 const CommentsPanel = dynamic(
   function() { return import('@/components/analyze/textmine/CommentsPanel') },
   {
@@ -1714,7 +1727,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   on subtabs that have both (Themes, Clouds). Only shown when
                   the scope actually has an entity catalog; otherwise the
                   toggle would be a footgun (Entity view would render empty). */}
-              {(subTab === 'themes' || subTab === 'clouds') && entityCatalogRows.length > 0 && (
+              {(subTab === 'themes' || subTab === 'clouds' || subTab === 'compare') && entityCatalogRows.length > 0 && (
                 <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border, marginRight: 4 }}>
                   {(['theme', 'entity'] as const).map(function(mode) {
                     return (
@@ -2365,9 +2378,26 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               </div>
             )}
 
-            {/* ═══ COMPARE TAB ═══ */}
-            {subTab === 'compare' && (
+            {/* ═══ COMPARE TAB ═══ (Theme or Entity per viewBy) */}
+            {subTab === 'compare' && viewBy === 'theme' && (
               <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={augmentedFields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} ratingField={ratingField} />
+            )}
+            {subTab === 'compare' && viewBy === 'entity' && (
+              <EntityCompareTab
+                entities={entityCatalogRows}
+                parsedData={filteredRows}
+                fields={effectiveFields}
+                schema={augmentedFields}
+                breakdownFields={compareFields}
+                setBreakdownFields={setCompareFields}
+                ratingField={ratingField}
+                viewMode={compareViewMode === 'theme' ? 'entity' : 'group'}
+                setViewMode={function(v) { setCompareViewMode(v === 'entity' ? 'theme' : 'group') }}
+                smartAxes={compareSmartAxes}
+                setSmartAxes={setCompareSmartAxes}
+                scopeType={entityCatalogScopeType}
+                onDrillEntity={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
+              />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}

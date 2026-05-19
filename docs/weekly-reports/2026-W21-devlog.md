@@ -183,3 +183,18 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`.
 
 **Open Q answered: multi-field entity Compare view** — Bucket C shipped `EntityBreakdownDist` on the Themes subtab for *single-field* breakdowns (one categorical at a time, same controls as the theme `BreakdownDist`). The dedicated **Compare** subtab is still theme-only — its `CompareTab` component does *multi-field* compounded breakdowns ("location × day-of-week") with significance + summary export, and we never built the entity equivalent. Adding it is on the open-items list but not part of Buckets A–F. Roughly 1–1.5 days more work; mostly a fork of CompareTab with the same per-row match-set pattern EntityBreakdownDist uses.
+
+## 2026-05-18 — Multi-field Entity Compare shipped
+
+**Why**: pulled forward the open item from the bucket scoreboard. The Themes/Clouds/Compare subtabs already had entity-view equivalents *except* the Compare subtab, where the dedicated `CompareTab` (multi-field compounded breakdown with significance + summary export) was still theme-only. Building it closes the last gap in the theme-functionality mirror.
+
+**What changed**:
+- `components/analyze/textmine/EntityCompareTab.tsx` (new, ~360 lines): mirror of `CompareTab` operating on the entity catalog. Same multi-field field selector (toggleable categorical fields combine into compounded group keys like "Tampa × Friday"). Computes per-row entity match-sets via the alternation regex pattern shared with `EntityCloud` + `EntityBreakdownDist`. Per-(group, entity) stats include count, mention rate, avg rating, and rating significance via `welchTTest` (when ≥5 ratings per side). Two render modes — **By Group** (each segment's entities) and **By Entity** (each entity's prevalence across segments). Significance markers (★) via the same `sigTest` 2-proportion z-test the theme `CompareTab` uses, so over/under-representation signals are directly comparable. Top 25 entities by total mentions across visible groups (`smartAxes` toggle flips between count-sorted and alphabetical); Show all reveals the long tail. "Summarize findings" modal exports a plain-text outlier report (over- and under-indexed segments, copy-pasteable).
+- `components/analyze/TextMineModule.tsx`: dynamic-imports `EntityCompareTab` (parallel to `CompareTab`), extends the `viewBy` toggle visibility to include the Compare subtab (previously only Themes / Clouds), and renders `EntityCompareTab` instead of `CompareTab` when `viewBy === 'entity'`. Reuses the same `compareFields` / `compareViewMode` / `compareSmartAxes` state, with a small adapter on `viewMode` to map theme's `'group' | 'theme'` to entity's `'group' | 'entity'` (default to entity-side when switching to entity view).
+- `docs/ANALYTICS.md`: new "TextMine → Compare tab" entry under "Where entities show up".
+
+**Bucket scoreboard, final**: A ✅ B ✅ C ✅ D ✅ E ✅ F ✅ + multi-field Entity Compare ✅. Theme-functionality mirror is now complete: cloud, sentiment, single-field breakdown, multi-field Compare, drill modal, all share the entity catalog + matching pipeline.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Visual QC of the entity Compare view itself still pending — would benefit from rendering against Fleming's with multi-field selection enabled to confirm the chart layout matches the theme version.
+
+**Next**: real browser QC of all the entity views end-to-end on Fleming's. Then push the accumulated 15+ commits.

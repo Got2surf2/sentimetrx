@@ -260,6 +260,19 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
   its comments (same flow as the pill list). Hovering an entity dims every
   other category in the cloud (mirrors WordCloud's theme-chip hover) so the
   viewer immediately sees which category the entity belongs to.
+- **TextMine → Compare tab (View by: Entity)** — **Entity Compare**
+  (`components/analyze/textmine/EntityCompareTab.tsx`). Mirror of the theme
+  `CompareTab` for entities: pick one or more categorical fields, see which
+  entities over- or under-index in each compounded segment ("location × day
+  of week"). Two views — By Group (per-segment entity prevalence) and By
+  Entity (per-entity prevalence across segments). Significance markers (★)
+  use the same `sigTest` 2-proportion z-test the theme version uses; rating
+  significance per (group, entity) uses `welchTTest` when ≥5 ratings per
+  side. Top 25 entities by total mentions across visible groups (Show all
+  reveals the long tail). "Summarize findings" exports a copy-pasteable
+  text outlier report. Per-row entity match-set computed once via the
+  alternation regex shared with `EntityCloud` and `EntityBreakdownDist`,
+  so counts stay consistent across all three entity views.
 - **TextMine → Themes tab → Breakdown** — **Entity Breakdown by &lt;field&gt;**
   (`components/analyze/textmine/EntityBreakdownDist.tsx`), rendered below the
   theme `BreakdownDist`. Stacked bars per group segmented by entity, plus a By
