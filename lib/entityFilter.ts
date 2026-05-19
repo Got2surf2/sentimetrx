@@ -215,10 +215,22 @@ export async function getEntitiesWithCounts(opts: {
   const scope = await resolveEntityScope(service, datasetId)
   if (!scope.found) return { notFound: true }
 
-  // Catalog for this scope, most-sampled first. hidden rows are soft-deleted
-  // (lib/entityDiscovery.ts skips them on upsert; we drop them here so they
-  // never reach cloud / compare / drill UI). Manage Entities passes
-  // includeHidden=true to surface them for unhide/edit.
+  // Catalog for this scope. Default reads sort by sample_count DESC (NER's
+  // hit-frequency hint) and cap at catalogLimit so cheap previews stay fast.
+  // hidden rows are soft-deleted (lib/entityDiscovery.ts skips them on upsert;
+  // we drop them here so they never reach cloud / compare / drill UI).
+  //
+  // Manage Entities passes includeHidden=true. Two important diffs in that
+  // mode:
+  //   1. Sort by `source ASC` first so 'discovered' < 'manual' alphabetically
+  //      — pulls manual entries to the top. Manual entries from a menu seed
+  //      have sample_count=1 (the seed never bumps them via NER samples), so
+  //      sort-by-sample_count alone would push them past the catalogLimit
+  //      cutoff on big catalogs (e.g. Fleming's 557 rows, 500 cap).
+  //   2. No cap. The Manage panel needs the COMPLETE catalog so users can
+  //      hide / unhide / edit any row, not just the top N. Catalog size is
+  //      bounded by the discovery cap (MAX_ENTITIES=400 + manual entries),
+  //      so even with no limit this is a few hundred rows at most.
   //
   // At collection scope (brand-collections covering many locations), person
   // entities are noise — staff names from hundreds of restaurants, each
@@ -233,8 +245,15 @@ export async function getEntitiesWithCounts(opts: {
     .select('slug, canonical, category, aliases, sample_count, source, hidden')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
-    .order('sample_count', { ascending: false })
-    .limit(catalogLimit)
+  if (includeHidden) {
+    catalogQuery = catalogQuery
+      .order('source', { ascending: false })       // 'manual' > 'discovered'
+      .order('sample_count', { ascending: false }) // tiebreak
+  } else {
+    catalogQuery = catalogQuery
+      .order('sample_count', { ascending: false })
+      .limit(catalogLimit)
+  }
   if (!includeHidden) catalogQuery = catalogQuery.eq('hidden', false)
   if (!includeHidden && scope.scopeType === 'collection') {
     catalogQuery = catalogQuery.neq('category', 'person')

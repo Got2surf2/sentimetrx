@@ -616,6 +616,8 @@ export async function discoverEntities(opts: {
     category: string
     aliases: string[]
     sample_count: number
+    source: 'discovered'
+    hidden: boolean
     last_seen_at: string
   }> = []
   for (const [slug, disc] of discoveredList) {
@@ -635,6 +637,18 @@ export async function discoverEntities(opts: {
       category:     prev?.category || disc.category,
       aliases:      aliasUnion,
       sample_count: (prev?.sample_count || 0) + disc.sampleCount,
+      // Defensive: PostgREST's upsert ON CONFLICT SETs every column present
+      // in the payload using EXCLUDED.col. Omitting source / hidden was
+      // technically fine — the skip-hidden / skip-manual checks above mean
+      // those rows never enter this list — but a bug in the skip path (or
+      // a race) could let a hidden row sneak in, and the upsert would then
+      // silently reset hidden=false because the DB column has a non-null
+      // default. Belt-and-suspenders: write the values explicitly so the
+      // upsert's behaviour matches what the SELECT loop intended. The skip
+      // already filters source!='manual' and hidden=false, so these values
+      // are safe.
+      source:       'discovered',
+      hidden:       false,
       last_seen_at: nowIso,
     })
   }

@@ -230,8 +230,12 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
 - `GET /api/datasets/[datasetId]/entities` → catalog entities with live counts + category
   rollup + `last_refresh`. `?theme=<themeId>` intersects counts with the theme's
   keywords; `?limit=<n>` default 50, max 200. `?manage=1` returns the full catalog
-  including hidden rows, with `source` + `hidden` flags on each entry (drives the
-  Manage Entities panel).
+  *uncapped* (no `catalogLimit` ceiling), sorted by `source DESC, sample_count DESC`
+  so `manual` entries pull to the top regardless of their NER sample frequency;
+  includes hidden rows + `source` + `hidden` flags. Drives the Manage Entities
+  panel; the no-cap rule prevents the truncation bug where high-mention manual
+  rows with low `sample_count` (e.g. menu-PDF seeds, sample_count=1) get cut
+  off the bottom of a 500-row catalog limit.
 - `GET /api/datasets/[datasetId]/rows-by-entity?entity=<slug>` → the rows mentioning one
   entity, across the scope's members (via the `get_rows_by_entity` RPC, same open-ended
   recheck as counting). `?limit` default 100 / max 500, `?offset`.
