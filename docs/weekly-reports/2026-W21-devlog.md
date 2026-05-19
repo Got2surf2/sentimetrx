@@ -27,6 +27,22 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 
 **Next**: QA the two-step opener on a couple of agents in production. Revisit Sonnet 4.6 → `fast` revert in the chat route once the Tuesday demo is past.
 
+## 2026-05-18 — Abel: KB rescan + intent routing to specific destination URLs
+
+**Why**: the Abel (Vindman surrogate) bot's KB was 25K chars from an older crawl that pre-dated the recent site redesign and Spanish landing page. Separately, the bot had `intents = []`: a "how do I donate?" question got handled by RAG with no actionable URL, so the user got prose instead of an ActBlue link. The campaign needs the bot to **route action-intent traffic to specific destination pages**, not just answer in prose.
+
+**What changed**:
+- `scripts/_rescan_abel_kb.ts`: one-off rescan tool. Re-implements the deep-crawl + chunk + embed pipeline that the `/admin/bots` Save flow runs (it can't easily be invoked from CLI because the API is cookie-auth-gated). Re-crawled `https://alexvindman.com` + `https://ashleymoody.com`, regenerated `bots.knowledge_base` (25,289 → 87,350 chars; 96 → 118 chunks, all embedded). Same script can be re-run when site content shifts.
+- Abel `intents` JSONB populated with 5 routes — each fires server-side keyword match first, falls back to Haiku intent detection, and when matched the server prompt is told to weave the URL into the reply (RAG skipped on that turn):
+  - **Donate** → `https://secure.actblue.com/donate/avvf-digi-website?refcode=website`
+  - **Volunteer** → `https://act.alexvindman.com/signup/volunteer_2026?source=website`
+  - **Florida First Agenda** → `https://alexvindman.com/florida-first-agenda/`
+  - **Merch** → `https://store.alexvindman.com/`
+  - **Register to vote** → `https://vote.gov/` (official non-partisan federal hub, deliberately NOT a campaign-branded page so the civic guidance reads neutral)
+- One small env-parser fix in the script: `.env.local`'s `OPENAI_API_KEY` had a trailing literal `\n` artifact inside the quotes; the script strips it before use. The leaked-newline form does not break Next.js dev (dotenv-flow tolerates it) but did break a plain `fetch` to the OpenAI embeddings API.
+
+**Not done**: no contact / email-the-campaign intent. The campaign site doesn't expose a public contact email anywhere I could find — only social links — and per repo policy I don't fabricate addresses for shipped UI.
+
 ## 2026-05-18 — Entity catalog: manual curation + soft-delete (Bucket A of entity-views build)
 
 **Why**: brand-level entity catalogs need a curation seam. NER discovery is sample-bound (default 500 rows) and produces both gaps (menu items the sample never saw) and noise (generic nouns slipping past the strict prompt). The pre-existing "Re-discover" button wiped the whole scope's catalog before rebuild, so any future hand-curation would have been destroyed on the next click. This blocks the broader entity-views feature (cloud, compare, sentiment) because there's no point visualising a catalog the user can't trust.
