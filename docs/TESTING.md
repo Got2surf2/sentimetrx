@@ -281,6 +281,32 @@ Both refuse to start without `SESSION_ID`, which must be a Town Hall
 session you've already created via the UI and clearly named (e.g.
 "Load Test — DO NOT USE").
 
+## Bot regression scripts (Sarina)
+
+The NOWOCATS Sarina agent has a 22-scenario regression script — Arjun's
+2026-05-17 test suite encoded as machine-checkable assertions. Same data
+backs three runner surfaces:
+
+- `app/admin/sarina-regression/tests.ts` — single source of truth: per
+  scenario, `turns[]` (1-3 user turns to send), `mustInclude` regex
+  array, `mustNotInclude` regex array, `expectedFromDoc` narrative.
+- `app/admin/sarina-regression/` — admin UI button-driven runner.
+  Sends each scenario to `/api/bots/[id]/chat` with `debug:true`,
+  surfaces per-test reply + transcript + RAG debug + per-pattern
+  pass/fail. Re-runnable after any KB or system-prompt change.
+- `scripts/_run_sarina_regression.ts` — terminal-driven equivalent.
+  Hits live https://www.sentimetrx.ai against the same chat endpoint;
+  prints pass/partial/fail per row plus the full reply text. Exit
+  code is non-zero if any FAIL or ERROR; suitable for CI / cron later.
+- `scripts/_generate_sarina_regression_doc.ts` — one-off generator that
+  writes a Word doc to `~/Downloads/` comparing Arjun's original log
+  with the latest run side-by-side. Uses the `docx` npm package; output
+  matches the Calibri 11pt look of Arjun's NOWOCATS handoff doc.
+
+Neither runner runs in CI — both cost real model calls against the
+live bot. Run after any change that touches Sarina's prompt, intents,
+guardrails, or knowledge base. Target ~$1–$3 per full pass.
+
 ## CI
 
 `.github/workflows/ci.yml` runs typecheck + Vitest on push to `main` and
