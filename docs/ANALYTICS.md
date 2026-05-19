@@ -257,7 +257,9 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
   but / however / although / yet / though / while / whereas / comma; opinion-word
   hits in each clause credited to every entity that appears in that clause).
   Category chips at the top filter the cloud; click any entity to drill into
-  its comments (same flow as the pill list).
+  its comments (same flow as the pill list). Hovering an entity dims every
+  other category in the cloud (mirrors WordCloud's theme-chip hover) so the
+  viewer immediately sees which category the entity belongs to.
 - **TextMine → Themes tab → Breakdown** — **Entity Breakdown by &lt;field&gt;**
   (`components/analyze/textmine/EntityBreakdownDist.tsx`), rendered below the
   theme `BreakdownDist`. Stacked bars per group segmented by entity, plus a By

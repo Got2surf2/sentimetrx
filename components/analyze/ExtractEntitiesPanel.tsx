@@ -489,15 +489,21 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
           revisions used `auto` for the Actions column which let row-specific
           button sets (Hide+Edit+Delete vs Unhide only) drift the rest. */}
       {manageOpen && !loading && !discovering && entities.length > 0 && (function() {
-        const GRID = 'minmax(0,1fr) 90px 110px 90px 200px'
+        // Fixed columns for every cell — Edit / Hide / Delete each get their
+        // own column so buttons never shift row-to-row regardless of which
+        // action set the row qualifies for (manual gets Delete, discovered
+        // doesn't — empty cell, NOT a different column width).
+        const GRID = 'minmax(0,1fr) 90px 110px 90px 70px 80px 80px'
         return (
         <div style={{ border: '1px solid ' + P.border, borderRadius: 8, overflow: 'hidden' as const }}>
           <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 0, fontSize: 10, fontWeight: 700, color: P.textFaint, padding: '8px 12px', background: P.bg, borderBottom: '1px solid ' + P.border, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
             <div>Entity</div>
             <div>Category</div>
-            <div>Source</div>
+            <div style={{ textAlign: 'center' as const }}>Source</div>
             <div style={{ textAlign: 'right' as const }}>Mentions</div>
-            <div style={{ textAlign: 'right' as const }}>Actions</div>
+            <div style={{ textAlign: 'center' as const }}>Edit</div>
+            <div style={{ textAlign: 'center' as const }}>Visibility</div>
+            <div style={{ textAlign: 'center' as const }}>Delete</div>
           </div>
           <div style={{ maxHeight: 420, overflowY: 'auto' as const, background: P.white }}>
             {entities.map(function(e) {
@@ -594,7 +600,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                     </div>
                   </div>
                   <div style={{ color: P.textMid, textTransform: 'capitalize' as const }}>{e.category}</div>
-                  <div>
+                  <div style={{ display: 'flex', justifyContent: 'center' as const, alignItems: 'center' }}>
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                       background: isManual ? P.accentBg : P.bg,
@@ -606,7 +612,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                     </span>
                   </div>
                   <div style={{ textAlign: 'right' as const, color: P.text, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{e.mentions.toLocaleString()}</div>
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' as const }}>
+                  <div style={{ display: 'flex', justifyContent: 'center' as const }}>
                     <button
                       onClick={function() { startEdit(e) }}
                       disabled={busy}
@@ -618,6 +624,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                       }}>
                       Edit
                     </button>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' as const }}>
                     <button
                       onClick={function() { toggleHidden(e) }}
                       disabled={busy}
@@ -629,7 +637,9 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                       }}>
                       {isHidden ? 'Unhide' : 'Hide'}
                     </button>
-                    {isManual && (
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' as const }}>
+                    {isManual ? (
                       <button
                         onClick={function() { deleteManual(e) }}
                         disabled={busy}
@@ -641,6 +651,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                         }}>
                         Delete
                       </button>
+                    ) : (
+                      <span style={{ fontSize: 9, color: P.textFaint }} title="Discovered entries can't be hard-deleted — Hide them instead, so re-discovery doesn't resurface them.">{'—'}</span>
                     )}
                   </div>
                 </div>

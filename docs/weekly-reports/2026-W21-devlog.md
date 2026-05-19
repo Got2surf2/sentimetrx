@@ -171,3 +171,15 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`. Edit flow round-trips PATCH endpoint; existing Hide/Unhide/Delete unchanged.
 
 **Next**: still pending QC — confirm the Manage panel renders aligned in browser, and that Edit round-trips on a real catalog row. Then push the accumulated commits.
+
+## 2026-05-18 — Entity cloud hover-to-isolate + Manage panel action columns
+
+**Why**: more QC feedback. (1) The entity cloud had no "what category is this entity in" cue — hovering should isolate its category the way hovering a theme chip on WordCloud isolates that theme's words. (2) On the Manage panel, the Source badges were left-aligned in their column (looked messy against the centered header), and the three actions Edit/Hide/Delete shared one flex cell — so when a row didn't qualify for Delete (discovered rows), the remaining two buttons re-justified into the empty space, giving the right-hand edge a haphazard look across rows.
+
+**What changed**:
+- `components/analyze/textmine/EntityCloud.tsx`: new `hoveredCategory` state at the cloud level. Each Entity child reports its category on `onMouseEnter`/`onMouseLeave` via a new `onHoverCategory` callback. Dim logic now stacks two sources: the existing sticky category-chip filter (click-driven) and the new transient hover-to-isolate (pointer-driven). Hover wins visually because it's an explicit "focus on this one category" signal even if the chip filter has the category active.
+- `components/analyze/ExtractEntitiesPanel.tsx`: the Manage panel's row grid template went from `'minmax(0,1fr) 90px 110px 90px 200px'` (Actions as one shared 200px cell) to `'minmax(0,1fr) 90px 110px 90px 70px 80px 80px'` (Edit / Visibility / Delete as three separate fixed columns). Source badge cell is now `display:flex; justifyContent:center` so the pill sits under the centered header. Discovered rows show an em-dash placeholder in the Delete column (with tooltip explaining why discovered rows can't be hard-deleted) so the column stays visually balanced.
+
+**Verification**: clean `npx tsc --noEmit` after `rm tsconfig.tsbuildinfo`.
+
+**Open Q answered: multi-field entity Compare view** — Bucket C shipped `EntityBreakdownDist` on the Themes subtab for *single-field* breakdowns (one categorical at a time, same controls as the theme `BreakdownDist`). The dedicated **Compare** subtab is still theme-only — its `CompareTab` component does *multi-field* compounded breakdowns ("location × day-of-week") with significance + summary export, and we never built the entity equivalent. Adding it is on the open-items list but not part of Buckets A–F. Roughly 1–1.5 days more work; mostly a fork of CompareTab with the same per-row match-set pattern EntityBreakdownDist uses.

@@ -73,7 +73,7 @@ function getRowText(row: Record<string, unknown>, fields: string[]): string {
 
 interface Sentiment { positive: number; negative: number; neutral: number }
 
-function Entity({ entity, freq, maxFreq, sentiment, colorBy, onClick, dimmed }: {
+function Entity({ entity, freq, maxFreq, sentiment, colorBy, onClick, dimmed, onHoverCategory }: {
   entity:   EntityEntry
   freq:     number
   maxFreq:  number
@@ -81,6 +81,7 @@ function Entity({ entity, freq, maxFreq, sentiment, colorBy, onClick, dimmed }: 
   colorBy:  'category' | 'sentiment'
   onClick?: () => void
   dimmed:   boolean
+  onHoverCategory?: (cat: string | null) => void
 }) {
   const [hov, setHov] = useState(false)
   const pal = CATEGORY_COLOR[entity.category] || CATEGORY_COLOR.other
@@ -125,8 +126,8 @@ function Entity({ entity, freq, maxFreq, sentiment, colorBy, onClick, dimmed }: 
         opacity: dimmed ? 0.3 : 1,
         border: colorBy === 'category' && hov ? '1px solid ' + pal.border + '60' : '1px solid transparent',
       }}
-      onMouseEnter={function() { setHov(true) }}
-      onMouseLeave={function() { setHov(false) }}
+      onMouseEnter={function() { setHov(true); if (onHoverCategory) onHoverCategory(entity.category) }}
+      onMouseLeave={function() { setHov(false); if (onHoverCategory) onHoverCategory(null) }}
     >
       {entity.canonical}
       <span style={{ fontSize: Math.max(9, size - 6), fontWeight: 600, opacity: 0.6 }}>
@@ -141,6 +142,11 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
   const [showAll, setShowAll] = useState(false)
   const [activeCategories, setActiveCategories] = useState<Set<string> | null>(null)
   const [isPending, startTransition] = useTransition()
+  // Hover-to-isolate: while the user's pointer is on an entity in the cloud,
+  // every other category dims out. Same UX WordCloud uses when hovering a
+  // theme chip — give the viewer immediate context for "what category is
+  // this in." Cleared on mouse leave.
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null)
 
   // ── Cloud sizing uses the SAME scope-wide mention counts the EntitiesCard
   //    pill list shows (entity.mentions, computed live by count_entity_terms
@@ -355,7 +361,13 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
       {/* The cloud */}
       <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '10px 12px', alignItems: 'baseline', lineHeight: 1.7 }}>
         {sortedVisible.map(function(x) {
-          const dimmed = !categoryActive(x.entity.category)
+          // Two dim sources stack: category-chip filter (sticky, click-driven)
+          // and hover-to-isolate (transient, pointer-driven). Hover wins
+          // visually because it's an explicit "focus on this one category"
+          // signal — even if the chip filter has the category active.
+          const chipDimmed = !categoryActive(x.entity.category)
+          const hoverDimmed = hoveredCategory != null && hoveredCategory !== x.entity.category
+          const dimmed = chipDimmed || hoverDimmed
           return (
             <Entity
               key={x.entity.slug}
@@ -366,6 +378,7 @@ export default function EntityCloud({ entities, parsedData, fields, onEntityClic
               colorBy={colorBy}
               dimmed={dimmed}
               onClick={onEntityClick ? function() { onEntityClick(x.entity) } : undefined}
+              onHoverCategory={setHoveredCategory}
             />
           )
         })}
