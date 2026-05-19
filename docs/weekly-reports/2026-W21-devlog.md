@@ -1,5 +1,23 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-19 — Per-tenant backups to S3
+
+**Why**: Sarina's KB-disappeared incident proved we have no per-tenant recovery story. Supabase PITR rolls back the whole DB, which in a multi-tenant SaaS means recovering Org A destroys Org B's legitimate work since the rollback point. The right shape is logical per-tenant snapshots, restorable independently.
+
+**What changed**:
+- `lib/orgSnapshot.ts` — `dumpOrgSnapshot(orgId)` returns a versioned JSON with every tenant-scoped table's rows for that org. `TABLE_SPECS` is the source of truth: ~40 tables, each tagged `org_id` / `parent_via` / `id_eq_org` / `skip`. Large tables (`dataset_rows_flat`, `bot_conversation_turns`) are capped at 50K/100K rows respectively; truncations are flagged in `meta.truncated_tables`.
+- `lib/backupS3.ts` — gzip + S3 PUT wrapper. Key shape `org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/snapshot.json.gz`. SSE-S3 by default, SSE-KMS if `BACKUP_S3_KMS_KEY_ID` is set.
+- `app/api/cron/org-snapshot/route.ts` — nightly Vercel cron at 04:00 UTC (added to `vercel.json`). Loops all orgs, captures, uploads. A single org failure doesn't abort the rest. Returns per-org row counts + errors.
+- `app/api/admin/org-snapshots/[orgId]/` — admin-gated GET (list) + POST (snapshot-now).
+- `app/api/admin/org-snapshots/[orgId]/restore/` — admin-gated POST. Two modes: **merge** (default — upserts snapshot rows by `id`, leaves others alone) and **replace** (also deletes current rows whose id is not in the snapshot). Refuses if `snapshot.meta.org_id !== params.orgId` (key-swap defense). Returns per-table report of upserts/deletes/errors.
+- `app/admin/backups/` — top-level admin page listing all orgs with "Browse" and "Snapshot now" buttons.
+- `app/admin/backups/[orgId]/` — per-org snapshot list with restore-confirmation UX. Restore requires retyping the org slug to confirm.
+- `docs/BACKUPS.md` — full ops doc: AWS bucket setup, IAM policy JSON, env vars, cost (~$3/mo at our scale), failure modes, what isn't covered (auth.users, Supabase Storage), TBDs.
+
+**Setup needed before this is live**: provision the S3 bucket + IAM user in AWS console per `docs/BACKUPS.md`, then set `BACKUP_S3_BUCKET` / `BACKUP_S3_REGION` / `BACKUP_AWS_ACCESS_KEY_ID` / `BACKUP_AWS_SECRET_ACCESS_KEY` on Vercel Production. Until the env vars are set, the cron route returns errors per-org but the rest of the app is unaffected.
+
+**Open**: no alerting on cron failures yet; no automated restore-test cron; `auth.users` records still depend on Supabase Auth's own backup. Tracked in `docs/BACKUPS.md` § TBDs.
+
 ## 2026-05-19 — Sarina KB rehydrate + bot audit log
 
 **Why**: Arjun's NOWOCATS handoff (May 17) ran a structured 22-scenario regression against Sarina and got ~10 FAIL-KB results. Root cause turned out to be that `bot_knowledge_chunks` was empty for Sarina in prod despite the bot having served 261 conversations. With zero audit trail it was impossible to tell whether the chunks were never inserted or were inserted and later wiped — so the immediate fix is to rehydrate, and the durable fix is to never be in this position again.

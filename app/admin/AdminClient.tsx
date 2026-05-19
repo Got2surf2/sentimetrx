@@ -237,6 +237,12 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             >
               Sarina Regression
             </Link>
+            <Link
+              href="/admin/backups"
+              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold text-sm transition-all"
+            >
+              Backups
+            </Link>
             <button
               onClick={() => setShowNew(v => !v)}
               className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all text-white"
