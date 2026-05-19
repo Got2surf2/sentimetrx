@@ -352,6 +352,16 @@ The first three messages (name-ask + name reply + topical opener) are tracked in
 
 When `askName === false`, the topical opener (`config.initialMessage`) is the very first message and the name capture step is skipped (`userName` is initialised to `'_skip'`).
 
+### Reply rendering — `formatHtml`
+
+The assistant bubble runs every reply through `ChatBot.formatHtml` before setting `dangerouslySetInnerHTML`. The pass is layered specifically so prompt-injection-style content can't break out:
+
+1. **Raw-anchor normalisation** — `<a href="…">text</a>` patterns are rewritten to markdown `[text](url)`. Some models still emit HTML anchors despite the LINK FORMAT system rule; without this step the next HTML-escape pass would entity-encode the tag and the bare-URL auto-linker would then match the URL *inside* the escaped tag and wrap it in a real anchor — producing the "attribute soup" rendering regression.
+2. **HTML-escape** — every `<`, `>`, `"`, `'`, `&` is replaced with the corresponding entity so the reply content can't break out of the surrounding markup.
+3. **Markdown link substitution** — `[text](https://…)` is replaced with a placeholder token and the rendered anchor is stashed in a sidecar array.
+4. **Inline formatting** — `**bold**`, newlines → `<br/>`, `- ` bullets, then auto-link bare URLs, emails, and known bare-domain TLDs (com/org/net/ai/io/gov/edu/us/co/info/biz/mil).
+5. **Placeholder restore** — markdown anchors are spliced back in last so the auto-linker can't see them.
+
 ### Mandatory "Powered by DATANAUTIX" badge
 
 Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a hardcoded "powered by DATANAUTIX" wordmark stacked in the chat header (linking to `https://www.datanautix.com`), plus a "Powered by Datanautix" line in the footer area. It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the platform. The customer's own `websiteLabel` link (when configured) sits to its left.

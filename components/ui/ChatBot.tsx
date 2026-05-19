@@ -330,6 +330,19 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   const formatHtml = (content: string) => {
+    // Step -1: Some models occasionally emit raw `<a href="…">text</a>` even
+    // when prompted not to. Without normalisation, escapeHtml would turn the
+    // tag into entities and the bare-URL auto-linker further down would then
+    // match the URL *inside* the escaped tag string and wrap it in a real
+    // anchor — producing attribute-soup in the bubble. Rewrite the raw anchor
+    // to markdown so the existing markdown pipeline handles it cleanly.
+    const normalized = content.replace(
+      /<a\s+[^>]*href=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi,
+      function(_m: string, url: string, text: string) {
+        const cleanText = text.replace(/<[^>]+>/g, '').trim() || url
+        return '[' + cleanText + '](' + url + ')'
+      }
+    )
     // Step 0: HTML-escape first. Without this the function inserts the
     // raw user/agent string into innerHTML — a literal `"` in a URL or
     // body lets an attacker break out of the href="..." attribute and
@@ -344,7 +357,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     // We escape both the visible text and the URL so neither can break out
     // of the surrounding markup.
     const mdLinks: string[] = []
-    let out = escapeHtml(content).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
+    let out = escapeHtml(normalized).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
       mdLinks.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">' + text + '</a>')
       return '\x00ML' + (mdLinks.length - 1) + '\x00'
     })

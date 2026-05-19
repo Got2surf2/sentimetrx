@@ -52,6 +52,7 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 - Abel `system_prompt`: replaced the "make links clickable" sentence with "Write URLs as plain text or markdown — never as HTML anchor tags."
 - Swept `bots` rows for `clickable` / `<a href` in `system_prompt` or `personality` — Abel was the only hit.
 - `docs/BOTS.md`: the prompt-assembly section now documents the LINK FORMAT block alongside SAFEGUARDS and EMOTIONAL RESET.
+- **Client-side belt-and-suspenders**: `ChatBot.formatHtml` now does a step `-1` normalisation that rewrites any `<a href="…">text</a>` the model emits into markdown `[text](url)` before the HTML-escape pass runs. So even if a future agent prompt accidentally invites HTML output again, the bubble renders cleanly instead of leaking attributes as text.
 
 ## 2026-05-18 — Entity catalog: manual curation + soft-delete (Bucket A of entity-views build)
 
