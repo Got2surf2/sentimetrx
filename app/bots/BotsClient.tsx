@@ -105,6 +105,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
             style={{ fontSize: 11, padding: '4px 12px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>
             ↻ Refresh
           </button>
+          <ImportBotButton onImported={fetchBots} />
           <span style={{ fontSize: 13, color: '#9ca3af' }}>{bots.length} agent{bots.length !== 1 ? 's' : ''}</span>
           <button
             onClick={function() { router.push('/bots/new') }}
@@ -151,6 +152,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           var websiteLabel = cfg.websiteLabel || ''
           var subtitle = cfg.subtitle || ''
           var created = new Date(bot.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+          var updatedRel = relativeTime(bot.updated_at)
 
           return (
             <div key={bot.id} style={{
@@ -211,8 +213,9 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 </div>
 
                 {/* Dates */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, color: '#d1d5db' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, color: '#d1d5db', flexWrap: 'wrap' }}>
                   <span>Created {created}</span>
+                  <span style={{ color: '#9ca3af' }} title={new Date(bot.updated_at).toLocaleString()}>Updated {updatedRel}</span>
                   {bot.last_session_at && (
                     <span style={{ color: '#9ca3af' }}>Last chat {(function() {
                       var ms = Date.now() - new Date(bot.last_session_at).getTime()
@@ -296,8 +299,24 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 {/* Analyze in Ana — full-width, mirrors TownHall card pattern */}
                 <AnalyzeInAnaButton botId={bot.id} />
 
-                {/* Delete — small, below pills */}
-                <div style={{ textAlign: 'right' }}>
+                {/* History + Export + Delete — small footer row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <a
+                      href={'/bots/' + bot.id + '/history'}
+                      style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}
+                      onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#374151' }}
+                      onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = '#9ca3af' }}>
+                      History
+                    </a>
+                    <a
+                      href={'/api/bots/' + bot.id + '/export'}
+                      style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}
+                      onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#374151' }}
+                      onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = '#9ca3af' }}>
+                      Export JSON
+                    </a>
+                  </div>
                   <button
                     onClick={function() { deleteBot(bot) }}
                     style={{
@@ -315,6 +334,67 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
         })}
       </div>
     </div>
+  )
+}
+
+// Relative time helper for "Updated 3d ago" style timestamps.
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return 'never'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 60000) return 'just now'
+  if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago'
+  if (ms < 86400000) return Math.floor(ms / 3600000) + 'h ago'
+  const days = Math.floor(ms / 86400000)
+  if (days < 30) return days + 'd ago'
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Hidden <input type=file> + button. Reads the picked JSON, POSTs it to
+// /api/bots/import, then refreshes the bot list.
+function ImportBotButton({ onImported }: { onImported: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string>('')
+  const inputRef = (typeof window !== 'undefined' ? null : null) as any
+  return (
+    <label
+      style={{
+        fontSize: 11, padding: '4px 12px', borderRadius: 16, border: '1px solid #d1d5db',
+        background: 'white', color: busy ? '#9ca3af' : '#6b7280', cursor: busy ? 'wait' : 'pointer',
+        fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4,
+      }}
+      title={err || 'Import a bot from a previously exported JSON file'}
+    >
+      <input
+        type='file'
+        accept='.json,application/json'
+        style={{ display: 'none' }}
+        disabled={busy}
+        onChange={async function(e) {
+          const file = e.target.files?.[0]
+          if (!file) return
+          setBusy(true); setErr('')
+          try {
+            const text = await file.text()
+            let json: any
+            try { json = JSON.parse(text) } catch { setErr('Not valid JSON'); setBusy(false); return }
+            const res = await fetch('/api/bots/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(json),
+            })
+            const data = await res.json()
+            if (!res.ok) { setErr(data?.error || ('HTTP ' + res.status)); setBusy(false); return }
+            onImported()
+          } catch (e: any) {
+            setErr(e?.message || 'Import failed')
+          } finally {
+            setBusy(false)
+            ;(e.target as HTMLInputElement).value = ''
+          }
+        }}
+      />
+      {busy ? 'Importing…' : '↓ Import'}
+    </label>
   )
 }
 

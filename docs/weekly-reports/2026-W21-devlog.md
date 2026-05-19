@@ -1,5 +1,22 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-19 — Sarina KB rehydrate + bot audit log
+
+**Why**: Arjun's NOWOCATS handoff (May 17) ran a structured 22-scenario regression against Sarina and got ~10 FAIL-KB results. Root cause turned out to be that `bot_knowledge_chunks` was empty for Sarina in prod despite the bot having served 261 conversations. With zero audit trail it was impossible to tell whether the chunks were never inserted or were inserted and later wiped — so the immediate fix is to rehydrate, and the durable fix is to never be in this position again.
+
+**What changed**:
+- 6 scripts patched: `scripts/_ingest_nowocats_qa.ts` (Q&A Forum, doc #9 — 32 chunks), `_ingest_nowocats_ecr.ts` (Existing Conditions Report, doc #10 — 22), `_ingest_nowocats_pm1_deck.ts` (30), `_ingest_nowocats_pm2_postcard.ts` (3 — adds verified June 16, 2026 meeting date), `_ingest_nowocats_posters.ts` (11), `_embed_missing_sarina_chunks.ts`. Env-loader was passing OpenAI keys with a literal trailing `\\n`, which caused the embeddings step to silently 401. Fix mirrors `_rescan_abel_kb.ts`'s `.replace(/\\n$/, '')`. Ran all five against prod — Sarina KB is now 98 chunks, all embedded.
+- New `bots.intents` column populated for Sarina (was 0): meeting-info, Spanish handoff, ADA accommodation (Nicola Norton), submit-concern. Routes are message-only (no `url`) so RAG still fires alongside.
+- `sql/074_bot_change_log.sql` — new append-only audit table, FK→bots ON DELETE CASCADE, action enum, indexed on `(bot_id, created_at DESC)` + `(org_id, created_at DESC)`. RLS read for own-org + admin-org. No client INSERT policy; server writes only via `lib/auditLog.ts → logBotChange()`.
+- Wired audit-log writes into POST `/api/bots`, PATCH `/api/bots/[id]` (with field-level diff and a `status_change` shortcut), DELETE `/api/bots/[id]`, POST `/api/bots/[id]/knowledge`, DELETE `/api/bots/[id]/knowledge`, and POST `/api/bots/import`.
+- New routes: GET `/api/bots/[id]/export` returns a versioned JSON (bot row sans IDs/timestamps + chunks); POST `/api/bots/import` recreates a bot with chunks; GET `/api/bots/[id]/history` lists the change log.
+- New UI: `/bots/[id]/history` shows the chronological log with before/after diff. `BotsClient` cards now show "Updated <relative>", per-card History + Export JSON links, and a header-level "↓ Import" button. Edit page header shows "Last updated <rel>" + "View history →".
+- New UI: `/admin/sarina-regression` runs Arjun's 22-scenario test set sequentially against the live bot, grades each reply against mustInclude/mustNotInclude regex, and shows reply text + transcript + RAG debug per row. Linked from `/admin`.
+
+**Spec docs**: `docs/BOTS.md` §2 schema gains `bot_change_log`; §10 documents export/import/history routes and the audit-log wiring.
+
+**Open**: Audit-log + export/import currently exists for bots only. Surveys + campaigns are the obvious next surfaces — same `<resource>_change_log` pattern, same `lib/auditLog.ts` style helper. Revert-from-history UI deferred (read-only for this pass).
+
 ## 2026-05-18 — Control Reports admin group
 
 Added `/admin/control-reports/` as the parent for weekly machine-generated reports a human reviews and merges. Index lists governance + spec-drift; each links to a trend page that mirrors the existing GovernanceTrend layout.

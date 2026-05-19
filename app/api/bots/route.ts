@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { logBotChange } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,6 +130,17 @@ export async function POST(req: NextRequest) {
     userId: ctx.userId, orgId: ctx.orgId, event: 'agent_created',
     metadata: { agent_id: data.id, slug: data.slug, name: data.name },
     ip, userAgent,
+  })
+
+  const authUser = await getAuthUser(supabase)
+  void logBotChange({
+    botId: data.id,
+    orgId: ctx.orgId,
+    actorId: ctx.userId,
+    actorEmail: authUser?.email || null,
+    action: 'create',
+    summary: 'Created agent "' + data.name + '" (/b/' + data.slug + ')',
+    after: { name, slug, status: 'draft' },
   })
 
   return NextResponse.json(data, { status: 201 })

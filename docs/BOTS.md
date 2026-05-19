@@ -283,6 +283,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 ### `sql/072_bot_focuses.sql`
 - Adds `focuses JSONB NOT NULL DEFAULT '[]'` to `bots`. Non-destructive (default empty array = unchanged behavior for existing bots). See "Focus shape" above and pipeline step 14 for runtime behavior.
 
+### `sql/074_bot_change_log.sql`
+- Creates `bot_change_log` table — append-only audit trail of every bot mutation. Columns: `id, bot_id (FK ON DELETE CASCADE), org_id, actor_id, actor_email, action, summary, before, after, metadata, created_at`. `action` is constrained to `create | update | delete | status_change | knowledge_added | knowledge_cleared | import`. Indexed on `(bot_id, created_at DESC)` and `(org_id, created_at DESC)`. RLS read for own-org + admin-org users; no client INSERT policy (server writes only via service role through `lib/auditLog.ts`). See §10 "Audit log" for which routes write entries.
+
 ### Authorization model
 
 **RLS is enabled** on all bot tables, but the public chat endpoint uses the **service role** to bypass RLS (because end-users are not authenticated). Authorization is enforced at the application layer:
@@ -758,10 +761,33 @@ Returns `{ chunks: [...], count }`.
 - No content: 400 `{ error: 'No meaningful content found' }`.
 
 ### `DELETE /api/bots/[id]/knowledge`
-Wipes all chunks for the bot.
+Wipes all chunks for the bot. Optional `?source_type=foo` scopes the delete to chunks tagged with that `metadata.source_type`. Response includes `chunks_removed`.
 
 ### `PATCH / DELETE /api/bots/[id]/knowledge/[chunkId]`
 Update or delete a single chunk. PATCH accepts `{ title, content, metadata }`.
+
+### `GET /api/bots/[id]/export`
+Org-member or admin gated. Returns a `bot_export_version: 1` JSON blob containing the bot row (IDs / timestamps stripped) and all knowledge chunks (`title`, `content`, `metadata` only — no embeddings). Sent with `Content-Disposition: attachment; filename="bot_<slug>_<YYYY-MM-DD>.json"`.
+
+### `POST /api/bots/import`
+Org-member gated. Body is a `bot_export_version: 1` JSON payload. Creates a new bot in the caller's org as `status='draft'`; slug collisions append `-copy[N]`. Inserts the payload's chunks **without embeddings** — the bot edit UI or a rescan run backfills them. Returns `{ id, slug, chunks_imported }`. Logs an `import` audit entry referencing `source_bot_id`/`source_bot_name`.
+
+### `GET /api/bots/[id]/history?limit=N`
+Org-member or admin gated. Lists `bot_change_log` entries for the bot, newest first. Default `limit=100`, max `500`. Each entry: `{ id, bot_id, org_id, actor_id, actor_email, action, summary, before, after, metadata, created_at }`.
+
+### Audit log — `bot_change_log` (introduced 2026-05-19)
+
+Every meaningful mutation on a bot writes one row via `lib/auditLog.ts` → `logBotChange()`. Wired into:
+- `POST /api/bots` → action `create`
+- `PATCH /api/bots/[id]` → action `update` (or `status_change` when `status` is the only changed field). The `before` and `after` JSON are field-level diffs from `diffSnapshots()`; large blob fields (`knowledge_base`, `embedding`) are stripped from the snapshot per `SNAPSHOT_SKIP`.
+- `DELETE /api/bots/[id]` → action `delete` (row cascade-deletes the log shortly after; entries survive long enough to inform a future polymorphic mirror table)
+- `POST /api/bots/[id]/knowledge` → action `knowledge_added` with chunk count + source / source_type in metadata
+- `DELETE /api/bots/[id]/knowledge` → action `knowledge_cleared` with the pre-delete chunk count
+- `POST /api/bots/import` → action `import` with the source bot id/name/slug in metadata
+
+Writes are server-side only via service role; `bot_change_log` has no client INSERT policy. Read RLS: own-org members + admin-org members. Cascade: `bot_id REFERENCES bots(id) ON DELETE CASCADE`.
+
+UI: `/bots/[id]/history` shows a chronological list with before/after diffs. `BotsClient` shows "Updated <relative>" on each card and links to History. Edit page header shows "Last updated <relative>" + "View history →" link.
 
 ### `GET /api/bots/[id]/conversations`
 Returns `{ sessions: [...] }`. Each session: `session_id, first_message, turn_count, started_at, last_at, user_name, flags[], has_deflection, persona`. User name is heuristically extracted from turn content (patterns: "My name is X", greeting extraction).

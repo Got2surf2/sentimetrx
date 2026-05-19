@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { generateEmbeddings } from '@/lib/embeddings'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logBotChange } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -185,6 +186,16 @@ export async function POST(req: Request, { params }: Params) {
     }
   }
 
+  void logBotChange({
+    botId: params.id,
+    orgId: bot.org_id,
+    actorId: user.id,
+    actorEmail: user.email || null,
+    action: 'knowledge_added',
+    summary: 'Added ' + rows.length + ' knowledge chunk' + (rows.length === 1 ? '' : 's') + (source ? ' from "' + source + '"' : '') + (source_type ? ' (' + source_type + ')' : ''),
+    metadata: { source, source_type, chunks_added: rows.length, chunks_skipped: chunks.length - rows.length },
+  })
+
   return NextResponse.json({ stored: rows.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
 }
 
@@ -213,6 +224,11 @@ export async function DELETE(req: Request, { params }: Params) {
   const url = new URL(req.url)
   const sourceType = url.searchParams.get('source_type')
 
+  // Count what's about to disappear so the audit-log entry has a number.
+  let countQ = service.from('bot_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('bot_id', params.id)
+  if (sourceType) countQ = countQ.contains('metadata', { source_type: sourceType })
+  const { count: chunkCount } = await countQ
+
   let query = service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
 
   if (sourceType) {
@@ -223,7 +239,17 @@ export async function DELETE(req: Request, { params }: Params) {
   const { error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ cleared: true, source_type: sourceType || 'all' })
+  void logBotChange({
+    botId: params.id,
+    orgId: (bot as any).org_id,
+    actorId: user.id,
+    actorEmail: user.email || null,
+    action: 'knowledge_cleared',
+    summary: 'Cleared ' + (chunkCount ?? 0) + ' knowledge chunk' + (chunkCount === 1 ? '' : 's') + (sourceType ? ' (source_type=' + sourceType + ')' : ' (all sources)'),
+    metadata: { source_type: sourceType || null, chunks_removed: chunkCount ?? 0 },
+  })
+
+  return NextResponse.json({ cleared: true, source_type: sourceType || 'all', chunks_removed: chunkCount ?? 0 })
 }
 
 // ── Chunking logic ────────────────────────────────────────────

@@ -148,6 +148,7 @@ function BotCreatorInner() {
 
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
+  const [loadedUpdatedAt, setLoadedUpdatedAt] = useState<string | null>(null)
   const [systemPrompt, setSystemPrompt] = useState('')
   const [personality, setPersonality] = useState('')
   const [knowledgeBase, setKnowledgeBase] = useState('')
@@ -206,6 +207,7 @@ function BotCreatorInner() {
       // cascade. Otherwise loading the bot's own values would falsely mark
       // the form dirty — orange Save button before the user has typed.
       dirtyInitRef.current = true
+      if (bot.updated_at) setLoadedUpdatedAt(bot.updated_at as string)
       setName(bot.name || '')
       setSlug(bot.slug || '')
       setSystemPrompt(bot.system_prompt || '')
@@ -468,7 +470,25 @@ function BotCreatorInner() {
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{editId ? 'Edit Agent' : 'Create Agent'}{name ? ' — ' + name : ''}</h1>
-            <p style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{dirty ? 'Unsaved changes' : (editId ? 'No changes yet' : 'Configure your branded AI agent')}</p>
+            <p style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+              {dirty ? 'Unsaved changes' : (editId ? 'No changes yet' : 'Configure your branded AI agent')}
+              {editId && loadedUpdatedAt && (
+                <span style={{ marginLeft: 8, color: '#9ca3af' }} title={new Date(loadedUpdatedAt).toLocaleString()}>
+                  · Last updated {(function() {
+                    var ms = Date.now() - new Date(loadedUpdatedAt).getTime()
+                    if (ms < 60000) return 'just now'
+                    if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago'
+                    if (ms < 86400000) return Math.floor(ms / 3600000) + 'h ago'
+                    var days = Math.floor(ms / 86400000)
+                    if (days < 30) return days + 'd ago'
+                    return new Date(loadedUpdatedAt).toLocaleDateString()
+                  })()}
+                </span>
+              )}
+              {editId && (
+                <a href={'/bots/' + editId + '/history'} style={{ marginLeft: 8, color: '#3b82f6', textDecoration: 'none', fontSize: 11 }}>View history →</a>
+              )}
+            </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {/* Mode toggle */}

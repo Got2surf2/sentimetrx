@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
+import { logBotChange, snapshotForDiff, diffSnapshots } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -86,6 +87,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // admin cross-org edits (Phase E parity). Non-admins remain scoped to
   // their own org.
   const service = createServiceRoleClient()
+
+  // Snapshot the bot row before the update so the change log can diff.
+  const { data: beforeRow } = await service.from('bots').select('*').eq('id', params.id).single()
+
   let updateQuery = service.from('bots').update(updates).eq('id', params.id)
   if (!auth.isAdmin) updateQuery = updateQuery.eq('org_id', auth.orgId)
   const { error } = await updateQuery
@@ -101,6 +106,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       initiatedBy: auth.userId, initiatedByEmail: user?.email || null,
     })
   }
+
+  // Audit log: write a 'status_change' or 'update' depending on what changed.
+  if (beforeRow) {
+    const { data: afterRow } = await service.from('bots').select('*').eq('id', params.id).single()
+    const before = snapshotForDiff(beforeRow as any)
+    const after = snapshotForDiff(afterRow as any)
+    const diff = diffSnapshots(before, after)
+    const changedKeys = Object.keys(diff.after)
+    if (changedKeys.length > 0) {
+      const user = await getAuthUser(supabase)
+      const isStatusOnly = changedKeys.length === 1 && changedKeys[0] === 'status'
+      let summary: string
+      if (isStatusOnly) {
+        summary = 'Status changed: ' + String((diff.before as any).status) + ' → ' + String((diff.after as any).status)
+      } else {
+        summary = 'Updated ' + changedKeys.length + ' field' + (changedKeys.length > 1 ? 's' : '') + ': ' + changedKeys.slice(0, 6).join(', ') + (changedKeys.length > 6 ? '…' : '')
+      }
+      void logBotChange({
+        botId: params.id,
+        orgId: (afterRow as any)?.org_id || auth.orgId,
+        actorId: auth.userId,
+        actorEmail: user?.email || null,
+        action: isStatusOnly ? 'status_change' : 'update',
+        summary,
+        before: diff.before,
+        after: diff.after,
+      })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }
 
@@ -111,10 +146,30 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   // Same Phase E parity as GET/PATCH — admins can delete other-org bots.
   const service = createServiceRoleClient()
+
+  // Snapshot the bot row before delete so the change log entry survives.
+  // (The bot_change_log row gets removed by ON DELETE CASCADE shortly,
+  // but it lives long enough to write to a polymorphic mirror later.)
+  const { data: beforeRow } = await service.from('bots').select('*').eq('id', params.id).single()
+
   let q = service.from('bots').delete().eq('id', params.id)
   if (!auth.isAdmin) q = q.eq('org_id', auth.orgId)
   const { error } = await q
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (beforeRow) {
+    const user = await getAuthUser(supabase)
+    void logBotChange({
+      botId: params.id,
+      orgId: (beforeRow as any).org_id || auth.orgId,
+      actorId: auth.userId,
+      actorEmail: user?.email || null,
+      action: 'delete',
+      summary: 'Deleted agent "' + ((beforeRow as any).name || params.id) + '"',
+      before: snapshotForDiff(beforeRow as any),
+    })
+  }
+
   return NextResponse.json({ success: true })
 }
