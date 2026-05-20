@@ -455,3 +455,24 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 - No biometric / Face ID login (uses standard cookie auth — fine for personal use)
 - SW status indicator in the footer is debug-tier; remove once the install flow is confirmed working on the phone
 - Local-only test; commits not yet pushed
+
+## 2026-05-20 — Probe focus tagging + Question Log spec (NOWOCATS pilot, demo this week)
+
+**Why**: NOWOCATS pilot Sarina handles questions residents raise (e.g. posted speed limit on US 441 Bradshaw→Vick from session `bs_mpecsra3_esxkv6`) but there's no team-facing surface that aggregates *what people asked* by theme. Legal exposure is real — every recorded comment is part of the PM-2 public record, and the city needs a defensible, queryable artifact. Demo is this week.
+
+**Verification findings** (read-only, last 14 days on pilot bot `aa9f9672-...`):
+- ✅ Turn storage durable — 0 sessions with role imbalance >1; the 2026-05-20 lambda-kill fix (insert before fire-and-forget classifier) is holding
+- ✅ Assistant focus tagging firing — 44/64 turns carry `focus:<slug>` flags
+- ✅ Retrieval API surfaces all fields (`content_flags`, `sentiment`, `persona`, `demographics`)
+- ❌ User-turn topical tagging absent — 7/64 user turns have flags and they're all `safety:` (audit), no `topic:` (this is the probe-focus gap)
+- ❌ **Persona/role extraction is OFF on both Sarinas** — `ask_profile=false`, `demographic_inference=false`. The extractor code path exists but never runs; 0/4 sessions with ≥3 user turns have a persona row. This is a demo-blocker for any "role-tagged transcripts" narrative
+
+**What this spec adds** (docs/BOTS.md § 9.x, planned — no code yet):
+- 9.x.1 Probe focus tagging on user turns — mirror `classifyResponseFocuses` but write `topic:<slug>` to the user row's `content_flags`. Same `bot.focuses` catalog, same fire-and-forget post-insert pattern. Gated on new `bot.probe_focus_enabled` column
+- 9.x.2 "I've noted your question" — inline acknowledgement (prompt-side) + structured `logged_questions` (new table or extend `bot_session_personas`)
+- 9.x.3 Question Log UI at `/bots/[id]/questions` — By Theme (default), By Session (cross-link), Unanswered Queue. CSV export for PM-2 record; new slide on the existing insights deck
+- 9.x.4 Durability invariants — 6 rules turned into regression tests (no user turn lost, no assistant turn lost, no silent rate-limit drops, no silent classifier failures, append-only enforcement, retention policy)
+- 9.x.5 Demo-this-week setup — flip pilot bot config (`ask_profile=true`, `demographic_inference=true`, `probe_focus_enabled=true`), backfill probe tags + personas via one-off script, stand up the By Theme view + CSV export
+- 9.x.6 Open design questions — role-derivation timing (fluid vs anchor-ask), logged_questions storage (JSONB vs table — leaning table), topic vocabulary drift, PII redaction on export
+
+**Not built yet** — this commit is spec only. Code follows once the spec passes review.

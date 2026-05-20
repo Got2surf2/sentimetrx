@@ -764,6 +764,67 @@ Embeddings are generated **server-side, blocking on chunk insert** (the knowledg
 - Cron writes `bot_conversation_reviews` rows. Admins read via `/api/bots/[id]/conversations/reviews`.
 - `theme_drift = true` when the AI report flags drift — surfaced in the conversations dashboard.
 
+### 9.x Probe Focus Tagging + Question Log (PLANNED — spec dated 2026-05-20)
+
+Driver: NOWOCATS pilot needs a defensible, queryable record of *what residents asked about*, not just what the bot answered. Legal exposure is real — every recorded comment is part of the public PM-2 project record.
+
+#### 9.x.1 Probe focus tagging (user-side classifier)
+
+Mirror the existing assistant-side `classifyResponseFocuses` over the user turn.
+
+- After the user turn inserts, kick off `classifyProbeFocuses(bot.focuses, userText)` as fire-and-forget (same pattern as the assistant classifier, post-insert, never block the response — preserves the 2026-05-20 lambda-kill fix).
+- Write tags onto the user row's `content_flags` jsonb with the prefix `topic:<slug>` so they're distinguishable from `focus:<slug>` (assistant coverage), `intent:<LABEL>` (action intent), and `safety:<flag>` (audit).
+- Use the same `bot.focuses` catalog — single source of truth for both directions of the conversation. The classifier prompt is identical to the response one, just framed as "what is the user asking about?" instead of "what did the reply cover?".
+- Skip the call for messages shorter than 12 chars or 3 words ("yep", "ok", "nope") — saves AI cost and avoids noise on follow-ups.
+- Cost guardrail: gate on `bot.probe_focus_enabled` (new bool column, default false) so the feature can be flipped per bot.
+
+#### 9.x.2 "I've noted your question" acknowledgement
+
+A user-visible signal that a turn was logged. Two pieces:
+
+1. **Inline acknowledgement** — when the model handles a question it can't fully answer (it already says things like "I'll log that question for the project team"), the response also includes a stable phrase like *"I've noted your question."* The exact wording lives in the bot's system prompt; the classifier doesn't need it.
+2. **Structured logged-questions field on the session** — new column on `bot_session_personas` (or new sibling table — see open question below): `logged_questions jsonb` shaped as `[{ turn_id, text, topic_slugs, created_at, status }]`. Populated by a small classifier post-insert when the user's turn has `intent:ASK` (or matches a "question for the team" prompt-side tag).
+
+#### 9.x.3 Question Log UI — team-facing access surface
+
+New surface at `/bots/[id]/questions` (admin/owner). Three views, all backed by the same data:
+
+- **By Theme** (default) — grouped by `topic:<slug>` across all sessions, with counts. Click a theme → list of user turns; click a turn → jump to that session's transcript at that turn.
+- **By Session** — already exists at `/bots/[id]/conversations`; cross-link from each row to its Question Log slice.
+- **Unanswered Queue** — `logged_questions` where `status='open'`. The team marks a question as `answered` / `referred` / `n/a` and can attach a follow-up note. State lives in `logged_questions[*].status` + `resolved_by` + `resolved_at`.
+
+Exports:
+- CSV export of all user turns with `topic_slugs`, `session_id`, persona snippet, timestamps. This is the artifact the project team takes to PM-2 meetings.
+- Existing PPTX `insights-deck` route gets a new slide: "Top themes raised by residents" sourced from `topic:<slug>` counts.
+
+#### 9.x.4 Durability invariants (legal-liability hardening)
+
+These must hold at all times — the chat route already meets them, but they need test coverage so they can't regress:
+
+1. **No user turn lost.** Every accepted POST that returns 200 must persist the user row to `bot_conversation_turns` before responding. The 2026-05-20 fix achieves this; add a regression test that mocks the focus classifier to be slow and asserts the row is in the DB.
+2. **No assistant turn lost.** Same pattern — assistant row must land before the response returns.
+3. **No silent rate-limit drops.** A 429 response must still log the dropped attempt (new table `bot_chat_rejections` keyed by `(bot_id, ip, created_at)`) so we can prove to the city that we know exactly which contacts were turned away.
+4. **No silent classifier failure.** Probe/response focus classifier failures already swallow errors. Add a counter (`usage_logs` event_type `focus_classify_failed`) so we can audit drift between turn count and tagged-turn count.
+5. **Append-only.** `bot_conversation_turns` rows are never updated except for `content_flags` (tagging) — add a CHECK or RLS that blocks `content` / `role` / `turn_number` mutation post-insert.
+6. **Retention.** Pilot retention = forever (PM-2 record requirement). Future tenants may need 90-day TTL — gate behind a per-org column.
+
+#### 9.x.5 Demo-this-week setup (NOWOCATS pilot)
+
+For the demo to show role-tagged, theme-tagged transcripts, do these in order:
+
+1. **Flip pilot bot config** — `update bots set ask_profile = true, demographic_inference = true, probe_focus_enabled = true where id = 'aa9f9672-0b6f-4313-a4a3-bbb70048743b';` (after `probe_focus_enabled` column exists).
+2. **Backfill probe tags** — one-off script that reads all user turns for the pilot bot in the last 30 days and writes `topic:<slug>` flags using the live classifier. Roughly 64 turns × 1 Haiku call = trivial cost.
+3. **Backfill personas** — one-off that runs `extractPersona` over every session with ≥3 user turns.
+4. **Stand up `/bots/[id]/questions`** with the "By Theme" view and the CSV export. The other views can ship after the demo.
+5. **Smoke-test against the Arjun regression set** (`scripts/sarina-regression-run.ts`) and confirm new tags land + zero turn loss.
+
+#### 9.x.6 Open design questions
+
+- **Role-derivation timing** — fluid (derive from cues) vs anchor-ask at turn 3–4 if no signal. See `project_nowocats_survey` memory: design has 2 anchor asks (user type + priority category). Leaning derive-first, anchor-fallback.
+- **`logged_questions` storage** — extend `bot_session_personas` (one JSONB array per session) vs new `bot_logged_questions` table (one row per question). Table is cleaner for the Unanswered Queue UI, JSONB is faster to read with the session. Default to table.
+- **Topic vocabulary drift** — when residents raise themes outside the existing `bot.focuses` catalog, do we (a) auto-propose new focuses (`suggestFocusesFromPrompt` exists), (b) bucket into `topic:other` and review weekly, or (c) both? Default (c).
+- **PII redaction** — user turns can contain home addresses, phones. Question Log export must redact by default, with an admin toggle to reveal. Need a redaction pass tied to `safety:pii` flags before any external sharing.
+
 ---
 
 ## 10. Admin API
