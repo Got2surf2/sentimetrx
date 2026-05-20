@@ -1,5 +1,19 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Devlog-drift pre-commit guard
+
+**Why**: this entire session almost shipped without a single devlog line. The "append a WHY entry to docs/weekly-reports/YYYY-WXX-devlog.md" rule has lived in CLAUDE.md + auto-memory for weeks, but neither was load-bearing at commit time — sessions skip it routinely and there's no enforcement until the Monday governance routine runs. For a one-person shop building toward buyer-DD readiness, the right answer is to make the rule enforceable at the moment it would otherwise be dropped.
+
+**What changed**:
+- `scripts/check-devlog-drift-staged.ts` (new): mirrors the existing `check-spec-drift-staged.ts` pattern. Blocks the commit when staged code touches `app/`, `lib/`, `sql/`, `components/`, `scripts/`, `middleware.ts`, `next.config.*`, or `vercel.json` and no `docs/weekly-reports/YYYY-WXX-devlog.md` file is staged. Computes the current ISO week and prints the expected devlog path in the error message so the user knows exactly where to append.
+- `.githooks/pre-commit`: runs both checks sequentially (`spec-drift` then `devlog-drift`). Each prints its own diagnosis if it fails.
+- `CLAUDE.md` § Specs: documents both pre-commit guards alongside the existing rules.
+- `docs/ENGINEERING.md` § Release Process: documents the devlog-drift guard alongside the existing spec-drift one.
+
+**Escape hatch**: `SKIP_DEVLOG_CHECK=1 git commit ...` for genuinely trivial commits (typos, whitespace, package-lock churn, dep bumps with no behavior change). Same shape as `SKIP_SPEC_CHECK=1`. Abuse defeats the point; use sparingly.
+
+**Layer B + C deferred**: a stop-hook prompt ("did this session touch code but not the devlog?") and a weekly `/devlog-drift` audit script are good-to-have but were judged unnecessary once the pre-commit blocker is in place — A catches the drift at the moment it would happen, B and C would only catch what got past A.
+
 ## 2026-05-20 — Labeled conversation share for prospect demos (platform_admin-only)
 
 **Why**: when showing Sentimetrx to a prospect, the chat replay is the demo, but a clean transcript hides everything Sentimetrx actually does — sentiment classification, intent matching, action triggering. Surfacing those annotations *under each turn* is the difference between "looks like a chatbot" and "shows the AI working." But we don't want this view available to a paying tenant by accident, and we don't want a prospect to guess `?labels=1` on a regular share link and see metadata we weren't ready to show.

@@ -80,13 +80,23 @@ on any PR adding a service-role import.
 - **No force-push to `main` ever.** No `--no-verify` ever (hooks
   exist for a reason).
 - **Spec-drift pre-commit hook.** `.githooks/pre-commit` runs
-  `npm run check:spec-staged`, which uses `scripts/specMap.ts` to
-  flag staged code that maps to a spec doc that isn't also staged.
+  `scripts/check-spec-drift-staged.ts`, which uses `scripts/specMap.ts`
+  to flag staged code that maps to a spec doc that isn't also staged.
   Installed automatically by the `postinstall` script
   (`git config core.hooksPath .githooks`). Bypass with
   `SKIP_SPEC_CHECK=1 git commit ...` when the change is genuinely
   doc-irrelevant (pure refactor, formatting). The Monday spec-drift
   routine still runs as a weekly safety net.
+- **Devlog-drift pre-commit hook.** Same hook also runs
+  `scripts/check-devlog-drift-staged.ts`. Blocks the commit when any
+  staged file under `app/`, `lib/`, `sql/`, `components/`, `scripts/`,
+  `middleware.ts`, `next.config.*`, or `vercel.json` is present and
+  no `docs/weekly-reports/YYYY-WXX-devlog.md` file is also staged.
+  Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` for genuinely trivial
+  commits (typos, whitespace, package-lock churn, dep bumps with no
+  behavior change). The rule exists because every meaningful change
+  should leave a traceable WHY in the same commit — a one-person-shop
+  buyer-DD posture can't rely on tribal knowledge.
 
 **How we verify:** GitHub branch protection rules on `main` +
 `gh pr view --json reviewers` audit at quarterly cadence.

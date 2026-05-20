@@ -83,6 +83,13 @@ The repo carries heavy spec docs that must stay in sync with code. When a change
 - `docs/{TESTING,CAMPAIGNS,BOTS,SURVEYS,TOWNHALL,ANALYTICS,SOCIAL,SEARCH,DATA_SOURCES,USAGE_ACCOUNTING}.md`
 - `docs/weekly-reports/YYYY-WXX-devlog.md` — append a brief WHY entry for meaningful commits; the Monday governance routine reads it.
 
+Both rules are enforced at commit time by `.githooks/pre-commit`:
+
+- **Spec drift** check blocks the commit if staged code maps to a `docs/*.md` spec that isn't also staged. Bypass: `SKIP_SPEC_CHECK=1 git commit ...` — only for legitimate code-only changes (pure refactor, formatting, no behavioral spec impact).
+- **Devlog drift** check blocks the commit if staged code touches `app/`, `lib/`, `sql/`, `components/`, `scripts/`, `middleware.ts`, `next.config.*`, or `vercel.json` and no weekly devlog file is staged. Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` — only for typos, whitespace, package-lock churn, or dependency bumps with no behavior change.
+
+If you bypass either, justify why in the commit message. A buyer's DD review (or your own audit a year from now) needs to be able to reconstruct intent from the git + spec + devlog trail without asking the human.
+
 ## Policy docs (consolidated for buyer DD readiness)
 
 - `docs/SECURITY.md` — threat model, multi-tenancy invariants, secrets, PII classification, audit logging, incident response, compliance posture. **Read before touching auth, multi-tenancy code, AI prompts, or anything that handles user data.**

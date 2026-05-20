@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
-# Spec-drift pre-commit guard. See scripts/check-spec-drift-staged.ts.
-# Bypass: SKIP_SPEC_CHECK=1 git commit ...
-exec npx tsx scripts/check-spec-drift-staged.ts
+# Pre-commit guardrails. Run sequentially so each prints its own diagnosis
+# if it fails.
+#
+# 1) Spec drift — code changes without matching docs/*.md updates.
+#    Bypass: SKIP_SPEC_CHECK=1 git commit ...
+#
+# 2) Devlog drift — code changes without a weekly devlog entry.
+#    Bypass: SKIP_DEVLOG_CHECK=1 git commit ...
+#
+# Both bypasses are intentional escape hatches; abusing them defeats the
+# point. They exist for typos, whitespace, package-lock churn.
+
+set -e
+npx tsx scripts/check-spec-drift-staged.ts
+npx tsx scripts/check-devlog-drift-staged.ts
