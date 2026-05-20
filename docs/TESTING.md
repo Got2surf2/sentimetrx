@@ -302,6 +302,17 @@ backs three runner surfaces:
   writes a Word doc to `~/Downloads/` comparing Arjun's original log
   with the latest run side-by-side. Uses the `docx` npm package; output
   matches the Calibri 11pt look of Arjun's NOWOCATS handoff doc.
+- `scripts/_test_sarina_anchor_regression.ts` — focused regression test
+  for the anchor-re-ask incident (`bs_mpdjyxz9_lfem0e`, 2026-05-20).
+  Walks Sarina through a 13-turn feedback-path conversation that
+  crosses the 12-message compression threshold. Verifies neither
+  anchor (A1 User Type, A2 Priority Category) is asked twice. Returns
+  exit code 1 if either anchor is re-asked — suitable for CI later
+  once we have a sandbox bot id (running it against live is fine for
+  manual one-offs but costs ~$0.30/run in model calls). Passes after
+  the two-layer fix in commit `83daff5` (prompt rule
+  ANCHOR-ASKS-ARE-ONE-AND-DONE + chat-route summarizer that preserves
+  must-have fields and emits a machine-readable ANSWERED ASKS line).
 
 Neither runner runs in CI — both cost real model calls against the
 live bot. Run after any change that touches Sarina's prompt, intents,
