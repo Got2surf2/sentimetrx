@@ -1,4 +1,10 @@
 /* eslint-disable */
+// Force module scope so top-level identifiers (runScenario, main) don't
+// collide with sibling tsx scripts that also declare names like `main`.
+// Without an export the file is treated as a global script and TS2393s
+// on duplicate top-level names across scripts/*.ts and prototype/*.ts.
+export {}
+
 // Synthetic CLI test for the Sir O'Gate pilot — three scenarios that
 // each test a different probe trigger + the warmth + the no-chain
 // discipline. Each scenario runs in a fresh session.

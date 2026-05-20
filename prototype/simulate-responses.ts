@@ -1,4 +1,9 @@
 #!/usr/bin/env npx tsx
+// Force module scope so top-level identifiers don't collide with sibling
+// tsx scripts that also declare names like `main`, `sleep`, etc. Without
+// an export the file is treated as a global script and TS2393s on
+// duplicate top-level names across scripts/*.ts and prototype/*.ts.
+export {}
 /**
  * Survey Response Simulator
  *
