@@ -2,7 +2,7 @@
 
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import ShareModal from '@/components/ui/ShareModal'
@@ -384,6 +384,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [error,        setError]        = useState<string | null>(null)
   const [favoriteIds,  setFavoriteIds]  = useState<Set<string>>(new Set())
+  const [sortMode,     setSortMode]     = useState<'updated' | 'created' | 'name'>('updated')
 
   useEffect(() => {
     fetch('/api/favorites').then(r => r.json()).then(d => {
@@ -393,21 +394,56 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
       }
       setFavoriteIds(s)
     }).catch(() => { /* non-fatal */ })
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('sentimetrx.sort.studies')
+      if (saved === 'updated' || saved === 'created' || saved === 'name') setSortMode(saved)
+    }
   }, [])
+
+  function changeSort(next: 'updated' | 'created' | 'name') {
+    setSortMode(next)
+    if (typeof window !== 'undefined') window.localStorage.setItem('sentimetrx.sort.studies', next)
+  }
   const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
   const defaultTo   = () => new Date().toISOString().slice(0, 10)
   const [dateFrom,  setDateFrom]  = useState('')
   const [dateTo,    setDateTo]    = useState('')
   const router = useRouter()
 
-  const filtered = studies.filter(s => {
+  // Sort: favorites first, then by chosen mode. Studies don't have an
+  // updated_at column, so "Last updated" uses the most-recent response
+  // timestamp from statsMap, falling back to created_at.
+  function sortFiltered(list: Study[]): Study[] {
+    function sortKey(s: Study): string | number {
+      if (sortMode === 'name')    return (s.name || '').toLowerCase()
+      if (sortMode === 'created') return -new Date(s.created_at).getTime()
+      const lastResp = statsMap[s.id]?.lastResponse
+      return -new Date(lastResp || s.created_at).getTime()
+    }
+    return list.slice().sort((a, b) => {
+      const af = favoriteIds.has(a.id) ? 0 : 1
+      const bf = favoriteIds.has(b.id) ? 0 : 1
+      if (af !== bf) return af - bf
+      const ka = sortKey(a); const kb = sortKey(b)
+      if (ka < kb) return -1
+      if (ka > kb) return 1
+      return 0
+    })
+  }
+
+  const filtered = sortFiltered(studies.filter(s => {
     if (ownerFilter  === 'mine'   && s.created_by !== user.userId) return false
     if (ownerFilter  === 'public' && s.visibility  !== 'public')   return false
     if (statusFilter !== 'all'   && s.status       !== statusFilter) return false
     if (dateFrom && s.created_at < dateFrom) return false
     if (dateTo   && s.created_at > dateTo + 'T23:59:59') return false
     return true
-  })
+  }))
+
+  const firstNonFavIndexStudies = (list: Study[]): number => {
+    for (let i = 0; i < list.length; i++) { if (!favoriteIds.has(list[i].id)) return i }
+    return -1
+  }
 
   const handlePatch = async (studyId: string, body: object) => {
     const res = await fetch('/api/studies/' + studyId, {
@@ -496,6 +532,15 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span>Sort:</span>
+              <select value={sortMode} onChange={e => changeSort(e.target.value as 'updated' | 'created' | 'name')}
+                className="px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none cursor-pointer">
+                <option value="updated">Last updated</option>
+                <option value="created">Created</option>
+                <option value="name">Name</option>
+              </select>
+            </label>
             <span className="text-sm text-gray-400">{filtered.length} studies</span>
             <Link href="/studies/new"
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
@@ -514,20 +559,27 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
           </div>
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-            {filtered.map(study => (
-              <StudyCard
-                key={study.id}
-                study={study}
-                stats={statsMap[study.id] || { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
-                isAdmin={!!user.isAdmin}
-                userId={user.userId}
-                campaignsEnabled={campaignsEnabled}
-                initialFavorited={favoriteIds.has(study.id)}
-                onPatch={handlePatch}
-                onDelete={handleDelete}
-                onDuplicate={handleDuplicate}
-              />
-            ))}
+            {(() => {
+              const divIdx = firstNonFavIndexStudies(filtered)
+              return filtered.map((study, i) => (
+                <React.Fragment key={study.id}>
+                  {i === divIdx && divIdx > 0 && (
+                    <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #fbd5c2', margin: '4px 0 0' }} />
+                  )}
+                  <StudyCard
+                    study={study}
+                    stats={statsMap[study.id] || { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
+                    isAdmin={!!user.isAdmin}
+                    userId={user.userId}
+                    campaignsEnabled={campaignsEnabled}
+                    initialFavorited={favoriteIds.has(study.id)}
+                    onPatch={handlePatch}
+                    onDelete={handleDelete}
+                    onDuplicate={handleDuplicate}
+                  />
+                </React.Fragment>
+              ))
+            })()}
           </div>
         )}
       </main>

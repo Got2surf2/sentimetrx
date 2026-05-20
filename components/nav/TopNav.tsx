@@ -14,7 +14,7 @@ interface Props {
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
   features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks' | 'downloads'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'favorites' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks' | 'downloads'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -86,6 +86,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
   // Items array drives both the desktop bar and the mobile drawer.
   const navItems: Array<{ page: string; href: string; label: string; icon: string; show: boolean }> = [
+    { page: 'favorites', href: '/favorites', label: 'Favorites', icon: '★',  show: true },        // ★ — always visible; empty state on the page itself
     { page: 'analyze',   href: '/analyze',   label: 'Analytics', icon: '📊', show: f.analyze },   // 📊
     { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
     { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '✉',       show: f.campaigns }, // ✉

@@ -3,7 +3,7 @@
 // app/bots/BotsClient.tsx
 // Client component: lists bots as cards, handles create/edit/delete
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
@@ -40,6 +40,42 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
   const [gridCols, setGridCols] = useState(3)
   const [viewportTier, setViewportTier] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
+  const [sortMode, setSortMode] = useState<'updated' | 'created' | 'name'>('updated')
+
+  useEffect(function() {
+    if (typeof window === 'undefined') return
+    var saved = window.localStorage.getItem('sentimetrx.sort.bots')
+    if (saved === 'updated' || saved === 'created' || saved === 'name') setSortMode(saved)
+  }, [])
+
+  function changeSort(next: 'updated' | 'created' | 'name') {
+    setSortMode(next)
+    if (typeof window !== 'undefined') window.localStorage.setItem('sentimetrx.sort.bots', next)
+  }
+
+  // Favorites first (sorted by chosen mode within each group), then the rest.
+  function sortedBots(): Bot[] {
+    function sortKey(b: Bot): string | number {
+      if (sortMode === 'name')    return (b.name || '').toLowerCase()
+      if (sortMode === 'created') return -new Date(b.created_at).getTime()
+      return -new Date(b.updated_at).getTime() // 'updated' default
+    }
+    var copy = bots.slice()
+    copy.sort(function(a, b) {
+      var aFav = favoriteIds.has(a.id) ? 0 : 1
+      var bFav = favoriteIds.has(b.id) ? 0 : 1
+      if (aFav !== bFav) return aFav - bFav
+      var ka = sortKey(a); var kb = sortKey(b)
+      if (ka < kb) return -1
+      if (ka > kb) return 1
+      return 0
+    })
+    return copy
+  }
+  function firstNonFavIndex(list: Bot[]): number {
+    for (var i = 0; i < list.length; i++) { if (!favoriteIds.has(list[i].id)) return i }
+    return -1
+  }
 
   useEffect(function() {
     function update() {
@@ -113,6 +149,17 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Create and manage branded AI agents trained on your content</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Sort — always visible */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9ca3af' }}>
+            <span>Sort:</span>
+            <select value={sortMode}
+              onChange={function(e) { changeSort(e.target.value as 'updated' | 'created' | 'name') }}
+              style={{ fontSize: 11, padding: '3px 6px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'white', color: '#374151', cursor: 'pointer' }}>
+              <option value="updated">Last updated</option>
+              <option value="created">Created</option>
+              <option value="name">Name</option>
+            </select>
+          </label>
           {/* Grid toggle — desktop only; mobile/tablet force 1 / 2 cols */}
           <div style={{ display: viewportTier === 'desktop' ? 'flex' : 'none', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 10, color: '#9ca3af', marginRight: 2 }}>Grid:</span>
@@ -169,9 +216,16 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
         </div>
       )}
 
-      {/* Card grid */}
+      {/* Card grid — favorites first, then a thin orange divider, then rest */}
+      {(function() {
+        var sorted = sortedBots()
+        var divIdx = firstNonFavIndex(sorted)
+        return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + effectiveCols + ', 1fr)', gap: 16 }}>
-        {bots.map(function(bot) {
+        {sorted.map(function(bot, i) {
+          // Inject the divider row right before the first non-favorite,
+          // but only if there's at least one favorite above it.
+          var showDivider = i === divIdx && divIdx > 0
           var sc = STATUS_COLORS[bot.status] || STATUS_COLORS.draft
           var cfg = bot.config as any || {}
           var headerGrad = cfg.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
@@ -185,7 +239,11 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           var updatedRel = relativeTime(bot.updated_at)
 
           return (
-            <div key={bot.id} style={{
+            <React.Fragment key={bot.id}>
+            {showDivider && (
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #fbd5c2', margin: '4px 0 0' }} />
+            )}
+            <div style={{
               background: 'white', borderRadius: 16, border: '1px solid #e5e7eb',
               overflow: 'hidden', display: 'flex', flexDirection: 'column',
               transition: 'box-shadow 0.15s, border-color 0.15s',
@@ -361,9 +419,12 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 </div>
               </div>
             </div>
+            </React.Fragment>
           )
         })}
       </div>
+        )
+      })()}
     </div>
   )
 }
