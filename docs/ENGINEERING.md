@@ -429,6 +429,29 @@ deployment; rollback is one CLI command if the post-deploy smoke
 check fails. The "manual gate" check is on the honor system until
 item 19 lands.
 
+### Claude Code push discipline
+
+Codified in `CLAUDE.md` "Push policy" — committed to the repo so it
+survives session resets. Summary:
+
+- Claude **never pushes to `main` without an explicit "push" /
+  "let's push" from the operator.** Default is commit-only.
+- Every push triggers an automatic production deploy on Vercel
+  (~$3–4 build cost, customer-facing immediately).
+- Claude does not ask "should I push?" at the end of every task —
+  it surfaces `N commits ahead, not pushed` and waits.
+- After an authorized push, Claude runs `gh run list --limit 1`,
+  polls if CI is in-flight, and fixes + re-pushes if CI fails (the
+  original "push" is treated as authorization for the whole
+  intended state landing in `main`).
+- No `git push --force` to `main` and no `--no-verify` hook
+  bypasses without an explicit ask.
+
+This rule exists because past sessions occasionally drifted into
+"the work is clean, may as well push" mode, which conflicted with
+the operator's preference to batch-commit + only deploy when
+ready. CLAUDE.md is the durable place for it.
+
 ---
 
 ## Open `<TBD>` items as of 2026-05-15

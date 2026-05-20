@@ -8,6 +8,19 @@ Next.js 14 App Router, TypeScript (strict), React 18, Supabase (Postgres + Auth 
 
 Node ≥ 20. Single repo on `main` — staging is retired.
 
+## Push policy — NEVER push without explicit user authorization
+
+**Default: commit-only.** Every commit stays local on `main` until the user says **"push"** / "let's push" / similar verbatim.
+
+- Pushes to `main` trigger **Vercel auto-deploy to production**. Each build costs ~$3–4 and goes live to customers immediately. Treat every authorized push as a production release.
+- Even when CI is clean, typecheck passes, and the work feels "done" — **do NOT push** without the explicit word. Assume no until told yes.
+- Do NOT ask "should I push?" at the end of every task — it's noise. Wait for the user to ask for a push.
+- If a session looks like it's wrapping up and a push hasn't been authorized, surface "N commits ahead, not pushed" in the summary so the user sees the state, but leave the commits local.
+- After an authorized push: immediately run `gh run list --limit 1` and report CI status. If still running, poll until it completes. If CI fails, fix and re-push (still without further authorization — the original "push" implies "land this state in main").
+- Never `git push --force` to `main`. Never bypass hooks (`--no-verify`, `--no-gpg-sign`) without explicit user request.
+
+This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-deploys to production are too consequential to leave to per-session memory.
+
 ## Where things live
 
 - `app/` — Next.js routes (UI + API). Public widgets: `/s/[guid]` (surveys), `/b/[guid]` (agents), `/th/[guid]` (PulseIQ). Admin under `/admin/*`.
