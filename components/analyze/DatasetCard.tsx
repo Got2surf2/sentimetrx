@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -40,6 +41,7 @@ interface Props {
   onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
   signalStats?:        SignalStatsBrief | null  // undefined = still loading, null = no themes/data
   onDrillIn?:          (collectionId: string, name: string) => void  // brand cards only
+  initialFavorited?:   boolean
 }
 
 const HERMES = '#e8622a'
@@ -74,7 +76,7 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn, initialFavorited = false }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [renaming,      setRenaming]      = useState(false)
@@ -342,6 +344,11 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
               {dataset.name}
             </h3>
           )}
+        </div>
+
+        {/* Favorite star */}
+        <div style={{ flexShrink: 0 }}>
+          <FavoriteStar resourceType="dataset" resourceId={dataset.id} initialFavorited={initialFavorited} size={16} />
         </div>
 
         {/* Three-dot menu */}

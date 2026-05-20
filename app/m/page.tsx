@@ -57,6 +57,7 @@ export default async function MobilePage() {
     studiesCount, studiesRecent,
     campaignsCount, campaignsRecent,
     townhallCount, townhallRecent,
+    favRows,
   ] = await Promise.all([
     scopeFilter(service.from('datasets').select('id', { count: 'exact', head: true })),
     scopeFilter(service.from('datasets').select('id, name, row_count, source, created_at').order('created_at', { ascending: false }).limit(5)),
@@ -68,10 +69,64 @@ export default async function MobilePage() {
     scopeFilter(service.from('campaigns').select('id, name, status, created_at').order('created_at', { ascending: false }).limit(5)),
     scopeFilter(service.from('townhall_sessions').select('id', { count: 'exact', head: true })),
     scopeFilter(service.from('townhall_sessions').select('id, name, status, started_at, created_at').order('created_at', { ascending: false }).limit(5)),
+    service.from('user_favorites').select('resource_type, resource_id, created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50),
   ])
 
+  // Enrich favorites: bucket by type, look up each resource (org-scoped
+  // for non-admins), then re-walk the fav list to preserve recency order.
+  const favList: RecentItem[] = []
+  const favsByType: Record<string, string[]> = {}
+  for (const f of (favRows?.data || []) as Array<{ resource_type: string; resource_id: string }>) {
+    if (!favsByType[f.resource_type]) favsByType[f.resource_type] = []
+    favsByType[f.resource_type].push(f.resource_id)
+  }
+  if (Object.keys(favsByType).length > 0) {
+    const FAV_LOOKUP: Record<string, { table: string; href: (id: string, row: any) => string; subtitle: (row: any) => string | undefined }> = {
+      bot:              { table: 'bots',              href: (id) => '/bots/' + id + '/conversations', subtitle: (r) => r.slug ? '/b/' + r.slug : undefined },
+      study:            { table: 'studies',           href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
+      dataset:          { table: 'datasets',          href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
+      campaign:         { table: 'campaigns',         href: (id) => '/campaigns/' + id,               subtitle: (r) => r.status || 'draft' },
+      townhall_session: { table: 'townhall_sessions', href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
+    }
+    const rowMaps: Record<string, Map<string, any>> = {}
+    await Promise.all(Object.entries(favsByType).map(async function([type, ids]) {
+      const cfg = FAV_LOOKUP[type]
+      if (!cfg) { rowMaps[type] = new Map(); return }
+      let q: any = service.from(cfg.table).select('*').in('id', ids)
+      if (!isAdmin) q = q.eq('org_id', orgId)
+      const { data } = await q
+      rowMaps[type] = new Map((data || []).map((r: any) => [r.id, r]))
+    }))
+    for (const f of (favRows?.data || []) as Array<{ resource_type: string; resource_id: string; created_at: string }>) {
+      const cfg = FAV_LOOKUP[f.resource_type]
+      if (!cfg) continue
+      const r = rowMaps[f.resource_type]?.get(f.resource_id)
+      if (!r) continue
+      favList.push({
+        id:       f.resource_id,
+        name:     r.name || 'Untitled',
+        subtitle: cfg.subtitle(r),
+        href:     cfg.href(f.resource_id, r),
+        ts:       f.created_at,
+      })
+    }
+  }
+
   // Bundle each section into a {count, recent[]} shape for the client.
-  const sections: Array<{ key: string; label: string; href: string; count: number; recent: RecentItem[] }> = [
+  // The Favorites section is prepended when the user has any — it's
+  // the whole point of the feature: a phone-friendly shortcut list of
+  // the resources they actually care about.
+  const sections: Array<{ key: string; label: string; href: string; count: number; recent: RecentItem[] }> = []
+  if (favList.length > 0) {
+    sections.push({
+      key:    'favorites',
+      label:  '★ Favorites',
+      href:   '/dashboard',
+      count:  favList.length,
+      recent: favList.slice(0, 10),
+    })
+  }
+  sections.push(
     {
       key:    'datasets',
       label:  'Datasets',
@@ -152,7 +207,7 @@ export default async function MobilePage() {
         }
       }),
     },
-  ]
+  )
 
   return (
     <MobileStatusClient

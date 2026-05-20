@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { FavoriteStar } from '@/components/ui/FavoriteStar'
 
 const HERMES = '#E8632A'
 
@@ -37,6 +38,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [gridCols, setGridCols] = useState(3)
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
 
   function fetchBots() {
     var qs = orgFilter ? '?org=' + encodeURIComponent(orgFilter) : ''
@@ -47,7 +49,17 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
     }).finally(function() { setLoading(false) })
   }
 
-  useEffect(function() { fetchBots() }, [orgFilter])
+  function fetchFavorites() {
+    fetch('/api/favorites').then(function(r) { return r.json() }).then(function(d) {
+      var s = new Set<string>()
+      for (var i = 0; i < (d.favorites || []).length; i++) {
+        if (d.favorites[i].resource_type === 'bot') s.add(d.favorites[i].resource_id)
+      }
+      setFavoriteIds(s)
+    }).catch(function() { /* non-fatal */ })
+  }
+
+  useEffect(function() { fetchBots(); fetchFavorites() }, [orgFilter])
 
   async function toggleStatus(bot: Bot) {
     var next: Bot['status'] = bot.status === 'active' ? 'paused' : 'active'
@@ -189,6 +201,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{subtitle}</div>
                     )}
                   </div>
+                  <FavoriteStar resourceType="bot" resourceId={bot.id} initialFavorited={favoriteIds.has(bot.id)} />
                 </div>
 
                 {/* Info row */}

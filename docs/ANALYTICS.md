@@ -4,6 +4,8 @@
 
 Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentiment scoring, 13+ chart types, statistical hypothesis testing, and consulting-quality PPTX export. Works with any data source: surveys, CSV uploads, Google Reviews, Town Hall responses.
 
+Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platform-wide `user_favorites` table in migration 075). Starred datasets surface in the `★ Favorites` section on `/m` (PWA) above the generic "Datasets" listing. The star is a UI primitive only — it doesn't change any analytics behavior.
+
 ---
 
 ## TextMine (Theme Detection & Analysis)

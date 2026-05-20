@@ -38,6 +38,17 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   // for that dataset (cards render skeleton); after the batch returns,
   // the entry is either a SignalStatsBrief or null (no themes).
   const [signalStatsMap, setSignalStatsMap] = useState<Record<string, SignalStatsBrief | null>>({})
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
+
+  useEffect(function() {
+    fetch('/api/favorites').then(function(r) { return r.json() }).then(function(d) {
+      const s = new Set<string>()
+      for (const f of (d.favorites || [])) {
+        if (f.resource_type === 'dataset') s.add(f.resource_id)
+      }
+      setFavoriteIds(s)
+    }).catch(function() { /* non-fatal */ })
+  }, [])
 
   useEffect(function() {
     const ids = initialDatasets.map(function(d) { return d.id })
@@ -244,6 +255,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                 onTransfer={handleTransfer}
                 signalStats={signalStatsMap[dataset.id]}
                 onDrillIn={function(collectionId, name) { setDrillIn({ collectionId: collectionId, name: name }) }}
+                initialFavorited={favoriteIds.has(dataset.id)}
               />
             )
           })}

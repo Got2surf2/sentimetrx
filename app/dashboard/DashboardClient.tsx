@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import ShareModal from '@/components/ui/ShareModal'
+import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -75,8 +76,9 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 
 // ShareModal now imported from components/ui/ShareModal.tsx
 // -- Study card -----------------------------------------------------------------
-function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabled, onPatch, onDelete, onDuplicate, onRefresh }: {
+function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabled, initialFavorited, onPatch, onDelete, onDuplicate, onRefresh }: {
   study: Study; stats: StudyStats; isAdmin: boolean; userId: string; campaignsEnabled?: boolean
+  initialFavorited?: boolean
   onPatch: (id: string, body: object) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDuplicate: (study: Study) => Promise<void>
@@ -158,6 +160,11 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
       {showShare  && <ShareModal type="study" targetId={study.id} onClose={() => setShowShare(false)} />}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
+
+        {/* Favorite star — absolute top-right, beside refresh */}
+        <div style={{ position: 'absolute', top: 8, right: 40, zIndex: 2 }}>
+          <FavoriteStar resourceType="study" resourceId={study.id} initialFavorited={!!initialFavorited} />
+        </div>
 
         {/* Refresh icon — absolute top-right */}
         <button onClick={handleRefresh} disabled={refreshing}
@@ -376,6 +383,17 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [error,        setError]        = useState<string | null>(null)
+  const [favoriteIds,  setFavoriteIds]  = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    fetch('/api/favorites').then(r => r.json()).then(d => {
+      const s = new Set<string>()
+      for (const f of (d.favorites || [])) {
+        if (f.resource_type === 'study') s.add(f.resource_id)
+      }
+      setFavoriteIds(s)
+    }).catch(() => { /* non-fatal */ })
+  }, [])
   const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
   const defaultTo   = () => new Date().toISOString().slice(0, 10)
   const [dateFrom,  setDateFrom]  = useState('')
@@ -504,6 +522,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                 isAdmin={!!user.isAdmin}
                 userId={user.userId}
                 campaignsEnabled={campaignsEnabled}
+                initialFavorited={favoriteIds.has(study.id)}
                 onPatch={handlePatch}
                 onDelete={handleDelete}
                 onDuplicate={handleDuplicate}
