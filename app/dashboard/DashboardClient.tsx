@@ -161,11 +161,6 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
 
-        {/* Favorite star — absolute top-right, beside refresh */}
-        <div style={{ position: 'absolute', top: 8, right: 40, zIndex: 2 }}>
-          <FavoriteStar resourceType="study" resourceId={study.id} initialFavorited={!!initialFavorited} />
-        </div>
-
         {/* Refresh icon — absolute top-right */}
         <button onClick={handleRefresh} disabled={refreshing}
           title="Refresh stats"
@@ -201,6 +196,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
                     {industryLabel}
                   </span>
                 )}
+                <FavoriteStar resourceType="study" resourceId={study.id} initialFavorited={!!initialFavorited} size={14} />
               </div>
             </div>
             <DonutChart

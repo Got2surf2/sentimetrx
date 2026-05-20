@@ -1,5 +1,13 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — StudyCard favorite star moved inline (no more donut overlap)
+
+**Why**: the favorite star on `/dashboard` StudyCards was absolute-positioned at `top: 8, right: 40` to sit beside the existing refresh icon, but the donut chart occupies that corner space — the star ended up overlapping the colored arc visually (per Sanjay's screenshot). Refresh worked there because the donut's box has translucent corners; the star at `right: 40` was further inset where the colored ring lives.
+
+**What changed**:
+- `app/dashboard/DashboardClient.tsx` (StudyCard): removed the absolute-positioned FavoriteStar div from the top-right corner. Star now renders inline at the end of the status/industry badges row, sized to 14px. Refresh icon stays at the top-right corner where it has always fit (in the donut's empty translucent corner).
+- Star semantically reads as a "tag" alongside the auto-tags (status, industry), which is what favorites are — a user-applied tag.
+
 ## 2026-05-20 — /favorites: unified rich card
 
 **Why**: the initial `/favorites` shipped with compact tile rows ("looks like a poor-person's system" per Sanjay). The page is the cross-resource landing surface and should feel as polished as the list pages it pulls from. Reusing the existing per-page cards (BotsClient inline, StudyCard, DatasetCard) would have meant five visually different sections — defeating the "all my stuff, one place" point of the page. Built a single unified rich card instead.
