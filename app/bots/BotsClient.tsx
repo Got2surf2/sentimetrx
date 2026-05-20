@@ -38,7 +38,25 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [gridCols, setGridCols] = useState(3)
+  const [viewportTier, setViewportTier] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
+
+  useEffect(function() {
+    function update() {
+      var w = typeof window !== 'undefined' ? window.innerWidth : 1200
+      if (w < 700)       setViewportTier('mobile')
+      else if (w < 1000) setViewportTier('tablet')
+      else               setViewportTier('desktop')
+    }
+    update()
+    window.addEventListener('resize', update)
+    return function() { window.removeEventListener('resize', update) }
+  }, [])
+
+  // Mobile always shows 1 column; tablets cap at 2; desktop honors the picker.
+  var effectiveCols = viewportTier === 'mobile' ? 1
+                    : viewportTier === 'tablet' ? Math.min(2, gridCols)
+                    : gridCols
 
   function fetchBots() {
     var qs = orgFilter ? '?org=' + encodeURIComponent(orgFilter) : ''
@@ -95,8 +113,8 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Create and manage branded AI agents trained on your content</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Grid toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Grid toggle — desktop only; mobile/tablet force 1 / 2 cols */}
+          <div style={{ display: viewportTier === 'desktop' ? 'flex' : 'none', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 10, color: '#9ca3af', marginRight: 2 }}>Grid:</span>
             {[2, 3, 4].map(function(n) {
               return (
@@ -152,7 +170,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
       )}
 
       {/* Card grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + effectiveCols + ', 1fr)', gap: 16 }}>
         {bots.map(function(bot) {
           var sc = STATUS_COLORS[bot.status] || STATUS_COLORS.draft
           var cfg = bot.config as any || {}

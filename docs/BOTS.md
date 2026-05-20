@@ -885,6 +885,7 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns`. First call:
 ### `/bots` — `BotsClient.tsx`
 - Card grid of all bots in the org (or all orgs if admin).
 - Each card carries a **favorite star** (per-user, via the platform-wide `user_favorites` table in migration 075). Starred agents surface in the `★ Favorites` section on `/m` (PWA) above the generic "Agents" listing. Toggling the star is a one-click `POST /api/favorites` — no other bot state changes.
+- Grid is viewport-responsive: phones (< 700px) force 1 column, tablets (< 1000px) cap at 2, desktops honor the user's 2/3/4 picker. Picker is hidden below desktop since it would be inert.
 
 ### `/bots/[id]/intents` — `IntentsClient.tsx`
 - Loads `/api/bots/[id]/intents-stats`.
