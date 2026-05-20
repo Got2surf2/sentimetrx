@@ -52,18 +52,12 @@ function relTime(ts: string | null | undefined): string {
 }
 
 export default function MobileStatusClient({ user, org, sections }: Props) {
-  const [swStatus, setSwStatus] = useState<'idle' | 'registered' | 'unsupported' | 'error'>('idle')
-
   useEffect(function() {
     if (typeof window === 'undefined') return
-    if (!('serviceWorker' in navigator)) { setSwStatus('unsupported'); return }
+    if (!('serviceWorker' in navigator)) return
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
-      .then(function() { setSwStatus('registered') })
-      .catch(function(err) {
-        console.error('SW register failed', err)
-        setSwStatus('error')
-      })
+      .catch(function(err) { console.error('SW register failed', err) })
   }, [])
 
   // Detect platform + install state. Each platform has a different install
@@ -73,7 +67,6 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
   //   - Android Chromium → menu (⋮) → Install app
   //   - Desktop / other  → no hint
   const [installHint, setInstallHint] = useState<'ios-safari' | 'ios-other' | 'android' | 'none'>('none')
-  const [isStandalone, setIsStandalone] = useState(false)
   useEffect(function() {
     if (typeof window === 'undefined') return
     const ua = navigator.userAgent
@@ -87,7 +80,6 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
     const standalone =
       (navigator as any).standalone === true ||
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    setIsStandalone(standalone)
     if (standalone)        setInstallHint('none')
     else if (isIOSSafari)  setInstallHint('ios-safari')
     else if (isIOSOther)   setInstallHint('ios-other')
@@ -189,14 +181,10 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
         })}
       </div>
 
-      {/* Footer — quick links + SW indicator (debug-tier; hide later) */}
-      <div style={{ marginTop: 20, padding: '12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: P.textFaint }}>
+      <div style={{ marginTop: 20, padding: '12px 4px', fontSize: 11 }}>
         <Link href="/dashboard" style={{ color: P.accent, textDecoration: 'none', fontWeight: 600 }}>
           Desktop dashboard
         </Link>
-        <span title={'Service worker: ' + swStatus}>
-          {isStandalone ? 'installed' : 'browser'} {'·'} sw:{swStatus === 'registered' ? 'on' : swStatus}
-        </span>
       </div>
     </div>
   )

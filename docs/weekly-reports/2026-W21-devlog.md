@@ -1,5 +1,12 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Mobile PWA debug footer stripped
+
+**Why**: `/m` carried an `installed · sw:on` debug indicator in its footer while we were verifying iPhone Add-to-Home-Screen install worked end-to-end. iPhone PWA install confirmed working today (orange "S" icon, full-screen standalone) — the debug readout has served its purpose and should not ship to users.
+
+**What changed**:
+- `app/m/MobileStatusClient.tsx`: removed the `installed · sw:on` span from the footer. Deleted the now-orphaned `swStatus` and `isStandalone` state and the assignments that fed them. The standalone-mode check in the install-hint effect still happens via a local `standalone` const (it just no longer pushes into React state). "Desktop dashboard" footer link kept. Service-worker registration logic kept verbatim — only the surfacing of its status was debug-tier.
+
 ## 2026-05-20 — Silence-triggered probe (v8) shipped
 
 **Why**: probe-enforcement (the CRITICAL OVERRIDE in the chat route) waits for a substantive user turn that meets a threshold — but if the user just goes quiet partway through a session, no probe ever fires. We wanted a second mechanism that engages the idle case: 25 seconds with no input after a bot reply → one templated nudge toward an unfired focus topic. NOWOCATS-style bots with multiple focuses are the main beneficiary; Sir O'Gate today has 0 focuses configured, so the path is a no-op for it.
