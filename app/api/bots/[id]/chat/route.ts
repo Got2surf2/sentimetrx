@@ -91,9 +91,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       const summaryResult = await callAI({
         tier: 'fast',
-        maxTokens: 150,
+        maxTokens: 220,
         timeoutMs: 5000,
-        system: 'Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context. Be factual and concise.',
+        // Budget bump from 150 → 220 tokens so the must-preserve fields can fit
+        // without the topical summary getting clipped. The hard ANSWERED ASKS
+        // line at the end is what stops downstream bots (Sarina especially) from
+        // re-asking anchor questions the resident already answered — context
+        // compression had been dropping those answers, see incident
+        // bs_mpdjyxz9_lfem0e (2026-05-20).
+        system:
+          'Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context.' +
+          '\n\nMUST-PRESERVE FIELDS (always include if the user shared them, even if it makes the summary longer):' +
+          '\n- Name (if given)' +
+          '\n- User type (resident / business owner / commuter / other / voter / customer / patient / etc.)' +
+          '\n- Priority or top concern they identified' +
+          '\n- Specific locations / intersections / addresses / corridors they flagged' +
+          '\n- Any explicit choice they made when given a list (e.g. picked "widening" from a menu of options, picked an issue area, etc.)' +
+          '\n\nAfter the 2-3 sentence narrative summary, add ONE FINAL line in this exact format if any of the must-preserve fields were captured:' +
+          '\nANSWERED ASKS: [list each field as "field=value" separated by " | ", e.g. "user_type=resident | priority=widening | location=US 441 & SR 436"]' +
+          '\n\nIf no must-preserve fields were captured, omit the ANSWERED ASKS line. Be factual and concise.',
         messages: [{ role: 'user', content: olderSummary }],
       })
       logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'summary' }, summaryResult.usage)

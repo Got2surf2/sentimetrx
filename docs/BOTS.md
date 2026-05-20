@@ -539,8 +539,22 @@ User messages: passed verbatim as the conversation history (after compression in
 
 ### History compression
 
+Fires when conversation length > 12 messages. `tier: 'fast'`, `maxTokens: 220`. The MUST-PRESERVE fields block + `ANSWERED ASKS:` final line was added 2026-05-20 after Sarina's session `bs_mpdjyxz9_lfem0e` showed the bot re-asking an anchor question (User Type) the resident had already answered — the original 150-token summary kept the topical content and dropped the anchor answer.
+
 ```
-Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context. Be factual and concise.
+Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context.
+
+MUST-PRESERVE FIELDS (always include if the user shared them, even if it makes the summary longer):
+- Name (if given)
+- User type (resident / business owner / commuter / other / voter / customer / patient / etc.)
+- Priority or top concern they identified
+- Specific locations / intersections / addresses / corridors they flagged
+- Any explicit choice they made when given a list (e.g. picked "widening" from a menu of options, picked an issue area, etc.)
+
+After the 2-3 sentence narrative summary, add ONE FINAL line in this exact format if any of the must-preserve fields were captured:
+ANSWERED ASKS: [list each field as "field=value" separated by " | ", e.g. "user_type=resident | priority=widening | location=US 441 & SR 436"]
+
+If no must-preserve fields were captured, omit the ANSWERED ASKS line. Be factual and concise.
 ```
 
 User content: older messages (all but the last 8), formatted as `User: ...` / `Bot: ...` lines truncated to 100 chars each.
