@@ -195,6 +195,11 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
   'docs/SURVEYS.md': [
     'app/studies/**',
     'app/s/**',
+    // The surveys index page lives at /dashboard, not /studies — its
+    // DashboardClient renders the StudyCard grid (favorites star, sort
+    // dropdown, favs-on-top, status filters, donut chart). Keep it
+    // mapped here so future StudyCard changes trip the spec-drift hook.
+    'app/dashboard/**',
     'app/api/studies/**',
     'app/api/study/**',
     'app/api/respond/**',

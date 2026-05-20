@@ -1,5 +1,15 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — SURVEYS.md + specMap gap catch-up
+
+**Why**: the favorites star + sort dropdown + favs-on-top shipped on `/dashboard` (the surveys index) earlier today landed in code without a corresponding SURVEYS.md update — the pre-commit spec-drift hook didn't fire because `scripts/specMap.ts` had `components/dashboard/**` mapped to SURVEYS.md but NOT `app/dashboard/**`. Sanjay caught it on a doc-discipline check.
+
+**What changed**:
+- `docs/SURVEYS.md` overview now documents the favorite-star + favs-on-top + Sort dropdown behavior on the `/dashboard` StudyCards, matching the equivalent paragraphs in BOTS.md and ANALYTICS.md.
+- `scripts/specMap.ts` SURVEYS.md entry now includes `app/dashboard/**` so future StudyCard / dashboard-index changes trip the spec-drift pre-commit hook automatically.
+
+**Process improvement**: this is the kind of drift the pre-commit hook is supposed to catch. Two more lessons baked into specMap so future changes that touch the same area don't slip through.
+
 ## 2026-05-20 — StudyCard favorite star moved inline (no more donut overlap)
 
 **Why**: the favorite star on `/dashboard` StudyCards was absolute-positioned at `top: 8, right: 40` to sit beside the existing refresh icon, but the donut chart occupies that corner space — the star ended up overlapping the colored arc visually (per Sanjay's screenshot). Refresh worked there because the donut's box has translucent corners; the star at `right: 40` was further inset where the colored ring lives.
