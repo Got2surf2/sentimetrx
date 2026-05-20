@@ -101,8 +101,8 @@ export async function POST(req: NextRequest) {
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     let html_labeled: string | undefined
     if (body.html_labeled) {
-      const { data: caller } = await service.from('users').select('is_superadmin').eq('id', user.id).single()
-      if ((caller as any)?.is_superadmin === true) html_labeled = String(body.html_labeled)
+      const { data: caller } = await service.from('users').select('role').eq('id', user.id).single()
+      if ((caller as any)?.role === 'platform_admin') html_labeled = String(body.html_labeled)
     }
     const meta: Record<string, unknown> = { html: body.html }
     if (html_labeled) meta.html_labeled = html_labeled

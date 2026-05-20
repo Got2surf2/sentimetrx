@@ -1,9 +1,11 @@
 // lib/auth/superadmin.ts
-// Per-user superadmin gate for Datanautix-internal product surfaces (e.g.
+// Per-user gate for Datanautix-internal product surfaces (e.g.
 // "include AI labels in this share for a prospect demo"). Distinct from
 // `organizations.is_admin_org` — that flag distinguishes admin orgs from
-// tenant orgs, and Datanautix Demo carries it too. is_superadmin is set
-// only on internal Datanautix users, see migration 076.
+// tenant orgs, and Datanautix Demo carries it too. The gate here checks
+// `users.role = 'platform_admin'`, which is the same role surfaced by
+// the SQL helper `is_platform_admin()` and used elsewhere in the codebase
+// for cross-org reads.
 
 import type { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
@@ -13,8 +15,8 @@ export async function isCallerSuperadmin(
 ): Promise<boolean> {
   const { data } = await (client as any)
     .from('users')
-    .select('is_superadmin')
+    .select('role')
     .eq('id', userId)
     .single()
-  return !!(data as any)?.is_superadmin
+  return (data as any)?.role === 'platform_admin'
 }

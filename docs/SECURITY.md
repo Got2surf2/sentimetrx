@@ -167,14 +167,18 @@ test project exists.
     internal-export routes today; it is distinct from the
     `platform_admin` role, though in practice the admin-org's
     members hold that role.
-  - **Superadmin (per-user, migration 076):** `users.is_superadmin=true`
-    distinguishes Datanautix-internal humans from members of any
-    admin-flagged org (e.g. Datanautix Demo also carries
-    `is_admin_org=true` but its users do NOT inherit superadmin).
-    Used by `lib/auth/superadmin.ts` → `isCallerSuperadmin()` and gated
-    write-side in `/api/share` for the "include AI labels in this
-    conversation share" feature. Reserve for Datanautix-only product
-    surfaces that should never be available to a paying-tenant admin.
+  - **Superadmin gate (per-user):** Datanautix-internal product
+    surfaces (e.g. "include AI labels in this conversation share")
+    gate on `users.role = 'platform_admin'` — the same role surfaced
+    by the existing `is_platform_admin()` SQL helper. Distinct from
+    `organizations.is_admin_org` because Datanautix Demo also carries
+    `is_admin_org=true` but its users should NOT inherit Datanautix-
+    internal capabilities. The helper lives at
+    `lib/auth/superadmin.ts` → `isCallerSuperadmin(client, userId)`,
+    gated write-side in `/api/share` so a tampered client payload
+    can't sneak in a labeled share variant from a non-platform_admin
+    user. (Migration 076 originally added a parallel `is_superadmin`
+    column; 077 dropped it in favor of the existing `role` column.)
   - There is no `org_members` table — membership is a column on
     `users`, not a separate join table.
 - **MFA:** not enforced today. **Proposed default (pending owner
