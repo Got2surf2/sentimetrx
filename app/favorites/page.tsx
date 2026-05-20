@@ -20,6 +20,7 @@ interface EnrichedFav {
   href:          string
   ts:            string | null
   created_at:    string
+  raw:           Record<string, any>   // full DB row for rich card rendering
 }
 
 export default async function FavoritesPage() {
@@ -82,6 +83,7 @@ export default async function FavoritesPage() {
       href:          cfg.href(f.resource_id, r),
       ts:            r[cfg.tsField] || null,
       created_at:    f.created_at,
+      raw:           r,
     })
   }
 

@@ -1,5 +1,13 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — /favorites: unified rich card
+
+**Why**: the initial `/favorites` shipped with compact tile rows ("looks like a poor-person's system" per Sanjay). The page is the cross-resource landing surface and should feel as polished as the list pages it pulls from. Reusing the existing per-page cards (BotsClient inline, StudyCard, DatasetCard) would have meant five visually different sections — defeating the "all my stuff, one place" point of the page. Built a single unified rich card instead.
+
+**What changed**:
+- `app/favorites/page.tsx`: `EnrichedFav` now carries `raw: Record<string, any>` — the full DB row — so the card has access to conversation_count, response_count, row_count, status, config, bot_emoji etc. without a second fetch round-trip.
+- `app/favorites/FavoritesClient.tsx`: rewritten as a `<FavoriteCard>` component. Each card has a per-type color strip (cyan agents, orange surveys, sky datasets, indigo campaigns, purple PulseIQ), avatar/emoji corner, name + subtitle, large key-stat number (per-type: conversations, responses, rows), status badge, and last-touched timestamp. Hover lift + per-type border glow. Grid is auto-fill minmax(280px, 1fr) so it wraps responsively without a column picker.
+
 ## 2026-05-20 — Labeled share defaults to Labeled view
 
 **Why**: the platform_admin who ticked the "AI labels" checkbox at share creation was explicitly opting into the annotated view — making the recipient click to see it inverted the intent. Defaulting to Labeled lands the prospect on the demo view immediately, which is the whole point.
