@@ -20,10 +20,18 @@
 - v5 (post-fix): probe fires reliably. Wrap-up trigger works cleanly. Action-link reply-text ordering works (probe text precedes link in same reply). **But** the probe is now firing on ANY URL-bearing intent (including Florida First Agenda, which is an info intent, not an action intent) — surfaced in the 2026-05-19 PM post-deploy re-run where the probe fired twice in one conversation. **Open**: the "one ask per conversation" rule is being violated.
 - Empathy beats (proactive warmth, from v4 rewrite) landed across all three scenarios. The "aloof" complaint from v3 is fixed.
 
-**Open items captured during this iteration**:
-- Probe over-fires on info-only intents (e.g. Florida First Agenda). Fix: server-side, only inject the probe-before-link instruction when the detected intent label is in the action-link allowlist (Donate / Volunteer / Merch / Register to vote).
-- Probe fires twice in one session. Fix: server-side, detect prior probe fires from assistant turn history and suppress the action-link instruction if already fired.
-- Sir O'Gate over-deflects on policy questions ("I don't want to wing the specifics — see the Florida First Agenda") even when the KB has the answer. Same shape as Sarina's pre-rehydrate over-deflection but here a prompt issue, not a KB issue.
+**Open items captured during this iteration (v5 → v6 rollup)**:
+- ~~Probe over-fires on info-only intents (e.g. Florida First Agenda).~~ **Fixed in v6** — removed the ACTION-LINK MOMENT trigger entirely. Probe now only fires on a genuine wrap-up signal (or the turn-8 server fallback when the voter is stalling).
+- ~~Probe fires twice in one session.~~ **Fixed in v6** — no more action-link trigger means no double-fire path.
+- Sir O'Gate over-deflects on policy questions ("I don't want to wing the specifics — see the Florida First Agenda") even when the KB has the answer. Same shape as Sarina's pre-rehydrate over-deflection but here a prompt issue, not a KB issue. **Still open.**
+- v6 added TAPER AT TURN 4 to the discipline block. Side effect observed in synthetic Scenario C: empathy beats dropped from 3/6 → 2/6. The taper is meant to suppress clarifying questions, not warmth markers — a small tuning ("taper applies only to clarifying questions, warmth still applies at every turn") would address it if it reads flat in real conversations.
+
+**Queued for v7 — silence-triggered "BTW…" push**:
+- Client widget tracks last user activity timestamp.
+- After 20–30s of idle, calls `/api/bots/[id]/chat?silence_trigger=1` (or a similar param) that injects a system instruction telling the model to open its next reply with "BTW" and ask the counter-perspective probe.
+- Server guards: don't fire on first turn, don't fire if probe already fired, expire after 2 minutes idle.
+- UI: show "Sir O'Gate is typing…" indicator on the proactive push so it doesn't look like a glitch.
+- ~Half day of work; deferred from today to keep iteration scope small.
 
 **Companion artifacts (in `~/Downloads/`, generated from `scripts/`)**:
 - `sirogate_nonresponse_brainstorm_2026-05-19.docx` — non-response-bias brainstorm memo, Vindman/Florida-electorate-framed.
