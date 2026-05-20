@@ -78,10 +78,15 @@ export default async function MobilePage() {
       href:   '/analyze',
       count:  datasetsCount.count || 0,
       recent: (datasetsRecent.data || []).map(function(d: any): RecentItem {
+        // Collections are container rows (brand profiles); rows live in child
+        // datasets. Skip the misleading "0 rows" prefix and just show the
+        // source type. Otherwise show "N rows · source".
+        const rowLabel = d.row_count ? d.row_count.toLocaleString() + ' rows' : ''
+        const subtitle = [rowLabel, d.source].filter(Boolean).join(' · ')
         return {
           id:       d.id,
           name:     d.name || 'Untitled',
-          subtitle: (d.row_count ? d.row_count.toLocaleString() + ' rows' : '0 rows') + (d.source ? ' · ' + d.source : ''),
+          subtitle: subtitle || undefined,
           href:     '/analyze/' + d.id,
           ts:       d.created_at,
         }
@@ -97,7 +102,7 @@ export default async function MobilePage() {
           id:       b.id,
           name:     b.name || b.slug || 'Untitled',
           subtitle: b.slug ? '/b/' + b.slug : undefined,
-          href:     '/bots/' + b.id,
+          href:     '/bots/' + b.id + '/conversations',
           ts:       b.updated_at,
         }
       }),
@@ -105,14 +110,14 @@ export default async function MobilePage() {
     {
       key:    'studies',
       label:  'Surveys',
-      href:   '/studies',
+      href:   '/dashboard',
       count:  studiesCount.count || 0,
       recent: (studiesRecent.data || []).map(function(s: any): RecentItem {
         return {
           id:       s.id,
           name:     s.name || 'Untitled',
           subtitle: (s.response_count || 0).toLocaleString() + ' responses',
-          href:     '/studies/' + s.id,
+          href:     '/studies/' + s.id + '/edit',
           ts:       s.created_at,
         }
       }),
