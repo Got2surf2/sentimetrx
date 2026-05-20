@@ -640,14 +640,33 @@ function esc(s: string): string {
 }
 
 function linkify(text: string): string {
-  var s = esc(text)
-  // Markdown links [text](url)
-  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">$1</a>')
-  // Raw URLs
+  // Step -1: normalize raw `<a href="...">text</a>` (some models emit it even
+  // when prompted to use markdown) into markdown so the rest of the pipeline
+  // handles it cleanly.
+  var normalized = text.replace(
+    /<a\s+[^>]*href=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi,
+    function(_m: string, url: string, t: string) {
+      var clean = t.replace(/<[^>]+>/g, '').trim() || url
+      return '[' + clean + '](' + url + ')'
+    },
+  )
+  // Step 0: escape HTML so nothing in the source can break out of attrs.
+  var s = esc(normalized)
+  // Step 1: extract markdown links into placeholders BEFORE bare-URL/domain
+  // passes run — otherwise those passes match the URL inside the `href="..."`
+  // we just inserted and wrap it again, producing attribute-soup in the bubble.
+  var mdLinks: string[] = []
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function(_m, label, url) {
+    mdLinks.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">' + label + '</a>')
+    return '\x00ML' + (mdLinks.length - 1) + '\x00'
+  })
+  // Raw URLs (placeholders don't match)
   s = s.replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">$1</a>')
   // Bare domains
   s = s.replace(/(?<![/@\w".])((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io|gov|edu|us|co)(?:\/[^\s<)]*)?)/g, '<a href="https://$1" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">$1</a>')
   // Bold
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  // Step 2: restore markdown-link placeholders.
+  s = s.replace(/\x00ML(\d+)\x00/g, function(_m, i) { return mdLinks[parseInt(i, 10)] || '' })
   return s
 }

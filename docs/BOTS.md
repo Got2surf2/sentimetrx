@@ -895,7 +895,8 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns`. First call:
 ### `/bots/[id]/conversations` — `ConversationsClient.tsx`
 - Lists sessions with first message, turn count, user name, flag pills, deflection indicator, persona summary.
 - Click a session → fetches turns, replays them.
-- Buttons: Generate report (POST report endpoint), Generate deck (POST insights-deck → PPTX download), Export CSV.
+- Buttons: Generate report (POST report endpoint), Generate deck (POST insights-deck → PPTX download), Export CSV, **Share** (POSTs a baked HTML snapshot to `/api/share`).
+- **Reply rendering — `linkify()`** uses the same pipeline as the widget's `formatHtml` (§ 5): raw-anchor → markdown normalize → HTML-escape → markdown-link placeholders → bare-URL/domain auto-link → placeholder restore. The placeholder pass is what prevents the bare-URL regex from re-wrapping URLs inside a just-created `href="…"` (the "attribute soup" regression). Share-link HTML is baked with the same `linkify`, so old share links from before the fix retain the broken snapshot — re-share to refresh.
 
 ---
 
