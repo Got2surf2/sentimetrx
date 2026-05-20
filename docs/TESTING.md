@@ -34,6 +34,7 @@ tests/
 ├── setup.ts              # global setup (env stubs, next/headers shim)
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload
+│   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
 │   ├── guardrails.test.ts
 │   ├── personaExtractor.test.ts
@@ -73,6 +74,7 @@ makes the suite easy to reason about as a unit.
 | Usage logging | `usageLog` non-blocking | Usage logging must never crash a paid AI call |
 | Brand-match scoring | `scoreBrandMatch` exact match, lookalike rejection, chain consensus | DataforSEO returns lookalikes ("Chuy's de Mexico") alongside the real brand; the scorer must rank the real chain `strong` and qualifier-prefixed lookalikes `weak` even when the chain's actual name differs from the user-typed brand |
 | Sentiment slang + negation | `contentGuard.scoreSentimentFull` Gen-Z lexicon + negation valence-shifter | Modern slang ("mid", "lit", "ate", "sus") and "not"-style negations must score correctly; otherwise the sentiment column reads neutral on a large fraction of restaurant reviews |
+| Probe info-only skip | `botProbeGuards.isInfoOnlyMessage` greeting/thanks/ack/sign-off detection | Bot CRITICAL OVERRIDE must not fire on "thanks!" or "ok cool" — otherwise the probe pivots feel jarring and the threshold logic burns its single shot on a no-content turn |
 | Deck routes | `/api/{pitch,architecture,engineering-reality,rollup}-deck` × {anon, admin} | Confirms each route both calls `requireAdmin` AND emits a real PPTX |
 | Public survey endpoint | `/api/respond` happy + missing-field + invalid-JSON + inactive-study + 404 | This endpoint accepts traffic from anywhere — its validation is load-bearing |
 | High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |

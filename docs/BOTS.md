@@ -535,6 +535,8 @@ Config shape (on `bots.config`):
 
 Wired in `app/api/bots/[id]/chat/route.ts` right after EMOTIONAL RESET. Read-only — never edits the assistant turns; just checks them via regex. Debug mode logs `Probe enforcement: turn N >= fallback`, `probe already fired`, or `turn N < fallback`.
 
+**Info-only skip (added 2026-05-20).** Before the threshold check, the route runs `isInfoOnlyMessage(lastUserMsg.content)` from `lib/botProbeGuards.ts`. If the user's current message is a greeting, thanks, acknowledgement, or sign-off (≤6 words, no `?`, matches a curated regex), the CRITICAL OVERRIDE is suppressed for this turn — the threshold check resumes on the next substantive user turn. This prevents jarring "by the way…" pivots when the user just sent "thanks!" or "ok cool." Debug log: `Probe enforcement: skipped — info-only user message`.
+
 User messages: passed verbatim as the conversation history (after compression in step 4).
 
 ### History compression

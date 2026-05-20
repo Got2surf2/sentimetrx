@@ -12,6 +12,7 @@ import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
+import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 
 export const dynamic = 'force-dynamic'
 
@@ -610,7 +611,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (probeEnforcement?.required && probeEnforcement.detectionRegex) {
     var userTurnCount = recentMessages.filter(function(m: any) { return m.role === 'user' }).length
     var fallbackTurn = Number(probeEnforcement.fallbackTurn) || 6
-    if (userTurnCount >= fallbackTurn) {
+    // Skip the CRITICAL OVERRIDE on info-only turns (greeting/thanks/ack/sign-off).
+    // Forcing a probe on a turn with no substance produces a jarring "by the way..."
+    // pivot that the user just sent "thanks!" into.
+    var infoOnlyUserTurn = isInfoOnlyMessage(lastUserMsg?.content || '')
+    if (infoOnlyUserTurn) {
+      if (debugMode) _debug.push('Probe enforcement: skipped — info-only user message')
+    } else if (userTurnCount >= fallbackTurn) {
       try {
         var probeRegex = new RegExp(probeEnforcement.detectionRegex, 'i')
         var probeAlreadyFired = recentMessages.some(function(m: any) { return m.role === 'assistant' && probeRegex.test(m.content || '') })

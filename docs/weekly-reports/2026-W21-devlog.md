@@ -1,5 +1,17 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Probe-enforcement info-only skip
+
+**Why**: the Sir O'Gate CRITICAL OVERRIDE that forces the counter-perspective probe once `userTurnCount >= fallbackTurn` was firing regardless of what the user just said. On a turn where the user typed "thanks!" or "ok cool" — no substance to anchor against — the bot would still pivot with a "by the way, what's a concern about Alex…" probe, which read as jarring. We needed the probe to wait for the next substantive turn instead of forcing itself onto social filler.
+
+**What changed**:
+- `lib/botProbeGuards.ts` (new): `isInfoOnlyMessage(text)` — conservative heuristic returning true for greeting/thanks/ack/sign-off messages (≤6 words, no `?`, anchored regex match). Curated allowlist of ~50 phrases.
+- `app/api/bots/[id]/chat/route.ts`: probe-enforcement block now checks `isInfoOnlyMessage(lastUserMsg.content)` before evaluating the turn-count threshold. Info-only → skip this turn; the override resumes on the next substantive user turn.
+- `tests/unit/botProbeGuards.test.ts`: 28 cases covering empty, greetings, thanks, acknowledgements, sign-offs (must skip) and substantive policy questions / longer messages / messages with `?` (must NOT skip).
+- `docs/BOTS.md` § Probe enforcement: added the info-only-skip subsection so the behavior is documented alongside the threshold logic.
+
+**Bonus — Stage 1 of the same session**: Sir O'Gate live bot (`78991aa1-…`) had `deflection_enabled=true` with empty `sensitive_topics`/`focus_topics`, so the deflection AI was over-firing on policy questions like "what's your stance on Medicare" — the deflection layer ran BEFORE the model saw the KB, with only `subject='Alex Vindman'` as topic context. Flipped `deflection_enabled=false` on the live bot row and added a 16th guardrail biasing toward KB use ("KB PRIORITY: when Florida First Agenda covers the question, ANSWER from it; the 'don't wing it' rule is for granular sub-details NOT in your platform documents"). `bot_change_log` entry recorded with full before/after snapshot. The 15 existing guardrails + global SAFEGUARDS prompt provide ample scope control without the smart-deflection layer.
+
 ## 2026-05-20 — SURVEYS.md + specMap gap catch-up
 
 **Why**: the favorites star + sort dropdown + favs-on-top shipped on `/dashboard` (the surveys index) earlier today landed in code without a corresponding SURVEYS.md update — the pre-commit spec-drift hook didn't fire because `scripts/specMap.ts` had `components/dashboard/**` mapped to SURVEYS.md but NOT `app/dashboard/**`. Sanjay caught it on a doc-discipline check.
