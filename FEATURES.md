@@ -415,6 +415,14 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Question bank management
 - Transfer study ownership between orgs
 
+### Per-Tenant Backups (since 2026-05-19)
+- **Nightly cron** at 04:00 UTC (`/api/cron/org-snapshot`) loops every org, dumps tenant-scoped tables to gzipped JSON, uploads to S3 at `org-snapshots/<org_id>/YYYY/MM/DD/snapshot.json.gz`. SSE-S3 default; SSE-KMS optional via `BACKUP_S3_KMS_KEY_ID`. Bucket versioning + lifecycle (Standard-IA 30d → Glacier 90d) recommended.
+- **`/admin/backups`** — list every org with "Browse snapshots" and "Snapshot now" buttons (on-demand backup for that org).
+- **`/admin/backups/[orgId]`** — per-org snapshot list with restore UI. Two restore modes: **merge** (upsert by id, leaves other rows alone; default) and **replace** (also deletes current rows not in snapshot; opt-in). Requires retyping the org slug to confirm. Refuses if `snapshot.meta.org_id` doesn't match URL org id (key-swap defense).
+- **Designed for the multi-tenant problem PITR can't solve**: Supabase PITR rolls back the entire DB, which would destroy other tenants' legitimate work since the rollback point. Per-tenant logical snapshots are restorable independently.
+- **Not covered**: `auth.users` (Supabase Auth schema, not `public`), Supabase Storage objects, 7 explicitly-skipped tables (legacy archives, rate-limit buckets, sentry, geo cache).
+- See `docs/BACKUPS.md` for AWS setup + IAM policy JSON + cost (~$3/mo at current scale).
+
 ---
 
 ## 10. Data Export & Reporting
@@ -596,8 +604,23 @@ See `docs/USAGE_ACCOUNTING.md § Estimator` for the 23 forward-looking usage pro
 - Periodic AI reviews flag theme drift (`/api/cron/bot-conversation-review`)
 - Insights deck export: KPIs, common questions, drop-off points, sample quotes, recommendations
 
+### Audit Log & Versioning (since 2026-05-19)
+- **`bot_change_log` table** — append-only record of every mutation on a bot: create / update / delete / status_change / knowledge_added / knowledge_cleared / import. Each row carries actor (id + email), action, summary, before/after diff JSON, metadata, timestamp.
+- **Per-bot history viewer** (`/bots/[id]/history`) — chronological list with before/after diffs per event. Linked from each agent card on `/bots` ("History") and from the edit-page header ("View history →").
+- **JSON export** (`/api/bots/[id]/export`, "Export JSON" link on each bot card) — versioned snapshot (`bot_export_version: 1`) containing the bot row sans IDs/timestamps + all knowledge chunks. Downloaded as `bot_<slug>_<YYYY-MM-DD>.json`.
+- **JSON import** (`/api/bots/import`, "↓ Import" button on `/bots`) — recreates a bot in the caller's org as `status='draft'`; slug collisions auto-suffix `-copy[N]`. Chunks imported without embeddings (re-embed on knowledge save).
+- **Clone-modify-test pattern** — export → import a bot, modify the new draft, test alongside the live bot. Used to iterate on system prompt + intents without touching production. Audit log captures every step so the test journey is reproducible.
+
+### Probe Enforcement (since 2026-05-19)
+- Bot-specific server-side enforcement of required probes via `bot.config.probeEnforcement` (e.g. counter-perspective probe in pilots that need it). Chat route counts user turns, scans assistant turns for the configured detection regex, and appends a CRITICAL OVERRIDE instruction at the end of the system prompt once the fallback threshold is crossed and the probe still hasn't fired. Bot-specific without code edits — config lives on the bot row.
+
+### Regression Tester (since 2026-05-19, Sarina)
+- **`/admin/sarina-regression`** — admin button to re-run the 22-scenario NOWOCATS test against the live Sarina bot. Encoded from Arjun's 2026-05-17 test log. Per-scenario `mustInclude` / `mustNotInclude` regex assertions, transcript display, RAG debug per turn.
+- **CLI runner** (`scripts/_run_sarina_regression.ts`) — same test set runnable from terminal for CI / cron later.
+- **Before/after Word doc generator** (`scripts/_generate_sarina_regression_doc.ts`) — produces a side-by-side comparison memo to `~/Downloads/`.
+
 ### Storage
-`bots`, `bot_knowledge_chunks`, `bot_conversation_turns`, `bot_session_personas`, `bot_conversation_reviews` (migrations 020/022–025/028/029/038).
+`bots`, `bot_knowledge_chunks`, `bot_conversation_turns`, `bot_session_personas`, `bot_conversation_reviews`, `bot_change_log` (migrations 020/022–025/028/029/038/072/074).
 
 ---
 

@@ -118,11 +118,12 @@ Substack and Regulations.gov sources do not have their own tables — they write
 ### AI Agents (internal: `bots`)
 | Table | Purpose |
 |-------|---------|
-| `bots` | Agent configs (org_id, name, slug, persona, knowledge sources, behavior) |
+| `bots` | Agent configs (org_id, name, slug, persona, knowledge sources, behavior, `config.probeEnforcement` for bot-specific required probes) |
 | `bot_knowledge_chunks` | Embedded RAG chunks for agent knowledge bases |
 | `bot_conversation_turns` | Per-turn message log (session_id, role, content, language) |
 | `bot_conversation_reviews` | AI-generated review of each conversation (themes, sentiment, intent) |
 | `bot_session_personas` | Inferred persona attributes per conversation session |
+| `bot_change_log` | Append-only audit trail of every bot mutation (create / update / delete / status_change / knowledge_added / knowledge_cleared / import). RLS read for own-org + admin-org; service-role writes only via `lib/auditLog.ts`. Migration `sql/074`. |
 
 ### Social Media Monitoring
 | Table | Purpose |
@@ -338,6 +339,10 @@ Embeddable AI agents with a configurable persona, knowledge base, and behavior. 
 - **Conversations**: `/api/bots/[id]/chat` (CSRF-bypassed wildcard-CORS embed endpoint), turns logged to `bot_conversation_turns`. Session personas inferred into `bot_session_personas`.
 - **Conversation review**: cron `/api/cron/bot-conversation-review` every 4h scans new turns and writes themes/sentiment/intent into `bot_conversation_reviews`. Exposed via `/api/bots/[id]/conversations/reviews` and `/api/bots/[id]/conversations/insights-deck`.
 - **Specialty agents**: pre-configured agents — `clara` (clarification), `nora` (NPS-style), embeddable via `/api/clara-chat`, `/api/nora-chat`.
+- **Audit log** (`bot_change_log`, since 2026-05-19): every mutation on a bot writes a row via `lib/auditLog.ts → logBotChange()`. Surfaced at `/bots/[id]/history` with before/after diffs. Wired into POST `/api/bots`, PATCH/DELETE `/api/bots/[id]`, POST/DELETE `/api/bots/[id]/knowledge`, POST `/api/bots/import`.
+- **JSON export/import** (`/api/bots/[id]/export`, `/api/bots/import`): versioned snapshot of bot row + knowledge chunks; import recreates a draft bot in the caller's org with auto-suffixed slug on collision. Pilot-clone pattern (clone-modify-test) lives on top of this without a separate "duplicate" feature.
+- **Probe enforcement** (`bot.config.probeEnforcement`): bot-specific required probes (e.g. counter-perspective probe in the Sir O'Gate Counter-Perspective Pilot). The chat route counts user turns server-side, scans assistant turns for a configured detection regex, and appends a CRITICAL OVERRIDE system instruction last when the turn count crosses `fallbackTurn` without the probe firing. See `docs/BOTS.md` § 7 for the prompt block and config shape.
+- **Regression harness** (`/admin/sarina-regression`, `scripts/_run_sarina_regression.ts`): 22-scenario test suite for the NOWOCATS Sarina agent — same source-of-truth tests file backs the admin UI button and the CLI runner. Encodes the May-2026 Arjun test log as machine-checkable `mustInclude` / `mustNotInclude` regex assertions.
 
 ### 7. Social Media Monitoring
 
@@ -417,6 +422,8 @@ All AI calls route through `lib/ai.ts → callAI()`, which dispatches to the con
 - Client management (sub-clients owned by an org for multi-tenant SaaS)
 - Admin-only deck routes (gated by `requireAdmin`): pitch, rollup, architecture, engineering-reality, agent-capabilities, entity-analysis, pulseiq, signal-tiers, restaurant-expansion. Downloads logged to `deck_download_log`.
 - Health: `/admin/health`, content-guard tester, agent tester, simulators (PulseIQ load), Sentry digest viewer, usage estimator, governance reports.
+- **Per-tenant backups** (`/admin/backups`, `/admin/backups/[orgId]`): admin-gated browser + restore UI on top of the nightly S3 snapshot cron. Lists every org with on-demand "Snapshot now" + per-org snapshot browser. Restore offers `merge` (upsert by id) and `replace` (also delete rows not in snapshot, opt-in). Refuses if `snapshot.meta.org_id` doesn't match the URL org id. Requires retyping the org slug to confirm. See `docs/BACKUPS.md` for AWS setup + IAM policy.
+- **Sarina regression tester** (`/admin/sarina-regression`): button to re-run Arjun's 22-scenario test against the live NOWOCATS bot; per-test pass/partial/fail with reply text + RAG debug.
 
 ### 12. Progressive Web App / Mobile Status
 
@@ -443,17 +450,17 @@ A focused mobile-first status surface that installs as a home-screen app on iOS 
 | Reviews (Google + Tripadvisor) | `/api/review-sources`, `/api/review-sources/{search,[sourceId]/{locations,sync,user-locations}}` |
 | Other Data Sources | `/api/reddit-sources/*`, `/api/substack-sources/*`, `/api/regulations-sources/*` |
 | PulseIQ | `/api/townhall/{chat,join/[sessionId],live/[sessionId],sessions/[id]/{analyze,duplicate,export,export/pptx},sessions/search,themes/{detect,custom,[id]},stats/[sessionId],status/[sessionId],simulate,suggest-guide,suggest-sensitive,suggest-topic,expand-terms,grade-description,responses}` |
-| Agents (bots) | `/api/bots`, `/api/bots/[id]/{chat,analyze,conversations/*,intents-stats,knowledge,knowledge/[chunkId]}`, `/api/bots/{deep-crawl,fetch-url,research}`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat` |
+| Agents (bots) | `/api/bots`, `/api/bots/[id]/{chat,analyze,conversations/*,intents-stats,knowledge,knowledge/[chunkId],export,history}`, `/api/bots/{deep-crawl,fetch-url,research,import}`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat` |
 | Social | `/api/social/{connect,callback,connections,connections/[id],webhook,sync,demo,stats,alerts,auto-config,comments,comments/[id]/{reply,ai-reply,hide,delete,dm,handle},comments/bulk,dm-templates,export-dataset}` |
 | Brands & Entities | `/api/brands`, `/api/collections`, `/api/collections/[id]`, `/api/industry-themes` |
 | AI Features | `/api/ai/study-suggest`, `/api/clarify`, `/api/deflect`, `/api/translate`, `/api/translate-responses`, `/api/suggest`, `/api/ana/render-deck`, `/api/ask-ana` |
 | Decks (admin-only) | `/api/{pitch,rollup,architecture,engineering-reality,agent-capabilities,entity-analysis,pulseiq,signal-tiers,restaurant-expansion}-deck` |
 | Sharing | `/api/share`, `/api/share/analytics` |
 | Org & Users | `/api/orgs`, `/api/orgs/[id]`, `/api/orgs/[id]/users`, `/api/org`, `/api/org/{logo,settings,users}`, `/api/me`, `/api/me/ai-mode`, `/api/invite`, `/api/invite/[id]`, `/api/invite/[id]/resend`, `/api/invite/register`, `/api/auth/{log-login,magic-link,signout}`, `/api/settings/{profile,team,team/disable,team/features}` |
-| Admin | `/api/admin/{orgs,orgs/[id]/users,orgs/[id]/ai-key,users,users/[id],clients,clients/[id],questions,questions/[id],bulk-invite,invite-preview,agent-tester,content-guard-test,sentry,sentry/issues,usage}` |
-| Cron Jobs (9) | `/api/cron/{campaign-scheduler,cleanup-shared-links,review-sync,entity-discovery,townhall-theme-detection,bot-conversation-review,social-sync,social-token-refresh,sentry-digest}` |
+| Admin | `/api/admin/{orgs,orgs/[id]/users,orgs/[id]/ai-key,users,users/[id],clients,clients/[id],questions,questions/[id],bulk-invite,invite-preview,agent-tester,content-guard-test,sentry,sentry/issues,usage,org-snapshots/[orgId],org-snapshots/[orgId]/restore}` |
+| Cron Jobs (11) | `/api/cron/{campaign-scheduler,cleanup-shared-links,review-sync,entity-discovery,townhall-theme-detection,bot-conversation-review,social-sync,social-token-refresh,sentry-digest,temple-events-refresh,org-snapshot}` |
 
-**Total**: ~190 API routes (192 at last count).
+**Total**: ~200 API routes (added bot export/import/history routes, admin org-snapshots routes, and the org-snapshot cron in 2026-W21).
 
 ---
 
@@ -489,6 +496,9 @@ A focused mobile-first status surface that installs as a home-screen app on iOS 
 | `lib/cronAuth.ts` | Cron bearer-token auth (`CRON_SECRET`) |
 | `lib/sentry.ts` | Sentry init / wrapping |
 | `lib/loginLog.ts` / `lib/userEvents.ts` | Login + user-event logging |
+| `lib/auditLog.ts` | Bot audit log writer (`logBotChange`, `snapshotForDiff`, `diffSnapshots`) — server-side service-role writes to `bot_change_log` |
+| `lib/orgSnapshot.ts` | Per-tenant logical backup — `dumpOrgSnapshot(orgId)` returns versioned JSON of ~40 tenant-scoped tables. `TABLE_SPECS` map is the source of truth. |
+| `lib/backupS3.ts` | S3 gzip+upload + list + download wrapper for `org-snapshots/<org_id>/YYYY/MM/DD/snapshot.json.gz`. SSE-S3 default, SSE-KMS if configured. |
 | `lib/governanceReports.ts` | Weekly governance report generation |
 | `lib/industryDefaults.ts` / `lib/industryThemes.ts` / `lib/surveyBlueprints.ts` | Industry presets and survey blueprints |
 | `lib/studyDraft.ts` / `lib/smartStudyGenerator.ts` | Survey draft + AI-generated study suggestion |

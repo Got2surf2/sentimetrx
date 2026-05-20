@@ -1,5 +1,36 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-19 (PM) — Sir O'Gate rename + pilot bots + probe enforcement
+
+**Why**: the Vindman campaign agent had been "Abel" internally even though the user-facing name is Sir O'Gate (see the 2026-05-18 Abel surrogate entry below). Sanjay also surfaced a hypothesis from a non-response-bias brainstorm: probe respondents for what their neighbors/family think — and asked whether it was easy to wire that into the campaign agent. The clone-then-modify pattern (now possible via the JSON export/import shipped earlier today) made it the right time to experiment without touching the live bot.
+
+**What changed (campaign agent)**:
+- Renamed the live Sir O'Gate's `system_prompt` from "You are Abel — …" to "You are Sir O'Gate — …" via direct SQL UPDATE (and an explicit `bot_change_log` entry since the change bypassed the PATCH API). Knowledge chunks, intents, focuses, personality, faq, guardrails, deflection_message, subject all confirmed clean of any other "Abel" reference. The `intents` JSON "abel" hit reported by an earlier audit was a false positive — substring match on `"label"`.
+
+**What changed (pilot bots)**:
+- **Sir O'Gate Counter-Perspective Pilot** (`/b/vindman4senate-pilot`, id `e0581028-…`) — cloned via direct SQL from the live bot (slug `-pilot`, status `draft` initially, 170 KB chunks + 5 intents + 17 focuses copied verbatim). Iterated through five prompt versions today (v1: add counter-perspective probe → v2: discipline block → v3: explicit probe triggers → v4: proactive warmth → v5: action-link reply-text ordering + probeEnforcement config). Each iteration logged to `bot_change_log` with the diagnosis session that motivated it.
+- **Sarina Conversation Discipline Pilot** (`/b/sarina-pilot`, id `aa9f9672-…`) — cloned with a Sarina-specific discipline block targeting her actual failure mode (inconsistent answers across retries, over-deflection when the KB has the fact, Path-1 opener re-firing) — different from the Sir O'Gate block because Sarina's job is feedback intake (probing is correct behavior) while Sir O'Gate's job is campaign outreach (probe-loop was the failure mode).
+
+**What changed (server-side)**:
+- `app/api/bots/[id]/chat/route.ts`: new probe-enforcement block. When `bot.config.probeEnforcement.required` is set, the chat route counts user turns server-side, scans assistant turns for `detectionRegex`, and appends a CRITICAL OVERRIDE instruction at the end of the system prompt once `userTurnCount >= fallbackTurn` and no prior assistant turn matched. Bot-specific without code edits.
+- `docs/BOTS.md` § 7 (verbatim prompts) gains the PROBE ENFORCEMENT block; new "Probe enforcement" subsection documents the config shape.
+
+**Test runs (synthetic, 3 scenarios — `scripts/_test_sirogate_pilot.ts`)**:
+- v4 (pre-fix): probe never fired in two pilot sessions despite the prompt requiring it. Diagnosis: "near the end of a conversation" was too vague a trigger for the model to detect.
+- v5 (post-fix): probe fires reliably. Wrap-up trigger works cleanly. Action-link reply-text ordering works (probe text precedes link in same reply). **But** the probe is now firing on ANY URL-bearing intent (including Florida First Agenda, which is an info intent, not an action intent) — surfaced in the 2026-05-19 PM post-deploy re-run where the probe fired twice in one conversation. **Open**: the "one ask per conversation" rule is being violated.
+- Empathy beats (proactive warmth, from v4 rewrite) landed across all three scenarios. The "aloof" complaint from v3 is fixed.
+
+**Open items captured during this iteration**:
+- Probe over-fires on info-only intents (e.g. Florida First Agenda). Fix: server-side, only inject the probe-before-link instruction when the detected intent label is in the action-link allowlist (Donate / Volunteer / Merch / Register to vote).
+- Probe fires twice in one session. Fix: server-side, detect prior probe fires from assistant turn history and suppress the action-link instruction if already fired.
+- Sir O'Gate over-deflects on policy questions ("I don't want to wing the specifics — see the Florida First Agenda") even when the KB has the answer. Same shape as Sarina's pre-rehydrate over-deflection but here a prompt issue, not a KB issue.
+
+**Companion artifacts (in `~/Downloads/`, generated from `scripts/`)**:
+- `sirogate_nonresponse_brainstorm_2026-05-19.docx` — non-response-bias brainstorm memo, Vindman/Florida-electorate-framed.
+- `sarina_regression_before_after_2026-05-19.docx` — 22-scenario side-by-side comparing Arjun's 2026-05-17 results vs the post-KB-rehydrate re-run (every FAIL-KB row now passes).
+
+**Spec docs**: `SPEC.md` § AI Agents gains `bot_change_log` and the new agent capabilities; § Admin & Settings adds backups + sarina-regression; API Routes Summary updated for export/import/history/backup/cron-org-snapshot. `FEATURES.md` § 15 (Agents) gets Audit Log & Versioning, Probe Enforcement, Regression Tester subsections; § 9 (Org & Admin) gets Per-Tenant Backups. `docs/BOTS.md` already covered (audit log + export/import + probe enforcement).
+
 ## 2026-05-19 — Per-tenant backups to S3
 
 **Why**: Sarina's KB-disappeared incident proved we have no per-tenant recovery story. Supabase PITR rolls back the whole DB, which in a multi-tenant SaaS means recovering Org A destroys Org B's legitimate work since the rollback point. The right shape is logical per-tenant snapshots, restorable independently.
