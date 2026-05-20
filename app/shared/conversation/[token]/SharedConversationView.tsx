@@ -19,19 +19,26 @@ interface Props {
 
 export default function SharedConversationView({ html, html_labeled }: Props) {
   const hasLabeled = !!html_labeled
-  const [labeled, setLabeled] = useState(false)
+  // Default to Labeled when the share was created with an html_labeled variant
+  // — the platform_admin who ticked the checkbox at share time was explicitly
+  // saying "show this with annotations", so don't hide them behind a click.
+  // ?labels=0 in the URL still lets the recipient deep-link to Plain.
+  const [labeled, setLabeled] = useState(hasLabeled)
 
   useEffect(function() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
-    if (hasLabeled && params.get('labels') === '1') setLabeled(true)
+    if (params.get('labels') === '0') setLabeled(false)
+    else if (hasLabeled && params.get('labels') === '1') setLabeled(true)
   }, [hasLabeled])
 
   function flip(next: boolean) {
     setLabeled(next)
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
-    if (next) url.searchParams.set('labels', '1')
+    // Labeled is the default when html_labeled exists, so we encode the
+    // OPPOSITE choice in the URL: ?labels=0 deep-links to Plain.
+    if (!next) url.searchParams.set('labels', '0')
     else url.searchParams.delete('labels')
     window.history.replaceState(null, '', url.toString())
   }

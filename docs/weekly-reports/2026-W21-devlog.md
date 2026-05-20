@@ -1,5 +1,13 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Labeled share defaults to Labeled view
+
+**Why**: the platform_admin who ticked the "AI labels" checkbox at share creation was explicitly opting into the annotated view — making the recipient click to see it inverted the intent. Defaulting to Labeled lands the prospect on the demo view immediately, which is the whole point.
+
+**What changed**:
+- `app/shared/conversation/[token]/SharedConversationView.tsx`: default `labeled` state flipped from `false` to `hasLabeled` (true when `metadata.html_labeled` exists). URL param convention flipped — `?labels=0` now deep-links to Plain so a recipient can be sent the clean view if needed; `?labels=1` still works for back-compat.
+- `docs/BOTS.md` updated to reflect the new default and the `?labels=0` deep-link convention.
+
 ## 2026-05-20 — Devlog-drift pre-commit guard
 
 **Why**: this entire session almost shipped without a single devlog line. The "append a WHY entry to docs/weekly-reports/YYYY-WXX-devlog.md" rule has lived in CLAUDE.md + auto-memory for weeks, but neither was load-bearing at commit time — sessions skip it routinely and there's no enforcement until the Monday governance routine runs. For a one-person shop building toward buyer-DD readiness, the right answer is to make the rule enforceable at the moment it would otherwise be dropped.
