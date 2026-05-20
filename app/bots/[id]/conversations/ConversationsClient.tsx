@@ -236,11 +236,31 @@ export default function ConversationsClient() {
     } catch { alert('Failed to apply') }
   }
 
+  async function refreshSession() {
+    if (!selectedSession) return
+    setTurnsLoading(true)
+    try {
+      var r = await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(selectedSession))
+      var d = await r.json()
+      setTurns(d.turns || [])
+    } catch {}
+    setTurnsLoading(false)
+  }
+
   async function shareConversation() {
-    if (shareState === 'sharing' || turns.length === 0) return
+    if (shareState === 'sharing' || !selectedSession) return
     setShareState('sharing')
     try {
-      var html = buildConversationHtml(botName, botConfig, turns)
+      // Re-fetch turns before generating the share snapshot so we never
+      // share a stale UI cache. The detail panel doesn't auto-refresh
+      // when new turns land server-side (the conversation continues in
+      // the widget, the admin viewer holds the original snapshot).
+      var freshR = await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(selectedSession))
+      var freshD = await freshR.json()
+      var freshTurns: Turn[] = Array.isArray(freshD?.turns) ? freshD.turns : []
+      setTurns(freshTurns)
+      if (freshTurns.length === 0) { setShareState('idle'); return }
+      var html = buildConversationHtml(botName, botConfig, freshTurns)
       var r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, expires_in: '30d' }) })
       var d = await r.json()
       if (d.url) { await navigator.clipboard.writeText(d.url); setShareState('copied'); setTimeout(function() { setShareState('idle') }, 3000) }
@@ -511,9 +531,15 @@ export default function ConversationsClient() {
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{turns.length}</span>
-                <button onClick={shareConversation} disabled={shareState === 'sharing' || turns.length === 0}
+                <button onClick={refreshSession} disabled={turnsLoading || !selectedSession}
+                  title="Re-fetch this conversation from the database — new turns added in the live widget won't appear until you refresh"
+                  style={{ padding: '5px 10px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: turnsLoading ? 'wait' : 'pointer', opacity: turnsLoading ? 0.5 : 1 }}>
+                  {turnsLoading ? '…' : '↻'}
+                </button>
+                <button onClick={shareConversation} disabled={shareState === 'sharing' || !selectedSession}
+                  title="Share — re-fetches the latest turns before generating the snapshot so the share link is always current"
                   style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                  {shareState === 'copied' ? 'Copied!' : 'Share'}
+                  {shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? 'Copied!' : 'Share'}
                 </button>
                 <button onClick={function() { if (selectedSession) deleteSession(selectedSession) }}
                   style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,100,100,0.4)', background: 'transparent', color: '#fca5a5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>

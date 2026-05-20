@@ -655,62 +655,82 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
     service.from('bots').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
 
-    // Store conversation turns (non-blocking — must not crash the response)
+    // Store conversation turns — AWAITED before responding so storage is
+    // guaranteed even on Vercel where Lambda freezes after response. Prior
+    // version was a fire-and-forget IIFE which intermittently lost turns
+    // when the Lambda terminated before storage completed (incident
+    // 2026-05-20: bs_mpdkmzhq_skbhvm turn 20+ silently dropped despite
+    // last_session_at being bumped).
+    //
+    // The focus_classify AI call is moved to fire-and-forget AFTER the
+    // insert so that core storage isn't gated on a 500–2000ms classifier
+    // call. content_flags for focus tags become best-effort but the
+    // user/assistant text is guaranteed.
     if (session_id) {
-      (async function storeTurns() {
-        try {
-          const userContent = lastUserMsg?.content || ''
-          const turnsToInsert: Record<string, unknown>[] = []
+      try {
+        const userContent = lastUserMsg?.content || ''
+        const turnsToInsert: Record<string, unknown>[] = []
 
-          const { data: existingTurns } = await service
-            .from('bot_conversation_turns')
-            .select('turn_number')
-            .eq('bot_id', bot.id)
-            .eq('session_id', session_id)
-            .order('turn_number', { ascending: false })
-            .limit(1)
+        const { data: existingTurns } = await service
+          .from('bot_conversation_turns')
+          .select('turn_number')
+          .eq('bot_id', bot.id)
+          .eq('session_id', session_id)
+          .order('turn_number', { ascending: false })
+          .limit(1)
 
-          const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
+        const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
 
-          if (maxExisting < 0) {
-            var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
-            if (initialMsg) {
-              turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
-            }
+        if (maxExisting < 0) {
+          var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
+          if (initialMsg) {
+            turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
           }
-
-          var turnBase = maxExisting + 1
-          var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
-          if (auditFlags.length > 0) userTurn.content_flags = auditFlags
-          if (userContent) {
-            var sentResult = scoreSentimentFull(userContent)
-            userTurn.sentiment = sentResult.label
-            userTurn.sentiment_score = sentResult.score
-          }
-          turnsToInsert.push(userTurn)
-          var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' }
-
-          // Prompt Focus: classify which focus(es) this reply addresses.
-          // Skips entirely (no AI call) when the bot has no focuses defined.
-          var botFocuses: BotFocus[] = (bot as any).focuses || []
-          if (botFocuses.length > 0) {
-            var focusResult = await classifyResponseFocuses(botFocuses, result.text)
-            if (focusResult.usage) {
-              logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'focus_classify' }, focusResult.usage)
-            }
-            if (focusResult.slugs.length > 0) {
-              assistantTurn.content_flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
-            }
-          }
-
-          turnsToInsert.push(assistantTurn)
-
-          const { error: insertErr } = await service.from('bot_conversation_turns').insert(turnsToInsert)
-          if (insertErr) console.error({ at: 'bot-chat', msg: "turn insert error", err: insertErr.message })
-        } catch (e: any) {
-          console.error({ at: 'bot-chat', msg: "turn storage failed", err: e?.message })
         }
-      })()
+
+        var turnBase = maxExisting + 1
+        var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
+        if (auditFlags.length > 0) userTurn.content_flags = auditFlags
+        if (userContent) {
+          var sentResult = scoreSentimentFull(userContent)
+          userTurn.sentiment = sentResult.label
+          userTurn.sentiment_score = sentResult.score
+        }
+        turnsToInsert.push(userTurn)
+        var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' }
+        turnsToInsert.push(assistantTurn)
+
+        const { data: insertedRows, error: insertErr } = await service
+          .from('bot_conversation_turns')
+          .insert(turnsToInsert)
+          .select('id, turn_number, role')
+        if (insertErr) {
+          console.error({ at: 'bot-chat', msg: 'turn insert error', err: insertErr.message, session_id, bot_id: bot.id })
+        } else if (debugMode) {
+          _debug.push('Storage: inserted ' + (insertedRows?.length || 0) + ' turns (turn_base=' + turnBase + ')')
+        }
+
+        // Focus classify happens after the insert lands — best-effort
+        // tag of the just-saved assistant turn. Slow AI call must not
+        // block the user from seeing their conversation persisted.
+        var botFocuses: BotFocus[] = (bot as any).focuses || []
+        if (botFocuses.length > 0 && insertedRows && insertedRows.length > 0) {
+          const assistantRow = insertedRows.find(function(r: any) { return r.role === 'assistant' && r.turn_number === turnBase + 1 })
+          if (assistantRow) {
+            classifyResponseFocuses(botFocuses, result.text).then(function(focusResult) {
+              if (focusResult.usage) {
+                logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'focus_classify' }, focusResult.usage)
+              }
+              if (focusResult.slugs.length > 0) {
+                const flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
+                service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', (assistantRow as any).id).then(function() {})
+              }
+            }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
+          }
+        }
+      } catch (e: any) {
+        console.error({ at: 'bot-chat', msg: 'turn storage failed', err: e?.message, session_id, bot_id: bot.id })
+      }
     }
 
     if (debugMode) {
