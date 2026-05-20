@@ -66,21 +66,33 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
       })
   }, [])
 
-  // Detect whether the page is running inside an iOS standalone PWA. If it
-  // is, hint the user (subtle banner) that they're "in" the app. If not, a
-  // gentle prompt to Add to Home Screen on Safari.
+  // Detect platform + install state. Each platform has a different install
+  // gesture; show the right hint or nothing at all.
+  //   - iOS Safari       → Share → Add to Home Screen
+  //   - iOS Chrome/FF    → must use Safari (Apple restricts install to Safari)
+  //   - Android Chromium → menu (⋮) → Install app
+  //   - Desktop / other  → no hint
+  const [installHint, setInstallHint] = useState<'ios-safari' | 'ios-other' | 'android' | 'none'>('none')
   const [isStandalone, setIsStandalone] = useState(false)
-  const [isIOSSafari, setIsIOSSafari] = useState(false)
   useEffect(function() {
     if (typeof window === 'undefined') return
-    // iOS Safari uses navigator.standalone; the standard matchMedia approach
-    // covers Android + iPadOS too.
-    const ios = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent) && !/CriOS|FxiOS/.test(navigator.userAgent)
-    setIsIOSSafari(ios)
-    setIsStandalone(
+    const ua = navigator.userAgent
+    const isIOS = /iPhone|iPad|iPod/.test(ua)
+    const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS/.test(ua)
+    const isIOSOther  = isIOS && !isIOSSafari
+    // Android Chrome/Edge/Brave all match. Firefox supports install but via a
+    // different flow; treat it as Android too — the menu-based gesture is close
+    // enough and the alternative is no hint at all.
+    const isAndroid = /Android/.test(ua)
+    const standalone =
       (navigator as any).standalone === true ||
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
-    )
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    setIsStandalone(standalone)
+    if (standalone)        setInstallHint('none')
+    else if (isIOSSafari)  setInstallHint('ios-safari')
+    else if (isIOSOther)   setInstallHint('ios-other')
+    else if (isAndroid)    setInstallHint('android')
+    else                   setInstallHint('none')
   }, [])
 
   return (
@@ -105,10 +117,21 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
         </div>
       </div>
 
-      {/* Install hint — show only on iOS Safari when NOT already installed */}
-      {isIOSSafari && !isStandalone && (
+      {/* Install hint — platform-specific; hidden when already installed
+          or when the browser can't install (iOS Chrome/FF, desktop). */}
+      {installHint === 'ios-safari' && (
         <div style={{ marginBottom: 14, padding: '10px 12px', background: P.accentBg, border: '1px solid ' + P.accent + '40', borderRadius: 10, fontSize: 12, color: P.textMid, lineHeight: 1.4 }}>
           Tap <strong style={{ color: P.accent }}>Share → Add to Home Screen</strong> to install this as an app.
+        </div>
+      )}
+      {installHint === 'android' && (
+        <div style={{ marginBottom: 14, padding: '10px 12px', background: P.accentBg, border: '1px solid ' + P.accent + '40', borderRadius: 10, fontSize: 12, color: P.textMid, lineHeight: 1.4 }}>
+          Tap the <strong style={{ color: P.accent }}>menu (⋮) → Install app</strong> to install this as an app.
+        </div>
+      )}
+      {installHint === 'ios-other' && (
+        <div style={{ marginBottom: 14, padding: '10px 12px', background: P.accentBg, border: '1px solid ' + P.accent + '40', borderRadius: 10, fontSize: 12, color: P.textMid, lineHeight: 1.4 }}>
+          To install on iPhone, open this page in <strong style={{ color: P.accent }}>Safari</strong> and tap Share → Add to Home Screen.
         </div>
       )}
 
