@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+import SharedConversationView from './SharedConversationView'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,5 +55,10 @@ export default async function SharedConversationPage({ params }: { params: { tok
   // smuggle markup into a `srcDoc` that runs as same-origin sentimetrx.ai.
   // `allow-popups allow-popups-to-escape-sandbox` keeps `target="_blank"`
   // links clickable; scripts and same-origin access stay disabled.
-  return <iframe srcDoc={html} sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full min-h-screen border-0" title="Shared Conversation" />
+  //
+  // When metadata.html_labeled exists (superadmin opted into AI labels at
+  // share creation), the client wrapper exposes a Plain/Labeled toggle.
+  // Otherwise it just renders the plain html with no toggle UI.
+  const html_labeled = link.metadata?.html_labeled
+  return <SharedConversationView html={html} html_labeled={html_labeled} />
 }

@@ -16,11 +16,12 @@ export default async function ConversationsPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, is_superadmin, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
+  const isSuperadmin = !!(userData as any)?.is_superadmin
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -34,7 +35,7 @@ export default async function ConversationsPage() {
         currentPage="bots"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
-        <ConversationsClient />
+        <ConversationsClient isSuperadmin={isSuperadmin} />
       </div>
     </div>
   )

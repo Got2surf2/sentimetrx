@@ -91,14 +91,24 @@ export async function POST(req: NextRequest) {
   const gate = await gateShareTarget(service, user.id, type as ShareType, String(target_id))
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // For conversation shares, store the rendered HTML in metadata
+  // For conversation shares, store the rendered HTML in metadata. If the caller
+  // is a superadmin and passed an additional html_labeled (the same chat with
+  // intent/sentiment/action annotations), store that too — the shared page
+  // surfaces a Plain | Labeled toggle when html_labeled is present.
   if (type === 'conversation' && body.html) {
     const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
     const hours2 = expiryHours2[expires_in] || 168
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
+    let html_labeled: string | undefined
+    if (body.html_labeled) {
+      const { data: caller } = await service.from('users').select('is_superadmin').eq('id', user.id).single()
+      if ((caller as any)?.is_superadmin === true) html_labeled = String(body.html_labeled)
+    }
+    const meta: Record<string, unknown> = { html: body.html }
+    if (html_labeled) meta.html_labeled = html_labeled
     const { data: convData, error: convErr } = await service
       .from('shared_links')
-      .insert({ type: 'conversation', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: { html: body.html } })
+      .insert({ type: 'conversation', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: meta })
       .select('token, expires_at')
       .single()
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })

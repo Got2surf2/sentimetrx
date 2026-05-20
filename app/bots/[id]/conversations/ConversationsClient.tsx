@@ -49,6 +49,8 @@ interface Turn {
   id: string; turn_number: number; role: 'user' | 'assistant'
   content: string; content_en: string | null; language: string
   created_at: string; content_flags: string[] | null; source: string | null
+  sentiment?: 'positive' | 'neutral' | 'negative' | null
+  sentiment_score?: number | null
 }
 
 interface BotConfig {
@@ -57,7 +59,7 @@ interface BotConfig {
   userBubbleBg?: string; accentColor?: string
 }
 
-export default function ConversationsClient() {
+export default function ConversationsClient({ isSuperadmin = false }: { isSuperadmin?: boolean }) {
   var params = useParams()
   var router = useRouter()
   var botId = params.id as string
@@ -76,6 +78,7 @@ export default function ConversationsClient() {
   var [pptxLoading, setPptxLoading] = useState(false)
   var [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
   var [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
+  var [shareIncludeLabels, setShareIncludeLabels] = useState(false)
 
   // Filters
   var [filterFlag, setFilterFlag] = useState<string>('all')
@@ -261,7 +264,11 @@ export default function ConversationsClient() {
       setTurns(freshTurns)
       if (freshTurns.length === 0) { setShareState('idle'); return }
       var html = buildConversationHtml(botName, botConfig, freshTurns)
-      var r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, expires_in: '30d' }) })
+      var html_labeled: string | undefined
+      if (isSuperadmin && shareIncludeLabels) {
+        html_labeled = buildConversationHtml(botName, botConfig, freshTurns, { labeled: true })
+      }
+      var r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, html_labeled: html_labeled, expires_in: '30d' }) })
       var d = await r.json()
       if (d.url) { await navigator.clipboard.writeText(d.url); setShareState('copied'); setTimeout(function() { setShareState('idle') }, 3000) }
       else setShareState('idle')
@@ -536,6 +543,15 @@ export default function ConversationsClient() {
                   style={{ padding: '5px 10px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: turnsLoading ? 'wait' : 'pointer', opacity: turnsLoading ? 0.5 : 1 }}>
                   {turnsLoading ? '…' : '↻'}
                 </button>
+                {isSuperadmin && (
+                  <label title="Bakes a second 'Labeled' variant into the share showing sentiment, intent, and action triggered per turn. Visible to prospects who toggle Labeled on the share page. Datanautix-internal only — leave OFF for shares to voters."
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: 500, cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={shareIncludeLabels}
+                      onChange={function(e) { setShareIncludeLabels(e.target.checked) }}
+                      style={{ width: 12, height: 12, cursor: 'pointer', accentColor: '#e8622a' }} />
+                    AI labels
+                  </label>
+                )}
                 <button onClick={shareConversation} disabled={shareState === 'sharing' || !selectedSession}
                   title="Share — re-fetches the latest turns before generating the snapshot so the share link is always current"
                   style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
@@ -618,21 +634,72 @@ export default function ConversationsClient() {
 }
 
 // ── Share HTML builder ────────────────────────────────────────────────
-function buildConversationHtml(name: string, config: BotConfig, turns: Turn[]): string {
+// Builds the conversation snapshot HTML that gets baked into shared_links.metadata.
+// When opts.labeled is true, each user-turn shows sentiment + matched intent
+// under the bubble, each assistant-turn shows the action triggered (if any
+// intent URL appears in the reply), and timestamps switch to full date + time.
+function buildConversationHtml(
+  name: string,
+  config: BotConfig,
+  turns: Turn[],
+  opts?: { labeled?: boolean },
+): string {
+  var labeled = !!opts?.labeled
   var av = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
   var hG = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
   var aG = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
   var uB = config.userBubbleBg || '#007AFF'
+
+  function fmtTime(iso: string) {
+    var d = new Date(iso)
+    if (labeled) {
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+
+  function annotation(t: Turn): string {
+    if (!labeled) return ''
+    var parts: string[] = []
+    if (t.role === 'user') {
+      if (t.sentiment) {
+        var score = typeof t.sentiment_score === 'number' ? ' (' + (t.sentiment_score >= 0 ? '+' : '') + t.sentiment_score.toFixed(2) + ')' : ''
+        var color = t.sentiment === 'positive' ? '#059669' : t.sentiment === 'negative' ? '#dc2626' : '#6b7280'
+        parts.push('sentiment: <span style="color:' + color + ';font-weight:600">' + t.sentiment + score + '</span>')
+      }
+      if (Array.isArray(t.content_flags)) {
+        var intentFlag = (t.content_flags as string[]).find(function(f) { return typeof f === 'string' && f.startsWith('intent:') })
+        if (intentFlag) parts.push('intent: <span style="color:#e8622a;font-weight:600">' + intentFlag.replace('intent:', '') + '</span>')
+      }
+    } else {
+      // Assistant: detect if reply inserts an intent URL.
+      var actions: string[] = []
+      if (/alexvindman\.com\/florida-first-agenda/i.test(t.content)) actions.push('Florida First Agenda')
+      if (/secure\.actblue\.com\/donate/i.test(t.content)) actions.push('Donate')
+      if (/act\.alexvindman\.com\/signup\/volunteer/i.test(t.content)) actions.push('Volunteer')
+      if (/store\.alexvindman\.com/i.test(t.content)) actions.push('Merch')
+      if (/vote\.gov/i.test(t.content)) actions.push('Register to vote')
+      if (actions.length) parts.push('action: <span style="color:#e8622a;font-weight:600">' + actions.join(', ') + '</span>')
+    }
+    if (parts.length === 0) return ''
+    return '<div style="font-size:10px;font-style:italic;color:#6b7280;margin:2px 0 10px 36px;padding-left:8px;border-left:2px solid #e5e7eb">└ ' + parts.join(' · ') + '</div>'
+  }
+
   var rows = turns.map(function(t) {
     var isUser = t.role === 'user'
-    var time = new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    var time = fmtTime(t.created_at)
+    var bubble: string
     if (isUser) {
-      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:' + uB + ';color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
+      bubble = '<div style="display:flex;justify-content:flex-end;margin-bottom:' + (labeled ? '2px' : '8px') + '"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:' + uB + ';color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
+    } else {
+      bubble = '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:' + (labeled ? '2px' : '8px') + '"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
     }
-    return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
+    return bubble + annotation(t)
   }).join('')
+
   var sub = config.subtitle || ''
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div>' + (sub ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + esc(sub) + '</div>' : '') + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div></div></body></html>'
+  var footer = labeled ? 'Sentimetrx · AI processing visible' : 'Shared from Sentimetrx'
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div>' + (sub ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + esc(sub) + '</div>' : '') + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">' + esc(footer) + '</div></div></body></html>'
 }
 
 function esc(s: string): string {
