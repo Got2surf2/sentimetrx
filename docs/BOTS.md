@@ -537,6 +537,17 @@ Wired in `app/api/bots/[id]/chat/route.ts` right after EMOTIONAL RESET. Read-onl
 
 **Info-only skip (added 2026-05-20).** Before the threshold check, the route runs `isInfoOnlyMessage(lastUserMsg.content)` from `lib/botProbeGuards.ts`. If the user's current message is a greeting, thanks, acknowledgement, or sign-off (≤6 words, no `?`, matches a curated regex), the CRITICAL OVERRIDE is suppressed for this turn — the threshold check resumes on the next substantive user turn. This prevents jarring "by the way…" pivots when the user just sent "thanks!" or "ok cool." Debug log: `Probe enforcement: skipped — info-only user message`.
 
+### Silence-triggered probe (added 2026-05-20)
+
+A second probe mechanism — complementary to `probeEnforcement` above. Where probe-enforcement waits for a user turn that meets a threshold, the silence-triggered probe fires when the user goes inactive after a bot reply, so a session that stalls partway still gets one nudge toward unfired focus topics.
+
+- **Trigger.** The widget (`components/ui/ChatBot.tsx`) arms a 25-second idle timer when the last message is an assistant reply AND the user has had at least one real exchange (`hasFirstMessage === true`). Any keystroke in the textarea clears the timer. Once-per-session, both client- and server-side.
+- **Request shape.** `POST /api/bots/[id]/chat` accepts an optional `trigger: 'silence'`. When set, the route takes a fast path (no AI call) and returns either `{ reply: text, _silence: true }` (probe fired) or `{ reply: null, skipped: '<reason>' }` (no-op).
+- **Skip reasons.** `no_session` (no session_id on the request), `no_focuses` (bot has zero enabled `focuses`), `already_fired` (a turn with `source='silence_probe'` already exists for this session), `all_focuses_covered` (every focus already carries a `focus:<slug>` content_flag earlier in the session), `insert_failed` (DB error inserting the probe turn).
+- **Probe text.** Templated, not generated — `"By the way — while you're here, I'd love to hear your thoughts on {focus.label}. What comes to mind?"`. Cost is one SELECT + one INSERT per fired probe.
+- **Persistence.** The probe is written as a regular assistant turn with `source='silence_probe'` and `content_flags=['silence_probe', 'focus:<slug>']`. The flags double as the once-per-session lock AND mark the focus as touched (so subsequent focus-classifier passes don't re-tag it).
+- **Sir O'Gate today has 0 focuses configured**, so the silence path is a no-op there. The mechanism is built for NOWOCATS-style bots (focuses-rich) and any future agent that wants idle-time nudges.
+
 User messages: passed verbatim as the conversation history (after compression in step 4).
 
 ### History compression

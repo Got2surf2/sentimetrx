@@ -184,6 +184,19 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
+  // Silence-triggered probe: fires once per session when the user has been
+  // idle for SILENCE_TIMEOUT_MS after a bot reply lands. Cap of one per
+  // session is enforced both client-side (ref) and server-side (existing
+  // source='silence_probe' turn).
+  const SILENCE_TIMEOUT_MS = 25000
+  const silenceProbeFiredRef = useRef(false)
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
+  }
 
   const scrollBottom = () => {
     const el = chatRef.current
@@ -211,6 +224,46 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     scrollBottom()
     setTimeout(scrollBottom, 100)
   }, [messages, loading, scrollBottom])
+
+  // Silence-probe idle timer. Re-arms each time a bot reply lands AND the
+  // user has had at least one real exchange. Clears on any state change so
+  // a user message immediately cancels the pending probe.
+  useEffect(() => {
+    clearSilenceTimer()
+    if (silenceProbeFiredRef.current) return
+    if (!hasFirstMessage || loading) return
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    if (last.role !== 'assistant') return
+
+    silenceTimerRef.current = setTimeout(async function() {
+      if (silenceProbeFiredRef.current) return
+      silenceProbeFiredRef.current = true
+      try {
+        const apiMessages = (nameExchangeMessages > 0
+          ? messages.slice(nameExchangeMessages)
+          : messages.filter(m => m.content !== EN_INITIAL.content)
+        ).map(m => ({ role: m.role, content: m.content }))
+        if (apiMessages.length === 0) return
+        const res = await fetch(config.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: apiMessages,
+            session_id: sessionId,
+            trigger: 'silence',
+            language: selectedLang || undefined,
+          }),
+        })
+        const data = await res.json()
+        if (data?.reply) {
+          setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+        }
+      } catch { /* silent — probe failure must not disrupt UX */ }
+    }, SILENCE_TIMEOUT_MS)
+
+    return () => clearSilenceTimer()
+  }, [messages, loading, hasFirstMessage, nameExchangeMessages, sessionId, selectedLang, config.apiEndpoint, EN_INITIAL.content])
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return
@@ -589,7 +642,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           <textarea
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => { setInput(e.target.value); clearSilenceTimer() }}
             onKeyDown={handleKeyDown}
             placeholder={isNonEnglish ? (PLACEHOLDER_TRANSLATIONS[selectedLang!] || config.placeholder) : config.placeholder}
             rows={1}

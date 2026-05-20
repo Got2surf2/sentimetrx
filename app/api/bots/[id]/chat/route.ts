@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
-  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode } = body
+  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger } = body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages required' }, { status: 400, headers: cors })
   }
@@ -70,6 +70,69 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Set usage context for persona/demographic extraction
   setPersonaUsageCtx({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'persona' })
+
+  // ── Silence-triggered probe (fast path, no AI call) ───────────────
+  // The widget detects user inactivity (~25s) and POSTs { trigger: 'silence' }
+  // to nudge an unfired focus topic. Once-per-session, sourced from
+  // bot.focuses. Skipped (returns reply:null) when:
+  //   - no session_id (can't anchor to a conversation)
+  //   - bot has no enabled focuses
+  //   - silence_probe already fired this session
+  //   - every focus already has a 'focus:slug' content_flag earlier in the session
+  // No AI call — uses a templated "By the way..." nudge so the cost is just
+  // one SELECT + one INSERT per fired probe.
+  if (trigger === 'silence') {
+    if (!session_id) {
+      return NextResponse.json({ reply: null, skipped: 'no_session' }, { headers: cors })
+    }
+    const probeFocuses: BotFocus[] = (bot as any).focuses || []
+    const enabledFocuses = probeFocuses.filter(function(f: any) { return f.enabled !== false })
+    if (enabledFocuses.length === 0) {
+      return NextResponse.json({ reply: null, skipped: 'no_focuses' }, { headers: cors })
+    }
+    const { data: existingTurns } = await service
+      .from('bot_conversation_turns')
+      .select('content_flags, source, turn_number')
+      .eq('bot_id', bot.id)
+      .eq('session_id', session_id)
+      .order('turn_number', { ascending: true })
+    const silenceAlreadyFired = (existingTurns || []).some(function(t: any) { return t.source === 'silence_probe' })
+    if (silenceAlreadyFired) {
+      return NextResponse.json({ reply: null, skipped: 'already_fired' }, { headers: cors })
+    }
+    const firedSlugs: Record<string, boolean> = {}
+    for (const t of (existingTurns || [])) {
+      const flags = (t.content_flags || []) as string[]
+      if (!Array.isArray(flags)) continue
+      for (const f of flags) {
+        if (typeof f === 'string' && f.startsWith('focus:')) firedSlugs[f.slice(6)] = true
+      }
+    }
+    const unfired = enabledFocuses.find(function(f: any) { return !firedSlugs[f.slug] })
+    if (!unfired) {
+      return NextResponse.json({ reply: null, skipped: 'all_focuses_covered' }, { headers: cors })
+    }
+    const probeLang = userLanguage || (bot.config as any)?.language || 'en'
+    const probeLabel = (unfired as any).label || (unfired as any).slug
+    const probeText = "By the way — while you're here, I'd love to hear your thoughts on " + probeLabel + ". What comes to mind?"
+    const maxTurn = (existingTurns && existingTurns.length > 0) ? Math.max(...existingTurns.map((t: any) => t.turn_number || 0)) : -1
+    const probeRow = {
+      bot_id: bot.id,
+      session_id,
+      turn_number: maxTurn + 1,
+      role: 'assistant',
+      content: probeText,
+      language: probeLang,
+      source: 'silence_probe',
+      content_flags: ['silence_probe', 'focus:' + (unfired as any).slug],
+    }
+    const { error: insertErr } = await service.from('bot_conversation_turns').insert(probeRow)
+    if (insertErr) {
+      console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
+      return NextResponse.json({ reply: null, skipped: 'insert_failed' }, { headers: cors })
+    }
+    return NextResponse.json({ reply: probeText, _silence: true }, { headers: cors })
+  }
 
   // Debug trace — collects pipeline info when verbose mode is on
   const _debug: string[] = []

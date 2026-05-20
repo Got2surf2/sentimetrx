@@ -1,5 +1,16 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Silence-triggered probe (v8) shipped
+
+**Why**: probe-enforcement (the CRITICAL OVERRIDE in the chat route) waits for a substantive user turn that meets a threshold — but if the user just goes quiet partway through a session, no probe ever fires. We wanted a second mechanism that engages the idle case: 25 seconds with no input after a bot reply → one templated nudge toward an unfired focus topic. NOWOCATS-style bots with multiple focuses are the main beneficiary; Sir O'Gate today has 0 focuses configured, so the path is a no-op for it.
+
+**What changed**:
+- `app/api/bots/[id]/chat/route.ts`: new fast path on `trigger: 'silence'`. Skips all AI work and instead reads existing session turns from `bot_conversation_turns`, computes which focuses are unfired (no `focus:<slug>` content_flag yet), checks the once-per-session lock (`source='silence_probe'` already present?), picks the first unfired focus, inserts a templated assistant turn, and returns `{ reply, _silence: true }`. Skip cases return `{ reply: null, skipped: '<reason>' }`. Cost per fired probe: one SELECT + one INSERT, zero AI tokens.
+- `components/ui/ChatBot.tsx`: 25-second idle timer that re-arms each time the last message is an assistant reply (and the user has had at least one real exchange). Any keystroke in the textarea clears it. Once-per-session client-side (and server-enforced via the lock).
+- `docs/BOTS.md`: new "Silence-triggered probe" subsection alongside probe-enforcement, documenting trigger conditions, skip reasons, the templated probe shape, and the `source='silence_probe'` persistence model.
+
+**Design note**: the probe is templated rather than generated to keep it cost-free and predictable. The downside is that the question always reads the same — if multiple focuses end up unfired in a polished bot deployment, the user could in theory get the same wording across sessions. Acceptable for v1; if it grates we can swap in a small variation pool later.
+
 ## 2026-05-20 — Probe-enforcement info-only skip
 
 **Why**: the Sir O'Gate CRITICAL OVERRIDE that forces the counter-perspective probe once `userTurnCount >= fallbackTurn` was firing regardless of what the user just said. On a turn where the user typed "thanks!" or "ok cool" — no substance to anchor against — the bot would still pivot with a "by the way, what's a concern about Alex…" probe, which read as jarring. We needed the probe to wait for the next substantive turn instead of forcing itself onto social filler.
