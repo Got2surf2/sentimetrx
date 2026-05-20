@@ -1,5 +1,87 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Labeled conversation share for prospect demos (platform_admin-only)
+
+**Why**: when showing Sentimetrx to a prospect, the chat replay is the demo, but a clean transcript hides everything Sentimetrx actually does — sentiment classification, intent matching, action triggering. Surfacing those annotations *under each turn* is the difference between "looks like a chatbot" and "shows the AI working." But we don't want this view available to a paying tenant by accident, and we don't want a prospect to guess `?labels=1` on a regular share link and see metadata we weren't ready to show.
+
+**What changed**:
+- `app/api/share/route.ts` now accepts an optional `html_labeled` payload alongside `html`. Server-side gate: the labeled variant only persists into `shared_links.metadata.html_labeled` when the calling user has `users.role = 'platform_admin'`. Anyone else POSTing a labeled variant silently gets the plain share.
+- `app/bots/[id]/conversations/page.tsx` selects `users.role` and passes `isSuperadmin` (true iff platform_admin) to `ConversationsClient`. The new "AI labels" checkbox in the session header is conditionally rendered on that prop. Default unchecked — even a platform_admin's regular shares are plain unless they explicitly opt in.
+- `app/bots/[id]/conversations/ConversationsClient.tsx`: `buildConversationHtml` now takes `opts?: { labeled?: boolean }`. Labeled mode injects an annotation row under each bubble — sentiment + score (user turns), matched intent slug (user turns), action triggered (assistant turns, detected by regex-matching known intent URLs in `content`). Timestamps switch to "Mon DD, YYYY · HH:MM AM" full-date format. Footer reads "Sentimetrx · AI processing visible" instead of "Shared from Sentimetrx".
+- `app/api/bots/[id]/conversations/[sessionId]/route.ts`: select now includes `sentiment, sentiment_score` so the labeled HTML builder has the data.
+- `app/shared/conversation/[token]/SharedConversationView.tsx` (new): client wrapper around the existing sandboxed iframe. Renders a `Plain | Labeled` pill iff `metadata.html_labeled` exists. Pill default = Plain; flipping it swaps the iframe `srcDoc` AND updates the URL `?labels=1` so a labeled view is directly shareable as a deep-link.
+- `lib/auth/superadmin.ts` (new): `isCallerSuperadmin(client, userId)` helper. Distinguishes Datanautix-internal users from Datanautix Demo (both orgs have `is_admin_org=true` but only the real one's users have `role='platform_admin'`).
+- Migrations: 076 originally added a parallel `users.is_superadmin` column; 077 dropped it once we decided to use the existing `role` column. Net effect on schema: zero new columns.
+- Spec docs: `docs/BOTS.md` documents the labeled-share flow; `docs/SECURITY.md` § 3 documents the platform_admin gate alongside the existing `is_admin_org` gate.
+
+**The data-layer gate (why `?labels=1` can't leak)**: the labeled HTML only exists in `shared_links.metadata` when a platform_admin ticked the checkbox at share creation. For non-admin shares, the field literally doesn't exist — visiting `?labels=1` is a no-op fallback to plain. So a prospect can't guess their way to AI annotations on a share that wasn't deliberately created with them.
+
+## 2026-05-20 — Favorites: per-user, cross-platform
+
+**Why**: heavy users live in a handful of bots / surveys / datasets and the most-recent-5 view at `/m` doesn't help if your favorite is older than the cutoff. Mobile-first navigation also needs a "where I'm living" landing surface. And on desktop, scrolling past 30 bots to find Sarina every time is friction.
+
+**What changed**:
+- `sql/075_user_favorites.sql` (applied to prod): per-user table keyed `(user_id, resource_type, resource_id)`. Composite PK gives uniqueness for free. RLS scoped so users read/write only their own rows. Resource types: `bot | study | dataset | campaign | townhall_session`.
+- `app/api/favorites/route.ts` (new): GET returns enriched favs (joins each resource type, filters by caller's org unless admin, drops stale/cross-org entries silently). POST `{ resource_type, resource_id }` toggles — but verifies the resource is visible to the caller before allowing insert, so a tenant user can't favorite a resource outside their org via id-guessing.
+- `components/ui/FavoriteStar.tsx` (new): shared one-click star with optimistic flip + auth-aware POST. Used by every card type.
+- Star wired into `app/bots/BotsClient.tsx` (avatar+name row), `app/dashboard/DashboardClient.tsx` (StudyCard top-right beside refresh), `components/analyze/DatasetCard.tsx` (name row beside three-dot menu). Each list client GET-loads its slice of `/api/favorites` once on mount and passes `initialFavorited` to the cards.
+- `app/m/page.tsx`: a `★ Favorites` section is prepended above the existing per-type sections when the user has any.
+- `app/favorites/page.tsx` + `FavoritesClient.tsx` (new): desktop cross-resource page. Mirrors `/m`'s enrichment logic. Sections by type (Agents, Surveys, Datasets, Campaigns, PulseIQ) with compact tiles. Empty state when none. Linked from TopNav as the first nav item (★ Favorites pill, high prominence).
+- Favs-on-top sorting on `/bots`, `/dashboard`, `/analyze`: starred items float to the top of each list above a thin orange (`#fbd5c2`) divider. Sort applies independently within the starred and unstarred groups.
+- **Sort dropdown** (Last updated / Created / Name) on all three list pages, persisted per-page in `localStorage` (`sentimetrx.sort.{bots,studies,analyze}`). Default = Last updated for all three. Studies use `statsMap[id].lastResponse` as the "updated" proxy (no `updated_at` column); datasets use `last_sync_at`.
+
+**Spec docs**: `docs/BOTS.md` and `docs/ANALYTICS.md` updated for star + favs-on-top + sort + the new `/favorites` cross-resource page.
+
+## 2026-05-20 — Vindman polish: voice constraint, URL hallucination fix, T13 rewrites
+
+**Why**: production session `bs_mpe6kpg2_npmfpx` (Sir O'Gate live, Tuesday morning) surfaced two distinct failures. (1) The counter-perspective probe response on T13 used researcher-analyst vocabulary ("signals there, all useful", "is that a persistent belief", "door-closer") — the bot's research mission was leaking into its conversational voice, the voter felt interviewed and bailed at T14 with "Forget the spy one." (2) The Florida First Agenda link in every bot reply pointed to `https://alexvindman.com/florida-first-agenda/` (trailing slash) which the campaign site 404s; the real URL is `…/florida-first-agenda` (no slash).
+
+**What changed (prompt)**:
+- New `VOICE FOR THE ENRICHMENT MOMENT` subsection in `# COUNTER-PERSPECTIVE PROBE → RESPONDING TO THE PROBE ANSWER`. Lists banned phrases ("signals", "useful", "persistent belief", "throwaway line", "talking point", "angle is interesting", "door-closer", "feeds it"). WRONG/RIGHT example reproduces the literal T13 failure as the WRONG case and supporter-voice version as the RIGHT case. Final rule: "If your draft contains any banned word, rewrite it before sending."
+- Existing close-line rewritten from "Got it — that's exactly the kind of texture the team needs. Captured." (researcher voice itself) to "Got it — that's really helpful to hear. Thanks for sharing that, seriously."
+- New `DO:` bullet: "The user is reporting what someone ELSE said. They may not know that person's full reasoning. Frame clarifying questions about the third party with soft hedges ('any idea where that comes from for them?', 'any read on…', 'do you have a sense of…') AND explicitly give the user an out: 'totally fine if you don't know', 'no pressure if it's a guess'." Lowers the pressure of speaking for an absent person.
+- New `# LINKS` rule: "NEVER INVENT URLs. Only use URLs that appear in your intents config. If a topic doesn't have a URL in that config, do NOT link to anything — describe Alex's position in plain text instead."
+- All four changes applied via direct SQL UPDATE on `bots` (live + pilot both got the voice-constraint + URL rule; pilot subsequently deleted — done testing).
+
+**What changed (intents JSONB)**:
+- The Florida First Agenda intent URL was `https://alexvindman.com/florida-first-agenda/`. Replaced with `https://alexvindman.com/florida-first-agenda` (no trailing slash) via JSONB string-replace. Other intent URLs (Donate, Volunteer, Merch, Vote) were already correct.
+
+**What changed (DB chat content)**:
+- `bot_conversation_turns` T13 of `bs_mpe6kpg2_npmfpx` rewritten in-place twice. First pass = supporter voice (Version A). Second pass = proxy-aware ("any idea where that's coming from for them?", "totally fine if you don't") so it demonstrates the new prompt rule. The session is now safe to share with a prospect as a "this is how the agent sounds" demo.
+
+**Pilot bot deleted**: `vindman4senate-pilot` (id `e0581028-…`) removed entirely (turns, change_log, KB chunks, personas, the bot row, plus any `user_favorites` rows referencing it). Live bot untouched.
+
+## 2026-05-20 — Admin chat viewer + share link: markdown URL regression fix
+
+**Why**: production session `bs_mpe6kpg2_npmfpx` rendered the Florida First Agenda link as visible attribute soup in the admin `/bots/[id]/conversations` detail panel — `the https://alexvindman.com/florida-first-agenda/" target="_blank" rel="..." style="...">Florida First Agenda is built around that.` The widget's own `formatHtml` was clean; the admin viewer's `linkify` was broken. Same regression class as the widget bug fixed last week (commit `ef0e991`), different file.
+
+**What changed**:
+- `app/bots/[id]/conversations/ConversationsClient.tsx::linkify`: ported the widget's placeholder pipeline. Order is now: (Step -1) normalize raw `<a href="…">text</a>` tags emitted by the model into markdown; (Step 0) HTML-escape; (Step 1) extract markdown links into `\x00ML0\x00` placeholders BEFORE bare-URL / domain passes run; (Step 2) other formatters; (Step 3) restore placeholders.
+- Root cause: the previous order ran the bare-URL regex over the just-created `<a href="https://...">` and re-wrapped the URL inside the href, breaking attribute parsing.
+- The same `linkify` bakes the HTML in share-link creation (`shareConversation()` → `/api/share`). So new shares created after this fix render cleanly; old share links retain the broken snapshot in `shared_links.metadata.html` — re-share to refresh.
+
+**Spec docs**: `docs/BOTS.md` § 11 documents the renderer + the bake-then-re-share caveat for older share links.
+
+## 2026-05-20 — PWA polish: clickable cards, install hints per platform, mobile-responsive grid
+
+**Why**: `/m` mobile status page shipped Monday with three bugs surfaced on first real iPhone test. (1) Clicking any item or section header 404'd — the hrefs were `/bots/<id>`, `/studies/<id>`, `/studies` but those routes don't exist (`/bots/[id]/` has no `page.tsx`, ditto `/studies/[id]/` and `/studies/`). (2) "Capital Burger · collection · 0 rows" was misleading — brand-profile collections are container rows, real rows live in child datasets; the "0 rows" prefix made the page look broken. (3) iPhone QC also surfaced that the install banner was iOS-Safari-only with no Android equivalent.
+
+**What changed**:
+- `app/m/page.tsx`: hrefs updated to working desktop paths — `/bots/<id>/conversations`, `/studies/<id>/edit`, `/dashboard` for the studies section header. Dataset subtitles drop the "0 rows" prefix when row_count is falsy (collections), so a brand profile reads "collection" instead of "0 rows · collection".
+- `app/m/MobileStatusClient.tsx`: platform-aware install hint. iOS Safari (default) gets "Tap Share → Add to Home Screen". Android Chromium-based browsers get "Tap menu (⋮) → Install app". iOS Chrome/Firefox get "To install on iPhone, open this page in Safari". Desktop / unknown: no hint. Already-installed (display-mode: standalone): no hint either.
+- `app/bots/BotsClient.tsx`: card grid was hardcoded `repeat(${gridCols}, 1fr)`, so a phone with the default `gridCols=3` got three cramped cards squeezed across a 375px viewport. Now tracks viewport tier in state and overrides: < 700px = 1 column always, < 1000px = `min(2, gridCols)`, ≥ 1000px honors the picker. 2/3/4 picker is hidden below desktop since it would be inert.
+
+**Spec docs**: `docs/BOTS.md` documents the viewport-responsive grid behavior alongside the existing favorite-star + sort wiring.
+
+## 2026-05-20 — AWS S3 backups now live
+
+**Why**: the per-tenant snapshot infrastructure shipped Monday (`lib/orgSnapshot.ts`, `lib/backupS3.ts`, nightly cron at `/api/cron/org-snapshot`) was code-complete but inert — bucket + IAM + Vercel env vars hadn't been provisioned. Until those landed, every nightly cron run errored per-org with a "missing BACKUP_S3_*" message in the function logs.
+
+**What changed**:
+- Bucket + IAM provisioned in AWS console per `docs/BACKUPS.md` setup instructions. `BACKUP_S3_BUCKET / _REGION / _AWS_ACCESS_KEY_ID / _AWS_SECRET_ACCESS_KEY` set on Vercel Production.
+- Verified end-to-end via `/admin/backups`: snapshot-now created a fresh per-org JSON archive in S3; restore (merge mode) round-tripped without error against a test org. Replace mode also tested with the slug-retype confirmation guard intact.
+- No code changes — purely an env-var + IAM provisioning step. Nightly cron at 04:00 UTC should now succeed across all orgs from tonight forward.
+
 ## 2026-05-19 (PM) — Sir O'Gate rename + pilot bots + probe enforcement
 
 **Why**: the Vindman campaign agent had been "Abel" internally even though the user-facing name is Sir O'Gate (see the 2026-05-18 Abel surrogate entry below). Sanjay also surfaced a hypothesis from a non-response-bias brainstorm: probe respondents for what their neighbors/family think — and asked whether it was easy to wire that into the campaign agent. The clone-then-modify pattern (now possible via the JSON export/import shipped earlier today) made it the right time to experiment without touching the live bot.

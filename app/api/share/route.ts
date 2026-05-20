@@ -79,6 +79,15 @@ export async function POST(req: NextRequest) {
   const rl = await checkRateLimit('share:create:' + user.id, 30, 60 * 60 * 1000)
   if (rl.limited) return NextResponse.json({ error: 'Too many share links — try again later' }, { status: 429 })
 
+  // Derive the base URL from the request so local dev shares point at
+  // localhost, preview deployments point at the preview URL, and prod
+  // points at prod — without needing per-environment env vars. Falls
+  // back to NEXT_PUBLIC_BASE_URL / www.sentimetrx.ai only if the request
+  // has no usable host header.
+  const reqUrl = new URL(req.url)
+  const baseFromReq = reqUrl.origin // includes protocol + host + port
+  const baseUrl = baseFromReq || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -112,7 +121,7 @@ export async function POST(req: NextRequest) {
       .select('token, expires_at')
       .single()
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })
-    const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    const baseUrl2 = baseUrl
     {
       const { ip, userAgent } = eventContextFromRequest(req)
       await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'conversation', target_id }, ip, userAgent })
@@ -131,7 +140,7 @@ export async function POST(req: NextRequest) {
       .select('token, expires_at')
       .single()
     if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
-    const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    const baseUrl2 = baseUrl
     {
       const { ip, userAgent } = eventContextFromRequest(req)
       await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'analytics', target_id }, ip, userAgent })
@@ -158,7 +167,6 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   const shareUrl = `${baseUrl}/shared/${data.token}`
 
   {
@@ -188,7 +196,8 @@ export async function GET(req: NextRequest) {
     const gate = await gateShareTarget(service, user.id, listType as ShareType, listTargetId)
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    // Derive base URL from the request so local dev returns localhost links.
+    const baseUrl = new URL(req.url).origin || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
 
     const { data: links } = await service
       .from('shared_links')
