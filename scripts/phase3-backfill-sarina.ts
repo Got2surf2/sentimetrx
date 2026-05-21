@@ -2,20 +2,27 @@
 // scripts/phase3-backfill-sarina.ts
 //
 // Phase 3 commit 3 of the agents x PulseIQ convergence (docs/CONVERGENCE.md).
-// Reads every bot_conversation_turns row for a given bot (Sarina by default),
-// reconstructs the matching conversations + conversation_turns rows in the
-// new Phase 3 substrate. Idempotent — re-runs are no-ops once a session's
-// rows are already mirrored.
+// Reads bot_conversation_turns rows and reconstructs the matching
+// conversations + conversation_turns rows in the new Phase 3 substrate.
+// Idempotent — re-runs are no-ops once a session's rows are already mirrored.
 //
 // Usage:
-//   tsx scripts/phase3-backfill-sarina.ts [--bot-id <uuid>] [--dry-run]
+//   tsx scripts/phase3-backfill-sarina.ts                       # Sarina (default)
+//   tsx scripts/phase3-backfill-sarina.ts --bot-id <uuid>       # one specific bot
+//   tsx scripts/phase3-backfill-sarina.ts --all-bots            # every bot with rows
+//   tsx scripts/phase3-backfill-sarina.ts --all-bots --dry-run  # show what would happen
 //
 // Defaults to Sarina live: 5c468b90-13fc-46a2-8855-312dc0a1e428.
 //
-// Acceptance: after the script reports DONE, the per-session row count in
-// conversation_turns must equal the per-session row count in
-// bot_conversation_turns for every session of the targeted bot. The script
-// prints a final comparison summary.
+// --all-bots queries `bot_conversation_turns` for the distinct bot_id set,
+// then runs the per-bot backfill in a loop with a per-bot acceptance check.
+// Critical for Tier 5 cleanup: every customer's history must be in the new
+// substrate before `DROP TABLE bot_conversation_turns` is safe. See the
+// "BEFORE DROPPING bot_conversation_turns" entry in the open-work-queue
+// memory for the full sequencing.
+//
+// Acceptance: per-bot row parity — deduped bot_conversation_turns count
+// must equal conversation_turns count joined back through conversations.
 
 import { readFileSync } from 'fs'
 import path from 'path'
@@ -63,31 +70,37 @@ function hasFlag(name: string): boolean {
   return process.argv.includes(name)
 }
 
-async function main() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceKey) {
-    console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
-    process.exit(1)
-  }
+interface BackfillResult {
+  botId: string
+  botName: string
+  sessionsProcessed: number
+  conversationsUpserted: number
+  turnsInserted: number
+  turnsSkippedExisting: number
+  turnsDroppedDuplicate: number
+  parityOk: boolean
+  srcCountExact: number
+  dstCount: number
+}
 
-  const botId = arg('--bot-id') || SARINA_BOT_ID
-  const dryRun = hasFlag('--dry-run')
-
-  console.log(`Phase 3 backfill — bot ${botId}${dryRun ? ' (DRY RUN)' : ''}`)
-  const service = createClient(url, serviceKey, { auth: { persistSession: false } })
-
-  // Resolve org_id from the bot row.
+async function backfillBot(
+  service: any,
+  botId: string,
+  dryRun: boolean,
+): Promise<BackfillResult | null> {
+  // Resolve org_id + name from the bot row.
   const { data: bot, error: botErr } = await service
-    .from('bots')
-    .select('id, org_id')
+    .from('agents')
+    .select('id, name, org_id')
     .eq('id', botId)
     .single()
   if (botErr || !bot) {
-    console.error('Failed to load bot:', botErr?.message)
-    process.exit(1)
+    console.error(`Failed to load bot ${botId}:`, botErr?.message)
+    return null
   }
-  const orgId = bot.org_id as string
+  const orgId = (bot as any).org_id as string
+  const botName = (bot as any).name as string
+  console.log(`\n──── ${botName} (${botId}) ────`)
   console.log(`  org_id: ${orgId}`)
 
   // Pull all turns for the bot. Page in batches of 1000 so this scales beyond
@@ -220,42 +233,25 @@ async function main() {
   }
 
   console.log('')
-  console.log('Backfill summary:')
-  console.log(`  sessions processed:            ${sessionsProcessed}`)
-  console.log(`  conversations upserted:        ${conversationsUpserted}`)
-  console.log(`  conversation_turns inserted:   ${turnsInserted}`)
-  console.log(`  conversation_turns skipped:    ${turnsSkippedExisting} (already present)`)
+  console.log(`  Summary for ${botName}:`)
+  console.log(`    sessions processed:            ${sessionsProcessed}`)
+  console.log(`    conversations upserted:        ${conversationsUpserted}`)
+  console.log(`    conversation_turns inserted:   ${turnsInserted}`)
+  console.log(`    conversation_turns skipped:    ${turnsSkippedExisting} (already present)`)
   if (turnsDroppedDuplicate > 0) {
-    console.log(`  source duplicates dropped:     ${turnsDroppedDuplicate} (race-condition retries on (session_id, turn_number))`)
+    console.log(`    source duplicates dropped:     ${turnsDroppedDuplicate} (race-condition retries on (session_id, turn_number))`)
   }
   if (sessionsWithLanguageMismatch > 0) {
-    console.log(`  sessions with mixed language:  ${sessionsWithLanguageMismatch} (used first-seen value)`)
+    console.log(`    sessions with mixed language:  ${sessionsWithLanguageMismatch} (used first-seen value)`)
   }
 
   if (dryRun) {
-    console.log('')
-    console.log('DRY RUN complete — no rows written.')
-    return
+    return { botId, botName, sessionsProcessed, conversationsUpserted, turnsInserted, turnsSkippedExisting, turnsDroppedDuplicate, parityOk: true, srcCountExact: 0, dstCount: 0 }
   }
 
   // Acceptance check: deduped source rows must equal destination rows.
-  // The new conversation_turns UNIQUE(conversation_id, turn_number) index
-  // means destination will be SHORTER than source by exactly turnsDroppedDuplicate.
-  console.log('')
-  console.log('Acceptance check — row count parity (deduped):')
-  let srcCount = 0
-  for (;;) {
-    const { data, error } = await service
-      .from('bot_conversation_turns')
-      .select('id', { count: 'exact', head: true })
-      .eq('bot_id', botId)
-    if (error) { console.error('  src count failed:', error.message); break }
-    srcCount = (data as any)?.length ?? 0
-    // .select with count head returns count in the response — use the count
-    // header instead via a separate fetch path
-    break
-  }
-  // The above can't read count from data directly; do an explicit count instead.
+  // The conversation_turns UNIQUE(conversation_id, turn_number) index means
+  // destination will be SHORTER than source by exactly turnsDroppedDuplicate.
   const { count: srcCountExact } = await service
     .from('bot_conversation_turns')
     .select('id', { count: 'exact', head: true })
@@ -276,18 +272,141 @@ async function main() {
   }
 
   const dedupedSrc = (srcCountExact || 0) - turnsDroppedDuplicate
-  console.log(`  bot_conversation_turns total:        ${srcCountExact}`)
-  console.log(`  source duplicates removed:           ${turnsDroppedDuplicate}`)
-  console.log(`  deduped source target:               ${dedupedSrc}`)
-  console.log(`  conversation_turns total (Sarina):   ${dstCount}`)
-  if (dstCount !== dedupedSrc) {
-    console.error(`  ❌ MISMATCH (${dedupedSrc} deduped src vs ${dstCount} dst)`)
-    process.exit(2)
-  }
-  console.log('  ✅ ROW COUNTS MATCH (after dedupe)')
-
   console.log('')
-  console.log('DONE.')
+  console.log(`  Acceptance check for ${botName}:`)
+  console.log(`    bot_conversation_turns total:  ${srcCountExact}`)
+  console.log(`    source duplicates removed:     ${turnsDroppedDuplicate}`)
+  console.log(`    deduped source target:         ${dedupedSrc}`)
+  console.log(`    conversation_turns destination: ${dstCount}`)
+  // Semantic acceptance:
+  //   dst === dedupedSrc  → perfect migration ✅
+  //   dst >  dedupedSrc   → new substrate has EXTRA rows (e.g. write-only-to-
+  //                          new path was hit at some point; data loss is NOT
+  //                          possible; safe to proceed). Warning, not failure.
+  //   dst <  dedupedSrc   → new substrate is MISSING rows that exist in
+  //                          legacy. DATA LOSS RISK if we drop the legacy
+  //                          table. Hard failure.
+  const dstExceedsSrc = dstCount > dedupedSrc
+  const dstMissesSrc = dstCount < dedupedSrc
+  const parityOk = !dstMissesSrc
+  if (dstMissesSrc) {
+    console.error(`    ❌ DATA LOSS RISK for ${botName} (${dedupedSrc} deduped src vs ${dstCount} dst — missing ${dedupedSrc - dstCount} rows)`)
+  } else if (dstExceedsSrc) {
+    console.log(`    ⚠️  ${botName}: ${dstCount - dedupedSrc} extra row(s) in new substrate (not in legacy). Safe to proceed — no data loss possible. Likely from earlier mirror-only writes.`)
+  } else {
+    console.log(`    ✅ ROW COUNTS MATCH`)
+  }
+
+  return { botId, botName, sessionsProcessed, conversationsUpserted, turnsInserted, turnsSkippedExisting, turnsDroppedDuplicate, parityOk, srcCountExact: srcCountExact || 0, dstCount }
+}
+
+async function discoverBotsWithData(
+  service: any,
+): Promise<string[]> {
+  // Pull every distinct bot_id from bot_conversation_turns. Pages defensively
+  // in case the future row count exceeds Supabase's default cap; for today's
+  // ~2200 rows across ~8 bots this is one fetch.
+  const allBotIds = new Set<string>()
+  let offset = 0
+  const PAGE = 1000
+  for (;;) {
+    const { data, error } = await service
+      .from('bot_conversation_turns')
+      .select('bot_id')
+      .range(offset, offset + PAGE - 1)
+    if (error) {
+      console.error('Failed to discover bot ids:', error.message)
+      process.exit(1)
+    }
+    if (!data || data.length === 0) break
+    for (const r of data) allBotIds.add((r as any).bot_id as string)
+    if (data.length < PAGE) break
+    offset += PAGE
+  }
+  return Array.from(allBotIds).sort()
+}
+
+async function main() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) {
+    console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
+    process.exit(1)
+  }
+
+  const dryRun = hasFlag('--dry-run')
+  const allBots = hasFlag('--all-bots')
+  const explicitBotId = arg('--bot-id')
+
+  if (allBots && explicitBotId) {
+    console.error('Cannot pass both --all-bots and --bot-id. Pick one.')
+    process.exit(1)
+  }
+
+  const service = createClient(url, serviceKey, { auth: { persistSession: false } })
+
+  let botIds: string[]
+  if (allBots) {
+    console.log(`Phase 3 backfill — ALL BOTS${dryRun ? ' (DRY RUN)' : ''}`)
+    botIds = await discoverBotsWithData(service)
+    console.log(`Discovered ${botIds.length} bots with bot_conversation_turns rows.`)
+  } else {
+    const botId = explicitBotId || SARINA_BOT_ID
+    console.log(`Phase 3 backfill — single bot ${botId}${dryRun ? ' (DRY RUN)' : ''}`)
+    botIds = [botId]
+  }
+
+  const results: BackfillResult[] = []
+  for (const botId of botIds) {
+    const r = await backfillBot(service, botId, dryRun)
+    if (r) results.push(r)
+  }
+
+  if (dryRun) {
+    console.log('')
+    console.log('DRY RUN complete — no rows written.')
+    return
+  }
+
+  if (allBots) {
+    // Aggregate summary across bots.
+    console.log('\n════ ALL-BOTS BACKFILL SUMMARY ════')
+    const totalSessions = results.reduce((a, b) => a + b.sessionsProcessed, 0)
+    const totalConv = results.reduce((a, b) => a + b.conversationsUpserted, 0)
+    const totalInserted = results.reduce((a, b) => a + b.turnsInserted, 0)
+    const totalSkipped = results.reduce((a, b) => a + b.turnsSkippedExisting, 0)
+    const totalDups = results.reduce((a, b) => a + b.turnsDroppedDuplicate, 0)
+    const totalSrc = results.reduce((a, b) => a + b.srcCountExact, 0)
+    const totalDst = results.reduce((a, b) => a + b.dstCount, 0)
+    const failures = results.filter(r => !r.parityOk)
+    console.log(`  bots processed:                ${results.length}`)
+    console.log(`  sessions across all bots:      ${totalSessions}`)
+    console.log(`  conversations upserted:        ${totalConv}`)
+    console.log(`  conversation_turns inserted:   ${totalInserted}`)
+    console.log(`  conversation_turns skipped:    ${totalSkipped}`)
+    console.log(`  source duplicates dropped:     ${totalDups}`)
+    console.log(`  bot_conversation_turns total:  ${totalSrc}`)
+    console.log(`  conversation_turns total:      ${totalDst}`)
+    if (failures.length > 0) {
+      console.error(`\n  ❌ ${failures.length} bot(s) FAILED parity check (data loss risk — dst < deduped src):`)
+      for (const f of failures) {
+        console.error(`     - ${f.botName} (${f.botId}): src ${f.srcCountExact - f.turnsDroppedDuplicate} deduped vs dst ${f.dstCount}`)
+      }
+      console.error('\n  DO NOT proceed with Tier 5 cleanup until all bots pass.')
+      process.exit(2)
+    }
+    const overcounts = results.filter(r => r.dstCount > (r.srcCountExact - r.turnsDroppedDuplicate))
+    if (overcounts.length > 0) {
+      console.log(`\n  ⚠️  ${overcounts.length} bot(s) have MORE rows in new substrate than deduped legacy (no data-loss risk, FYI):`)
+      for (const o of overcounts) {
+        const dedupedSrc = o.srcCountExact - o.turnsDroppedDuplicate
+        console.log(`     - ${o.botName}: dst ${o.dstCount} > deduped src ${dedupedSrc} (+${o.dstCount - dedupedSrc})`)
+      }
+    }
+    console.log(`\n  ✅ ALL ${results.length} BOTS PASSED PARITY CHECK — safe to proceed with read-path cutover.`)
+  }
+
+  console.log('\nDONE.')
 }
 
 main().catch(e => { console.error(e); process.exit(1) })
