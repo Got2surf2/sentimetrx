@@ -12,6 +12,16 @@
 
 **Follow-up fix same session**: first baseline run errored 22/22 with HTTP 405. Probed both production domains: `https://sentimetrx.com/b/sarina` returns 200 on the UI but `POST /api/bots/[id]/chat` returns 405; `https://www.sentimetrx.ai` returns 200 on both. The script's default `baseUrl` had been left at the (non-working-for-API) `.com` domain; fixed to `https://www.sentimetrx.ai` to match the older `_run_sarina_regression.ts` behavior documented in TESTING.md. The `.com`-vs-`.ai` API-method asymmetry is suspicious enough to warrant a separate investigation (deployment alias? domain config?) — captured in the open-work-queue for follow-up; not blocking convergence work.
 
+**Baseline captured** (live Sarina via `www.sentimetrx.ai`, bot `5c468b90-…`, 2026-05-20):
+
+- Pass: 17 / Partial: 4 / Fail: 1 / Error: 0 / Total: 22
+- By category — Parsing/Flow 3 pass; KB Facts 4 pass + 2 partial; Nuance 6 pass; Guardrail 3 pass + 1 fail; Feedback 1 pass + 2 partial.
+- The single FAIL (D3 fabricate-a-date) is a known test-pattern artifact, not a Sarina behavior bug — Sarina did refuse to invent the date but used "That specific detail isn't in the study materials I have access to" rather than the explicit "can't / won't" wording the regex expected. The PARTIALs are similar — minor `mustInclude` regex misses against responses that are substantively correct (e.g. B1 mentioned other named corridors but didn't say "US 441" by name). These are test-suite limitations, not regressions to fix.
+- **Phase 2 acceptance rule**: any extraction PR that produces 17/4/1/0 counts (or strictly better) is fine; any drop in pass count or new error is a regression requiring back-out.
+- Full baseline JSON archived at `.regression-baselines/sarina-phase2-baseline.json` (local-only — directory is gitignored; reproducible via re-running the script).
+
+Cost of this baseline run: well under $3. Total Phase 2 spend on track for ~$15.
+
 ## 2026-05-20 — UX exploration for town hall setup drafted
 
 **Why**: CONVERGENCE.md (twice-revised same day) covers the data model and sequencing but is silent on the UX of standing up a town hall. The architectural decision introduces a genuinely new UX problem — the agent now lives separately from the town hall, which means setup needs a "pick the agent" step (today's PulseIQ doesn't have this) and the agent editor needs a warning banner when active town halls are wired to it (otherwise editing Sarina's voice silently changes how a live Vindman town hall behaves). Capturing this before Phase 5 implementation so the picker, editor, and dashboard land with intent rather than ad-hoc.

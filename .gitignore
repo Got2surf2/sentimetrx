@@ -24,3 +24,9 @@ supabase/.temp/
 *.key
 *.p12
 *.pfx
+
+# Local regression run output (full Sarina transcripts, etc.). Baselines are
+# reproducible by re-running scripts/sarina-regression-run.ts — no need to
+# track the JSON in git. The directory is kept locally so before/after diffs
+# work across sessions; baseline counts are captured in the weekly devlog.
+.regression-baselines/
