@@ -82,6 +82,8 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ## Chat Engine (`app/api/townhall/chat/route.ts`)
 
+> **Phase 4 commit 2 (2026-05-21):** the route also carries an opt-in delegation branch gated by `TOWNHALL_VIA_AGENT_HANDLER` (env, default OFF). When the flag is ON AND `session_id` resolves to a `town_halls` row (uuid or slug), the route bypasses the legacy 20-step pipeline below and delegates to `lib/chatCore.handleChatTurn` — the shared chat-core that also powers `/api/bots/[id]/chat`. PulseIQ-specific features (theme assignment, response counter, language switch, auto-end, standby) are NOT carried into this path; they get rebuilt on the unified substrate in Phase 5. With zero `town_halls` rows in production today, the new path is dark on the way in — it activates only after Phase 6 creates the first row pointing at an existing agent. See `docs/CONVERGENCE.md` § 4.
+
 ### Processing Pipeline (per message)
 
 1. **Rate limit (dual)** —

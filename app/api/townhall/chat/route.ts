@@ -13,6 +13,8 @@ import {
   detectLanguageSwitch,
   LANGUAGE_SWITCH_CLASSIFIER_PROMPT,
 } from '@/lib/languageSwitch'
+import { handleChatTurn } from '@/lib/chatCore'
+import { isTownHallViaAgentHandlerEnabled } from '@/lib/phase4Flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +56,70 @@ export async function POST(req: NextRequest) {
   if (rlIp.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
 
   const supabase = createServiceRoleClient()
+
+  // ── Phase 4 commit 2: PulseIQ-via-agent-handler path ────────────────
+  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a town_halls row resolves
+  // for this session_id (uuid or slug), bypass the legacy 995-line
+  // PulseIQ orchestrator below and delegate to lib/chatCore.handleChatTurn.
+  // PulseIQ-specific features (theme assignment, response counter,
+  // language switch, auto-end, standby) are NOT carried into this path
+  // — they get rebuilt on the unified substrate in Phase 5. With zero
+  // town_halls rows in the system today, this branch is dark on the
+  // way in; it activates only after Phase 6 creates the first row.
+  if (isTownHallViaAgentHandlerEnabled()) {
+    const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
+    let townHall: any = null
+    if (isUUID4) {
+      const { data } = await supabase.from('town_halls').select('id, slug, org_id, bot_id, name, status').eq('id', session_id).single()
+      townHall = data
+    }
+    if (!townHall) {
+      const { data } = await supabase.from('town_halls').select('id, slug, org_id, bot_id, name, status').eq('slug', session_id.toLowerCase()).single()
+      townHall = data
+    }
+    if (townHall) {
+      const { data: agent } = await supabase.from('agents').select('*').eq('id', townHall.bot_id).single()
+      if (agent && agent.status === 'active') {
+        // Synthesize messages[] from prior turns for this (session, participant).
+        // Read from townhall_turns (the legacy storage) since this path runs in
+        // the transitional window before Phase 5 rewires storage onto
+        // conversation_turns. Each townhall_turns row carries both bot_message
+        // and user_message for one turn pair.
+        const { data: priorTurns } = await supabase
+          .from('townhall_turns')
+          .select('bot_message, user_message, turn_number')
+          .eq('session_id', townHall.id)
+          .eq('participant_id', participant_id)
+          .order('turn_number', { ascending: true })
+        const messages: { role: 'user' | 'assistant'; content: string }[] = []
+        for (const t of (priorTurns || [])) {
+          if (t.bot_message) messages.push({ role: 'assistant', content: t.bot_message })
+          if (t.user_message) messages.push({ role: 'user', content: t.user_message })
+        }
+        if (message) messages.push({ role: 'user', content: message })
+        if (messages.length === 0) {
+          return NextResponse.json({ error: 'No message and no prior turns' }, { status: 400 })
+        }
+
+        const result = await handleChatTurn(
+          { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug } },
+          { messages, session_id: townHall.id + ':' + participant_id, language, debug: body.debug },
+        )
+
+        return NextResponse.json({
+          bot_message: result.reply,
+          theme_id: null,
+          source: 'agent_handler',
+          is_final: false,
+          turn_number: turn_number + 1,
+          ...(result._debug ? { _debug: result._debug } : {}),
+        })
+      }
+    }
+    // Flag is on but no town_halls row matched (or agent inactive) — fall
+    // through to legacy. This is the expected state until Phase 6 creates
+    // the first town_halls row pointing at Sarina.
+  }
 
   // Fetch session (by UUID or slug)
   let session: any = null

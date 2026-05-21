@@ -1061,3 +1061,53 @@ export async function handleChatTurn(ctx, body): Promise<ChatCoreResult>
 **Next**: Phase 4 commit 2 — `/api/townhall/[guid]/chat` resolves `town_halls.slug → agents` and delegates to `handleChatTurn(ctx, body)` with `townHallContext` populated. Behind `TOWNHALL_VIA_AGENT_HANDLER` env flag.
 
 **Commit lands as 27 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 4 commit 1 verification: Sarina regression
+
+**Result: 17 PASS / 4 PARTIAL / 1 FAIL / 0 ERROR** against `http://localhost:3000`, Sarina live bot `5c468b90-...`. Exact match with `.regression-baselines/sarina-phase2-baseline.json`. Phase 4 commit 1 floor was ≥17 PASS / 0 ERROR — met. The 1 FAIL is D1 (political pressure → Commissioner Moore vote) which the baseline also fails; not a regression. The 4 PARTIALs match the baseline scenario-for-scenario. Chat-core extraction is locked in as behavior-preserving for the bot path.
+
+## 2026-05-21 — Convergence Phase 4 commit 2: PulseIQ route opt-in delegation to handleChatTurn
+
+**Why**: Per the Phase 4 entry-point map, the second commit gives PulseIQ an opt-in path that delegates to the shared `handleChatTurn`. The PulseIQ route is structurally very different from bot chat (multi-row turn shape via `townhall_turns`, theme assignment + response counter, language-switch confirm flow, auto-end, standby), so folding all of that into `handleChatTurn` is wildly out of scope for one commit. The honest scope is: add the delegation branch, gate it behind an env flag, and accept that the new path is dark on the way in (zero `town_halls` rows exist today). PulseIQ-specific features get rebuilt on the unified substrate in Phase 5 ("Cohort layer as a real feature") per `docs/CONVERGENCE.md` § 4.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `lib/phase4Flags.ts` | NEW — `isTownHallViaAgentHandlerEnabled()` matches the `phase3Read.ts` env-gating idiom |
+| `app/api/townhall/chat/route.ts` | NEW branch inserted after rate-limit + `createServiceRoleClient()`. When flag ON AND `session_id` resolves to a `town_halls` row (uuid or slug), load the linked `agent`, synthesize `messages[]` from prior `townhall_turns` rows for `(session, participant)`, call `handleChatTurn` with `townHallContext = { townHallId, slug }`, return a PulseIQ-shaped response (`{ bot_message, theme_id: null, source: 'agent_handler', is_final: false, turn_number: turn_number + 1 }`). If flag OFF OR no town_halls match: fall through to the unchanged 995-line legacy path |
+| `.env.local` | NEW `TOWNHALL_VIA_AGENT_HANDLER=false` with the same gating comment style as `DUAL_WRITE_PHASE3` |
+| `docs/TOWNHALL.md` | NEW callout at top of "Chat Engine" section explaining the delegation branch + flag |
+| `docs/CONVERGENCE.md` | Changelog entry for commit 1 verification + commit 2 |
+
+**Body-shape translation in the new branch**:
+
+| PulseIQ body field | handleChatTurn body field |
+|---|---|
+| `session_id` | `session_id` = `townHall.id + ':' + participant_id` (combined to give handleChatTurn a unique session key per participant) |
+| `message` (single string) | `messages` = synthesized from `townhall_turns` rows, then append `{ role: 'user', content: message }` |
+| `participant_id` | NOT passed; absorbed into the synthesized `session_id` |
+| `turn_number` | NOT passed; handleChatTurn computes its own from its substrate |
+| `theme_id` | NOT passed in commit 2; Phase 5 wires it through `townHallContext.themes` |
+| `language` | `language` |
+| `debug` | `debug` |
+
+The synthesized `session_id` (`townHall.id + ':' + participant_id`) is intentionally distinct from the PulseIQ `session_id` (the `town_halls.id`) — it gives handleChatTurn a per-participant key while still scoping to the town hall. If commit 3 needs to map handleChatTurn-side turns back to PulseIQ-side participants, this is the join key.
+
+**What is intentionally NOT carried into the new path** (deferred to Phase 5):
+
+- Theme assignment per turn (returned `theme_id: null`).
+- Response counter increment + auto theme-detection cron trigger.
+- Language-switch confirm flow (bilingual confirm + translated previous bot message).
+- Auto-end check (timed / inactivity).
+- Standby mode (chill checkout when participants run curt).
+- Topic-matching, smart-probe, clarifier, wrap-up.
+- `townhall_turns` storage. The new path writes only through `handleChatTurn`'s own substrate (`bot_conversation_turns` + dual-write to `conversation_turns` when `DUAL_WRITE_PHASE3=true`). PulseIQ admin dashboard reads `townhall_turns`, so any session that runs through the new path will NOT appear in the legacy admin — that's acceptable today because (a) zero town_halls rows exist, and (b) the legacy admin gets rebuilt against the new schema in Phase 5.
+
+**Risk gate**: low. The flag defaults OFF. Even if it were flipped ON, zero `town_halls` rows match anything, so the new branch falls through to legacy. Clean typecheck passes (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`). No Sarina regression needed — the bot path is untouched.
+
+**Decision recap (deferred from commit 1 close-out)**: `town_halls.slug` is authoritative for the new path. Legacy `townhall_sessions.slug` keeps powering the legacy branch. With no live PulseIQ data, there's no conflict to resolve.
+
+**Next**: Phase 4 commit 3 — drop legacy PulseIQ-specific write paths (or stabilize them behind `LEGACY_TOWNHALL_WRITES`) once a `town_halls` row exists and the new path is exercised end-to-end. Or jump straight to Phase 5 (cohort layer rebuild on the unified substrate). Sequencing decision deferred until Phase 6 timeline firms up.
+
+**Commit lands as 31 ahead of origin/main; push freeze still active.**
