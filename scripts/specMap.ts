@@ -21,6 +21,7 @@ export type SpecKey =
   | 'docs/SURVEYS.md'
   | 'docs/BOTS.md'
   | 'docs/TOWNHALL.md'
+  | 'docs/MCO_AGENT.md'
 
 export const TOP_LEVEL_SPECS = ['SPEC.md', 'FEATURES.md'] as const
 
@@ -261,5 +262,19 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sql/029_*',
     'sql/032_*',
     'sql/078_*',
+  ],
+
+  // MCO_AGENT.md covers the boardroom-demo prototype layered on the existing
+  // /b/mco agent: a landscape canvas shell, ui_hints emission from the chat
+  // route, and three data integrations (parking JSON, Google Places, terminal
+  // SVGs). Globs are forward-looking — the prototype code doesn't exist yet;
+  // these paths become drift triggers once implementation lands.
+  'docs/MCO_AGENT.md': [
+    'app/demo/mco/**',
+    'components/canvas/**',
+    'lib/uiHints.ts',
+    'lib/places.ts',
+    'lib/parking.ts',
+    'public/mco/**',
   ],
 }

@@ -1,5 +1,21 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-21 — docs/MCO_AGENT.md + MCO agent rebranded as AskAna
+
+**Why**: Two MCO opportunity items in one commit. (1) The conversation about an MCO airport-info demo evolved from "build an agent" to "build a landscape-canvas demo experience that beats what Changi, Schiphol, DFW, and LaGuardia have shipped publicly." That deserved a real design spec — the prototype touches the chat route (`ui_hints` emission), two new libs (`places.ts`, `parking.ts`), three new data integrations (Google Places API, flymco parking JSON, static terminal SVGs), and a new four-card canvas component family. Documenting this before any code lands keeps the design honest and surfaces the convergence interlock (`/api/bots/[id]/chat/route.ts` is the same file Phase 4 will refactor). (2) Adopted the "AskMax" naming pattern from Changi for our MCO agent — reusing the existing Ana brand asset — so we rebranded the live `/b/mco` agent from "MCO Airport Concierge" to "AskAna." Personality field now carries the self-reference rule so Ana introduces herself by name in every session.
+
+**What changed**:
+- `docs/MCO_AGENT.md` (new, ~14 sections): vision, brand, layout, `ui_hints` contract with the four hint types (`terminal_map`, `parking`, `restaurants`, `link_card`), data integrations including Google Places SKU + caching constraints, backend changes to the chat route, frontend component tree, verbatim hint-extractor prompt, ~9-day effort estimate to boardroom demo, 5 open questions, convergence-vs-MCO sequencing analysis, reusability notes for UCF Incubator variant.
+- `scripts/specMap.ts`: added `'docs/MCO_AGENT.md'` to `SpecKey` and registered forward-looking globs (`app/demo/mco/**`, `components/canvas/**`, `lib/uiHints.ts`, `lib/places.ts`, `lib/parking.ts`, `public/mco/**`) so the spec-drift checker tracks it once code lands.
+- Live agent rebrand (SQL only, not in this commit): bot `920c571b-…` slug `mco` — `name: MCO Airport Concierge → AskAna`, `config.subtitle: Orlando International Airport`, `config.initialMessage` introduces Ana by name, `personality` adds the self-reference rule. Audit log entry recorded in `bot_change_log`.
+
+**Verification**:
+- `npx tsc --noEmit` clean after the specMap edit (the `SpecKey` union widening propagates correctly).
+- No code paths reference the new spec's globs yet — the entries are forward-looking so spec-drift fires only when prototype implementation lands.
+- Live agent verified: `https://www.sentimetrx.ai/b/mco` returns 200 with title "Chat with AskAna" (CDN may take up to an hour to revalidate per `revalidate = 3600` on the page).
+
+**Principle**: write the spec before the code on prototypes that touch shared infrastructure. The `ui_hints` schema is going to outlive this demo — it's effectively the v1 contract for the eventual public API discussed in the bots-API brainstorm — so we want it on the page before anyone writes a card component.
+
 ## 2026-05-20 — Convergence Phase 2.2 — investigation says: not a real extraction, folded into Phase 2.4
 
 **Why**: Phase 2 plan originally listed "generalize `lib/botProbeGuards.isInfoOnlyMessage()` so PulseIQ can use it." On actually reading both code paths: `isInfoOnlyMessage` is a curated allowlist of greetings/thanks/acks/sign-offs used by the bots route to suppress probe-enforcement nudges on social-filler turns. PulseIQ's equivalent code (~town hall chat route:506-538) is a `SUBTLE_DISENGAGE` regex + AI tone-check + curt-response heuristics used to decide whether to ask a clarifying follow-up vs. move on / standby. Different decision, different downstream action, only superficial overlap in the regex word list. Forcing a shared `isInfoOnlyMessage()` extraction would be a contrived abstraction that obscures the real semantics on both sides.
