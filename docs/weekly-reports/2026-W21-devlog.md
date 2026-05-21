@@ -1,5 +1,13 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Convergence Phase 2.2 — investigation says: not a real extraction, folded into Phase 2.4
+
+**Why**: Phase 2 plan originally listed "generalize `lib/botProbeGuards.isInfoOnlyMessage()` so PulseIQ can use it." On actually reading both code paths: `isInfoOnlyMessage` is a curated allowlist of greetings/thanks/acks/sign-offs used by the bots route to suppress probe-enforcement nudges on social-filler turns. PulseIQ's equivalent code (~town hall chat route:506-538) is a `SUBTLE_DISENGAGE` regex + AI tone-check + curt-response heuristics used to decide whether to ask a clarifying follow-up vs. move on / standby. Different decision, different downstream action, only superficial overlap in the regex word list. Forcing a shared `isInfoOnlyMessage()` extraction would be a contrived abstraction that obscures the real semantics on both sides.
+
+**What changed**: nothing in code. Task #3 marked completed (investigation outcome). Phase 2.4 (engagement signals) will absorb the genuine disengagement helpers — `isSubtleDisengagement` and `isCurtResponse` are the names that fit there, not `isInfoOnlyMessage`. `lib/botProbeGuards.ts` stays as-is until Phase 3 when wider naming cleanup happens.
+
+**Principle this re-confirms**: extract only when the duplication is real. Two functions that share some words but make different decisions aren't a shared abstraction — they're two different functions that happen to read similar inputs.
+
 ## 2026-05-20 — Convergence Phase 2.1 — language switch extracted into lib/languageSwitch.ts
 
 **Why**: first of six Phase 2 cheap-wins extractions per `docs/CONVERGENCE.md` § 4. Language-switch detection was inline in the townhall chat route (~120 lines: data tables, fast regex, AI fallback). Bots had no equivalent capability — Sarina supporters who type "español" today get no language switch. Lifting this into a shared lib (a) eliminates one chunk of route-level cruft, (b) makes the capability available to the bots route in Phase 3 when both routes share a single chat handler, (c) costs nothing in terms of Sarina's current behavior because the bots route doesn't change in this commit.
