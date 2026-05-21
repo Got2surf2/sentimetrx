@@ -874,3 +874,40 @@ Each follows the same pattern: query `conversation_turns` joined with `conversat
 - Phase 3 retrospective + Phase 4 entry-point map.
 
 **Push gate**: the right time to push is now. All Phase 3 commits are behavior-preserving with flags OFF (the default). The dual-write needs to run on real prod traffic before Tier 5 is safe, and that needs a push first. Re-asking the user before any push.
+
+## 2026-05-21 — Convergence Phase 3 commit 10: bots → agents rename via backward-compat view
+
+**Why**: CONVERGENCE.md § 7.1 deferred this from commit 1 because the rename is a push-coordination problem. `ALTER TABLE bots RENAME TO agents` is atomic — deployed code that says `from('bots')` breaks the moment it runs. Push freeze is active, so renaming the table alone (without simultaneously deploying matching code) would take Sarina offline.
+
+**Solution**: rename the table AND create a backward-compat VIEW at the old name in a single transaction. Postgres 15+ supports `CREATE VIEW … WITH (security_invoker = true)`, which makes the view execute queries under the calling role so RLS on the underlying renamed table applies as if the caller were querying it directly. Auto-updatable views handle INSERT/UPDATE/DELETE through the old name without INSTEAD OF triggers (single-table SELECT * is updatable in Postgres by default).
+
+**What changed in prod via `sql/079_phase3_rename_bots_to_agents.sql`**:
+- `bots` → `agents`
+- `bot_knowledge_chunks` → `agent_knowledge_chunks`
+- `bot_change_log` → `agent_change_log`
+- `bot_session_personas` → `agent_session_personas`
+- `bot_conversation_reviews` → `agent_conversation_reviews`
+- `bot_conversation_turns` deliberately NOT renamed — drops in Tier 5 anyway; rename would be churn for a table about to disappear.
+- 5 backward-compat VIEWs created at the old names with `security_invoker = true`.
+
+**FK columns (`bot_id`) NOT renamed**. Postgres rebinds FK constraints by OID — they automatically reference `agents(id)` after the rename. The column name `bot_id` is internally inconsistent with the renamed parent but is referenced in ~50+ places in the codebase; renaming the column is a separate, much larger change that doesn't block anything.
+
+**Postgres handles for free** (verified via grep before the migration):
+- 1 trigger (`trg_knowledge_tsv`) on `bot_knowledge_chunks` follows the rename.
+- 2 functions (`search_knowledge_chunks`, `search_knowledge_semantic`) reference `bot_knowledge_chunks` in their bodies — Postgres parses by OID, so the rename rebinds them automatically. Verified by running Sarina through the chat route after the rename (her RAG path hits both functions).
+- Indexes follow the table (their text names like `bots_slug_idx` still read "bot" but they index the renamed table). Cosmetic cleanup deferred.
+- RLS policies follow the table by OID.
+
+**Verification**:
+- Sanity-check SELECTs at the end of the migration confirmed all 5 tables renamed + all 5 views created + `bot_conversation_turns` is still a base table.
+- Smoke test: `POST /api/bots/[id]/chat` against Sarina returned 200 with a coherent reply through the chat path that reads from `bots` (now a view) and `bot_knowledge_chunks` (now a view).
+- `RLS_TEST=1 vitest run rls-isolation`: 4/4 pass — the "every public table has RLS enabled" check auto-detected the renamed tables, confirming RLS still enabled. (Views aren't checked because the test filters to BASE TABLE; security_invoker = true defers RLS to the underlying table.)
+- Sarina 22-scenario regression with flags OFF: **18 PASS / 4 PARTIAL / 0 FAIL / 0 ERROR**. The rename is transparent to the live route because the backward-compat view returns identical rows.
+
+**Forward path**:
+- Code can now migrate `from('bots')` → `from('agents')` opportunistically. Each migration is a tiny commit; the view tolerates either name.
+- Same for the four child tables.
+- The VIEWs drop in the same commit that drops `bot_conversation_turns` (Tier 5 cleanup). At that point every reader must be on the new name.
+- The `bot_id` FK column rename is a separate future commit — not blocked by anything currently.
+
+**Push gate unchanged**: this is a code-free commit (just SQL + devlog). Existing 23 commits + this one = 24 commits ahead. All still behavior-preserving in prod.
