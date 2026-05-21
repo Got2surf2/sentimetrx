@@ -6,6 +6,30 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Gap #5: wire townhall analyze for phase-3 (multi-event rollup unblocked)
+
+**Why**: NOWOCATS launch is early June with multiple events likely to follow per audience (e.g. Vindman runs N events across different districts, each its own `town_halls` row). User's stated rollup pattern: "each town hall is an independent event, downstream we combine the datasets in Analytics." That workflow depends on `/api/townhall/sessions/[id]/analyze` POST being able to sync a phase-3 town hall's conversations into Ana. Pre-this-commit the route only read `townhall_sessions/_themes/_turns` — a phase-3 town hall would 404 on dataset sync.
+
+**What changed** (single file: `app/api/townhall/sessions/[id]/analyze/route.ts`):
+- New `runPhase3Analyze` path. Resolves `town_halls` by uuid or slug, pulls `town_hall_conversations` → `conversations` → `conversation_turns (role='user')`, then fetches the full assistant-turn trail per affected conversation for `bot_message` pairing. Each user turn paired with the highest-`turn_number` assistant turn whose `turn_number < user.turn_number` within the same conversation (mirrors the bot-level analyze pairing logic).
+- Topics resolved from `town_hall_topics` for both the `theme_model` sync (themes propagated into Ana so dataset themes match what the facilitator saw) and per-row topic labels. `topic_type` maps `seed → 'Seed'`, `manual → 'Custom'`, `auto_detected/detected → 'Organic'`.
+- Same `DatasetRow` shape across substrates: `{turn_id, participant_id, turn_number, bot_message, user_message, topic, topic_type, source, language, sentiment, sentiment_score, responded_at}`. Means Ana receives identical schema regardless of which town hall substrate produced it — datasets across legacy + phase-3 town halls can be combined for cross-event analysis without any client-side branching.
+- Dataset linking pattern unchanged: `description='th:<id>'`. For phase-3 the id is `town_halls.id` (uuid). For legacy it remains `townhall_sessions.id`. No collision possible (uuid spaces are disjoint).
+- Lastsync semantics preserved: cutoff is `last_synced_at`; new turns past the cutoff get appended. The full prior assistant trail is pulled (bounded by conversation size, not corpus size) so cross-cutoff pairing works.
+- `syncThemeModel` helper extracted so the same Ana theme-model upsert logic is reused by both substrates.
+- Refactored legacy path into `runLegacyAnalyze` for clarity. Behavior unchanged.
+
+**Verification**:
+- Typecheck clean.
+- `POST /api/townhall/sessions/sarina-cohort/analyze` returns 403 (CSRF middleware block on state-mutating POST without cookie) — same gate the legacy route had. Confirms middleware → handler → auth chain unbroken.
+- `POST /api/townhall/sessions/f69506ae-df50-41c6-a1fa-8e4beeb6e097/analyze` (sarina-cohort by uuid) — same 403, route accepts both lookup forms.
+
+**Remaining follow-ups (NOT today)**:
+- **#5b** — `/api/townhall/responses` POST validates participant existence against `townhall_turns` only. Phase-3 participants would 404 on post-session psycho/demo answer submit. One-line OR-branch fix. Not blocking unless NOWOCATS uses post-session questions.
+- **#6** — bot-level analyze (`/api/bots/[id]/analyze`) emits no `town_hall_id` / `town_hall_slug` per row. Cross-event filtering inside a single bot dataset not possible (per-event datasets are the workaround). ~20-min change to add the join through `town_hall_conversations` + extend `buildBotSchema`. Not urgent given the per-event-dataset workflow.
+
+**Push gate**: lands as the 47th commit ahead of `origin/main`. **Push freeze still active** per CLAUDE.md.
+
 ## 2026-05-22 — NOWOCATS town-hall readiness: wire participant + facilitator-mutating routes for phase-3
 
 **Why**: User correction during the Phase 5 close-out audit — **NOWOCATS is the first PulseIQ town hall on the new substrate**, not Vindman as historically written in `docs/CONVERGENCE.md` § 4 Phase 6. Launch is early June. Phase 5 commit 6 (this morning) shipped the facilitator *read* surface, but four other route families still 404'd or 405'd phase-3 town halls — meaning a NOWOCATS participant visiting `/th/sarina-cohort` (or whatever the production slug ends up being) would hit "Session not found." User scoped: gaps #1-#4 from the audit, done by Sat 2026-05-24. This is the same-day delivery.

@@ -47,7 +47,11 @@ community, employee, customer, student, member, other — drives AI tone and pee
 > - `/api/townhall/sessions/[id]` PATCH — `handlePhase3Patch` supports status change (with seed-on-activate copying `discussion_guide` into `town_hall_topics`), discussion_guide sync (add / pause / reactivate / dismiss), restart (wipe conversations + drop auto_detected), reanalyze (call `detectThemesForTownHall`), delete_participants (cascade through `conversations`). Slug edit + org transfer stay legacy-only.
 > - `/api/townhall/sessions/[id]` DELETE — phase-3 cascade through `conversations` → drop `town_halls`.
 >
-> **Known gap not yet wired (#5)**: `/api/townhall/responses` POST (post-session psycho/demo upsert) still validates against `townhall_turns` only — a phase-3 participant submitting post-session answers would 404. One-line OR-branch into `town_hall_conversations` will close it.
+> **#5 wired (2026-05-22)**: `/api/townhall/sessions/[id]/analyze` now substrate-aware — phase-3 town halls sync into Ana via `town_hall_conversations → conversations → conversation_turns`, paired-user-turn shape identical to legacy + bot-level analyze. Datasets can be combined in Analytics for multi-event rollups (e.g. all Vindman events). Theme model populated from `town_hall_topics`. Same `DatasetRow` schema regardless of substrate.
+>
+> **Remaining gap (#5b)**: `/api/townhall/responses` POST (post-session psycho/demo upsert) still validates against `townhall_turns` only — a phase-3 participant submitting post-session answers would 404. One-line OR-branch into `town_hall_conversations` + `conversations` will close it. Not blocking NOWOCATS unless they use post-session questions.
+>
+> **Followup (#6)**: bot-level analyze does not surface `town_hall_id` on rows — cross-event filtering in Ana requires combining per-event datasets. ~20-min change to add the join + columns. Not blocking.
 >
 > **Prod env gate**: `TOWNHALL_VIA_AGENT_HANDLER` must be true in Vercel env for the chat handler to use the unified path on `/api/townhall/chat`. Without it, the legacy 995-line orchestrator runs and the phase-3 experience is dark in prod.
 >
