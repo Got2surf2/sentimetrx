@@ -1,0 +1,294 @@
+'use client'
+
+// app/bots/[id]/questions/QuestionsClient.tsx
+// Question Log UI (docs/BOTS.md § 9.x.3 — admin surface).
+//
+// Two tabs:
+//   - All Questions      newest-first, grouped by classification
+//   - Unanswered Queue   status=open, oldest-first, status mutation inline
+//
+// Plus CSV export button. Each row has a "View transcript →" link that
+// jumps into the existing /bots/[id]/conversations surface — that's how
+// the spec's "By Session" view works (cross-link, not a new tab).
+//
+// Probe-focus grouping ("By Theme") is deferred until probe-focus
+// tagging (§ 9.x.1) ships; classification is the placeholder grouping.
+
+import { useEffect, useState, useMemo } from 'react'
+import Link from 'next/link'
+import TopNav from '@/components/nav/TopNav'
+import LottieLoader from '@/components/ui/LottieLoader'
+
+interface Question {
+  id: string
+  session_id: string
+  conversation_id: string | null
+  turn_id: string | null
+  user_message: string
+  language: string | null
+  classification: string
+  status: 'open' | 'answered' | 'referred' | 'n_a'
+  resolved_by: string | null
+  resolved_at: string | null
+  notes: string | null
+  suggested_kb_addition: string | null
+  created_at: string
+}
+
+interface Props {
+  botId: string
+  botName: string
+  botSlug: string
+  logoUrl?: string
+  orgName?: string
+  isAdmin: boolean
+  userEmail: string
+  fullName?: string
+  features?: import('@/lib/types').ModuleFeatures
+}
+
+const CLASSIFICATION_STYLES: Record<string, { bg: string; text: string; label: string; desc: string }> = {
+  deflect:      { bg: '#ede9fe', text: '#5b21b6', label: 'Deflected',    desc: 'Off-topic or sensitive — the agent chose not to answer.' },
+  kb_miss:      { bg: '#fef3c7', text: '#92400e', label: 'KB miss',      desc: 'The knowledge base had no good match for this question.' },
+  ai_uncertain: { bg: '#fee2e2', text: '#991b1b', label: 'AI uncertain', desc: 'The agent’s reply matched an "I don’t know" pattern.' },
+}
+
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  open:     { bg: '#fef3c7', text: '#92400e', label: 'Open'     },
+  answered: { bg: '#d1fae5', text: '#065f46', label: 'Answered' },
+  referred: { bg: '#dbeafe', text: '#1e40af', label: 'Referred' },
+  n_a:      { bg: '#f3f4f6', text: '#374151', label: 'N/A'      },
+}
+
+function formatRelative(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 60000) return 'just now'
+  if (ms < 3600000) return Math.floor(ms / 60000) + ' min ago'
+  if (ms < 86400000) return Math.floor(ms / 3600000) + ' h ago'
+  const days = Math.floor(ms / 86400000)
+  if (days < 30) return days + ' d ago'
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+export default function QuestionsClient({
+  botId, botName, botSlug, logoUrl, orgName, isAdmin, userEmail, fullName, features,
+}: Props) {
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'all' | 'open'>('all')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [notesDraft, setNotesDraft] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    fetch('/api/bots/' + botId + '/questions')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.error) setError(d.error)
+        else setQuestions(Array.isArray(d?.questions) ? d.questions : [])
+      })
+      .catch(() => setError('Failed to load questions'))
+      .finally(() => setLoading(false))
+  }, [botId])
+
+  async function updateQuestion(qId: string, patch: { status?: Question['status']; notes?: string; suggested_kb_addition?: string }) {
+    setSavingId(qId)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/questions/' + qId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const d = await r.json()
+      if (d?.question) {
+        setQuestions(prev => prev.map(q => q.id === qId ? d.question : q))
+      } else if (d?.error) {
+        alert('Update failed: ' + d.error)
+      }
+    } catch (e: any) {
+      alert('Update failed: ' + (e?.message || 'network error'))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const counts = useMemo(() => {
+    const open = questions.filter(q => q.status === 'open').length
+    const byCls: Record<string, number> = {}
+    for (const q of questions) byCls[q.classification] = (byCls[q.classification] || 0) + 1
+    return { total: questions.length, open, byCls }
+  }, [questions])
+
+  const visible = useMemo(() => {
+    if (tab === 'open') {
+      return questions
+        .filter(q => q.status === 'open')
+        .sort((a, b) => a.created_at < b.created_at ? -1 : 1)
+    }
+    return questions
+  }, [questions, tab])
+
+  return (
+    <div className='min-h-screen bg-gray-50'>
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='bots' features={features} />
+
+      <div className='max-w-5xl mx-auto px-4 py-8'>
+        <div className='mb-2 text-xs text-gray-500'>
+          <Link href='/bots' className='hover:underline'>Agents</Link> / <span className='text-gray-700'>{botName}</span> / Questions
+        </div>
+        <div className='flex items-end justify-between mb-6 flex-wrap gap-3'>
+          <div>
+            <h1 className='text-2xl font-semibold text-gray-900'>{botName} — Question Log</h1>
+            <p className='text-sm text-gray-600 mt-1'>
+              Durable record of user questions the agent couldn’t or didn’t answer.
+              {' '}Captured automatically at three signals: deflection, KB miss, AI uncertainty.
+            </p>
+          </div>
+          <div className='flex gap-2'>
+            <Link
+              href={'/bots/' + botId + '/conversations'}
+              className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
+            >View transcripts</Link>
+            <a
+              href={'/api/bots/' + botId + '/questions/export.csv'}
+              className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
+            >Export CSV</a>
+          </div>
+        </div>
+
+        {/* Summary chips */}
+        <div className='flex flex-wrap gap-2 mb-4'>
+          <span className='px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-700'>
+            {counts.total} total
+          </span>
+          <span className='px-2 py-1 rounded-md text-xs font-semibold' style={{ background: STATUS_STYLES.open.bg, color: STATUS_STYLES.open.text }}>
+            {counts.open} open
+          </span>
+          {Object.entries(counts.byCls).map(([cls, n]) => {
+            const s = CLASSIFICATION_STYLES[cls] || { bg: '#f3f4f6', text: '#374151', label: cls, desc: '' }
+            return (
+              <span key={cls} className='px-2 py-1 rounded-md text-xs font-semibold' style={{ background: s.bg, color: s.text }}>
+                {n} {s.label.toLowerCase()}
+              </span>
+            )
+          })}
+        </div>
+
+        {/* Tabs */}
+        <div className='flex border-b border-gray-200 mb-4'>
+          {[
+            { key: 'all',  label: 'All questions',   n: counts.total },
+            { key: 'open', label: 'Unanswered queue', n: counts.open  },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key as 'all' | 'open')}
+              className={'px-4 py-2 text-sm font-medium border-b-2 transition-colors ' +
+                (tab === t.key ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900')}
+            >
+              {t.label} <span className='text-xs text-gray-400 ml-1'>({t.n})</span>
+            </button>
+          ))}
+        </div>
+
+        {loading && <div className='flex justify-center py-16'><LottieLoader size={64} /></div>}
+        {error && <div className='bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm'>{error}</div>}
+
+        {!loading && !error && visible.length === 0 && (
+          <div className='bg-white border border-dashed border-gray-300 rounded-lg p-10 text-center text-gray-500'>
+            <div className='text-sm'>
+              {tab === 'open' ? 'No open questions — you’re caught up.' : 'No logged questions yet.'}
+            </div>
+            <div className='text-xs mt-2'>
+              Questions are captured automatically when the agent deflects, misses the KB, or replies with uncertainty.
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && visible.length > 0 && (
+          <div className='bg-white border border-gray-200 rounded-lg divide-y divide-gray-200'>
+            {visible.map(q => {
+              const cls = CLASSIFICATION_STYLES[q.classification] || { bg: '#f3f4f6', text: '#374151', label: q.classification, desc: '' }
+              const st = STATUS_STYLES[q.status] || { bg: '#f3f4f6', text: '#374151', label: q.status }
+              const noteDraft = notesDraft[q.id] ?? (q.notes || '')
+              const noteDirty = noteDraft !== (q.notes || '')
+              return (
+                <div key={q.id} className='p-4'>
+                  <div className='flex items-start gap-3 flex-wrap'>
+                    <span className='px-2 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap' style={{ background: cls.bg, color: cls.text }} title={cls.desc}>
+                      {cls.label}
+                    </span>
+                    <span className='px-2 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap' style={{ background: st.bg, color: st.text }}>
+                      {st.label}
+                    </span>
+                    {q.language && (
+                      <span className='px-2 py-0.5 rounded-md text-xs font-medium text-gray-600 bg-gray-100 uppercase'>{q.language}</span>
+                    )}
+                    <div className='flex-1 min-w-0'>
+                      <div className='text-sm text-gray-900 whitespace-pre-wrap break-words'>{q.user_message}</div>
+                      <div className='text-xs text-gray-500 mt-1'>
+                        {formatRelative(q.created_at)} ·{' '}
+                        <span title={new Date(q.created_at).toLocaleString()}>{new Date(q.created_at).toLocaleString()}</span>
+                        {' · '}
+                        <Link href={'/bots/' + botId + '/conversations'} className='text-blue-700 hover:underline' title={'Session ' + q.session_id}>
+                          session {q.session_id.slice(-8)}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status mutation row */}
+                  <div className='mt-3 flex items-center gap-2 text-xs flex-wrap'>
+                    <span className='text-gray-500'>Mark as:</span>
+                    {(['open', 'answered', 'referred', 'n_a'] as Question['status'][]).map(s => (
+                      <button
+                        key={s}
+                        disabled={savingId === q.id || q.status === s}
+                        onClick={() => updateQuestion(q.id, { status: s })}
+                        className={'px-2 py-1 rounded-md font-medium transition-colors ' +
+                          (q.status === s
+                            ? 'bg-gray-200 text-gray-500 cursor-default'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}
+                      >
+                        {STATUS_STYLES[s].label}
+                      </button>
+                    ))}
+                    {savingId === q.id && <span className='text-gray-400'>saving…</span>}
+                  </div>
+
+                  {/* Notes */}
+                  <div className='mt-3'>
+                    <textarea
+                      value={noteDraft}
+                      onChange={e => setNotesDraft(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      placeholder='Notes (optional) — what was the follow-up? Who handled it?'
+                      className='w-full text-xs border border-gray-200 rounded-md p-2 resize-y min-h-[40px] focus:outline-none focus:border-blue-400'
+                    />
+                    {noteDirty && (
+                      <div className='mt-1 flex gap-2'>
+                        <button
+                          disabled={savingId === q.id}
+                          onClick={() => updateQuestion(q.id, { notes: noteDraft })}
+                          className='px-2 py-1 rounded-md bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50'
+                        >Save notes</button>
+                        <button
+                          onClick={() => setNotesDraft(prev => ({ ...prev, [q.id]: q.notes || '' }))}
+                          className='px-2 py-1 rounded-md bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200'
+                        >Cancel</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <p className='mt-6 text-xs text-gray-500'>
+          Captured fire-and-forget from <code className='text-gray-700'>lib/chatCore.ts</code>. Showing up to 1,000 most-recent questions.
+          {' '}CSV export redacts emails, phones, and street addresses by default.
+        </p>
+      </div>
+    </div>
+  )
+}

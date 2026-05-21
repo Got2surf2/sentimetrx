@@ -784,11 +784,16 @@ Embeddings are generated **server-side, blocking on chunk insert** (the knowledg
 - Cron writes `bot_conversation_reviews` rows. Admins read via `/api/bots/[id]/conversations/reviews`.
 - `theme_drift = true` when the AI report flags drift — surfaced in the conversations dashboard.
 
-### 9.x Probe Focus Tagging + Question Log (MVP SHIPPED — 2026-05-21)
+### 9.x Probe Focus Tagging + Question Log (MVP + admin UI SHIPPED — 2026-05-22)
 
 Driver: NOWOCATS pilot needs a defensible, queryable record of *what residents asked about*, not just what the bot answered. Legal exposure is real — every recorded comment is part of the public PM-2 project record.
 
-**Status as of 2026-05-21**: MVP shipped — `sql/081_logged_questions.sql` creates the `logged_questions` table (org_id + RLS + status lifecycle), `lib/logQuestion.ts` provides the fire-and-forget capture helper + `replyLooksUncertain` regex, and `lib/chatCore.ts` calls it at three capture points: `deflect` (deflection router fired), `kb_miss` (RAG topConfidence < 0.05 + no KB fallback), `ai_uncertain` (assistant response matched an "I don't know"-family pattern). Generic across every agent — NOWOCATS gets it for free. Probe-focus tagging (§ 9.x.1) + admin UI (§ 9.x.3) + CSV export (§ 9.x.3) + durability invariant tests (§ 9.x.4) deferred to follow-on commits.
+**Status as of 2026-05-22**: MVP + admin UI shipped.
+
+- **Capture (2026-05-21)** — `sql/081_logged_questions.sql` creates the `logged_questions` table (org_id + RLS + status lifecycle), `lib/logQuestion.ts` provides the fire-and-forget capture helper + `replyLooksUncertain` regex, and `lib/chatCore.ts` calls it at three capture points: `deflect` (deflection router fired), `kb_miss` (RAG topConfidence < 0.05 + no KB fallback), `ai_uncertain` (assistant response matched an "I don't know"-family pattern). Generic across every agent — NOWOCATS gets it for free.
+- **Admin UI (2026-05-22)** — `/bots/[id]/questions` (server wrapper + `QuestionsClient.tsx`) ships with two tabs: **All questions** (newest-first, grouped by classification chips) and **Unanswered queue** (status=open, oldest-first, inline status mutation + notes). Each row deep-links back to the conversations view via session_id. Backed by three new API routes: `GET /api/bots/[id]/questions` (list), `PATCH /api/bots/[id]/questions/[questionId]` (status / notes / suggested KB), `GET /api/bots/[id]/questions/export.csv` (CSV with PII redaction by default — superadmins can pass `?reveal=1` to unmask).
+
+Still deferred: probe-focus tagging (§ 9.x.1 — replaces classification-grouping with topic-slug grouping once the user-side classifier ships), durability invariant tests (§ 9.x.4), suggested-KB-addition AI auto-fill, integration with `bot_change_log` so KB additions that resolve a logged question get cross-linked.
 
 #### 9.x.1 Probe focus tagging (user-side classifier)
 
@@ -807,17 +812,17 @@ A user-visible signal that a turn was logged. Two pieces:
 1. **Inline acknowledgement** — when the model handles a question it can't fully answer (it already says things like "I'll log that question for the project team"), the response also includes a stable phrase like *"I've noted your question."* The exact wording lives in the bot's system prompt; the classifier doesn't need it.
 2. **Structured logged-questions field on the session** — new column on `bot_session_personas` (or new sibling table — see open question below): `logged_questions jsonb` shaped as `[{ turn_id, text, topic_slugs, created_at, status }]`. Populated by a small classifier post-insert when the user's turn has `intent:ASK` (or matches a "question for the team" prompt-side tag).
 
-#### 9.x.3 Question Log UI — team-facing access surface
+#### 9.x.3 Question Log UI — team-facing access surface (SHIPPED 2026-05-22)
 
-New surface at `/bots/[id]/questions` (admin/owner). Three views, all backed by the same data:
+Surface lives at `/bots/[id]/questions` (org-member or admin gated). Two tabs in the MVP, all backed by the same `logged_questions` data:
 
-- **By Theme** (default) — grouped by `topic:<slug>` across all sessions, with counts. Click a theme → list of user turns; click a turn → jump to that session's transcript at that turn.
-- **By Session** — already exists at `/bots/[id]/conversations`; cross-link from each row to its Question Log slice.
-- **Unanswered Queue** — `logged_questions` where `status='open'`. The team marks a question as `answered` / `referred` / `n/a` and can attach a follow-up note. State lives in `logged_questions[*].status` + `resolved_by` + `resolved_at`.
+- **All questions** (default) — newest-first. Each row carries classification chip (Deflected / KB miss / AI uncertain), status chip (Open / Answered / Referred / N/A), language tag if present, the user message, relative+absolute timestamp, and a deep-link to the conversations view (`session <last-8>`). Inline status mutation pills + optional notes textarea per row.
+- **Unanswered queue** — same row UI, filtered to `status='open'`, sorted oldest-first so the longest-pending questions surface first. The team marks a question `answered` / `referred` / `n_a` and `resolved_by`+`resolved_at` populate server-side from the caller (never trusted from the client).
+- ~~By Theme~~ — deferred. Today the "All questions" tab groups by classification (the three capture signals); once probe-focus tagging (§ 9.x.1) ships, the classification chips become topic-slug chips and grouping switches to topic.
 
 Exports:
-- CSV export of all user turns with `topic_slugs`, `session_id`, persona snippet, timestamps. This is the artifact the project team takes to PM-2 meetings.
-- Existing PPTX `insights-deck` route gets a new slide: "Top themes raised by residents" sourced from `topic:<slug>` counts.
+- **CSV export** (shipped) — `GET /api/bots/[id]/questions/export.csv`. Columns: `created_at, classification, status, language, session_id, user_message, notes, suggested_kb_addition, resolved_at`. PII redacted by default (email → `[email]`, NA-style phone → `[phone]`, US street address → `[address]`). Superadmins (`users.role='platform_admin'`) can pass `?reveal=1` to unmask; the filename includes `_unredacted` so the artifact is self-describing.
+- Existing PPTX `insights-deck` route — still to gain a "Top themes raised" slide once probe focuses land.
 
 #### 9.x.4 Durability invariants (legal-liability hardening)
 

@@ -1,5 +1,27 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-22 — Question Log admin UI shipped
+
+**Why**: Yesterday's MVP (5e8f519) shipped the capture half — `logged_questions` table + `lib/logQuestion.ts` + three capture points in `chatCore.ts`. Data has been accumulating but there was no team-facing surface to read it. For NOWOCATS PM-2 specifically, "we can answer what residents asked" is a PR-1 legal-defensibility requirement and was the demo-this-week ask in `docs/BOTS.md` § 9.x.5 step 4.
+
+**What changed**:
+- `app/api/bots/[id]/questions/route.ts` (new) — `GET` returns up to 1000 most-recent logged questions for a bot. Service role + paired `(agent.id, agent.org_id)` check per the CLAUDE.md multi-tenancy invariant; admins see cross-org. Mirrors the conversations route's gate exactly.
+- `app/api/bots/[id]/questions/[questionId]/route.ts` (new) — `PATCH` accepts `{ status?, notes?, suggested_kb_addition? }`. Status whitelisted to `open|answered|referred|n_a`. `resolved_by` + `resolved_at` populated server-side from the caller — never trusted from the client. Three-eq gate `(id, bot_id, org_id)` on existence + update for defense in depth.
+- `app/api/bots/[id]/questions/export.csv/route.ts` (new) — CSV export. PII redacted by default: email → `[email]`, NA-style phone → `[phone]`, US street address → `[address]`. Superadmins (`users.role='platform_admin'`) can pass `?reveal=1` to unmask; filename includes `_unredacted` so the artifact is self-describing. Limit 10K rows.
+- `app/bots/[id]/questions/page.tsx` (new) — server wrapper mirroring `/bots/[id]/history` shape (auth + bot lookup + org gate + redirect).
+- `app/bots/[id]/questions/QuestionsClient.tsx` (new) — two tabs: **All questions** (newest-first, classification chips) + **Unanswered queue** (status=open, oldest-first, inline status mutation + notes textarea). Summary chip row at the top (`N total`, `N open`, plus per-classification counts). Each row deep-links back to the conversations view via session_id.
+- `app/bots/BotsClient.tsx` — added "Questions" link to the per-bot card footer row next to History and Export JSON. Same hover styling pattern.
+- `docs/BOTS.md` — § 9.x header updated to "MVP + admin UI SHIPPED — 2026-05-22"; § 9.x.3 rewritten to reflect what actually shipped vs deferred.
+- `scripts/specMap.ts` — added `lib/logQuestion.ts` and `sql/081_*` under `docs/BOTS.md` so future drift detection catches changes to either.
+
+**Deferred per spec § 9.x.3** (kept as comments / not-yet-shipped notes): probe-focus tagging (the "By Theme" tab is currently grouped-by-classification as a placeholder), durability invariant tests, suggested-KB-addition AI auto-fill, integration with `bot_change_log` so KB additions that resolve a logged question get cross-linked.
+
+**Cost discipline**: zero AI calls. The CSV redactor uses three regex passes. PII regex is intentionally conservative — false positives ("3 Oak St" matches if capitalized) are preferable to false negatives ("call me at 5551234" leaks). Future iteration can route through a smarter classifier when probe focuses land.
+
+**Verification**: `npx tsc --noEmit` clean (post `rm tsconfig.tsbuildinfo`). Routes follow the same auth + service-role pattern that the History + Conversations routes already use. Admin UI exercised manually against the 1 live `ai_uncertain` row from yesterday's MVP smoke test on Sarina.
+
+**Push gate**: lands as the 42nd commit ahead of `origin/main`. Push freeze remains active until user authorizes the batch release.
+
 ## 2026-05-21 — MCO_AGENT prototype commit 4: live data (parking + places)
 
 **Why**: Commit 3 wired the extractor → real intent. This commit removes the last layer of demoware — the hardcoded card data — so the parking grid shows actual MCO lot status and the restaurant cards reflect real Google ratings (where a key is configured). The honest "Sample" badge on the card UI also surfaces when we're falling back, so the demo never pretends to be live when it isn't.

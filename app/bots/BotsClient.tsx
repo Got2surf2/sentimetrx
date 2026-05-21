@@ -392,6 +392,13 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10 }}>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <a
+                      href={'/bots/' + bot.id + '/questions'}
+                      style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}
+                      onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#374151' }}
+                      onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = '#9ca3af' }}>
+                      Questions
+                    </a>
+                    <a
                       href={'/bots/' + bot.id + '/history'}
                       style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}
                       onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#374151' }}
