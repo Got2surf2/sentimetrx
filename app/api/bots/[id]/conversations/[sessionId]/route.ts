@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
-import { isPhase3ReadEnabled } from '@/lib/phase3Read'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // (bot_id, session_id), then read conversation_turns by conversation_id.
   // Returns the same row shape as the legacy path so the client doesn't
   // need to branch.
-  if (isPhase3ReadEnabled()) {
+  if (isPhase3ReadSafe()) {
     const { data: conv } = await gate.service
       .from('conversations')
       .select('id')

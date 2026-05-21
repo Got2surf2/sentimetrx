@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -85,20 +86,44 @@ export async function POST(_req: Request, { params }: Params) {
     })
   }
 
-  // Fetch turns (sequential, all roles) since last sync.
+  // Fetch turns (sequential, all roles) since last sync. READ_PHASE3 sources
+  // from the new substrate; both paths emit the same row shape.
   const lastSynced = existing?.last_synced_at || null
-  let turnsQuery = service
-    .from('bot_conversation_turns')
-    .select('id, session_id, turn_number, role, content, content_en, language, sentiment, sentiment_score, created_at')
-    .eq('bot_id', botId)
-    .order('session_id', { ascending: true })
-    .order('turn_number', { ascending: true })
-
-  if (lastSynced) {
-    turnsQuery = turnsQuery.gt('created_at', lastSynced)
+  let turns: { id: string; session_id: string; turn_number: number; role: string; content: string; content_en: string | null; language: string | null; sentiment: string | null; sentiment_score: number | null; created_at: string }[] | null = null
+  let turnsErr: { message: string } | null = null
+  if (isPhase3ReadSafe()) {
+    let q = service
+      .from('conversation_turns')
+      .select('id, turn_number, role, content, content_en, language, sentiment, sentiment_score, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', botId)
+      .order('turn_number', { ascending: true })
+    if (lastSynced) q = q.gt('created_at', lastSynced)
+    const { data, error } = await q
+    if (error) turnsErr = error
+    turns = (data || []).map((r: any) => ({
+      id: r.id,
+      session_id: r.conversations?.session_id,
+      turn_number: r.turn_number,
+      role: r.role,
+      content: r.content,
+      content_en: r.content_en,
+      language: r.language,
+      sentiment: r.sentiment,
+      sentiment_score: r.sentiment_score,
+      created_at: r.created_at,
+    }))
+  } else {
+    let q = service
+      .from('bot_conversation_turns')
+      .select('id, session_id, turn_number, role, content, content_en, language, sentiment, sentiment_score, created_at')
+      .eq('bot_id', botId)
+      .order('session_id', { ascending: true })
+      .order('turn_number', { ascending: true })
+    if (lastSynced) q = q.gt('created_at', lastSynced)
+    const { data, error } = await q
+    if (error) turnsErr = error
+    turns = data
   }
-
-  const { data: turns, error: turnsErr } = await turnsQuery
   if (turnsErr) return NextResponse.json({ error: 'Failed to fetch turns', detail: turnsErr.message }, { status: 500 })
 
   if (!turns || turns.length === 0) {
@@ -117,12 +142,31 @@ export async function POST(_req: Request, { params }: Params) {
     // Pull all turns in affected sessions up to the cutoff so we can find
     // the assistant turn immediately preceding each new user turn. This
     // is bounded by session size, not corpus size.
-    const { data: priorTurns } = await service
-      .from('bot_conversation_turns')
-      .select('session_id, turn_number, role, content, content_en')
-      .in('session_id', affectedSessions)
-      .lte('created_at', lastSynced)
-      .order('turn_number', { ascending: true })
+    let priorTurns: { session_id: string; turn_number: number; role: string; content: string; content_en: string | null }[] = []
+    if (isPhase3ReadSafe()) {
+      const { data } = await service
+        .from('conversation_turns')
+        .select('turn_number, role, content, content_en, conversations!inner(session_id, bot_id)')
+        .eq('conversations.bot_id', botId)
+        .in('conversations.session_id', affectedSessions)
+        .lte('created_at', lastSynced)
+        .order('turn_number', { ascending: true })
+      priorTurns = (data || []).map((r: any) => ({
+        session_id: r.conversations?.session_id,
+        turn_number: r.turn_number,
+        role: r.role,
+        content: r.content,
+        content_en: r.content_en,
+      }))
+    } else {
+      const { data } = await service
+        .from('bot_conversation_turns')
+        .select('session_id, turn_number, role, content, content_en')
+        .in('session_id', affectedSessions)
+        .lte('created_at', lastSynced)
+        .order('turn_number', { ascending: true })
+      priorTurns = data || []
+    }
     for (const p of (priorTurns || [])) {
       if (p.role !== 'assistant') continue
       // Track the latest assistant turn per session under the cutoff.

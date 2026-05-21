@@ -1029,11 +1029,30 @@ After the dual-write surface was complete and Sarina's history backfilled, two a
 
 **Rollback for `READ_PHASE3`**: flip the env flag off; the routes immediately read from `bot_conversation_turns` again. No data migration needed because the dual-write is still landing writes in both tables.
 
-**Chat-route reads also branch on `READ_PHASE3`** (with a dual-flag safety gate). Two reads in `app/api/bots/[id]/chat/route.ts` consult conversation history per request:
+**Every reader uses the same gate** — `isPhase3ReadSafe()` in `lib/phase3Read.ts` requires BOTH `READ_PHASE3` and `DUAL_WRITE_PHASE3` to be truthy. Misconfigured (`READ_PHASE3=true` without `DUAL_WRITE_PHASE3`) is the catastrophic state for chat (duplicate turn_number=0 inserts on every message) and the merely-confusing state for admin (empty sessions in the UI). One gate, one failure mode.
+
+**Tier 1 readers cut so far** (all branch behind `isPhase3ReadSafe()`):
+
+- `GET /api/bots/[id]/conversations` — session list (commit 5)
+- `GET /api/bots/[id]/conversations/[sessionId]` — session detail (commit 5)
+- `GET /api/bots/[id]/intents-stats` — user-turn intent-flag aggregation
+- `GET /api/bots/[id]/focuses-stats` — assistant-turn focus-flag aggregation
+- `POST /api/bots/[id]/conversations/insights-deck` — PPTX generator (2000-row cap)
+- `GET /api/bots/[id]/conversations/export` — CSV/XLSX export (5000-row cap)
+- `POST /api/bots/[id]/conversations/report` — AI conversation report
+- `POST /api/bots/[id]/analyze` — incremental dataset sync (two read sites: main pull + prior-turn cutoff)
+
+**Still on `bot_conversation_turns`** (Tier 2/3, queued for the next commits):
+- `lib/orgSnapshot.ts`
+- `lib/datasetUtils.ts`
+- `app/api/architecture-deck/route.ts`
+- `app/api/cron/bot-conversation-review/route.ts` (write-back audit needed)
+
+**Chat-route reads also branch on `isPhase3ReadSafe()`** (commit 6). Two reads in `app/api/bots/[id]/chat/route.ts` consult conversation history per request:
 - The silence-probe path (around line 95) reads `(content_flags, source, turn_number)` for the session to decide if a probe has already fired and which focus to surface next.
 - The main turn-insert path (around line 750) reads the max `turn_number` to compute the next turn's number before the new pair of rows lands.
 
-Both branches honor `READ_PHASE3` ONLY when `DUAL_WRITE_PHASE3` is also on. Without that coupling, a fresh session would get written only to `bot_conversation_turns`, return empty from `conversation_turns`, and cause duplicate `turn_number=0` inserts on every subsequent message. The dual-flag gate is inline in both reads with a comment; it's transitional and removes itself when `bot_conversation_turns` drops at the end of Phase 3.
+Both branches honor `isPhase3ReadSafe()` (i.e. `READ_PHASE3` + `DUAL_WRITE_PHASE3` both on). Without that coupling, a fresh session would get written only to `bot_conversation_turns`, return empty from `conversation_turns`, and cause duplicate `turn_number=0` inserts on every subsequent message. The gate is transitional and removes itself when `bot_conversation_turns` drops at the end of Phase 3.
 
 End-to-end verification with both flags on: sent two messages to a fresh Sarina session, confirmed turn_numbers progress 0→1→2→3 in both tables with no duplicates. Sarina 22-scenario regression with both flags on: **19 PASS / 3 PARTIAL / 0 FAIL / 0 ERROR** — best result of Phase 3 so far.
 

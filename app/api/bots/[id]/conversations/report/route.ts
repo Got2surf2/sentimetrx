@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -40,15 +41,35 @@ export async function POST(req: NextRequest, { params }: Params) {
   const since = body.since || new Date(Date.now() - 7 * 86400000).toISOString() // default: last 7 days
 
   // Fetch recent conversations via service role (RLS would block admin
-  // cross-org reads otherwise — Phase E parity).
-  const { data: turns } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, created_at')
-    .eq('bot_id', params.id)
-    .gte('created_at', since)
-    .order('session_id')
-    .order('turn_number', { ascending: true })
-    .limit(1000)
+  // cross-org reads otherwise — Phase E parity). READ_PHASE3 sources from
+  // the new substrate.
+  let turns: { session_id: string; turn_number: number; role: string; content: string; created_at: string }[] | null = null
+  if (isPhase3ReadSafe()) {
+    const { data } = await service
+      .from('conversation_turns')
+      .select('turn_number, role, content, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .gte('created_at', since)
+      .order('turn_number', { ascending: true })
+      .limit(1000)
+    turns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id,
+      turn_number: r.turn_number,
+      role: r.role,
+      content: r.content,
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, created_at')
+      .eq('bot_id', params.id)
+      .gte('created_at', since)
+      .order('session_id')
+      .order('turn_number', { ascending: true })
+      .limit(1000)
+    turns = data
+  }
 
   if (!turns || turns.length === 0) {
     return NextResponse.json({ report: 'No conversations found in the specified time period.' })

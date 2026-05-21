@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,13 +29,32 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: turns } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, language, created_at')
-    .eq('bot_id', params.id)
-    .order('session_id')
-    .order('turn_number', { ascending: true })
-    .limit(5000)
+  let turns: { session_id: string; turn_number: number; role: string; content: string; language: string | null; created_at: string }[] | null = null
+  if (isPhase3ReadSafe()) {
+    const { data } = await service
+      .from('conversation_turns')
+      .select('turn_number, role, content, language, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .order('turn_number', { ascending: true })
+      .limit(5000)
+    turns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id,
+      turn_number: r.turn_number,
+      role: r.role,
+      content: r.content,
+      language: r.language,
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, language, created_at')
+      .eq('bot_id', params.id)
+      .order('session_id')
+      .order('turn_number', { ascending: true })
+      .limit(5000)
+    turns = data
+  }
 
   if (!turns || turns.length === 0) {
     return NextResponse.json({ error: 'No conversations to export' }, { status: 404 })

@@ -812,3 +812,30 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 - `.env.local` flags restored to `false` after testing.
 
 **Now: Tier 1 admin readers remain (6 routes), Tier 2 analytics aggregators (3 readers), Tier 3 cron, then `DROP TABLE bot_conversation_turns`.** Each subsequent commit gates behind `READ_PHASE3` and re-uses the same dual-flag-aware pattern.
+
+## 2026-05-21 — Convergence Phase 3 commit 7: Tier 1 admin readers + safer flag helper
+
+**Why**: With chat-route reads on the new substrate (commit 6), the remaining bot_conversation_turns readers are admin-side analytics — lower stakes individually, but they need the same dual-flag discipline. Promoting a helper to centralize the rule before propagating the pattern to 6+ more call sites.
+
+**What changed**:
+- `lib/phase3Read.ts` — new `isPhase3ReadSafe()` requires BOTH `READ_PHASE3` and `DUAL_WRITE_PHASE3` to be truthy. Documents the rule: "if READ flips on while WRITE is off, NOTHING reads from the new schema." Chat-route reads (correctness-critical) and admin reads (UX-critical) all use the same gate so misconfiguration has a single, predictable failure mode.
+- Chat route + the two commit-5 admin readers (`/api/bots/[id]/conversations` list + `[sessionId]` detail) now call `isPhase3ReadSafe()`. The inline dual-flag checks in the chat route collapse to single-helper calls.
+- Six new Tier 1 admin readers branch behind `isPhase3ReadSafe()`:
+  1. `/api/bots/[id]/intents-stats` — user-turn intent-flag aggregation
+  2. `/api/bots/[id]/focuses-stats` — assistant-turn focus-flag aggregation
+  3. `/api/bots/[id]/conversations/insights-deck` — PPTX generator
+  4. `/api/bots/[id]/conversations/export` — CSV/XLSX export
+  5. `/api/bots/[id]/conversations/report` — AI conversation report
+  6. `/api/bots/[id]/analyze` — two read sites (main turn pull + prior-turn cutoff lookup for incremental sync)
+
+Each follows the same pattern: query `conversation_turns` joined with `conversations` filtered by `conversations.bot_id`, project `session_id` (and coerce nullable columns like `language` to the legacy NOT NULL defaults) back into result rows so downstream code is byte-identical between both paths.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- Sarina 22-scenario regression with both flags on: **19 PASS / 3 PARTIAL / 0 FAIL / 0 ERROR** — identical to commit 6. Tier 1 readers don't sit on the chat path; this is defense-in-depth that nothing they touch caused side regressions.
+
+**Remaining Phase 3 work**:
+- Tier 2 (3 analytics aggregators): `lib/orgSnapshot.ts`, `lib/datasetUtils.ts`, `app/api/architecture-deck/route.ts`.
+- Tier 3 (cron): `app/api/cron/bot-conversation-review/route.ts` — needs an audit for write-back behavior.
+- Tier 5 (cleanup): drop `bot_conversation_turns`, remove `lib/phase3DualWrite.ts` + `lib/phase3Read.ts` + flags.
+- Phase 3 closeout: `bots`→`agents` rename (deferred from commit 1) + Phase 4 entry-point map.

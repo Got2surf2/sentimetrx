@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,15 +32,35 @@ export async function GET(req: NextRequest, { params }: Params) {
   const intents: any[] = bot.intents || []
   if (intents.length === 0) return NextResponse.json({ intents: [] })
 
-  // Query all turns with intent flags for this bot
-  const { data: flaggedTurns } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, content_flags, created_at')
-    .eq('bot_id', params.id)
-    .eq('role', 'user')
-    .not('content_flags', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(1000)
+  // Query all turns with intent flags for this bot. READ_PHASE3 switches to
+  // the new substrate via the conversations join; downstream code only reads
+  // session_id, content_flags, created_at — both paths feed those.
+  let flaggedTurns: { session_id: string; content_flags: unknown; created_at: string }[] | null = null
+  if (isPhase3ReadSafe()) {
+    const { data } = await service
+      .from('conversation_turns')
+      .select('content_flags, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .eq('role', 'user')
+      .not('content_flags', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    flaggedTurns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id,
+      content_flags: r.content_flags,
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, content_flags, created_at')
+      .eq('bot_id', params.id)
+      .eq('role', 'user')
+      .not('content_flags', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    flaggedTurns = data
+  }
 
   // Build stats per intent
   const stats = intents.map(function(intent: any) {

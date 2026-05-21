@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRenderer'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -40,14 +41,35 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
-  // Fetch all conversation turns (cap at 2000)
-  const { data: turns } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, language, created_at')
-    .eq('bot_id', params.id)
-    .order('session_id')
-    .order('turn_number', { ascending: true })
-    .limit(2000)
+  // Fetch all conversation turns (cap at 2000). READ_PHASE3 switches the
+  // source to the new substrate; the downstream grouping by session_id is
+  // identical because we project session_id from the conversations join.
+  let turns: { session_id: string; turn_number: number; role: string; content: string; language: string; created_at: string }[] | null = null
+  if (isPhase3ReadSafe()) {
+    const { data } = await service
+      .from('conversation_turns')
+      .select('turn_number, role, content, language, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .order('turn_number', { ascending: true })
+      .limit(2000)
+    turns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id || '',
+      turn_number: r.turn_number,
+      role: r.role,
+      content: r.content,
+      language: r.language || 'en',
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, language, created_at')
+      .eq('bot_id', params.id)
+      .order('session_id')
+      .order('turn_number', { ascending: true })
+      .limit(2000)
+    turns = data
+  }
 
   if (!turns || turns.length === 0) {
     return NextResponse.json({ error: 'No conversations to analyze' }, { status: 400 })

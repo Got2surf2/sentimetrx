@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,15 +34,34 @@ export async function GET(req: NextRequest, { params }: Params) {
   const focuses: any[] = bot.focuses || []
   if (focuses.length === 0) return NextResponse.json({ focuses: [] })
 
-  // Query assistant turns with focus flags for this bot.
-  const { data: flaggedTurns } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, content_flags, created_at')
-    .eq('bot_id', params.id)
-    .eq('role', 'assistant')
-    .not('content_flags', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(2000)
+  // Query assistant turns with focus flags for this bot. READ_PHASE3 switches
+  // to the new substrate via the conversations join.
+  let flaggedTurns: { session_id: string; content_flags: unknown; created_at: string }[] | null = null
+  if (isPhase3ReadSafe()) {
+    const { data } = await service
+      .from('conversation_turns')
+      .select('content_flags, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .eq('role', 'assistant')
+      .not('content_flags', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+    flaggedTurns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id,
+      content_flags: r.content_flags,
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, content_flags, created_at')
+      .eq('bot_id', params.id)
+      .eq('role', 'assistant')
+      .not('content_flags', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+    flaggedTurns = data
+  }
 
   const stats = focuses.map(function(focus: any) {
     const flag = 'focus:' + String(focus.slug || '').toLowerCase()

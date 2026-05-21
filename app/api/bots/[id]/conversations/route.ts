@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { isPhase3ReadEnabled } from '@/lib/phase3Read'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // the new path projects session_id back into the row via the conversations
   // join so the in-JS grouping code below doesn't need to branch.
   let turns: any[]
-  if (isPhase3ReadEnabled()) {
+  if (isPhase3ReadSafe()) {
     const { data, error } = await service
       .from('conversation_turns')
       .select('turn_number, role, content, content_flags, source, created_at, conversations!inner(session_id, bot_id)')
