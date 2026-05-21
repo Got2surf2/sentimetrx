@@ -5,6 +5,14 @@
 // fired even when the user's current message was social filler (greeting,
 // thanks, sign-off), which produced jarring "by the way..." pivots on
 // turns that had no substance to anchor against.
+//
+// Related: lib/engagementSignals.ts holds the converse SUBTLE_DISENGAGE
+// regex used by the town hall route. The two regexes overlap in a few
+// short tokens ("ok", "yeah") but encode different policies: this one is
+// "sociable filler, skip the probe"; the other is "possibly disengaged,
+// trigger an AI tone check." Keep them separate.
+
+import { countWords } from '@/lib/engagementSignals'
 
 /**
  * Returns true when the user's current message has no substantive content
@@ -17,8 +25,7 @@ export function isInfoOnlyMessage(text: string | null | undefined): boolean {
   if (trimmed.length === 0) return true
   if (/\?/.test(trimmed)) return false
 
-  const words = trimmed.split(/\s+/).filter(Boolean)
-  if (words.length > 6) return false
+  if (countWords(trimmed) > 6) return false
 
   // Strip trailing punctuation/emoji clusters before regex compare.
   const normalized = trimmed.toLowerCase().replace(/[\s!.,;:~\-]+$/, '')

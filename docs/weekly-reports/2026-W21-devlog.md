@@ -599,3 +599,24 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 **Sarina risk profile (live)**: she has `deflection_enabled = true` and 0 sensitive_topics, so only the QUESTION_SIGNALS branch is active on her. The branch's decision rule is preserved byte-for-byte (the regex literal is now in the shared module; the evaluation is `evaluateDeflection(...)` instead of inline). No prompt template changes.
 
 **Not changed**: Phase 2.3 deliberately did not unify the FEEDBACK_SIGNALS lists or the AI prompt templates. The design notes flagged the prompt lift as the likeliest source of regression; folding it in would have changed Sarina's live wording without a meaningful refactor win. Both will be revisited in Phase 3 when both routes consolidate into a single chat handler.
+
+## 2026-05-21 — Convergence Phase 2.4: engagement-signal primitives extracted
+
+**Why**: The town hall route carried an inline `SUBTLE_DISENGAGE` regex for short-answer disengagement detection and `lib/botProbeGuards.ts` had its own word-count idiom. Phase 2.2 investigation noted these are *not* the same primitive (info-only filler vs. disengagement signal) but they share atomic helpers worth lifting. Phase 2.4 extracts those primitives so future surfaces (or the eventual unified chat handler in Phase 3) wire to one module instead of re-implementing.
+
+**What changed**:
+- New `lib/engagementSignals.ts` exports `countWords(text)`, `isCurtResponse(text)`, `SUBTLE_DISENGAGE` regex, `isSubtleDisengage(text)`. The module's header documents *why* `isInfoOnlyMessage` and `isSubtleDisengage` are kept distinct (different policies despite ~5 overlapping tokens).
+- `lib/botProbeGuards.ts` now imports `countWords` and uses it inside `isInfoOnlyMessage`; the public signature and behavior are unchanged.
+- `app/api/townhall/chat/route.ts` imports `SUBTLE_DISENGAGE` instead of declaring it inline. The route's word-count idiom (`message.split(/\s+/).length`) is left in place because it has subtly different semantics from `countWords` on leading/trailing whitespace (5 vs 0 for `"  "`); changing it would be a real behavioral shift, not a refactor, so it's left for a later deliberate pass.
+- 49 unit tests in `tests/unit/engagementSignals.test.ts` cover `countWords` edge cases, `isCurtResponse` threshold, the `SUBTLE_DISENGAGE` anchor behavior, and the `isSubtleDisengage` wrapper. Existing 28 `botProbeGuards` tests still pass.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- Sarina 22-scenario regression against localhost: **18 PASS / 4 PARTIAL / 0 FAIL / 0 ERROR** vs baseline `17 / 4 / 1 / 0`. Strictly better; 0 failures; 0 errors. ≥17 pass bar cleared with margin.
+
+**Not extracted (deliberately)**:
+- Multi-turn aggregators (`trajectoryDisengaging`, `recentAllCurt`, `globalCheckout`). These depend on the `townhall_turns` row shape and PulseIQ-specific per-topic / per-session policy. When bots gain a similar feature, the aggregators can be lifted at that point — there's no second customer for them today.
+- The clarifier-cap policy decision and chill-standby logic. Those are route-level orchestration, not primitives.
+- The `isInfoOnlyMessage` ↔ `isSubtleDisengage` overlap. The ~5 shared tokens ("ok", "yeah") are coincidence; the semantics differ. Unifying would change live behavior on both routes.
+
+This closes Phase 2.4. Remaining: **2.5 topic tagging** (`focusClassifier` → `topicTagger`), then **2.6 closeout** + Phase 3 prep.

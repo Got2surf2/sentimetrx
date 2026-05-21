@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isOutputClean, cleanAiOutput, cleanDeflectResponse, looksLikeAIRefusal } from '@/lib/guardrails'
 import { evaluateDeflection } from '@/lib/deflectionRouter'
+import { SUBTLE_DISENGAGE } from '@/lib/engagementSignals'
 import { checkMessage, scoreSentimentFull } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { logUsage, type UsageContext } from '@/lib/usageLog'
@@ -503,8 +504,9 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
   // ── #3: AI tone check on short responses ──────────────────────────────
   // For borderline cases (short response that would trigger clarifier),
   // ask AI: "Is this person being concise or trying to move on?"
-  // Only fires when clarifier would trigger AND response has subtle signals
-  const SUBTLE_DISENGAGE = /^(whatever|sure|fine|ok|okay|i guess|idk|i don't know|yeah|yep|yes|yup|nah|no|not really|i said what i said|all of the above|all of them|both|same|agreed|exactly|absolutely|definitely|correct|right)\s*[.!?]*$/i
+  // Only fires when clarifier would trigger AND response has subtle signals.
+  // SUBTLE_DISENGAGE regex lives in lib/engagementSignals.ts (shared module
+  // introduced in Phase 2.4; see docs/CONVERGENCE.md).
   // Fast path: if 2+ consecutive curt responses (any topic), skip AI tone check entirely
   const allUserMsgs = turns.filter(t => t.user_message && !t.skipped)
   const lastTwoCurt = allUserMsgs.length >= 2 &&
