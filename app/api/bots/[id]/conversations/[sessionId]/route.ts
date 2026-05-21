@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
+import { isPhase3ReadEnabled } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -36,6 +37,28 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const gate = await gateBotAccess(user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
+  // READ_PHASE3 selects the new substrate: lookup conversations.id by
+  // (bot_id, session_id), then read conversation_turns by conversation_id.
+  // Returns the same row shape as the legacy path so the client doesn't
+  // need to branch.
+  if (isPhase3ReadEnabled()) {
+    const { data: conv } = await gate.service
+      .from('conversations')
+      .select('id')
+      .eq('bot_id', params.id)
+      .eq('session_id', params.sessionId)
+      .maybeSingle()
+    if (!conv) return NextResponse.json({ turns: [] })
+
+    const { data: turns, error } = await gate.service
+      .from('conversation_turns')
+      .select('id, turn_number, role, content, content_en, language, created_at, content_flags, source, sentiment, sentiment_score')
+      .eq('conversation_id', (conv as { id: string }).id)
+      .order('turn_number', { ascending: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ turns: turns || [] })
+  }
 
   const { data: turns, error } = await gate.service
     .from('bot_conversation_turns')

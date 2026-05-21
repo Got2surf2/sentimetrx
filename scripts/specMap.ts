@@ -235,6 +235,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'lib/embeddings.ts',
     'lib/personaExtractor.ts',
     'lib/phase3DualWrite.ts',
+    'lib/phase3Read.ts',
     'sql/020_*',
     'sql/022_*',
     'sql/023_*',

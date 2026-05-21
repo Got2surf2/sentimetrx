@@ -1013,6 +1013,22 @@ Each invocation in the chat route is fire-and-forget (`.then(function() {})`); e
 
 **Rollback** — flip the env flag off; the dual-write becomes a no-op immediately. The new tables can be dropped via `DROP TABLE IF EXISTS conversation_turns, conversations, town_hall_topics, town_hall_conversations, town_halls CASCADE` as long as no read path has been cut over.
 
+## 11.y Phase 3 read cutover (`READ_PHASE3`)
+
+After the dual-write surface was complete and Sarina's history backfilled, two admin read paths gained a `READ_PHASE3` env flag (`lib/phase3Read.ts → isPhase3ReadEnabled()`):
+
+- `GET /api/bots/[id]/conversations` (session list) — with the flag ON, queries `conversation_turns` joined with `conversations` filtered by `conversations.bot_id`, projecting `session_id` back into the result rows so the downstream JS aggregation (turn count, first user message, name detection, content_flags rollup, deflection flag) is byte-identical to the legacy path.
+- `GET /api/bots/[id]/conversations/[sessionId]` (single session detail) — with the flag ON, looks up `conversations.id` by `(bot_id, session_id)` then reads `conversation_turns` ordered by `turn_number`. Returns the same row shape as before.
+
+**Expected difference between flag states on Sarina**: the legacy list path's per-session `turn_count` aggregate is `+0` to `+3` higher than the new path for 11 of 185 sessions, totaling 13 extra rows. These are race-condition duplicates at `turn_number = 0` that `bot_conversation_turns` has no unique constraint to prevent. The new schema's `UNIQUE(conversation_id, turn_number)` index rejects them; the backfill (`scripts/phase3-backfill-sarina.ts`) dedupes them on import, keeping the earliest `created_at`. The deduped truth is what the admin UI shows under the new flag — this is a correctness improvement, not a regression.
+
+**Verification before flipping `READ_PHASE3=true` on prod**:
+- Detail-route SQL parity for a known session: ran `bs_mpaq57ph_co30kt` (74 turns) — `bot_conversation_turns` count = `conversation_turns join conversations` count = 74. Turn 0/1/2 content matched exactly.
+- List-route SQL totals: legacy 813 rows vs new path 800 — delta of 13 matches the dedupe count from the backfill commit.
+- Sarina 22-scenario regression with `READ_PHASE3=true` (and `DUAL_WRITE_PHASE3=false`): 18 PASS / 4 PARTIAL / 0 FAIL / 0 ERROR. The chat route is independent of these flags, so this run is defense-in-depth against accidental side imports.
+
+**Rollback for `READ_PHASE3`**: flip the env flag off; the routes immediately read from `bot_conversation_turns` again. No data migration needed because the dual-write is still landing writes in both tables.
+
 ---
 
 ## 12. Cross-References

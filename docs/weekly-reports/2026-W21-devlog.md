@@ -771,3 +771,25 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 - `.env.local` flag restored to `false` after testing.
 
 **The write surface is now complete.** Every WRITE/UPDATE/DELETE on `bot_conversation_turns` mirrors to the new tables when `DUAL_WRITE_PHASE3` is on. The next Phase 3 commit can safely cut a single admin read path over to `conversations` + `conversation_turns`.
+
+## 2026-05-21 — Convergence Phase 3 commit 5: read cutover behind `READ_PHASE3`
+
+**Why**: With the write surface complete (commits 2 + 4) and Sarina's history backfilled (commit 3), the read paths can now be cut over without risk of divergence. Starting with two admin read paths under `/api/bots/[id]/conversations` because they're internal, read-only, and the easiest to A/B compare.
+
+**What changed**:
+- `lib/phase3Read.ts` — single-function module `isPhase3ReadEnabled()`. Mirrors the `DUAL_WRITE_PHASE3` gating idiom; truthy values `"true"`, `"1"`.
+- `app/api/bots/[id]/conversations/route.ts` (list) — `if (isPhase3ReadEnabled()) { query conversation_turns join conversations, project session_id back into rows } else { existing path }`. Downstream JS aggregation (turn count, first user message, name detection from greeting / "my name is" / short first message, content_flags rollup, deflection flag) is untouched — both paths feed it the same row shape.
+- `app/api/bots/[id]/conversations/[sessionId]/route.ts` (detail) — `if (isPhase3ReadEnabled()) { lookup conversations.id by (bot_id, session_id), read conversation_turns by conversation_id } else { existing path }`. DELETE handler unchanged (already mirroring via commit 4). 404-equivalent if no `conversations` row exists for the session under the new path (returns `{ turns: [] }`).
+- `scripts/specMap.ts` — added `lib/phase3Read.ts` to the BOTS.md entry.
+- `docs/BOTS.md` — new § 11.y documents the read cutover: which routes branch, the expected list-route count delta (13 rows across 11 sessions due to the historical race-condition deduplication captured in commit 3), verification steps, rollback path.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- Detail-route SQL parity for `bs_mpaq57ph_co30kt` (a known 74-turn Sarina session): legacy `bot_conversation_turns` count = new path `conversation_turns join conversations` count = 74. Turn 0/1/2 content matched exactly under both paths.
+- List-route SQL totals: legacy 813 rows vs new path 800 — exactly the 13 historical duplicates from `(session_id, turn_number=0)` race retries that the backfill deduped. The new path serves the deduped truth; this is a correctness improvement that will register as a `-0` to `-3` per-session `turn_count` for 11 sessions in the admin UI.
+- Sarina 22-scenario regression with `READ_PHASE3=true` (and `DUAL_WRITE_PHASE3=false`): **18 PASS / 4 PARTIAL / 0 FAIL / 0 ERROR**. Clears the ≥17 PASS / 0 ERROR bar. The chat route is independent of `READ_PHASE3`, so this is defense-in-depth against accidental side imports — confirmed clean.
+- `.env.local` `READ_PHASE3` restored to `false` after testing.
+
+**Prod rollout plan**: leave `READ_PHASE3` unset (= OFF) in Vercel env until Phase 2 + Phase 3 commits 1-5 are pushed and the dual-write has run on real prod traffic for a verification window. Then set `READ_PHASE3=true` on the preview deployment, eyeball `/bots/[id]/conversations` for Sarina, then promote to production env. Each subsequent commit cuts another reader (insights-deck, export, report, focus-stats, intents-stats, analyze) until every read path is on the new schema. Only then does `bot_conversation_turns` get dropped.
+
+**Phase 3 commits 1-5 are now in flight locally; push freeze still active.**

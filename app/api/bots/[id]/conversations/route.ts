@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { isPhase3ReadEnabled } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -34,14 +35,38 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Use service role for reads — RLS would otherwise block admin cross-org.
-  const { data: turns, error } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, content_flags, source, created_at')
-    .eq('bot_id', params.id)
-    .order('created_at', { ascending: false })
-    .limit(1000)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // READ_PHASE3 selects the new substrate (conversations + conversation_turns)
+  // vs the legacy bot_conversation_turns. Downstream aggregation is identical;
+  // the new path projects session_id back into the row via the conversations
+  // join so the in-JS grouping code below doesn't need to branch.
+  let turns: any[]
+  if (isPhase3ReadEnabled()) {
+    const { data, error } = await service
+      .from('conversation_turns')
+      .select('turn_number, role, content, content_flags, source, created_at, conversations!inner(session_id, bot_id)')
+      .eq('conversations.bot_id', params.id)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    turns = (data || []).map((r: any) => ({
+      session_id: r.conversations?.session_id,
+      turn_number: r.turn_number,
+      role: r.role,
+      content: r.content,
+      content_flags: r.content_flags,
+      source: r.source,
+      created_at: r.created_at,
+    }))
+  } else {
+    const { data, error } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, content_flags, source, created_at')
+      .eq('bot_id', params.id)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    turns = data || []
+  }
 
   // Get personas for this bot's sessions
   const { data: personas } = await service
