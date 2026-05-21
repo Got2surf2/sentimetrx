@@ -620,3 +620,27 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 - The `isInfoOnlyMessage` ↔ `isSubtleDisengage` overlap. The ~5 shared tokens ("ok", "yeah") are coincidence; the semantics differ. Unifying would change live behavior on both routes.
 
 This closes Phase 2.4. Remaining: **2.5 topic tagging** (`focusClassifier` → `topicTagger`), then **2.6 closeout** + Phase 3 prep.
+
+## 2026-05-21 — Convergence Phase 2.5 investigated: no extraction warranted
+
+**Why this is a documented non-extraction (like Phase 2.2)**: CONVERGENCE.md predicted Phase 2.5 would generalize `lib/focusClassifier.ts` (bots) into a shared `lib/topicTagger.ts` that also serves the town hall route's `matchResponseToTopic`. After reading both in detail, the surface-level similarity ("match text to a topic catalog") hides fundamentally different operations:
+
+| Aspect | `classifyResponseFocuses` (bots) | `matchResponseToTopic` (PulseIQ) |
+| --- | --- | --- |
+| What it tags | The **assistant's reply** | The **user's opening response** |
+| When it runs | Post-hoc, fire-and-forget after turn insert | Inline, blocks the response |
+| Cardinality | Multi-topic (1–3 slugs per reply) | Single-topic |
+| Output shape | `string[]` of slugs | `{ themeId, followUp }` + AI-drafted follow-up |
+| Output format | comma-separated slugs or `NONE` | JSON `{ topic_number, follow_up }` |
+| Fallback | None (returns empty list) | Keyword match against label + `keywords[]`, then generic prompt |
+| Catalog format | `${slug} — ${label}: ${description || '(no description)'}` | `"${label}" — ${description \|\| question}` |
+| Side effects | Pure classification, separate from reply generation | Bundled: topic match + follow-up draft in one AI call |
+| Tagging direction | bot.focuses → assistant turns | townhall_themes → user turn → next theme assignment |
+
+**A shared `topicTagger` that fits both would be one of two bad options**: (a) so generic it adds no value over inline code, or (b) wraps both paths in conditionals that are harder to follow than the two existing functions. Even the catalog-enumeration string isn't byte-identical, so there isn't even a one-line helper to lift.
+
+**The real convergence opportunity is post-Phase 3, not Phase 2.5**:
+- The NOWOCATS Question Log spec (commit `55d89c9`, docs/BOTS.md § 9.x.1) calls for *user-side* tagging on bots — same `bot.focuses` catalog, write `topic:<slug>` to user-turn `content_flags` with the same fire-and-forget pattern. When that's built, *that* code path will share substrate with `matchResponseToTopic`, not the existing assistant-side `classifyResponseFocuses`.
+- PulseIQ's bundled "match + follow-up" pattern is a deliberate inline-block decision (the route needs both before responding). Decoupling that is a product change, not a refactor.
+
+**Phase 2.5 closed as no-op.** Phase 2.6 closeout next.

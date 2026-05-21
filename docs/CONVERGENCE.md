@@ -173,7 +173,7 @@ This preserves the chat primitive's autonomy. The cohort layer doesn't hijack in
 | Info-only message detection | `lib/botProbeGuards.ts` | Generalized; every conversation uses it |
 | Engagement signals (silence / trajectory / curt / consecutive-skip) | partially in bots, mostly inline in PulseIQ | Extracted to `lib/engagementSignals.ts`; every conversation runs them; policy (probe vs. standby) depends on whether the conversation is part of a town hall and whether discovered topics are available |
 | Language-switch detection | PulseIQ route inline | Extracted to `lib/languageSwitch.ts`; every conversation uses it |
-| Topic/focus tagging on turns | `lib/focusClassifier.ts` (bots) | Generalized to `lib/topicTagger.ts` |
+| Topic/focus tagging on turns | `lib/focusClassifier.ts` (bots, assistant-side) + `matchResponseToTopic` (PulseIQ, user-side, inline + AI follow-up) | Stay separate through Phase 2 — see `2026-W21-devlog` Phase 2.5 entry. Real convergence happens after the unified chat handler exists and the NOWOCATS-spec'd user-side bot tagger ships. |
 | Cohort theme aggregation | `lib/townhallThemeDetection.ts` + cron | Renamed `lib/cohortThemeAggregator.ts`; reads conversations via the `town_halls` join; writes to `town_hall_topics` |
 | Coverage balancing | inline in PulseIQ chat route | Lifted to `pickNextTopic(agent, conversationState, townHallContext?)` — when `townHallContext` is null it returns from `agent.topics`; when present it factors in `town_hall_topics` + response counts |
 | Dashboard view | `/admin/townhall/...` pages | Rebuilt to read `town_halls + town_hall_topics + conversations + conversation_turns` |
