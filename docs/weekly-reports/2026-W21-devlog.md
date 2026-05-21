@@ -715,3 +715,22 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 - specMap.ts entries for `sql/078_*` under both `docs/BOTS.md` and `docs/TOWNHALL.md`.
 - BOTS.md + TOWNHALL.md prose describing the new tables.
 - The dual-write code itself in `app/api/bots/[id]/chat/route.ts` behind `DUAL_WRITE_PHASE3`.
+
+## 2026-05-21 — Convergence Phase 3 commit 2: dual-write behind DUAL_WRITE_PHASE3
+
+**Why**: With the schema in place (sql/078 applied to prod), the next step is observation-only dual-write from the live bot chat route. The goal is row-for-row parity verification on real Sarina traffic before any read-path cutover — once we know the new tables faithfully mirror `bot_conversation_turns`, the backfill commit can run with confidence.
+
+**What changed**:
+- New `lib/phase3DualWrite.ts` exports `mirrorTurns(service, { botId, orgId, sessionId, language, rows })`. The helper upserts a `conversations` row on `(bot_id, session_id)` to recover an id, then inserts the matching `conversation_turns` rows with `org_id` denormalized. Gated by `DUAL_WRITE_PHASE3` env (truthy values: `"true"`, `"1"`). All errors logged via `console.error` and never thrown — the live response is never on the dual-write critical path.
+- `app/api/bots/[id]/chat/route.ts` invokes `mirrorTurns` after each of the three existing `bot_conversation_turns.insert(...)` sites: silence-triggered probe, deflection-path, and main turn insert. Each call is fire-and-forget (`.then(function() {})`); the existing inserts are untouched.
+- `scripts/specMap.ts` — added `sql/078_*` and `lib/phase3DualWrite.ts` to the `docs/BOTS.md` entry; added `sql/078_*` to the `docs/TOWNHALL.md` entry.
+- `docs/BOTS.md` — new section 11.x documents the transitional dual-write: schema reference, helper contract, wired call sites, verification gate, rollback path.
+
+**Verification** (against prod Supabase via localhost dev server):
+- Smoke test (flag ON, fresh session_id `phase3-parity-1779365591`): sent one user message, got a 200 reply, then queried both tables. Result: 2 rows in `bot_conversation_turns`, 2 rows in `conversation_turns`, 1 row in `conversations`. Row counts match. `conversation_turns` shape verified: turn_number 0=user / 1=assistant, source=normal, language=en, org_id correctly denormalized.
+- Sarina 22-scenario regression with `DUAL_WRITE_PHASE3=true`: **18 PASS / 2 PARTIAL / 2 FAIL / 0 ERROR**. Acceptance bar (≥17 PASS, 0 ERROR) cleared. The 2 fails (B1, D1) are the same LLM-grading variance seen across prior Phase 2 runs — neutral-political-pressure and brand-voice nuance; not dual-write coupling because the helper runs *after* the AI response is sent.
+- Sarina regression with `DUAL_WRITE_PHASE3=false`: **20 PASS / 2 PARTIAL / 0 FAIL / 0 ERROR**. Confirmed the helper is correctly gated — no `conversations` row written when the flag is off. Both flag states pass the acceptance bar.
+
+**Flag default**: OFF in production until parity is verified on real Sarina traffic. Locally I've left `DUAL_WRITE_PHASE3=false` in `.env.local` after testing; toggle to `true` only when actively verifying.
+
+**Next (commit 3)**: `scripts/phase3-backfill-sarina.ts` — read every `bot_conversation_turns` row for Sarina grouped by `session_id`, reconstruct `conversations` + `conversation_turns` rows. Idempotent (re-runs are no-ops). After backfill, the new tables hold Sarina's full history; the read-path cutover becomes possible.

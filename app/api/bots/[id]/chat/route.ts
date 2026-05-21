@@ -13,6 +13,7 @@ import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
+import { mirrorTurns } from '@/lib/phase3DualWrite'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 
 export const dynamic = 'force-dynamic'
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
       return NextResponse.json({ reply: null, skipped: 'insert_failed' }, { headers: cors })
     }
+    mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow] }).then(function() {})
     return NextResponse.json({ reply: probeText, _silence: true }, { headers: cors })
   }
 
@@ -278,6 +280,7 @@ export async function POST(req: NextRequest, { params }: Params) {
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber + 1, role: 'assistant', content: deflectText, language: botLang || 'en', source: 'deflect' },
             ]
             service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
+            mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns }).then(function() {})
           }
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
@@ -781,6 +784,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         } else if (debugMode) {
           _debug.push('Storage: inserted ' + (insertedRows?.length || 0) + ' turns (turn_base=' + turnBase + ')')
         }
+        mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsToInsert as any }).then(function() {})
 
         // Focus classify happens after the insert lands — best-effort
         // tag of the just-saved assistant turn. Slow AI call must not

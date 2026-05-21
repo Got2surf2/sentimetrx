@@ -981,6 +981,36 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns`. First call:
 
 ---
 
+## 11.x Phase 3 dual-write to `conversations` + `conversation_turns` (transitional)
+
+Per `docs/CONVERGENCE.md`, Phase 3 of the agents x PulseIQ convergence introduces a new conversation-storage substrate that will eventually replace `bot_conversation_turns`. The cutover follows the standard pattern: introduce the new tables dark → dual-write to both → backfill historical data → verify row-for-row equivalence → flip the read path → drop the old table.
+
+This section documents the dual-write stage. The live read path is unchanged — every UI, admin tool, and analytics query still reads from `bot_conversation_turns` today.
+
+**Schema (`sql/078_phase3_new_schema.sql`)** — five dark tables: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. All have `org_id NOT NULL`, RLS enabled, org-scoped SELECT policies, and no INSERT/UPDATE/DELETE policies (writes are service-role only). `conversations.bot_id` FKs to `bots(id)`; the eventual `bots`→`agents` rename is deferred to a later commit.
+
+**Dual-write helper (`lib/phase3DualWrite.ts`)** — exports `mirrorTurns(service, { botId, orgId, sessionId, language, rows })`. The helper:
+- Returns immediately if the env flag `DUAL_WRITE_PHASE3` is not truthy (`"true"` or `"1"`).
+- Upserts a `conversations` row on `(bot_id, session_id)` to recover the conversation id.
+- Inserts each mirrored row into `conversation_turns` with `org_id` denormalized.
+- Logs every error via `console.error` and never throws — the live response is not on the dual-write critical path.
+
+**Wired call sites in `/api/bots/[id]/chat/route.ts`** — `mirrorTurns` is invoked after each `bot_conversation_turns.insert(...)`:
+1. Silence-triggered probe insert (single assistant row).
+2. Deflection-path insert (user + deflected assistant row pair).
+3. Main turn insert (optional turn-0 greeting + user + assistant rows).
+
+Each invocation is fire-and-forget (`.then(function() {})`); errors never reach the user.
+
+**Verification gate before any read-path cutover**:
+- Row counts per session: `count(*) from conversation_turns ct join conversations c on c.id=ct.conversation_id where c.bot_id=$1 and c.session_id=$2` must equal `count(*) from bot_conversation_turns where bot_id=$1 and session_id=$2` for every session that has been written under the flag.
+- Sarina regression with `DUAL_WRITE_PHASE3=true` must clear ≥17 PASS / 0 ERROR.
+- Sarina regression with the flag unset must clear the same — verifies dual-write is observation-only with no coupling to the live response.
+
+**Rollback** — flip the env flag off; the dual-write becomes a no-op immediately. The new tables can be dropped via `DROP TABLE IF EXISTS conversation_turns, conversations, town_hall_topics, town_hall_conversations, town_halls CASCADE` as long as no read path has been cut over.
+
+---
+
 ## 12. Cross-References
 
 - **Content Guard (`lib/contentGuard.ts`)** — `auditContent()`, `scoreSentimentFull()` used in chat pipeline. Same module also used by social and survey pipelines.

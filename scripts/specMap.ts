@@ -234,10 +234,12 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'components/ui/ChatBot.tsx',
     'lib/embeddings.ts',
     'lib/personaExtractor.ts',
+    'lib/phase3DualWrite.ts',
     'sql/020_*',
     'sql/022_*',
     'sql/023_*',
     'sql/025_*',
+    'sql/078_*',
   ],
 
   'docs/TOWNHALL.md': [
@@ -257,5 +259,6 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sql/017_*',
     'sql/029_*',
     'sql/032_*',
+    'sql/078_*',
   ],
 }
