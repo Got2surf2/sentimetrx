@@ -99,7 +99,7 @@ async function runOne(baseUrl: string, botId: string, test: SarinaTest): Promise
 
 async function main() {
   const botId = process.argv[2]
-  const baseUrl = process.argv[3] || 'https://sentimetrx.com'
+  const baseUrl = process.argv[3] || 'https://www.sentimetrx.ai'
   if (!botId) {
     console.error('Usage: tsx scripts/sarina-regression-run.ts <botId> [baseUrl]')
     process.exit(1)

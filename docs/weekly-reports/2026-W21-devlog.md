@@ -10,6 +10,8 @@
 
 **Cost note**: each run is ~$1–3 in live Anthropic spend (Sarina uses tier='advanced' / Sonnet for main responses). Total Phase 2 regression spend ≈ ~$15 (1 baseline + 6 post-extraction runs). Trade vs. the alternative — refactoring under a live bot without a regression gate — is obviously worth it.
 
+**Follow-up fix same session**: first baseline run errored 22/22 with HTTP 405. Probed both production domains: `https://sentimetrx.com/b/sarina` returns 200 on the UI but `POST /api/bots/[id]/chat` returns 405; `https://www.sentimetrx.ai` returns 200 on both. The script's default `baseUrl` had been left at the (non-working-for-API) `.com` domain; fixed to `https://www.sentimetrx.ai` to match the older `_run_sarina_regression.ts` behavior documented in TESTING.md. The `.com`-vs-`.ai` API-method asymmetry is suspicious enough to warrant a separate investigation (deployment alias? domain config?) — captured in the open-work-queue for follow-up; not blocking convergence work.
+
 ## 2026-05-20 — UX exploration for town hall setup drafted
 
 **Why**: CONVERGENCE.md (twice-revised same day) covers the data model and sequencing but is silent on the UX of standing up a town hall. The architectural decision introduces a genuinely new UX problem — the agent now lives separately from the town hall, which means setup needs a "pick the agent" step (today's PulseIQ doesn't have this) and the agent editor needs a warning banner when active town halls are wired to it (otherwise editing Sarina's voice silently changes how a live Vindman town hall behaves). Capturing this before Phase 5 implementation so the picker, editor, and dashboard land with intent rather than ad-hoc.
