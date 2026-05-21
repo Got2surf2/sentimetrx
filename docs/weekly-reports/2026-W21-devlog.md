@@ -734,3 +734,20 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 **Flag default**: OFF in production until parity is verified on real Sarina traffic. Locally I've left `DUAL_WRITE_PHASE3=false` in `.env.local` after testing; toggle to `true` only when actively verifying.
 
 **Next (commit 3)**: `scripts/phase3-backfill-sarina.ts` — read every `bot_conversation_turns` row for Sarina grouped by `session_id`, reconstruct `conversations` + `conversation_turns` rows. Idempotent (re-runs are no-ops). After backfill, the new tables hold Sarina's full history; the read-path cutover becomes possible.
+
+## 2026-05-21 — Convergence Phase 3 commit 3: Sarina backfill
+
+**Why**: With the dual-write flag-gated and verified row-for-row on fresh sessions (commit 2 above), Sarina's 185 historical sessions still live only in `bot_conversation_turns`. This script reconstructs them in the new substrate so the eventual read-path cutover doesn't lose historical conversations.
+
+**What changed**: `scripts/phase3-backfill-sarina.ts` — reads every `bot_conversation_turns` row for the targeted bot, groups by `session_id`, upserts `conversations` keyed on `(bot_id, session_id)`, and inserts `conversation_turns`. Skip flag `--dry-run`; default bot id is Sarina but overridable with `--bot-id`.
+
+**Source data quirk surfaced** — `bot_conversation_turns` has no `UNIQUE(session_id, turn_number)` constraint, so the live route has been quietly tolerating race-condition retries on the initial greeting turn. 13 duplicate rows across 11 sessions (all at `turn_number = 0`) existed in prod. The new `conversation_turns_conv_turn_idx` correctly rejects them. The script dedupes in JS — keeps the earliest `created_at` per `(session_id, turn_number)`, which is what the route's downstream logic treats as canonical (the second insert was a no-op anyway because the route reads `turn_number` from existing rows before computing the next turn). The acceptance check compares **deduped** source count vs destination count, not raw source count.
+
+**Verification**:
+- First run: 185 sessions processed, 185 `conversations` upserted, 591 turns already present (from dual-write smoke tests + the 22-scenario regression history), 155 newly inserted, 13 duplicates dropped. Deduped source = 746, destination = 746 ✅.
+- Re-run (idempotency): 0 inserts, 746 already present, 13 dropped, parity still matches ✅.
+- Clean `tsc --noEmit`.
+
+**Net effect on prod data**: 185 new `conversations` rows + 746 new `conversation_turns` rows, all dark (no live route reads them). `bot_conversation_turns` is unchanged — the 13 historical duplicates remain in place (they're harmless there; the route never read them as separate rows).
+
+**This closes Phase 3's first three commits.** Schema dark → dual-write gated → historical backfill complete. The next Phase 3 commit will be the read-path cutover: a feature-flagged read from `conversation_turns` instead of `bot_conversation_turns`, exercised through one admin surface first (likely `/bots/[id]/conversations` since it's the easiest to A/B compare). Only after the read flag's been on in prod for a verification window does `bot_conversation_turns` get dropped.
