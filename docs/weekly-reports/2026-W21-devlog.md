@@ -1315,3 +1315,57 @@ The picker now sees real `response_count` data after the first turn lands on the
 Optional pivot before commit 5: **Phase 6 prep** — create the first `town_halls` row pointing at Sarina, flip `TOWNHALL_VIA_AGENT_HANDLER=true` locally, manually exercise the new path. That's the real acceptance test for Phase 5 commits 1-4 before grinding through the dashboard rewrite.
 
 **Commit lands as 35 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Phase 6 prep + Phase 5 commit 5: schema rename, live exercise, real cohort against prod
+
+**Why**: Phase 5 acceptance test was supposed to be Phase 6 (Vindman town hall ships in June). Shipping Phase 5 commit 5 (dashboard rewrite) before any data lives on the new substrate means building dashboards against an unproven cohort path. Cheaper to do "tiny Phase 6 prep" first — create one `town_halls` row, flip both flags, exercise end-to-end — and surface real bugs before they get buried under a UI rewrite.
+
+**The bug**: surfaced on the first dual-write attempt — `ERROR: column ct.topic_id does not exist`. `sql/078` created `conversation_turns.theme_id` but its COMMENT already references `town_hall_topics(id)`, and Phase 5 commit 3's code writes to `topic_id`. Naming drift between early schema and the convergence's "topic" nomenclature.
+
+**Fix landed as Phase 5 commit 5**:
+
+| File | Change |
+|---|---|
+| `sql/080_phase5_rename_theme_id_to_topic_id.sql` | NEW migration — `RENAME COLUMN theme_id TO topic_id` guarded by IF EXISTS. Applied to prod. |
+| `sql/one-off/2026-05-21-sarina-town-hall.sql` | NEW seed — first `town_halls` row (`slug='sarina-cohort'`, status='live') pointing at Sarina. org_id resolved via subquery. 3 seed topics. `cohort_config` includes `theme_detection_every_n_responses=10`, custom `standby_message`. |
+| `sql/one-off/2026-05-21-phase6-verify.sql` | NEW aggregate-only verification (counts, no raw rows). |
+| `docs/CONVERGENCE.md` | Changelog entry for Phase 5 commit 5 + Phase 6 prep. |
+
+**Live exercise** (`localhost:3000`, both flags ON after dev restart):
+
+```
+POST /api/townhall/chat {session_id:"sarina-cohort", participant_id:"phase6-test-3",
+                         message:"door-knocking on weekends..."}
+Response:
+  source: "agent_handler"  ← Phase 4 commit 2 branch fired
+  _debug: "Town hall topic: 'Local issues that matter most' (reason: smart_probe, keyword: school)"
+                            ← Phase 5 commit 3 picker matched
+  bot_message: AI rephrased seed topic naturally
+```
+
+**Verification SQL** (aggregate-only):
+
+| Metric | Value |
+|---|---|
+| `town_halls` slug='sarina-cohort' | 1 |
+| `town_hall_topics` | 3 |
+| Linked conversations via `town_hall_conversations` | 2 |
+| Turns in cohort (`conversation_turns`) | 2 |
+| Turns tagged with `topic_id` | 2 |
+| Distinct participants | 2 |
+
+Counts reflect that test #1 ran pre-`DUAL_WRITE_PHASE3` (mirror no-op), test #2 ran pre-rename (link landed, turn insert failed), test #3 ran post-rename with both flags on and landed all three layers. Storage chain end-to-end verified.
+
+**What this unlocks**: A real PulseIQ cohort session can now run against prod through the unified handler. The new path is no longer dark.
+
+**Env-flag state after this commit** (LOCAL ONLY — gitignored):
+
+| Flag | Was | Now |
+|---|---|---|
+| `DUAL_WRITE_PHASE3` | false | **true** |
+| `READ_PHASE3` | false | false |
+| `TOWNHALL_VIA_AGENT_HANDLER` | false | **true** |
+
+Prod: all three unset (default OFF). Flipping in prod is separate authorization — push freeze active.
+
+**Commit lands as 37 ahead of origin/main; push freeze still active.**
