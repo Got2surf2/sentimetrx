@@ -14,6 +14,7 @@ import { extractPersona, mergePersona, personaToPromptContext, extractDemographi
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
 import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
+import { isPhase3ReadEnabled } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 
 export const dynamic = 'force-dynamic'
@@ -92,12 +93,30 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (enabledFocuses.length === 0) {
       return NextResponse.json({ reply: null, skipped: 'no_focuses' }, { headers: cors })
     }
-    const { data: existingTurns } = await service
-      .from('bot_conversation_turns')
-      .select('content_flags, source, turn_number')
-      .eq('bot_id', bot.id)
-      .eq('session_id', session_id)
-      .order('turn_number', { ascending: true })
+    // READ_PHASE3 only honored here if DUAL_WRITE_PHASE3 is also on. Reading
+    // from the new schema while writes only land in the old would treat
+    // every new session as having zero history → duplicate turn_number=0
+    // inserts on every message. Phase 3 cleanup removes both flags + this
+    // guard when bot_conversation_turns drops.
+    const useNewSchemaSilence = isPhase3ReadEnabled() && (process.env.DUAL_WRITE_PHASE3 === 'true' || process.env.DUAL_WRITE_PHASE3 === '1')
+    let existingTurns: { content_flags: unknown; source: string | null; turn_number: number }[] = []
+    if (useNewSchemaSilence) {
+      const { data } = await service
+        .from('conversation_turns')
+        .select('content_flags, source, turn_number, conversations!inner(session_id, bot_id)')
+        .eq('conversations.bot_id', bot.id)
+        .eq('conversations.session_id', session_id)
+        .order('turn_number', { ascending: true })
+      existingTurns = (data || []) as any
+    } else {
+      const { data } = await service
+        .from('bot_conversation_turns')
+        .select('content_flags, source, turn_number')
+        .eq('bot_id', bot.id)
+        .eq('session_id', session_id)
+        .order('turn_number', { ascending: true })
+      existingTurns = (data || []) as any
+    }
     const silenceAlreadyFired = (existingTurns || []).some(function(t: any) { return t.source === 'silence_probe' })
     if (silenceAlreadyFired) {
       return NextResponse.json({ reply: null, skipped: 'already_fired' }, { headers: cors })
@@ -746,13 +765,30 @@ export async function POST(req: NextRequest, { params }: Params) {
         const userContent = lastUserMsg?.content || ''
         const turnsToInsert: Record<string, unknown>[] = []
 
-        const { data: existingTurns } = await service
-          .from('bot_conversation_turns')
-          .select('turn_number')
-          .eq('bot_id', bot.id)
-          .eq('session_id', session_id)
-          .order('turn_number', { ascending: false })
-          .limit(1)
+        // Same dual-flag gate as the silence-probe read above — without
+        // dual-write, every fresh session looks like turn_number=-1 in the
+        // new schema and we'd write duplicate turn 0s into the legacy table.
+        const useNewSchemaNext = isPhase3ReadEnabled() && (process.env.DUAL_WRITE_PHASE3 === 'true' || process.env.DUAL_WRITE_PHASE3 === '1')
+        let existingTurns: { turn_number: number }[] = []
+        if (useNewSchemaNext) {
+          const { data } = await service
+            .from('conversation_turns')
+            .select('turn_number, conversations!inner(session_id, bot_id)')
+            .eq('conversations.bot_id', bot.id)
+            .eq('conversations.session_id', session_id)
+            .order('turn_number', { ascending: false })
+            .limit(1)
+          existingTurns = (data || []) as any
+        } else {
+          const { data } = await service
+            .from('bot_conversation_turns')
+            .select('turn_number')
+            .eq('bot_id', bot.id)
+            .eq('session_id', session_id)
+            .order('turn_number', { ascending: false })
+            .limit(1)
+          existingTurns = (data || []) as any
+        }
 
         const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
 

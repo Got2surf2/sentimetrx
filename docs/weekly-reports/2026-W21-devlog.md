@@ -793,3 +793,22 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 **Prod rollout plan**: leave `READ_PHASE3` unset (= OFF) in Vercel env until Phase 2 + Phase 3 commits 1-5 are pushed and the dual-write has run on real prod traffic for a verification window. Then set `READ_PHASE3=true` on the preview deployment, eyeball `/bots/[id]/conversations` for Sarina, then promote to production env. Each subsequent commit cuts another reader (insights-deck, export, report, focus-stats, intents-stats, analyze) until every read path is on the new schema. Only then does `bot_conversation_turns` get dropped.
 
 **Phase 3 commits 1-5 are now in flight locally; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 3 commit 6: chat-route reads on the new substrate
+
+**Why**: With the admin readers cut (commit 5), the chat route itself still reads `bot_conversation_turns` twice per request. These are the highest-stakes reads — per-request, latency-sensitive, customer-facing. Cutting them lets us flip `READ_PHASE3=true` globally once verified, instead of carrying a per-route flag forever.
+
+**What changed**:
+- `app/api/bots/[id]/chat/route.ts` — two read sites now branch on `READ_PHASE3` (with a dual-flag safety gate):
+  1. Silence-probe history read (around line 95): selects `(content_flags, source, turn_number)` for the session to detect `silence_probe` already fired + which focus slugs are covered.
+  2. Next-turn-number read (around line 750): selects `max(turn_number)` to compute the next pair of rows.
+
+**The dual-flag gate**: both reads honor `READ_PHASE3` ONLY when `DUAL_WRITE_PHASE3` is also on. Without that coupling, a fresh session under (`DUAL_WRITE_PHASE3=false`, `READ_PHASE3=true`) would write to `bot_conversation_turns` but read empty from `conversation_turns` → think `turn_number = -1` for every message → duplicate `turn_number = 0` inserts every turn → catastrophic data corruption. Inline comment on each gate explains; transitional code, removed when `bot_conversation_turns` drops.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- End-to-end with both flags on: sent two messages to a fresh Sarina session, confirmed `turn_number` progresses 0→1→2→3 in both tables with no duplicates. The chat route is correctly consulting `conversation_turns` for the max-turn-number lookup.
+- Sarina 22-scenario regression with `DUAL_WRITE_PHASE3=true` + `READ_PHASE3=true`: **19 PASS / 3 PARTIAL / 0 FAIL / 0 ERROR**. The best result of Phase 3 so far — turn-history reads correctly served from the new substrate, deflection + silence-probe + main flow all green.
+- `.env.local` flags restored to `false` after testing.
+
+**Now: Tier 1 admin readers remain (6 routes), Tier 2 analytics aggregators (3 readers), Tier 3 cron, then `DROP TABLE bot_conversation_turns`.** Each subsequent commit gates behind `READ_PHASE3` and re-uses the same dual-flag-aware pattern.
