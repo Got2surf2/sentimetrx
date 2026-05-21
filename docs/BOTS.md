@@ -1,7 +1,11 @@
 # Sentimetrx — Agents (Bots) Spec
 
 **Module:** `/app/bots/`, `/app/b/[slug]/`, `/app/api/bots/*`, `/app/api/cron/bot-conversation-review/`, `lib/embeddings.ts`, `lib/personaExtractor.ts`
-**Storage:** `bots`, `bot_knowledge_chunks`, `bot_conversation_turns`, `bot_session_personas`, `bot_conversation_reviews` (migrations `020_bots.sql`, `022_bot_conversations.sql`, `023_knowledge_chunks.sql`, `024_knowledge_embeddings.sql`, `025_bot_enhancements.sql`, `028_demographic_inference.sql`, `029_turn_sentiment.sql`, `038_bot_session_counts.sql`)
+**Storage** (as of Phase 3 commit 10, 2026-05-21):
+- **Authoritative tables**: `agents`, `agent_knowledge_chunks`, `agent_session_personas`, `agent_conversation_reviews`, `agent_change_log` (all renamed from `bot_*` in `sql/079`). New conversation substrate: `conversations` + `conversation_turns` (`sql/078`).
+- **Legacy table still receiving dual writes**: `bot_conversation_turns` (drops at Tier 5 cleanup once dual-write has run on prod for a verification window; see § 11.x/y below). Backfilled into `conversation_turns` for all 8 bots as of 2026-05-21.
+- **Backward-compat views** (`sql/079`): `bots`, `bot_knowledge_chunks`, `bot_session_personas`, `bot_conversation_reviews`, `bot_change_log` — auto-updatable views with `security_invoker = true` so RLS on the underlying renamed table still applies. Code no longer uses these (all 72 references migrated to the new names in Phase 3 commit 11); views drop in Tier 5.
+- **Migrations**: `020_bots.sql`, `022_bot_conversations.sql`, `023_knowledge_chunks.sql`, `024_knowledge_embeddings.sql`, `025_bot_enhancements.sql`, `028_demographic_inference.sql`, `029_turn_sentiment.sql`, `038_bot_session_counts.sql`, `078_phase3_new_schema.sql`, `079_phase3_rename_bots_to_agents.sql`.
 **External APIs:** Anthropic Claude (via `callAI` / AI Gateway), OpenAI embeddings, OpenAI moderation
 **Feature gate:** `organizations.features.bots`
 
@@ -987,7 +991,7 @@ Per `docs/CONVERGENCE.md`, Phase 3 of the agents x PulseIQ convergence introduce
 
 This section documents the dual-write stage. The live read path is unchanged — every UI, admin tool, and analytics query still reads from `bot_conversation_turns` today.
 
-**Schema (`sql/078_phase3_new_schema.sql`)** — five dark tables: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. All have `org_id NOT NULL`, RLS enabled, org-scoped SELECT policies, and no INSERT/UPDATE/DELETE policies (writes are service-role only). `conversations.bot_id` FKs to `bots(id)`; the eventual `bots`→`agents` rename is deferred to a later commit.
+**Schema (`sql/078_phase3_new_schema.sql`)** — five new tables: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. All have `org_id NOT NULL`, RLS enabled, org-scoped SELECT policies, and no INSERT/UPDATE/DELETE policies (writes are service-role only). `conversations.bot_id` originally FK'd to `bots(id)`; after `sql/079` the table renamed to `agents`, so the FK now references `agents(id)` via Postgres's OID-based rebind. The column name `bot_id` is preserved for code-migration scope reasons — column rename is a separate optional future commit.
 
 **Dual-write helper (`lib/phase3DualWrite.ts`)** — exports three mirrors, all gated by `DUAL_WRITE_PHASE3` (truthy: `"true"`, `"1"`) and all best-effort (errors logged, never thrown):
 

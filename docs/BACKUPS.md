@@ -18,8 +18,8 @@ Key is deterministic per (org, day). Re-running on the same day overwrites the k
 
 Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`. Grouped by how the org filter is applied:
 
-- **By `org_id` directly**: bots, studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, etc.
-- **Via a parent table** (e.g. `bot_id IN (SELECT id FROM bots WHERE org_id = $1)`): bot_knowledge_chunks, bot_conversation_turns, responses, campaign_emails, etc.
+- **By `org_id` directly**: agents (formerly `bots`), studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, conversations, conversation_turns, town_halls, town_hall_conversations, town_hall_topics, etc.
+- **Via a parent table** (e.g. `bot_id IN (SELECT id FROM agents WHERE org_id = $1)`): agent_knowledge_chunks, agent_conversation_reviews, bot_conversation_turns (transitional, drops at Tier 5), responses, campaign_emails, etc.
 - **The organization row itself**: filtered by `id = $1`.
 
 ### Tables explicitly skipped (with reason)
