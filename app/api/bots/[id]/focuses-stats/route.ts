@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
 
   // Service-role read pairs id with org_id when not admin.
-  const { data: bot } = await service.from('bots').select('id, org_id, focuses').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, focuses').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
   const focuses: any[] = bot.focuses || []

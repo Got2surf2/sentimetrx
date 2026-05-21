@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Non-admins are scoped to their own org.
   const service = createServiceRoleClient()
   const { data, error } = await service
-    .from('bots')
+    .from('agents')
     .select('*')
     .eq('id', params.id)
     .single()
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const service = createServiceRoleClient()
     const check = await checkTransferTarget(service, auth.orgId, body.org_id)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
-    const { data: snap } = await service.from('bots').select('name').eq('id', params.id).single()
+    const { data: snap } = await service.from('agents').select('name').eq('id', params.id).single()
     resourceSnapshot = { name: (snap as any)?.name ?? null }
     updates.org_id = body.org_id
     isTransfer = true
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Invalid slug format' }, { status: 400 })
     }
     const service = createServiceRoleClient()
-    const { data: existing } = await service.from('bots').select('id').eq('slug', updates.slug as string).neq('id', params.id).limit(1)
+    const { data: existing } = await service.from('agents').select('id').eq('slug', updates.slug as string).neq('id', params.id).limit(1)
     if (existing && existing.length > 0) {
       return NextResponse.json({ error: 'This URL is already taken' }, { status: 409 })
     }
@@ -89,9 +89,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
 
   // Snapshot the bot row before the update so the change log can diff.
-  const { data: beforeRow } = await service.from('bots').select('*').eq('id', params.id).single()
+  const { data: beforeRow } = await service.from('agents').select('*').eq('id', params.id).single()
 
-  let updateQuery = service.from('bots').update(updates).eq('id', params.id)
+  let updateQuery = service.from('agents').update(updates).eq('id', params.id)
   if (!auth.isAdmin) updateQuery = updateQuery.eq('org_id', auth.orgId)
   const { error } = await updateQuery
 
@@ -109,7 +109,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   // Audit log: write a 'status_change' or 'update' depending on what changed.
   if (beforeRow) {
-    const { data: afterRow } = await service.from('bots').select('*').eq('id', params.id).single()
+    const { data: afterRow } = await service.from('agents').select('*').eq('id', params.id).single()
     const before = snapshotForDiff(beforeRow as any)
     const after = snapshotForDiff(afterRow as any)
     const diff = diffSnapshots(before, after)
@@ -150,9 +150,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   // Snapshot the bot row before delete so the change log entry survives.
   // (The bot_change_log row gets removed by ON DELETE CASCADE shortly,
   // but it lives long enough to write to a polymorphic mirror later.)
-  const { data: beforeRow } = await service.from('bots').select('*').eq('id', params.id).single()
+  const { data: beforeRow } = await service.from('agents').select('*').eq('id', params.id).single()
 
-  let q = service.from('bots').delete().eq('id', params.id)
+  let q = service.from('agents').delete().eq('id', params.id)
   if (!auth.isAdmin) q = q.eq('org_id', auth.orgId)
   const { error } = await q
 

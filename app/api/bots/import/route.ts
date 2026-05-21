@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   let slug = baseSlug
   let suffix = 1
   while (true) {
-    const { data: existing } = await service.from('bots').select('id').eq('slug', slug).limit(1)
+    const { data: existing } = await service.from('agents').select('id').eq('slug', slug).limit(1)
     if (!existing || existing.length === 0) break
     suffix += 1
     slug = baseSlug + '-copy' + (suffix === 2 ? '' : suffix)
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   // Imported bots start as draft so the new owner can review before activating.
   incomingBot.status = 'draft'
 
-  const { data: newBot, error: insErr } = await service.from('bots').insert({
+  const { data: newBot, error: insErr } = await service.from('agents').insert({
     ...incomingBot,
     org_id: userOrgId,
     created_by: user.id,
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
         metadata: c.metadata && typeof c.metadata === 'object' ? c.metadata : {},
       }))
     if (rows.length > 0) {
-      const { error: chunkErr } = await service.from('bot_knowledge_chunks').insert(rows)
+      const { error: chunkErr } = await service.from('agent_knowledge_chunks').insert(rows)
       if (!chunkErr) chunksInserted = rows.length
       else console.error('[bot import] chunk insert error:', chunkErr.message)
     }

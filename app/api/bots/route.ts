@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
   const service = createServiceRoleClient()
   let q = service
-    .from('bots')
+    .from('agents')
     .select('id, org_id, name, slug, status, config, conversation_count, last_session_at, created_at, updated_at')
     .order('created_at', { ascending: false })
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
@@ -98,12 +98,12 @@ export async function POST(req: NextRequest) {
 
   // Check slug uniqueness
   const service = createServiceRoleClient()
-  const { data: existing } = await service.from('bots').select('id').eq('slug', slug).limit(1)
+  const { data: existing } = await service.from('agents').select('id').eq('slug', slug).limit(1)
   if (existing && existing.length > 0) {
     return NextResponse.json({ error: 'This URL is already taken' }, { status: 409 })
   }
 
-  const { data, error } = await service.from('bots').insert({
+  const { data, error } = await service.from('agents').insert({
     org_id: ctx.orgId,
     name,
     slug,

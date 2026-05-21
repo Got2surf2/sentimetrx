@@ -74,7 +74,7 @@ export function diffSnapshots(before: Record<string, unknown> | null, after: Rec
 export async function logBotChange(args: LogBotChangeArgs): Promise<void> {
   try {
     const service = createServiceRoleClient()
-    const { error } = await service.from('bot_change_log').insert({
+    const { error } = await service.from('agent_change_log').insert({
       bot_id: args.botId,
       org_id: args.orgId,
       actor_id: args.actorId ?? null,

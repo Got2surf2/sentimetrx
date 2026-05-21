@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Load bot config from DB
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
-    .from('bots')
+    .from('agents')
     .select('*')
     .eq('id', params.id)
     .single()
@@ -395,7 +395,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (session_id && askProfileEnabled) {
     // Check if persona already exists for this session
     var { data: existingPersona } = await service
-      .from('bot_session_personas')
+      .from('agent_session_personas')
       .select('persona')
       .eq('bot_id', bot.id)
       .eq('session_id', session_id)
@@ -412,7 +412,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         extractPersona(userMsgs).then(function(update) {
           if (Object.keys(update).length > 0) {
             var merged = mergePersona(currentPersona, update)
-            service.from('bot_session_personas')
+            service.from('agent_session_personas')
               .update({ persona: merged, updated_at: new Date().toISOString() })
               .eq('bot_id', bot.id)
               .eq('session_id', session_id)
@@ -428,7 +428,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         if (Object.keys(persona).length > 0) {
           personaContext = personaToPromptContext(persona)
           // Upsert to DB (fire-and-forget)
-          service.from('bot_session_personas')
+          service.from('agent_session_personas')
             .upsert({ bot_id: bot.id, session_id: session_id, persona: persona, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
             .then(function() {})
         }
@@ -444,7 +444,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (session_id && demographicEnabled && userTurnCount >= 3) {
     var { data: existingPersonaRow } = await service
-      .from('bot_session_personas')
+      .from('agent_session_personas')
       .select('demographics')
       .eq('bot_id', bot.id)
       .eq('session_id', session_id)
@@ -458,7 +458,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       extractDemographics(demoMsgs).then(function(update) {
         if (Object.keys(update).length > 0) {
           var merged = Object.keys(existingDemographics).length > 0 ? mergeDemographics(existingDemographics, update) : update
-          service.from('bot_session_personas')
+          service.from('agent_session_personas')
             .update({ demographics: merged, updated_at: new Date().toISOString() })
             .eq('bot_id', bot.id)
             .eq('session_id', session_id)
@@ -745,7 +745,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'chat' }, result.usage)
 
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
-    service.from('bots').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
+    service.from('agents').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
 
     // Store conversation turns — AWAITED before responding so storage is
     // guaranteed even on Vercel where Lambda freezes after response. Prior

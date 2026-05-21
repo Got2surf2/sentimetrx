@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && (bot as any).org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10) || 100, 500)
 
   const { data: rows, error } = await service
-    .from('bot_change_log')
+    .from('agent_change_log')
     .select('*')
     .eq('bot_id', params.id)
     .order('created_at', { ascending: false })

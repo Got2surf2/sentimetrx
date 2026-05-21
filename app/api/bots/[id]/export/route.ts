@@ -25,14 +25,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   const service = createServiceRoleClient()
-  const { data: bot, error } = await service.from('bots').select('*').eq('id', params.id).single()
+  const { data: bot, error } = await service.from('agents').select('*').eq('id', params.id).single()
   if (error || !bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && (bot as any).org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
   const { data: chunks } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .select('title, content, metadata')
     .eq('bot_id', params.id)
     .order('created_at', { ascending: true })

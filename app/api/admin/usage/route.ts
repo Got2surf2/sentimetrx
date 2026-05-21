@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   var sessionNames: Record<string, string> = {}
 
   if (botIds.length > 0) {
-    var { data: bots } = await service.from('bots').select('id, name').in('id', botIds)
+    var { data: bots } = await service.from('agents').select('id, name').in('id', botIds)
     for (var b of bots || []) botNames[b.id] = b.name
   }
   if (sessionIds.length > 0) {

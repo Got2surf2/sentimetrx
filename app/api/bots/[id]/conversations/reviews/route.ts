@@ -24,12 +24,12 @@ export async function GET(req: NextRequest, { params }: Params) {
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: reviews } = await service
-    .from('bot_conversation_reviews')
+    .from('agent_conversation_reviews')
     .select('id, reviewed_at, since, session_count, turn_count, report, theme_drift')
     .eq('bot_id', params.id)
     .order('reviewed_at', { ascending: false })

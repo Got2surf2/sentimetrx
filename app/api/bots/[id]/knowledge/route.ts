@@ -30,14 +30,14 @@ export async function GET(_req: Request, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && (bot as any).org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
   const { data: chunks } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .select('id, title, content, metadata, created_at')
     .eq('bot_id', params.id)
     .order('created_at', { ascending: true })
@@ -68,7 +68,7 @@ export async function POST(req: Request, { params }: Params) {
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id, subject, opponents').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, subject, opponents').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
@@ -82,7 +82,7 @@ export async function POST(req: Request, { params }: Params) {
 
   // Dedup: fetch existing chunk contents for this bot to avoid duplicates
   const { data: existingChunks } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .select('content')
     .eq('bot_id', params.id)
 
@@ -103,7 +103,7 @@ export async function POST(req: Request, { params }: Params) {
     }
   })
 
-  const { data: inserted, error } = await service.from('bot_knowledge_chunks').insert(rows).select('id, title, content')
+  const { data: inserted, error } = await service.from('agent_knowledge_chunks').insert(rows).select('id, title, content')
   if (error) {
     return NextResponse.json({ error: 'Failed to store chunks: ' + error.message }, { status: 500 })
   }
@@ -115,7 +115,7 @@ export async function POST(req: Request, { params }: Params) {
       const embeddings = await generateEmbeddings(texts, bot.org_id)
       for (var i = 0; i < inserted.length; i++) {
         if (embeddings[i]) {
-          await service.from('bot_knowledge_chunks')
+          await service.from('agent_knowledge_chunks')
             .update({ embedding: JSON.stringify(embeddings[i]) })
             .eq('id', (inserted[i] as any).id)
         }
@@ -175,7 +175,7 @@ export async function POST(req: Request, { params }: Params) {
             var updatedMeta: any = { ...existingMeta, sentiment }
             if (opponent) updatedMeta.opponent = opponent
 
-            await service.from('bot_knowledge_chunks')
+            await service.from('agent_knowledge_chunks')
               .update({ metadata: updatedMeta })
               .eq('id', chunkId)
           }
@@ -215,7 +215,7 @@ export async function DELETE(req: Request, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && (bot as any).org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
@@ -225,11 +225,11 @@ export async function DELETE(req: Request, { params }: Params) {
   const sourceType = url.searchParams.get('source_type')
 
   // Count what's about to disappear so the audit-log entry has a number.
-  let countQ = service.from('bot_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('bot_id', params.id)
+  let countQ = service.from('agent_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('bot_id', params.id)
   if (sourceType) countQ = countQ.contains('metadata', { source_type: sourceType })
   const { count: chunkCount } = await countQ
 
-  let query = service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
+  let query = service.from('agent_knowledge_chunks').delete().eq('bot_id', params.id)
 
   if (sourceType) {
     // Delete only chunks tagged with this source_type

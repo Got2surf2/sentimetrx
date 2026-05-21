@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
 
   // Load bot + verify ownership (admin-org bypass)
-  const { data: bot } = await service.from('bots').select('id, org_id, intents').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, intents').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
   const intents: any[] = bot.intents || []

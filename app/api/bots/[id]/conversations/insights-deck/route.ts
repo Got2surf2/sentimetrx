@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
 
   const { data: bot } = await service
-    .from('bots')
+    .from('agents')
     .select('id, name, system_prompt, personality, config, conversation_count, org_id')
     .eq('id', params.id)
     .single()

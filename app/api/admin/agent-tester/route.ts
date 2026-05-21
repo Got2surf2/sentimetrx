@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       if (cs && typeof cs === 'object') safetyConfig = { ...CONTENT_SAFETY_DEFAULTS, ...cs }
     } else {
       const { data } = await service
-        .from('bots')
+        .from('agents')
         .select('id, name, slug, status, config, system_prompt, knowledge_base, intents, training_urls')
         .eq('id', targetId)
         .eq('org_id', orgId)
@@ -182,7 +182,7 @@ export async function GET() {
 
   const service = createServiceRoleClient()
   const [{ data: bots }, { data: sessions }] = await Promise.all([
-    service.from('bots').select('id, name, slug, status').eq('org_id', orgId).order('name', { ascending: true }),
+    service.from('agents').select('id, name, slug, status').eq('org_id', orgId).order('name', { ascending: true }),
     service.from('townhall_sessions').select('id, name, status').eq('org_id', orgId).order('name', { ascending: true }),
   ])
   return NextResponse.json({ bots: bots || [], sessions: sessions || [] })

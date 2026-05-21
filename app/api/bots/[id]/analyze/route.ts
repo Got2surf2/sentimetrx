@@ -33,7 +33,7 @@ export async function POST(_req: Request, { params }: Params) {
   // Verify bot exists; admin Phase E allows cross-org. Both branches
   // return the same 404 + message so existence isn't leaked.
   const { data: bot } = await service
-    .from('bots')
+    .from('agents')
     .select('id, name, org_id')
     .eq('id', botId)
     .single()

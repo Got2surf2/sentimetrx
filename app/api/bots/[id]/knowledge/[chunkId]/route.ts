@@ -19,7 +19,7 @@ async function gateBotAccess(supabase: ReturnType<typeof createClient>, service:
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', botId).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
   if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
   if (!isAdmin && (bot as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Bot not found' }
   return { ok: true }
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   // Verify chunk belongs to this bot
   var { data: chunk } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .select('id')
     .eq('id', params.chunkId)
     .eq('bot_id', params.id)
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!chunk) return NextResponse.json({ error: 'Chunk not found' }, { status: 404 })
 
   var { error } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .update(updates)
     .eq('id', params.chunkId)
 
@@ -74,7 +74,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   var { error } = await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .delete()
     .eq('id', params.chunkId)
     .eq('bot_id', params.id)

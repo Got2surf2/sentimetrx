@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   // Verify bot exists + access check
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // Get personas for this bot's sessions
   const { data: personas } = await service
-    .from('bot_session_personas')
+    .from('agent_session_personas')
     .select('session_id, persona')
     .eq('bot_id', params.id)
 

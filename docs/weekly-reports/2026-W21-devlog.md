@@ -911,3 +911,33 @@ Each follows the same pattern: query `conversation_turns` joined with `conversat
 - The `bot_id` FK column rename is a separate future commit — not blocked by anything currently.
 
 **Push gate unchanged**: this is a code-free commit (just SQL + devlog). Existing 23 commits + this one = 24 commits ahead. All still behavior-preserving in prod.
+
+## 2026-05-21 — Convergence Phase 3 commit 11: migrate code from `bots` → `agents`
+
+**Why**: With the SQL rename + view shim landed (commit 10), code can migrate `from('bots')` → `from('agents')` opportunistically without risk — the view tolerates either name. Doing it now while the rename context is fresh, before the view becomes a long-term shim that obscures the real table.
+
+**What changed**: Mechanical sed replacement across **28 files / 72 call sites**. Replaced `.from('<table>')` with `.from('<renamed_table>')` for:
+
+- `bots` → `agents` (46 sites)
+- `bot_knowledge_chunks` → `agent_knowledge_chunks` (14 sites)
+- `bot_change_log` → `agent_change_log` (2 sites)
+- `bot_session_personas` → `agent_session_personas` (7 sites)
+- `bot_conversation_reviews` → `agent_conversation_reviews` (3 sites)
+
+**Not renamed**:
+- `bot_conversation_turns` references (17 sites). The table itself is renaming-skipped; the references are intentional and drop in Tier 5.
+- Variable names (`bot`, `bots`, `botId`, `bot.org_id`, etc.). Those are scoped local names — purely cosmetic and not load-bearing. ~hundreds of touch points; rename if/when a separate pass is desired.
+- Type names (`BotFocus`, etc.) — same reasoning.
+- Route paths (`/api/bots/[id]/...`, `/bots/[id]/...`, `/b/[slug]`) — public URLs; not changing without a deliberate redirect plan.
+- Column names (`bot_id` on conversations + town_halls + ag_* family). Postgres rebinds FKs by OID after the table rename; the column name is internally inconsistent but renaming it would multiply the surface 10x.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- Sarina 22-scenario regression with flags OFF: **18 PASS / 3 PARTIAL / 1 FAIL / 0 ERROR**. D1 is the same LLM-grading variance seen across prior runs (neutral political-pressure response — substance fine, regex doesn't match this run's wording). Code now talks directly to the renamed tables instead of going through the view shim.
+- Audit grep: 0 remaining `from('bots'|'bot_knowledge_chunks'|'bot_change_log'|'bot_session_personas'|'bot_conversation_reviews')` references; 72 new `from('agents'|'agent_*')` references.
+
+**Forward path**:
+- The backward-compat views in sql/079 are still in prod but no code uses them anymore. They drop in the Tier 5 cleanup commit (same commit that drops `bot_conversation_turns`) — until then they're harmless shims.
+- Variable / type / FK-column renames are separate optional follow-ups; none of them block Tier 5.
+
+**25 commits ahead of origin/main, push freeze still active.**

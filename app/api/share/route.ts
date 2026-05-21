@@ -45,7 +45,7 @@ async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleCl
     return (data as any)?.org_id ?? null
   }
   if (type === 'conversation') {
-    const { data: bot } = await service.from('bots').select('org_id').eq('id', targetId).maybeSingle()
+    const { data: bot } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
     if ((bot as any)?.org_id) return (bot as any).org_id as string
     const { data: resp } = await service
       .from('responses')

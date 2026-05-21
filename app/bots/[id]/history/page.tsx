@@ -25,7 +25,7 @@ export default async function BotHistoryPage({ params }: Params) {
   const isAdmin = !!orgData?.is_admin_org
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, name, slug, org_id, created_at, updated_at').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, name, slug, org_id, created_at, updated_at').eq('id', params.id).single()
   if (!bot) redirect('/bots')
   if (!isAdmin && (bot as any).org_id !== userData?.org_id) redirect('/bots')
 

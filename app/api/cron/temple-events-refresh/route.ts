@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
 
   // ── Replace existing event chunks ────────────────────────────────────────
   await service
-    .from('bot_knowledge_chunks')
+    .from('agent_knowledge_chunks')
     .delete()
     .eq('bot_id', GURU_BOT_ID)
     .eq('metadata->>source', SOURCE_TAG)
@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-  const { error: insertErr } = await service.from('bot_knowledge_chunks').insert(rows)
+  const { error: insertErr } = await service.from('agent_knowledge_chunks').insert(rows)
   if (insertErr) {
     return NextResponse.json({ ok: false, error: `chunk insert failed: ${insertErr.message}` }, { status: 500 })
   }

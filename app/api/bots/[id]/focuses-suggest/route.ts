@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id, system_prompt').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, system_prompt').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
   if (!bot.system_prompt || bot.system_prompt.length < 100) {

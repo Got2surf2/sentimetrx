@@ -17,7 +17,7 @@ interface Props { params: { slug: string } }
 export default async function OG({ params }: Props) {
   const service = createServiceRoleClient()
   const { data: bot } = await service
-    .from('bots')
+    .from('agents')
     .select('name, config')
     .eq('slug', params.slug)
     .eq('status', 'active')

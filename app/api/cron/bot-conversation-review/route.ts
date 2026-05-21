@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   // Find active bots due for review
   const { data: dueBots } = await service
-    .from('bots')
+    .from('agents')
     .select('id, name, system_prompt')
     .eq('status', 'active')
     .not('review_interval_hours', 'is', null)
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     try {
       // Get last review timestamp (or 7 days ago for first review)
       const { data: lastReview } = await service
-        .from('bot_conversation_reviews')
+        .from('agent_conversation_reviews')
         .select('reviewed_at')
         .eq('bot_id', bot.id)
         .order('reviewed_at', { ascending: false })
@@ -81,9 +81,9 @@ export async function GET(req: NextRequest) {
 
       if (!turns || turns.length === 0) {
         // No new conversations — just update next_review_at
-        const { data: botData } = await service.from('bots').select('review_interval_hours').eq('id', bot.id).single()
+        const { data: botData } = await service.from('agents').select('review_interval_hours').eq('id', bot.id).single()
         const hours = botData?.review_interval_hours || 24
-        await service.from('bots').update({
+        await service.from('agents').update({
           last_reviewed_at: now,
           next_review_at: new Date(Date.now() + hours * 3600000).toISOString(),
         }).eq('id', bot.id)
@@ -130,7 +130,7 @@ Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, 
       const themeDrift = /^DRIFT:\s*YES/i.test(aiResult.text)
 
       // Store review result
-      await service.from('bot_conversation_reviews').insert({
+      await service.from('agent_conversation_reviews').insert({
         bot_id: bot.id,
         since,
         session_count: sessionCount,
@@ -140,9 +140,9 @@ Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, 
       })
 
       // Update bot timestamps
-      const { data: botData } = await service.from('bots').select('review_interval_hours').eq('id', bot.id).single()
+      const { data: botData } = await service.from('agents').select('review_interval_hours').eq('id', bot.id).single()
       const hours = botData?.review_interval_hours || 24
-      await service.from('bots').update({
+      await service.from('agents').update({
         last_reviewed_at: now,
         next_review_at: new Date(Date.now() + hours * 3600000).toISOString(),
       }).eq('id', bot.id)

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   const { data: bot } = await service
-    .from('bots')
+    .from('agents')
     .select('id, name, system_prompt, org_id')
     .eq('id', params.id)
     .single()

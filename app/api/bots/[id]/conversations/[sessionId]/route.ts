@@ -24,7 +24,7 @@ async function gateBotAccess(userId: string, botId: string): Promise<{ ok: true;
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', botId).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
   if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
   if (!isAdmin && bot.org_id !== userOrgId) return { ok: false, status: 403, error: 'Forbidden' }
   return { ok: true, service }
@@ -89,7 +89,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await gate.service
-    .from('bot_session_personas')
+    .from('agent_session_personas')
     .delete()
     .eq('bot_id', params.id)
     .eq('session_id', params.sessionId)

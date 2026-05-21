@@ -61,8 +61,8 @@ export default async function MobilePage() {
   ] = await Promise.all([
     scopeFilter(service.from('datasets').select('id', { count: 'exact', head: true })),
     scopeFilter(service.from('datasets').select('id, name, row_count, source, created_at').order('created_at', { ascending: false }).limit(5)),
-    scopeFilter(service.from('bots').select('id', { count: 'exact', head: true })),
-    scopeFilter(service.from('bots').select('id, name, slug, updated_at').order('updated_at', { ascending: false }).limit(5)),
+    scopeFilter(service.from('agents').select('id', { count: 'exact', head: true })),
+    scopeFilter(service.from('agents').select('id, name, slug, updated_at').order('updated_at', { ascending: false }).limit(5)),
     scopeFilter(service.from('studies').select('id', { count: 'exact', head: true })),
     scopeFilter(service.from('studies').select('id, name, response_count, created_at').order('created_at', { ascending: false }).limit(5)),
     scopeFilter(service.from('campaigns').select('id', { count: 'exact', head: true })),
