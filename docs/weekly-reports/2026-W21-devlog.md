@@ -1,5 +1,14 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Convergence decision: Agents + PulseIQ unify on a single substrate
+
+**Why**: two parallel investigation streams confirmed today that the Agents (`bots`) and PulseIQ (`town_hall`) implementations duplicate substantial logic — deflection, info-only-message detection, engagement signals, language switch, persona / topic tagging are either already shared, near-duplicates, or trivially extractable. The genuinely PulseIQ-only features are cross-participant theme aggregation, coverage balancing across the cohort, and the live cohort dashboard — layered features, not a different product. Sanjay's read sharpened the call: with no live customers on either surface and Sarina going live for Vindman with a June Vindman town hall already scoped, the convergence window is now and the acceptance test is "the June town hall IS the Sarina row with `cohort = true`." If we don't converge, the June town hall is a manual copy-paste of Sarina's config into PulseIQ's parallel schema, and every Sarina config change between now and June has to be made in two places. Sarina launched live for supporters mid-session; convergence Phase 2 starts 2026-05-21.
+
+**What changed**:
+- `docs/CONVERGENCE.md` (new): architectural decision record. Decision = one primitive (`agent`) with two modes (`cohort: false` for 1:1 chat, `cohort: true` for town-hall). Unified `conversation_turns` schema. PulseIQ becomes a layered feature set (cohort aggregation cron, coverage balancing, cohort dashboard) on top of the bots substrate. Phase 0–1 done (decision + Sarina live); Phases 2–5 (~2 weeks of focused work) sequenced before the June town hall, which is Phase 6 / the acceptance test.
+
+**Process note**: not added to `scripts/specMap.ts` yet on purpose — the doc describes a future state, not current code. When Phase 2's first extraction PR lands, that PR registers the appropriate code-path glob against CONVERGENCE.md so subsequent convergence work trips the spec-drift hook automatically.
+
 ## 2026-05-20 — Mobile PWA debug footer stripped
 
 **Why**: `/m` carried an `installed · sw:on` debug indicator in its footer while we were verifying iPhone Add-to-Home-Screen install worked end-to-end. iPhone PWA install confirmed working today (orange "S" icon, full-screen standalone) — the debug readout has served its purpose and should not ship to users.
