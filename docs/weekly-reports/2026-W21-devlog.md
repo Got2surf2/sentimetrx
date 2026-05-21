@@ -1,5 +1,11 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-22 — MCO_AGENT parking: GOAA api-version + Referer header fix
+
+**Why**: Commit 4's parking integration was returning empty arrays in dev because the GOAA endpoint rejected the request with `{"status":{"code":400,"message":"No API version specified!"}}`. The original Playwright sniff captured `api-key` but missed the other required headers. Re-sniffed flymco.com's full request set: GOAA also requires `api-version: 140` (current — they return 412 "no longer supported" when a version ages out) and `Referer: https://flymco.com/`. Both added to `lib/parking.ts`; direct node-fetch test returns 17 lots. Inline comment documents the version-bump procedure so future deprecations are obvious.
+
+**Push gate**: unchanged — still on the 40-commit local stack.
+
 ## 2026-05-22 — Question Log admin UI shipped
 
 **Why**: Yesterday's MVP (5e8f519) shipped the capture half — `logged_questions` table + `lib/logQuestion.ts` + three capture points in `chatCore.ts`. Data has been accumulating but there was no team-facing surface to read it. For NOWOCATS PM-2 specifically, "we can answer what residents asked" is a PR-1 legal-defensibility requirement and was the demo-this-week ask in `docs/BOTS.md` § 9.x.5 step 4.

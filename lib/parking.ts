@@ -50,7 +50,16 @@ let inFlight: Promise<ParkingLot[]> | null = null
 async function fetchAvailability(): Promise<any[]> {
   const key = process.env.GOAA_API_KEY || PUBLIC_GOAA_KEY
   const res = await fetch(AVAILABILITY_URL, {
-    headers: { 'api-key': key, 'User-Agent': 'Sentimetrx-MCO/1.0' },
+    headers: {
+      'api-key': key,
+      // GOAA requires an api-version header. 140 is what flymco.com's
+      // frontend currently sends (verified via Playwright network sniff
+      // on 2026-05-21). When GOAA deprecates a version it returns
+      // 412 "API version is no longer supported!" — bump this constant.
+      'api-version': '140',
+      'Referer': 'https://flymco.com/',
+      'User-Agent': 'Sentimetrx-MCO/1.0',
+    },
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) throw new Error('availability ' + res.status)
@@ -62,7 +71,16 @@ async function fetchRates(): Promise<Record<string, ParkingLot['rate']>> {
   const key = process.env.GOAA_API_KEY || PUBLIC_GOAA_KEY
   try {
     const res = await fetch(RATES_URL, {
-      headers: { 'api-key': key, 'User-Agent': 'Sentimetrx-MCO/1.0' },
+      headers: {
+      'api-key': key,
+      // GOAA requires an api-version header. 140 is what flymco.com's
+      // frontend currently sends (verified via Playwright network sniff
+      // on 2026-05-21). When GOAA deprecates a version it returns
+      // 412 "API version is no longer supported!" — bump this constant.
+      'api-version': '140',
+      'Referer': 'https://flymco.com/',
+      'User-Agent': 'Sentimetrx-MCO/1.0',
+    },
       signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return {}
