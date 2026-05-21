@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -69,6 +70,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .delete()
     .eq('bot_id', params.id)
     .eq('session_id', params.sessionId)
+
+  // Phase 3 dual-write mirror: cascade-delete the conversations row so the
+  // new substrate stays in sync. No-op when DUAL_WRITE_PHASE3 is off.
+  await mirrorDeleteSession(gate.service, { botId: params.id, sessionId: params.sessionId })
 
   return NextResponse.json({ deleted: true })
 }

@@ -989,18 +989,22 @@ This section documents the dual-write stage. The live read path is unchanged —
 
 **Schema (`sql/078_phase3_new_schema.sql`)** — five dark tables: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. All have `org_id NOT NULL`, RLS enabled, org-scoped SELECT policies, and no INSERT/UPDATE/DELETE policies (writes are service-role only). `conversations.bot_id` FKs to `bots(id)`; the eventual `bots`→`agents` rename is deferred to a later commit.
 
-**Dual-write helper (`lib/phase3DualWrite.ts`)** — exports `mirrorTurns(service, { botId, orgId, sessionId, language, rows })`. The helper:
-- Returns immediately if the env flag `DUAL_WRITE_PHASE3` is not truthy (`"true"` or `"1"`).
-- Upserts a `conversations` row on `(bot_id, session_id)` to recover the conversation id.
-- Inserts each mirrored row into `conversation_turns` with `org_id` denormalized.
-- Logs every error via `console.error` and never throws — the live response is not on the dual-write critical path.
+**Dual-write helper (`lib/phase3DualWrite.ts`)** — exports three mirrors, all gated by `DUAL_WRITE_PHASE3` (truthy: `"true"`, `"1"`) and all best-effort (errors logged, never thrown):
 
-**Wired call sites in `/api/bots/[id]/chat/route.ts`** — `mirrorTurns` is invoked after each `bot_conversation_turns.insert(...)`:
-1. Silence-triggered probe insert (single assistant row).
-2. Deflection-path insert (user + deflected assistant row pair).
-3. Main turn insert (optional turn-0 greeting + user + assistant rows).
+- `mirrorTurns(service, { botId, orgId, sessionId, language, rows })` — upserts a `conversations` row on `(bot_id, session_id)`, inserts each mirrored row into `conversation_turns` with `org_id` denormalized.
+- `mirrorFocusFlagsUpdate(service, { botId, sessionId, turnNumber, flags })` — looks up `conversations.id`, then `UPDATE conversation_turns SET content_flags WHERE (conversation_id, turn_number)`.
+- `mirrorDeleteSession(service, { botId, sessionId })` — `DELETE FROM conversations WHERE (bot_id, session_id)`; the migration's `ON DELETE CASCADE` on `conversation_turns.conversation_id` drops the turn rows.
 
-Each invocation is fire-and-forget (`.then(function() {})`); errors never reach the user.
+**Wired call sites in `/api/bots/[id]/chat/route.ts`**:
+1. Silence-triggered probe insert → `mirrorTurns` (single assistant row).
+2. Deflection-path insert → `mirrorTurns` (user + deflected assistant row pair).
+3. Main turn insert → `mirrorTurns` (optional turn-0 greeting + user + assistant rows).
+4. Post-classify focus-flag UPDATE on assistant turn → `mirrorFocusFlagsUpdate`.
+
+**Wired call site in `/api/bots/[id]/conversations/[sessionId]/route.ts`**:
+5. DELETE handler (after `bot_conversation_turns.delete()` and `bot_session_personas.delete()`) → `mirrorDeleteSession`.
+
+Each invocation in the chat route is fire-and-forget (`.then(function() {})`); errors never reach the user. The DELETE-route invocation is awaited (no concurrency benefit; response is already sent).
 
 **Verification gate before any read-path cutover**:
 - Row counts per session: `count(*) from conversation_turns ct join conversations c on c.id=ct.conversation_id where c.bot_id=$1 and c.session_id=$2` must equal `count(*) from bot_conversation_turns where bot_id=$1 and session_id=$2` for every session that has been written under the flag.

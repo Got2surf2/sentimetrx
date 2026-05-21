@@ -13,7 +13,7 @@ import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
-import { mirrorTurns } from '@/lib/phase3DualWrite'
+import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 
 export const dynamic = 'force-dynamic'
@@ -800,6 +800,7 @@ export async function POST(req: NextRequest, { params }: Params) {
               if (focusResult.slugs.length > 0) {
                 const flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
                 service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', (assistantRow as any).id).then(function() {})
+                mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (assistantRow as any).turn_number, flags }).then(function() {})
               }
             }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
           }

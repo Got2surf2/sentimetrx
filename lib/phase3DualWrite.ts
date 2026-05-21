@@ -114,3 +114,70 @@ export async function mirrorTurns(
     console.error({ at: 'phase3-dual-write', msg: 'unexpected error', err: e?.message, bot_id: args.botId, session_id: args.sessionId })
   }
 }
+
+/**
+ * Mirror a bot_conversation_turns.update({ content_flags }).eq('id', ...) call
+ * into the new schema by locating the matching conversation_turns row via
+ * (bot_id, session_id, turn_number). Used by the focus-classify post-step in
+ * /api/bots/[id]/chat that tags the just-saved assistant turn.
+ *
+ * If the conversation_turns row hasn't been inserted yet (mirrorTurns is fire-
+ * and-forget and may still be in flight), this no-ops silently — the next
+ * mirrorTurns call will write the row with the un-updated flags, which is the
+ * best we can do without coordinating the two helpers.
+ */
+export async function mirrorFocusFlagsUpdate(
+  service: SupabaseClient,
+  args: { botId: string; sessionId: string; turnNumber: number; flags: string[] },
+): Promise<void> {
+  if (!isEnabled()) return
+
+  try {
+    const { data: convRow } = await service
+      .from('conversations')
+      .select('id')
+      .eq('bot_id', args.botId)
+      .eq('session_id', args.sessionId)
+      .maybeSingle()
+
+    if (!convRow) return // dual-write upsert hasn't landed yet; nothing to update
+
+    const { error } = await service
+      .from('conversation_turns')
+      .update({ content_flags: args.flags })
+      .eq('conversation_id', (convRow as { id: string }).id)
+      .eq('turn_number', args.turnNumber)
+
+    if (error) {
+      console.error({ at: 'phase3-dual-write', msg: 'conversation_turns flags update failed', err: error.message, bot_id: args.botId, session_id: args.sessionId, turn_number: args.turnNumber })
+    }
+  } catch (e: any) {
+    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in flags update', err: e?.message })
+  }
+}
+
+/**
+ * Mirror a bot_conversation_turns.delete().eq('bot_id', ...).eq('session_id', ...)
+ * call by removing the matching conversations row (cascade drops the turn rows).
+ * Used by the admin "delete session" handler.
+ */
+export async function mirrorDeleteSession(
+  service: SupabaseClient,
+  args: { botId: string; sessionId: string },
+): Promise<void> {
+  if (!isEnabled()) return
+
+  try {
+    const { error } = await service
+      .from('conversations')
+      .delete()
+      .eq('bot_id', args.botId)
+      .eq('session_id', args.sessionId)
+
+    if (error) {
+      console.error({ at: 'phase3-dual-write', msg: 'conversations delete failed', err: error.message, bot_id: args.botId, session_id: args.sessionId })
+    }
+  } catch (e: any) {
+    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in delete', err: e?.message })
+  }
+}

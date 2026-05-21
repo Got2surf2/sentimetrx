@@ -36,8 +36,11 @@ tests/
 │   ├── auth/             # requireAdmin, logDeckDownload
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
+│   ├── deflectionRouter.test.ts
+│   ├── engagementSignals.test.ts
 │   ├── guardrails.test.ts
 │   ├── personaExtractor.test.ts
+│   ├── phase3DualWrite.test.ts
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   └── usageLog.test.ts
@@ -75,6 +78,9 @@ makes the suite easy to reason about as a unit.
 | Brand-match scoring | `scoreBrandMatch` exact match, lookalike rejection, chain consensus | DataforSEO returns lookalikes ("Chuy's de Mexico") alongside the real brand; the scorer must rank the real chain `strong` and qualifier-prefixed lookalikes `weak` even when the chain's actual name differs from the user-typed brand |
 | Sentiment slang + negation | `contentGuard.scoreSentimentFull` Gen-Z lexicon + negation valence-shifter | Modern slang ("mid", "lit", "ate", "sus") and "not"-style negations must score correctly; otherwise the sentiment column reads neutral on a large fraction of restaurant reviews |
 | Probe info-only skip | `botProbeGuards.isInfoOnlyMessage` greeting/thanks/ack/sign-off detection | Bot CRITICAL OVERRIDE must not fire on "thanks!" or "ok cool" — otherwise the probe pivots feel jarring and the threshold logic burns its single shot on a no-content turn |
+| Deflection routing | `deflectionRouter` question-signal regex, sensitive-topic match, decision rule (sensitive overrides feedback; question signal required when no sensitive hit) | Shared between bot + town hall chat routes; a regression in the decision rule fires AI deflection on every short answer (cost + UX hit) or never deflects at all (off-topic answers pollute aggregates) |
+| Engagement signals | `engagementSignals` countWords edge cases, isCurtResponse threshold, SUBTLE_DISENGAGE anchor behavior, isSubtleDisengage wrapper | Used by the PulseIQ AI-tone-check fast path. Anchoring is critical — a bad regex matches "ok so what about housing" as disengagement and skips clarifying on real feedback |
+| Phase 3 dual-write | `phase3DualWrite` flag gating (no-op when off), mirror call shape for turns / focus-flags / delete | The dual-write is observation-only with the flag off; the unit tests pin that contract so a future refactor doesn't accidentally make it always-on or break the table/filter shape |
 | Deck routes | `/api/{pitch,architecture,engineering-reality,rollup}-deck` × {anon, admin} | Confirms each route both calls `requireAdmin` AND emits a real PPTX |
 | Public survey endpoint | `/api/respond` happy + missing-field + invalid-JSON + inactive-study + 404 | This endpoint accepts traffic from anywhere — its validation is load-bearing |
 | High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |
