@@ -1,5 +1,19 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Convergence Phase 2.1 — language switch extracted into lib/languageSwitch.ts
+
+**Why**: first of six Phase 2 cheap-wins extractions per `docs/CONVERGENCE.md` § 4. Language-switch detection was inline in the townhall chat route (~120 lines: data tables, fast regex, AI fallback). Bots had no equivalent capability — Sarina supporters who type "español" today get no language switch. Lifting this into a shared lib (a) eliminates one chunk of route-level cruft, (b) makes the capability available to the bots route in Phase 3 when both routes share a single chat handler, (c) costs nothing in terms of Sarina's current behavior because the bots route doesn't change in this commit.
+
+**What changed**:
+- `lib/languageSwitch.ts` (new, 142 lines): exports `LANG_CODES`, `LANG_NAMES`, `SWITCH_CONFIRM`, `LANGUAGE_SWITCH_CLASSIFIER_PROMPT`, `fastDetectLanguageSwitch`, `detectLanguageSwitch`, and the `LanguageSwitchAIClassifier` callback type. The detector function takes the AI fallback as an optional parameter (dependency-injected) so callers wire their own AI shim — keeps the lib free of `callAI` / `callClaude` coupling. Same length thresholds (skip > 120 chars; AI fallback only on ≤ 60 chars), same 95% confidence floor, same fast-regex patterns.
+- `app/api/townhall/chat/route.ts`: removed the inline `LANG_CODES`/`LANG_NAMES`/`SWITCH_CONFIRM` tables and the `fastDetectLanguageSwitch`/`detectLanguageSwitch` functions (~95 lines deleted). Now imports from the lib and passes a small adapter `async (m) => (await callClaude(LANGUAGE_SWITCH_CLASSIFIER_PROMPT, m, 3000)).text || null` as the AI classifier. Route net –95 / +6 lines.
+
+**Verification**:
+- Typecheck clean (`npx tsc --noEmit` returned 0).
+- Sarina regression vs baseline: **20 pass / 2 partial / 0 fail / 0 error** (baseline was 17/4/1/0). Strictly better. Sarina's route was untouched — the improvement is just within-suite LLM variance, which matters: future extraction runs will naturally fluctuate ±3 tests around the baseline. **Acceptance rule clarified**: any extraction PR producing ≥17 PASS and 0 ERROR is green; below that, investigate. Per-test partials/fails on the B1/B2/D3/E2/E3 set are known regex pattern artifacts (Sarina's responses are substantively correct, the test patterns are over-specific).
+
+**Cost**: ~$2 in regression spend. Phase 2 cumulative ~$4 / ~$15 budget.
+
 ## 2026-05-20 — Convergence Phase 2 kicked off: regression script committed as baseline gate
 
 **Why**: Phase 2 of the convergence (extract duplicated logic between bots and PulseIQ into shared `lib/` modules) needs a behavior-regression gate so we know Sarina's live responses don't drift while we refactor underneath her. The 22-scenario Arjun regression test set already exists in `app/admin/sarina-regression/tests.ts` (built 2026-05-17 for the original NOWOCATS handoff) and a terminal runner script existed locally but had been sitting untracked since pre-session. Committing it now so it's the durable Phase 2 verification harness, then capturing a baseline run before the first extraction.

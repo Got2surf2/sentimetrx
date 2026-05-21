@@ -247,6 +247,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'app/api/cron/townhall-theme-detection/**',
     'components/townhall/**',
     'lib/townhallThemeDetection.ts',
+    'lib/languageSwitch.ts',
     'sql/011_*',
     'sql/012_*',
     'sql/013_*',

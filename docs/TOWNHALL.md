@@ -278,11 +278,11 @@ Standalone persona pool that can be mixed into any session to stress-test conten
 
 ## Multi-Language Support
 
-- **15 languages supported by the chat engine** (`LANG_CODES` in `chat/route.ts`): en, es, fr, de, pt, it, zh, ja, ko, ar, hi, vi, tl, ru, pl
-- **Language switch detection** — hybrid:
+- **15 languages supported by the chat engine** (`LANG_CODES` exported from `lib/languageSwitch.ts`): en, es, fr, de, pt, it, zh, ja, ko, ar, hi, vi, tl, ru, pl
+- **Language switch detection** — hybrid; logic lives in `lib/languageSwitch.ts` as of convergence Phase 2.1 (2026-05-20), the chat route imports and wires its own AI classifier shim:
   - **Fast regex** first (`fastDetectLanguageSwitch`): matches bare language names ("español", "français"), action phrases ("switch to spanish"), polite forms ("can you speak french?"), and "no hablo/parle/falo english" negation patterns. Zero AI cost when it hits.
-  - **AI classifier** fallback for ambiguous short messages (<=60 chars) at >=95% confidence; long messages (>120 chars) skip detection entirely so they're treated as real answers, not switch requests.
-- **Bilingual confirmation**: e.g. `"Sure — switching to Spanish! / ¡Claro — cambiando a español!"`
+  - **AI classifier** fallback for ambiguous short messages (<=60 chars) at >=95% confidence; long messages (>120 chars) skip detection entirely so they're treated as real answers, not switch requests. The lib accepts the AI caller as a parameter (dependency-injected) so the bots route can wire the same lib in Phase 3 once a single chat handler exists.
+- **Bilingual confirmation** (`SWITCH_CONFIRM` in `lib/languageSwitch.ts`): e.g. `"Sure — switching to Spanish! / ¡Claro — cambiando a español!"`
 - **Translation**: Non-English responses auto-translated to English; stored in `user_message_en` for analysis
 - **Bot output**: Returned in participant's conversation language
 - **Skip/Done labels**: Translate on language switch (table in `TH_LABELS`)
