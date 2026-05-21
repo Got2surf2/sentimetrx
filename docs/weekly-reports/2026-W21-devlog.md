@@ -1400,3 +1400,27 @@ Counts reflect that test #1 ran pre-`DUAL_WRITE_PHASE3` (mirror no-op), test #2 
 Prod: all three unset (default OFF). Flipping in prod is separate authorization — push freeze active.
 
 **Commit lands as 37 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Question Log MVP (independent of convergence)
+
+**Why**: NOWOCATS PM-2 public-record requirement. Without a structured log of "what residents asked but the bot couldn't fully answer", the only recovery path is AI-summarized after-the-fact via the report/deck — not durable, not exhaustive, not legally defensible. Spec at `docs/BOTS.md` § 9.x existed since 2026-05-20 (`55d89c9`); shipped today as the smallest MVP that delivers actual capture.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `sql/081_logged_questions.sql` | NEW `logged_questions` table (id, org_id, bot_id, session_id, conversation_id, turn_id, user_message, language, classification, status, resolved_by, resolved_at, notes, suggested_kb_addition, created_at) with RLS day-one, org-scoped SELECT policy, CHECK constraint on status, 3 indexes. Applied to prod. |
+| `lib/logQuestion.ts` | NEW fire-and-forget helper + `replyLooksUncertain` regex pass (no AI cost). Filters greetings/acks via `isLoggableMessage` (< 12 chars or < 3 words). Patterns cover first-person ("I don't know") and third-person hedges ("isn't in the project materials", "outside what I can help"). |
+| `lib/chatCore.ts` | Three capture points: (a) deflection block → `deflect`; (b) RAG block when `topConfidence < 0.05` → `kb_miss`; (c) after AI sanitization when `replyLooksUncertain(reply)` → `ai_uncertain`. All gated on `session_id` + `lastUserMsg`. Fire-and-forget. |
+| `sql/one-off/2026-05-21-qlog-verify.sql` | Aggregate-only verification (counts by classification). |
+| `docs/BOTS.md` § 9.x | Status flipped PLANNED → MVP SHIPPED. Notes which spec parts landed vs deferred. |
+
+**Smoke test**: First two off-topic test questions didn't trigger capture — Sarina's prompt redirects naturally rather than saying "I don't know". Widened the regex to include third-person hedge phrasings. After dev server restart (Next.js needed it to pick up the new lib import inside chatCore), a multi-turn cryptocurrency question through the bot path landed `ai_uncertain_count: 1`. Capture live in prod.
+
+**Why deflect_count stayed 0**: Sarina's prompt handles off-topic redirects inline rather than triggering `lib/deflectionRouter`. The deflect capture is wired correctly — it'll fire when the router runs.
+
+**Sarina regression**: 18 PASS / 4 PARTIAL / 0 FAIL / 0 ERROR — one better than baseline (17/4/1/0).
+
+**Deferred for follow-on commits**: probe focus tagging (§ 9.x.1), admin UI (§ 9.x.3), CSV export with PII redaction (§ 9.x.3 + 9.x.6), durability invariant tests (§ 9.x.4).
+
+**Commit lands as 38 ahead of origin/main; push freeze still active.**

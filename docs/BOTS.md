@@ -784,9 +784,11 @@ Embeddings are generated **server-side, blocking on chunk insert** (the knowledg
 - Cron writes `bot_conversation_reviews` rows. Admins read via `/api/bots/[id]/conversations/reviews`.
 - `theme_drift = true` when the AI report flags drift — surfaced in the conversations dashboard.
 
-### 9.x Probe Focus Tagging + Question Log (PLANNED — spec dated 2026-05-20)
+### 9.x Probe Focus Tagging + Question Log (MVP SHIPPED — 2026-05-21)
 
 Driver: NOWOCATS pilot needs a defensible, queryable record of *what residents asked about*, not just what the bot answered. Legal exposure is real — every recorded comment is part of the public PM-2 project record.
+
+**Status as of 2026-05-21**: MVP shipped — `sql/081_logged_questions.sql` creates the `logged_questions` table (org_id + RLS + status lifecycle), `lib/logQuestion.ts` provides the fire-and-forget capture helper + `replyLooksUncertain` regex, and `lib/chatCore.ts` calls it at three capture points: `deflect` (deflection router fired), `kb_miss` (RAG topConfidence < 0.05 + no KB fallback), `ai_uncertain` (assistant response matched an "I don't know"-family pattern). Generic across every agent — NOWOCATS gets it for free. Probe-focus tagging (§ 9.x.1) + admin UI (§ 9.x.3) + CSV export (§ 9.x.3) + durability invariant tests (§ 9.x.4) deferred to follow-on commits.
 
 #### 9.x.1 Probe focus tagging (user-side classifier)
 

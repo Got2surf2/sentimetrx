@@ -23,6 +23,7 @@ import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
+import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
 
 export interface TownHallContext {
   townHallId: string
@@ -282,6 +283,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
           if (demoMode) _signals.push({ label: hitsSensitive ? 'Sensitive Topic' : 'Redirected', type: 'deflect', color: '#7C3AED' })
+          // Question Log — record the deflected ask (NOWOCATS PM-2
+          // requirement; generic across every bot). Fire-and-forget.
+          if (session_id && lastUserMsg?.content) {
+            logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'deflect' })
+          }
           return { reply: deflectText, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
         }
       } catch {
@@ -521,6 +527,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           if (debugMode) _debug.push('RAG: skipped injection (confidence < 5% — no relevant match)')
           // Don't set knowledgeInjected, but also don't fall back to full KB
           knowledgeInjected = true
+          // Question Log — RAG had a question but no useful chunks. Fire-
+          // and-forget; logQuestion's isLoggableMessage guard filters
+          // greetings/acks so this doesn't bury the queue in noise.
+          if (session_id && lastUserMsg?.content) {
+            logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'kb_miss' })
+          }
         } else if (hasOnlyNegative) {
           // Query matches only negative content
           if (negMode === 'deflect') {
@@ -991,6 +1003,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (scrubbed.leaked) {
       _debug.push('Meta-prompt leak detected — fallback reply served')
       console.warn('[bot-chat] meta-prompt leak detected', { bot_id: bot.id, session_id, raw: result.text.slice(0, 200) })
+    }
+    // Question Log — assistant hedged with an "I don't know" phrasing.
+    // Fire-and-forget; replyLooksUncertain is a regex pass (no AI cost).
+    // Skipped automatically when the kb_miss capture already fired for
+    // this turn — the admin UI dedupes by (session_id, user_message) on
+    // display, so two rows for the same turn are surfaced as one.
+    if (session_id && lastUserMsg?.content && replyLooksUncertain(scrubbed.reply)) {
+      logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'ai_uncertain' })
     }
     return { reply: scrubbed.reply, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
   } catch (err: any) {
