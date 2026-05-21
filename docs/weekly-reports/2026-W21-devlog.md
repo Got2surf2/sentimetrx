@@ -1020,3 +1020,44 @@ Two follow-ups added during close-out:
 Neither blocks Phase 4 but both surfaced as real product gaps during this close-out.
 
 **Close-out commit lands as 26 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 4 commit 1: chat-core extraction
+
+**Why**: First commit of Phase 4 per the entry-point map above. The PulseIQ chat route can't delegate to the agent's chat handler until that handler is callable from outside its Next.js route file. This commit extracts the full chat pipeline out of `app/api/bots/[id]/chat/route.ts` and into a new `lib/chatCore.ts` so a second route — `/api/townhall/[guid]/chat` in commit 2 — can hand off to the same code path. Pure refactor: zero behavior change for Sarina or any other live agent.
+
+**What landed**:
+
+| Before | After |
+|---|---|
+| `app/api/bots/[id]/chat/route.ts` — 871 lines, contains the entire pipeline | `app/api/bots/[id]/chat/route.ts` — 65 lines, thin wrapper |
+| Chat logic inlined inside the POST handler | `lib/chatCore.ts` exports `handleChatTurn(ctx, body)` |
+| No shared seam between bots and PulseIQ routes | `ChatCoreContext { agent, service, ip, townHallContext? }` is the seam |
+
+The route now does only: rate-limit → JSON parse → body validation → load agent from `agents` → invoke `handleChatTurn` → return. Everything else — silence probe, conversation compression, content audit, deflection, intent detection, persona, demographics, RAG, language, verbosity, probe enforcement, AI call, turn storage with dual-write, focus classify, sanitization — moved verbatim into the new lib module.
+
+**ChatCoreContext seam**:
+
+```ts
+export interface ChatCoreContext {
+  agent: any
+  service: ReturnType<typeof createServiceRoleClient>
+  ip: string
+  townHallContext?: TownHallContext  // plumbed but UNUSED in commit 1
+}
+
+export type ChatCoreResult = Record<string, any>
+
+export async function handleChatTurn(ctx, body): Promise<ChatCoreResult>
+```
+
+`townHallContext` is reserved on the type for Phase 4 commit 2. Nothing in the body consumes it yet, so behavior is identical to pre-extraction.
+
+**Return-shape mapping**: every `return NextResponse.json(X, { headers: cors })` inside the old body became `return X`, because every internal exit was already status 200. The four route-level error responses (429 rate limit, 400 bad JSON, 400 missing messages, 404 missing agent, 403 inactive agent) stay in the route as `NextResponse.json` with their explicit status codes. No behavior change there either.
+
+**Variable-scope sanity check**: the body uses `var` heavily (declarations like `var userTurnCount = ...` appear twice in the same function). `var` is function-scoped, so collapsing the route body into a single new function (`handleChatTurn`) preserves the original semantics 1:1. `let`-scoped `existingTurns` appears twice but in different block scopes — preserved. No semantic drift introduced by the move.
+
+**Risk gate**: per Phase 4 entry-point map, Sarina regression must clear ≥17 PASS / 0 ERROR. Verification deferred to the next session — clean typecheck passed (`rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean). Push freeze active; no Vercel build cost incurred for the refactor alone. Sarina regression to run against localhost before Phase 4 commit 2.
+
+**Next**: Phase 4 commit 2 — `/api/townhall/[guid]/chat` resolves `town_halls.slug → agents` and delegates to `handleChatTurn(ctx, body)` with `townHallContext` populated. Behind `TOWNHALL_VIA_AGENT_HANDLER` env flag.
+
+**Commit lands as 27 ahead of origin/main; push freeze still active.**

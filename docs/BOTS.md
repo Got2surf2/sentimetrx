@@ -440,7 +440,9 @@ Postgres-backed via the `rate_limit_buckets` table (migration 039) keyed by `bot
 
 ## 7. AI Prompts (Verbatim)
 
-### Main chat — `app/api/bots/[id]/chat/route.ts`
+### Main chat — `lib/chatCore.ts` (`handleChatTurn`) via `app/api/bots/[id]/chat/route.ts`
+
+As of 2026-05-21 (convergence Phase 4 commit 1) the chat pipeline lives in `lib/chatCore.ts` as `handleChatTurn(ctx, body)`. `app/api/bots/[id]/chat/route.ts` is a thin wrapper (rate-limit → JSON parse → body validation → load agent → invoke `handleChatTurn` → return). The PulseIQ town hall route will delegate to the same `handleChatTurn` in commit 2 via the `ChatCoreContext.townHallContext` field. Behavior of this endpoint is unchanged by the extraction; the system prompt assembly below describes what `handleChatTurn` builds.
 
 System prompt is assembled in `systemParts[]` in roughly this order. Sections are appended only when applicable; absolute order:
 
