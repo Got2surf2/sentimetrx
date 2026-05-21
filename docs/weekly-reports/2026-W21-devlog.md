@@ -1256,3 +1256,28 @@ The picker now sees real `response_count` data after the first turn lands on the
 - **Dashboard read surfaces** on `town_halls` schema. Cohort dashboard still queries `townhall_sessions/_themes/_turns`.
 
 **Commit lands as 34 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 5 commit 4: response-count trigger + standby wrap-up
+
+**Why**: Phase 5 commit 3 wired topic injection but left two gaps from the legacy PulseIQ behavior: (a) when the picker returns `all_covered`, the AI got no instruction so it answered generically instead of closing gracefully; (b) theme discovery was cron-only (15-min cadence), while the legacy chat route also triggered detection inline every N responses for faster discovery on live sessions. Both gaps fit naturally in the same `townHallContext` branch — small additions, no new files.
+
+**What landed**:
+
+| Change | Detail |
+|---|---|
+| **Town hall row loaded once** | New `service.from('town_halls').select('cohort_config').eq('id', townHallId).maybeSingle()` at the top of the branch. Same data drives both new behaviors. |
+| **Standby on `all_covered`** | When `pick.reason === 'all_covered'`, push `TOWN HALL STANDBY` instruction into systemParts (custom `cohort_config.standby_message` honored; defaults to "thank them, acknowledge their last share, may circle back if new topics emerge"). Asks the AI to keep the close brief and NOT invent a new topic. Mirrors the legacy `config.engine.standby_message` semantic but shaped as a prompt hint rather than a hardcoded reply so the AI still acknowledges the participant's last message. |
+| **Response-count theme-detection trigger** | Sum cohort-wide `response_count` (already computed for the picker). When `(total + 1) % threshold === 0` (threshold from `cohort_config.theme_detection_every_n_responses`, default 20), fire `detectThemesForTownHall(townHallId)` fire-and-forget. `(total + 1)` so the trigger fires on the turn that crosses the threshold rather than the one after. Matches legacy PulseIQ trigger semantics (inline + cron). |
+| **Imports** | `lib/cohortThemeAggregator` (`detectThemesForTownHall`) added to chatCore imports. |
+
+**Verification**:
+- Clean typecheck passes.
+- Sarina regression: **17 PASS / 4 PARTIAL / 1 FAIL / 0 ERROR** — exact baseline match (17/4/1/0). Bot path unaffected since all new logic is in the same `if (ctx.townHallContext)` block. The previous run's "18 PASS" was just D5 noise; D1 political-pressure FAIL is the same baseline FAIL.
+
+**What's left in Phase 5**:
+
+- **Phase 5 commit 5**: Dashboard read surfaces against `town_halls` schema. Cohort dashboard still queries `townhall_sessions/_themes/_turns`. This is the biggest commit in Phase 5 (admin UIs + analytics routes), and it's the most cosmetic — the user-visible cohort widget already works on the new path; only the facilitator's view is on the old schema.
+
+Optional pivot before commit 5: **Phase 6 prep** — create the first `town_halls` row pointing at Sarina, flip `TOWNHALL_VIA_AGENT_HANDLER=true` locally, manually exercise the new path. That's the real acceptance test for Phase 5 commits 1-4 before grinding through the dashboard rewrite.
+
+**Commit lands as 35 ahead of origin/main; push freeze still active.**

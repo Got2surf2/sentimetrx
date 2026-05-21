@@ -22,6 +22,7 @@ import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
+import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 
 export interface TownHallContext {
   townHallId: string
@@ -595,6 +596,16 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   let pickedTopicId: string | null = null
   if (ctx.townHallContext) {
     try {
+      // Load town_halls row up front — used by both the standby fallback
+      // (cohort_config.standby_message) and the response-count theme-
+      // detection trigger (cohort_config.theme_detection_every_n_responses).
+      const { data: townHallRow } = await service
+        .from('town_halls')
+        .select('cohort_config')
+        .eq('id', ctx.townHallContext.townHallId)
+        .maybeSingle()
+      const cohortConfig = (townHallRow?.cohort_config || {}) as any
+
       const { data: topics } = await service
         .from('town_hall_topics')
         .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
@@ -679,8 +690,35 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
           )
           if (debugMode) _debug.push('Town hall topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
+        } else if (pick.reason === 'all_covered') {
+          // Phase 5 commit 4 — standby instead of a generic answer when
+          // every topic in the pool is either discussed by this participant
+          // or at-target. Mirrors the legacy PulseIQ standby branch but
+          // shaped as a system-prompt hint rather than a hardcoded reply
+          // so the AI still acknowledges the participant's last message in
+          // the standby framing.
+          const standbyMsg = (cohortConfig?.standby_message as string | undefined) ||
+            'All discussion topics for this town hall have been covered with this participant. Thank them warmly for their contributions, acknowledge what they last shared, and let them know you may circle back if new topics emerge from other participants.'
+          systemParts.push('\n\n--- TOWN HALL STANDBY ---\n' + standbyMsg + '\nKeep the reply brief and gracious. Do NOT invent a new topic.')
+          if (debugMode) _debug.push('Town hall standby: all topics covered for participant — graceful close')
         } else if (debugMode) {
           _debug.push('Town hall topic: none picked (reason: ' + pick.reason + ')')
+        }
+
+        // Phase 5 commit 4 — response-count-based theme-detection trigger.
+        // Sum cohort-wide response_count across all topics; when the next
+        // turn crosses a multiple of cohort_config.theme_detection_every_n_responses
+        // (default 20), fire the aggregator fire-and-forget. The aggregator
+        // is also driven by the 15-min cron (Phase 5 commit 1) but the
+        // response-count trigger gives faster theme discovery for live
+        // sessions. Matches the legacy PulseIQ trigger semantics.
+        const totalResponses = Object.values(responseCount).reduce((a: number, b: number) => a + b, 0)
+        const threshold = Number(cohortConfig?.theme_detection_every_n_responses) || 20
+        if (totalResponses > 0 && (totalResponses + 1) % threshold === 0) {
+          if (debugMode) _debug.push('Town hall trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
+          detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
+            console.error({ at: 'chat-core', msg: 'town hall theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
+          })
         }
       } else if (debugMode) {
         _debug.push('Town hall topic: pool empty (no town_hall_topics rows)')
