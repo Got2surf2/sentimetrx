@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isOutputClean, cleanAiOutput, cleanDeflectResponse, looksLikeAIRefusal } from '@/lib/guardrails'
+import { evaluateDeflection } from '@/lib/deflectionRouter'
 import { checkMessage, scoreSentimentFull } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { logUsage, type UsageContext } from '@/lib/usageLog'
@@ -274,17 +275,17 @@ export async function POST(req: NextRequest) {
     const testing = !!config?.testing || !!body.debug
     const analyzeText = messageEn || message
 
-    // Sensitive topic check — always deflect if message touches a banned topic, even if it contains feedback words
+    // Sensitive-topic check, question-signal regex, and the decision rule all
+    // live in lib/deflectionRouter.ts (shared with the bots route, Phase 2.3).
+    // FEEDBACK_SIGNALS stays local — PulseIQ's domain-specific superset has
+    // community/development terms (traffic, parking, housing, schools…) that
+    // would change Sarina's behavior if applied to bots.
     const sensitiveTopics: string[] = config?.context?.sensitive_topics || []
-    const hitsSensitive = sensitiveTopics.length > 0 && sensitiveTopics.some((t: string) => new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(analyzeText))
-
-    // Fast regex pre-check: skip deflection if response looks like genuine feedback
-    // (contains opinion/emotion words — not worth burning an AI call)
-    // BUT: always check if it hits a sensitive/banned topic
     const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance|worried|scary|dangerous|expensive|affordable|affordable|crowded|noisy|ugly|beautiful|broken|fix|change|build|add|remove|stop|start|keep|maintain|invest|spend|waste|ruin|destroy|save|protect|support|oppose|against|favor|agree|disagree|should|shouldn't|must|can't|won't|important|critical|essential|ridiculous|absurd|outrageous|unfair|fair|wrong|right|better|worse|enough|lack|missing|too much|too many|not enough|overflow|traffic|parking|safety|crime|noise|pollution|taxes|rent|cost|price|development|housing|schools|parks|roads|transit|bus|bike|walk|sidewalk)\b/i
-    const QUESTION_SIGNALS = /^\s*(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
+    const deflectDecision = evaluateDeflection(analyzeText, sensitiveTopics, FEEDBACK_SIGNALS)
+    const hitsSensitive = deflectDecision.hitsSensitive
 
-    if (hitsSensitive || (!FEEDBACK_SIGNALS.test(analyzeText) && QUESTION_SIGNALS.test(analyzeText))) {
+    if (deflectDecision.shouldAttempt) {
       // Possible off-topic or question — ask AI
       const currentTopic = theme_id ? (await supabase.from('townhall_themes').select('label, question').eq('id', theme_id).single()).data : null
       const topicContext = currentTopic

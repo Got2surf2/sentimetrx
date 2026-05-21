@@ -8,6 +8,7 @@ import { callAI } from '@/lib/ai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
+import { evaluateDeflection } from '@/lib/deflectionRouter'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
@@ -223,18 +224,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // ── Smart deflection: redirect off-topic / sensitive topics ────────
+  // Pre-check helpers (QUESTION_SIGNALS, sensitive-topic match, decision rule)
+  // live in lib/deflectionRouter.ts and are shared with the town hall route.
+  // FEEDBACK_SIGNALS stays local — PulseIQ uses a domain-specific superset.
   const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|important|critical|essential|ridiculous|absurd|outrageous|unfair|fair|wrong|right|better|worse|enough|lack|missing)\b/i
-  const QUESTION_SIGNALS = /^\s*(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
 
   if ((bot as any).deflection_enabled !== false && lastUserMsg && recentMessages.length > 2) {
     var analyzeText = lastUserMsg.content
     var sensitiveTopics: string[] = (bot as any).sensitive_topics || []
     var focusTopics: string[] = (bot as any).focus_topics || []
-    var hitsSensitive = sensitiveTopics.length > 0 && sensitiveTopics.some(function(t: string) {
-      return new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(analyzeText)
-    })
+    var deflectDecision = evaluateDeflection(analyzeText, sensitiveTopics, FEEDBACK_SIGNALS)
+    var hitsSensitive = deflectDecision.hitsSensitive
 
-    if (hitsSensitive || (!FEEDBACK_SIGNALS.test(analyzeText) && QUESTION_SIGNALS.test(analyzeText))) {
+    if (deflectDecision.shouldAttempt) {
       try {
         var topicContext = focusTopics.length > 0 ? focusTopics.join(', ') : ((bot as any).subject || bot.name)
         var deflectResult = await callAI({

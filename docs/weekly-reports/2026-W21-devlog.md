@@ -582,3 +582,20 @@ Added `/admin/control-reports/` as the parent for weekly machine-generated repor
 - 9.x.6 Open design questions — role-derivation timing (fluid vs anchor-ask), logged_questions storage (JSONB vs table — leaning table), topic vocabulary drift, PII redaction on export
 
 **Not built yet** — this commit is spec only. Code follows once the spec passes review.
+
+## 2026-05-20 — Convergence Phase 2.3: deflection router extracted
+
+**Why**: Both `app/api/bots/[id]/chat/route.ts` and `app/api/townhall/chat/route.ts` carried byte-identical copies of the deflection pre-check (QUESTION_SIGNALS regex, sensitive-topic regex-build pattern, the `hitsSensitive || (!FEEDBACK_SIGNALS && QUESTION_SIGNALS)` decision rule). Two more conversational surfaces are queued behind these (PulseIQ × Agents convergence per `docs/CONVERGENCE.md`); each future surface would have copied the same block again. Phase 2.3 lifts the truly shared logic into one helper.
+
+**What changed**:
+- New `lib/deflectionRouter.ts` exports `DEFLECTION_QUESTION_SIGNALS`, `hitsSensitiveTopic(text, topics)`, and `evaluateDeflection(text, sensitiveTopics, feedbackSignals) → { shouldAttempt, hitsSensitive }`.
+- Both chat routes now call `evaluateDeflection` instead of inlining the regex/decision. Each route still owns its FEEDBACK_SIGNALS regex (PulseIQ's is a domain-specific superset with traffic/parking/housing/schools/etc. — unifying would change Sarina's live behavior), its AI prompt template (different role framing — "conversational agent" vs "facilitator in a PulseIQ discussion"), and its turn-storage write (`bot_conversation_turns` vs `townhall_turns` converge in Phase 3).
+- 22 unit tests in `tests/unit/deflectionRouter.test.ts` cover the question regex (anchor behavior), `hitsSensitiveTopic` (case-insensitive, word-boundary, regex-meta escaping), and the four `evaluateDeflection` cases (sensitive overrides feedback; feedback gates non-sensitive; question signal required; conversational filler doesn't trigger).
+
+**Verification**:
+- Clean typecheck (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`).
+- Sarina 22-scenario regression against localhost: **18 PASS / 3 PARTIAL / 1 FAIL / 0 ERROR** vs baseline `17 / 4 / 1 / 0`. Strictly better; 0 errors; ≥17 pass acceptance bar cleared. The single fail (D1) is the same LLM-grading variance the baseline showed at a different scenario (D3) — the model's neutral political-pressure response is appropriate in substance but the literal regex `Redirects to process` didn't match this run's wording.
+
+**Sarina risk profile (live)**: she has `deflection_enabled = true` and 0 sensitive_topics, so only the QUESTION_SIGNALS branch is active on her. The branch's decision rule is preserved byte-for-byte (the regex literal is now in the shared module; the evaluation is `evaluateDeflection(...)` instead of inline). No prompt template changes.
+
+**Not changed**: Phase 2.3 deliberately did not unify the FEEDBACK_SIGNALS lists or the AI prompt templates. The design notes flagged the prompt lift as the likeliest source of regression; folding it in would have changed Sarina's live wording without a meaningful refactor win. Both will be revisited in Phase 3 when both routes consolidate into a single chat handler.
