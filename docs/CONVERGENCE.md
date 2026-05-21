@@ -258,6 +258,7 @@ These are decisions to make during Phase 3, not before:
 
 ## 9. References
 
+- `docs/CONVERGENCE_UX.md` — UX exploration for setting up + running a town hall under the new model. Pairs with this doc's architectural decisions.
 - Memory: `[[pulseiq-agents-convergence]]` — original architectural question + investigation.
 - Memory: `[[open-work-queue]]` — current state of work.
 - Spec: `docs/BOTS.md` — current Agents implementation.
