@@ -74,21 +74,23 @@ export interface ExtractInput {
   classifier: UiHintClassifier
 }
 
-export const UI_HINT_EXTRACTOR_PROMPT = `You are a UI hint extractor for an airport concierge agent. Given a user turn and the assistant's response, decide whether the response references one specific visual context that would help the user. Emit at most one hint as JSON.
+export const UI_HINT_EXTRACTOR_PROMPT = `You are a UI hint + follow-up chip extractor for an airport concierge agent. Given a user turn and the assistant's response, decide:
+  (a) whether the turn fits one of the canvas cards below, and
+  (b) what 2-4 short follow-up questions would naturally extend the conversation.
 
 Allowed hint types and required payload shapes:
 
 - terminal_map: { "type": "terminal_map", "terminal"?: "A"|"B"|"C", "gate"?: string, "from"?: "A"|"B"|"C", "to"?: "A"|"B"|"C", "via"?: "shuttle"|"terminal_link_apm" }
-  Use when the assistant gives wayfinding involving a specific terminal, gate, or terminal-to-terminal route.
+  Use when the user is asking about a gate, terminal, or terminal-to-terminal route — OR the assistant gives wayfinding involving one.
 
 - parking: { "type": "parking", "highlight"?: string[] }
-  Use when the assistant references parking — garages, lots, cell-phone areas. Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet.
+  Use when the user is asking about parking, garages, lots, or cell-phone areas — OR the assistant recommends one. Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet.
 
 - restaurants: { "type": "restaurants", "place_ids": [], "context"?: string }
-  Use when the assistant mentions specific named restaurants, shops, or dining options. Set "context" to a coarse location label like "terminal_a_airside", "terminal_b_airside", "terminal_c_airside", "landside_main_terminal". Leave place_ids as [] — the renderer resolves them.
+  Use whenever the user is asking about food, dining, restaurants, where to eat, snacks, coffee, drinks, or shopping — EVEN IF the assistant's response is vague or punts to a website. Also fire when the assistant mentions named eateries. The card itself resolves the list; the extractor just signals intent. Set "context" to a coarse location label like "terminal_a_airside", "terminal_b_airside", "terminal_c_airside", "landside_main_terminal". Leave place_ids as [] — the renderer resolves them.
 
 - link_card: { "type": "link_card", "title": string, "body": string, "cta_url": string, "cta_label": string }
-  Use when the assistant references one specific MCO program with its own dedicated page. Known programs:
+  Use ONLY when the assistant references one specific MCO program with its own dedicated page from this exact list:
     - MCO Reserve → cta_url "https://flymco.com/speed-through-mco"
     - Experience MCO Visitor Pass → cta_url "https://flymco.com/experience-mco-visitor-pass-program"
     - Accessibility programs (Sunflower Lanyard, Annie's Space) → cta_url "https://flymco.com/accessibility"
@@ -96,14 +98,24 @@ Allowed hint types and required payload shapes:
     - Customs electronic submission → cta_url "https://flymco.com/customs"
     - MCO Wi-Fi → cta_url "https://flymco.com/wifi"
   Body should be 2-3 short sentences summarizing the assistant's answer in the agent's voice.
+  Do NOT use link_card for dining, parking, or wayfinding — those have their own cards above.
 
-Return a JSON object: { "hint": <hint object> } or { "hint": null } when no card applies.
+Follow-up chips (next_chips):
+  2-4 short user-voiced follow-up questions that naturally extend this exact turn. Each chip:
+   - is phrased the way the user would ask it (first-person OK), not the assistant's voice
+   - is short (≤ 50 chars, like a quick reply pill)
+   - reflects the specific content of the assistant's last answer, not generic openers
+   - if the assistant named entities (restaurants, gates, garages), reference them by name when it fits
+   - DO NOT repeat the user's just-asked question
+  If you genuinely cannot think of relevant follow-ups, return [].
+
+Return a JSON object: { "hint": <hint object or null>, "next_chips": string[] }
 
 Examples:
-- User: "How do I get from C to A?" → Assistant: "Two options: Terminal Link APM..." → { "hint": { "type": "terminal_map", "from": "C", "to": "A", "via": "terminal_link_apm" } }
-- User: "Where can I eat near gate A14?" → Assistant lists 3 restaurants → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" } }
-- User: "What does it cost?" (about something unrelated to a card type) → { "hint": null }
-- User: "Where's the closest parking to Terminal C?" → Assistant recommends Garage C → { "hint": { "type": "parking", "highlight": ["garage_c"] } }
+- User: "How do I get from C to A?" → Assistant: "Two options: Terminal Link APM in 6 min or the shuttle bus in 12..." → { "hint": { "type": "terminal_map", "from": "C", "to": "A", "via": "terminal_link_apm" }, "next_chips": ["How often does the APM run?", "Where do I catch the shuttle?", "Which is faster with luggage?"] }
+- User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
+- User: "Where's the closest parking to Terminal C?" → Assistant recommends Garage C → { "hint": { "type": "parking", "highlight": ["garage_c"] }, "next_chips": ["What does Garage C cost?", "Is valet available?", "Cheaper long-term option?"] }
+- User: "What about restaurants?" → Assistant: "MCO has many dining options across all terminals" → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Show me near Terminal B", "Anything kid-friendly?", "Best rated?"] }
 
 Output JSON only. No prose, no markdown fences.`
 
@@ -166,8 +178,8 @@ export function validateHint(raw: any): UiHint | null {
 
 // Pulls a JSON object out of an LLM response, stripping the common failure
 // modes — code fences, leading prose, trailing prose. Returns null on
-// anything that isn't valid JSON containing a `hint` field.
-export function parseExtractorJson(raw: string): { hint: any } | null {
+// anything that isn't a valid JSON object.
+export function parseExtractorJson(raw: string): { hint?: any; next_chips?: any } | null {
   if (!raw) return null
   // Strip ```json fences if present
   let text = raw.trim()
@@ -185,28 +197,44 @@ export function parseExtractorJson(raw: string): { hint: any } | null {
   }
 }
 
+function validateChips(raw: any): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((s) => typeof s === 'string')
+    .map((s: string) => s.trim())
+    .filter((s) => s.length > 0 && s.length <= 80)
+    .slice(0, 4)
+}
+
+export interface ExtractorResult {
+  hints: UiHint[]
+  next_chips: string[]
+}
+
 /**
- * Extract a UI hint from a (user message, assistant message) pair.
- * Returns an array because the contract is forward-compatible with
- * multiple hints, but v1 emits at most one.
+ * Extract a UI hint + follow-up chips from a (user message, assistant message) pair.
  *
  * The classifier callback receives the system prompt + the formatted
  * input. Production wires it to lib/ai.callAI (tier=fast → Haiku/4o-mini);
  * tests inject a stub that returns a canned response.
  *
- * Failure modes degrade to []. A failed extraction shouldn't break the
- * conversation — the canvas just stays on its previous card.
+ * Failure modes degrade to { hints: [], next_chips: [] }. A failed extraction
+ * shouldn't break the conversation — the canvas just stays on its previous card
+ * and the chip row falls back to whatever the caller had before.
  */
-export async function extractUiHints(input: ExtractInput): Promise<UiHint[]> {
-  if (!input.userMessage?.trim() || !input.assistantMessage?.trim()) return []
+export async function extractUiHints(input: ExtractInput): Promise<ExtractorResult> {
+  if (!input.userMessage?.trim() || !input.assistantMessage?.trim()) return { hints: [], next_chips: [] }
   let raw: string
   try {
     raw = await input.classifier(UI_HINT_EXTRACTOR_PROMPT, buildExtractorInput(input.userMessage, input.assistantMessage))
   } catch {
-    return []
+    return { hints: [], next_chips: [] }
   }
   const parsed = parseExtractorJson(raw)
-  if (!parsed || parsed.hint == null) return []
-  const validated = validateHint(parsed.hint)
-  return validated ? [validated] : []
+  if (!parsed) return { hints: [], next_chips: [] }
+  const validated = parsed.hint == null ? null : validateHint(parsed.hint)
+  return {
+    hints: validated ? [validated] : [],
+    next_chips: validateChips(parsed.next_chips),
+  }
 }

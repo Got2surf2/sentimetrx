@@ -1490,3 +1490,25 @@ Prod: all three unset (default OFF). Flipping in prod is separate authorization 
 **Deferred for follow-on commits**: probe focus tagging (§ 9.x.1), admin UI (§ 9.x.3), CSV export with PII redaction (§ 9.x.3 + 9.x.6), durability invariant tests (§ 9.x.4).
 
 **Commit lands as 38 ahead of origin/main; push freeze still active.**
+
+---
+
+## 2026-05-21 (late) — MCO canvas UX fixes: input focus, contextual chips, restaurants resilience
+
+Three quick fixes after walking through the canvas on `/demo/mco`:
+
+1. **Input lost focus after each reply** — `disabled={pending}` toggle was kicking focus off the box every turn. Dropped the disabled attribute (kept the `pending` guard on the keyboard-Enter handler and the send button), added an `inputRef` that re-focuses defensively when `pending` flips false, set `autoFocus` on the input. Now the cursor stays put across replies and chip-clicks.
+
+2. **Chip pills were generic openers, even after the bot had answered something specific** — extended `lib/uiHints.ts` extractor to emit a `next_chips: string[]` field alongside the hint (2-4 short follow-ups, user voice, ≤ 80 chars each, referencing entities the assistant just named). `ExtractorResult` is now `{ hints, next_chips }`. Sibling route surfaces `next_chips` in the response; ChatPane swaps `initialChips → liveChips` once the first turn lands. Fail-open: missing/empty `next_chips` array leaves the previous chip row in place.
+
+3. **Restaurants card stopped firing when the bot said "visit flymco.com/dining"** — extractor `restaurants` rule was text-driven (assistant must name specific eateries), so vague prose suppressed the card entirely. Loosened to *intent*-driven: any user turn about food, dining, snacks, coffee, or shopping fires the hint. The `RestaurantsCard` falls back to context-scoped mocks when `place_ids` is empty (already true), so the demo never strands the user on a flymco.com pointer.
+
+**Test fallout**: `tests/unit/uiHints.test.ts` updated for the new return shape (33/33 pass). One new test asserts `next_chips` survives even when the hint is rejected (so chip plumbing is independent of card plumbing). One new test caps `next_chips` to 4 and drops invalid entries.
+
+**Token budget**: extractor `maxTokens` 220 → 380 to fit the chips alongside a hint. Same `tier: 'fast'` so per-turn cost stays in the $0.0003-0.0006 range.
+
+**Spec updates**: `docs/MCO_AGENT.md` § 4 + § 6.1 note the `next_chips` field and document the intent-driven restaurants rule (with the *why*: agent's prompt sometimes punts to flymco.com instead of naming restaurants — see follow-up below).
+
+**Outstanding (not in this commit)**: the agent's *prose* still sometimes recommends flymco.com pages instead of named restaurants. That's a system-prompt / knowledge-base issue on `agents.id = 920c571b-...` — separate edit, requires DB write.
+
+**Pre-existing test failures noted**: `tests/integration/high-traffic-routes.test.ts > POST /api/townhall/chat` — 6 failures from `import 'server-only'` being pulled into a client-component module. Verified pre-existing by stashing and re-running on bare main. Not caused by this commit; not fixed by this commit.

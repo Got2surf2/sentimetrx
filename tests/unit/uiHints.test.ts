@@ -148,48 +148,49 @@ describe('UI_HINT_EXTRACTOR_PROMPT', () => {
 })
 
 describe('extractUiHints (end-to-end with stub classifier)', () => {
-  it('returns [] on empty input without calling the classifier', async () => {
+  it('returns empty on empty input without calling the classifier', async () => {
     let called = false
     const classifier: UiHintClassifier = async () => { called = true; return '{"hint":null}' }
-    expect(await extractUiHints({ userMessage: '', assistantMessage: 'reply', classifier })).toEqual([])
-    expect(await extractUiHints({ userMessage: 'q', assistantMessage: '', classifier })).toEqual([])
+    expect(await extractUiHints({ userMessage: '', assistantMessage: 'reply', classifier })).toEqual({ hints: [], next_chips: [] })
+    expect(await extractUiHints({ userMessage: 'q', assistantMessage: '', classifier })).toEqual({ hints: [], next_chips: [] })
     expect(called).toBe(false)
   })
 
-  it('returns [] when classifier emits hint:null', async () => {
+  it('returns no hint when classifier emits hint:null', async () => {
     const out = await extractUiHints({
       userMessage: 'whatever',
       assistantMessage: 'something out of scope',
-      classifier: stub('{"hint": null}'),
+      classifier: stub('{"hint": null, "next_chips": []}'),
     })
-    expect(out).toEqual([])
+    expect(out.hints).toEqual([])
   })
 
   it('extracts a terminal_map hint', async () => {
     const out = await extractUiHints({
       userMessage: 'How do I get from C to A?',
       assistantMessage: 'Take the Terminal Link APM from the Train Station to Terminal B, then cross to A.',
-      classifier: stub('{"hint": {"type":"terminal_map","from":"C","to":"A","via":"terminal_link_apm"}}'),
+      classifier: stub('{"hint": {"type":"terminal_map","from":"C","to":"A","via":"terminal_link_apm"}, "next_chips": ["How long is the APM ride?"]}'),
     })
-    expect(out).toEqual([{ type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' }])
+    expect(out.hints).toEqual([{ type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' }])
+    expect(out.next_chips).toEqual(['How long is the APM ride?'])
   })
 
   it('extracts a parking hint with highlight', async () => {
     const out = await extractUiHints({
       userMessage: "Where's the closest parking to Terminal C?",
       assistantMessage: 'Parking Garage C is the closest — directly connected to Terminal C via Level 4.',
-      classifier: stub('{"hint": {"type":"parking","highlight":["garage_c"]}}'),
+      classifier: stub('{"hint": {"type":"parking","highlight":["garage_c"]}, "next_chips": []}'),
     })
-    expect(out).toEqual([{ type: 'parking', highlight: ['garage_c'] }])
+    expect(out.hints).toEqual([{ type: 'parking', highlight: ['garage_c'] }])
   })
 
   it('extracts a restaurants hint with context', async () => {
     const out = await extractUiHints({
       userMessage: 'Where can I eat near Gate A14?',
       assistantMessage: 'Try Starbucks, Auntie Annes, or Cibo Express — all near A14.',
-      classifier: stub('{"hint": {"type":"restaurants","place_ids":[],"context":"terminal_a_airside"}}'),
+      classifier: stub('{"hint": {"type":"restaurants","place_ids":[],"context":"terminal_a_airside"}, "next_chips": ["Any sit-down options?"]}'),
     })
-    expect(out).toEqual([{ type: 'restaurants', place_ids: [], context: 'terminal_a_airside' }])
+    expect(out.hints).toEqual([{ type: 'restaurants', place_ids: [], context: 'terminal_a_airside' }])
   })
 
   it('extracts a link_card hint for MCO Reserve', async () => {
@@ -204,41 +205,52 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
           cta_url: 'https://flymco.com/speed-through-mco',
           cta_label: 'Reserve a time slot',
         },
+        next_chips: ['How do I claim a slot?'],
       })),
     })
-    expect(out).toHaveLength(1)
-    expect(out[0].type).toBe('link_card')
-    expect((out[0] as any).cta_url).toBe('https://flymco.com/speed-through-mco')
+    expect(out.hints).toHaveLength(1)
+    expect(out.hints[0].type).toBe('link_card')
+    expect((out.hints[0] as any).cta_url).toBe('https://flymco.com/speed-through-mco')
   })
 
-  it('returns [] when classifier throws', async () => {
+  it('returns no hint when classifier throws', async () => {
     const out = await extractUiHints({
       userMessage: 'q',
       assistantMessage: 'a',
       classifier: async () => { throw new Error('LLM provider exploded') },
     })
-    expect(out).toEqual([])
+    expect(out).toEqual({ hints: [], next_chips: [] })
   })
 
-  it('returns [] when classifier emits malformed JSON', async () => {
+  it('returns no hint when classifier emits malformed JSON', async () => {
     const out = await extractUiHints({
       userMessage: 'q',
       assistantMessage: 'a',
       classifier: stub('this is not json'),
     })
-    expect(out).toEqual([])
+    expect(out).toEqual({ hints: [], next_chips: [] })
   })
 
-  it('returns [] when classifier emits an unknown hint type', async () => {
+  it('returns no hint when classifier emits an unknown hint type', async () => {
     const out = await extractUiHints({
       userMessage: 'q',
       assistantMessage: 'a',
-      classifier: stub('{"hint": {"type":"weather"}}'),
+      classifier: stub('{"hint": {"type":"weather"}, "next_chips": []}'),
     })
-    expect(out).toEqual([])
+    expect(out.hints).toEqual([])
   })
 
-  it('returns [] when classifier emits a link_card with off-domain URL', async () => {
+  it('still surfaces chips even when the hint is rejected', async () => {
+    const out = await extractUiHints({
+      userMessage: 'q',
+      assistantMessage: 'a',
+      classifier: stub('{"hint": {"type":"weather"}, "next_chips": ["chip one", "chip two"]}'),
+    })
+    expect(out.hints).toEqual([])
+    expect(out.next_chips).toEqual(['chip one', 'chip two'])
+  })
+
+  it('returns no hint when classifier emits a link_card with off-domain URL', async () => {
     const out = await extractUiHints({
       userMessage: 'q',
       assistantMessage: 'a',
@@ -250,17 +262,30 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
           cta_url: 'https://evil.example.com/phish',
           cta_label: 'Click',
         },
+        next_chips: [],
       })),
     })
-    expect(out).toEqual([])
+    expect(out.hints).toEqual([])
   })
 
   it('tolerates code-fenced output from the model', async () => {
     const out = await extractUiHints({
       userMessage: 'q',
       assistantMessage: 'a',
-      classifier: stub('```json\n{"hint": {"type":"parking","highlight":["garage_a"]}}\n```'),
+      classifier: stub('```json\n{"hint": {"type":"parking","highlight":["garage_a"]}, "next_chips": []}\n```'),
     })
-    expect(out).toEqual([{ type: 'parking', highlight: ['garage_a'] }])
+    expect(out.hints).toEqual([{ type: 'parking', highlight: ['garage_a'] }])
+  })
+
+  it('caps next_chips to 4 and drops invalid entries', async () => {
+    const out = await extractUiHints({
+      userMessage: 'q',
+      assistantMessage: 'a',
+      classifier: stub(JSON.stringify({
+        hint: null,
+        next_chips: ['one', 'two', 'three', 'four', 'five', '', 42, null, 'six'],
+      })),
+    })
+    expect(out.next_chips).toEqual(['one', 'two', 'three', 'four'])
   })
 })

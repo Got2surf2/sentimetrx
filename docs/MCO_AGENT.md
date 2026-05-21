@@ -107,6 +107,8 @@ The agent emits a **structured `ui_hints` array** alongside the prose response. 
 
 `ui_hints` is **optional** and **additive** — clients that don't know the field ignore it; the existing `/b/mco` page renders as today.
 
+The sibling endpoint also returns a parallel `next_chips: string[]` — 0-4 short follow-up questions the model thinks the user is likely to ask next, in the user's voice (≤ 80 chars each). The canvas's ChatPane swaps its initial chip row for these after the first assistant turn, so the suggested replies stay coherent with what the bot just said. Same fail-open posture: empty array → ChatPane keeps the previous chip row.
+
 ### Hint types (v1 — exactly four)
 
 | `type` | Payload | Renders as |
@@ -171,7 +173,9 @@ Future v2 can fold the hint into the primary call as a tool call, eliminating th
 + }
 ```
 
-The extractor lives in `lib/uiHints.ts` and exports `extractUiHints({ bot, userMessage, assistantMessage }) → Promise<UiHint[]>`. The prompt is included verbatim in this spec — see §10.
+The extractor lives in `lib/uiHints.ts` and exports `extractUiHints({ userMessage, assistantMessage, classifier }) → Promise<{ hints: UiHint[]; next_chips: string[] }>`. The prompt is included verbatim in this spec — see §10.
+
+The `restaurants` rule is intentionally *intent*-driven rather than text-driven: it fires whenever the user asks about food, dining, snacks, coffee, or shopping — even if the assistant's prose is vague or punts the user to a website. Reason: the agent's prompt occasionally suggests "see flymco.com/dining" instead of naming specific restaurants; the canvas should still surface the list rather than punishing the user for the bot's vagueness.
 
 ### 6.2 `lib/places.ts` (new)
 

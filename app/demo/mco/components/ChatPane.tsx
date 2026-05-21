@@ -34,24 +34,35 @@ function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips, placeholder, mode, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, onHintReceived, onExtractingChange }: Props) {
   const [sessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
+  const [liveChips, setLiveChips] = useState<string[] | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Reset thread when the greeting changes (mode flip). Also clear any
   // live hint so the canvas reverts to the mode's default demo card.
   useEffect(() => {
     setMessages([])
     setInput('')
+    setLiveChips(null)
     onHintReceived?.(null)
   }, [greeting])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, pending])
+
+  // Restore focus to the input after each reply lands. Even though the input
+  // is no longer `disabled` (so focus is mostly preserved), this is defensive
+  // for cases where the user clicked a chip (focus on the button) and we
+  // want the cursor back in the box.
+  useEffect(() => {
+    if (!pending) inputRef.current?.focus()
+  }, [pending])
 
   // Fire the extractor after a new assistant message lands. Fire-and-forget
   // by design — the prose answer is already on screen; we don't block the
@@ -69,6 +80,10 @@ export default function ChatPane({ greeting, chips, placeholder, mode, onHintRec
       const hints: UiHint[] = Array.isArray(data?.ui_hints) ? data.ui_hints : []
       if (hints.length > 0) onHintReceived?.(hints[0])
       // Empty array intentionally keeps the existing card — don't reset.
+      const nextChips: string[] = Array.isArray(data?.next_chips)
+        ? data.next_chips.filter((s: any) => typeof s === 'string' && s.length > 0 && s.length <= 80).slice(0, 4)
+        : []
+      if (nextChips.length > 0) setLiveChips(nextChips)
     } catch {
       // Silent failure: keep the existing card.
     } finally {
@@ -139,21 +154,25 @@ export default function ChatPane({ greeting, chips, placeholder, mode, onHintRec
         <div ref={endRef} />
       </div>
 
-      {chips.length > 0 && (
-        <div className="chips">
-          {chips.map((c) => (
-            <button key={c} className="chip" onClick={() => send(c)} disabled={pending}>{c}</button>
-          ))}
-        </div>
-      )}
+      {(() => {
+        const chipsToShow = liveChips ?? initialChips
+        return chipsToShow.length > 0 ? (
+          <div className="chips">
+            {chipsToShow.map((c) => (
+              <button key={c} className="chip" onClick={() => send(c)} disabled={pending}>{c}</button>
+            ))}
+          </div>
+        ) : null
+      })()}
 
       <div className="chat-input">
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') send(input) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !pending) send(input) }}
           placeholder={placeholder}
-          disabled={pending}
+          autoFocus
         />
         <button onClick={() => send(input)} disabled={pending || !input.trim()} aria-label="Send">➤</button>
       </div>

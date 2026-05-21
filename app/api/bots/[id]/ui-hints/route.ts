@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This bot is not currently active' }, { status: 403, headers: cors })
   }
 
-  const ui_hints = await extractUiHints({
+  const { hints, next_chips } = await extractUiHints({
     userMessage,
     assistantMessage,
     classifier: async (system, userInput) => {
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         tier: 'fast',
         system,
         messages: [{ role: 'user', content: userInput }],
-        maxTokens: 220,
+        maxTokens: 380,
         timeoutMs: 6000,
         usage: {
           org_id: agent.org_id,
@@ -92,5 +92,5 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
-  return NextResponse.json({ ui_hints }, { headers: cors })
+  return NextResponse.json({ ui_hints: hints, next_chips }, { headers: cors })
 }
