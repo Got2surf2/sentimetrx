@@ -43,6 +43,7 @@ tests/
 │   ├── phase3DualWrite.test.ts
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
+│   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer)
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
 │   ├── decks.test.ts                  # 4 admin-only deck routes × {anon, admin}

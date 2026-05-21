@@ -23,6 +23,7 @@ The Agents module lets an org build branded, public-facing chat bots backed by:
 - **A dynamic system prompt** assembled from `bot.personality + bot.system_prompt + retrieved knowledge + guardrails + intents + session persona + demographics + contrast positions`.
 - **Hybrid retrieval** over a per-bot knowledge base: pgvector cosine (semantic) + Postgres tsvector (lexical) + pg_trgm (fuzzy), blended in a single RPC.
 - **Public, rate-limited chat endpoint** (`POST /api/bots/[id]/chat`) — anyone with the bot URL can chat without auth.
+- **Optional UI-hint extractor** (`POST /api/bots/[id]/ui-hints`) — companion endpoint for the canvas demo at `/demo/mco`. Takes a `{userMessage, assistantMessage}` pair and returns zero or one structured `UiHint` (`terminal_map`, `parking`, `restaurants`, `link_card`) that drives the right-pane card on the canvas shell. Decoupled from `/chat` so chat latency is unchanged; see `docs/MCO_AGENT.md` §15. Same CORS/rate-limit posture as `/chat`.
 - **Conversation tracking**: every turn is stored with sentiment, language, content flags, intent matches, and source label. Periodic AI reviews flag theme drift.
 - **Intent capture**: keyword + AI detection of donate / volunteer / event / custom intents → triggers a URL or message.
 - **Session personas**: AI-extracted at turn 2-4, merged across the session for context-aware responses.

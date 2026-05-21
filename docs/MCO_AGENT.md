@@ -335,8 +335,8 @@ Estimated additional effort for a UCF Incubator variant: ~3 days on top of the M
 - **Design:** drafted 2026-05-21 by Sanjay + Claude (this doc).
 - **Build:** in progress.
   - **Commit 1 LANDED 2026-05-21** — visual shell at `/demo/mco` with the 40/60 landscape layout, mode auto-detection (URL param > UA > default), three deployment modes (home / invenue / kiosk), demo strip with mode switcher + card navigation, four canvas card components (TerminalMap, Restaurants, Parking, LinkCard), chat pane wired to the live AskAna agent (bot_id `920c571b-...`). Cards driven by demo strip (hardcoded data); intent-based hint emission not yet wired. `lib/uiHints.ts` defines the UiHint type union + DeploymentContext. tsc clean.
-  - **Commit 2 (next)** — `lib/uiHints.ts` extractor function + `app/api/bots/[id]/ui-hints/route.ts` sibling endpoint + unit tests.
-  - **Commit 3** — wire frontend to call extractor after each chat turn; cards become real-intent-driven; demo strip becomes dev-only.
+  - **Commit 2 LANDED 2026-05-21** — `lib/uiHints.ts` extractor (`extractUiHints`, `validateHint`, `parseExtractorJson`, `buildExtractorInput`, `UI_HINT_EXTRACTOR_PROMPT`) with the verbatim prompt from §10, dependency-injected classifier (mirrors `lib/languageSwitch.ts` for testability). New `POST /api/bots/[id]/ui-hints` sibling endpoint with the same CORS/rate-limit posture as `/chat`. 31 unit tests (`tests/unit/uiHints.test.ts`) — empty input, malformed JSON, code-fenced output, all four hint types, open-redirect guard on link_card cta_url, classifier throw, oversized-string truncation. Uses `callAI` tier=fast (~$0.0003-0.0006/call). Usage logged with `event_type: ui_hint_extract`.
+  - **Commit 3 (next)** — wire frontend to call extractor after each chat turn; cards become real-intent-driven; demo strip becomes dev-only.
   - **Commit 4** — live data: `lib/parking.ts` (flymco JSON), `lib/places.ts` (Google Places API), terminal SVG extraction → cards stop being hardcoded.
 - **Demo target:** TBD — driven by MCO opportunity timeline.
 

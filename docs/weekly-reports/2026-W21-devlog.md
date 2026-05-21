@@ -1,5 +1,21 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-21 — MCO_AGENT prototype commit 2: ui_hints extractor + sibling endpoint
+
+**Why**: With the canvas shell from commit 1 in place, the next gap is the *intent extraction* that turns the assistant's prose answer into a structured card payload. Per `docs/MCO_AGENT.md` §15, we're shipping this as a sibling endpoint instead of inlining into `/api/bots/[id]/chat`: zero conflict with the Phase 4 convergence work that's already extracted `chatCore.ts`, chat latency unchanged (the canvas card appears a beat after the prose), and the optional inline fold-in is easy later. The hint contract is the same `UiHint` discriminated union from commit 1; this commit fills in the producer side.
+
+**What changed**:
+- `lib/uiHints.ts` — added the extractor surface alongside the existing types: `UI_HINT_EXTRACTOR_PROMPT` (verbatim from MCO_AGENT.md §10, with the URL allowlist for `link_card` so prompt-injection can't open-redirect users), `buildExtractorInput()` (formats user+assistant pair, truncates to keep token cost bounded), `parseExtractorJson()` (tolerates markdown code fences and leading/trailing prose — common LLM failure modes), `validateHint()` (strict shape check against the discriminated union, drops unknown types, caps array lengths, truncates oversized strings), and the main `extractUiHints({ userMessage, assistantMessage, classifier })`. The classifier is dependency-injected (same pattern as `lib/languageSwitch.ts`), so unit tests pass a stub and the route passes a `callAI` adapter — no transitive `callAI` import in tests.
+- `app/api/bots/[id]/ui-hints/route.ts` (new) — public, unauthenticated, CORS-open (same posture as `/chat`). Rate limit shares the `bot_chat:` bucket prefix so an attacker can't double their budget by alternating endpoints. Loads the agent via service-role, runs `extractUiHints` with `callAI` tier=fast (Haiku 4.5 / 4o-mini, ~$0.0003-0.0006/call), logs usage with `event_type: ui_hint_extract` for rollup. Failures degrade to `{ ui_hints: [] }` so the canvas just keeps showing its existing card.
+- `tests/unit/uiHints.test.ts` (new) — 31 tests across `parseExtractorJson`, `validateHint`, `buildExtractorInput`, the system prompt sanity, and end-to-end `extractUiHints` with stub classifiers covering all four hint types, empty input early-return, classifier-throw fallthrough, malformed JSON, code-fenced output, unknown hint types, and the link_card open-redirect guard (rejects any cta_url not on `flymco.com`).
+
+**Verification**:
+- `npx tsc --noEmit` clean.
+- `npx vitest run tests/unit/uiHints.test.ts` — 31/31 pass, ~400ms.
+- `npm test` — 229 pass, 6 fail. **The 6 failures are pre-existing**, all in `tests/integration/high-traffic-routes.test.ts > POST /api/townhall/chat`. Root cause: that test indirectly imports `lib/chatCore.ts` which has `import 'server-only'`, and the integration runner evaluates it in a non-server context. Introduced earlier in W21 by Phase 4 convergence work; tracking separately, not blocking this commit.
+
+**Push gate**: this commit lands as 33 ahead of origin/main, push freeze still active.
+
 ## 2026-05-21 — MCO_AGENT prototype commit 1: shell + chat wired to AskAna
 
 **Why**: First buildable slice of the boardroom demo described in `docs/MCO_AGENT.md`. Ships the entire visual + interactive frame so we can iterate the look-and-feel before any LLM extraction or live-data integration work. The agent (AskAna at bot_id `920c571b-…`) is already live; this commit just wraps it in the canvas shell. Three remaining commits planned: (2) sibling `/api/bots/[id]/ui-hints` extractor endpoint, (3) frontend wires extractor → real cards, (4) replace hardcoded card data with flymco parking JSON + Google Places.
