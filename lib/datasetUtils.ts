@@ -400,8 +400,11 @@ export function buildTownHallSchema(): SchemaConfig {
 }
 
 export function buildBotSchema(): SchemaConfig {
-  // One row per (assistant question, user response) pair from
-  // bot_conversation_turns. session_id groups turns within a conversation.
+  // One row per (assistant question, user response) pair from the bot
+  // conversation substrate (legacy bot_conversation_turns or the Phase 3
+  // conversation_turns table joined via conversations — both expose
+  // session_id, turn_number, role, content, sentiment, etc. in the same
+  // shape, so the schema is path-agnostic).
   // Mirrors buildTownHallSchema where it makes sense (sentiment, language,
   // open-ended user_message as primary text) but drops the topic/topic_type
   // fields since per-turn topics aren't tagged for bot conversations.

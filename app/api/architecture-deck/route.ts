@@ -349,14 +349,14 @@ function slideAICenter(pptx: any, pg: number) {
 // ── 4. Data layer (39 tables, six domains) ─────────────────────────────────
 function slideDataLayer(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'Data Layer: 39 Tables, 7 Domains', 'Org-scoped from the schema up. No tenant routers — multi-tenancy is a column.')
+  addHeader(s, 'Data Layer: 44 Tables, 7 Domains', 'Org-scoped from the schema up. No tenant routers — multi-tenancy is a column.')
   addFooter(s, pg)
 
   const domains = [
     { name: 'Surveys',       count: '6 tables', tables: 'studies · responses · study_response_stats · study_designs · drafts · share_tokens', color: DN.sarinaBlue },
     { name: 'Datasets',      count: '4 tables', tables: 'datasets · dataset_rows_flat · dataset_state · archived_dataset_rows*', color: DN.teal },
-    { name: 'Agents / RAG',  count: '5 tables', tables: 'bots · bot_knowledge_chunks · bot_conversation_turns · bot_conversation_reviews · bot_session_personas', color: DN.hermesOrange },
-    { name: 'PulseIQ',       count: '4 tables', tables: 'townhall_sessions · townhall_themes · townhall_turns · townhall_participant_responses', color: DN.gold },
+    { name: 'Agents / RAG',  count: '7 tables', tables: 'bots · bot_knowledge_chunks · bot_conversation_turns* · bot_conversation_reviews · bot_session_personas · conversations · conversation_turns', color: DN.hermesOrange },
+    { name: 'PulseIQ',       count: '7 tables', tables: 'townhall_sessions* · townhall_themes* · townhall_turns* · townhall_participant_responses · town_halls · town_hall_conversations · town_hall_topics', color: DN.gold },
     { name: 'Campaigns',     count: '5 tables', tables: 'campaigns · campaign_respondents · campaign_emails · campaign_send_log · campaign_schedules', color: DN.purple },
     { name: 'Listening',     count: '8 tables', tables: 'review_sources · review_source_locations · reddit_sources · reddit_source_threads · social_connections · social_comments · social_moderation_log · social_alert_rules', color: DN.green },
     { name: 'Org / Audit',   count: '7 tables', tables: 'organizations · users · invites · org_transfers · usage_logs · user_logins · collections', color: DN.navy },

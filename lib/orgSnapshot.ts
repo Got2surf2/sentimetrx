@@ -72,6 +72,11 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'bot_conversation_turns', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
   { name: 'bot_session_personas', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
   { name: 'bot_conversation_reviews', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
+  // Phase 3 substrate — new conversation tables. Until bot_conversation_turns
+  // drops at end of Phase 3, both old and new tables are dumped so an org
+  // snapshot is complete regardless of which one is currently authoritative.
+  { name: 'conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'conversation_turns', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
 
   // Surveys + responses
   { name: 'studies', filter: { kind: 'org_id' }, cap: NO_CAP },
@@ -82,6 +87,11 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'townhall_themes', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
   { name: 'townhall_turns', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
   { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
+  // Phase 3 substrate — town hall family. Currently empty in prod; populated
+  // once Phase 4 absorbs the PulseIQ route into the unified chat handler.
+  { name: 'town_halls', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'town_hall_conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'town_hall_topics', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
 
   // Datasets + entities + Ana
   { name: 'datasets', filter: { kind: 'org_id' }, cap: NO_CAP },

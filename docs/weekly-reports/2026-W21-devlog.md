@@ -839,3 +839,19 @@ Each follows the same pattern: query `conversation_turns` joined with `conversat
 - Tier 3 (cron): `app/api/cron/bot-conversation-review/route.ts` — needs an audit for write-back behavior.
 - Tier 5 (cleanup): drop `bot_conversation_turns`, remove `lib/phase3DualWrite.ts` + `lib/phase3Read.ts` + flags.
 - Phase 3 closeout: `bots`→`agents` rename (deferred from commit 1) + Phase 4 entry-point map.
+
+## 2026-05-21 — Convergence Phase 3 commit 8: Tier 2 — orgSnapshot + docs hygiene
+
+**Why**: Tier 2 surfaced as not-actually-queries — none of `lib/orgSnapshot.ts:72`, `lib/datasetUtils.ts:404`, or `app/api/architecture-deck/route.ts:358` are SELECTs against `bot_conversation_turns`. They're metadata: a table-list configuration for the org snapshot, a code comment in a schema builder, and slide text in the architecture deck. The right Tier 2 work isn't to "cut reads" — it's to make these references describe the **new** state correctly so an org export stays complete and the architecture deck stays current.
+
+**What changed**:
+- `lib/orgSnapshot.ts` (the table-by-table org dumper used by buyer-DD exports) — added five entries: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. All filter on `org_id` (which is denormalized on every row of every new table per sql/078). The legacy `bot_conversation_turns` entry stays through Phase 3 so an export today captures everything; it gets removed in the same commit that drops the legacy table.
+- `lib/datasetUtils.ts` — `buildBotSchema` comment refreshed to say the schema is path-agnostic (works against either the legacy or new substrate; both expose the same column shape).
+- `app/api/architecture-deck/route.ts` — the "Data Layer" slide refreshed:
+  - Total bumped: 39 → 44 tables.
+  - Agents/RAG row: `5 tables` → `7 tables`; adds `conversations · conversation_turns`. `bot_conversation_turns*` annotated with the asterisk that elsewhere in the deck marks transitional tables.
+  - PulseIQ row: `4 tables` → `7 tables`; adds `town_halls · town_hall_conversations · town_hall_topics`. Legacy `townhall_*` tables annotated transitional.
+
+**Verification**: clean `tsc --noEmit`. No regression run needed — none of these are in the chat path. The orgSnapshot change is structural; will be exercised the next time a buyer-DD snapshot is taken.
+
+**Tier 2 done.** Next: **Tier 3** = `app/api/cron/bot-conversation-review/route.ts`. Needs an audit because it may also WRITE (review-status fields) — if so, a third mirror helper in `lib/phase3DualWrite.ts` is required before the read cutover lands. After that: Tier 5 cleanup.
