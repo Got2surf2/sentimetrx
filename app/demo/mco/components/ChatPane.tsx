@@ -4,14 +4,14 @@
 // POSTs to /api/bots/[id]/chat (the live AskAna agent at bot_id 920c571b-…).
 // Independent vertical scroll; bottom-anchored input.
 //
-// Differs from the shared <ChatBot> widget: simpler bubble styling that
-// matches the canvas design, no name prompt (the kiosk doesn't need it),
-// and surfaces the active turn upward so CanvasShell can drive the
-// right-pane card swap when a turn is clicked. Commit 2 will additionally
-// fire the ui-hints extractor after each assistant reply.
+// After each assistant reply lands, fires a fire-and-forget call to the
+// sibling endpoint POST /api/bots/[id]/ui-hints with the (user, assistant)
+// pair. The extractor returns zero or one UiHint which is surfaced upward
+// via onHintReceived so CanvasShell can update the right pane.
+// Failures degrade silently: a missing hint leaves the canvas as-is.
 
 import { useEffect, useRef, useState } from 'react'
-import type { DeploymentMode } from '@/lib/uiHints'
+import type { DeploymentMode, UiHint } from '@/lib/uiHints'
 
 const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
@@ -26,30 +26,55 @@ interface Props {
   chips: string[]
   placeholder: string
   mode: DeploymentMode
-  onActiveTurnChange?: (turnIdx: number) => void
-  activeTurnIdx?: number
+  onHintReceived?: (hint: UiHint | null) => void
+  onExtractingChange?: (extracting: boolean) => void
 }
 
 function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips, placeholder, mode, onActiveTurnChange, activeTurnIdx }: Props) {
+export default function ChatPane({ greeting, chips, placeholder, mode, onHintReceived, onExtractingChange }: Props) {
   const [sessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  // Reset thread when the greeting changes (mode flip)
+  // Reset thread when the greeting changes (mode flip). Also clear any
+  // live hint so the canvas reverts to the mode's default demo card.
   useEffect(() => {
     setMessages([])
     setInput('')
+    onHintReceived?.(null)
   }, [greeting])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, pending])
+
+  // Fire the extractor after a new assistant message lands. Fire-and-forget
+  // by design — the prose answer is already on screen; we don't block the
+  // user on this. The canvas card just animates in a beat later.
+  async function extractHint(userText: string, assistantText: string) {
+    onExtractingChange?.(true)
+    try {
+      const res = await fetch('/api/bots/' + ASKANA_BOT_ID + '/ui-hints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage: userText, assistantMessage: assistantText }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const hints: UiHint[] = Array.isArray(data?.ui_hints) ? data.ui_hints : []
+      if (hints.length > 0) onHintReceived?.(hints[0])
+      // Empty array intentionally keeps the existing card — don't reset.
+    } catch {
+      // Silent failure: keep the existing card.
+    } finally {
+      onExtractingChange?.(false)
+    }
+  }
 
   async function send(text: string) {
     const trimmed = text.trim()
@@ -78,7 +103,10 @@ export default function ChatPane({ greeting, chips, placeholder, mode, onActiveT
       const reply = data?.message || data?.reply || data?.text || ''
       const anaTurnIdx = messages.length + 1
       setMessages((prev) => [...prev, { role: 'assistant', content: reply, turnIdx: anaTurnIdx }])
-      onActiveTurnChange?.(anaTurnIdx)
+
+      // Extract a UI hint from this turn. Don't await — the prose already
+      // rendered, and the card animates in when the extractor returns.
+      if (reply) void extractHint(trimmed, reply)
     } catch (e) {
       setMessages((prev) => [...prev, { role: 'assistant', content: "Sorry, I had trouble reaching the airport's information system. Try again?", turnIdx: messages.length + 1 }])
     } finally {
@@ -89,17 +117,13 @@ export default function ChatPane({ greeting, chips, placeholder, mode, onActiveT
   return (
     <div className="chat-pane">
       <div className="thread">
-        <div className={'turn ana' + (activeTurnIdx === 0 ? ' active' : '')}>
+        <div className="turn ana">
           <div className="who">Ana</div>
           <div className="bubble">{greeting}</div>
         </div>
 
         {messages.map((m) => (
-          <div
-            key={m.turnIdx}
-            className={'turn ' + m.role + (activeTurnIdx === m.turnIdx ? ' active' : '')}
-            onClick={() => m.role === 'assistant' && onActiveTurnChange?.(m.turnIdx)}
-          >
+          <div key={m.turnIdx} className={'turn ' + m.role}>
             <div className="who">{m.role === 'user' ? 'You' : 'Ana'}</div>
             <div className="bubble">{m.content}</div>
           </div>

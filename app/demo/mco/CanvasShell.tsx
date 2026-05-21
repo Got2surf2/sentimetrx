@@ -5,7 +5,7 @@
 // switcher in the demo strip is dev-only; in production, the mode is
 // auto-detected by app/demo/mco/page.tsx (URL params → geo → UA → default).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import ChatPane from './components/ChatPane'
 import TerminalMapCard from './components/TerminalMapCard'
 import RestaurantsCard from './components/RestaurantsCard'
@@ -80,18 +80,36 @@ export default function CanvasShell({ initialMode }: Props) {
   const [mode, setMode] = useState<DeploymentMode>(initialMode)
   const config = MODE_CONFIG[mode]
 
-  const [hintIdx, setHintIdx] = useState<number>(config.defaultHint)
-  useEffect(() => { setHintIdx(MODE_CONFIG[mode].defaultHint) }, [mode])
+  // Two hint sources, in priority order:
+  //   liveHint  — emitted by the ui-hints extractor after a real chat turn
+  //   demoIdx   — index into DEMO_HINTS, driven by the demo strip (left/right
+  //               arrow buttons or keyboard arrows). The mode's defaultHint
+  //               seeds this when the page first loads or the mode changes.
+  // When liveHint is set, it wins. Switching mode or clicking a demo arrow
+  // clears liveHint so the demo strip can take back control.
+  const [demoIdx, setDemoIdx] = useState<number>(config.defaultHint)
+  const [liveHint, setLiveHint] = useState<UiHint | null>(null)
+  const [extracting, setExtracting] = useState(false)
 
-  const hint = useMemo(() => DEMO_HINTS[hintIdx], [hintIdx])
+  useEffect(() => {
+    setDemoIdx(MODE_CONFIG[mode].defaultHint)
+    setLiveHint(null)   // mode change resets to demo state
+  }, [mode])
+
+  const hint: UiHint = liveHint ?? DEMO_HINTS[demoIdx]
+
+  function cycleDemo(delta: number) {
+    setLiveHint(null)
+    setDemoIdx((i) => (i + delta + DEMO_HINTS.length) % DEMO_HINTS.length)
+  }
 
   // Keyboard shortcuts for the boardroom demo: 1/2/3 = modes, ←/→ = cards.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
-      if (e.key === 'ArrowRight') setHintIdx((i) => (i + 1) % DEMO_HINTS.length)
-      else if (e.key === 'ArrowLeft') setHintIdx((i) => (i - 1 + DEMO_HINTS.length) % DEMO_HINTS.length)
+      if (e.key === 'ArrowRight') cycleDemo(1)
+      else if (e.key === 'ArrowLeft') cycleDemo(-1)
       else if (e.key === '1') setMode('home')
       else if (e.key === '2') setMode('invenue')
       else if (e.key === '3') setMode('kiosk')
@@ -99,14 +117,6 @@ export default function CanvasShell({ initialMode }: Props) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-
-  // When the chat thread surfaces an active assistant turn, swap the
-  // canvas to whatever hint corresponds to that turn. Commit 3 wires this
-  // up to the real extractor.
-  function onActiveTurnChange(turnIdx: number) {
-    // For now: clicking an Ana turn cycles to the next demo hint
-    setHintIdx((i) => (i + 1) % DEMO_HINTS.length)
-  }
 
   return (
     <div className={'canvas-shell mode-' + mode}>
@@ -146,12 +156,14 @@ export default function CanvasShell({ initialMode }: Props) {
             greeting={config.greeting}
             chips={config.chips}
             placeholder={config.placeholder}
-            onActiveTurnChange={onActiveTurnChange}
+            onHintReceived={(h) => setLiveHint(h)}
+            onExtractingChange={setExtracting}
           />
         </div>
 
         <div className="canvas-right">
-          <div className="canvas-card">
+          <div className={'canvas-card' + (extracting ? ' extracting' : '')}>
+            {extracting && <div className="extracting-bar" aria-hidden />}
             <HintRenderer hint={hint} />
           </div>
         </div>
@@ -167,9 +179,9 @@ export default function CanvasShell({ initialMode }: Props) {
           ))}
         </div>
         <span className="demo-sep" />
-        <button className="demo-arrow" onClick={() => setHintIdx((i) => (i - 1 + DEMO_HINTS.length) % DEMO_HINTS.length)} aria-label="Previous card">‹</button>
-        <span className="demo-pos">{hintIdx + 1} / {DEMO_HINTS.length}</span>
-        <button className="demo-arrow" onClick={() => setHintIdx((i) => (i + 1) % DEMO_HINTS.length)} aria-label="Next card">›</button>
+        <button className="demo-arrow" onClick={() => cycleDemo(-1)} aria-label="Previous demo card">‹</button>
+        <span className="demo-pos">{liveHint ? 'live' : (demoIdx + 1) + ' / ' + DEMO_HINTS.length}</span>
+        <button className="demo-arrow" onClick={() => cycleDemo(1)} aria-label="Next demo card">›</button>
       </div>
     </div>
   )

@@ -221,8 +221,28 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  position: relative;
 }
 .canvas-shell .canvas-card-inner { padding: 26px; }
+
+/* Subtle indeterminate progress bar at the top of the card while the
+ * ui_hints extractor is running. Indicates "the canvas is about to update"
+ * without changing the existing card content. */
+.canvas-shell .extracting-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #f59e0b 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: extracting-shimmer 1.4s ease-in-out infinite;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  z-index: 2;
+}
+@keyframes extracting-shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 100% 0; }
+}
 
 .canvas-shell .canvas-header {
   display: flex;
