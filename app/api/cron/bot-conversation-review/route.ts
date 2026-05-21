@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -47,15 +48,36 @@ export async function GET(req: NextRequest) {
 
       const since = lastReview?.reviewed_at || new Date(Date.now() - 7 * 86400000).toISOString()
 
-      // Fetch conversations since last review
-      const { data: turns } = await service
-        .from('bot_conversation_turns')
-        .select('session_id, turn_number, role, content, created_at')
-        .eq('bot_id', bot.id)
-        .gte('created_at', since)
-        .order('session_id')
-        .order('turn_number', { ascending: true })
-        .limit(1000)
+      // Fetch conversations since last review. READ_PHASE3 sources from
+      // the new substrate; the cron is a pure reader (writes go to bots
+      // and bot_conversation_reviews, never back to turns).
+      let turns: { session_id: string; turn_number: number; role: string; content: string; created_at: string }[] | null = null
+      if (isPhase3ReadSafe()) {
+        const { data } = await service
+          .from('conversation_turns')
+          .select('turn_number, role, content, created_at, conversations!inner(session_id, bot_id)')
+          .eq('conversations.bot_id', bot.id)
+          .gte('created_at', since)
+          .order('turn_number', { ascending: true })
+          .limit(1000)
+        turns = (data || []).map((r: any) => ({
+          session_id: r.conversations?.session_id || '',
+          turn_number: r.turn_number,
+          role: r.role,
+          content: r.content,
+          created_at: r.created_at,
+        }))
+      } else {
+        const { data } = await service
+          .from('bot_conversation_turns')
+          .select('session_id, turn_number, role, content, created_at')
+          .eq('bot_id', bot.id)
+          .gte('created_at', since)
+          .order('session_id')
+          .order('turn_number', { ascending: true })
+          .limit(1000)
+        turns = data
+      }
 
       if (!turns || turns.length === 0) {
         // No new conversations — just update next_review_at

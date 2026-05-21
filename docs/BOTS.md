@@ -1041,12 +1041,11 @@ After the dual-write surface was complete and Sarina's history backfilled, two a
 - `GET /api/bots/[id]/conversations/export` — CSV/XLSX export (5000-row cap)
 - `POST /api/bots/[id]/conversations/report` — AI conversation report
 - `POST /api/bots/[id]/analyze` — incremental dataset sync (two read sites: main pull + prior-turn cutoff)
+- `GET /api/cron/bot-conversation-review` — periodic AI theme-drift review (Vercel Cron, every 4 hours)
 
-**Still on `bot_conversation_turns`** (Tier 2/3, queued for the next commits):
-- `lib/orgSnapshot.ts`
-- `lib/datasetUtils.ts`
-- `app/api/architecture-deck/route.ts`
-- `app/api/cron/bot-conversation-review/route.ts` (write-back audit needed)
+**Tier 2 + 3 closed**: `lib/orgSnapshot.ts`, `lib/datasetUtils.ts`, `app/api/architecture-deck/route.ts` are metadata-only references (table list, comment, slide text) — refreshed to describe the new substrate rather than branched. `app/api/cron/bot-conversation-review/route.ts` is a pure reader; cut behind `isPhase3ReadSafe()`.
+
+**No bare unprotected `bot_conversation_turns` reader remains.** The only legacy-table references that survive are: (a) the `else` branch in every reader (until Tier 5 drops the legacy path), (b) the write sites in the chat route (paired with mirror helpers from `lib/phase3DualWrite.ts`), and (c) the DELETE in `[sessionId]` (paired with `mirrorDeleteSession`).
 
 **Chat-route reads also branch on `isPhase3ReadSafe()`** (commit 6). Two reads in `app/api/bots/[id]/chat/route.ts` consult conversation history per request:
 - The silence-probe path (around line 95) reads `(content_flags, source, turn_number)` for the session to decide if a probe has already fired and which focus to surface next.

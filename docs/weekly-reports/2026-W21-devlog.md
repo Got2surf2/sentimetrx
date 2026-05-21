@@ -855,3 +855,22 @@ Each follows the same pattern: query `conversation_turns` joined with `conversat
 **Verification**: clean `tsc --noEmit`. No regression run needed — none of these are in the chat path. The orgSnapshot change is structural; will be exercised the next time a buyer-DD snapshot is taken.
 
 **Tier 2 done.** Next: **Tier 3** = `app/api/cron/bot-conversation-review/route.ts`. Needs an audit because it may also WRITE (review-status fields) — if so, a third mirror helper in `lib/phase3DualWrite.ts` is required before the read cutover lands. After that: Tier 5 cleanup.
+
+## 2026-05-21 — Convergence Phase 3 commit 9: Tier 3 — cron reader cut
+
+**Why**: Last reader on the legacy table. Audit-first: needed to confirm the cron isn't a hidden writer too, since `bot_conversation_reviews` and `bots.last_reviewed_at` are both written elsewhere in the file. Grep showed three writes total — `bots.update({last_reviewed_at})` and `bot_conversation_reviews.insert()` and a second `bots.update()` — none of them touch `bot_conversation_turns`. So this is a pure reader, no new mirror helper required.
+
+**What changed**:
+- `app/api/cron/bot-conversation-review/route.ts` — single read site (line ~52) branched behind `isPhase3ReadSafe()`. New-substrate path queries `conversation_turns` joined with `conversations` filtered by `conversations.bot_id`, projects `session_id` back. Downstream session-grouping + AI prompt construction is unchanged.
+
+**Verification**:
+- Clean `tsc --noEmit`.
+- Sarina 22-scenario regression with both flags on: **20 PASS / 2 PARTIAL / 0 FAIL / 0 ERROR** — strongest Phase 3 result. The cron isn't on the chat path, but the regression confirms no accidental side imports broke anything.
+- Pre-commit grep audit: every `from('bot_conversation_turns')` line that remains is the legacy fallback inside an `if (isPhase3ReadSafe()) ... else { ... }` block, or a write site in the chat route (silence-probe insert, deflect insert, focus-flag update) that's already paired with a mirror helper, or a delete in `[sessionId]` paired with `mirrorDeleteSession`. No bare unprotected reader remains.
+
+**Tier 3 done. Every bot_conversation_turns reader is now flag-gated.** The remaining Phase 3 work is the cleanup pass:
+- Tier 5: drop the `bot_conversation_turns` table, remove `lib/phase3DualWrite.ts` + `lib/phase3Read.ts` + the env flags + every `if (isPhase3ReadSafe()) { ... } else { ... }` branch (collapse to just the new-path code).
+- The `bots`→`agents` rename (deferred from commit 1).
+- Phase 3 retrospective + Phase 4 entry-point map.
+
+**Push gate**: the right time to push is now. All Phase 3 commits are behavior-preserving with flags OFF (the default). The dual-write needs to run on real prod traffic before Tier 5 is safe, and that needs a push first. Re-asking the user before any push.
