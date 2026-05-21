@@ -1163,3 +1163,37 @@ The synthesized `session_id` (`townHall.id + ':' + participant_id`) is intention
 - **Commit 4**: dashboard / read surfaces rewired to new schema.
 
 **Commit lands as 32 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 5 commit 2: pickNextTopic extracted to lib
+
+**Why**: The unified `handleChatTurn` needs a way to select the next topic when a conversation belongs to a town hall — currently that logic lives inline in the legacy PulseIQ orchestrator (~60 lines, lines 661-737 of `app/api/townhall/chat/route.ts`). Lifting it out of the route into a pure function lets Phase 5 commit 3 wire `pickNextTopic` into `handleChatTurn` without duplicating the rules. This commit is the extraction + legacy-route refactor only; the new wiring is commit 3.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `lib/pickNextTopic.ts` | NEW — pure function `pickNextTopic(topics, state)` returning `{ topic, reason, matchedKeyword? }`. Knows nothing about DB shape; caller passes the topic pool (legacy → `townhall_themes`, new → `town_hall_topics`) with `response_count` already computed. Preserves all five legacy selection rules verbatim |
+| `app/api/townhall/chat/route.ts` | NEXT TOPIC block (lines 661-737) refactored to call the lib. Wrapper logic (standby vs wrap-up when all-covered, debug logging, generate-transition) stays in the route as PulseIQ-specific orchestration. Net diff: ~60 lines of selection logic → 1 function call + result handling |
+| `docs/TOWNHALL.md` § Processing Pipeline | Step 16 now points at `lib/pickNextTopic.ts` and notes the wrapper logic that stays in the route |
+| `docs/CONVERGENCE.md` | Changelog entry for Phase 5 commit 2 (inserted chronologically after commit 1) |
+
+**The five selection rules** (all preserved 1:1 in the lib):
+
+1. Filter to `topics` whose `id` is not in `state.discussedTopicIds`.
+2. Prefer under-target topics (`response_count < response_target`); fall back to over-target only if all under-target are discussed.
+3. If `state.preferOrganic` is true AND any non-seed topics are available, drop seed-source topics. (Legacy: `seedBudgetExhausted` flag mapped to `preferOrganic` at the call site.)
+4. Smart probe: if `state.currentMessage` contains any keyword from an available topic, jump to that topic. Excludes `state.currentTopicId` from the smart-probe scan (so a keyword match on the current topic isn't treated as a "jump") but NOT from the default-pick — preserving the legacy semantic where the current topic can stay selected if it still has the fewest responses.
+5. Default pick: first available. Caller pre-sorts by `response_count` ascending so this means "fewest responses". The lib does not re-sort.
+
+**Return shape** (`NextTopicResult`):
+- `topic`: the chosen `NextTopic`, or `null` if no candidates.
+- `reason`: `'smart_probe' | 'fewest_responses' | 'fallback_over_target' | 'all_covered' | 'no_topics'`. The route uses `reason` to drive debug log strings and decide between standby vs wrap-up when `topic` is null.
+- `matchedKeyword`: present only when `reason === 'smart_probe'`.
+
+**Why pure (topics, state) instead of (agent, state, townHallContext?)**: the entry-point map in the W21 devlog originally prescribed an `(agent, state, townHallContext?)` signature where the function fetches its own topic pool. Switching to `(topics, state)` keeps the function pure and testable, and lets callers pre-shape the input (e.g. merge agent.focuses with town_hall_topics, recompute response_count from any source). The trade-off is two extra lines at each call site to assemble the topics array, which is worth it.
+
+**Risk gate**: low-medium. The legacy PulseIQ route is the only current call site, and it's been refactored in place. Behavior should be 1:1 — every legacy branch maps to a pickNextTopic reason. Clean typecheck passes (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`). No live PulseIQ data means observable risk is limited to development testing. Sarina regression unaffected (bot path doesn't touch PulseIQ).
+
+**Next**: Phase 5 commit 3 — wire `pickNextTopic` into `handleChatTurn`. When `townHallContext` is present, fetch `town_hall_topics`, compute response_count from `conversation_turns`, call the picker, and inject the chosen topic into the system prompt (similar to how the bot path handles `focuses`). Also wire a response-count-based theme-detection trigger to match the legacy chat-route-level behavior.
+
+**Commit lands as 33 ahead of origin/main; push freeze still active.**

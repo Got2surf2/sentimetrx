@@ -15,6 +15,7 @@ import {
 } from '@/lib/languageSwitch'
 import { handleChatTurn } from '@/lib/chatCore'
 import { isTownHallViaAgentHandlerEnabled } from '@/lib/phase4Flags'
+import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 
 export const dynamic = 'force-dynamic'
 
@@ -659,18 +660,29 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
     } else {
 
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
-    // Prefer under-target topics, but include target-reached ones as fallback (deprioritized)
-    const underTarget = allTopics.filter(t => t.response_count < t.response_target && !discussedThemeIds.has(t.id))
-    const overTarget = allTopics.filter(t => t.response_count >= t.response_target && !discussedThemeIds.has(t.id))
-    let available = underTarget.length > 0 ? underTarget : overTarget
-
-    if (seedBudgetExhausted) {
-      const organicAvailable = available.filter(t => t.source !== 'guide')
-      if (organicAvailable.length > 0) {
-        available = organicAvailable
-        if (testing) debug.push('BUDGET: Seed budget exhausted (' + seedTurnsUsed + '/' + seedBudget + ') — prioritizing organic topics')
-      }
-    }
+    // Selection (filter under/over target, seed-budget preference, smart-
+    // probe, fewest-responses default) lives in lib/pickNextTopic.ts as
+    // a pure function shared with the unified handleChatTurn (Phase 5
+    // commit 2). The wrapper logic below — standby vs wrap-up when all
+    // covered, debug logging, generate-transition — stays here as
+    // PulseIQ-specific orchestration.
+    const pickerInputTopics: NextTopic[] = allTopics.map(t => ({
+      id: t.id,
+      label: t.label,
+      description: t.description,
+      question: t.question,
+      follow_up_angles: t.follow_up_angles,
+      keywords: (t as any).keywords || [],
+      source: t.source,
+      response_target: t.response_target,
+      response_count: t.response_count,
+    }))
+    const pick = pickNextTopic(pickerInputTopics, {
+      discussedTopicIds: discussedThemeIds as Set<string>,
+      currentMessage: (message && !skipped) ? message : undefined,
+      preferOrganic: !!seedBudgetExhausted,
+      currentTopicId: theme_id || undefined,
+    })
 
     if (testing && !isOpeningResponse) {
       debug.push('DECISION: Move to next topic')
@@ -680,17 +692,16 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
       else if (wordCount >= clarifyWordThreshold) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= ' + clarifyWordThreshold + ' threshold)')
       else if (clarifierTurnsOnTopic >= maxClarifiersPerTopic) debug.push('Clarifier skipped: hit max ' + maxClarifiersPerTopic + ' clarifiers on this topic')
       else if (currentTopicTurns >= dynamicTopicCap) debug.push('Clarifier skipped: dynamic cap reached (' + currentTopicTurns + '/' + dynamicTopicCap + ')')
-      debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length + ' (seed: ' + available.filter(t => t.source === 'guide').length + ', organic: ' + available.filter(t => t.source !== 'guide').length + ')')
+      if (seedBudgetExhausted) debug.push('BUDGET: Seed budget exhausted (' + seedTurnsUsed + '/' + seedBudget + ') — prioritizing organic topics')
+      debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Picker reason: ' + pick.reason)
     }
 
-    if (available.length === 0) {
-      // All topics covered — don't revisit/hammer. Either standby or wrap up.
+    if (!pick.topic) {
+      // All topics covered (or none configured) — standby or wrap up.
       if (testing) debug.push('ALL TOPICS VISITED — entering standby or wrap-up')
 
-      // If organic topic detection is on, enter standby mode (topics may emerge from other participants)
       const hasOrganic = config?.engine?.theme_detection_mode === 'auto'
       if (hasOrganic && turnsUsed < maxTurnsForBudget - 2) {
-        // Standby: thank them and let them know we may come back
         const standbyAudience = getAudienceLabels(config)
         const standbyMsg = config?.engine?.standby_message ||
           'That is very helpful information — thank you! Stand by while we see what some of the other ' + standbyAudience.participants + ' are talking about. If new topics come up, I may circle back to get your thoughts.'
@@ -702,38 +713,20 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
         return wrapUp(config)
       }
     } else {
-
-    let nextTopic = available[0]
-    let probedKeyword: string | null = null
-    if (message && !skipped) {
-      const lower = message.toLowerCase()
-      for (const t of available) {
-        if (t.id === theme_id) continue
-        const kws: string[] = (t as any).keywords || []
-        if (kws.length > 0) {
-          const matchedKw = kws.find(function(kw) { return lower.includes(kw.toLowerCase()) })
-          if (matchedKw) {
-            nextTopic = t
-            probedKeyword = matchedKw
-            break
-          }
+      const nextTopic = allTopics.find(t => t.id === pick.topic!.id)!
+      if (testing) {
+        if (pick.reason === 'smart_probe' && pick.matchedKeyword) {
+          debug.push('SMART PROBE: Keyword "' + pick.matchedKeyword + '" matched — jumping to "' + nextTopic.label + '" instead of default queue')
+        } else {
+          debug.push('NEXT TOPIC: "' + nextTopic.label + '" (fewest responses: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
         }
       }
-    }
 
-    if (testing) {
-      if (probedKeyword) {
-        debug.push('SMART PROBE: Keyword "' + probedKeyword + '" matched — jumping to "' + nextTopic.label + '" instead of default queue')
-      } else {
-        debug.push('NEXT TOPIC: "' + nextTopic.label + '" (fewest responses: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
-      }
-    }
-
-    resolvedThemeId = nextTopic.id
-    aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
-    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing, toneNudge, !!skipped)
-    botMessage = transResult.text
-    if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
+      resolvedThemeId = nextTopic.id
+      aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
+      const transResult = await generateTransition(config, message, language, turns, nextTopic, testing, toneNudge, !!skipped)
+      botMessage = transResult.text
+      if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
     }
     } // end globalCheckout else
   }

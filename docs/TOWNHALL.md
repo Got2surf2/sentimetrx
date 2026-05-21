@@ -103,7 +103,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 13. **Topic matching** — Opening response matched to best available theme via AI + keyword fallback
 14. **Clarifier** — Short/vague responses get AI follow-up (frustration-aware cap)
 15. **Smart probe** — Before the default "fewest responses" pick, scan the user's message for any keyword belonging to another available topic; if matched, jump to that topic instead
-16. **Next topic** — Route to under-target topic with fewest responses (with seed-budget rebalance — see below)
+16. **Next topic** — `lib/pickNextTopic.ts` (Phase 5 commit 2 extraction; pure function shared with the unified handler): filter under-target topics not yet discussed, fall back to over-target if all under-target are covered, smart-probe via keyword match in the current message (skips the current `theme_id`), default to first available (caller pre-sorts by `response_count` ascending). The legacy route still wraps this with seed-budget-exhausted preference (`preferOrganic`) and standby/wrap-up handling.
 17. **Global checkout / chill standby** — If recent 3 responses all curt or 2 of last 3 skipped, switch to `source='standby'` with a chill message instead of pushing more topics
 18. **All-topics-covered standby** — If every topic has been visited but organic detection is on and turns remain, return a standby message so the participant can be circled back when new topics emerge
 19. **Wrap-up** — At turn cap (or all topics + no organic mode), transition to post-session survey
