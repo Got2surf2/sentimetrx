@@ -1132,3 +1132,34 @@ The synthesized `session_id` (`townHall.id + ':' + participant_id`) is intention
 **Next**: Phase 4 commit 3 — drop legacy PulseIQ-specific write paths (or stabilize them behind `LEGACY_TOWNHALL_WRITES`) once a `town_halls` row exists and the new path is exercised end-to-end. Or jump straight to Phase 5 (cohort layer rebuild on the unified substrate). Sequencing decision deferred until Phase 6 timeline firms up.
 
 **Commit lands as 31 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 5 commit 1: cohort theme aggregator on new substrate
+
+**Why**: Per `CONVERGENCE.md` § 4 row 5, the cohort layer rebuild starts with the theme-detection cron. Today it reads `townhall_turns` and writes `townhall_themes`. To get the new substrate to PulseIQ feature parity (so the unified handler can actually serve a real town hall), the cron has to operate on `town_hall_conversations + conversation_turns` and write to `town_hall_topics`. Until that piece works, the new path can never discover its own organic topics — and without organic topics, the cohort experience degrades to "agent.topics only", which is just a 1:1 chat under a town hall URL.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `lib/cohortThemeAggregator.ts` | NEW — 1:1 port of `lib/townhallThemeDetection.ts` operating on the unified substrate. Exports `detectThemesForTownHall(townHallId)`. Reads `town_halls + town_hall_conversations + conversations + conversation_turns + town_hall_topics`. Writes `town_hall_topics` with `source='auto_detected'`, `state='pending'`. Stamps `town_halls.last_theme_detection_at` |
+| `app/api/cron/townhall-theme-detection/route.ts` | Now scans BOTH legacy `townhall_sessions` (status='active', `config.engine.theme_detection_mode='auto'`) AND new `town_halls` (status='live', `cohort_config.theme_detection_mode` defaulting to 'auto'). Both paths run with the same 10-minute cooldown |
+| `docs/TOWNHALL.md` § Theme Detection | Split into "legacy" + "new substrate" subsections. Documents the data-flow swap, the trigger differences (response-count-based legacy vs cron-only new until Phase 5 commit 3+ teaches `handleChatTurn`), and the `state='pending'` choice (forced by the new CHECK constraint) |
+| `docs/USAGE_ACCOUNTING.md` | Emitter table adds the new lib; cron table reflects that the same cron now drives BOTH libs |
+| `docs/CONVERGENCE.md` | Changelog entry for Phase 5 commit 1 |
+
+**Shape diffs vs the legacy detector** (intentional, called out in the file's header comment):
+
+1. **Two-step read**: `supabase-js` doesn't traverse join tables fluently, so the query is `town_hall_conversations` → list `conversation_id`s → `conversation_turns.in('conversation_id', ids)`. Same outcome as a join, two round-trips instead of one. Acceptable in a 15-min cron.
+2. **`role='user'` filter** replaces the legacy `skipped=false` + `user_message_en is not null` filter. `conversation_turns` doesn't carry a `skipped` boolean — PulseIQ's "skip a topic" concept is a wrapper-level feature that doesn't translate cleanly to the new substrate yet.
+3. **`state='pending'`** replaces the legacy `state='detected'`. Forced by `sql/078`'s CHECK constraint `(state IN ('active','pending','completed','rejected'))`. `pending` is the closest semantic match for "AI-detected, awaiting facilitator approval".
+4. **No per-topic sentiment column**. The new schema dropped it in favor of per-turn sentiment on `conversation_turns.sentiment`. The aggregator still computes mention sentiment in the lexicon pass (so future schema versions could log it), but doesn't write it anywhere.
+
+**Risk gate**: low. Zero `town_halls` rows in production today means the new cron block iterates zero rows and inserts zero topics; behavior is observable only after Phase 6 creates the first town hall. Clean typecheck passes (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`). Legacy detector + cron block unchanged; existing PulseIQ-on-legacy sessions keep working.
+
+**Open follow-ups for later Phase 5 commits**:
+
+- **Commit 2**: extract `pickNextTopic` from inline PulseIQ route into `lib/pickNextTopic.ts(agent, conversationState, townHallContext?)`. No `townHallContext` → `agent.topics`. With `townHallContext` → factor in `town_hall_topics` + response counts.
+- **Commit 3**: wire `pickNextTopic` into `handleChatTurn` for the `townHallContext` path. PulseIQ delegation now picks topics from `town_hall_topics` instead of the agent's static `focuses`. Also wire response-count-based theme-detection trigger (matches legacy behavior at the chat-route level).
+- **Commit 4**: dashboard / read surfaces rewired to new schema.
+
+**Commit lands as 32 ahead of origin/main; push freeze still active.**

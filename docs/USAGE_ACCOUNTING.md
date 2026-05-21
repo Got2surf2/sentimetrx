@@ -480,6 +480,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/townhall/suggest-sensitive` | townhall | `suggest_sensitive` | fast |
 | `/api/townhall/simulate` | townhall | `simulate` | fast |
 | `lib/townhallThemeDetection.ts` (invoked from `/api/townhall/chat` and `/api/cron/townhall-theme-detection`) | townhall | `theme_detect` | fast |
+| `lib/cohortThemeAggregator.ts` (Phase 5 commit 1 — invoked from `/api/cron/townhall-theme-detection` for `town_halls` rows on the new substrate) | townhall | `theme_detect` | standard |
 | `/api/datasets/[datasetId]/mine-themes` | dataset | `mine_themes` | standard |
 | `/api/datasets/[datasetId]/expand-keywords` | dataset | `expand_keywords` | fast |
 | `/api/datasets/[datasetId]/merge-themes` | dataset | `merge_themes` | fast |
@@ -522,7 +523,7 @@ From `vercel.json`:
 | `/api/cron/cleanup-shared-links` | `0 3 * * *` | no |
 | `/api/cron/review-sync` | `0 */6 * * *` | no |
 | `/api/cron/entity-discovery` | `0 5 * * 0` (Sun 05:00 UTC) | **yes** — `entity_discovery` events on `dataset` (via `lib/entityDiscovery.ts`) |
-| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` (via `lib/townhallThemeDetection.ts`) |
+| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` via BOTH `lib/townhallThemeDetection.ts` (legacy `townhall_sessions` scan) AND `lib/cohortThemeAggregator.ts` (new `town_halls` scan, Phase 5 commit 1) |
 | `/api/cron/bot-conversation-review` | `0 */4 * * *` | **yes** — `review` events on `bot` |
 | `/api/cron/social-sync` | `*/15 * * * *` | **yes** — `auto_reply` events on `social` (only when org has auto-reply enabled) |
 | `/api/cron/social-token-refresh` | `0 6 * * *` | no |

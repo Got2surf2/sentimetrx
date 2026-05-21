@@ -185,19 +185,29 @@ In both modes:
 
 ## Theme Detection (Organic Topics)
 
-### Discovery (`lib/townhallThemeDetection.ts`)
-1. Fetch English responses (non-skipped, min 20 chars)
+### Discovery — legacy (`lib/townhallThemeDetection.ts`)
+1. Fetch English responses (non-skipped, min 20 chars) from `townhall_turns`
 2. Sample evenly (cap 200 for prompt size)
 3. AI identifies 2-5 new themes not in existing themes
 4. Deduplicate: skip if label collision or >50% keyword overlap
 5. Score sentiment via lexicon
 6. Compute mention_count via keyword regex
-7. Insert as state='detected', source='auto_detected'
+7. Insert into `townhall_themes` as state='detected', source='auto_detected'
+
+### Discovery — new substrate (`lib/cohortThemeAggregator.ts`, Phase 5 commit 1, 2026-05-21)
+1. Load town hall + linked agent (`town_halls` joined to `agents` via `bot_id`)
+2. Fetch user turns across the town hall's conversations (`town_hall_conversations` → `conversations` → `conversation_turns` with `role='user'`, `content_en` || `content` ≥ 20 chars). PulseIQ's `skipped` boolean has no equivalent on the new schema — all user turns are candidates.
+3. Sample / AI / dedup / mention-count steps are identical to the legacy version.
+4. Insert into `town_hall_topics` as state='pending', source='auto_detected'. Per-topic `sentiment` is dropped from the schema (per-turn sentiment lives on `conversation_turns.sentiment` instead).
+5. Stamp `town_halls.last_theme_detection_at`.
+
+Both lib paths coexist; the cron (`app/api/cron/townhall-theme-detection/route.ts`) scans BOTH `townhall_sessions` (status='active', `config.engine.theme_detection_mode='auto'`) AND `town_halls` (status='live', `cohort_config.theme_detection_mode` defaulting to 'auto'). Legacy lib + cron block are dropped once no town hall is on the old schema.
 
 ### Trigger
-- Auto mode: every N responses (`theme_detection_every_n_responses`, default 20)
-- Manual: "Detect" button in facilitator console
-- Re-analyze: clears all organic themes, re-runs detection
+- Auto mode (legacy): every N responses (`config.engine.theme_detection_every_n_responses`, default 20)
+- Auto mode (new): cron every 15 min with 10-min cooldown via `town_halls.last_theme_detection_at`. Response-count-based trigger from the chat route arrives in Phase 5 commit 3+ when `handleChatTurn` learns about `townHallContext`.
+- Manual: "Detect" button in facilitator console (legacy only today)
+- Re-analyze: clears all organic themes, re-runs detection (legacy only today)
 
 ---
 
