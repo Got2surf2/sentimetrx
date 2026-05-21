@@ -957,3 +957,66 @@ Each follows the same pattern: query `conversation_turns` joined with `conversat
 - Variable / type / FK-column renames are separate optional follow-ups; none of them block Tier 5.
 
 **25 commits ahead of origin/main, push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 3 close-out + Phase 4 entry-point map
+
+**Phase 3 status: code-complete locally; gated on push + prod verification window before Tier 5 cleanup.**
+
+### Phase 3 close-out summary
+
+11 commits (`4af3dc5` → `d61caf2`):
+- **Schema** (sql/078 + sql/079): 5 new tables + 5 backward-compat views from the bot_* → agent_* rename. RLS day-one. Postgres FK + function rebinding verified.
+- **Write surface**: `lib/phase3DualWrite.ts` exposes `mirrorTurns` + `mirrorFocusFlagsUpdate` + `mirrorDeleteSession`. Every write path on `bot_conversation_turns` is paired with a mirror. 8 unit tests.
+- **Read surface**: `lib/phase3Read.ts` exports `isPhase3ReadSafe()` (requires both flags). 10 readers cut: chat (silence-probe + next-turn-number), conversations list + detail, intents-stats, focuses-stats, insights-deck, export, report, analyze (×2), cron review.
+- **Code rename**: 72 `from('bots'|'bot_*')` call sites migrated to `from('agents'|'agent_*')` across 28 files.
+- **Sarina backfill**: 185 historical conversations + 746 deduped turns reconstructed into the new substrate. 13 race-condition duplicates surfaced and dedupe'd.
+- **Sarina regression**: best result 20/2/0/0 with both flags ON. Every commit cleared ≥17 PASS / 0 ERROR.
+- **Verified live on localhost**: Sarina + MCO + UCF Incubator all answer correctly through the new substrate; row parity holds; row counts match deduped truth.
+
+### Remaining Phase 3 work — Tier 5 cleanup (one commit, post-push verification)
+
+Cannot land until the push happens and dual-write has run on real prod traffic for a verification window (suggested 24-72 hours of customer traffic). At that point: confirm row parity against legacy table, then in a single commit:
+- `DROP TABLE bot_conversation_turns CASCADE`
+- `DROP VIEW bots, bot_knowledge_chunks, bot_change_log, bot_session_personas, bot_conversation_reviews`
+- Delete `lib/phase3DualWrite.ts` + `lib/phase3Read.ts`
+- Remove `DUAL_WRITE_PHASE3` + `READ_PHASE3` env flags from `.env.local` template + any docs
+- Collapse every `if (isPhase3ReadSafe()) { ... } else { ... }` to just the new-path code (11 routes)
+- Remove the legacy `bot_conversation_turns` entry from `lib/orgSnapshot.ts`
+- Re-mark `bot_conversation_turns*` transitional-asterisks in `app/api/architecture-deck/route.ts` as gone; rebalance the table count
+- Devlog entry documenting the cleanup
+
+### Phase 4 entry-point map — PulseIQ chat route absorbs into the unified handler
+
+Per CONVERGENCE.md § 4 Phase 4: `/api/townhall/[guid]/chat` rewritten to look up a `town_halls` row by slug, find the linked agent, and hand off to the same chat handler as `/api/bots/[id]/chat` — passing a `townHallContext` payload. `townhall_turns` drops (greenfield, no real data). `/th/[guid]` URL kept for backward compat but resolves to a `town_halls.slug`.
+
+**First three Phase 4 commits** (in dependency order):
+
+1. **`feat(convergence): Phase 4 commit 1 — split bot chat into chat-core lib + thin route handler`**
+   - Extract the body of `app/api/bots/[id]/chat/route.ts` into `lib/chatCore.ts` exporting `handleChatTurn(ctx, body) → ChatResponse`.
+   - `ctx` carries the agent (loaded once from `agents`), the service-role client, the org context, and an OPTIONAL `townHallContext?: { townHallId, slug, themes, coverage }`.
+   - The route handler becomes a ~30-line wrapper: auth → load agent → invoke `handleChatTurn` → return.
+   - Sarina regression must clear ≥17/0 with no flag changes. Pure refactor — no PulseIQ wiring yet.
+
+2. **`feat(convergence): Phase 4 commit 2 — /api/townhall/[guid]/chat resolves to a town_halls row + delegates`**
+   - The townhall chat route looks up `town_halls` by slug, joins to `agents`, hands off to `handleChatTurn(ctx, body)` with `townHallContext` populated.
+   - For backward compat during transition, also support the legacy `townhall_sessions` → `townhall_turns` write path behind a `LEGACY_TOWNHALL_WRITES` env flag (default OFF). Phase 5 drops legacy.
+   - Gate the new behavior behind `TOWNHALL_VIA_AGENT_HANDLER` env flag so it can be flipped per environment.
+
+3. **`feat(convergence): Phase 4 commit 3 — drop townhall_turns + townhall_sessions writes`**
+   - With the unified handler proven, drop the PulseIQ-specific write paths.
+   - `townhall_themes` migrates to `town_hall_topics` (or stays alongside if there's a customer using it).
+   - Devlog + spec updates.
+
+**Sarina risk floor for Phase 4**: medium-high on commit 1 (chat-core extraction touches the customer-facing path), low on commit 2 (townhall path is greenfield), low on commit 3 (cleanup).
+
+**Decision deferred to Phase 4 start**: whether the `town_halls` slug system replaces or augments `townhall_sessions.slug`. Both are slug fields; one needs to be authoritative.
+
+### Memory queue final state
+
+Two follow-ups added during close-out:
+- **Question Log** (critical for Sarina PM-2 public record; spec already exists at `docs/BOTS.md` § 9.x). Estimate: 1-2 days MVP, 1 week full spec.
+- **Name capture broken** (only ~12% of sessions match heuristics; persona schema has no name field). Recommended: AI post-hoc extractor + per-bot `ask_profile` for high-stakes bots like Sarina. Estimate: 3-4 hours.
+
+Neither blocks Phase 4 but both surfaced as real product gaps during this close-out.
+
+**Close-out commit lands as 26 ahead of origin/main; push freeze still active.**
