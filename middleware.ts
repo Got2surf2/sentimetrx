@@ -54,6 +54,9 @@ const EXACT_BYPASS = new Set<string>([
 // Path prefixes for the same kind of bypass.
 const PREFIX_BYPASS: string[] = [
   '/api/cron/',
+  // MCO canvas-demo data endpoints — public, wildcard CORS, no cookies.
+  // Used by /demo/mco's ParkingCard + RestaurantsCard.
+  '/api/mco/',
 ]
 
 // Path patterns (regex) for routes that match a dynamic segment.

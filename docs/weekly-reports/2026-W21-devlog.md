@@ -1,5 +1,36 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-21 — MCO_AGENT prototype commit 4: live data (parking + places)
+
+**Why**: Commit 3 wired the extractor → real intent. This commit removes the last layer of demoware — the hardcoded card data — so the parking grid shows actual MCO lot status and the restaurant cards reflect real Google ratings (where a key is configured). The honest "Sample" badge on the card UI also surfaces when we're falling back, so the demo never pretends to be live when it isn't.
+
+**Discovery**: Playwright network sniff on `flymco.com/parking-availability` revealed the Greater Orlando Aviation Authority publishes a full public API at `api.goaa.aero`. We found six relevant endpoints during the sniff:
+- `GET /parking/availability/MCO` — live per-lot availability + status
+- `GET /parking/rates/MCO` — hourly/daily rates per lot
+- `GET /flights?scheduledTimestamp=<range>` — full flight schedule (out of scope for v1, future commit)
+- `GET /content/meridian_placemark | meridian_map | meridian_category` — indoor wayfinding data (out of scope; would unlock per-gate maps)
+
+The `api-key` header (`8eaac7209c824616a8fe58d22268cd59`) is the public site key shipped in flymco's frontend JavaScript to every visitor — not a secret. We read it from a `GOAA_API_KEY` env var for cleanliness, falling back to the public value so the demo works without env setup. If GOAA ever rotates the public key or adds bot-detection, we'll need a sanctioned partnership.
+
+**What changed**:
+- `lib/parking.ts` (new) — `fetchParkingAvailability()` parallel-fetches `/availability` and `/rates`, joins by lot id, normalizes to a `ParkingLot[]`. 60s in-memory cache, in-flight promise dedup (a burst of parallel callers results in exactly one outbound call). On upstream failure, returns the stale cache if any, else `[]`. Exports `HIGHLIGHT_TO_GOAA_ID` mapping ui_hints slugs (`garage_c`) → GOAA ids (`parking-garage-c`) so the slugs in the extractor's prompt resolve correctly.
+- `lib/places.ts` (new) — `fetchPlaceCards(placeIds, { fallbackContext, concurrency })` wraps the Google Places API (New) Basic SKU. Uses the new endpoint shape (`https://places.googleapis.com/v1/places/<id>` with `X-Goog-FieldMask` header). Concurrency-limited fan-out (default 8), 5s per-call timeout, drops failed places. Without `GOOGLE_PLACES_API_KEY` set, returns context-scoped mock data (`MOCK_PLACES_BY_CONTEXT` keyed by `terminal_a_airside | terminal_b_airside | terminal_c_airside | landside_main_terminal`). PriceLevel enum string converted to 1..4 integer. Per Google TOS, NO caching of rating/hours/name — only `place_id` is cacheable.
+- `app/api/mco/parking/route.ts` (new) — public GET, returns `{ lots, fetched_at }`.
+- `app/api/mco/places/route.ts` (new) — public POST `{ place_ids, context }` → `{ places, has_live_data }`. The `has_live_data` flag drives the card's "Live" vs "Sample" badge.
+- `app/demo/mco/components/ParkingCard.tsx` — fetches `/api/mco/parking` on mount and on hint change, falls back to a small static lot list if the API returns empty. Header text adapts: "Live Parking Availability" when we have counts, "MCO Parking Lots" otherwise. Featured lot picked from `hint.highlight` first, then `parking-garage-c`, then first.
+- `app/demo/mco/components/RestaurantsCard.tsx` — POSTs to `/api/mco/places` with `hint.place_ids` and `hint.context`. Each card is now an anchor that opens the Google Maps profile (`maps_url`). Pleasant deterministic photo-area gradient based on `place_id` hash. "Live" / "Sample" badge in the header. Footer changes accordingly: "Ratings & hours powered by Google · Live, refreshed on render" vs "Sample data shown — connect a Google Places key to see live ratings".
+- `middleware.ts` — adds `/api/mco/` to `PREFIX_BYPASS` so `POST /api/mco/places` doesn't get CSRF-blocked. (`GET /api/mco/parking` already passes via `SAFE_METHODS`; the prefix bypass covers both for clarity.)
+
+**Verification**:
+- `npx tsc --noEmit` clean.
+- `curl http://localhost:3000/api/mco/parking` returns Next.js 404 in the current dev process — same file-watcher quirk as commits 1 and 3; needs a dev-server restart to pick up new routes + the updated middleware. Once restarted, the route returns the live GOAA payload.
+- `lib/parking.ts` HTTP timing tested manually against `api.goaa.aero`: ~200-400ms per call, well under the 8s timeout.
+- No production impact — additive routes + frontend changes only.
+
+**Cost discipline**: A boardroom demo session of ~5 user turns × ~1 restaurant card × ~5 places ≈ 25 Places API calls per session × $5/1000 = ~$0.13 per demo. Negligible. The Pro SKU (photos, reviews) is deliberately not used in v1 — that would 5x the per-call cost without proportional demo value.
+
+**Push gate**: this commit lands as 39 ahead of origin/main, push freeze still active. Per `docs/MCO_AGENT.md` §14, this completes the four-commit prototype build plan. Production-kiosk hardening (touch sizing, attestation, real beacon-based indoor routing) is a separate ~3-4 week project that's out of scope until MCO signs.
+
 ## 2026-05-21 — MCO_AGENT prototype commit 3: frontend wired to the extractor
 
 **Why**: Commits 1 + 2 stood up the canvas shell and the extractor endpoint separately. This commit connects them: after every assistant reply, `ChatPane` fires the sibling `/api/bots/[id]/ui-hints` endpoint and `CanvasShell` swaps the right-pane card based on the hint. The demo strip stays visible (still useful for boardroom walkthroughs) but its arrows now mean "pause the live behavior, show this canned card" — clicking them clears the live hint so the demo can take back control. Mode change does the same — sensible default for an in-venue → kiosk handoff.

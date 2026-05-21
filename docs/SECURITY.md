@@ -194,10 +194,11 @@ test project exists.
   CSRF-token check on cookie-authed mutating routes. Webhooks /
   cron / embed widgets are explicitly bypassed (each documented
   inline in the middleware). Embed-route exemptions are limited
-  to the two public endpoints with wildcard CORS:
-  `/api/bots/[id]/chat` and its sibling `/api/bots/[id]/ui-hints`
-  (the canvas-demo intent extractor — same unauthenticated /
-  no-cookie posture as chat).
+  to public, no-cookie, wildcard-CORS endpoints:
+  `/api/bots/[id]/chat`, the sibling intent extractor
+  `/api/bots/[id]/ui-hints`, and the canvas-demo data routes
+  under `/api/mco/*` (parking + places). All of these are
+  cookie-free public read paths; CSRF doesn't apply.
 - **API auth for embeddable widgets** — survey at `/s/[guid]`,
   agent at `/b/[slug]`, PulseIQ at `/th/[sessionId]`. The route
   param name varies but each one is an opaque, high-entropy
