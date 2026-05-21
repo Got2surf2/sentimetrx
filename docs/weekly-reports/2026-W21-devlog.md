@@ -1,5 +1,26 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-21 — MCO_AGENT prototype commit 1: shell + chat wired to AskAna
+
+**Why**: First buildable slice of the boardroom demo described in `docs/MCO_AGENT.md`. Ships the entire visual + interactive frame so we can iterate the look-and-feel before any LLM extraction or live-data integration work. The agent (AskAna at bot_id `920c571b-…`) is already live; this commit just wraps it in the canvas shell. Three remaining commits planned: (2) sibling `/api/bots/[id]/ui-hints` extractor endpoint, (3) frontend wires extractor → real cards, (4) replace hardcoded card data with flymco parking JSON + Google Places.
+
+**What changed**:
+- `app/demo/mco/page.tsx` (new, server component) — mode auto-detection via `searchParams.ctx` (`home|invenue|kiosk`) → `?kiosk=1` flag → mobile UA heuristic → default `home`. Reads request headers via Next 14's `headers()`. No-index/no-follow robots meta (it's a prototype, not for SEO).
+- `app/demo/mco/CanvasShell.tsx` (new, client component) — 40/60 landscape layout, three mode configurations (subtitle + greeting + chips + placeholder + default hint per mode), four hardcoded `UiHint` payloads driving the demo strip, keyboard shortcuts (1/2/3 for modes, ←/→ for cards), in-venue context stripe with QR-source attribution.
+- `app/demo/mco/components/ChatPane.tsx` (new) — wires to `POST /api/bots/[id]/chat` with `demo: true` (skips persona extraction and conversation review per `lib/chatCore.ts`). Bottom-anchored input, suggested chip row, typing indicator, independent scroll. Generates a session id on mount, resets thread on mode change.
+- `app/demo/mco/components/{TerminalMapCard,RestaurantsCard,ParkingCard,LinkCard}.tsx` (new) — four canvas card components matching the spec's UiHint discriminated union. Inline SVG terminal layout, hardcoded restaurant/parking data (replaced in commit 4), LinkCard fully driven by hint payload.
+- `app/demo/mco/canvas.css` (new) — ~340 lines, ported from the standalone HTML mockup in `~/Downloads/askana-mockup.html`. Scoped under `.canvas-shell` to avoid global leakage. Mode-aware typography scaling for kiosk mode (~20% upsize).
+- `lib/uiHints.ts` (new) — `UiHint` discriminated union (terminal_map / parking / restaurants / link_card), `DeploymentMode` type, `DeploymentContext` interface. Single source of truth for the contract that commit 2's extractor and commit 3's frontend wiring will both consume.
+- `docs/MCO_AGENT.md` — § 14 status updated (commit 1 landed); new § 15 captures the decoupled-extractor architecture change vs. original §6.1 (sibling endpoint instead of inline chat-route emission). Rationale: zero conflict with Phase 4 convergence, chat latency unchanged, optionally fold in later.
+- `scripts/specMap.ts` — already had `app/demo/mco/**` and `lib/uiHints.ts` in MCO_AGENT.md's glob list from the spec commit; the new files are correctly tracked by spec-drift.
+
+**Verification**:
+- `npx tsc --noEmit` clean.
+- Existing dev server's file watcher didn't pick up the new `app/demo/mco/` directory (Next 14 sometimes misses newly created directories) — restart required to serve `/demo/mco`. Files are in place; the route compiles fresh on dev restart.
+- No effect on existing routes — purely additive.
+
+**Push gate**: this commit lands as 27 ahead of origin/main, push freeze still active.
+
 ## 2026-05-21 — docs/MCO_AGENT.md + MCO agent rebranded as AskAna
 
 **Why**: Two MCO opportunity items in one commit. (1) The conversation about an MCO airport-info demo evolved from "build an agent" to "build a landscape-canvas demo experience that beats what Changi, Schiphol, DFW, and LaGuardia have shipped publicly." That deserved a real design spec — the prototype touches the chat route (`ui_hints` emission), two new libs (`places.ts`, `parking.ts`), three new data integrations (Google Places API, flymco parking JSON, static terminal SVGs), and a new four-card canvas component family. Documenting this before any code lands keeps the design honest and surfaces the convergence interlock (`/api/bots/[id]/chat/route.ts` is the same file Phase 4 will refactor). (2) Adopted the "AskMax" naming pattern from Changi for our MCO agent — reusing the existing Ana brand asset — so we rebranded the live `/b/mco` agent from "MCO Airport Concierge" to "AskAna." Personality field now carries the self-reference rule so Ana introduces herself by name in every session.

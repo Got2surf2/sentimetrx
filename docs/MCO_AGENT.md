@@ -333,5 +333,19 @@ Estimated additional effort for a UCF Incubator variant: ~3 days on top of the M
 ## 14. Status
 
 - **Design:** drafted 2026-05-21 by Sanjay + Claude (this doc).
-- **Build:** not started. Gated on convergence-vs-MCO-prototype sequencing decision (§12).
+- **Build:** in progress.
+  - **Commit 1 LANDED 2026-05-21** — visual shell at `/demo/mco` with the 40/60 landscape layout, mode auto-detection (URL param > UA > default), three deployment modes (home / invenue / kiosk), demo strip with mode switcher + card navigation, four canvas card components (TerminalMap, Restaurants, Parking, LinkCard), chat pane wired to the live AskAna agent (bot_id `920c571b-...`). Cards driven by demo strip (hardcoded data); intent-based hint emission not yet wired. `lib/uiHints.ts` defines the UiHint type union + DeploymentContext. tsc clean.
+  - **Commit 2 (next)** — `lib/uiHints.ts` extractor function + `app/api/bots/[id]/ui-hints/route.ts` sibling endpoint + unit tests.
+  - **Commit 3** — wire frontend to call extractor after each chat turn; cards become real-intent-driven; demo strip becomes dev-only.
+  - **Commit 4** — live data: `lib/parking.ts` (flymco JSON), `lib/places.ts` (Google Places API), terminal SVG extraction → cards stop being hardcoded.
 - **Demo target:** TBD — driven by MCO opportunity timeline.
+
+## 15. Decoupled extractor architecture (Commit 2 change vs. §6.1)
+
+Original §6.1 proposed extending the chat route to emit `ui_hints` inline. **Revised:** the extractor lives in a sibling endpoint, `POST /api/bots/[id]/ui-hints`, that the frontend calls after each chat turn. Inputs: `{ userMessage, assistantMessage }`. Output: `{ ui_hints: UiHint[] }`. Three reasons:
+
+1. **Zero conflict with Phase 4 convergence** — the chat route is untouched. Phase 4 commit 1 already extracted the route into `lib/chatCore.ts`; we don't have to coordinate with that refactor.
+2. **Chat latency unchanged** — the canvas card appears a beat after the assistant message rather than the assistant waiting on a second LLM call.
+3. **Easy to fold in later if desired** — once `chatCore.ts` settles, the extractor can move inside without breaking the response shape (the optional `ui_hints` field stays additive).
+
+The verbatim hint extractor system prompt from §10 is unchanged.
