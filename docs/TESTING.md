@@ -296,10 +296,17 @@ backs three runner surfaces:
   Sends each scenario to `/api/bots/[id]/chat` with `debug:true`,
   surfaces per-test reply + transcript + RAG debug + per-pattern
   pass/fail. Re-runnable after any KB or system-prompt change.
-- `scripts/_run_sarina_regression.ts` — terminal-driven equivalent.
-  Hits live https://www.sentimetrx.ai against the same chat endpoint;
-  prints pass/partial/fail per row plus the full reply text. Exit
-  code is non-zero if any FAIL or ERROR; suitable for CI / cron later.
+- `scripts/sarina-regression-run.ts` — terminal-driven equivalent
+  (committed; replaces the older `_run_sarina_regression.ts` local
+  variant). Hits any base URL (default https://sentimetrx.com) against
+  the same chat endpoint; prints pass/partial/fail per row plus a
+  by-category breakdown, and dumps the full JSON to `/tmp/sarina-
+  regression-<timestamp>.json`. Usage: `tsx scripts/sarina-regression-
+  run.ts <botId> [baseUrl]`. Used as the regression gate for the
+  convergence Phase 2 `lib/` extractions (see `docs/CONVERGENCE.md`)
+  — captured a baseline against live Sarina at the start of Phase 2;
+  each extraction commit re-runs against the same bot and compares
+  pass/partial/fail counts to baseline before merging.
 - `scripts/_generate_sarina_regression_doc.ts` — one-off generator that
   writes a Word doc to `~/Downloads/` comparing Arjun's original log
   with the latest run side-by-side. Uses the `docx` npm package; output

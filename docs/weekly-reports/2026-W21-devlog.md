@@ -1,5 +1,15 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-20 — Convergence Phase 2 kicked off: regression script committed as baseline gate
+
+**Why**: Phase 2 of the convergence (extract duplicated logic between bots and PulseIQ into shared `lib/` modules) needs a behavior-regression gate so we know Sarina's live responses don't drift while we refactor underneath her. The 22-scenario Arjun regression test set already exists in `app/admin/sarina-regression/tests.ts` (built 2026-05-17 for the original NOWOCATS handoff) and a terminal runner script existed locally but had been sitting untracked since pre-session. Committing it now so it's the durable Phase 2 verification harness, then capturing a baseline run before the first extraction.
+
+**What changed**:
+- `scripts/sarina-regression-run.ts`: committed (175 lines, was untracked). Hits any base URL's `/api/bots/[id]/chat` with each scenario's 1-3 turns, grades against the per-test mustInclude/mustNotInclude regex arrays, prints pass/partial/fail/error counts overall + by category, dumps detailed JSON to `/tmp`.
+- `docs/TESTING.md` § Bot regression scripts: replaced the obsolete `scripts/_run_sarina_regression.ts` entry with the new committed script. Documented its role as the Phase 2 convergence gate — baseline captured at start of Phase 2; each extraction commit re-runs against live Sarina and must match baseline counts before merging.
+
+**Cost note**: each run is ~$1–3 in live Anthropic spend (Sarina uses tier='advanced' / Sonnet for main responses). Total Phase 2 regression spend ≈ ~$15 (1 baseline + 6 post-extraction runs). Trade vs. the alternative — refactoring under a live bot without a regression gate — is obviously worth it.
+
 ## 2026-05-20 — UX exploration for town hall setup drafted
 
 **Why**: CONVERGENCE.md (twice-revised same day) covers the data model and sequencing but is silent on the UX of standing up a town hall. The architectural decision introduces a genuinely new UX problem — the agent now lives separately from the town hall, which means setup needs a "pick the agent" step (today's PulseIQ doesn't have this) and the agent editor needs a warning banner when active town halls are wired to it (otherwise editing Sarina's voice silently changes how a live Vindman town hall behaves). Capturing this before Phase 5 implementation so the picker, editor, and dashboard land with intent rather than ad-hoc.
