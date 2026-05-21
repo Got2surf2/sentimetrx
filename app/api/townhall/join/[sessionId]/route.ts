@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { randomUUID } from 'crypto'
+import { resolveTownHall, projectHallAsSession } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,13 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
   if (!session) {
     const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('id', identifier).single()
     session = data
+  }
+  // Phase-3 substrate fallback — town_halls. Project cohort_config into
+  // the legacy `session.config` shape so the rest of the handler is
+  // substrate-agnostic. See docs/CONVERGENCE.md § 4 Phase 6 / docs/TOWNHALL.md.
+  if (!session) {
+    const hall = await resolveTownHall(supabase as any, identifier)
+    if (hall) session = projectHallAsSession(hall)
   }
   if (!session) {
     return NextResponse.json({ found: false }, { status: 404 })
@@ -90,9 +98,17 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('id', identifier).single()
     session = data
   }
+  // Phase-3 substrate fallback — town_halls. Project + mark substrate so
+  // the opening-turn insert can be skipped (chatCore creates the
+  // conversation + first turn pair on the participant's first message).
+  if (!session) {
+    const hall = await resolveTownHall(supabase as any, identifier)
+    if (hall) session = projectHallAsSession(hall)
+  }
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
+  const isPhase3 = session.__substrate === 'phase3'
 
   if (session.status !== 'active') {
     return NextResponse.json({
@@ -176,18 +192,25 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }
   }
 
-  await supabase.from('townhall_turns').insert({
-    session_id: session.id,
-    participant_id: participantId,
-    turn_number: 1,
-    bot_message: openingEn,  // Store English version for analytics
-    user_message: null,
-    user_message_en: null,
-    language,
-    theme_id: null,
-    source: 'guide',
-    skipped: false,
-  })
+  // Phase-3 substrate: skip the legacy townhall_turns opening insert.
+  // chatCore (via /api/townhall/chat → handleChatTurn) creates the
+  // `conversations` row + first user/assistant turn pair on the
+  // participant's first message — pre-inserting an empty opener would
+  // poison the conversation_turns sequence.
+  if (!isPhase3) {
+    await supabase.from('townhall_turns').insert({
+      session_id: session.id,
+      participant_id: participantId,
+      turn_number: 1,
+      bot_message: openingEn,  // Store English version for analytics
+      user_message: null,
+      user_message_en: null,
+      language,
+      theme_id: null,
+      source: 'guide',
+      skipped: false,
+    })
+  }
 
   return NextResponse.json({
     session_id: session.id,  // resolved UUID — client should use this for all subsequent calls

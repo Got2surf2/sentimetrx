@@ -268,6 +268,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sql/032_*',
     'sql/078_*',
     'sql/080_*',
+    'sql/082_*',
   ],
 
   // MCO_AGENT.md covers the boardroom-demo prototype layered on the existing

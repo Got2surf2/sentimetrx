@@ -37,7 +37,21 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ## Facilitator Console (`app/townhall/[sessionId]/`)
 
-> **Phase 5 commit 6 (2026-05-22):** the facilitator surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]` detail) now also accept new-substrate `town_halls` rows. `lib/townHallAdapter.ts` projects `town_halls` + `town_hall_topics` + `town_hall_conversations` + `conversations` + `conversation_turns` into the same JSON shape `SessionDetailClient` already consumes — the dashboard renders both substrates identically without any UI change. Status maps `draft|live|paused|closed` → `setup|active|paused|ended`. PATCH/DELETE on a phase-3 town hall returns 405 with a clear message (mutation routes — themes/[id], themes/custom, live, responses, join, export*, analyze, duplicate — stay wired to the legacy substrate; rewire is gated on actual customer demand). Heavy analytics (keyword regex, sentiment, time-series, top-keyword frequencies, example-quote extraction) return empty arrays in the phase-3 path — full rebuild is a follow-on commit once a paying town hall justifies it. See `docs/CONVERGENCE.md` § 4 + § 10.
+> **Phase 5 commit 6 (2026-05-22):** the facilitator dashboard surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]` detail) accept new-substrate `town_halls` rows. `lib/townHallAdapter.ts` projects `town_halls` + `town_hall_topics` + `town_hall_conversations` + `conversations` + `conversation_turns` into the same JSON shape `SessionDetailClient` already consumes — the dashboard renders both substrates identically. Status maps `draft|live|paused|closed` → `setup|active|paused|ended`. Heavy analytics (keyword regex, sentiment, time-series, top-keyword frequencies, example-quote extraction) return empty arrays in the phase-3 path — full rebuild deferred until a paying town hall justifies it.
+>
+> **NOWOCATS readiness (2026-05-22):** the participant + facilitator-mutating routes also now accept phase-3 town halls (NOWOCATS is the first PulseIQ town hall on the new substrate, launching early June; Sarina is the agent). Surfaces wired:
+> - `/api/townhall/join/[sessionId]` GET + POST — resolves `town_halls` by slug or id; POST skips the legacy `townhall_turns` opener insert (chatCore handles the first turn pair on the participant's first chat message).
+> - `/api/townhall/live/[sessionId]` GET — phase-3 branch pulls stats + sentiment from `conversation_turns` directly. Trending / per-topic keyword analytics minimal in phase-3.
+> - `/api/townhall/themes/[id]` POST — detects `town_hall_topics` id and routes there. `sql/082` extended `town_hall_topics.state` CHECK to accept the full legacy vocab so the existing dashboard state machine works as-is.
+> - `/api/townhall/themes/custom` POST — phase-3 `session_id` writes to `town_hall_topics` with `source='manual'`.
+> - `/api/townhall/sessions/[id]` PATCH — `handlePhase3Patch` supports status change (with seed-on-activate copying `discussion_guide` into `town_hall_topics`), discussion_guide sync (add / pause / reactivate / dismiss), restart (wipe conversations + drop auto_detected), reanalyze (call `detectThemesForTownHall`), delete_participants (cascade through `conversations`). Slug edit + org transfer stay legacy-only.
+> - `/api/townhall/sessions/[id]` DELETE — phase-3 cascade through `conversations` → drop `town_halls`.
+>
+> **Known gap not yet wired (#5)**: `/api/townhall/responses` POST (post-session psycho/demo upsert) still validates against `townhall_turns` only — a phase-3 participant submitting post-session answers would 404. One-line OR-branch into `town_hall_conversations` will close it.
+>
+> **Prod env gate**: `TOWNHALL_VIA_AGENT_HANDLER` must be true in Vercel env for the chat handler to use the unified path on `/api/townhall/chat`. Without it, the legacy 995-line orchestrator runs and the phase-3 experience is dark in prod.
+>
+> See `docs/CONVERGENCE.md` § 10 changelog for the full trail.
 
 ### Three Tabs
 1. **Topics** — Live topic cards with actions

@@ -6,6 +6,34 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — NOWOCATS town-hall readiness: wire participant + facilitator-mutating routes for phase-3
+
+**Why**: User correction during the Phase 5 close-out audit — **NOWOCATS is the first PulseIQ town hall on the new substrate**, not Vindman as historically written in `docs/CONVERGENCE.md` § 4 Phase 6. Launch is early June. Phase 5 commit 6 (this morning) shipped the facilitator *read* surface, but four other route families still 404'd or 405'd phase-3 town halls — meaning a NOWOCATS participant visiting `/th/sarina-cohort` (or whatever the production slug ends up being) would hit "Session not found." User scoped: gaps #1-#4 from the audit, done by Sat 2026-05-24. This is the same-day delivery.
+
+**What changed** (single atomic commit — all four routes plus migration + projector update + spec sync):
+
+- **sql/082_town_hall_topics_extend_states.sql** (applied to prod) — the existing facilitator dashboard state machine writes `paused | parked | dismissed | detected` in addition to the new-substrate vocab. Extended `town_hall_topics_state_check` to accept the full legacy set so the route code is identical for both substrates. `lib/townHallAdapter.ts` still projects `pending → detected` and `rejected → dismissed` on read.
+- **`/api/townhall/join/[sessionId]`** — GET resolves `town_halls` by slug or id (falls back from `townhall_sessions`). POST also resolves, generates a `participant_id`, returns the opening greeting + translated post-session messages — but **skips** the legacy `townhall_turns` opener row insert. For phase-3 the chatCore handler creates the `conversations` row + first user/assistant turn pair on the participant's first chat message; pre-inserting an empty opener would poison the `conversation_turns` sequence.
+- **`/api/townhall/live/[sessionId]`** — added a `phase3Live` branch that runs BEFORE the legacy PostgREST path when the identifier looks like a slug, and as a 404 fallback when it looks like a UUID. Pulls aggregate stats from `town_hall_conversations → conversations → conversation_turns (role='user')`, sentiment from `conversation_turns.sentiment` (precomputed by chatCore — no AI call), per-topic counts from `topic_id`. Timeline buckets by 5 min from `started_at`. Trending / per-topic keyword frequency intentionally minimal — analytics rebuild on the new substrate is a separate commit.
+- **`/api/townhall/themes/[id]`** — POST now detects whether `params.id` is a `town_hall_topics` row first (via a `.maybeSingle` lookup) and routes the same `updates` object there. Org-paired update for defense in depth.
+- **`/api/townhall/themes/custom`** — POST detects whether the body's `session_id` matches a `town_halls` row first; if so, inserts into `town_hall_topics` (`source='manual'`) with the org_id paired from the town hall. Legacy path unchanged.
+- **`/api/townhall/sessions/[id]`** — PATCH replaced the blanket 405 with `handlePhase3Patch`. Status map (`setup↔draft, active↔live, paused↔paused, ended↔closed`). Operations supported: status change (with `started_at`/`ended_at` populated server-side), reopen, restart (cascade-delete all `town_hall_conversations` + drop auto_detected topics + reset to draft), reanalyze (drop auto_detected topics + call `detectThemesForTownHall`), delete_participants (resolve participant_id → conversation_id, cascade), name/discussion_guide/config edits, seed-on-activate (copy `discussion_guide` topics → `town_hall_topics` with `source='seed'`), discussion_guide sync on edit (add/pause/reactivate/update/dismiss orphans). 405 on slug edit + org_id transfer (not blocking launch). DELETE also wired — cascade through `conversations` then drop `town_halls`.
+- **`lib/townHallAdapter.ts`** — added `resolveTownHall(db, slugOrId)` and exported `projectHallAsSession` for the join/live routes to reuse the projection without re-fetching topics/stats. Projector now also maps `pending → detected`.
+- **`scripts/specMap.ts`** — `sql/082_*` added under `docs/TOWNHALL.md` for drift coverage.
+- **`docs/CONVERGENCE.md` + `docs/TOWNHALL.md`** — changelog and Facilitator Console section reflect the NOWOCATS-driven wiring + the known follow-up + the prod-env flag gate.
+
+**Verification** (against live `sarina-cohort` row on prod data):
+- `GET /api/townhall/join/sarina-cohort` → `{found: true, name, status: 'active', bot_name, opening_message, …}`
+- `GET /api/townhall/live/sarina-cohort` → `{session: {id, name, slug, status: 'active', …}, stats: {participants: 5, responses: 4, …}, sentiment: {…}, themes: [3 entries], timeline: […]}`
+- Typecheck clean (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`).
+- Mutation routes exercise both substrates via the same handler — same auth gates, same response shapes.
+
+**Known follow-up — Gap #5**: `/api/townhall/responses` POST validates participant existence against `townhall_turns` only. A phase-3 participant submitting post-session psycho/demo answers would 404. Fix is a one-line OR-branch into `town_hall_conversations` + `conversations`. **Not blocking NOWOCATS launch unless they use post-session psycho/demo questions.**
+
+**Prod env gate (must flip before NOWOCATS goes live)**: `TOWNHALL_VIA_AGENT_HANDLER=true` must be set in Vercel prod env. Without it, `/api/townhall/chat` runs the legacy 995-line orchestrator path and the phase-3 chat experience is dark in prod.
+
+**Push gate**: lands as the 45th commit ahead of `origin/main`. **Push freeze still active** per CLAUDE.md — wait for explicit user authorization. Once authorized: `git push` → `gh run list --limit 1` → poll CI → flip `TOWNHALL_VIA_AGENT_HANDLER` + `DUAL_WRITE_PHASE3` in Vercel env → NOWOCATS launch unblocked.
+
 ## 2026-05-22 — Convergence Phase 5 commit 6: facilitator dashboard read adapter (PHASE 5 COMPLETE)
 
 **Why**: Phase 5 commits 1–5 stood up the new substrate (`town_halls` + `town_hall_topics` + `town_hall_conversations` + `conversations` + `conversation_turns`) and a live `sarina-cohort` row, but the facilitator dashboard couldn't see any of it — every read path was wired to the legacy `townhall_sessions` + `townhall_themes` + `townhall_turns`. So Phase 5 was functionally invisible. This commit closes that gap with a pragmatic read adapter rather than rewriting the 718-line analytics pipeline against the new schema.

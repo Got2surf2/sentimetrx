@@ -53,6 +53,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const db = createServiceRoleClient()
 
+  // Phase-3 substrate first: if the id matches a town_hall_topics row,
+  // mutate there. Otherwise fall through to the legacy townhall_themes
+  // update. sql/082 extended town_hall_topics.state CHECK to accept the
+  // full legacy vocab so the same `updates` object writes to both.
+  const { data: topic } = await db.from('town_hall_topics').select('id, town_hall_id, org_id').eq('id', params.id).maybeSingle()
+  if (topic) {
+    const { data, error } = await db
+      .from('town_hall_topics')
+      .update(updates)
+      .eq('id', params.id)
+      .eq('org_id', (topic as any).org_id)
+      .select('*')
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  }
+
   const { data, error } = await db
     .from('townhall_themes')
     .update(updates)

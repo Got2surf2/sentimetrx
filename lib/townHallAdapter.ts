@@ -60,7 +60,7 @@ function projectTopicAsTheme(t: any, sessionId: string): any {
     description:      t.description ?? null,
     question:         t.question,
     follow_up_angles: t.follow_up_angles ?? [],
-    state:            (t.state === 'rejected' ? 'dismissed' : t.state) || 'active',
+    state:            t.state === 'rejected' ? 'dismissed' : (t.state === 'pending' ? 'detected' : (t.state || 'active')),
     source:           t.source === 'auto_detected' ? 'auto_detected' : (t.source === 'manual' ? 'custom' : 'guide'),
     response_target:  t.response_target ?? 5,
     response_count:   t.response_count ?? 0,
@@ -257,6 +257,37 @@ export async function getTownHallAsLegacy(
     topic_frequency:      [] as { theme_id: string; label: string; series: { bucket: string; count: number }[] }[],
     bucket:               'hour',
   }
+}
+
+/**
+ * Resolves a slug or uuid against `town_halls` and returns the parent
+ * row directly (no theme/stat enrichment). Used by participant-facing
+ * routes (`/api/townhall/join`, `/api/townhall/live`) that only need
+ * session-level fields. Returns null if no match.
+ */
+export async function resolveTownHall(
+  db: ServiceClient,
+  slugOrId: string,
+): Promise<any | null> {
+  let hall: any = null
+  if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
+    const { data } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    if (data) hall = data
+  }
+  if (!hall) {
+    const { data } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    if (data) hall = data
+  }
+  return hall
+}
+
+/**
+ * Projects a `town_halls` row into the same `session` shape `getTownHallAsLegacy`
+ * returns — exposed so participant routes (`/api/townhall/join`) can reuse
+ * the projection without re-fetching topics / stats. Static; never hits the DB.
+ */
+export function projectHallAsSession(hall: any): any {
+  return projectTownHallAsSession(hall)
 }
 
 /**
