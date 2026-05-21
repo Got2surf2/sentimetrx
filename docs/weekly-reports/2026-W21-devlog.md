@@ -695,4 +695,4 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 - The Sarina regression harness + baseline as the gate for every Phase 3 commit.
 - The Phase 3 entry-point map above as the next session's start point.
 
-**Phase 2 closed.** 16 local-only commits, push freeze still active. Next session = decide whether to push Phase 2 as a single batch (after explicit user authorization), then Phase 3 starts.
+**Phase 2 closed.** 13 commits ahead of `origin/main` (run `git log origin/main..HEAD` for the exact list), push freeze still active. Next session = decide whether to push Phase 2 as a single batch (after explicit user authorization), then Phase 3 starts.
