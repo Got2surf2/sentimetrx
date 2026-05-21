@@ -6,6 +6,44 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Convergence Phase 5 commit 6: facilitator dashboard read adapter (PHASE 5 COMPLETE)
+
+**Why**: Phase 5 commits 1–5 stood up the new substrate (`town_halls` + `town_hall_topics` + `town_hall_conversations` + `conversations` + `conversation_turns`) and a live `sarina-cohort` row, but the facilitator dashboard couldn't see any of it — every read path was wired to the legacy `townhall_sessions` + `townhall_themes` + `townhall_turns`. So Phase 5 was functionally invisible. This commit closes that gap with a pragmatic read adapter rather than rewriting the 718-line analytics pipeline against the new schema.
+
+**What changed**:
+- `lib/townHallAdapter.ts` (new) — `getTownHallAsLegacy(db, slugOrId, { analyticsMode? })` and `listTownHallsAsLegacy(db, scopeOrgId)`. Project new-substrate rows into the same JSON shape `SessionDetailClient` already consumes. Status mapping `draft|live|paused|closed` → `setup|active|paused|ended`. Topic-as-theme projection: `state='rejected'` → `'dismissed'`, `source='auto_detected'` keeps name, `source='manual'` → `'custom'`, else `'guide'`. Basic stats computed via `town_hall_conversations → conversations → conversation_turns` (user-role count). Heavy keyword/sentiment/time-series analytics return empty arrays — full rebuild deferred until a paying town hall needs it.
+- `app/api/townhall/sessions/route.ts` — list GET now calls `listTownHallsAsLegacy` after the legacy query, merges both, sorts merged by `created_at desc`. Admin org_name lookup extended to cover new-substrate org ids.
+- `app/api/townhall/sessions/[id]/route.ts` — gate function now returns `substrate: 'legacy' | 'phase3'` (falls through to `town_halls` lookup by uuid or slug when not found in `townhall_sessions`). GET short-circuits to `getTownHallAsLegacy` when `substrate==='phase3'`. PATCH and DELETE return 405 on phase-3 substrate with a clear message rather than silently no-op'ing legacy table updates.
+- `scripts/verify-phase5c6.ts` (new) — one-off verifier that spins up its own service-role client (bypasses the `import 'server-only'` guard) and prints what the adapter returns for `sarina-cohort`. Will live in the repo through Tier 5 cleanup.
+
+**What did NOT change**:
+- The 600 lines of legacy keyword/sentiment/time-series analytics in `app/api/townhall/sessions/[id]/route.ts` (lines 60+). Still serve legacy `townhall_sessions` rows untouched.
+- Other townhall API routes (`themes/[id]`, `themes/custom`, `live/[sessionId]`, `responses`, `join/[sessionId]`, `sessions/[id]/export*`, `sessions/[id]/analyze`, `sessions/[id]/duplicate`). They keep operating on the legacy substrate. Tier 5 cleanup will rewire them when there's an actual customer driving the work.
+- `SessionDetailClient.tsx` — unchanged. The adapter's projection means the 1900-line client doesn't know which substrate it's rendering.
+
+**Verification** (`npx tsx scripts/verify-phase5c6.ts`):
+```
+--- listTownHallsAsLegacy(null) ---
+count: 1
+   sarina-cohort active participants=5 turns=4
+
+--- getTownHallAsLegacy(sarina-cohort) ---
+session.id     : f69506ae-df50-41c6-a1fa-8e4beeb6e097
+session.slug   : sarina-cohort
+session.status : active (mapped from town_halls.status='live')
+themes count   : 3
+  - Local issues that matter most (guide/active)
+  - What you'd want a state senator focused on (guide/active)
+  - How you'd like to be involved (guide/active)
+stats          : {"joined":5,"total_turns":4,"answered":4,...,"avg_turns":0.8}
+participants   : 5
+```
+Auth-gated routes still 401 (not 500) on unauthenticated GET — basic crash test passed. Adapter-level projection validated against live data.
+
+**Cost discipline**: zero AI calls. New SQL queries are bounded by `LIMIT 2000` on conversation joins and a small per-town-hall fan-out for list view. Phase-3 dark mode + zero live PulseIQ customers means production traffic is unchanged today.
+
+**Push gate**: lands as the 43rd commit ahead of `origin/main`. Push freeze still active. **Phase 5 of the agents × PulseIQ convergence is now functionally complete.** Phase 6 (Vindman cohort launch on the new substrate) remains a customer-paced date. Tier 5 cleanup (drop legacy tables) gated on: push → prod dual-write window → `--all-bots` backfill of the 7 unmigrated bots (highest stakes: Sir O'Gate's 67 live Vindman supporter sessions) → flip `READ_PHASE3=true` → then drop.
+
 ## 2026-05-22 — Question Log admin UI shipped
 
 **Why**: Yesterday's MVP (5e8f519) shipped the capture half — `logged_questions` table + `lib/logQuestion.ts` + three capture points in `chatCore.ts`. Data has been accumulating but there was no team-facing surface to read it. For NOWOCATS PM-2 specifically, "we can answer what residents asked" is a PR-1 legal-defensibility requirement and was the demo-this-week ask in `docs/BOTS.md` § 9.x.5 step 4.

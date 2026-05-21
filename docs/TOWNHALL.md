@@ -37,6 +37,8 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ## Facilitator Console (`app/townhall/[sessionId]/`)
 
+> **Phase 5 commit 6 (2026-05-22):** the facilitator surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]` detail) now also accept new-substrate `town_halls` rows. `lib/townHallAdapter.ts` projects `town_halls` + `town_hall_topics` + `town_hall_conversations` + `conversations` + `conversation_turns` into the same JSON shape `SessionDetailClient` already consumes — the dashboard renders both substrates identically without any UI change. Status maps `draft|live|paused|closed` → `setup|active|paused|ended`. PATCH/DELETE on a phase-3 town hall returns 405 with a clear message (mutation routes — themes/[id], themes/custom, live, responses, join, export*, analyze, duplicate — stay wired to the legacy substrate; rewire is gated on actual customer demand). Heavy analytics (keyword regex, sentiment, time-series, top-keyword frequencies, example-quote extraction) return empty arrays in the phase-3 path — full rebuild is a follow-on commit once a paying town hall justifies it. See `docs/CONVERGENCE.md` § 4 + § 10.
+
 ### Three Tabs
 1. **Topics** — Live topic cards with actions
 2. **Responses** — Participant list, conversation viewer, bulk delete

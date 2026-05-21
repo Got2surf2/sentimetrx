@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { listTownHallsAsLegacy } from '@/lib/townHallAdapter'
 
 // GET /api/townhall/sessions — list sessions.
 // Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
@@ -69,7 +70,27 @@ export async function GET(req: NextRequest) {
     org_name: isAdmin ? (orgNameMap[(s as any).org_id] || null) : null,
   }))
 
-  return NextResponse.json(enriched)
+  // Phase 5 commit 6: surface new-substrate town_halls rows alongside
+  // legacy townhall_sessions. Same JSON shape — facilitator list UI
+  // doesn't need to know which substrate a row came from.
+  // docs/CONVERGENCE.md § 4 Phase 5 + docs/CONVERGENCE.md § 10 changelog.
+  const newSubstrate = await listTownHallsAsLegacy(db, scopeOrgId)
+  if (newSubstrate.length > 0 && isAdmin) {
+    // Admin view shows org name per row — fetch any orgs we haven't already.
+    const newOrgIds = Array.from(new Set(newSubstrate.map(s => s.org_id).filter(Boolean)))
+    const missing = newOrgIds.filter(id => !orgNameMap[id])
+    if (missing.length > 0) {
+      const { data: moreOrgs } = await db.from('organizations').select('id, name').in('id', missing)
+      ;(moreOrgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+    }
+    for (const row of newSubstrate) row.org_name = orgNameMap[row.org_id] || null
+  }
+
+  const merged = [...enriched, ...newSubstrate].sort((a, b) =>
+    (b.created_at || '') > (a.created_at || '') ? 1 : -1
+  )
+
+  return NextResponse.json(merged)
 }
 
 // POST /api/townhall/sessions — create a new session

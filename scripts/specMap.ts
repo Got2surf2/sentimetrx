@@ -253,6 +253,9 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'app/api/cron/townhall-theme-detection/**',
     'components/townhall/**',
     'lib/townhallThemeDetection.ts',
+    'lib/cohortThemeAggregator.ts',
+    'lib/pickNextTopic.ts',
+    'lib/townHallAdapter.ts',
     'lib/languageSwitch.ts',
     'sql/011_*',
     'sql/012_*',
@@ -264,6 +267,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sql/029_*',
     'sql/032_*',
     'sql/078_*',
+    'sql/080_*',
   ],
 
   // MCO_AGENT.md covers the boardroom-demo prototype layered on the existing

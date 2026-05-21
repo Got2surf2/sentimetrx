@@ -4,13 +4,17 @@ import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
 import { bleepText } from '@/lib/contentGuard'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
+import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
 
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
 
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
-async function gateSessionAccess(supabase: ReturnType<typeof createClient>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | { ok: false; status: number; error: string }> {
+// Phase 5 commit 6: also accepts town_halls rows so the dashboard surface
+// can render new-substrate town halls. Mutations (PATCH/DELETE) on the
+// new substrate are not wired through this route yet — only GET.
+async function gateSessionAccess(supabase: ReturnType<typeof createClient>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -20,12 +24,24 @@ async function gateSessionAccess(supabase: ReturnType<typeof createClient>, db: 
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: session } = await db.from('townhall_sessions').select('org_id').eq('id', sessionId).single()
-  if (!session) return { ok: false, status: 404, error: 'Session not found' }
-  if (!isAdmin && (session as any).org_id !== userOrgId) {
-    return { ok: false, status: 404, error: 'Session not found' }
+  const { data: session } = await db.from('townhall_sessions').select('org_id').eq('id', sessionId).maybeSingle()
+  if (session) {
+    if (!isAdmin && (session as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
+    return { ok: true, isAdmin, userOrgId, substrate: 'legacy' }
   }
-  return { ok: true, isAdmin, userOrgId }
+  // Phase 3 substrate fallback — also accept town_halls by id or slug.
+  let hall: any = null
+  if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
+    const { data } = await db.from('town_halls').select('org_id').eq('id', sessionId).maybeSingle()
+    if (data) hall = data
+  }
+  if (!hall) {
+    const { data } = await db.from('town_halls').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
+    if (data) hall = data
+  }
+  if (!hall) return { ok: false, status: 404, error: 'Session not found' }
+  if (!isAdmin && (hall as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
+  return { ok: true, isAdmin, userOrgId, substrate: 'phase3' }
 }
 
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
@@ -39,6 +55,20 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
+  // Phase 5 commit 6: new-substrate town halls return early via the
+  // adapter. The 600 lines of legacy analytics below operate on
+  // townhall_themes/_turns and don't apply yet — full analytics
+  // rebuild on conversation_turns is a follow-on commit (no live
+  // PulseIQ customers as of 2026-05-22).
+  if (gate.substrate === 'phase3') {
+    const analyticsMode = _req.nextUrl.searchParams.get('analytics') === 'true'
+    const payload = await getTownHallAsLegacy(db, params.id, { analyticsMode })
+    if (!payload) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
+    })
+  }
 
   const { data: session, error } = await db
     .from('townhall_sessions')
@@ -424,6 +454,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
+  // Phase 5 commit 6: mutations on new-substrate town halls aren't wired
+  // through this route. Return 405 with a clear hint instead of silently
+  // no-op'ing the legacy table update.
+  if (gate.substrate === 'phase3') {
+    return NextResponse.json({ error: 'PATCH not yet supported on phase-3 town halls (read-only via this route)' }, { status: 405 })
+  }
+
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -706,6 +743,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
+  // Phase 5 commit 6: DELETE on new-substrate town halls would need
+  // cascade through town_hall_conversations + town_hall_topics. Not wired
+  // through this route yet — managed via direct SQL until Tier 5.
+  if (gate.substrate === 'phase3') {
+    return NextResponse.json({ error: 'DELETE not yet supported on phase-3 town halls via this route' }, { status: 405 })
+  }
 
   // Delete in order: turns → themes → participant responses → session
   await db.from('townhall_turns').delete().eq('session_id', params.id)
