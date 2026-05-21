@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
         }
 
         const result = await handleChatTurn(
-          { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug } },
+          { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug, participantId: participant_id } },
           { messages, session_id: townHall.id + ':' + participant_id, language, debug: body.debug },
         )
 

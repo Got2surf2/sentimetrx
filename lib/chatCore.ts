@@ -21,10 +21,15 @@ import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
 import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
+import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 
 export interface TownHallContext {
   townHallId: string
   slug: string
+  /** Original PulseIQ participant id. Phase 5 commit 3 — passed through so
+   *  conversations.participant_id can be populated and cohort analysis can
+   *  group by participant without parsing the synthesized session_id. */
+  participantId?: string
   themes?: any[]
   coverage?: any
 }
@@ -124,7 +129,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
       return { reply: null, skipped: 'insert_failed' }
     }
-    mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow] }).then(function() {})
+    mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
     return { reply: probeText, _silence: true }
   }
 
@@ -271,7 +276,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber + 1, role: 'assistant', content: deflectText, language: botLang || 'en', source: 'deflect' },
             ]
             service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
-            mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns }).then(function() {})
+            mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
           }
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
@@ -579,6 +584,112 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   } else if (!knowledgeInjected && debugMode) {
     _debug.push('RAG: no knowledge base configured')
   }
+
+  // ── Town hall topic injection (Phase 5 commit 3) ──────────────────
+  // When this conversation belongs to a town hall, fetch the cohort's
+  // topic pool, compute live response_count + per-participant
+  // discussedTopicIds, pick the next topic via lib/pickNextTopic, and
+  // inject a TOPIC FOCUS instruction. The chosen topic_id is carried
+  // into the turn-storage block below so the assistant turn gets
+  // tagged for cohort analysis.
+  let pickedTopicId: string | null = null
+  if (ctx.townHallContext) {
+    try {
+      const { data: topics } = await service
+        .from('town_hall_topics')
+        .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
+        .eq('town_hall_id', ctx.townHallContext.townHallId)
+        .in('state', ['active', 'pending'])
+
+      if (topics && topics.length > 0) {
+        // Cohort-wide response counts: join town_hall_conversations →
+        // conversations → conversation_turns and tally by topic_id.
+        const { data: linkedConvs } = await service
+          .from('town_hall_conversations')
+          .select('conversation_id')
+          .eq('town_hall_id', ctx.townHallContext.townHallId)
+        const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
+
+        const responseCount: Record<string, number> = {}
+        const participantDiscussed = new Set<string>()
+
+        if (conversationIds.length > 0) {
+          const { data: allTopicTurns } = await service
+            .from('conversation_turns')
+            .select('topic_id, conversation_id, role')
+            .in('conversation_id', conversationIds)
+            .not('topic_id', 'is', null)
+          for (const t of (allTopicTurns || [])) {
+            const tid = (t as any).topic_id as string
+            if (t.role === 'assistant') {
+              responseCount[tid] = (responseCount[tid] || 0) + 1
+            }
+          }
+
+          // Participant-specific: which topics has THIS session touched?
+          // session_id from PulseIQ delegation = townHallId + ':' + participantId.
+          const { data: thisConv } = await service
+            .from('conversations')
+            .select('id')
+            .eq('bot_id', bot.id)
+            .eq('session_id', session_id)
+            .maybeSingle()
+          if (thisConv) {
+            const { data: thisTurns } = await service
+              .from('conversation_turns')
+              .select('topic_id')
+              .eq('conversation_id', (thisConv as any).id)
+              .not('topic_id', 'is', null)
+            for (const t of (thisTurns || [])) {
+              const tid = (t as any).topic_id as string
+              if (tid) participantDiscussed.add(tid)
+            }
+          }
+        }
+
+        const pickerTopics: NextTopic[] = topics
+          .map((t: any) => ({
+            id: t.id,
+            label: t.label,
+            description: t.description,
+            question: t.question,
+            follow_up_angles: t.follow_up_angles,
+            keywords: t.keywords,
+            source: t.source,
+            response_target: t.response_target,
+            response_count: responseCount[t.id] || 0,
+          }))
+          .sort((a, b) => a.response_count - b.response_count)
+
+        const pick = pickNextTopic(pickerTopics, {
+          discussedTopicIds: participantDiscussed,
+          currentMessage: lastUserMsg?.content,
+        })
+
+        if (pick.topic) {
+          pickedTopicId = pick.topic.id
+          const angles = (pick.topic.follow_up_angles || []).filter(Boolean)
+          const anglesNote = angles.length > 0
+            ? '\nIf the participant has more to share, follow up on one of these angles: ' + angles.join(' | ')
+            : ''
+          systemParts.push(
+            '\n\n--- TOWN HALL TOPIC FOCUS ---\nYou are facilitating a cohort discussion about "' + pick.topic.label + '". ' +
+            'Ask this question (rephrase naturally to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
+            anglesNote +
+            '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
+          )
+          if (debugMode) _debug.push('Town hall topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
+        } else if (debugMode) {
+          _debug.push('Town hall topic: none picked (reason: ' + pick.reason + ')')
+        }
+      } else if (debugMode) {
+        _debug.push('Town hall topic: pool empty (no town_hall_topics rows)')
+      }
+    } catch (e: any) {
+      console.error({ at: 'chat-core', msg: 'town hall topic injection failed', err: e?.message, townHallId: ctx.townHallContext.townHallId })
+    }
+  }
+
   // Language instruction
   if (botLang && botLang !== 'en') {
     const LANG_NAMES: Record<string, string> = {
@@ -791,7 +902,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         } else if (debugMode) {
           _debug.push('Storage: inserted ' + (insertedRows?.length || 0) + ' turns (turn_base=' + turnBase + ')')
         }
-        mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsToInsert as any }).then(function() {})
+        // Tag both user + assistant turns with the picked topic_id when in
+        // townHallContext mode — cohort response_count tallies live off this.
+        const turnsForMirror = pickedTopicId
+          ? (turnsToInsert as any[]).map(r => ({ ...r, topic_id: pickedTopicId }))
+          : (turnsToInsert as any[])
+        mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
 
         // Focus classify happens after the insert lands — best-effort
         // tag of the just-saved assistant turn. Slow AI call must not

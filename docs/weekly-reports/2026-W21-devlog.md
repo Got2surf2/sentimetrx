@@ -1197,3 +1197,62 @@ The synthesized `session_id` (`townHall.id + ':' + participant_id`) is intention
 **Next**: Phase 5 commit 3 — wire `pickNextTopic` into `handleChatTurn`. When `townHallContext` is present, fetch `town_hall_topics`, compute response_count from `conversation_turns`, call the picker, and inject the chosen topic into the system prompt (similar to how the bot path handles `focuses`). Also wire a response-count-based theme-detection trigger to match the legacy chat-route-level behavior.
 
 **Commit lands as 33 ahead of origin/main; push freeze still active.**
+
+## 2026-05-21 — Convergence Phase 5 commit 3: pickNextTopic wired into handleChatTurn
+
+**Why**: Phase 5 commit 2 lifted the picker into a pure lib. Commit 3 is what makes the unified handler actually rotate topics when a conversation belongs to a town hall — closing the gap between "PulseIQ delegation returns a reply" (Phase 4 commit 2) and "PulseIQ delegation runs a real cohort discussion". This is the first commit where a real town hall session running through the new path produces something other than a degenerate single-topic loop.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `lib/chatCore.ts` | NEW townHallContext-aware branch inserted after RAG, before language instruction. Fetches `town_hall_topics` (state in active/pending), counts cohort-wide response_count via `town_hall_conversations → conversations → conversation_turns.topic_id`, builds participant-specific `discussedTopicIds` from this session's prior turns (where topic_id is non-null), calls `pickNextTopic`, pushes a "TOWN HALL TOPIC FOCUS" instruction into systemParts. Stores chosen `topic_id` in a local for the turn-storage path. Plus: `mirrorTurns` calls (silence-probe, deflection, main storage) all pass `townHallId` + `participantId`; main storage tags both user + assistant turns with `topic_id` when picked. New `participantId?: string` on `TownHallContext` |
+| `lib/phase3DualWrite.ts` | `MirroredTurn.topic_id?: string \| null` — forwarded to `conversation_turns.topic_id`. `MirrorArgs.townHallId?: string \| null` — when set, idempotent upsert into `town_hall_conversations` after the conversations row is materialized. `MirrorArgs.participantId?: string \| null` — populates `conversations.participant_id` on upsert so cohort analysis can group by participant |
+| `app/api/townhall/chat/route.ts` | Phase 4 commit 2 branch passes `participantId: participant_id` through `townHallContext`. The PulseIQ client's original `participant_id` flows end-to-end into `conversations.participant_id` and `town_hall_conversations` |
+| `docs/TOWNHALL.md` | Phase 4 commit 2 callout extended with Phase 5 commit 3 note (topic injection is now active in the new path) |
+| `docs/CONVERGENCE.md` | Changelog entry for Phase 5 commit 3 |
+
+**Data flow when a town hall session lands at handleChatTurn**:
+
+```
+PulseIQ route
+  ↓ resolves town_halls by session_id slug/uuid
+  ↓ loads agent via town_halls.bot_id
+  ↓ synthesizes session_id = townHall.id + ':' + participant_id
+  ↓ calls handleChatTurn({ agent, service, ip,
+                           townHallContext: { townHallId, slug, participantId } },
+                         { messages, session_id, language, debug })
+
+handleChatTurn
+  ├─ silence-probe branch (skipped for PulseIQ — never sets trigger='silence')
+  ├─ deflection (shared)
+  ├─ intent / persona / demographics (shared)
+  ├─ RAG (shared)
+  ├─ TOWN HALL TOPIC FOCUS (NEW commit 3):
+  │     fetch town_hall_topics (active|pending)
+  │     count response_count from conversation_turns across cohort
+  │     gather discussedTopicIds for this session
+  │     pickNextTopic(sortedTopics, { discussedTopicIds, currentMessage })
+  │     systemParts.push("CURRENT TOPIC: ..." + question + angles)
+  │     pickedTopicId = chosen.id  (used downstream)
+  ├─ language + verbosity (shared)
+  ├─ AI call (shared)
+  └─ turn storage:
+        bot_conversation_turns insert (legacy schema, topic_id not stored there)
+        mirrorTurns(... topic_id: pickedTopicId, townHallId, participantId)
+          ├─ upsert conversations (sets participant_id)
+          ├─ idempotent upsert town_hall_conversations (the link)
+          └─ insert conversation_turns (each row gets topic_id)
+```
+
+The picker now sees real `response_count` data after the first turn lands on the new substrate (cron + chat turns both write `topic_id` from this commit forward), so rotation works. Smart-probe via `state.currentMessage` jumps to keyword-matched topics. Default-pick takes the fewest-responses topic.
+
+**Risk gate**: low-medium. All new code in handleChatTurn is gated by `if (ctx.townHallContext)`. mirrorTurns extensions are optional fields defaulting to null — bot path is byte-identical. **Sarina regression**: 18 PASS / 3 PARTIAL / 1 FAIL / 0 ERROR — one PARTIAL flipped to PASS vs the locked baseline of 17/4/1/0, no regressions, same D1 political-pressure FAIL the baseline has. Clean typecheck passes.
+
+**What's not yet wired** (deferred to Phase 5 commit 4+):
+
+- **Response-count-based theme-detection trigger** from the chat-route level. Today the cron (15 min cadence) is the only trigger for the new substrate's `cohortThemeAggregator`. Legacy chat path has an inline trigger every N responses; matching that on the new path means handleChatTurn fires `detectThemesForTownHall` fire-and-forget after the response_count crosses a threshold.
+- **Coverage-target wrap-up / standby** when all topics covered. PulseIQ legacy enters a chill standby; the new path currently just keeps picking from the over-target fallback. Not painful at small cohorts; matters once a real town hall hits coverage.
+- **Dashboard read surfaces** on `town_halls` schema. Cohort dashboard still queries `townhall_sessions/_themes/_turns`.
+
+**Commit lands as 34 ahead of origin/main; push freeze still active.**

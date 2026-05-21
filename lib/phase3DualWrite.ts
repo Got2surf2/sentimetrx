@@ -36,6 +36,10 @@ export interface MirroredTurn {
   sentiment?: string | null
   sentiment_score?: number | null
   content_en?: string | null
+  /** When set, tags the conversation_turns row with the town_hall_topics
+   *  the turn was assigned to. Used by Phase 5 commit 3 PulseIQ delegation
+   *  so cohort-wide response_count can be computed per topic. */
+  topic_id?: string | null
 }
 
 interface MirrorArgs {
@@ -44,6 +48,14 @@ interface MirrorArgs {
   sessionId: string
   language?: string | null
   rows: MirroredTurn[]
+  /** When set, the helper also auto-links the conversation to the town
+   *  hall via town_hall_conversations (idempotent insert). Phase 5
+   *  commit 3 — PulseIQ delegation through handleChatTurn. */
+  townHallId?: string | null
+  /** When set, populates conversations.participant_id on upsert. PulseIQ
+   *  delegation passes the original participant id so cohort analysis
+   *  can group by participant without parsing the synthesized session_id. */
+  participantId?: string | null
 }
 
 function isEnabled(): boolean {
@@ -63,19 +75,19 @@ export async function mirrorTurns(
   if (!args.rows || args.rows.length === 0) return
 
   try {
+    const upsertPayload: Record<string, unknown> = {
+      bot_id: args.botId,
+      session_id: args.sessionId,
+      org_id: args.orgId,
+      language: args.language ?? null,
+      updated_at: new Date().toISOString(),
+    }
+    if (args.participantId) upsertPayload.participant_id = args.participantId
+
     const { data: convRow, error: convErr } = await service
       .from('conversations')
-      .upsert(
-        {
-          bot_id: args.botId,
-          session_id: args.sessionId,
-          org_id: args.orgId,
-          language: args.language ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'bot_id,session_id' },
-      )
-      .select('id')
+      .upsert(upsertPayload, { onConflict: 'bot_id,session_id' })
+      .select('id, org_id')
       .single()
 
     if (convErr || !convRow) {
@@ -84,6 +96,24 @@ export async function mirrorTurns(
     }
 
     const conversationId = (convRow as { id: string }).id
+
+    // Link to town hall (idempotent — unique index on (town_hall_id,
+    // conversation_id) makes this a no-op after first call per session).
+    if (args.townHallId) {
+      const { error: linkErr } = await service
+        .from('town_hall_conversations')
+        .upsert(
+          {
+            town_hall_id: args.townHallId,
+            conversation_id: conversationId,
+            org_id: args.orgId,
+          },
+          { onConflict: 'town_hall_id,conversation_id' },
+        )
+      if (linkErr) {
+        console.error({ at: 'phase3-dual-write', msg: 'town_hall_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
+      }
+    }
 
     // Skip rows missing content — conversation_turns.content is NOT NULL.
     // (Bot_conversation_turns also requires content; a null here means a
@@ -102,6 +132,7 @@ export async function mirrorTurns(
         content_flags: r.content_flags ?? null,
         sentiment: r.sentiment ?? null,
         sentiment_score: r.sentiment_score ?? null,
+        topic_id: r.topic_id ?? null,
       }))
 
     if (turnRows.length === 0) return

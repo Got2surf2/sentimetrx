@@ -997,7 +997,7 @@ This section documents the dual-write stage. The live read path is unchanged —
 
 **Dual-write helper (`lib/phase3DualWrite.ts`)** — exports three mirrors, all gated by `DUAL_WRITE_PHASE3` (truthy: `"true"`, `"1"`) and all best-effort (errors logged, never thrown):
 
-- `mirrorTurns(service, { botId, orgId, sessionId, language, rows })` — upserts a `conversations` row on `(bot_id, session_id)`, inserts each mirrored row into `conversation_turns` with `org_id` denormalized.
+- `mirrorTurns(service, { botId, orgId, sessionId, language, rows, townHallId?, participantId? })` — upserts a `conversations` row on `(bot_id, session_id)`, inserts each mirrored row into `conversation_turns` with `org_id` denormalized. `MirroredTurn.topic_id?` is forwarded to `conversation_turns.topic_id` (Phase 5 commit 3 — used by `handleChatTurn`'s town-hall topic injection to tag each turn with its `town_hall_topics` id). When `townHallId` is set, also idempotently upserts a `town_hall_conversations` row linking the conversation to the town hall (Phase 5 commit 3). When `participantId` is set, populates `conversations.participant_id` on the upsert. All three new fields default to null and have no effect on the bot path.
 - `mirrorFocusFlagsUpdate(service, { botId, sessionId, turnNumber, flags })` — looks up `conversations.id`, then `UPDATE conversation_turns SET content_flags WHERE (conversation_id, turn_number)`.
 - `mirrorDeleteSession(service, { botId, sessionId })` — `DELETE FROM conversations WHERE (bot_id, session_id)`; the migration's `ON DELETE CASCADE` on `conversation_turns.conversation_id` drops the turn rows.
 
