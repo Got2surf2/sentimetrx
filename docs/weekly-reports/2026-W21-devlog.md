@@ -696,3 +696,22 @@ After Phase 2 ships (push to main), the open-work queue should retire the per-su
 - The Phase 3 entry-point map above as the next session's start point.
 
 **Phase 2 closed.** 13 commits ahead of `origin/main` (run `git log origin/main..HEAD` for the exact list), push freeze still active. Next session = decide whether to push Phase 2 as a single batch (after explicit user authorization), then Phase 3 starts.
+
+## 2026-05-21 — Convergence Phase 3 commit 1: new schema (dark)
+
+**Why**: First of the three Phase 3 entry-point commits mapped in the 2.6 closeout. Introduces the table family that will eventually replace `bot_conversation_turns` + the `townhall_*` family. Tables are dark — no live route reads or writes them in this commit. Subsequent commits will (a) dual-write from `/api/bots/[id]/chat` behind a `DUAL_WRITE_PHASE3` env flag, then (b) backfill Sarina's historical sessions, then (c) cut over reads after row-for-row verification.
+
+**What changed**:
+- `sql/078_phase3_new_schema.sql` — applied to prod via `supabase db query --linked --file ...`. Creates five tables: `conversations`, `conversation_turns`, `town_halls`, `town_hall_conversations`, `town_hall_topics`. Every table has `org_id NOT NULL`, RLS enabled in the same migration, and an org-scoped SELECT policy with admin-org bypass (pattern from `sql/074_bot_change_log.sql`). No INSERT/UPDATE/DELETE policies — all mutations go through service-role from server code.
+- `bot_id` FKs reference `bots(id)` directly. The `bots`→`agents` rename (CONVERGENCE.md § 7.1) is deliberately deferred to a separate Phase 3 commit; it's a noisy cross-codebase change that doesn't belong in the schema-introduction commit.
+
+**Verification**:
+- Sanity-check SELECT at the end of the migration confirmed all 5 tables created + all 5 RLS-enabled.
+- `RLS_TEST=1 npx vitest run rls-isolation` — 4/4 pass. Test #3 ("every public table has RLS enabled") auto-detects new tables, so my 5 new tables are covered without test changes. Test #4 ("no policy uses USING(true)") also passes — my policies use the org-scoped subquery.
+
+**Rollback**: `DROP TABLE IF EXISTS conversation_turns, conversations, town_hall_topics, town_hall_conversations, town_halls CASCADE` — safe in this commit because no live route depends on them. After dual-write lands, rollback gets more involved.
+
+**Deferred for commit 2 (dual-write)**:
+- specMap.ts entries for `sql/078_*` under both `docs/BOTS.md` and `docs/TOWNHALL.md`.
+- BOTS.md + TOWNHALL.md prose describing the new tables.
+- The dual-write code itself in `app/api/bots/[id]/chat/route.ts` behind `DUAL_WRITE_PHASE3`.
