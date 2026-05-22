@@ -1,5 +1,17 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-22 (latest 2) — Decision Study agent: page title + opener + framework-key fix
+
+First fix (`17dc2ae5`) caught the widget header by overriding `config.name`. Did not catch the page `<title>`, `og:title`, or `twitter:title` — those are generated from `agents.name` in `app/b/[slug]/page.tsx:56`, NOT from `config.name`. So every share-link preview (iMessage / Slack / Twitter unfurl) and the browser tab still said "Chat with Decision Study (regret framework pilot)". Caught by curl/grep audit of the live HTML.
+
+Also caught: the opener said **"Should** take 5 to 7 minutes" — `should` is on the framework's banned-word list (deck slide 4). Reworded to "Takes 5 to 7 minutes."
+
+Also caught: `config.framework='regret_v1'` was serialized into the client-side React tree (visible to anyone viewing page source). Removed via `config = config - 'framework'`. The forward-looking marker is now just the slug `decision-study` — any future framework-specific code branches on slug, not a config field.
+
+Final live audit (curl + grep `\b(regret|wish|should|mistake|blame|responsibility|control|fault)\b` case-insensitive): **zero matches** on `https://www.sentimetrx.ai/b/decision-study`. Title is `Chat with Decision Study`.
+
+Two-place fix mental model going forward (per BOTS.md § 9.z): widget header reads `config.name` first; page `<title>` reads `agents.name`. Both have to be neutral. Future conversational instruments with methodological constraints: audit BOTH.
+
 ## 2026-05-22 (latest) — Decision Study agent: respondent-visible string fix
 
 **Bug shipped, caught immediately, fixed.** The initial seed (commit `c712989d`) set `agents.name = 'Decision Study (regret framework pilot)'` and `config.subtitle = 'A short research conversation'`. `BotClient.tsx:26-27` renders both in the widget header — meaning the respondent saw the words **"regret"**, **"research"**, and **"study"** before typing a single word. Direct violation of the framework's design constraint #1 (do not prime "regret" or any synonym; `study` and `research` also leak the methodological frame).
