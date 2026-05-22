@@ -1,6 +1,12 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
-## 2026-05-22 (later) — Entity-from-KB MVP BUILT (BOTS.md § 9.y)
+## 2026-05-22 (later) — Decision Study agent seeded (BOTS.md § 9.z)
+
+Why: Dr. Sunil Contractor's Comparative Evaluation Framework discussion deck (Mail attachment, May 2026) ended at "if the design holds, would you want to co-design the recruitment frame." Building the actual instrument so he can put hands on it is more useful than another deck. Originally scoped as a survey + clarify-route augmentation (5 files of code change), pivoted to an agent because the design is fundamentally conversational — silence, mirroring, echo, never propose alternatives the respondent hasn't named — which is exactly what agent system prompts do natively, with no schema or widget changes. SQL-only build, applied directly to prod (`supabase db query --linked --file sql/one-off/2026-05-22-regret-framework-agent.sql`), agent live at `/b/decision-study` for review.
+
+Protocol added 3 demographics + 3 psychographic attitude items at the END of the 7 substantive phases (putting them up front would prime the regret construct, violating the deck's slide 4 design constraints). Psychographic battery chosen for theoretical relevance to upward-behavioral-counterfactual construction without leaking the framework: Maximizer tendency (Schwartz et al. 2002 — maximizers generate more UBCs and report higher regret intensity), Internal locus of control (Levenson IPC stem — relates to P4 decision-vs-management responsibility coding), Trait anxiety / neuroticism (TIPI-style — correlates with rumination). Single Likert items each, verbal 5-point scale, transcript-coded post-hoc.
+
+`config.framework='regret_v1'` set as a forward-looking marker — no code reads it yet. If the pilot graduates, that's the seam to hook framework-specific analytics or transcript-coding logic into without conditioning on slug.
 
 Why: spec from the earlier same-day entry was a 4-question greenlight; code came in next. Built straight through the file table in § 9.y.5 — migration + extractor + detector + chat hook + 3 API routes + admin tab + pill style. ~3h actual vs ~5h estimate; came in under because every primitive existed (`entity_catalog` only needed a CHECK widening, `lib/entityVariants.ts` already handled plurals incl. irregulars, `lib/flagStyles.ts` is the choke point for all 4 pill-rendering surfaces).
 

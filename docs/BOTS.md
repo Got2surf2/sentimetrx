@@ -997,6 +997,23 @@ The one design decision worth flagging for future work: the user-turn fire-and-f
 - Aggregation dashboards / charts (the data lands; views come after we see real volume).
 - Auto-suggesting new entities from user turns the catalog missed.
 
+### 9.z Decision Study agent (regret framework pilot) — SEEDED 2026-05-22
+
+A research instrument operationalizing Dr. Sunil Contractor's Comparative Evaluation Framework (2026). Implemented as a fixed-protocol agent rather than a structured survey because the design is fundamentally conversational — silence, mirroring, echo — and the 5 study-scoped neutrality clauses fit naturally into a system prompt.
+
+- **Slug:** `decision-study` (public surface: `/b/decision-study`)
+- **Agent id:** `590ed9da-78ac-4d8e-9403-1f980252ac4f`
+- **Org:** Datanautix
+- **Status:** `active` (discussion draft for Dr. Contractor review; intended for pilot fielding, not currently linked from any product surface)
+- **Framework tag:** `config.framework='regret_v1'` — present so future code can opt-in to framework-specific instrumentation if the pilot graduates
+- **Seed:** `sql/one-off/2026-05-22-regret-framework-agent.sql` (idempotent on slug)
+
+The agent runs a 10-phase protocol: 7 substantive phases (context → outcome → comparative space with verbatim-echo drill matrix → conditional magnitude likert → role → reversibility → open close), then 3 quick demographics (age range / gender / region), then 3 single-item attitude probes (Maximizer tendency / Internal locus of control / Trait anxiety), then a close. Demos and attitude items come last by design — putting them up front would prime the construct.
+
+Hard constraints baked into the system prompt: never use the words **regret / wish / should / mistake / fault / blame / responsibility / control**; never name an alternative the respondent hasn't themselves mentioned; mirror their own nouns and verbs; never validate or invalidate; if they justify the decision and construct no alternative, do not push. Each agent turn capped at 30 words.
+
+Post-hoc analysis uses the 8-field coding schema from the discussion deck (counterfactual_constructed / cf_direction / cf_origin / cf_magnitude / decision_responsibility / management_responsibility / outcome_reversibility / justification_signal). Not yet wired as automatic transcript-coding — coded by hand or by a separate analysis pass.
+
 ---
 
 ## 10. Admin API
