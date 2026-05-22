@@ -316,6 +316,12 @@ The card has three sections: (a) hero with the big "MCO" mark + airport name + a
 
 `terminal_map` extractor rule tightened: only fires for explicit navigation/wayfinding turns. Stating "I'm in Terminal A" during a dining conversation now correctly emits a `restaurants` hint scoped to that terminal rather than a map card.
 
+**Conversation reset:**
+- Manual: a circular-arrow button in the topbar clears the chat thread, mints a fresh session id, and reverts the canvas to the welcome card. Available in all modes.
+- Kiosk auto-reset: 60s of pointer/keyboard/touch inactivity triggers the same clear flow automatically. Matches the LinkCardModal kiosk auto-dismiss timeout. Home and invenue modes are exempt (personal devices, not shared screens).
+
+**Markdown rendering in chat bubbles:** assistant messages are passed through a minimal renderer that handles `[text](url)` links and `**bold**` spans. No external dependency; anything outside those two patterns renders as plain text. Links open in a new tab with `noopener noreferrer`.
+
 Hero text adapts to mode: `Orlando International Airport` (home) / `You're at MCO` (invenue) / `Welcome to MCO` (kiosk). Kiosk variant bumps hero + tile + glance-item sizes for touch.
 
 Implementation: the UiHint union has a `WelcomeHint` variant (`type: 'welcome'`, optional `mode`); `HintRenderer` accepts a `mode` prop and dispatches `welcome → WelcomeCard` while injecting the active mode. The extractor never emits this hint (deliberate — `validateHint` rejects it); it exists purely so `HintRenderer` can render the default state via the same union.

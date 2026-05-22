@@ -49,8 +49,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.canvas-shell .qr-btn {
-  margin-left: auto;
+.canvas-shell .topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.canvas-shell .topbar-btn {
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -63,7 +63,7 @@
   justify-content: center;
   transition: background 0.15s;
 }
-.canvas-shell .qr-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.canvas-shell .topbar-btn:hover { background: rgba(255, 255, 255, 0.16); }
 .canvas-shell.mode-invenue .qr-btn { background: #f59e0b; border-color: #f59e0b; color: #0a2540; }
 .canvas-shell.mode-invenue .qr-btn:hover { background: #fbbf24; }
 
@@ -154,6 +154,13 @@
   border: 1px solid #e5e7eb;
   color: #0a2540;
 }
+.canvas-shell .turn .bubble a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-word;
+}
+.canvas-shell .turn .bubble a:hover { color: #1d4ed8; }
+.canvas-shell .turn.user .bubble a { color: #93c5fd; }
 
 .canvas-shell .bubble.typing { display: inline-flex; gap: 4px; padding: 14px 16px; }
 .canvas-shell .bubble.typing span {

@@ -11,6 +11,7 @@
 // Failures degrade silently: a missing hint leaves the canvas as-is.
 
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
 
 const LIVE_ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
@@ -19,6 +20,40 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   turnIdx: number
+}
+
+// Minimal markdown renderer for assistant bubbles.
+// Handles [text](url) links and **bold** spans. Falls back to plain text.
+// We avoid pulling in a dependency since the agent only emits these two
+// patterns; anything else renders as-is.
+function renderMarkdown(text: string): ReactNode {
+  const linkRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  const out: ReactNode[] = []
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = linkRe.exec(text)) !== null) {
+    if (m.index > lastIdx) out.push(<span key={k++}>{renderBold(text.slice(lastIdx, m.index))}</span>)
+    out.push(<a key={k++} href={m[2]} target="_blank" rel="noopener noreferrer">{m[1]}</a>)
+    lastIdx = m.index + m[0].length
+  }
+  if (lastIdx < text.length) out.push(<span key={k++}>{renderBold(text.slice(lastIdx))}</span>)
+  return <>{out}</>
+}
+
+function renderBold(text: string): ReactNode {
+  const boldRe = /\*\*([^*]+)\*\*/g
+  const out: ReactNode[] = []
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = boldRe.exec(text)) !== null) {
+    if (m.index > lastIdx) out.push(text.slice(lastIdx, m.index))
+    out.push(<strong key={k++}>{m[1]}</strong>)
+    lastIdx = m.index + m[0].length
+  }
+  if (lastIdx < text.length) out.push(text.slice(lastIdx))
+  return <>{out}</>
 }
 
 interface Props {
@@ -30,6 +65,7 @@ interface Props {
   activeContext?: ExtractorContext
   pendingMessage?: string | null
   onPendingMessageConsumed?: () => void
+  resetKey?: number
   onHintReceived?: (hint: UiHint | null) => void
   onExtractingChange?: (extracting: boolean) => void
 }
@@ -38,9 +74,9 @@ function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, resetKey, onHintReceived, onExtractingChange }: Props) {
   const askanaBotId = botOverride || LIVE_ASKANA_BOT_ID
-  const [sessionId] = useState(() => newSessionId())
+  const [sessionId, setSessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
@@ -54,8 +90,10 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
     setMessages([])
     setInput('')
     setLiveChips(null)
+    setSessionId(newSessionId())
     onHintReceived?.(null)
-  }, [greeting])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greeting, resetKey])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -164,13 +202,13 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
       <div className="thread">
         <div className="turn ana">
           <div className="who">Ana</div>
-          <div className="bubble">{greeting}</div>
+          <div className="bubble">{renderMarkdown(greeting)}</div>
         </div>
 
         {messages.map((m) => (
           <div key={m.turnIdx} className={'turn ' + m.role}>
             <div className="who">{m.role === 'user' ? 'You' : 'Ana'}</div>
-            <div className="bubble">{m.content}</div>
+            <div className="bubble">{m.role === 'assistant' ? renderMarkdown(m.content) : m.content}</div>
           </div>
         ))}
 

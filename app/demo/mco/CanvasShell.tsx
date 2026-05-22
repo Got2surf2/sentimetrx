@@ -127,6 +127,34 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [liveHint, setLiveHint] = useState<UiHint | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [resetKey, setResetKey] = useState(0)
+
+  function clearConversation() {
+    setResetKey(k => k + 1)
+    setLiveHint(null)
+    setDemoIdx(MODE_CONFIG[mode].defaultHint)
+  }
+
+  // Kiosk auto-reset: after 60s of no interaction, clear the conversation
+  // and return to the welcome card. Matches the LinkCardModal kiosk timeout.
+  // Resets on pointer / keyboard / touch activity. Non-kiosk modes are
+  // exempt — home and invenue sessions are personal devices.
+  useEffect(() => {
+    if (mode !== 'kiosk') return
+    let timer: ReturnType<typeof setTimeout>
+    function poke() {
+      clearTimeout(timer)
+      timer = setTimeout(clearConversation, 60_000)
+    }
+    poke()
+    const events: Array<keyof WindowEventMap> = ['pointermove', 'keydown', 'touchstart', 'click']
+    events.forEach(e => window.addEventListener(e, poke, { passive: true }))
+    return () => {
+      clearTimeout(timer)
+      events.forEach(e => window.removeEventListener(e, poke))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, resetKey])
 
   useEffect(() => {
     const c = MODE_CONFIG[mode]
@@ -176,18 +204,31 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
             <div className="brand-subtitle">{config.subtitle}</div>
           </div>
         </div>
-        <button className="qr-btn" title="Send to my phone" aria-label="Send to my phone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-            <line x1="14" y1="14" x2="14" y2="18" />
-            <line x1="18" y1="14" x2="21" y2="14" />
-            <line x1="14" y1="21" x2="21" y2="21" />
-            <line x1="21" y1="14" x2="21" y2="18" />
-            <line x1="18" y1="18" x2="18" y2="21" />
-          </svg>
-        </button>
+        <div className="topbar-actions">
+          <button
+            className="topbar-btn"
+            title="Clear conversation"
+            aria-label="Clear conversation"
+            onClick={clearConversation}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <polyline points="3 4 3 10 9 10" />
+            </svg>
+          </button>
+          <button className="topbar-btn qr-btn" title="Send to my phone" aria-label="Send to my phone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <line x1="14" y1="14" x2="14" y2="18" />
+              <line x1="18" y1="14" x2="21" y2="14" />
+              <line x1="14" y1="21" x2="21" y2="21" />
+              <line x1="21" y1="14" x2="21" y2="18" />
+              <line x1="18" y1="18" x2="18" y2="21" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="canvas-main">
@@ -208,6 +249,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
             activeContext={activeContext}
             pendingMessage={pendingMessage}
             onPendingMessageConsumed={() => setPendingMessage(null)}
+            resetKey={resetKey}
             onHintReceived={(h) => setLiveHint(h)}
             onExtractingChange={setExtracting}
           />

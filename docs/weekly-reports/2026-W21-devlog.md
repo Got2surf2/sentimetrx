@@ -1860,3 +1860,13 @@ User feedback: "parking is the least useful thing inside the airport — complet
 - `lib/uiHints.ts` — terminal_map rule rewritten: navigation/wayfinding only. Added counter-example for the dining-terminal-mention case. The assistant's answer now determines card type, not a terminal word in the user message.
 - `app/demo/mco/components/WelcomeCard.tsx` — KIOSK_GLANCE items converted to `<button>` elements using the same pendingMessage path as tiles. Ground Transport removed (duplicate); replaced with Power & charging. Each glance item has a prompt.
 - `app/demo/mco/canvas.css` — `.welcome-glance-item` gets cursor pointer, hover blue highlight, button reset.
+
+## 2026-05-22 (even later) — Chat markdown rendering, clear-conversation button, kiosk auto-reset
+
+**Why**: The agent emits markdown links like `[flymco.com/x](https://flymco.com/x)` which were showing as raw text in the chat bubble. Also, no way for a user (or the next kiosk visitor) to start fresh — privacy and demo-readability concern. For kiosks specifically, an idle session sitting open exposes a prior person's questions to the next walk-up.
+
+**What changed**:
+- `app/demo/mco/components/ChatPane.tsx` — added inline `renderMarkdown` (handles `[text](url)` + `**bold**`, no dep added). Bubble now renders assistant content through it. Greeting too. New `resetKey` prop joins the existing greeting-change useEffect to clear messages + mint a new sessionId.
+- `app/demo/mco/CanvasShell.tsx` — new `resetKey` state + `clearConversation()`. Kiosk-mode `useEffect` sets a 60s inactivity timer (pointermove/keydown/touchstart/click reset it). New circular-arrow button in `.topbar-actions` group exposes the clear manually in every mode.
+- `app/demo/mco/canvas.css` — `.topbar-actions`/`.topbar-btn` generalized from old `.qr-btn`-only styles. Bubble `a` tags get blue underline (lighter blue on user bubbles for contrast).
+- `docs/MCO_AGENT.md` § 7.4 — new "Conversation reset" + "Markdown rendering" subsections.
