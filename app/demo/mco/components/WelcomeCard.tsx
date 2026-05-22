@@ -112,8 +112,8 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
           </div>
           {loading && lots.length === 0 ? (
             <div className="welcome-empty">Checking lots…</div>
-          ) : lots.length === 0 ? (
-            <div className="welcome-empty">Live data unavailable — ask Ana about parking for the full list.</div>
+          ) : !hasLive ? (
+            <div className="welcome-empty">Live spot counts unavailable — ask Ana about parking options.</div>
           ) : (
             <div className="welcome-parking-grid">
               {lots.map(l => {
