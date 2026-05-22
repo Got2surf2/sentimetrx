@@ -6,6 +6,21 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Nav icon swap: PulseIQ 💬→👥, Agents 🤖→💬
+
+**Why**: Both nav icons read "AI-ish" (chat bubble + robot), diluting the semantic split. PulseIQ is a live gathering of people in conversation — a chat bubble is the wrong primary signal. Agents are conversational AI — a chat bubble actually fits them best. Robot is generic AI; PulseIQ's distinguishing feature is the people, not the AI moderator.
+
+**What changed**:
+- `components/nav/TopNav.tsx` — PulseIQ 💬→👥, Agents 🤖→💬.
+- `app/favorites/FavoritesClient.tsx` — same swap in TYPE_META (PulseIQ + Agent rows).
+
+**What did NOT change**:
+- Per-PulseIQ `bot_emoji` defaults (study create, townhall config, AI-suggest) — these are the avatar emoji each facilitator picks for their conversational AI. Keeping 💬 default makes sense for those (it's the bot's chat face, not the platform-level nav).
+- Per-bot `avatarLetter` default in `EditAgentClient.tsx` — same reasoning, keeps 🤖.
+- PWA `/m` page sections — no per-section icons defined, no change needed.
+
+**Cosmetic only**: no functional or behavioral impact. Typecheck clean.
+
 ## 2026-05-22 — Name capture shipped (fixes ~88% "Anonymous" admin views)
 
 **Why**: Open queue followup. The conversations admin UI (`/bots/[id]/conversations`) extracted user names via three thin regex heuristics ("my name is X" / short capitalized first message / "Hi Sarah" in bot greeting) that fire on only ~12% of real sessions. The other 88% showed "Anonymous" — including most NOWOCATS Sarina test sessions where the user volunteered their name in natural conversation but the regex didn't match. Real legal-defensibility hit (NOWOCATS PM-2 wants to know WHO said what).

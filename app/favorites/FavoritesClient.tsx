@@ -27,11 +27,11 @@ const HERMES = '#e8622a'
 
 // Per-type visual identity (color strip + badge text + icon).
 const TYPE_META: Record<EnrichedFav['resource_type'], { label: string; icon: string; color: string }> = {
-  bot:              { label: 'Agent',    icon: '🤖', color: '#00b4d8' },
+  bot:              { label: 'Agent',    icon: '💬', color: '#00b4d8' },
   study:            { label: 'Survey',   icon: '📝', color: '#e8622a' },
   dataset:          { label: 'Dataset',  icon: '📊', color: '#0ea5e9' },
   campaign:         { label: 'Campaign', icon: '✉',  color: '#6366f1' },
-  townhall_session: { label: 'PulseIQ',  icon: '💬', color: '#8b5cf6' },
+  townhall_session: { label: 'PulseIQ',  icon: '👥', color: '#8b5cf6' },
 }
 
 const TYPE_LABELS: Record<EnrichedFav['resource_type'], string> = {

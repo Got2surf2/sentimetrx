@@ -90,8 +90,8 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     { page: 'analyze',   href: '/analyze',   label: 'Analytics', icon: '📊', show: f.analyze },   // 📊
     { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
     { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '✉',       show: f.campaigns }, // ✉
-    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '💬', show: f.townhall },  // 💬
-    { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '🤖', show: f.bots },     // 🤖
+    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '👥', show: f.townhall },  // 👥 — gathering of people (live cohort discussion)
+    { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '💬', show: f.bots },     // 💬 — conversational AI
     { page: 'social',    href: '/social',    label: 'Social',    icon: '📱', show: f.social },   // 📱
   ]
 
