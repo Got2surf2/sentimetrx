@@ -874,6 +874,128 @@ For the demo to show role-tagged, theme-tagged transcripts, do these in order:
 - **Topic vocabulary drift** — when residents raise themes outside the existing `bot.focuses` catalog, do we (a) auto-propose new focuses (`suggestFocusesFromPrompt` exists), (b) bucket into `topic:other` and review weekly, or (c) both? Default (c).
 - **PII redaction** — user turns can contain home addresses, phones. Question Log export must redact by default, with an admin toggle to reveal. Need a redaction pass tied to `safety:pii` flags before any external sharing.
 
+### 9.y Entity-from-KB mention tagging (MVP spec — not built, 2026-05-23)
+
+Driver: every shipped agent (MCO, UCF Incubator, Hope, Sarina/NOWOCATS, Sir O'Gate) has a rich named-entity vocabulary buried in its KB — terminals, gates, airlines, programs, partners, council members, ordinances. Today we can't query "how many users asked about Terminal A this week" or "did anyone mention the Foundations Project by name." This MVP captures entity mentions structurally on user turns so the data lands; aggregation views come in v2.
+
+**Status**: spec only. No code yet.
+
+**Open design questions** (resolved 2026-05-23):
+1. **When to extract** → on demand only. No auto-extraction at KB seed time. Admin clicks "Re-extract entities" on the new tab when they want it. Keeps cost predictable and avoids stale data on bots whose KB never gets touched.
+2. **Category list** → person / place / organization / product / program / event / **policy** / other. The `policy` slot exists for NOWOCATS (ordinances, master plans) and any future government/civic agent.
+3. **Hide-by-default for low-confidence** → yes. Rows with `sample_count = 1` (entity appeared in only one chunk during extract) start `hidden = true`. Admin can unhide individually from the tab. Reduces false-positive noise on first extract without losing the data.
+4. **Mention threshold for the user-turn flag** → flag every mention (no first-per-session cap). Aggregation cares about volume.
+
+#### 9.y.1 Data model — one migration
+
+`sql/087_entity_catalog_bot_scope.sql`:
+
+```sql
+ALTER TABLE entity_catalog DROP CONSTRAINT entity_catalog_scope_type_check;
+ALTER TABLE entity_catalog ADD CONSTRAINT entity_catalog_scope_type_check
+  CHECK (scope_type IN ('dataset', 'collection', 'bot'));
+
+CREATE INDEX IF NOT EXISTS idx_entity_catalog_bot_scope
+  ON entity_catalog (scope_id) WHERE scope_type = 'bot';
+```
+
+No new tables. `scope_id = bots.id` when `scope_type = 'bot'`. Existing RLS (default-deny, service-role-only writes) applies unchanged — same pattern as dataset / collection scopes. `entity_catalog_refresh` audit table is reused as-is (gains `scope_type='bot'` rows).
+
+#### 9.y.2 Extraction — `lib/botEntityExtraction.ts` (new)
+
+```ts
+export async function extractBotEntities(
+  botId: string,
+  orgId: string,
+  opts: { triggeredBy: 'manual'; triggeredByUser?: string }
+): Promise<{ added: number; total: number; costCents: number }>
+```
+
+Algorithm:
+
+1. Fetch all `bot_knowledge_chunks` for the bot (typically <500; content already chunked).
+2. Batch chunks (~5 per Haiku call, ~6k chars per batch) and ask Haiku: *"Return JSON array of named entities mentioned. Each: `{canonical, category}` where category ∈ {person, place, organization, product, program, event, policy, other}. Skip common nouns, generics, and pronouns."*
+3. Aggregate across batches, dedupe by `slug = slugify(canonical)`, merge variants into `aliases[]`.
+4. UPSERT into `entity_catalog (scope_type='bot', scope_id=bot_id, ...)`. New rows with `sample_count = 1` get `hidden = true` (per § 9.y open Q3). Existing rows: bump `sample_count`, update `last_seen_at`, union aliases; do not flip `hidden` (admin's explicit choice wins).
+5. Log to `entity_catalog_refresh` with `triggered_by='manual'`, sample_size = chunk count, entities_before/after/new, haiku_cost_est_cents, duration_ms.
+
+**Cost estimate**: ~$0.01–0.05 per bot for typical KB sizes. Only runs when admin clicks the button.
+
+**Trigger**: button on the new `/bots/[id]/entities` tab → `POST /api/bots/[id]/entities/extract`. No automatic trigger on KB chunk insert (per § 9.y open Q1).
+
+#### 9.y.3 Mention detection — `lib/entityMentionDetector.ts` (new)
+
+```ts
+export async function detectEntityMentions(
+  botId: string,
+  userMessage: string
+): Promise<string[]>  // returns array of entity slugs mentioned
+```
+
+Algorithm (string match, not AI):
+
+1. Load `entity_catalog` rows for this bot (in-memory cache per bot_id, TTL ~5 min, invalidated on extract). Only `hidden = false` rows are considered.
+2. For each entity, expand `canonical + aliases` via `expandEntityTerms()` from `lib/entityVariants.ts` (already plural/singular-aware, handles irregulars).
+3. Run case-insensitive word-boundary regex match against the user message — reuse the same regex pattern as `highlightEntityTerms` in `entityVariants.ts`.
+4. Return the slugs of matched entities. Flag every match per turn (per § 9.y open Q4).
+
+**Hook point**: `lib/chatCore.ts` around the `classifyProbeFocuses` fire-and-forget block (currently ~line 1075). Same fire-and-forget pattern — never blocks the user response (preserves the 2026-05-20 lambda-kill invariant). On match: append `entity:<slug>` to the user turn's `content_flags` via a service-role UPDATE.
+
+**Cost per turn**: $0. Pure string match.
+
+#### 9.y.4 Admin surfaces
+
+**Pills**: `lib/flagStyles.ts` gains a dynamic style for the `entity:` prefix — emerald-green (distinct from `focus:` teal, `topic:` amber, `intent:` blue, `safety:*` red/yellow). `isFixedFlag` exclusion list extended so `entity:*` flows through the dynamic-style branch. Renders automatically in:
+- `ConversationsClient.tsx` session footer + modal turn view
+- Public shared HTML transcript (`buildConversationHtml`)
+- PulseIQ facilitator dashboard turn modal
+- Question Log table
+
+**New tab**: `/bots/[id]/entities` (server wrapper + `EntitiesClient.tsx`):
+
+- Header strip: "Last extracted: 2026-05-22 (45 entities, $0.03)" sourced from latest `entity_catalog_refresh` row + "Re-extract entities" button.
+- Table columns: canonical | category | aliases | sample_count | last_mentioned_at (computed via `MAX(conversation_turns.created_at)` where `'entity:' || slug = ANY(content_flags)`) | actions.
+- Default view filters out `hidden=true` rows with an "Including hidden (N)" toggle to reveal.
+- Inline row actions: hide / unhide (toggles `hidden` column, matches dataset-scope pattern) | edit canonical/aliases (sets `source='manual'`).
+
+#### 9.y.5 Files touched (forward-looking — drift triggers once code lands)
+
+| File | Change |
+|---|---|
+| `sql/087_entity_catalog_bot_scope.sql` | New migration — extend CHECK + add partial index |
+| `lib/botEntityExtraction.ts` | New — Haiku-backed extractor |
+| `lib/entityMentionDetector.ts` | New — cached string-match classifier |
+| `lib/chatCore.ts` | +~5 lines — fire-and-forget hook after `classifyProbeFocuses` |
+| `lib/flagStyles.ts` | +~6 lines — `entity:` dynamic style + `isFixedFlag` exclusion |
+| `app/api/bots/[id]/entities/route.ts` | New — `GET` (list, scoped by bot's org via paired `id`+`org_id`) |
+| `app/api/bots/[id]/entities/extract/route.ts` | New — `POST` (trigger re-extract) |
+| `app/api/bots/[id]/entities/[entityId]/route.ts` | New — `PATCH` (hide / edit canonical / aliases) |
+| `app/bots/[id]/entities/page.tsx` + `EntitiesClient.tsx` | New admin tab |
+| `app/bots/[id]/layout.tsx` (or wherever bot tabs render) | Add "Entities" tab |
+| `tests/unit/entityMentionDetector.test.ts` | Variant matching, word boundaries, case-insensitivity, hidden exclusion |
+| `scripts/specMap.ts` | Map new files → `docs/BOTS.md` (see § 12) |
+
+**Multi-tenancy guards** (per CLAUDE.md invariants): every service-role query in the new routes pairs `id` with `org_id`. Extract / list / patch routes go through `getCallerOrgContext` (or the existing bot-admin gate helper) scoped to the bot owner's org. `entity_catalog` already has default-deny RLS; service-role-only writes maintain the existing pattern.
+
+#### 9.y.6 Build estimate
+
+| Phase | Hours |
+|---|---|
+| Migration + extractor lib + unit tests | 1.5h |
+| Mention detector + chat-route hook + unit tests | 1h |
+| Pill styling + admin tab UI + 3 API routes | 2h |
+| Doc updates, specMap, run on MCO + Hope + Sarina, eyeball admin tab | 0.5h |
+| **Total** | **~5h** |
+
+#### 9.y.7 What's out of scope (v2 candidates)
+
+- Continuous re-extraction on every KB edit (manual trigger only — per § 9.y open Q1).
+- AI-based fuzzy mention detection (string match with variants only for MVP).
+- Entity disambiguation (e.g. "Terminal A" the airport gate vs "Terminal A" the rapper).
+- Cross-bot entity linking (each bot's catalog is scope-isolated).
+- Aggregation dashboards / charts (the data lands; views come after we see real volume).
+- Auto-suggesting new entities from user turns the catalog missed.
+
 ---
 
 ## 10. Admin API

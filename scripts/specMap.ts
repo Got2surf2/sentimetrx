@@ -238,12 +238,15 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'lib/phase3DualWrite.ts',
     'lib/phase3Read.ts',
     'lib/logQuestion.ts',
+    'lib/botEntityExtraction.ts',
+    'lib/entityMentionDetector.ts',
     'sql/020_*',
     'sql/022_*',
     'sql/023_*',
     'sql/025_*',
     'sql/078_*',
     'sql/081_*',
+    'sql/087_*',
   ],
 
   'docs/TOWNHALL.md': [

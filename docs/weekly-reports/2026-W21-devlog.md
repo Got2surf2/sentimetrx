@@ -1,5 +1,9 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-22 (later) — Entity-from-KB MVP spec drafted (BOTS.md § 9.y)
+
+Why: every shipped agent (MCO, UCF Incubator, Hope, Sarina/NOWOCATS, Sir O'Gate) has a rich named-entity vocabulary in its KB but we can't query "who asked about Terminal A this week" or "did anyone mention the Foundations Project." Reuses the existing `entity_catalog` table (extend `scope_type` to include `'bot'`) + `content_flags` pill pattern (new `entity:<slug>` prefix) + `lib/entityVariants.ts` (already plural/singular-aware) — so the work is mostly wiring, ~5h. Spec only, no code. Four open design Qs resolved with the user: on-demand extraction (no auto-trigger on KB edits), 8 categories including `policy` for civic agents like NOWOCATS, hide `sample_count=1` rows by default, flag every mention (no first-per-session cap). Out-of-scope for MVP: AI-based fuzzy match, disambiguation, aggregation dashboards. specMap.ts updated with forward-looking globs (`lib/botEntityExtraction.ts`, `lib/entityMentionDetector.ts`, `sql/087_*`) so future drift catches the implementation when it lands.
+
 ## 2026-05-22 (EOD) — NOWOCATS demo data + annotated transcripts everywhere + Hope bug fixes
 
 Consolidates the closing pass of the day (commits `29711712`, `dee21e94`, `7a96dd3e`, `bd24d1bc`, plus CI fixes `2be2b32` / `3156b40` / `ac2c09e1`). Lots of small/medium pieces all in service of a credible NOWOCATS demo + closing out latent bugs surfaced during demo review.
