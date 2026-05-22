@@ -6,6 +6,34 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — NOWOCATS town_halls row SQL drafted (not run)
+
+**Why**: NOWOCATS launches early June and there's no UI yet to create a phase-3 `town_halls` row — provisioning goes via SQL until that UI lands. The existing `sarina-cohort` row in prod is Phase 6 substrate-testing data with misleading naming ("Vindman Supporters Phase 6 prep") and bare-minimum `cohort_config` — not suitable for the actual launch. This commit drafts the proper provisioning SQL but **does not run it** — wording + slug + topic list need an eyeball pass from the project team before going to prod.
+
+**What changed**:
+- `sql/one-off/2026-05-22-nowocats-town-hall.sql` (new, 283 lines, NOT run). Provisions:
+  - `town_halls` row, slug=`nowocats`, **`status='draft'`** so the dashboard's Start button is what flips to `'live'` + populates `started_at` server-side (intentional — not for hand-edit). Points at Sarina (`5c468b90-...`).
+  - `cohort_config` JSON with proper `bot_name='Sarina, the NOWOCATS Assistant'`, bot_emoji 🚦, `industry='Government / Civic'`, `session_type='community'`. Opening message lifted from the NOWOCATS approach deck slide 5 verbatim (`"Hi — I'm Sarina, the NOWOCATS Assistant. What's your first name?..."`). Closing message references `www.nowocats.com` as the durable record. Languages = `['en', 'es']` per deck slide 9. Engine settings tuned for a broader engagement push than the small Vindman cohort (max_active_themes=16, default_response_target=30, theme_detection_every_n_responses=20). Content safety all on. `standby_message` populated for the Phase 5 commit 4 all-covered path.
+  - `discussion_guide` with **9 entries** — the 7 conversational topics from `[[nowocats-survey]]` deck slide 7 (who they are / where in NW Orange County / how they get around / biggest transportation frustration / 2050 growth concerns / top priority improvement / specific road or intersection to flag) plus the **2 anchor asks** clearly prefixed `ANCHOR — User type` and `ANCHOR — Priority category` (required-before-close per deck slide 7).
+  - Each guide entry also seeded directly into `town_hall_topics` (state='active', source='seed') so the facilitator dashboard shows the full topic list immediately in draft mode — without waiting for the seed-on-activate path in `handlePhase3Patch` to fire on first Start click. That path is idempotent so it doesn't collide.
+  - 5-item pre-run checklist at top of file (slug, opening/closing wording, languages, topic list, content safety).
+  - Verification queries at the bottom (town_halls row exists, ≥9 seed topics, status='draft', bot_id matches Sarina).
+- Devlog entry (this one).
+
+**To run when ready** (state-mutating against prod; needs explicit user approval):
+```
+supabase db query --linked --file sql/one-off/2026-05-22-nowocats-town-hall.sql
+```
+
+**Post-run manual checklist** (also at end of SQL file):
+1. Visit `/townhall` — NOWOCATS row should appear in the list.
+2. Click in — Topics tab shows 9 topics with `ANCHOR —` prefix on the two anchor asks.
+3. Eyeball opening + closing messages. Edit via the Session Edit UI if any wording is off (writes to `cohort_config`).
+4. When ready: Start button → status flips to `'live'` + `started_at` populates + `/th/nowocats` URL becomes active.
+5. **BEFORE first participant**: confirm Vercel prod env has `TOWNHALL_VIA_AGENT_HANDLER=true` + `DUAL_WRITE_PHASE3=true`. Without these, `/api/townhall/chat` runs the legacy orchestrator (which doesn't know about `town_halls` rows) and phase-3 chat is dark in prod.
+
+**Push gate**: 49th commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — Doc sweep + AI accounting tightened
 
 **Why**: User asked to write out all specs + devlogs after a long session of substantive work (Question Log UI, Phase 5 c6, NOWOCATS readiness, Gap #5). Audit surfaced three accounting gaps worth fixing now rather than carrying as tech debt.
@@ -1588,3 +1616,33 @@ Three quick fixes after walking through the canvas on `/demo/mco`:
 **Outstanding (not in this commit)**: the agent's *prose* still sometimes recommends flymco.com pages instead of named restaurants. That's a system-prompt / knowledge-base issue on `agents.id = 920c571b-...` — separate edit, requires DB write.
 
 **Pre-existing test failures noted**: `tests/integration/high-traffic-routes.test.ts > POST /api/townhall/chat` — 6 failures from `import 'server-only'` being pulled into a client-component module. Verified pre-existing by stashing and re-running on bare main. Not caused by this commit; not fixed by this commit.
+
+---
+
+## 2026-05-21 (later) — MCO canvas: real ratings via DataForSEO + KB rebuild + pilot agent
+
+Walking the canvas, two related complaints:
+
+1. "The restaurant overviews show Google review ratings that are different than when you click and get to the actual review site." — synthetic mocks in `lib/places.ts` had hand-picked-looking ratings (Starbucks 4.1/2847, Outback 3.9/2316). They didn't match the real Google Maps page users land on after tapping. Synthetic numbers next to "Powered by Google" + a real maps link made the user trust the wrong number.
+2. "The restaurant list was working before all the updates we made today — now you are just pushing me to the web site." — the KB had only 13 of 218 chunks touching food, and the named restaurants are all the Hyatt's landside hotel restaurants. The "Shops, Restaurants & Services" chunk was ingested as page 1 of 113 — alphabetical, mostly elevators / ADA checkpoints / airline counters. Zero airside restaurants by name. The bot was behaving correctly given what it had.
+
+**What landed**:
+
+| File | Change |
+|---|---|
+| `scripts/_mco_scrape_directory.mjs` | NEW. Playwright scrape of flymco's directory, all 103 pages × 3 filter pills. 602 entries → `/tmp/mco_directory.json`. Earlier nested-locator version hung on slow xpath ancestor lookups; final uses one `page.evaluate()` per page. |
+| `scripts/_mco_seed_directory_kb.ts` | NEW. Chunks 602 entries into 20 chunks (≤2k chars each, category × terminal). Embeds via `text-embedding-3-small`. Deletes 2 stale dining chunks. Idempotent; `DRY_RUN=1`. |
+| `scripts/_mco_create_pilot.ts` | NEW. Clones live AskAna → "AskAna (pilot)" (`ae948bce-…` / slug `askana-pilot`). Copies 218 chunks (less 2 stale), applies 20 new chunks against the pilot only. |
+| `scripts/_mco_dfs_seed.ts` | NEW. ~$0.002 DataForSEO call → 78 Google Maps results → filtered to 47 airport-only by ZIP/Jeff-Fuqua-Blvd/Terminal → fuzzy-matched against 79 flymco Dine entries → 29 get real ratings. flymco's terminal label wins the bucket. |
+| `data/mco_live_ratings.json` | NEW. 29 dining entries (Villa Italian 4.4/650, Sunshine Diner 4.6/1091, Cask & Larder 3.7/888, Wine Bar George 4.6/54). |
+| `lib/places.ts` | Synthetic `MOCK_PLACES_BY_CONTEXT` removed. New `livePlacesForContext()` reads from the JSON. Returns `is_mock: false`. Google Places API path preserved for callers with explicit place_ids + key. |
+| `RestaurantsCard.tsx` | UI honesty: when `is_mock: true`, suppress rating row entirely and show "Tap to open in Google Maps for current rating & hours". |
+| `page.tsx` + `CanvasShell.tsx` + `ChatPane.tsx` | New `?bot=pilot` or `?bot=<uuid>` URL param. Whitelisted (alias or fully-formed UUID). |
+| `scripts/_mco_dfs_recon.ts` | NEW. Hits DataForSEO directly (bypasses `lib/dataforseo.ts`'s `server-only` guard so it works under tsx). |
+| `docs/MCO_AGENT.md` § 5.2 + § 7.4 + § 7.5 | Rewritten / NEW. DataForSEO default + honesty rule. Pilot pattern + `?bot=` override. Live KB directory chunks. |
+
+**Pilot ready** at `https://sentimetrx.com/b/askana-pilot` or `/demo/mco?bot=pilot`.
+
+**Promote path (TBD)**: a dedicated flip script that diffs pilot KB vs live and applies the delta. For now manual — run `_mco_seed_directory_kb.ts` against the live bot_id after the pilot is approved.
+
+**Tests**: 33/33 uiHints unit tests pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean.
