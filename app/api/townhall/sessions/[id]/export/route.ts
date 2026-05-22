@@ -108,12 +108,143 @@ export async function GET(req: NextRequest, { params }: Params) {
         source: t.source,
         skipped: t.skipped,
         time: t.created_at,
+        // bot_flags + user_flags are populated by the phase-3 branch below
+        // and stay null for legacy substrate sessions (which don't store
+        // content_flags per turn).
+        bot_flags: null,
+        user_flags: null,
+        user_sentiment: null,
+        user_sentiment_score: null,
       })
+    }
+
+    // ── Phase-3 augmentation ────────────────────────────────────────
+    // If THIS session is a town_halls (phase-3) slug/id, append its
+    // conversations alongside legacy data. The chat handler emits to
+    // both substrates when both flags are on; this keeps the export
+    // unified regardless of which path the data came from.
+    // Note: the gate above uses townhall_sessions only, so a pure
+    // phase-3 session (no legacy row) returns "No responses" at line 74.
+    // That's a separate bug for pure phase-3 town halls — handled here.
+
+    const phase3PersonaByParticipant: Record<string, { name: string | null; persona: any }> = {}
+    {
+      // Look up phase-3 town hall (slug-or-uuid). Reuses the adapter's
+      // resolver semantics inline to avoid a wider refactor.
+      const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
+      let hall: any = null
+      if (isUUID) {
+        const { data } = await db.from('town_halls').select('*').eq('id', params.id).maybeSingle()
+        if (data) hall = data
+      }
+      if (!hall) {
+        const { data } = await db.from('town_halls').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
+        if (data) hall = data
+      }
+
+      if (hall) {
+        // Pull conversations linked to this town hall
+        const { data: linkRows } = await db
+          .from('town_hall_conversations')
+          .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id, bot_id)')
+          .eq('town_hall_id', hall.id)
+          .eq('org_id', hall.org_id)
+          .limit(5000)
+        const convs = ((linkRows || []) as any[])
+          .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
+          .filter(Boolean)
+
+        if (convs.length > 0) {
+          const convIds = convs.map((c: any) => c.id)
+          const convById: Record<string, any> = {}
+          for (const c of convs) convById[c.id] = c
+
+          // All turns across linked conversations
+          const { data: cts } = await db
+            .from('conversation_turns')
+            .select('id, conversation_id, turn_number, role, content, content_en, language, source, content_flags, sentiment, sentiment_score, topic_id, skipped, created_at')
+            .in('conversation_id', convIds)
+            .eq('org_id', hall.org_id)
+            .order('conversation_id', { ascending: true })
+            .order('turn_number', { ascending: true })
+
+          // Topic label lookup
+          const topicIds = Array.from(new Set(((cts || []) as any[]).map(c => c.topic_id).filter(Boolean)))
+          const topicLabel: Record<string, string> = {}
+          if (topicIds.length > 0) {
+            const { data: thts } = await db.from('town_hall_topics').select('id, label').in('id', topicIds)
+            for (const t of (thts || [])) topicLabel[(t as any).id] = (t as any).label
+          }
+
+          // Persona/name lookup keyed on (bot_id, session_id) via agent_session_personas
+          const sessionIds = Array.from(new Set(convs.map((c: any) => c.session_id)))
+          const { data: ps } = await db
+            .from('agent_session_personas')
+            .select('bot_id, session_id, name, persona, demographics')
+            .eq('bot_id', hall.bot_id)
+            .in('session_id', sessionIds)
+          const personaBySession: Record<string, any> = {}
+          for (const p of (ps || [])) personaBySession[(p as any).session_id] = p
+
+          // Pair turns into {bot, user} per turn_number-pair, per
+          // participant. Each conversation_turns row is a SINGLE turn
+          // (user OR assistant). Pair the user turn with the
+          // immediately-preceding assistant turn in the same
+          // conversation (same algorithm as bot-level analyze).
+          const byConv: Record<string, any[]> = {}
+          for (const r of (cts || []) as any[]) {
+            if (!byConv[r.conversation_id]) byConv[r.conversation_id] = []
+            byConv[r.conversation_id].push(r)
+          }
+
+          for (const convId of Object.keys(byConv)) {
+            const c = convById[convId]
+            if (!c) continue
+            const pid = c.participant_id || c.session_id
+            if (!participants[pid]) participants[pid] = []
+            const sortedTurns = byConv[convId].sort((a: any, b: any) => a.turn_number - b.turn_number)
+            let pendingAssistant: any = null
+            for (const ct of sortedTurns) {
+              if (ct.role === 'assistant') {
+                pendingAssistant = ct
+                continue
+              }
+              // user turn — pair with most recent assistant
+              participants[pid].push({
+                turn: ct.turn_number,
+                bot: pendingAssistant?.content || '',
+                user: ct.content,
+                user_en: ct.content_en,
+                language: ct.language,
+                topic: ct.topic_id ? (topicLabel[ct.topic_id] || null) : null,
+                source: ct.source,
+                skipped: !!ct.skipped,
+                time: ct.created_at,
+                bot_flags: Array.isArray(pendingAssistant?.content_flags) ? pendingAssistant.content_flags : null,
+                user_flags: Array.isArray(ct.content_flags) ? ct.content_flags : null,
+                user_sentiment: ct.sentiment || null,
+                user_sentiment_score: typeof ct.sentiment_score === 'number' ? ct.sentiment_score : null,
+              })
+              pendingAssistant = null
+            }
+          }
+
+          // Capture persona by participant for the per-conversation
+          // emit below. Same persona is keyed via session_id → look
+          // up the participant via conv.
+          for (const c of convs) {
+            const pid = c.participant_id || c.session_id
+            const p = personaBySession[c.session_id]
+            if (p) phase3PersonaByParticipant[pid] = { name: (p as any).name || null, persona: (p as any).persona || null }
+          }
+        }
+      }
     }
 
     const conversations = Object.entries(participants).map(([pid, pTurns]) => {
       const lastUserMsg = [...pTurns].reverse().find(t => t.user)?.user || ''
       const participantEnded = lastUserMsg.includes('[Done') || lastUserMsg.includes('[done]')
+      const pp = phase3PersonaByParticipant[pid]
       return {
         participant_id: pid,
         session_id: params.id,
@@ -122,6 +253,9 @@ export async function GET(req: NextRequest, { params }: Params) {
         turns: pTurns,
         demographics: demoMap[pid] || null,
         psychographics: psychoMap[pid] || null,
+        // Phase-3 enrichments — null when participant came from legacy substrate.
+        name: pp?.name || null,
+        persona: pp?.persona || null,
       }
     })
 

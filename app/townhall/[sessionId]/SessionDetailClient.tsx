@@ -14,6 +14,7 @@ import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import TransferOrg from '@/components/ui/TransferOrg'
+import { getFlagStyle } from '@/lib/flagStyles'
 
 interface Props {
   sessionId: string
@@ -120,7 +121,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [participantList, setParticipantList] = useState<any[]>([])
-  const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any } | null>(null)
+  const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any; name?: string | null; persona?: any } | null>(null)
   const [convShareState, setConvShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
   const [showShare, setShowShare] = useState(false)
   const [jsonView, setJsonView] = useState(false)
@@ -959,7 +960,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                           const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=json')
                           const data = await res.json()
                           const conv = data.conversations?.find((c: any) => c.participant_id === p.participant_id)
-                          if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns, demographics: conv.demographics, psychographics: conv.psychographics })
+                          if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns, demographics: conv.demographics, psychographics: conv.psychographics, name: conv.name || null, persona: conv.persona || null })
                         } catch {}
                       }} title="View conversation"
                         className={'w-6 h-6 rounded-full flex items-center justify-center transition-all ' + (p.is_complete ? 'hover:bg-green-100' : 'hover:bg-orange-100')}
@@ -994,7 +995,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <span className="text-lg">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
                   <div>
                     <span className="text-sm font-bold text-white">{cfg?.bot_name || 'Conversation'}</span>
-                    <span className="text-xs text-white/60 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
+                    {convModal.name && <span className="text-xs text-white/80 ml-2">with {convModal.name}</span>}
+                    <span className="text-xs text-white/50 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1005,27 +1007,73 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-white/70 hover:text-white text-lg">&times;</button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-                {convModal.turns.map((t: any, i: number) => (
-                  <div key={i}>
-                    {t.bot && (
-                      <div className="flex gap-2 mb-1">
-                        <span className="text-lg flex-shrink-0">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
-                        <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2 text-sm text-gray-700 max-w-[85%]" style={{ whiteSpace: 'pre-wrap' }}>{t.bot}</div>
-                      </div>
-                    )}
-                    {t.user && !t.skipped && (
-                      <div className="flex justify-end mb-1">
-                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-sm text-white max-w-[85%]" style={{ background: '#007AFF', whiteSpace: 'pre-wrap' }}>{t.user}</div>
-                      </div>
-                    )}
-                    {t.skipped && (
-                      <div className="flex justify-end mb-1">
-                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-xs text-gray-400 italic bg-gray-50 max-w-[85%]">{t.user || 'skipped'}</div>
-                      </div>
-                    )}
+              {/* Persona bar \u2014 mirrors the bot conversations admin
+                  view at app/bots/[id]/conversations/ConversationsClient
+                  lines 577-591. Shows WHO this participant is when
+                  persona has been extracted (phase-3 substrate only;
+                  legacy townhall sessions don't carry persona data). */}
+              {convModal.persona && (function() {
+                const p = convModal.persona as any
+                const bits: string[] = []
+                if (p?.life_stage?.value) bits.push(p.life_stage.value)
+                if (p?.occupation?.value) bits.push(p.occupation.value)
+                if (p?.industry?.value) bits.push(p.industry.value)
+                if (p?.location_type?.value) bits.push(p.location_type.value)
+                if (p?.communication_style?.value) bits.push(p.communication_style.value + ' tone')
+                const concerns = p?.concerns?.values?.length ? p.concerns.values.join(', ') : ''
+                if (bits.length === 0 && !concerns) return null
+                return (
+                  <div className="bg-teal-50 border-b border-teal-100 px-5 py-2 text-xs text-teal-800 flex-shrink-0">
+                    {bits.length > 0 && <div><span className="font-semibold">Profile:</span> {bits.join(' \u00B7 ')}</div>}
+                    {concerns && <div className={bits.length > 0 ? 'mt-0.5' : ''}><span className="font-semibold">Concerns:</span> {concerns}</div>}
                   </div>
-                ))}
+                )
+              })()}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+                {convModal.turns.map((t: any, i: number) => {
+                  const botFlags = Array.isArray(t.bot_flags) ? t.bot_flags : []
+                  const userFlags = Array.isArray(t.user_flags) ? t.user_flags : []
+                  return (
+                    <div key={i}>
+                      {t.bot && (
+                        <div>
+                          <div className="flex gap-2 mb-1">
+                            <span className="text-lg flex-shrink-0">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
+                            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2 text-sm text-gray-700 max-w-[85%]" style={{ whiteSpace: 'pre-wrap' }}>{t.bot}</div>
+                          </div>
+                          {botFlags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1 pl-9">
+                              {botFlags.map(function(f: string) {
+                                var c = getFlagStyle(f)
+                                return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {t.user && !t.skipped && (
+                        <div>
+                          <div className="flex justify-end mb-1">
+                            <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-sm text-white max-w-[85%]" style={{ background: '#007AFF', whiteSpace: 'pre-wrap' }}>{t.user}</div>
+                          </div>
+                          {userFlags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1 justify-end">
+                              {userFlags.map(function(f: string) {
+                                var c = getFlagStyle(f)
+                                return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {t.skipped && (
+                        <div className="flex justify-end mb-1">
+                          <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-xs text-gray-400 italic bg-gray-50 max-w-[85%]">{t.user || 'skipped'}</div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
                 {/* Participant ended flag */}
                 {convModal.turns.some((t: any) => t.user?.includes('[Done') || t.user?.includes('[done]')) && (
                   <div className="flex justify-center mt-2">

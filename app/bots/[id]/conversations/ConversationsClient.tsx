@@ -6,38 +6,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import DownloadButton from '@/components/ui/DownloadButton'
+import { getFlagStyle, isFixedFlag } from '@/lib/flagStyles'
 
 var HERMES = '#E8632A'
 var IMSG_BLUE = '#007AFF'
 var IMSG_GRAY = '#E9E9EB'
-
-var FLAG_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  profanity: { bg: '#FEF3C7', color: '#92400E', label: 'Profanity' },
-  insult: { bg: '#FEF3C7', color: '#92400E', label: 'Insult' },
-  slur: { bg: '#FEE2E2', color: '#dc2626', label: 'Slur' },
-  threat: { bg: '#FEE2E2', color: '#dc2626', label: 'Threat' },
-  sexual: { bg: '#FEE2E2', color: '#dc2626', label: 'Sexual' },
-  spam: { bg: '#F3F4F6', color: '#6b7280', label: 'Spam' },
-  outside_scope: { bg: '#EDE9FE', color: '#7c3aed', label: 'Off-topic' },
-}
-
-function getFlagStyle(f: string): { bg: string; color: string; label: string } {
-  if (FLAG_COLORS[f]) return FLAG_COLORS[f]
-  if (f.startsWith('intent:')) {
-    return { bg: '#DBEAFE', color: '#1D4ED8', label: f.replace('intent:', '').replace(/_/g, ' ') }
-  }
-  if (f.startsWith('focus:')) {
-    // Assistant-side: what the bot's reply covered. Teal.
-    return { bg: '#ECFEFF', color: '#0E7B7B', label: f.replace('focus:', '').replace(/[-_]/g, ' ') }
-  }
-  if (f.startsWith('topic:')) {
-    // User-side: what the user actually talked about (probe-focus
-    // tagging, BOTS § 9.x.1). Amber — distinct from focus so the
-    // matched/mismatched diff is visually obvious at a glance.
-    return { bg: '#FEF3C7', color: '#B45309', label: f.replace('topic:', '').replace(/[-_]/g, ' ') }
-  }
-  return { bg: '#F3F4F6', color: '#6b7280', label: f }
-}
 
 var TIME_RANGES = [
   { label: 'Yesterday', hours: 24 },
@@ -270,10 +243,16 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       var freshTurns: Turn[] = Array.isArray(freshD?.turns) ? freshD.turns : []
       setTurns(freshTurns)
       if (freshTurns.length === 0) { setShareState('idle'); return }
-      var html = buildConversationHtml(botName, botConfig, freshTurns)
+      // Carry user_name + persona into both share variants so the
+      // snapshot shows WHO the participant was, not just the message
+      // log. Mirrors what the local conversation modal already shows
+      // in its header + persona bar.
+      var sessUserName = selectedSessionData?.user_name || ''
+      var sessPersona = (selectedSessionData?.persona || null) as any
+      var html = buildConversationHtml(botName, botConfig, freshTurns, { userName: sessUserName, persona: sessPersona })
       var html_labeled: string | undefined
       if (isSuperadmin && shareIncludeLabels) {
-        html_labeled = buildConversationHtml(botName, botConfig, freshTurns, { labeled: true })
+        html_labeled = buildConversationHtml(botName, botConfig, freshTurns, { labeled: true, userName: sessUserName, persona: sessPersona })
       }
       var r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, html_labeled: html_labeled, expires_in: '30d' }) })
       var d = await r.json()
@@ -461,9 +440,8 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
         <button onClick={function() { setFilterFlag('all') }} style={pill(filterFlag === 'all', '#6b7280')}>All</button>
         <button onClick={function() { setFilterFlag('flagged') }} style={pill(filterFlag === 'flagged', '#dc2626')}>Flagged</button>
         <button onClick={function() { setFilterFlag('clean') }} style={pill(filterFlag === 'clean', '#059669')}>Clean</button>
-        {allFlags.map(function(f) {
-          var fc = FLAG_COLORS[f]
-          if (!fc) return null
+        {allFlags.filter(isFixedFlag).map(function(f) {
+          var fc = getFlagStyle(f)
           return <button key={f} onClick={function() { setFilterFlag(f) }} style={pill(filterFlag === f, fc.color)}>{fc.label}</button>
         })}
       </div>
@@ -642,16 +620,22 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
 
 // ── Share HTML builder ────────────────────────────────────────────────
 // Builds the conversation snapshot HTML that gets baked into shared_links.metadata.
-// When opts.labeled is true, each user-turn shows sentiment + matched intent
-// under the bubble, each assistant-turn shows the action triggered (if any
-// intent URL appears in the reply), and timestamps switch to full date + time.
+// When opts.labeled is true, each user-turn shows sentiment + matched intent +
+// topic:<slug> pills under the bubble, each assistant-turn shows the action
+// triggered + focus:<slug> pills, and timestamps switch to full date + time.
+// userName + persona, when provided, render in BOTH plain and labeled —
+// those answer "WHO is this participant" not "what AI internals fired,"
+// so they're appropriate even for the non-labeled share that goes to
+// stakeholders.
 function buildConversationHtml(
   name: string,
   config: BotConfig,
   turns: Turn[],
-  opts?: { labeled?: boolean },
+  opts?: { labeled?: boolean; userName?: string; persona?: any },
 ): string {
   var labeled = !!opts?.labeled
+  var userName = (opts?.userName || '').trim()
+  var persona = opts?.persona || null
   var av = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
   var hG = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
   var aG = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
@@ -663,6 +647,22 @@ function buildConversationHtml(
       return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     }
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // Pill renderer for focus:<slug> / topic:<slug> / intent:<LABEL> flags.
+  // Inlined (not imported from lib/flagStyles) so the HTML string can be
+  // built without DOM React. Same color palette.
+  function pillsHtml(flags: any[] | null | undefined, kinds: string[]): string {
+    if (!Array.isArray(flags)) return ''
+    var matched = flags.filter(function(f) { return typeof f === 'string' && kinds.some(function(k) { return f.indexOf(k + ':') === 0 }) }) as string[]
+    if (matched.length === 0) return ''
+    return matched.map(function(f) {
+      var bg = '#F3F4F6', color = '#6b7280', label = f
+      if (f.indexOf('focus:') === 0) { bg = '#ECFEFF'; color = '#0E7B7B'; label = f.slice(6).replace(/[-_]/g, ' ') }
+      else if (f.indexOf('topic:') === 0) { bg = '#FEF3C7'; color = '#B45309'; label = f.slice(6).replace(/[-_]/g, ' ') }
+      else if (f.indexOf('intent:') === 0) { bg = '#DBEAFE'; color = '#1D4ED8'; label = f.slice(7).replace(/_/g, ' ') }
+      return '<span style="display:inline-block;font-size:9px;font-weight:600;padding:1px 6px;border-radius:8px;background:' + bg + ';color:' + color + ';margin-right:3px">' + esc(label) + '</span>'
+    }).join('')
   }
 
   function annotation(t: Turn): string {
@@ -688,8 +688,14 @@ function buildConversationHtml(
       if (/vote\.gov/i.test(t.content)) actions.push('Register to vote')
       if (actions.length) parts.push('action: <span style="color:#e8622a;font-weight:600">' + actions.join(', ') + '</span>')
     }
-    if (parts.length === 0) return ''
-    return '<div style="font-size:10px;font-style:italic;color:#6b7280;margin:2px 0 10px 36px;padding-left:8px;border-left:2px solid #e5e7eb">└ ' + parts.join(' · ') + '</div>'
+    // focus:<slug> on assistant turns; topic:<slug> on user turns. Pills
+    // render even when sentiment/intent are absent.
+    var pillKinds = t.role === 'user' ? ['topic'] : ['focus']
+    var pills = pillsHtml(t.content_flags as any, pillKinds)
+    var textRow = parts.length > 0 ? '<div>' + parts.join(' · ') + '</div>' : ''
+    var pillRow = pills ? '<div style="margin-top:' + (textRow ? '2px' : '0') + '">' + pills + '</div>' : ''
+    if (!textRow && !pillRow) return ''
+    return '<div style="font-size:10px;font-style:italic;color:#6b7280;margin:2px 0 10px 36px;padding-left:8px;border-left:2px solid #e5e7eb">' + (textRow ? '└ ' + textRow.slice(5, -6) : '') + pillRow + '</div>'
   }
 
   var rows = turns.map(function(t) {
@@ -704,9 +710,33 @@ function buildConversationHtml(
     return bubble + annotation(t)
   }).join('')
 
+  // Persona profile bar — shown in both plain and labeled. Mirrors the
+  // local conversation modal at app/bots/[id]/conversations/ConversationsClient
+  // lines 577-591. Answers "WHO is this participant" — not AI-internals,
+  // so it's appropriate for the plain share too.
+  function personaBarHtml(): string {
+    if (!persona) return ''
+    var bits: string[] = []
+    if (persona.life_stage?.value) bits.push(esc(String(persona.life_stage.value)))
+    if (persona.occupation?.value) bits.push(esc(String(persona.occupation.value)))
+    if (persona.industry?.value) bits.push(esc(String(persona.industry.value)))
+    if (persona.location_type?.value) bits.push(esc(String(persona.location_type.value)))
+    if (persona.communication_style?.value) bits.push(esc(String(persona.communication_style.value)) + ' tone')
+    var concerns = persona.concerns?.values?.length ? persona.concerns.values.map(esc).join(', ') : ''
+    if (bits.length === 0 && !concerns) return ''
+    var profileRow = bits.length > 0 ? '<div><span style="font-weight:600">Profile:</span> ' + bits.join(' · ') + '</div>' : ''
+    var concernsRow = concerns ? '<div style="margin-top:' + (bits.length > 0 ? '2px' : '0') + '"><span style="font-weight:600">Concerns:</span> ' + concerns + '</div>' : ''
+    return '<div style="background:#F0FDFA;border-bottom:1px solid #CCFBF1;padding:8px 16px;font-size:11px;color:#0F766E">' + profileRow + concernsRow + '</div>'
+  }
+
   var sub = config.subtitle || ''
+  // Header subtitle: bot subtitle + " · with {name}" when name captured.
+  var headerSubBits: string[] = []
+  if (sub) headerSubBits.push(esc(sub))
+  if (userName) headerSubBits.push('with ' + esc(userName))
+  var headerSubLine = headerSubBits.length > 0 ? '<div style="font-size:11px;color:rgba(255,255,255,0.65)">' + headerSubBits.join(' · ') + '</div>' : ''
   var footer = labeled ? 'Sentimetrx · AI processing visible' : 'Shared from Sentimetrx'
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div>' + (sub ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + esc(sub) + '</div>' : '') + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">' + esc(footer) + '</div></div></body></html>'
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div>' + headerSubLine + '</div></div>' + personaBarHtml() + '<div style="background:white;padding:16px;' + (persona ? '' : 'border-radius:0 0 16px 16px;') + 'border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">' + esc(footer) + '</div></div></body></html>'
 }
 
 function esc(s: string): string {
