@@ -6,6 +6,21 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Gap #5b: wire /api/townhall/responses POST for phase-3
+
+**Why**: Last item NOWOCATS needs to be fully launchable on the new substrate. Pre-this-commit, a phase-3 participant submitting post-session psycho/demo answers would 404 because the route validated against `townhall_turns` only and `townhall_participant_responses.session_id` had a NOT NULL FK to `townhall_sessions(id)`. NOWOCATS doesn't have post-session questions configured today, so this is future-proofing — but doing it now means we close out the convergence backlog cleanly before push.
+
+**What changed**:
+- `sql/083_townhall_participant_responses_phase3.sql` (applied to prod) — adds nullable `town_hall_id` column + FK to `town_halls(id) ON DELETE CASCADE`, relaxes `session_id NOT NULL`, adds CHECK (`session_id IS NOT NULL OR town_hall_id IS NOT NULL`), drops the old `(session_id, participant_id)` unique constraint and replaces with two partial unique indexes (one per substrate). Backward-compatible: existing legacy rows keep `session_id` set and `town_hall_id` null.
+- `app/api/townhall/responses/route.ts` — full rewrite (~95 lines). Resolves substrate by checking `townhall_sessions` then `town_halls`. Validates participant via `townhall_turns` (legacy) or `town_hall_conversations → conversations.participant_id` (phase-3). Upserts the appropriate column. Manual upsert (try insert / catch unique violation / update) because Supabase JS client's `onConflict` doesn't speak partial unique indexes.
+- `docs/CONVERGENCE.md` + `docs/TOWNHALL.md` updated.
+
+**Verification**:
+- Migration applied: column added, NOT NULL dropped, CHECK exists, partial unique indexes exist — all 4 sanity checks pass.
+- Route typechecks against itself. (Unrelated typecheck errors exist in `lib/places.ts` — parallel session's WIP, not blocking my commit.)
+
+**Push gate**: 55th commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — Gap #6: bot-level analyze gains town-hall attribution columns
 
 **Why**: With NOWOCATS launching on Sarina and Vindman post-launch on Sir O'Gate (each bot potentially hosting N town halls long-term), bot-level analyze previously emitted dataset rows with NO column tying each row back to its town hall — so a Sir O'Gate dataset would mix all Vindman events + 1:1 widget chats with no way to filter or compare. Per-event datasets (Gap #5) sidestepped this but users may want a single bot dataset that's filterable by town hall instead of combining N datasets.

@@ -49,7 +49,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 >
 > **#5 wired (2026-05-22)**: `/api/townhall/sessions/[id]/analyze` now substrate-aware — phase-3 town halls sync into Ana via `town_hall_conversations → conversations → conversation_turns`, paired-user-turn shape identical to legacy + bot-level analyze. Datasets can be combined in Analytics for multi-event rollups (e.g. all Vindman events). Theme model populated from `town_hall_topics`. Same `DatasetRow` schema regardless of substrate.
 >
-> **Remaining gap (#5b)**: `/api/townhall/responses` POST (post-session psycho/demo upsert) still validates against `townhall_turns` only — a phase-3 participant submitting post-session answers would 404. One-line OR-branch into `town_hall_conversations` + `conversations` will close it. Not blocking NOWOCATS unless they use post-session questions.
+> **#5b wired (2026-05-22)**: `/api/townhall/responses` POST is now substrate-aware. `sql/083` adds a nullable `town_hall_id` column to `townhall_participant_responses` + CHECK constraint enforcing one of the two substrate refs + partial unique indexes for both substrates. Route validates participant via `townhall_turns` (legacy) or `town_hall_conversations → conversations.participant_id` (phase-3), then upserts to the right column. NOWOCATS has no post-session questions configured today so this is future-proofing — but any new phase-3 town hall with `psychographicBank` / `demoFields` works correctly now.
 >
 > **Followup (#6)**: bot-level analyze does not surface `town_hall_id` on rows — cross-event filtering in Ana requires combining per-event datasets. ~20-min change to add the join + columns. Not blocking.
 >
