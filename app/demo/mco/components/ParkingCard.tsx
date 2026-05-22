@@ -74,6 +74,13 @@ function relativeTime(ts: number) {
   return Math.floor(ms / 3_600_000) + ' h ago'
 }
 
+function lotNote(lot: ApiLot): string {
+  if (lot.id === 'terminal-top') return 'Covered · walk directly to ticketing'
+  if (lot.category === 'economy') return 'Economy · free shuttle runs all hours'
+  if (lot.terminalId) return 'Covered garage · steps from Terminal ' + lot.terminalId.toUpperCase()
+  return categoryTag(lot.category)
+}
+
 export default function ParkingCard({ hint }: { hint: ParkingHint }) {
   const [lots, setLots] = useState<ApiLot[]>([])
   const [loading, setLoading] = useState(true)
@@ -105,85 +112,105 @@ export default function ParkingCard({ hint }: { hint: ParkingHint }) {
     [hint.highlight],
   )
 
-  // Featured = first highlighted lot if any, else garage_c, else first.
-  const featured = useMemo(() => {
-    if (lots.length === 0) return null
-    return (
-      lots.find((l) => highlightIds.has(l.id))
-      || lots.find((l) => l.id === 'parking-garage-c')
-      || lots[0]
-    )
-  }, [lots, highlightIds])
-
-  // Show only the lots with a known live count when we have any; otherwise
-  // show everything (so the card has content even if availability is null).
   const lotsWithCounts = lots.filter((l) => typeof l.available === 'number')
-  const display = lotsWithCounts.length > 0 ? lotsWithCounts : lots
   const haveLiveCounts = lotsWithCounts.length > 0
-  const liveBadgeLabel = haveLiveCounts ? 'Live' : 'Status'
+
+  // Featured lot for the live-counts summary header
+  const featured = useMemo(() => {
+    if (!haveLiveCounts || lots.length === 0) return null
+    return lots.find((l) => highlightIds.has(l.id)) || lots.find((l) => l.id === 'parking-garage-c') || lots[0]
+  }, [lots, haveLiveCounts, highlightIds])
+
+  // Three-pick recommendation layout shown when live counts aren't available.
+  const picks = useMemo(() => {
+    if (lots.length === 0 || haveLiveCounts) return []
+    const shown = new Set<string>()
+
+    const top = lots.find(l => highlightIds.has(l.id)) || lots.find(l => l.id === 'parking-garage-c') || lots[0]
+    if (top) shown.add(top.id)
+
+    const cheap = lots
+      .filter(l => !shown.has(l.id) && l.rate?.daily != null)
+      .sort((a, b) => Number(a.rate!.daily) - Number(b.rate!.daily))[0]
+    if (cheap) shown.add(cheap.id)
+
+    const premium = lots
+      .filter(l => !shown.has(l.id) && l.rate?.daily != null)
+      .sort((a, b) => Number(b.rate!.daily) - Number(a.rate!.daily))[0]
+
+    return [
+      top     && { lot: top,     icon: '⭐', label: 'RECOMMENDED', note: lotNote(top),     hl: true  },
+      cheap   && { lot: cheap,   icon: '💰', label: 'BEST VALUE',  note: lotNote(cheap),   hl: false },
+      premium && { lot: premium, icon: '⚡', label: 'QUICK ACCESS', note: lotNote(premium), hl: false },
+    ].filter((p): p is { lot: ApiLot; icon: string; label: string; note: string; hl: boolean } => !!p?.lot)
+  }, [lots, haveLiveCounts, highlightIds])
 
   return (
     <div className="canvas-card-inner">
       <div className="canvas-header">
-        <h2>{haveLiveCounts ? 'Live Parking Availability' : 'MCO Parking Lots'}</h2>
+        <h2>{haveLiveCounts ? 'Live Parking Availability' : 'MCO Parking'}</h2>
         <span className="subtitle">
-          {loading ? 'Loading…' : error ? 'Live data unavailable — refresh to retry' : ('Updated ' + relativeTime(fetchedAt))}
+          {loading ? 'Loading…' : haveLiveCounts ? ('Updated ' + relativeTime(fetchedAt)) : 'Live spot counts unavailable'}
         </span>
-        <span className="badge">{liveBadgeLabel}</span>
+        <span className="badge">{haveLiveCounts ? 'Live' : 'Rates'}</span>
       </div>
 
-      {featured && (
-        <div className="parking-summary">
-          <div>
-            {typeof featured.available === 'number'
-              ? <>
-                  <div className="parking-num">{featured.available.toLocaleString()}</div>
-                  <div className="parking-label">spots open · {featured.name}</div>
-                </>
-              : <>
-                  <div className="parking-num" style={{ textTransform: 'capitalize' }}>{featured.status}</div>
-                  <div className="parking-label">{featured.name}</div>
-                </>}
-          </div>
-          <div className="parking-summary-right">
-            <div className="parking-summary-headline">
-              {featured.terminalId ? 'Terminal ' + featured.terminalId.toUpperCase() : categoryTag(featured.category)}
-            </div>
-            {featured.rate?.daily && <div className="parking-summary-meta">${featured.rate.daily}/day</div>}
-          </div>
-        </div>
-      )}
-
-      <div className="lot-grid">
-        {display.slice(0, 8).map((lot) => {
-          const isHighlight = highlightIds.has(lot.id)
-          const hasCount = typeof lot.available === 'number' && typeof lot.total === 'number' && lot.total > 0
-          const pct = hasCount ? Math.round((lot.available! / lot.total!) * 100) : 0
-          return (
-            <div key={lot.id} className={'lot' + (isHighlight ? ' highlight' : '')}>
-              <div className="lot-name">
-                <span>{lot.name}</span>
-                <span className="lot-tag">{isHighlight ? 'RECOMMENDED' : categoryTag(lot.category)}</span>
+      {haveLiveCounts ? (
+        <>
+          {featured && (
+            <div className="parking-summary">
+              <div>
+                <div className="parking-num">{featured.available!.toLocaleString()}</div>
+                <div className="parking-label">spots open · {featured.name}</div>
               </div>
-              {hasCount ? (
-                <>
+              <div className="parking-summary-right">
+                <div className="parking-summary-headline">
+                  {featured.terminalId ? 'Terminal ' + featured.terminalId.toUpperCase() : categoryTag(featured.category)}
+                </div>
+                {featured.rate?.daily && <div className="parking-summary-meta">${featured.rate.daily}/day</div>}
+              </div>
+            </div>
+          )}
+          <div className="lot-grid">
+            {lotsWithCounts.slice(0, 8).map((lot) => {
+              const isHighlight = highlightIds.has(lot.id)
+              const pct = typeof lot.total === 'number' && lot.total > 0
+                ? Math.round((lot.available! / lot.total) * 100) : 0
+              return (
+                <div key={lot.id} className={'lot' + (isHighlight ? ' highlight' : '')}>
+                  <div className="lot-name">
+                    <span>{lot.name}</span>
+                    <span className="lot-tag">{isHighlight ? 'RECOMMENDED' : categoryTag(lot.category)}</span>
+                  </div>
                   <div className="bar"><div className={fillClass(pct)} style={{ width: pct + '%' }} /></div>
                   <div className="avail"><strong>{lot.available!.toLocaleString()}</strong> of {lot.total!.toLocaleString()} available</div>
-                </>
-              ) : (
-                <div className="avail">Status: <strong style={{ textTransform: 'capitalize' }}>{lot.status}</strong>{lot.rate?.daily ? ' · $' + lot.rate.daily + '/day' : ''}</div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {haveLiveCounts && (
-        <div className="lot-legend">
-          <span><span className="dot dot-green" />Plenty</span>
-          <span><span className="dot dot-amber" />Filling</span>
-          <span><span className="dot dot-red" />Nearly full</span>
-        </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="lot-legend">
+            <span><span className="dot dot-green" />Plenty</span>
+            <span><span className="dot dot-amber" />Filling</span>
+            <span><span className="dot dot-red" />Nearly full</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="parking-picks">
+            {picks.map(p => (
+              <div key={p.lot.id} className={'parking-pick' + (p.hl ? ' parking-pick-hl' : '')}>
+                <div className="parking-pick-badge">{p.icon} {p.label}</div>
+                <div className="parking-pick-name">{p.lot.name}</div>
+                <div className="parking-pick-meta">
+                  {p.lot.terminalId ? 'Terminal ' + p.lot.terminalId.toUpperCase() + ' · ' : categoryTag(p.lot.category) + ' · '}
+                  {p.lot.rate?.daily ? '$' + p.lot.rate.daily + '/day' : ''}
+                </div>
+                <div className="parking-pick-note">{p.note}</div>
+              </div>
+            ))}
+          </div>
+          <div className="parking-picks-footer">Typical rates · live spot counts unavailable right now</div>
+        </>
       )}
     </div>
   )

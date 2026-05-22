@@ -136,7 +136,7 @@ Together with the prompt's **NO-STRETCH** rule ("if NONE of the four card types 
 | `type` | Payload | Renders as |
 |---|---|---|
 | `terminal_map` | `{ terminal: "A" \| "B" \| "C", gate?: "A14", from?: "C", to?: "B", via?: "shuttle" \| "terminal_link_apm" }` | Static terminal SVG with a pin at the gate and an arrow/route overlay if from/to/via supplied. |
-| `parking` | `{ highlight?: ["garage_a","garage_b","garage_c","atlantis","discovery","endeavour","north_economy","south_economy","west_economy"] }` | Grid of 4 garages × N surface lots with live availability bars from the flymco parking JSON. Highlighted entries pulse amber. |
+| `parking` | `{ highlight?: ["garage_a","garage_b","garage_c","atlantis","discovery","endeavour","north_economy","south_economy","west_economy"] }` | When live spot counts are available: grid with fill bars, highlighted entry pulses amber. When counts are unavailable: 3-pick recommendation layout — ⭐ RECOMMENDED (highlighted lot or Garage C), 💰 BEST VALUE (cheapest lot), ⚡ QUICK ACCESS (premium/Terminal Top) — each with rate and a contextual note. |
 | `restaurants` | `{ place_ids: ["ChIJ…", ...], context?: "terminal_a_airside" }` | Vertical list of cards: photo, name, cuisine tag, ★ rating + review count, price band, hours-now-open chip, "Powered by Google" footer. |
 | `link_card` | `{ title: string, body: string, image_url?: string, cta_url: string, cta_label: string }` | Generic info card. Used for visitor pass program, MCO Reserve, accessibility programs, Hyatt hotel, etc. |
 

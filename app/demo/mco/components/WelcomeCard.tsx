@@ -25,10 +25,10 @@ const HOME_TILES = [
 ]
 
 const KIOSK_TILES = [
-  { icon: '🚪', label: 'Find my gate', prompt: 'Where is my gate?' },
-  { icon: '⏱️', label: 'Security lines', prompt: 'How long are security lines right now?' },
-  { icon: '🍽️', label: 'Food near me', prompt: 'What restaurants are near me?' },
-  { icon: '♿', label: 'Accessibility', prompt: 'What accessibility services does MCO offer?' },
+  { icon: '🛍️', label: 'Shopping', prompt: 'What shops are at MCO?' },
+  { icon: '🍽️', label: 'Food & Drinks', prompt: 'What restaurants and bars are near me?' },
+  { icon: '🔒', label: 'Security', prompt: 'How long are security lines right now?' },
+  { icon: '🚗', label: 'Ground Transport', prompt: 'How do I get ground transportation from MCO?' },
 ]
 
 // Static in-venue facts shown instead of the parking block in kiosk mode.

@@ -317,6 +317,24 @@
 .canvas-shell .dot-amber { background: #f59e0b; }
 .canvas-shell .dot-red { background: #ef4444; }
 
+/* Parking — recommendation picks (shown when live counts unavailable) */
+.canvas-shell .parking-picks { display: flex; flex-direction: column; gap: 10px; }
+.canvas-shell .parking-pick {
+  padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 12px;
+  background: #fafafa;
+}
+.canvas-shell .parking-pick-hl { border-color: #f59e0b; background: #fffbeb; }
+.canvas-shell .parking-pick-badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  color: #92400e; margin-bottom: 5px;
+}
+.canvas-shell .parking-pick-name { font-size: 15px; font-weight: 600; color: #0a2540; }
+.canvas-shell .parking-pick-meta { font-size: 12.5px; color: #374151; margin-top: 2px; }
+.canvas-shell .parking-pick-note { font-size: 11.5px; color: #6b7280; margin-top: 4px; }
+.canvas-shell .parking-picks-footer {
+  font-size: 11.5px; color: #9ca3af; margin-top: 10px; font-style: italic;
+}
+
 /* ── Restaurants card ──────────────────────────────── */
 .canvas-shell .resto-list { display: flex; flex-direction: column; gap: 10px; }
 .canvas-shell .resto {

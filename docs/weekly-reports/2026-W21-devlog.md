@@ -1839,3 +1839,15 @@ User feedback: "parking is the least useful thing inside the airport — complet
 **Why**: parking availability is irrelevant once you're past security. The glance grid gives a kiosk user immediately useful context (especially the APM train + MCO Reserve) without requiring them to ask anything first.
 
 **Tests**: tsc clean. No test changes needed.
+
+## 2026-05-22 (later) — Parking card recommendation layout + kiosk welcome tile update
+
+**Parking card (no live counts):** replaced the boring "Status: Open · $24/day" list with a 3-pick recommendation layout — ⭐ RECOMMENDED (hint's highlighted lot or Garage C), 💰 BEST VALUE (cheapest lot not already shown), ⚡ QUICK ACCESS (premium/Terminal Top). Each pick shows name, terminal/category, daily rate, and a one-line note (e.g. "Covered garage · steps from Terminal C"). Live-count path unchanged.
+
+**Kiosk welcome tiles:** Shopping · Food & Drinks · Security · Ground Transport (replaced Find my gate / Security lines / Food near me / Accessibility per user direction).
+
+| File | Change |
+|---|---|
+| `app/demo/mco/components/ParkingCard.tsx` | `lotNote()` helper; `picks` useMemo; conditional render — live path unchanged, no-counts path = picks layout |
+| `app/demo/mco/components/WelcomeCard.tsx` | `KIOSK_TILES` updated |
+| `app/demo/mco/canvas.css` | `.parking-picks`, `.parking-pick`, `.parking-pick-hl`, `.parking-pick-badge/name/meta/note`, `.parking-picks-footer` |
