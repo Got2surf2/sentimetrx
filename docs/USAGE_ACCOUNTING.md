@@ -60,7 +60,7 @@ ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 | `org_id` | nullable UUID | Caller's org. NULL for system-level calls (e.g. cron-driven moderation that isn't tied to a specific org). |
 | `resource_type` | `'bot' \| 'townhall' \| 'social' \| 'dataset' \| 'system'` | Which module made the call. Drives the dashboard's "By Module" breakdown. |
 | `resource_id` | nullable UUID | The specific bot / session / dataset. NULL for `system`-type calls. |
-| `event_type` | free TEXT | What the call did. Examples: `chat`, `summary`, `deflect`, `intent`, `mine_themes`, `expand_keywords`, `merge_themes`, `search`, `search_rerank`, `pptx`, `html_export`, `signals_pptx`, `insights`, `insights_deck`, `report`, `review`, `auto_reply`, `ai_reply`, `translate`, `clarify`, `study_suggest`, `persona`, `demographics`, `theme_detect`, `knowledge_classify`, `simulate`, `expand_terms`, `grade_description`, `suggest_guide`, `suggest_topic`, `suggest_sensitive`, `ana`, `demo`, `ghost_suggest`, `entity_discovery`, `score_comments`. |
+| `event_type` | free TEXT | What the call did. Examples: `chat`, `summary`, `deflect`, `intent`, `mine_themes`, `expand_keywords`, `merge_themes`, `search`, `search_rerank`, `pptx`, `html_export`, `signals_pptx`, `insights`, `insights_deck`, `report`, `review`, `auto_reply`, `ai_reply`, `translate`, `clarify`, `study_suggest`, `persona`, `demographics`, `theme_detect`, `knowledge_classify`, `simulate`, `expand_terms`, `grade_description`, `suggest_guide`, `suggest_topic`, `suggest_sensitive`, `ana`, `demo`, `ghost_suggest`, `entity_discovery`, `entity_extract`, `score_comments`. |
 | `model` | TEXT | Resolved model string (e.g. `claude-haiku-4-5-20251001`). Used for cost lookup. |
 | `provider` | `'anthropic' \| 'openai' \| 'azure-openai'` | Which API was actually called. |
 | `tier` | `'fast' \| 'standard' \| 'advanced'` | Echoes the caller's `tier` choice. |
@@ -468,6 +468,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 |---|---|---|---|
 | `/api/bots/[id]/chat` (delegates to `lib/chatCore.handleChatTurn`) | bot | `chat`, `summary`, `deflect`, `intent`, `focus_classify`, `probe_focus_classify`, `name_extract` | fast |
 | `/api/bots/[id]/knowledge` | bot | `knowledge_classify` | fast |
+| `/api/bots/[id]/entities/extract` (delegates to `lib/botEntityExtraction.extractBotEntities`) | bot | `entity_extract` | fast | <!-- BOTS.md § 9.y — Haiku batched extractor; ~$0.01–0.05 per run; manual trigger only (no auto-extraction on KB chunk insert per § 9.y open Q1). -->|
 | `/api/bots/[id]/conversations/report` | bot | `report` | fast / standard |
 | `/api/bots/[id]/conversations/insights-deck` | bot | `insights_deck` | standard |
 | `/api/cron/bot-conversation-review` | bot | `review` | fast |
