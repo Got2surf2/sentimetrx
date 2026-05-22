@@ -304,13 +304,21 @@ This is the fix for the previous behavior where the bot's prose response was "se
 
 Before the user has asked anything, the right pane shows a `WelcomeCard` (component at `app/demo/mco/components/WelcomeCard.tsx`). Replaces the previous default of a C→A/B terminal route map, which felt arbitrary before any conversation.
 
-The card has three sections: (a) hero with the big "MCO" mark + airport name + a one-line description of what Ana can help with; (b) live parking strip pulled from `/api/mco/parking` showing the three garages with color-coded fill bars (green <70% full, amber 70-89%, red ≥90%) and a "Live" pill when GOAA data is fresh; (c) a four-tile "Common questions" grid (Parking · Dining · Speed through security · Accessibility) and a "Tap a question on the left, or type your own" cue.
+The card has three sections: (a) hero with the big "MCO" mark + airport name + a one-line description of what Ana can help with; (b) a middle block that is **mode-dependent** (see below); (c) a four-tile quick-actions grid and a keyboard/tap cue.
 
-Hero text adapts to mode: `Orlando International Airport` (home) / `You're at MCO` (invenue) / `Welcome to MCO` (kiosk). Kiosk variant bumps hero + tile sizes for touch.
+**Mode-dependent middle block:**
+- `home` / `invenue`: live parking strip from `/api/mco/parking` — three garages with color-coded fill bars (green <70% full, amber 70-89%, red ≥90%), "Live" pill when GOAA data is fresh. Falls back gracefully when counts aren't available.
+- `kiosk`: "At a glance" 2×2 grid of static in-venue facts (Free Wi-Fi · Terminal link APM · MCO Reserve · Ground transport). Parking is omitted because a traveler already inside the airport has no use for parking availability.
+
+**Mode-dependent tiles:**
+- `home` / `invenue`: Parking · Dining · Speed through security · Accessibility
+- `kiosk`: Find my gate · Security lines · Food near me · Accessibility
+
+Hero text adapts to mode: `Orlando International Airport` (home) / `You're at MCO` (invenue) / `Welcome to MCO` (kiosk). Kiosk variant bumps hero + tile + glance-item sizes for touch.
 
 Implementation: the UiHint union has a `WelcomeHint` variant (`type: 'welcome'`, optional `mode`); `HintRenderer` accepts a `mode` prop and dispatches `welcome → WelcomeCard` while injecting the active mode. The extractor never emits this hint (deliberate — `validateHint` rejects it); it exists purely so `HintRenderer` can render the default state via the same union.
 
-`DEMO_HINTS[0]` is the welcome hint and is the `defaultHint` for all three deployment modes. The demo strip arrows still cycle through the other four cards (terminal map, restaurants, parking, MCO Reserve) for boardroom walk-throughs.
+Demo hints are now mode-specific (`MODE_CONFIG[mode].demoHints`). Kiosk cycle: welcome → terminal map → restaurants → MCO Reserve (4 cards, no parking). Home/invenue cycle: welcome → terminal map → restaurants → parking → MCO Reserve (5 cards).
 
 ---
 

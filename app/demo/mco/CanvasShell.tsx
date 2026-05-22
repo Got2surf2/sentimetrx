@@ -42,6 +42,15 @@ interface ModeConfig {
   placeholder: string
   defaultHint: number
   contextStripe?: string
+  demoHints: UiHint[]
+}
+
+const MCO_RESERVE_HINT: UiHint = {
+  type: 'link_card',
+  title: 'MCO Reserve',
+  body: "MCO Reserve is a free service that lets passengers without TSA PreCheck or CLEAR+ book a dedicated time slot to go through security at Orlando International Airport.\n\nPick a window when you arrive, show your reservation at the security checkpoint, and skip into a shorter line. Spots are released throughout the day on a first-come, first-served basis.\n\nBest for: peak departure windows (4-7 AM and 1-4 PM), families with children, or anyone who wants to lock in their security time before getting to the airport.",
+  cta_url: 'https://flymco.com/speed-through-mco',
+  cta_label: 'Reserve a time slot',
 }
 
 const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
@@ -51,6 +60,13 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
     chips: ['How early should I arrive?', 'Where should I park?', 'Cheapest way to get to MCO?', 'What is MCO Reserve?'],
     placeholder: 'Ask Ana about MCO…',
     defaultHint: 0,
+    demoHints: [
+      { type: 'welcome' },
+      { type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' },
+      { type: 'restaurants', place_ids: [], context: 'terminal_a_airside' },
+      { type: 'parking', highlight: ['garage_c'] },
+      MCO_RESERVE_HINT,
+    ],
   },
   invenue: {
     subtitle: "You're at MCO · Terminal B",
@@ -59,32 +75,28 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
     placeholder: 'Ask anything about MCO right now…',
     defaultHint: 0,
     contextStripe: "You're at MCO · Terminal B · from entrance QR scan",
+    demoHints: [
+      { type: 'welcome' },
+      { type: 'terminal_map', from: 'A', to: 'B' },
+      { type: 'restaurants', place_ids: [], context: 'terminal_b_airside' },
+      { type: 'parking', highlight: ['garage_b'] },
+      MCO_RESERVE_HINT,
+    ],
   },
   kiosk: {
     subtitle: 'Orlando International Airport · Touch a question or ask your own',
     greeting: "Hi! Ask me anything about Orlando International Airport. Touch a question below — and tap the QR icon any time to send what we discussed straight to your phone.",
-    chips: ['Find a restaurant', "Where's my gate?", 'Parking availability', 'Getting to my flight', 'Help finding the train station'],
+    chips: ['Find a restaurant', "Where's my gate?", 'Security wait times', 'Getting to my flight', 'Help finding the train station'],
     placeholder: 'Touch the keyboard or pick a question…',
     defaultHint: 0,
+    demoHints: [
+      { type: 'welcome' },
+      { type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' },
+      { type: 'restaurants', place_ids: [], context: 'terminal_a_airside' },
+      MCO_RESERVE_HINT,
+    ],
   },
 }
-
-// Demo hints — what shows in the right pane before the user has asked
-// anything (slot 0 = the welcome/landing card) and what the demo strip
-// cycles through for a boardroom walk-through.
-const DEMO_HINTS: UiHint[] = [
-  { type: 'welcome' },
-  { type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' },
-  { type: 'restaurants', place_ids: [], context: 'terminal_a_airside' },
-  { type: 'parking', highlight: ['garage_c'] },
-  {
-    type: 'link_card',
-    title: 'MCO Reserve',
-    body: "MCO Reserve is a free service that lets passengers without TSA PreCheck or CLEAR+ book a dedicated time slot to go through security at Orlando International Airport.\n\nPick a window when you arrive, show your reservation at the security checkpoint, and skip into a shorter line. Spots are released throughout the day on a first-come, first-served basis.\n\nBest for: peak departure windows (4-7 AM and 1-4 PM), families with children, or anyone who wants to lock in their security time before getting to the airport.",
-    cta_url: 'https://flymco.com/speed-through-mco',
-    cta_label: 'Reserve a time slot',
-  },
-]
 
 function HintRenderer({ hint, mode }: { hint: UiHint; mode: DeploymentMode }) {
   if (hint.type === 'welcome') return <WelcomeCard hint={{ ...hint, mode }} />
@@ -116,11 +128,12 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [extracting, setExtracting] = useState(false)
 
   useEffect(() => {
-    setDemoIdx(MODE_CONFIG[mode].defaultHint)
+    const c = MODE_CONFIG[mode]
+    setDemoIdx(i => Math.min(i, c.demoHints.length - 1))
     setLiveHint(null)   // mode change resets to demo state
   }, [mode])
 
-  const hint: UiHint = liveHint ?? DEMO_HINTS[demoIdx]
+  const hint: UiHint = liveHint ?? config.demoHints[demoIdx]
 
   // Active context threaded into the extractor on each /ui-hints call so it
   // can keep restaurants/parking scoped to the user's anchored terminal and
@@ -134,7 +147,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
 
   function cycleDemo(delta: number) {
     setLiveHint(null)
-    setDemoIdx((i) => (i + delta + DEMO_HINTS.length) % DEMO_HINTS.length)
+    setDemoIdx((i) => (i + delta + config.demoHints.length) % config.demoHints.length)
   }
 
   // Keyboard shortcuts for the boardroom demo: 1/2/3 = modes, ←/→ = cards.
@@ -216,7 +229,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
         </div>
         <span className="demo-sep" />
         <button className="demo-arrow" onClick={() => cycleDemo(-1)} aria-label="Previous demo card">‹</button>
-        <span className="demo-pos">{liveHint ? 'live' : (demoIdx + 1) + ' / ' + DEMO_HINTS.length}</span>
+        <span className="demo-pos">{liveHint ? 'live' : (demoIdx + 1) + ' / ' + config.demoHints.length}</span>
         <button className="demo-arrow" onClick={() => cycleDemo(1)} aria-label="Next demo card">›</button>
       </div>
     </div>

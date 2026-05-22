@@ -17,11 +17,27 @@ interface ApiLot {
 }
 interface ApiResponse { lots: ApiLot[] }
 
-const QUICK_TILES = [
+const HOME_TILES = [
   { icon: '🅿️', label: 'Parking', prompt: 'Where should I park?' },
   { icon: '🍽️', label: 'Dining', prompt: 'Where can I eat?' },
   { icon: '⚡', label: 'Speed through security', prompt: 'What is MCO Reserve?' },
   { icon: '♿', label: 'Accessibility', prompt: 'What accessibility services does MCO offer?' },
+]
+
+const KIOSK_TILES = [
+  { icon: '🚪', label: 'Find my gate', prompt: 'Where is my gate?' },
+  { icon: '⏱️', label: 'Security lines', prompt: 'How long are security lines right now?' },
+  { icon: '🍽️', label: 'Food near me', prompt: 'What restaurants are near me?' },
+  { icon: '♿', label: 'Accessibility', prompt: 'What accessibility services does MCO offer?' },
+]
+
+// Static in-venue facts shown instead of the parking block in kiosk mode.
+// These are universally true at MCO and useful to a traveler already inside.
+const KIOSK_GLANCE = [
+  { icon: '🛜', head: 'Free Wi-Fi', sub: 'Available throughout all terminals' },
+  { icon: '🚆', head: 'Terminal link', sub: 'APM train · Terminals A/B ↔ C' },
+  { icon: '⚡', head: 'MCO Reserve', sub: 'Book a security slot · skip the line' },
+  { icon: '🚗', head: 'Ground transport', sub: 'Rideshare, taxi & shuttles at arrivals level' },
 ]
 
 function fillBar(available: number | null, total: number | null): { pct: number; color: string; label: string } {
@@ -59,52 +75,75 @@ export default function WelcomeCard({ hint }: { hint: WelcomeHint }) {
     : hint.mode === 'kiosk' ? 'Welcome to MCO'
     : 'Orlando International Airport'
 
+  const isKiosk = hint.mode === 'kiosk'
+  const tiles = isKiosk ? KIOSK_TILES : HOME_TILES
+  const sub = isKiosk
+    ? 'Ask about gates, security lines, dining, or anything else at MCO.'
+    : 'Ask Ana anything about your trip — parking, terminals, security, dining, accessibility, getting here.'
+
   return (
     <div className="canvas-card-inner welcome-card">
       <div className="welcome-hero">
         <div className="welcome-airport-code">MCO</div>
         <div className="welcome-airport-name">{greeting}</div>
-        <div className="welcome-sub">Ask Ana anything about your trip — parking, terminals, security, dining, accessibility, getting here.</div>
+        <div className="welcome-sub">{sub}</div>
       </div>
 
-      <div className="welcome-block">
-        <div className="welcome-block-head">
-          <span>Parking availability right now</span>
-          {hasLive && <span className="welcome-live-pill">Live</span>}
-        </div>
-        {loading && lots.length === 0 ? (
-          <div className="welcome-empty">Checking lots…</div>
-        ) : lots.length === 0 ? (
-          <div className="welcome-empty">Live data unavailable — ask Ana about parking for the full list.</div>
-        ) : (
-          <div className="welcome-parking-grid">
-            {lots.map(l => {
-              const bar = fillBar(l.available, l.total)
-              return (
-                <div key={l.id} className="welcome-parking-row">
-                  <div className="welcome-parking-name">{l.name}</div>
-                  <div className="welcome-parking-track" aria-label={l.name + ' ' + bar.label}>
-                    <div className="welcome-parking-fill" style={{ width: bar.pct + '%', background: bar.color }} />
-                  </div>
-                  <div className="welcome-parking-label">{l.available != null ? l.available.toLocaleString() + ' open' : bar.label}</div>
+      {isKiosk ? (
+        <div className="welcome-block">
+          <div className="welcome-block-head">At a glance</div>
+          <div className="welcome-glance-grid">
+            {KIOSK_GLANCE.map(g => (
+              <div key={g.head} className="welcome-glance-item">
+                <span className="welcome-glance-icon" aria-hidden>{g.icon}</span>
+                <div>
+                  <div className="welcome-glance-head">{g.head}</div>
+                  <div className="welcome-glance-sub">{g.sub}</div>
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="welcome-block">
+          <div className="welcome-block-head">
+            <span>Parking availability right now</span>
+            {hasLive && <span className="welcome-live-pill">Live</span>}
+          </div>
+          {loading && lots.length === 0 ? (
+            <div className="welcome-empty">Checking lots…</div>
+          ) : lots.length === 0 ? (
+            <div className="welcome-empty">Live data unavailable — ask Ana about parking for the full list.</div>
+          ) : (
+            <div className="welcome-parking-grid">
+              {lots.map(l => {
+                const bar = fillBar(l.available, l.total)
+                return (
+                  <div key={l.id} className="welcome-parking-row">
+                    <div className="welcome-parking-name">{l.name}</div>
+                    <div className="welcome-parking-track" aria-label={l.name + ' ' + bar.label}>
+                      <div className="welcome-parking-fill" style={{ width: bar.pct + '%', background: bar.color }} />
+                    </div>
+                    <div className="welcome-parking-label">{l.available != null ? l.available.toLocaleString() + ' open' : bar.label}</div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="welcome-block">
-        <div className="welcome-block-head">Common questions</div>
+        <div className="welcome-block-head">{isKiosk ? 'Quick actions' : 'Common questions'}</div>
         <div className="welcome-tile-grid">
-          {QUICK_TILES.map(t => (
+          {tiles.map(t => (
             <div key={t.label} className="welcome-tile" title={t.prompt}>
               <div className="welcome-tile-icon" aria-hidden>{t.icon}</div>
               <div className="welcome-tile-label">{t.label}</div>
             </div>
           ))}
         </div>
-        <div className="welcome-cue">Tap a question on the left, or type your own.</div>
+        <div className="welcome-cue">{isKiosk ? 'Tap the keyboard or pick a question on the left.' : 'Tap a question on the left, or type your own.'}</div>
       </div>
     </div>
   )

@@ -19,6 +19,8 @@
 --
 -- Idempotent via the IF EXISTS check on the source column.
 
+BEGIN;
+
 DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -38,3 +40,5 @@ END $$;
 -- Refresh the COMMENT in case the post-rename column lost it.
 COMMENT ON COLUMN conversation_turns.topic_id IS
   'Reference to town_hall_topics(id) when the turn was assigned to a topic by PulseIQ-side matching. NULL for 1:1 bot conversations. Renamed from theme_id in sql/080 (Phase 5 commit 5) to match the rest of the convergence nomenclature.';
+
+COMMIT;

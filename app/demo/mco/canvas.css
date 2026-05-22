@@ -586,6 +586,25 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Welcome card — at-a-glance grid (kiosk mode replaces parking block) */
+.canvas-shell .welcome-glance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.canvas-shell .welcome-glance-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.canvas-shell .welcome-glance-icon { font-size: 20px; line-height: 1; margin-top: 2px; flex-shrink: 0; }
+.canvas-shell .welcome-glance-head { font-size: 13px; font-weight: 600; color: #0a2540; }
+.canvas-shell .welcome-glance-sub { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
+
 .canvas-shell .welcome-tile-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -616,3 +635,7 @@
 .canvas-shell.mode-kiosk .welcome-tile { padding: 16px 18px; }
 .canvas-shell.mode-kiosk .welcome-tile-icon { font-size: 26px; }
 .canvas-shell.mode-kiosk .welcome-tile-label { font-size: 16px; }
+.canvas-shell.mode-kiosk .welcome-glance-item { padding: 14px 16px; }
+.canvas-shell.mode-kiosk .welcome-glance-icon { font-size: 24px; }
+.canvas-shell.mode-kiosk .welcome-glance-head { font-size: 15px; }
+.canvas-shell.mode-kiosk .welcome-glance-sub { font-size: 13px; }

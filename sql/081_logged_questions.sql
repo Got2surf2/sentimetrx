@@ -22,6 +22,8 @@
 -- read/write; RLS is enabled day-one with an org-scoped SELECT policy
 -- so other tenants can't see each other's logged questions.
 
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS logged_questions (
   id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id                  uuid NOT NULL,
@@ -79,3 +81,5 @@ COMMENT ON COLUMN logged_questions.classification IS
 
 COMMENT ON COLUMN logged_questions.suggested_kb_addition IS
   'Optional — when an admin reviews the question and proposes content the KB should add, the proposal lives here. Future: integrate with bot_change_log so KB additions that resolve a logged question get cross-linked.';
+
+COMMIT;

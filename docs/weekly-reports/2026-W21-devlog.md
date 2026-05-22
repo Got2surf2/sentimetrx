@@ -1820,3 +1820,22 @@ Approach: deterministic cuisine-icon emoji (28px, centred, drop-shadow) rendered
 **Why**: an all-gradient list read as "uncurated." The emoji glyph is deterministic (same place always gets the same icon), visually informative (🍔 vs 🌮 vs ☕ is faster to scan than the text meta line), and 100% offline — no per-render cost, no broken-image risks, no TOS concerns.
 
 **Tests**: typecheck clean. 251/251 non-pre-existing tests pass.
+
+## 2026-05-22 (later) — MCO kiosk welcome card overhaul + mode-specific demo hints
+
+User feedback: "parking is the least useful thing inside the airport — completely irrelevant in a kiosk. The main opening page should be something broader."
+
+**WelcomeCard**: kiosk mode now shows an "At a glance" 2×2 grid (Wi-Fi, APM train, MCO Reserve, Ground transport) instead of the parking availability block. Quick-action tiles swap to in-venue topics (Find my gate, Security lines, Food near me, Accessibility) instead of the home-mode planning topics.
+
+**Demo strip**: `DEMO_HINTS` replaced by `MODE_CONFIG[mode].demoHints`. Kiosk cycle is 4 cards (welcome → terminal map → restaurants → MCO Reserve) with no parking card. Home/invenue remain 5 cards including parking. Mode switch no longer risks an out-of-bounds demoIdx (clamped).
+
+| File | Change |
+|---|---|
+| `app/demo/mco/components/WelcomeCard.tsx` | `KIOSK_TILES`, `KIOSK_GLANCE` arrays; mode-conditional render for middle block and tiles |
+| `app/demo/mco/CanvasShell.tsx` | `ModeConfig.demoHints`; `MCO_RESERVE_HINT` shared const; kiosk chips updated; mode-switch clamp |
+| `app/demo/mco/canvas.css` | `.welcome-glance-grid/item/icon/head/sub` + kiosk size overrides |
+| `docs/MCO_AGENT.md` § 7.4 | WelcomeCard section rewritten to reflect mode-split |
+
+**Why**: parking availability is irrelevant once you're past security. The glance grid gives a kiosk user immediately useful context (especially the APM train + MCO Reserve) without requiring them to ask anything first.
+
+**Tests**: tsc clean. No test changes needed.
