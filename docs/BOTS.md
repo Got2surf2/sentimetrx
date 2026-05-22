@@ -342,7 +342,7 @@ Returns `{ processed: number, results: [{ botId, name, sessions, drift }] }` on 
 1. Loads bot by `slug` AND `status = 'active'` (single combined filter). 404 if missing.
 2. Renders `BotClient` (client component) which embeds the shared `components/ui/ChatBot.tsx` with the bot's branding from `bot.config`.
 3. CORS headers on the chat API (`Access-Control-Allow-Origin: *`) allow iframe embedding on the customer's website. The middleware CSRF check explicitly bypasses this path.
-4. `generateMetadata` emits Open Graph + Twitter card tags for iMessage/Slack/WhatsApp unfurls; the dynamic OG image lives at `app/b/[slug]/opengraph-image.tsx`.
+4. `generateMetadata` emits Open Graph + Twitter card tags for iMessage/Slack/WhatsApp unfurls; the dynamic OG image lives at `app/b/[slug]/opengraph-image.tsx`. The browser-tab favicon is also bot-specific: `app/b/[slug]/icon.tsx` reads `config.avatarLetter` + `config.avatarGradient` from the agents row and renders a 64×64 PNG matching the bot's in-app identity.
 
 **Legacy routes** `/bot`, `/nora`, `/clara` are thin `redirect()` pages that send to `/b/datanautix-assistant`, `/b/nora`, and `/b/clara` respectively — they no longer render `ChatBot.tsx` directly. Legacy `/api/bot-chat`, `/api/nora-chat`, `/api/clara-chat` endpoints are kept alive for backward-compat with external embeds.
 

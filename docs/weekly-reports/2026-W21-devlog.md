@@ -1870,3 +1870,22 @@ User feedback: "parking is the least useful thing inside the airport — complet
 - `app/demo/mco/CanvasShell.tsx` — new `resetKey` state + `clearConversation()`. Kiosk-mode `useEffect` sets a 60s inactivity timer (pointermove/keydown/touchstart/click reset it). New circular-arrow button in `.topbar-actions` group exposes the clear manually in every mode.
 - `app/demo/mco/canvas.css` — `.topbar-actions`/`.topbar-btn` generalized from old `.qr-btn`-only styles. Bubble `a` tags get blue underline (lighter blue on user bubbles for contrast).
 - `docs/MCO_AGENT.md` § 7.4 — new "Conversation reset" + "Markdown rendering" subsections.
+
+## 2026-05-22 (late) — MCO KB broad crawl (134 chunks) + anti-deflection prompt + branded favicons
+
+**Why**: Ana was deflecting to flymco.com URLs and the +1-407-825-3177 number for routine questions her KB should be able to answer (bookstores, charging stations, accessibility specifics, lost & found process, etc.). Goal: 90% of common questions handled inline. Also: /demo/mco showed the generic Sentimetrx favicon — should be branded to match the bot.
+
+**What changed**:
+- `scripts/_mco_scrape_pages.mjs` — NEW. Playwright crawl of 83 traveler-facing flymco.com pages (12 FAQ, accessibility, Wi-Fi, lost & found, concierge services, security, customs, 18 ground-transportation pages, all parking lots, airlines, Orlando-experience). Smart title extraction (document.title with site-name suffix stripped, fallback to H2 since H1 is always "Orlando International Airport (MCO)"). Excludes `/faqs` (employee FAQ — not traveler-facing).
+- `scripts/_mco_seed_pages_kb.ts` — NEW. Chunks each page to ≤2000 chars with sentence-aware splitting for oversized blocks (vehicles-for-hire's ~24k-char fee table broke `text-embedding-3-small`'s 8192-token cap). 28k-char safety truncation before embedding. Idempotent (deletes prior chunks with same source tag). Produced 134 chunks from 81 pages (2 empty pages skipped).
+- `scripts/_mco_tighten_prompt.ts` — NEW. Rewrites Ana's personality + system_prompt to prefer KB inline over URL deflection. Adds 4 anti-deflection guardrails (9 → 13). Idempotent.
+- `scripts/_mco_probe_deflection.ts` — NEW. 10 deflection-prone questions (bookstores, charging, terminal-A dining, lost & found, nursing rooms, smoking, international arrival timing, Annie's Space, APM, rideshare). 10/10 answered inline post-update.
+- `app/demo/mco/icon.tsx` — NEW. Static favicon: ✈️ on MCO blue gradient (#1e4d8b → #2b6cb0). Replaces the generic Sentimetrx mark on the demo page.
+- `app/b/[slug]/icon.tsx` — NEW. Dynamic per-bot favicon: reads `config.avatarLetter` + `config.avatarGradient` from the agents row, so every bot at /b/<slug> gets a tab icon matching its in-app identity.
+- `docs/MCO_AGENT.md` § 7.1 — KB now lists both corpuses (directory + info pages) and documents the anti-deflection prompt + probe verification.
+
+**Verification** — 10/10 probes against the production bot answered inline. Sample:
+- "Are there any bookstores at MCO?" → names InMotion Entertainment + Hudson Booksellers
+- "Where are the nursing rooms?" → "every terminal — both before and after security"
+- "Where are the smoking areas?" → "MCO is fully non-smoking — exit the terminal to smoke"
+- "What is Annie's Space?" → location (Terminal A, before security), hours, what it's for
