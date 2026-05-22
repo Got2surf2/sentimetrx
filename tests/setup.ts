@@ -23,3 +23,15 @@ vi.mock('next/headers', () => ({
   }),
   headers: () => new Headers(),
 }))
+
+// `server-only` (the npm package) throws on import outside of a Server
+// Component context. Many libs (lib/ai, lib/embeddings, lib/themeUtils,
+// etc.) import it as a guard against accidental client-side bundling.
+// In vitest those guards trip integration tests that transitively pull
+// a server-tagged lib. Globally stub the module to a no-op so the
+// imports succeed; per-test module mocks then substitute the actual
+// lib behavior. Phase 4 chat extraction (2026-05-21) expanded the
+// transitive imports of /api/townhall/chat such that this stub became
+// necessary — pre-extraction the server-only-importing libs were all
+// directly mocked by the integration test.
+vi.mock('server-only', () => ({}))
