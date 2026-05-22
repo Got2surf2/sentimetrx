@@ -919,7 +919,7 @@ Writes are server-side only via service role; `bot_change_log` has no client INS
 UI: `/bots/[id]/history` shows a chronological list with before/after diffs. `BotsClient` shows "Updated <relative>" on each card and links to History. Edit page header shows "Last updated <relative>" + "View history →" link.
 
 ### `GET /api/bots/[id]/conversations`
-Returns `{ sessions: [...] }`. Each session: `session_id, first_message, turn_count, started_at, last_at, user_name, flags[], has_deflection, persona`. User name is heuristically extracted from turn content (patterns: "My name is X", greeting extraction).
+Returns `{ sessions: [...] }`. Each session: `session_id, first_message, turn_count, started_at, last_at, user_name, flags[], has_deflection, persona`. User name primary source is `agent_session_personas.name` (populated by `lib/nameExtractor.ts` post-response — sql/085, 2026-05-22). Regex heuristics ("My name is X" / short capitalized first message / "Hi Sarah" in bot greeting) retained as fallback for sessions that pre-date the extractor.
 
 ### `GET /api/bots/[id]/conversations/[sessionId]`
 Returns turns in chronological order.

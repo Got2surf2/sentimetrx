@@ -466,7 +466,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 
 | File | resource_type | event_type | tier |
 |---|---|---|---|
-| `/api/bots/[id]/chat` (delegates to `lib/chatCore.handleChatTurn`) | bot | `chat`, `summary`, `deflect`, `intent`, `focus_classify`, `probe_focus_classify` | fast |
+| `/api/bots/[id]/chat` (delegates to `lib/chatCore.handleChatTurn`) | bot | `chat`, `summary`, `deflect`, `intent`, `focus_classify`, `probe_focus_classify`, `name_extract` | fast |
 | `/api/bots/[id]/knowledge` | bot | `knowledge_classify` | fast |
 | `/api/bots/[id]/conversations/report` | bot | `report` | fast / standard |
 | `/api/bots/[id]/conversations/insights-deck` | bot | `insights_deck` | standard |

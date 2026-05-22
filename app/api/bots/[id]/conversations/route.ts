@@ -68,14 +68,22 @@ export async function GET(req: NextRequest, { params }: Params) {
     turns = data || []
   }
 
-  // Get personas for this bot's sessions
+  // Get personas + extracted names for this bot's sessions. Name comes
+  // from lib/nameExtractor.ts (sql/085) — populated post-response when
+  // not already captured. Primary source for user_name; regex
+  // heuristics on turn content stay as fallback for sessions that
+  // pre-date the name extractor.
   const { data: personas } = await service
     .from('agent_session_personas')
-    .select('session_id, persona')
+    .select('session_id, persona, name')
     .eq('bot_id', params.id)
 
   const personaMap: Record<string, any> = {}
-  for (const p of (personas || [])) { personaMap[p.session_id] = p.persona }
+  const nameMap: Record<string, string> = {}
+  for (const p of (personas || [])) {
+    personaMap[p.session_id] = p.persona
+    if ((p as any).name) nameMap[p.session_id] = (p as any).name
+  }
 
   // Group by session_id
   interface SessionSummary {
@@ -88,7 +96,11 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!sessions[t.session_id]) {
       sessions[t.session_id] = {
         session_id: t.session_id, first_message: '', turn_count: 0,
-        started_at: t.created_at, last_at: t.created_at, user_name: '',
+        started_at: t.created_at, last_at: t.created_at,
+        // Primary source: agent_session_personas.name (from extractor).
+        // Heuristic regex below populates as fallback if name was never
+        // captured (older sessions, or extractor couldn't find a name).
+        user_name: nameMap[t.session_id] || '',
         flags: [], has_deflection: false, persona: personaMap[t.session_id] || null,
       }
     }

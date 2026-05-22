@@ -6,6 +6,28 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Name capture shipped (fixes ~88% "Anonymous" admin views)
+
+**Why**: Open queue followup. The conversations admin UI (`/bots/[id]/conversations`) extracted user names via three thin regex heuristics ("my name is X" / short capitalized first message / "Hi Sarah" in bot greeting) that fire on only ~12% of real sessions. The other 88% showed "Anonymous" — including most NOWOCATS Sarina test sessions where the user volunteered their name in natural conversation but the regex didn't match. Real legal-defensibility hit (NOWOCATS PM-2 wants to know WHO said what).
+
+**What changed**:
+- `sql/085_agent_session_personas_name.sql` (applied to prod) — adds `agent_session_personas.name text` column + partial index on `(bot_id, name) WHERE name IS NOT NULL`. Backfill NOT included; new sessions populate going forward.
+- `lib/nameExtractor.ts` (new) — `extractName(userMessages)` returns `{name, source, confidence}`. Single Haiku call, 80 tokens max, 5s timeout. Validates extracted name (single word, capitalized, alpha-only, ≤30 chars, drops "Anonymous"/"User"/titles).
+- `lib/chatCore.ts` — new name-capture block parallel to focus classifiers. Fires fire-and-forget on `user_turn_count == 2` (most common — most bots open by asking for name) and retries once at `user_turn_count == 5`. Skips entirely once `agent_session_personas.name` is non-null (cheap pre-check via SELECT — no AI call wasted). Generic across every bot — NO per-bot toggle.
+- `app/api/bots/[id]/conversations/route.ts` — list endpoint selects `name` from `agent_session_personas` alongside `persona`, builds `nameMap` keyed by session_id, uses it as PRIMARY source for `user_name`. Existing regex heuristics stay as fallback for sessions that pre-date the extractor.
+- `docs/USAGE_ACCOUNTING.md` — `/api/bots/[id]/chat` row adds `name_extract` event_type.
+
+**Cost discipline**: at most 2 AI calls per session (turn 2 + turn 5 if first call returned null). Once name is captured, zero further calls. Most NOWOCATS sessions will hit it on turn 2 since Sarina's opener literally asks for the first name.
+
+**Verification**:
+- Migration applied: `name` column exists.
+- Typecheck clean (excluding `lib/places.ts` — parallel session's WIP).
+- Existing regex heuristics retained as fallback so no regression for old sessions.
+
+**For NOWOCATS launch**: ships ON for every bot including Sarina. First NOWOCATS participant whose conversation hits 2 user turns will have their name extracted automatically — no per-bot configuration required. Admin views go from "Anonymous (88%)" to "actual name (~90%+ expected)" for new sessions.
+
+**Push gate**: 57th commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — Probe-focus tagging shipped (BOTS § 9.x.1 — matched/mismatched analysis unblocked)
 
 **Why**: Closes the conceptual gap surfaced during the "new agent capabilities" walk-through earlier today. Pre this commit, `conversation_turns.content_flags` carried `focus:<slug>` on assistant turns (what the bot's reply covered) but NOTHING on user turns telling you what the user actually talked about. So matched/mismatched analysis ("bot asked about housing, user answered about traffic") was structurally impossible — the only off-topic signal was the binary `outside_scope` deflection flag. This adds the missing half: per-user-turn topic classification using the same `bot.focuses` catalog.

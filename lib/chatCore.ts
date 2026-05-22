@@ -19,6 +19,7 @@ import { extractPersona, mergePersona, personaToPromptContext, extractDemographi
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
 import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
+import { extractName } from '@/lib/nameExtractor'
 import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
@@ -978,6 +979,36 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               }
             }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
           }
+        }
+
+        // Name capture (sql/085) — extract first name post-response if
+        // not already captured. Fires on user_turn_count 2 (most common —
+        // most agents open by asking for a name) and retries once at 5
+        // (catches names mentioned a few turns in). Skips entirely once
+        // agent_session_personas.name is non-null. Fixes the "Anonymous"
+        // ~88% admin views problem. Generic across every agent — no
+        // per-bot toggle.
+        const userTurnCountForName = lastUserMsg ? (turnBase / 2) + 1 : 0
+        if (session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
+          const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+          ;(async function captureName() {
+            try {
+              const { data: existing } = await service
+                .from('agent_session_personas')
+                .select('name')
+                .eq('bot_id', bot.id)
+                .eq('session_id', session_id)
+                .maybeSingle()
+              if (existing && (existing as any).name) return // already captured; no AI call
+              const r = await extractName(userMsgs)
+              if (!r.name) return
+              logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'name_extract' }, undefined)
+              await service.from('agent_session_personas')
+                .upsert({ bot_id: bot.id, session_id, name: r.name, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
+            } catch (e: any) {
+              console.error({ at: 'bot-chat', msg: 'name capture failed', err: e?.message })
+            }
+          })()
         }
 
         // Probe-focus classify (BOTS § 9.x.1) — user-side mirror, tags
