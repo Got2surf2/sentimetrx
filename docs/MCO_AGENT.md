@@ -308,11 +308,13 @@ The card has three sections: (a) hero with the big "MCO" mark + airport name + a
 
 **Mode-dependent middle block:**
 - `home` / `invenue`: live parking strip from `/api/mco/parking` — three garages with color-coded fill bars (green <70% full, amber 70-89%, red ≥90%), "Live" pill when GOAA data is fresh. Falls back gracefully when counts aren't available.
-- `kiosk`: "At a glance" 2×2 grid of static in-venue facts (Free Wi-Fi · Terminal link APM · MCO Reserve · Ground transport). Parking is omitted because a traveler already inside the airport has no use for parking availability.
+- `kiosk`: "At a glance" 2×2 grid of clickable in-venue fact tiles (Free Wi-Fi · Terminal link APM · MCO Reserve · Power & charging). Each tile sends a prompt to the chat pane when tapped. Ground Transport was removed from this grid (it duplicated the Quick Actions tile below).
 
-**Mode-dependent tiles:**
+**Mode-dependent quick action tiles:**
 - `home` / `invenue`: Parking · Dining · Speed through security · Accessibility
-- `kiosk`: Find my gate · Security lines · Food near me · Accessibility
+- `kiosk`: Shopping · Food & Drinks · Security · Ground Transport
+
+`terminal_map` extractor rule tightened: only fires for explicit navigation/wayfinding turns. Stating "I'm in Terminal A" during a dining conversation now correctly emits a `restaurants` hint scoped to that terminal rather than a map card.
 
 Hero text adapts to mode: `Orlando International Airport` (home) / `You're at MCO` (invenue) / `Welcome to MCO` (kiosk). Kiosk variant bumps hero + tile + glance-item sizes for touch.
 

@@ -1851,3 +1851,12 @@ User feedback: "parking is the least useful thing inside the airport — complet
 | `app/demo/mco/components/ParkingCard.tsx` | `lotNote()` helper; `picks` useMemo; conditional render — live path unchanged, no-counts path = picks layout |
 | `app/demo/mco/components/WelcomeCard.tsx` | `KIOSK_TILES` updated |
 | `app/demo/mco/canvas.css` | `.parking-picks`, `.parking-pick`, `.parking-pick-hl`, `.parking-pick-badge/name/meta/note`, `.parking-picks-footer` |
+
+## 2026-05-22 (later) — Extractor terminal_map over-fire fix + kiosk glance item polish
+
+**Why**: Saying "I'm in Terminal A" while asking about dining/shopping triggered a wayfinding map card on the right pane. The extractor's terminal_map rule was too broad ("OR a place inside a specific terminal") — any terminal mention could match it. Also: kiosk "At a glance" items were not clickable, and Ground Transport appeared in both the glance grid and the quick actions tiles.
+
+**What changed**:
+- `lib/uiHints.ts` — terminal_map rule rewritten: navigation/wayfinding only. Added counter-example for the dining-terminal-mention case. The assistant's answer now determines card type, not a terminal word in the user message.
+- `app/demo/mco/components/WelcomeCard.tsx` — KIOSK_GLANCE items converted to `<button>` elements using the same pendingMessage path as tiles. Ground Transport removed (duplicate); replaced with Power & charging. Each glance item has a prompt.
+- `app/demo/mco/canvas.css` — `.welcome-glance-item` gets cursor pointer, hover blue highlight, button reset.

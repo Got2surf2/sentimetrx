@@ -105,7 +105,7 @@ CONTEXT block — if present in the user input, the canvas has accumulated state
 Allowed hint types and required payload shapes:
 
 - terminal_map: { "type": "terminal_map", "terminal"?: "A"|"B"|"C", "gate"?: string, "from"?: "A"|"B"|"C", "to"?: "A"|"B"|"C", "via"?: "shuttle"|"terminal_link_apm" }
-  Use when the user is asking about a gate, terminal, terminal-to-terminal route, OR a place inside a specific terminal (bag claim, restroom, ticket counter at terminal X).
+  Use ONLY when navigation or wayfinding is the primary topic: finding a specific gate, getting between terminals, or locating a non-dining facility (bag claim, restroom, check-in counter). Do NOT emit this just because the user mentions a terminal name. If the user says "I'm in Terminal A" or "which terminal" while the conversation is about food, shopping, or services, emit the card for the ACTUAL topic (restaurants, etc.) — not terminal_map. The assistant's answer determines the card type, not a terminal mention in the user's message.
 
 - parking: { "type": "parking", "highlight"?: string[] }
   Use when the user is asking about parking, garages, lots, or cell-phone areas. Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet.
@@ -144,6 +144,7 @@ Examples:
 - User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
 - User: "What's the security wait like?" → Assistant: "Standard 15-30 min; MCO Reserve lets you book a slot to skip the line for free." → { "hint": { "type": "link_card", "title": "MCO Reserve", "body": "Standard security at MCO runs 15-30 minutes most days. MCO Reserve is a free service that lets you book a security time slot so you can skip into a shorter line.", "cta_url": "https://flymco.com/speed-through-mco", "cta_label": "Reserve a time slot" }, "next_chips": ["When are slots released?", "Is it really free?", "Does it work with PreCheck?"] }
 - CONTEXT: active_terminal=C, last_canvas_type=terminal_map. User: "Where can I get coffee?" → Assistant: "Starbucks and Cibo Espresso have outposts in Terminal C airside." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_c_airside" }, "next_chips": ["What's open before 6 AM?", "Sit-down breakfast?"] }
+- User: "I'm in Terminal A" (prior context was about shops/dining) → Assistant: "Great! For Terminal A's shops and dining, browse the directory and filter by Terminal A..." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Best quick bite near the gate?", "Any bars open now?", "Coffee shops?"] }
 - CONTEXT: last_canvas_type=restaurants. User: "Tell me a joke." → Assistant: "Off-topic gentle deflect." → { "hint": null, "next_chips": [], "revert_canvas": true }
 
 Output JSON only. No prose, no markdown fences.`

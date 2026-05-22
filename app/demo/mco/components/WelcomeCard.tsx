@@ -33,11 +33,12 @@ const KIOSK_TILES = [
 
 // Static in-venue facts shown instead of the parking block in kiosk mode.
 // These are universally true at MCO and useful to a traveler already inside.
+// Each item has a prompt so it's clickable and sends a chat message.
 const KIOSK_GLANCE = [
-  { icon: '🛜', head: 'Free Wi-Fi', sub: 'Available throughout all terminals' },
-  { icon: '🚆', head: 'Terminal link', sub: 'APM train · Terminals A/B ↔ C' },
-  { icon: '⚡', head: 'MCO Reserve', sub: 'Book a security slot · skip the line' },
-  { icon: '🚗', head: 'Ground transport', sub: 'Rideshare, taxi & shuttles at arrivals level' },
+  { icon: '🛜', head: 'Free Wi-Fi', sub: 'Available throughout all terminals', prompt: 'How do I connect to Wi-Fi at MCO?' },
+  { icon: '🚆', head: 'Terminal link', sub: 'APM train · Terminals A/B ↔ C', prompt: 'How do I take the train between terminals?' },
+  { icon: '⚡', head: 'MCO Reserve', sub: 'Book a security slot · skip the line', prompt: 'What is MCO Reserve?' },
+  { icon: '🔌', head: 'Power & charging', sub: 'Outlets & USB ports throughout terminals', prompt: 'Where can I charge my phone at MCO?' },
 ]
 
 function fillBar(available: number | null, total: number | null): { pct: number; color: string; label: string } {
@@ -94,13 +95,18 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
           <div className="welcome-block-head">At a glance</div>
           <div className="welcome-glance-grid">
             {KIOSK_GLANCE.map(g => (
-              <div key={g.head} className="welcome-glance-item">
+              <button
+                key={g.head}
+                className="welcome-glance-item"
+                title={g.prompt}
+                onClick={() => onTileClick?.(g.prompt)}
+              >
                 <span className="welcome-glance-icon" aria-hidden>{g.icon}</span>
                 <div>
                   <div className="welcome-glance-head">{g.head}</div>
                   <div className="welcome-glance-sub">{g.sub}</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
