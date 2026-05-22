@@ -1006,7 +1006,8 @@ A research instrument operationalizing Dr. Sunil Contractor's Comparative Evalua
 - **Org:** Datanautix
 - **Status:** `active` (discussion draft for Dr. Contractor review; intended for pilot fielding, not currently linked from any product surface)
 - **Framework tag:** `config.framework='regret_v1'` — present so future code can opt-in to framework-specific instrumentation if the pilot graduates
-- **Seed:** `sql/one-off/2026-05-22-regret-framework-agent.sql` (idempotent on slug)
+- **Seed:** `sql/one-off/2026-05-22-regret-framework-agent.sql` + name-fix `sql/one-off/2026-05-22-decision-study-name-fix.sql` (both idempotent on slug)
+- **Respondent-visible strings** — header `"Sarina"` (via `config.name` override), no subtitle (`config.subtitle=''`), avatar letter `"S"`. The internal `agents.name` is `"Decision Study (regret framework pilot)"` for admin clarity but BotClient.tsx prefers `config.name` when set, so it never reaches the respondent. **Do not surface the word "regret," "wish," "should," "research," or "study" anywhere a respondent can see** — that violates the framework's design constraint #1.
 
 The agent runs a 10-phase protocol: 7 substantive phases (context → outcome → comparative space with verbatim-echo drill matrix → conditional magnitude likert → role → reversibility → open close), then 3 quick demographics (age range / gender / region), then 3 single-item attitude probes (Maximizer tendency / Internal locus of control / Trait anxiety), then a close. Demos and attitude items come last by design — putting them up front would prime the construct.
 

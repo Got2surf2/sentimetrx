@@ -1,5 +1,15 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-22 (latest) — Decision Study agent: respondent-visible string fix
+
+**Bug shipped, caught immediately, fixed.** The initial seed (commit `c712989d`) set `agents.name = 'Decision Study (regret framework pilot)'` and `config.subtitle = 'A short research conversation'`. `BotClient.tsx:26-27` renders both in the widget header — meaning the respondent saw the words **"regret"**, **"research"**, and **"study"** before typing a single word. Direct violation of the framework's design constraint #1 (do not prime "regret" or any synonym; `study` and `research` also leak the methodological frame).
+
+Mistake of mine: writing the agent for the admin's mental model first and not auditing what the respondent actually sees. The system prompt's own neutrality rule (avoid `regret/wish/should/...`) explicitly forbids the AI from saying these words, but I never checked whether the chrome around the chat said them.
+
+Fix (`sql/one-off/2026-05-22-decision-study-name-fix.sql`, applied directly to prod): override `config.name = 'Sarina'`, `config.subtitle = ''`, `config.avatarLetter = 'S'`. These take precedence over `agents.name` per BotClient.tsx:26-28. Internal `agents.name` left as-is so admin views stay unambiguous. Name "Sarina" chosen because the deck explicitly frames the platform as "Sentimetrx + Sarina" — the contractor will recognize her.
+
+Hardened the BOTS.md § 9.z subsection with an explicit "do not surface these words anywhere a respondent can see" line so the next person editing the agent (or seeding any similar instrument) has the rule in front of them.
+
 ## 2026-05-22 (later) — Decision Study agent seeded (BOTS.md § 9.z)
 
 Why: Dr. Sunil Contractor's Comparative Evaluation Framework discussion deck (Mail attachment, May 2026) ended at "if the design holds, would you want to co-design the recruitment frame." Building the actual instrument so he can put hands on it is more useful than another deck. Originally scoped as a survey + clarify-route augmentation (5 files of code change), pivoted to an agent because the design is fundamentally conversational — silence, mirroring, echo, never propose alternatives the respondent hasn't named — which is exactly what agent system prompts do natively, with no schema or widget changes. SQL-only build, applied directly to prod (`supabase db query --linked --file sql/one-off/2026-05-22-regret-framework-agent.sql`), agent live at `/b/decision-study` for review.
