@@ -238,13 +238,21 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
 
       {(() => {
         const chipsToShow = liveChips ?? initialChips
-        return chipsToShow.length > 0 ? (
-          <div className="chips">
-            {chipsToShow.map((c) => (
-              <button key={c} className="chip" onClick={() => send(c)} disabled={pending}>{c}</button>
-            ))}
+        if (chipsToShow.length === 0) return null
+        // Only label the initial-suggestion set ("Common Searches"). Follow-up
+        // chips emitted by the extractor after a turn are contextual to the
+        // last reply, so a generic header would be misleading.
+        const showHeader = liveChips === null
+        return (
+          <div className="chips-block">
+            {showHeader && <div className="chips-header">Common Searches</div>}
+            <div className="chips">
+              {chipsToShow.map((c) => (
+                <button key={c} className="chip" onClick={() => send(c)} disabled={pending}>{c}</button>
+              ))}
+            </div>
           </div>
-        ) : null
+        )
       })()}
 
       <div className="chat-input">
