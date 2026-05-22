@@ -216,12 +216,17 @@ export interface PlaceCard {
   opening_hours_now: 'open' | 'closed' | 'unknown'
   formatted_address: string
   maps_url: string             // "https://maps.google.com/?cid=..."
+  primary_type: string | null  // e.g. "cafe", "restaurant"
+  cuisine_icon: string         // emoji glyph from cuisineIcon(name, primaryType)
+  logo_url: string | null      // brand logo URL — null until curation pass
+  is_mock: boolean
 }
 
+export function cuisineIcon(name: string, primaryType: string | null): string
 export async function fetchPlaceCards(placeIds: string[]): Promise<PlaceCard[]>
 ```
 
-Concurrency 8, 5-second timeout per call. Falls through on error (skip the place, keep the rest).
+`cuisineIcon` maps name + primaryType to a cuisine emoji (🍕, 🌮, ☕, etc.) via name-first priority lookups — handles brand identity cases where primaryType is generic "restaurant". Concurrency 8, 5-second timeout per call. Falls through on error (skip the place, keep the rest).
 
 ### 6.3 `lib/parking.ts` (new)
 
@@ -385,7 +390,7 @@ Estimated additional effort for a UCF Incubator variant: ~3 days on top of the M
   - **Commit 4 LANDED 2026-05-21** — live data integrations. `lib/parking.ts` talks to the GOAA public API at `api.goaa.aero/parking/availability/MCO` + `/parking/rates/MCO` (discovered via Playwright network sniff on flymco.com/parking-availability — the `api-key` is the public site key shipped in flymco's frontend JS, not a secret). 60s in-memory cache, in-flight dedup. `lib/places.ts` wraps Google Places API (New) Basic SKU with graceful degradation to context-scoped mock data when `GOOGLE_PLACES_API_KEY` is unset. Two new public routes: `GET /api/mco/parking`, `POST /api/mco/places`. `ParkingCard` + `RestaurantsCard` now fetch live data on mount; both cards label themselves as "Sample" or "Live" so the demo is honest about which is which. `middleware.ts` adds `/api/mco/*` to `PREFIX_BYPASS`.
   - **Commit 5 LANDED 2026-05-21** — brain commit (extractor scope + revert path). `lib/uiHints.ts` adds `ExtractorContext { activeTerminal, lastCanvasType }` threaded into the classifier via a CONTEXT preamble in `buildExtractorInput`; `ExtractorResult` gains `revert_canvas: boolean`. Prompt rewrite: explicit NO-STRETCH rule ("if no card cleanly fits, return hint:null"), active-terminal honoring directive ("stay within active_terminal for restaurants/parking unless the user explicitly references another"), revert_canvas signal ("set true when the new turn is clearly unrelated to last_canvas_type"), link_card cta_url allowlist extended with `https://flymco.com/speed-through-mco` for security-wait questions, `/ground-transportation`, and `/lost-and-found`. `/api/bots/[id]/ui-hints` route accepts the `context` body field (sanitized — activeTerminal must be A/B/C, lastCanvasType must be a known hint type) and returns `revert_canvas` in the response. `ChatPane` receives an `activeContext` prop and threads it into each POST; on `revert_canvas: true` it calls `onHintReceived(null)` so CanvasShell falls back to the idle welcome card. `CanvasShell` derives `activeContext` from the currently-rendered hint (terminal_map.to/from/terminal, restaurants.context terminal_X_airside, parking single garage_x) with invenue mode's structural Terminal B as a fallback. 16 new unit tests covering CONTEXT plumbing, revert_canvas signal, non-boolean coercion, and the prompt-text invariants. Total 47 passing. §10 of this spec dropped its verbatim prompt copy in favor of pointing at `UI_HINT_EXTRACTOR_PROMPT`.
   - **Commit 6 LANDED 2026-05-21** — link_card modal across all modes. New `LinkCardModal.tsx` component. `LinkCard.tsx` replaces its `<a href target=_blank>` CTA with a `<button>` that opens the modal; local `useState` for open/close, no portal (fixed overlay is enough on a single-page route). `HintRenderer` now passes `mode` to `LinkCard`. Esc + backdrop click + X button all close. Kiosk gets a 60s inactivity auto-dismiss and a bigger panel (920×var, 18px body, 30px title, 96px hero glyph) so a wall-display reader can scan it from a few feet back. The "Open full page on flymco.com" escape hatch link is hidden in kiosk (no keyboard/login on a wall) and shown in home/invenue (new tab). 47/47 uiHints tests still pass; tsc clean.
-  - **Commit 7+ (future)** — restaurant logos/photos on cards (hand-curated brand SVGs + cuisine-icon fallback); polished terminal SVGs with gate pins; public API access (gated on Phase 4 convergence completing); kiosk hardening (touch sizing, attestation); production deployment URL.
+  - **Commit 7+ (future)** — real brand logo curation pass (hand-curated SVGs in `public/mco/logos/` to populate `logo_url`; cuisine-icon emoji already ships as fallback); polished terminal SVGs with gate pins; public API access (gated on Phase 4 convergence completing); kiosk hardening (touch sizing, attestation); production deployment URL.
 - **Demo target:** TBD — driven by MCO opportunity timeline.
 
 ## 15. Decoupled extractor architecture (Commit 2 change vs. §6.1)

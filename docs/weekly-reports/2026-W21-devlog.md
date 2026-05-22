@@ -1781,3 +1781,20 @@ Fix: the link_card's CTA on the right pane no longer opens flymco.com in a new t
 **Tests**: 47/47 uiHints unit pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Modal UI is component logic — no unit tests added (would require testing-library setup); will be validated on the boardroom demo dry-run.
 
 **Next**: restaurant logos (#3 from the three-issue plan).
+
+## 2026-05-22 — MCO restaurant cards: cuisine-icon emoji overlaid on gradient photo area
+
+Addresses user request #3: "when showing restaurants can we also show their logos or an image of some sort?"
+
+Approach: deterministic cuisine-icon emoji (28px, centred, drop-shadow) rendered over each card's gradient photo block. No external assets, no fabricated URLs — just a visual classifier derived from the place name and primaryType. Real brand logo curation deferred until user can authorise specific asset sources; `logo_url: string | null` field is scaffolded for that future pass.
+
+| File | Change |
+|---|---|
+| `lib/places.ts` | `cuisineIcon(name, primaryType)` exported function (name-priority rules first, primaryType fallback). `PlaceCard` interface: added `cuisine_icon`, `logo_url`. Both fields populated in `livePlacesForContext()` and `fetchOne()`. |
+| `app/demo/mco/components/RestaurantsCard.tsx` | Local `PlaceCard` interface extended with `cuisine_icon` + `logo_url`. `<span className="cuisine-icon">` rendered inside `.resto-photo` div. |
+| `app/demo/mco/canvas.css` | `.resto-photo` becomes a flex container. `.cuisine-icon` rule: 28px, drop-shadow. Kiosk override: 34px. |
+| `docs/MCO_AGENT.md` § 6.2 | `PlaceCard` interface updated; `cuisineIcon` signature + intent documented; Commit 7+ note revised (brand logos still future). |
+
+**Why**: an all-gradient list read as "uncurated." The emoji glyph is deterministic (same place always gets the same icon), visually informative (🍔 vs 🌮 vs ☕ is faster to scan than the text meta line), and 100% offline — no per-render cost, no broken-image risks, no TOS concerns.
+
+**Tests**: typecheck clean. 251/251 non-pre-existing tests pass.

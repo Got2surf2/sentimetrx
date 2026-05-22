@@ -18,6 +18,8 @@ interface PlaceCard {
   formatted_address: string
   maps_url: string
   primary_type: string | null
+  cuisine_icon: string
+  logo_url: string | null
   is_mock: boolean
 }
 
@@ -110,7 +112,9 @@ export default function RestaurantsCard({ hint }: { hint: RestaurantsHint }) {
               className="resto"
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
-              <div className="resto-photo" style={{ backgroundImage: photoGradient(p.place_id) }} />
+              <div className="resto-photo" style={{ backgroundImage: photoGradient(p.place_id) }}>
+                <span className="cuisine-icon" aria-hidden="true">{p.cuisine_icon || '🍽️'}</span>
+              </div>
               <div className="resto-info">
                 <div className="resto-name">
                   <span>{p.name}</span>
