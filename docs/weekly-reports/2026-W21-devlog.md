@@ -1663,3 +1663,20 @@ Walking the canvas, two related complaints:
 **Promote path (TBD)**: a dedicated flip script that diffs pilot KB vs live and applies the delta. For now manual — run `_mco_seed_directory_kb.ts` against the live bot_id after the pilot is approved.
 
 **Tests**: 33/33 uiHints unit tests pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean.
+
+---
+
+## 2026-05-21 (later still) — Welcome / landing card replaces the C→A/B map default
+
+User feedback: "the default opening page shows directions on how to get from terminal C to A/B in the right pane — this is before you even are asked anything — the default needs to be something much more useful, or at the least the MCO landing page."
+
+Fix: new `WelcomeCard.tsx` becomes the right-pane default for all three deployment modes. Hero with **MCO** + airport name. Live parking availability strip from `/api/mco/parking` (three garages with color-coded fill bars). Common-questions tile grid. Mode-aware hero text. Kiosk variant bumps sizes for touch.
+
+| File | Change |
+|---|---|
+| `lib/uiHints.ts` | New `WelcomeHint` variant in the `UiHint` union. Extractor never emits it. |
+| `app/demo/mco/components/WelcomeCard.tsx` | NEW. Fetches `/api/mco/parking` on mount. |
+| `app/demo/mco/CanvasShell.tsx` | `DEMO_HINTS[0] = welcome`. All three modes default to slot 0. `HintRenderer` takes `mode` prop. |
+| `app/demo/mco/canvas.css` | ~112 lines of welcome-card styling + kiosk overrides. |
+
+Demo strip auto-updates 4 → 5 cards. invenue's `defaultHint` flipped 1 → 0 (contextStripe still shows the Terminal B cue). Tests: 33/33 uiHints unit pass; tsc clean.

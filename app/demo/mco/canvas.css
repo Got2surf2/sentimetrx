@@ -423,3 +423,115 @@
 .canvas-shell.mode-kiosk .canvas-header h2 { font-size: 24px; }
 .canvas-shell.mode-kiosk .resto-name { font-size: 16px; }
 .canvas-shell.mode-kiosk .resto-photo { width: 84px; height: 84px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Welcome / landing card — default right-pane state before any chat turn.
+   Replaces the previous default of showing a C→A/B terminal map (which felt
+   arbitrary before the user had asked anything).
+   ───────────────────────────────────────────────────────────────────────── */
+.canvas-shell .welcome-card { display: flex; flex-direction: column; gap: 22px; }
+.canvas-shell .welcome-hero {
+  text-align: left;
+  padding: 8px 4px 4px;
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 20px;
+}
+.canvas-shell .welcome-airport-code {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #0a2540;
+  line-height: 1;
+}
+.canvas-shell .welcome-airport-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0a2540;
+  margin-top: 4px;
+}
+.canvas-shell .welcome-sub {
+  font-size: 14px;
+  color: #4b5563;
+  margin-top: 10px;
+  max-width: 56ch;
+  line-height: 1.45;
+}
+.canvas-shell .welcome-block { display: flex; flex-direction: column; gap: 10px; }
+.canvas-shell .welcome-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.canvas-shell .welcome-live-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #d1fae5;
+  color: #065f46;
+  letter-spacing: 0.05em;
+}
+.canvas-shell .welcome-empty { font-size: 13px; color: #6b7280; padding: 6px 0; }
+.canvas-shell .welcome-parking-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.canvas-shell .welcome-parking-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 80px;
+  gap: 12px;
+  align-items: center;
+}
+.canvas-shell .welcome-parking-name { font-size: 14px; font-weight: 500; color: #111827; }
+.canvas-shell .welcome-parking-track {
+  height: 10px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.canvas-shell .welcome-parking-fill {
+  height: 100%;
+  transition: width 240ms ease-out;
+}
+.canvas-shell .welcome-parking-label {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.canvas-shell .welcome-tile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.canvas-shell .welcome-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fffbeb;
+  cursor: default;
+}
+.canvas-shell .welcome-tile-icon { font-size: 22px; line-height: 1; }
+.canvas-shell .welcome-tile-label { font-size: 14px; font-weight: 500; color: #0a2540; }
+.canvas-shell .welcome-cue {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* Kiosk mode: make the welcome card hero + tiles bigger for touch */
+.canvas-shell.mode-kiosk .welcome-airport-code { font-size: 56px; }
+.canvas-shell.mode-kiosk .welcome-airport-name { font-size: 22px; }
+.canvas-shell.mode-kiosk .welcome-tile { padding: 16px 18px; }
+.canvas-shell.mode-kiosk .welcome-tile-icon { font-size: 26px; }
+.canvas-shell.mode-kiosk .welcome-tile-label { font-size: 16px; }

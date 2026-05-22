@@ -1,0 +1,111 @@
+'use client'
+
+// Default landing card for the right pane of /demo/mco. Shows MCO branding,
+// a live parking snapshot pulled from /api/mco/parking, and four quick-
+// access tiles representing the most-asked topics. Replaces the previous
+// default of showing a C→A/B map before the user has asked anything.
+
+import { useEffect, useState } from 'react'
+import type { WelcomeHint } from '@/lib/uiHints'
+
+interface ApiLot {
+  id: string
+  name: string
+  available: number | null
+  total: number | null
+  status: 'open' | 'closed' | string
+}
+interface ApiResponse { lots: ApiLot[] }
+
+const QUICK_TILES = [
+  { icon: '🅿️', label: 'Parking', prompt: 'Where should I park?' },
+  { icon: '🍽️', label: 'Dining', prompt: 'Where can I eat?' },
+  { icon: '⚡', label: 'Speed through security', prompt: 'What is MCO Reserve?' },
+  { icon: '♿', label: 'Accessibility', prompt: 'What accessibility services does MCO offer?' },
+]
+
+function fillBar(available: number | null, total: number | null): { pct: number; color: string; label: string } {
+  if (total == null || total <= 0 || available == null) return { pct: 0, color: '#9ca3af', label: '—' }
+  const filled = total - available
+  const pct = Math.max(0, Math.min(100, Math.round((filled / total) * 100)))
+  let color = '#10b981'  // green — plenty open
+  if (pct >= 70) color = '#f59e0b'  // amber — filling up
+  if (pct >= 90) color = '#ef4444'  // red — nearly full
+  return { pct, color, label: pct + '% full' }
+}
+
+export default function WelcomeCard({ hint }: { hint: WelcomeHint }) {
+  const [lots, setLots] = useState<ApiLot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [hasLive, setHasLive] = useState(false)
+
+  useEffect(() => {
+    let aborted = false
+    setLoading(true)
+    fetch('/api/mco/parking', { method: 'GET' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then((data: ApiResponse) => {
+        if (aborted) return
+        const garages = (data.lots || []).filter(l => /Garage [ABC]/i.test(l.name)).sort((a, b) => a.name.localeCompare(b.name))
+        setLots(garages)
+        setHasLive(garages.some(g => g.available != null && g.total != null))
+      })
+      .catch(() => { if (!aborted) setLots([]) })
+      .finally(() => { if (!aborted) setLoading(false) })
+    return () => { aborted = true }
+  }, [])
+
+  const greeting = hint.mode === 'invenue' ? "You're at MCO"
+    : hint.mode === 'kiosk' ? 'Welcome to MCO'
+    : 'Orlando International Airport'
+
+  return (
+    <div className="canvas-card-inner welcome-card">
+      <div className="welcome-hero">
+        <div className="welcome-airport-code">MCO</div>
+        <div className="welcome-airport-name">{greeting}</div>
+        <div className="welcome-sub">Ask Ana anything about your trip — parking, terminals, security, dining, accessibility, getting here.</div>
+      </div>
+
+      <div className="welcome-block">
+        <div className="welcome-block-head">
+          <span>Parking availability right now</span>
+          {hasLive && <span className="welcome-live-pill">Live</span>}
+        </div>
+        {loading && lots.length === 0 ? (
+          <div className="welcome-empty">Checking lots…</div>
+        ) : lots.length === 0 ? (
+          <div className="welcome-empty">Live data unavailable — ask Ana about parking for the full list.</div>
+        ) : (
+          <div className="welcome-parking-grid">
+            {lots.map(l => {
+              const bar = fillBar(l.available, l.total)
+              return (
+                <div key={l.id} className="welcome-parking-row">
+                  <div className="welcome-parking-name">{l.name}</div>
+                  <div className="welcome-parking-track" aria-label={l.name + ' ' + bar.label}>
+                    <div className="welcome-parking-fill" style={{ width: bar.pct + '%', background: bar.color }} />
+                  </div>
+                  <div className="welcome-parking-label">{l.available != null ? l.available.toLocaleString() + ' open' : bar.label}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="welcome-block">
+        <div className="welcome-block-head">Common questions</div>
+        <div className="welcome-tile-grid">
+          {QUICK_TILES.map(t => (
+            <div key={t.label} className="welcome-tile" title={t.prompt}>
+              <div className="welcome-tile-icon" aria-hidden>{t.icon}</div>
+              <div className="welcome-tile-label">{t.label}</div>
+            </div>
+          ))}
+        </div>
+        <div className="welcome-cue">Tap a question on the left, or type your own.</div>
+      </div>
+    </div>
+  )
+}

@@ -20,6 +20,15 @@ export type UiHint =
   | ParkingHint
   | RestaurantsHint
   | LinkCardHint
+  | WelcomeHint
+
+// Welcome / default-state card. Never emitted by the extractor — only used
+// by the canvas's demo-strip default slot so the right pane shows
+// something representative of MCO before the user has asked anything.
+export interface WelcomeHint {
+  type: 'welcome'
+  mode?: DeploymentMode
+}
 
 export interface TerminalMapHint {
   type: 'terminal_map'
