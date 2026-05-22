@@ -1703,3 +1703,25 @@ Root cause: the extractor saw only `{userMessage, assistantMessage}` — no memo
 **Tests**: 47/47 uiHints unit tests pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean.
 
 **Next**: link_card modal-overlay in all modes (so kiosk and home/invenue stop navigating away from the chat session). Restaurant logos. Polished terminal SVGs.
+
+---
+
+## 2026-05-21 (yet later) — link_card opens a modal instead of navigating away
+
+User feedback: "in the right pane in kiosk mode the system should not open a new page — maybe a better approach is a modal with the page so closing that goes back to the chat and display. Modal may make more sense for all modes."
+
+Fix: the link_card's CTA on the right pane no longer opens flymco.com in a new tab. It opens an in-product modal that expands the same content into a presentation-friendly layout and keeps the user inside the canvas session.
+
+| File | Change |
+|---|---|
+| `app/demo/mco/components/LinkCardModal.tsx` | NEW. Full-screen overlay; Esc + backdrop + X close; kiosk gets 60s inactivity auto-dismiss; "Open full page on flymco.com" hidden in kiosk, shown elsewhere. |
+| `app/demo/mco/components/LinkCard.tsx` | CTA `<a target=_blank>` → `<button onClick>`. Local open/close state. Accepts `mode` prop. |
+| `app/demo/mco/CanvasShell.tsx` | `HintRenderer` passes `mode` to `LinkCard`. |
+| `app/demo/mco/canvas.css` | +90 lines: backdrop, panel, hero, title, body, footer, primary button, secondary link, kiosk overrides (920×var, 18px body, 30px title, 96px hero glyph). Existing `.link-cta` reset for `<button>` use. |
+| `docs/MCO_AGENT.md` § 7.3 + § 7.3a + § 14 | Stickiness rule updated to reference the `revert_canvas` signal. New § 7.3a documents the modal behavior. Commit 6 entry in § 14. |
+
+**Why**: a hard navigate away from `/demo/mco` was disorienting in every mode. Kiosk had no back button on a wall display. Home/invenue lost the chat session, dumping the user on flymco.com with no way to return to the conversation that brought them there. The modal preserves the conversation context, presents the content more boldly than the right-pane card, and the kiosk auto-dismiss keeps the screen ready for the next person walking up.
+
+**Tests**: 47/47 uiHints unit pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Modal UI is component logic — no unit tests added (would require testing-library setup); will be validated on the boardroom demo dry-run.
+
+**Next**: restaurant logos (#3 from the three-issue plan).

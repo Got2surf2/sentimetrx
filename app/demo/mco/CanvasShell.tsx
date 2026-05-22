@@ -91,7 +91,7 @@ function HintRenderer({ hint, mode }: { hint: UiHint; mode: DeploymentMode }) {
   if (hint.type === 'terminal_map') return <TerminalMapCard hint={hint} />
   if (hint.type === 'restaurants') return <RestaurantsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
-  if (hint.type === 'link_card') return <LinkCard hint={hint} />
+  if (hint.type === 'link_card') return <LinkCard hint={hint} mode={mode} />
   return null
 }
 
