@@ -946,14 +946,21 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
         const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
 
+        // Track whether we inserted a greeting opener — if so, the user
+        // turn that follows must be T1 (not T0), otherwise both turns
+        // collide on turn_number=0 and the admin transcript views see
+        // them as duplicates.
+        var insertedGreetingThisTurn = false
         if (maxExisting < 0) {
           var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
           if (initialMsg) {
             turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
+            insertedGreetingThisTurn = true
           }
         }
 
         var turnBase = maxExisting + 1
+        if (insertedGreetingThisTurn) turnBase = 1  // greeting took T0; user → T1, assistant reply → T2.
         var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
         if (auditFlags.length > 0) userTurn.content_flags = auditFlags
         if (userContent) {
@@ -1001,13 +1008,39 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }
         }
 
-        // Name capture (sql/085) — extract first name post-response if
-        // not already captured. Fires on user_turn_count 2 (most common —
-        // most agents open by asking for a name) and retries once at 5
-        // (catches names mentioned a few turns in). Skips entirely once
-        // agent_session_personas.name is non-null. Fixes the "Anonymous"
-        // ~88% admin views problem. Generic across every agent — no
-        // per-bot toggle.
+        // Name capture — two sources, in priority order:
+        //   1. Widget-collected name (user_name in request body, set by
+        //      components/ui/ChatBot.tsx after the askName client-side
+        //      dance). When present, persist it directly. No AI call.
+        //      Fixes the "Anonymous" label on bots like Hope that use
+        //      the askName widget flow.
+        //   2. AI extractor (sql/085 / lib/nameExtractor) — fallback for
+        //      sessions where the name was given inside a chat message
+        //      (no widget pre-prompt). Fires on user_turn_count 2 (most
+        //      common) and retries once at 5. Skips when name already
+        //      set (either by the widget path above, or a prior turn's
+        //      extractor success).
+        if (session_id && typeof user_name === 'string') {
+          var widgetName = user_name.trim().slice(0, 60)
+          if (widgetName && widgetName !== '_skip') {
+            ;(async function persistWidgetName() {
+              try {
+                const { data: existing } = await service
+                  .from('agent_session_personas')
+                  .select('name')
+                  .eq('bot_id', bot.id)
+                  .eq('session_id', session_id)
+                  .maybeSingle()
+                if (existing && (existing as any).name) return  // already captured; idempotent skip
+                await service.from('agent_session_personas')
+                  .upsert({ bot_id: bot.id, session_id, name: widgetName, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
+              } catch (e: any) {
+                console.error({ at: 'bot-chat', msg: 'widget name persist failed', err: e?.message })
+              }
+            })()
+          }
+        }
+
         const userTurnCountForName = lastUserMsg ? (turnBase / 2) + 1 : 0
         if (session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
           const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
