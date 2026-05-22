@@ -408,6 +408,12 @@ export function buildBotSchema(): SchemaConfig {
   // Mirrors buildTownHallSchema where it makes sense (sentiment, language,
   // open-ended user_message as primary text) but drops the topic/topic_type
   // fields since per-turn topics aren't tagged for bot conversations.
+  //
+  // Gap #6 (2026-05-22): the three town_hall_* fields are populated for
+  // conversations linked to a town hall via town_hall_conversations. NULL /
+  // empty-string for 1:1 widget conversations. Lets Ana filter the bot
+  // dataset by town hall slug, name, or 'unlinked' (1:1 widget) to slice
+  // multi-event customers (e.g. all Vindman events vs widget visitors).
   const fields: SchemaFieldConfig[] = [
     { field: 'turn_id',          type: 'id' },
     { field: 'session_id',       type: 'categorical', label: 'Conversation' },
@@ -417,6 +423,8 @@ export function buildBotSchema(): SchemaConfig {
     { field: 'language',         type: 'categorical', label: 'Language' },
     { field: 'sentiment',        type: 'categorical', label: 'Sentiment' },
     { field: 'sentiment_score',  type: 'numeric',     label: 'Sentiment Score', min: -1, max: 1 },
+    { field: 'town_hall_slug',   type: 'categorical', label: 'Town Hall (slug)' },
+    { field: 'town_hall_name',   type: 'categorical', label: 'Town Hall (name)' },
     { field: 'responded_at',     type: 'date',        label: 'Date' },
   ]
   return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }

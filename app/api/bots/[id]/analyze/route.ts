@@ -177,6 +177,27 @@ export async function POST(_req: Request, { params }: Params) {
     }
   }
 
+  // Gap #6 (2026-05-22): town-hall attribution per row. Look up which
+  // town hall (if any) each session_id belongs to via the conversations →
+  // town_hall_conversations → town_halls chain. Empty string for 1:1
+  // widget conversations (not linked to any town hall). Allows Ana to
+  // filter the bot dataset by town hall slug/name for cross-event
+  // analysis (e.g. all Vindman events vs widget visitors).
+  const affectedSessionIds = Array.from(new Set(turns.filter(t => t.role === 'user').map(t => t.session_id)))
+  const townHallBySession: Record<string, { slug: string; name: string }> = {}
+  if (affectedSessionIds.length > 0) {
+    const { data: convLinks } = await service
+      .from('conversations')
+      .select('session_id, town_hall_conversations!inner(town_halls!inner(slug, name))')
+      .eq('bot_id', botId)
+      .in('session_id', affectedSessionIds)
+    for (const c of (convLinks || []) as any[]) {
+      const thc = Array.isArray(c.town_hall_conversations) ? c.town_hall_conversations[0] : c.town_hall_conversations
+      const th = thc && (Array.isArray(thc.town_halls) ? thc.town_halls[0] : thc.town_halls)
+      if (th?.slug) townHallBySession[c.session_id] = { slug: th.slug, name: th.name || th.slug }
+    }
+  }
+
   // Walk turns and emit one row per user turn, with bot_message taken from
   // the last assistant turn in the same session whose turn_number is < the
   // user turn's. Standalone assistants (greeting with no user reply) are
@@ -197,6 +218,7 @@ export async function POST(_req: Request, { params }: Params) {
     }
     // role === 'user'
     const pending = pendingBySession[t.session_id]
+    const townHall = townHallBySession[t.session_id]
     rows.push({
       turn_id:         t.id,
       session_id:      t.session_id,
@@ -206,6 +228,8 @@ export async function POST(_req: Request, { params }: Params) {
       language:        t.language || 'en',
       sentiment:       t.sentiment ?? null,
       sentiment_score: t.sentiment_score ?? null,
+      town_hall_slug:  townHall?.slug || '',
+      town_hall_name:  townHall?.name || '',
       responded_at:    t.created_at,
     })
   }

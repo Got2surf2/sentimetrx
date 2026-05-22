@@ -6,6 +6,24 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Gap #6: bot-level analyze gains town-hall attribution columns
+
+**Why**: With NOWOCATS launching on Sarina and Vindman post-launch on Sir O'Gate (each bot potentially hosting N town halls long-term), bot-level analyze previously emitted dataset rows with NO column tying each row back to its town hall — so a Sir O'Gate dataset would mix all Vindman events + 1:1 widget chats with no way to filter or compare. Per-event datasets (Gap #5) sidestepped this but users may want a single bot dataset that's filterable by town hall instead of combining N datasets.
+
+**What changed**:
+- `app/api/bots/[id]/analyze/route.ts` — single `conversations` → `town_hall_conversations` → `town_halls` join per sync batch, scoped to affected session_ids (small fan-out, not corpus). Result memoized in `townHallBySession: Record<sessionId, {slug, name}>`. Per-row population: `town_hall_slug` + `town_hall_name` filled when the session is linked, empty string otherwise.
+- `lib/datasetUtils.ts` `buildBotSchema()` — two new `categorical` fields with labels "Town Hall (slug)" + "Town Hall (name)". Comment block explains the empty-string-means-widget contract.
+- `docs/ANALYTICS.md` + `docs/CONVERGENCE.md` updated.
+
+**Verification**:
+- Typecheck clean (`rm tsconfig.tsbuildinfo && npx tsc --noEmit`).
+- `POST /api/bots/5c468b90-13fc-46a2-8855-312dc0a1e428/analyze` returns 403 (CSRF middleware) — same gate as before. Route doesn't 500.
+- Both substrates affected: the join is added at the row-emit layer, after both `isPhase3ReadSafe()` branches converge into the unified `turns[]` array. Phase-3 and legacy both get attribution.
+
+**Pragmatic note**: Today Sarina's only town hall is `sarina-cohort` (Phase 6 prep) and the NOWOCATS row hasn't been provisioned yet. So a Sarina bot-level analyze run today populates `town_hall_slug='sarina-cohort'` for the 5 test conversations + empty for the 1:1 widget chats. After NOWOCATS launches, the same dataset starts segmenting widget vs nowocats. After Vindman launches on Sir O'Gate with its first town hall, the Sir O'Gate dataset segments widget vs vindman-<eventslug>.
+
+**Push gate**: 51st commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — MCO_AGENT WIP absorbed from parallel session (coordination commit)
 
 **Why**: A parallel Claude session was actively editing MCO_AGENT files (canvas components, `lib/places.ts`, new directory-scrape scripts, `MCO_AGENT.md`, `data/mco_live_ratings.json`) and had them staged-but-uncommitted when this session ran `git commit` on unrelated NOWOCATS work. The MCO changes leaked into a commit with a misleading message (`f1ada33 chore(nowocats): draft town_halls row SQL`). Honest fix: soft-reset that commit, split into two. NOWOCATS landed cleanly in `785de4f`. This commit captures the parallel-session MCO WIP with accurate provenance so the trail isn't misleading.

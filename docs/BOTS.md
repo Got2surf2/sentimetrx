@@ -952,7 +952,9 @@ Single URL fetch. Returns `{ url, title, text }`.
 **Body:** `{ query }`. Calls AI (`tier: 'standard'`) to synthesize research on a topic for inclusion in knowledge. Returns `{ research: string }`. `maxDuration: 60s`.
 
 ### `POST /api/bots/[id]/analyze`
-Creates or syncs a dataset from this bot's `bot_conversation_turns`. First call: creates the dataset, builds a bot schema, imports turns. Subsequent calls: syncs new turns into the existing dataset. The bot↔dataset link lives in `dataset.description` as `bot:<id>` (mirrors TownHall's `th:<id>` convention since `datasets.study_id` only FKs studies). Auth uses `getCallerOrgContext` (Phase E parity — admin orgs may sync cross-org). Returns `{ dataset_id, synced, total, created }`. `maxDuration: 30s`.
+Creates or syncs a dataset from this bot's `bot_conversation_turns` (legacy) or `conversation_turns` joined via `conversations` (phase-3, when `isPhase3ReadSafe()`). First call: creates the dataset, builds a bot schema, imports turns. Subsequent calls: syncs new turns into the existing dataset. The bot↔dataset link lives in `dataset.description` as `bot:<id>` (mirrors TownHall's `th:<id>` convention since `datasets.study_id` only FKs studies). Auth uses `getCallerOrgContext` (Phase E parity — admin orgs may sync cross-org). Returns `{ dataset_id, synced, total, created }`. `maxDuration: 30s`.
+
+> **Gap #6 (2026-05-22) — town-hall attribution per row**: Each emitted row carries `town_hall_slug` + `town_hall_name` (categorical fields in `buildBotSchema()`). Populated via a single `conversations → town_hall_conversations → town_halls` join per sync batch, scoped to affected session_ids (small fan-out, not corpus-wide). Empty string for 1:1 widget conversations. Lets Ana filter a single bot's dataset by town hall — alternative to the per-event-dataset workflow from Gap #5 (`/api/townhall/sessions/[id]/analyze`). Both workflows coexist. Works for both substrates: the join is added at the row-emit layer after the `isPhase3ReadSafe()` branches converge.
 
 ---
 
