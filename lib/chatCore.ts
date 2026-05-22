@@ -26,6 +26,7 @@ import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
+import { detectEntityMentions } from '@/lib/entityMentionDetector'
 
 export interface TownHallContext {
   townHallId: string
@@ -1064,28 +1065,37 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           })()
         }
 
-        // Probe-focus classify (BOTS § 9.x.1) — user-side mirror, tags
-        // topic:<slug> on the just-saved user turn. Gated per-bot via
-        // agents.probe_focus_enabled (sql/084) — off by default to
-        // control AI cost. Unlocks matched/mismatched analysis vs the
-        // focus:<slug> tags written above.
-        if (botFocuses.length > 0 && (bot as any).probe_focus_enabled && insertedRows && insertedRows.length > 0 && lastUserMsg?.content) {
+        // User-turn post-processing — entity mentions (BOTS § 9.y) + probe
+        // focuses (BOTS § 9.x.1). Both write to the same content_flags
+        // column, so we bundle them into a single fire-and-forget block
+        // with one merged UPDATE to avoid a write race. Entity detection
+        // runs ALWAYS (free, no AI); probe focuses only when
+        // agents.probe_focus_enabled is true.
+        if (insertedRows && insertedRows.length > 0 && lastUserMsg?.content && session_id) {
           const userRow = insertedRows.find(function(r: any) { return r.role === 'user' && r.turn_number === turnBase })
           if (userRow) {
-            classifyProbeFocuses(botFocuses, lastUserMsg.content).then(function(probeResult) {
-              if (probeResult.usage) {
-                logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'probe_focus_classify' }, probeResult.usage)
-              }
-              if (probeResult.slugs.length > 0) {
-                const topicFlags = probeResult.slugs.map(function(s) { return 'topic:' + s })
-                // Merge with any existing content_flags (safety tags from
-                // contentGuard, etc) instead of overwriting.
+            (async function() {
+              try {
+                const entitySlugs = await detectEntityMentions(service, bot.id, lastUserMsg.content)
+                let topicSlugs: string[] = []
+                if (botFocuses.length > 0 && (bot as any).probe_focus_enabled) {
+                  const probeResult = await classifyProbeFocuses(botFocuses, lastUserMsg.content)
+                  if (probeResult.usage) {
+                    logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'probe_focus_classify' }, probeResult.usage)
+                  }
+                  topicSlugs = probeResult.slugs
+                }
+                if (entitySlugs.length === 0 && topicSlugs.length === 0) return
                 const existing = Array.isArray((userRow as any).content_flags) ? (userRow as any).content_flags : []
-                const merged = Array.from(new Set([...existing, ...topicFlags]))
-                service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', (userRow as any).id).then(function() {})
-                mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (userRow as any).turn_number, flags: merged }).then(function() {})
+                const entityFlags = entitySlugs.map(function(s) { return 'entity:' + s })
+                const topicFlags = topicSlugs.map(function(s) { return 'topic:' + s })
+                const merged = Array.from(new Set([...existing, ...topicFlags, ...entityFlags]))
+                await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', (userRow as any).id)
+                await mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (userRow as any).turn_number, flags: merged })
+              } catch (e: any) {
+                console.error({ at: 'bot-chat', msg: 'user-turn classify failed', err: e?.message })
               }
-            }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'probe focus classify failed', err: e?.message }) })
+            })()
           }
         }
       } catch (e: any) {

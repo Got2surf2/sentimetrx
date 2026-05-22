@@ -874,11 +874,11 @@ For the demo to show role-tagged, theme-tagged transcripts, do these in order:
 - **Topic vocabulary drift** — when residents raise themes outside the existing `bot.focuses` catalog, do we (a) auto-propose new focuses (`suggestFocusesFromPrompt` exists), (b) bucket into `topic:other` and review weekly, or (c) both? Default (c).
 - **PII redaction** — user turns can contain home addresses, phones. Question Log export must redact by default, with an admin toggle to reveal. Need a redaction pass tied to `safety:pii` flags before any external sharing.
 
-### 9.y Entity-from-KB mention tagging (MVP spec — not built, 2026-05-23)
+### 9.y Entity-from-KB mention tagging (MVP — SHIPPED 2026-05-22)
 
 Driver: every shipped agent (MCO, UCF Incubator, Hope, Sarina/NOWOCATS, Sir O'Gate) has a rich named-entity vocabulary buried in its KB — terminals, gates, airlines, programs, partners, council members, ordinances. Today we can't query "how many users asked about Terminal A this week" or "did anyone mention the Foundations Project by name." This MVP captures entity mentions structurally on user turns so the data lands; aggregation views come in v2.
 
-**Status**: spec only. No code yet.
+**Status**: shipped (code-complete, awaiting prod migration). `sql/087_entity_catalog_bot_scope.sql` authored — apply with `supabase db query --linked --file sql/087_entity_catalog_bot_scope.sql` before the routes are usable. `lib/botEntityExtraction.ts` + `lib/entityMentionDetector.ts` written; chat-route hook wired (bundled with the probe-focus block to share one merged content_flags UPDATE — avoids the write race that would have occurred with two separate fire-and-forget blocks); `entity:` emerald pill style live in `lib/flagStyles.ts`; admin tab at `/bots/[id]/entities` with hide/edit/extract actions; "Entities" link added to bot card footer on `/bots`.
 
 **Open design questions** (resolved 2026-05-23):
 1. **When to extract** → on demand only. No auto-extraction at KB seed time. Admin clicks "Re-extract entities" on the new tab when they want it. Keeps cost predictable and avoids stale data on bots whose KB never gets touched.
@@ -958,34 +958,35 @@ Algorithm (string match, not AI):
 - Default view filters out `hidden=true` rows with an "Including hidden (N)" toggle to reveal.
 - Inline row actions: hide / unhide (toggles `hidden` column, matches dataset-scope pattern) | edit canonical/aliases (sets `source='manual'`).
 
-#### 9.y.5 Files touched (forward-looking — drift triggers once code lands)
+#### 9.y.5 Files touched
 
 | File | Change |
 |---|---|
 | `sql/087_entity_catalog_bot_scope.sql` | New migration — extend CHECK + add partial index |
 | `lib/botEntityExtraction.ts` | New — Haiku-backed extractor |
 | `lib/entityMentionDetector.ts` | New — cached string-match classifier |
-| `lib/chatCore.ts` | +~5 lines — fire-and-forget hook after `classifyProbeFocuses` |
+| `lib/chatCore.ts` | Replaced the probe-focus fire-and-forget block with a bundled user-turn block that runs entity detection (always) + probe-focus classify (when `agents.probe_focus_enabled`) and writes one merged `content_flags` UPDATE |
 | `lib/flagStyles.ts` | +~6 lines — `entity:` dynamic style + `isFixedFlag` exclusion |
 | `app/api/bots/[id]/entities/route.ts` | New — `GET` (list, scoped by bot's org via paired `id`+`org_id`) |
 | `app/api/bots/[id]/entities/extract/route.ts` | New — `POST` (trigger re-extract) |
 | `app/api/bots/[id]/entities/[entityId]/route.ts` | New — `PATCH` (hide / edit canonical / aliases) |
 | `app/bots/[id]/entities/page.tsx` + `EntitiesClient.tsx` | New admin tab |
-| `app/bots/[id]/layout.tsx` (or wherever bot tabs render) | Add "Entities" tab |
-| `tests/unit/entityMentionDetector.test.ts` | Variant matching, word boundaries, case-insensitivity, hidden exclusion |
-| `scripts/specMap.ts` | Map new files → `docs/BOTS.md` (see § 12) |
+| `app/bots/BotsClient.tsx` | Added "Entities" link to the bot card footer (alongside Questions / History / Export JSON) |
+| `tests/unit/entityMentionDetector.test.ts` | 12 tests: word boundaries, case-insensitivity, variant expansion, multi-word entities, longest-first precedence, alias matching, cache invalidation, dedup within a turn |
+| `tests/unit/botEntityExtraction.test.ts` | 14 tests: batch boundary logic, slug-keyed aggregation, alias merging, category vote resolution, empty-input handling |
+| `scripts/specMap.ts` | Mapped new files → `docs/BOTS.md` (committed in the spec-drafting commit `aabac16b`) |
 
 **Multi-tenancy guards** (per CLAUDE.md invariants): every service-role query in the new routes pairs `id` with `org_id`. Extract / list / patch routes go through `getCallerOrgContext` (or the existing bot-admin gate helper) scoped to the bot owner's org. `entity_catalog` already has default-deny RLS; service-role-only writes maintain the existing pattern.
 
-#### 9.y.6 Build estimate
+#### 9.y.6 Build retrospective (~3h actual vs ~5h estimate)
 
-| Phase | Hours |
-|---|---|
-| Migration + extractor lib + unit tests | 1.5h |
-| Mention detector + chat-route hook + unit tests | 1h |
-| Pill styling + admin tab UI + 3 API routes | 2h |
-| Doc updates, specMap, run on MCO + Hope + Sarina, eyeball admin tab | 0.5h |
-| **Total** | **~5h** |
+Came in under estimate because every primitive needed already existed:
+- `entity_catalog` schema only needed a CHECK widening + partial index (one migration, no new tables).
+- `lib/entityVariants.ts` already handled plural/singular expansion including irregulars — no NLP work needed in the detector.
+- `lib/flagStyles.ts` was the choke point for all four pill-rendering surfaces (admin modal, public shared HTML, PulseIQ facilitator modal, Question Log) so a 6-line addition lit up every surface.
+- The questions admin tab pattern (`/bots/[id]/questions`) was a clean template for the entities tab — same page wrapper, same Lottie loader, same breadcrumb.
+
+The one design decision worth flagging for future work: the user-turn fire-and-forget block in `lib/chatCore.ts` was previously dedicated to probe focuses only. Adding entity detection as a second sibling block would have raced on `content_flags` writes (both write to the same column, both read the in-memory userRow value at the moment of the update). The shipped form bundles them into one block so they share a single merged UPDATE. If a third user-turn classifier is added later, fold it into the same block (or move to a DB-side merge like `content_flags = content_flags || new_flags`).
 
 #### 9.y.7 What's out of scope (v2 candidates)
 

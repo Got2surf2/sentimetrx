@@ -8,6 +8,9 @@
 //   - 'topic:<slug>'  — user-side; what the user actually talked about.
 //                       Amber. Set by lib/probeFocusClassifier (BOTS § 9.x.1).
 //                       Used to detect matched vs mismatched prompt↔response.
+//   - 'entity:<slug>' — user-side; KB-extracted entity mentioned in the turn.
+//                       Emerald. Set by lib/entityMentionDetector (BOTS § 9.y).
+//                       String match against bot-scoped entity_catalog.
 //   - 'intent:<LABEL>'— user-side action intent. Blue.
 //   - 'safety:<flag>' / 'outside_scope' / 'profanity' / etc. — content guard.
 //                       Yellow / red palette depending on severity.
@@ -45,6 +48,9 @@ export function getFlagStyle(f: string): FlagStyle {
   }
   if (f.startsWith('topic:')) {
     return { bg: '#FEF3C7', color: '#B45309', label: f.replace('topic:', '').replace(/[-_]/g, ' ') }
+  }
+  if (f.startsWith('entity:')) {
+    return { bg: '#D1FAE5', color: '#047857', label: f.replace('entity:', '').replace(/[-_]/g, ' ') }
   }
   return { bg: '#F3F4F6', color: '#6b7280', label: f }
 }
