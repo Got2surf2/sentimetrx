@@ -534,6 +534,7 @@ Major AI features by module:
 - Periodic conversation reviews (theme drift)
 - Insights deck export
 - **Question Log** (since 2026-05-21/22) — durable record of user turns the bot couldn't answer (`deflect`, `kb_miss`, `ai_uncertain`); admin UI at `/bots/[id]/questions` with All / Unanswered tabs + status mutation + notes; CSV export with PII redaction by default (superadmin `?reveal=1` unmasks). Driver: NOWOCATS PM-2 legal-defensibility; generic across all agents.
+- **Entity-from-KB mention tagging** (since 2026-05-22) — Haiku-extracted named entities (8 categories: person / place / organization / product / program / event / policy / other) from each agent's knowledge base; user turns mentioning a catalog entity get an `entity:<slug>` flag automatically (string-match, $0/turn). Admin UI at `/bots/[id]/entities` with re-extract button, hide / edit / manual-add actions. Driver: query "who asked about Terminal A this week" or "did anyone mention the Foundations Project" without skimming transcripts.
 
 **Social**
 - Content guard (sentiment + flags), OpenAI moderation overlay
