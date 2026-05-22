@@ -109,6 +109,28 @@ The agent emits a **structured `ui_hints` array** alongside the prose response. 
 
 The sibling endpoint also returns a parallel `next_chips: string[]` — 0-4 short follow-up questions the model thinks the user is likely to ask next, in the user's voice (≤ 80 chars each). The canvas's ChatPane swaps its initial chip row for these after the first assistant turn, so the suggested replies stay coherent with what the bot just said. Same fail-open posture: empty array → ChatPane keeps the previous chip row.
 
+### Active context + revert signal
+
+The canvas shell also threads an optional `context` block into each `/ui-hints` POST so the extractor can keep restaurants/parking scoped across turns. Wire shape:
+
+```jsonc
+// request body extension
+{
+  "userMessage": "Where can I get coffee?",
+  "assistantMessage": "Starbucks and Cibo Espresso have outposts in Terminal C airside.",
+  "context": {
+    "activeTerminal": "C",           // derived from the current right-pane card
+    "lastCanvasType": "terminal_map" // what the user is seeing right now
+  }
+}
+```
+
+`activeTerminal` is derived in `CanvasShell` from the currently-rendered hint: a `terminal_map` hint's `to`/`from`/`terminal` field, a `restaurants` hint's `context: terminal_X_airside` parse, or a single-garage `parking` hint's `garage_x`. In `invenue` mode it falls back to the structural location (Terminal B). The extractor prompt instructs the model to keep place selection within `activeTerminal` unless the user explicitly references another.
+
+The response gains a `revert_canvas: boolean` field. When `true` (set by the extractor when the new turn is clearly off-topic from `lastCanvasType` and no new card fits), ChatPane calls `onHintReceived(null)` so CanvasShell falls back to the idle welcome card. This fixes the "I asked about security but the right pane stayed on restaurants" stickiness bug — the old contract had no way to clear stale content without emitting a new hint.
+
+Together with the prompt's **NO-STRETCH** rule ("if NONE of the four card types cleanly fits, return hint:null — do not pick a tangentially-related card"), the extractor now has three explicit decisions per turn: emit a hint, stay on the existing card, or revert to idle.
+
 ### Hint types (v1 — exactly four)
 
 | `type` | Payload | Renders as |
@@ -300,34 +322,11 @@ Implementation: the UiHint union has a `WelcomeHint` variant (`type: 'welcome'`,
 
 ---
 
-## 10. Verbatim prompts
+## 10. Prompt source of truth
 
-### Hint extractor system prompt
+The hint extractor system prompt is exported as `UI_HINT_EXTRACTOR_PROMPT` in `lib/uiHints.ts`. It covers four hint types (`terminal_map`, `parking`, `restaurants`, `link_card`), the active-context honoring rules, the NO-STRETCH discipline, the `revert_canvas` signal, the `next_chips` follow-up rules, and the link_card cta_url allowlist (MCO Reserve, Visitor Pass, Accessibility, MCO App, Customs, Wi-Fi, Ground Transportation, Lost & Found).
 
-```
-You are a UI hint extractor for an airport concierge agent. Given a user turn and the assistant's response, decide whether the response references one specific visual context that would help the user. Emit at most one hint as JSON.
-
-Allowed hint types and required payload shapes:
-
-- terminal_map: { type, terminal: "A"|"B"|"C", gate?: string, from?: "A"|"B"|"C", to?: "A"|"B"|"C", via?: "shuttle"|"terminal_link_apm" }
-  Use when the assistant gives wayfinding involving a specific terminal, gate, or terminal-to-terminal route.
-
-- parking: { type, highlight?: string[] }
-  Use when the assistant references parking — garages, lots, cell-phone areas. Highlight names come from: garage_a, garage_b, garage_c, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet.
-
-- restaurants: { type, place_ids: string[], context?: string }
-  Use when the assistant mentions specific named restaurants or shops. place_ids must come from the seed list provided. Do not invent place_ids.
-
-- link_card: { type, title, body, image_url?, cta_url, cta_label }
-  Use when the assistant references one specific MCO program with its own page (visitor pass, MCO Reserve, accessibility, Hyatt hotel, MCO app, customs app).
-
-Return JSON only. If no hint applies, return [].
-
-Examples:
-- User: "How do I get from C to A?" → Assistant: "Two options: Terminal Link APM..." → [{ "type": "terminal_map", "from": "C", "to": "A", "via": "terminal_link_apm" }]
-- User: "Where can I eat near gate A14?" → Assistant lists 3 restaurants → [{ "type": "restaurants", "place_ids": ["ChIJ...","ChIJ..."], "context": "terminal_a_airside" }]
-- User: "What does it cost?" (about something not in scope) → [].
-```
+Previous revisions of this spec carried a verbatim copy; it drifted from the source every commit and added no value over `git show HEAD:lib/uiHints.ts`. Read the file.
 
 ---
 
@@ -373,7 +372,8 @@ Estimated additional effort for a UCF Incubator variant: ~3 days on top of the M
   - **Commit 2 LANDED 2026-05-21** — `lib/uiHints.ts` extractor (`extractUiHints`, `validateHint`, `parseExtractorJson`, `buildExtractorInput`, `UI_HINT_EXTRACTOR_PROMPT`) with the verbatim prompt from §10, dependency-injected classifier (mirrors `lib/languageSwitch.ts` for testability). New `POST /api/bots/[id]/ui-hints` sibling endpoint with the same CORS/rate-limit posture as `/chat`. 31 unit tests (`tests/unit/uiHints.test.ts`) — empty input, malformed JSON, code-fenced output, all four hint types, open-redirect guard on link_card cta_url, classifier throw, oversized-string truncation. Uses `callAI` tier=fast (~$0.0003-0.0006/call). Usage logged with `event_type: ui_hint_extract`.
   - **Commit 3 LANDED 2026-05-21** — frontend wired to the extractor. `ChatPane` fires `POST /api/bots/[id]/ui-hints` fire-and-forget after each assistant reply, surfaces the hint via `onHintReceived` callback. `CanvasShell` maintains `liveHint` state separate from `demoIdx`; live hint wins when present, demo hint otherwise. Demo strip arrow buttons + keyboard arrows clear liveHint so the demo can take back control mid-session. Mode change clears liveHint. Subtle shimmer bar at the top of the canvas card during extraction (`extracting-bar` CSS). `middleware.ts` extended to bypass CSRF on `/api/bots/[id]/ui-hints` (same posture as `/chat`).
   - **Commit 4 LANDED 2026-05-21** — live data integrations. `lib/parking.ts` talks to the GOAA public API at `api.goaa.aero/parking/availability/MCO` + `/parking/rates/MCO` (discovered via Playwright network sniff on flymco.com/parking-availability — the `api-key` is the public site key shipped in flymco's frontend JS, not a secret). 60s in-memory cache, in-flight dedup. `lib/places.ts` wraps Google Places API (New) Basic SKU with graceful degradation to context-scoped mock data when `GOOGLE_PLACES_API_KEY` is unset. Two new public routes: `GET /api/mco/parking`, `POST /api/mco/places`. `ParkingCard` + `RestaurantsCard` now fetch live data on mount; both cards label themselves as "Sample" or "Live" so the demo is honest about which is which. `middleware.ts` adds `/api/mco/*` to `PREFIX_BYPASS`.
-  - **Commit 5+ (future)** — terminal SVG extraction (the inline SVG works but a polished version with gate pins would be richer), public API access work (gated on Phase 4 convergence completing), kiosk hardening (touch sizing, attestation), production deployment URL.
+  - **Commit 5 LANDED 2026-05-21** — brain commit (extractor scope + revert path). `lib/uiHints.ts` adds `ExtractorContext { activeTerminal, lastCanvasType }` threaded into the classifier via a CONTEXT preamble in `buildExtractorInput`; `ExtractorResult` gains `revert_canvas: boolean`. Prompt rewrite: explicit NO-STRETCH rule ("if no card cleanly fits, return hint:null"), active-terminal honoring directive ("stay within active_terminal for restaurants/parking unless the user explicitly references another"), revert_canvas signal ("set true when the new turn is clearly unrelated to last_canvas_type"), link_card cta_url allowlist extended with `https://flymco.com/speed-through-mco` for security-wait questions, `/ground-transportation`, and `/lost-and-found`. `/api/bots/[id]/ui-hints` route accepts the `context` body field (sanitized — activeTerminal must be A/B/C, lastCanvasType must be a known hint type) and returns `revert_canvas` in the response. `ChatPane` receives an `activeContext` prop and threads it into each POST; on `revert_canvas: true` it calls `onHintReceived(null)` so CanvasShell falls back to the idle welcome card. `CanvasShell` derives `activeContext` from the currently-rendered hint (terminal_map.to/from/terminal, restaurants.context terminal_X_airside, parking single garage_x) with invenue mode's structural Terminal B as a fallback. 16 new unit tests covering CONTEXT plumbing, revert_canvas signal, non-boolean coercion, and the prompt-text invariants. Total 47 passing. §10 of this spec dropped its verbatim prompt copy in favor of pointing at `UI_HINT_EXTRACTOR_PROMPT`.
+  - **Commit 6+ (future)** — link_card modal vs. external navigate-away in all modes (kiosk especially); restaurant logos/photos on cards (hand-curated brand SVGs + cuisine-icon fallback); polished terminal SVGs with gate pins; public API access (gated on Phase 4 convergence completing); kiosk hardening (touch sizing, attestation); production deployment URL.
 - **Demo target:** TBD — driven by MCO opportunity timeline.
 
 ## 15. Decoupled extractor architecture (Commit 2 change vs. §6.1)

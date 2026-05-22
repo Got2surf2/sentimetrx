@@ -11,7 +11,7 @@
 // Failures degrade silently: a missing hint leaves the canvas as-is.
 
 import { useEffect, useRef, useState } from 'react'
-import type { DeploymentMode, UiHint } from '@/lib/uiHints'
+import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
 
 const LIVE_ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
@@ -27,6 +27,10 @@ interface Props {
   placeholder: string
   mode: DeploymentMode
   botOverride?: string | null
+  // What the canvas currently has on screen. Threaded into the extractor so
+  // restaurants/parking stay scoped to the user's active terminal and the
+  // extractor can decide to revert the canvas on off-topic pivots.
+  activeContext?: ExtractorContext
   onHintReceived?: (hint: UiHint | null) => void
   onExtractingChange?: (extracting: boolean) => void
 }
@@ -35,7 +39,7 @@ function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, onHintReceived, onExtractingChange }: Props) {
   const askanaBotId = botOverride || LIVE_ASKANA_BOT_ID
   const [sessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -69,19 +73,34 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
   // Fire the extractor after a new assistant message lands. Fire-and-forget
   // by design — the prose answer is already on screen; we don't block the
   // user on this. The canvas card just animates in a beat later.
+  //
+  // Three signals can come back:
+  //   - ui_hints[0]: new card to show on the right pane
+  //   - revert_canvas=true: clear the right pane to idle (user pivoted off-topic)
+  //   - empty + revert_canvas=false: keep the existing card (no opinion)
   async function extractHint(userText: string, assistantText: string) {
     onExtractingChange?.(true)
     try {
       const res = await fetch('/api/bots/' + askanaBotId + '/ui-hints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: userText, assistantMessage: assistantText }),
+        body: JSON.stringify({
+          userMessage: userText,
+          assistantMessage: assistantText,
+          context: activeContext,
+        }),
       })
       if (!res.ok) return
       const data = await res.json()
       const hints: UiHint[] = Array.isArray(data?.ui_hints) ? data.ui_hints : []
-      if (hints.length > 0) onHintReceived?.(hints[0])
-      // Empty array intentionally keeps the existing card — don't reset.
+      if (hints.length > 0) {
+        onHintReceived?.(hints[0])
+      } else if (data?.revert_canvas === true) {
+        // Explicit signal that the new turn doesn't belong with what's on
+        // canvas. Clear it so CanvasShell falls back to the idle welcome card.
+        onHintReceived?.(null)
+      }
+      // Otherwise empty + no revert → keep the existing card.
       const nextChips: string[] = Array.isArray(data?.next_chips)
         ? data.next_chips.filter((s: any) => typeof s === 'string' && s.length > 0 && s.length <= 80).slice(0, 4)
         : []

@@ -12,8 +12,28 @@ import RestaurantsCard from './components/RestaurantsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
 import WelcomeCard from './components/WelcomeCard'
-import type { DeploymentMode, UiHint } from '@/lib/uiHints'
+import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
 import './canvas.css'
+
+// Derive the active terminal the user is anchored to from the current canvas
+// hint. Used to keep restaurants/parking scoped to that terminal across turns
+// (the extractor receives this via the context block and respects it unless
+// the user explicitly switches terminals).
+function deriveActiveTerminal(hint: UiHint | null): 'A' | 'B' | 'C' | undefined {
+  if (!hint) return undefined
+  if (hint.type === 'terminal_map') {
+    return hint.to || hint.from || hint.terminal
+  }
+  if (hint.type === 'restaurants' && hint.context) {
+    const m = /^terminal_([abc])_/i.exec(hint.context)
+    if (m) return m[1].toUpperCase() as 'A' | 'B' | 'C'
+  }
+  if (hint.type === 'parking' && hint.highlight && hint.highlight.length === 1) {
+    const m = /^garage_([abc])$/i.exec(hint.highlight[0])
+    if (m) return m[1].toUpperCase() as 'A' | 'B' | 'C'
+  }
+  return undefined
+}
 
 interface ModeConfig {
   subtitle: string
@@ -102,6 +122,16 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
 
   const hint: UiHint = liveHint ?? DEMO_HINTS[demoIdx]
 
+  // Active context threaded into the extractor on each /ui-hints call so it
+  // can keep restaurants/parking scoped to the user's anchored terminal and
+  // decide when to revert the canvas on off-topic pivots. Derived from
+  // what's currently rendered on the right pane, with invenue mode's
+  // structural Terminal B as a fallback.
+  const activeContext: ExtractorContext = {
+    activeTerminal: deriveActiveTerminal(hint) || (mode === 'invenue' ? 'B' : undefined),
+    lastCanvasType: hint.type,
+  }
+
   function cycleDemo(delta: number) {
     setLiveHint(null)
     setDemoIdx((i) => (i + delta + DEMO_HINTS.length) % DEMO_HINTS.length)
@@ -161,6 +191,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
             chips={config.chips}
             placeholder={config.placeholder}
             botOverride={botOverride}
+            activeContext={activeContext}
             onHintReceived={(h) => setLiveHint(h)}
             onExtractingChange={setExtracting}
           />

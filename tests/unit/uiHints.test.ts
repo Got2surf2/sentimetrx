@@ -151,8 +151,8 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
   it('returns empty on empty input without calling the classifier', async () => {
     let called = false
     const classifier: UiHintClassifier = async () => { called = true; return '{"hint":null}' }
-    expect(await extractUiHints({ userMessage: '', assistantMessage: 'reply', classifier })).toEqual({ hints: [], next_chips: [] })
-    expect(await extractUiHints({ userMessage: 'q', assistantMessage: '', classifier })).toEqual({ hints: [], next_chips: [] })
+    expect(await extractUiHints({ userMessage: '', assistantMessage: 'reply', classifier })).toEqual({ hints: [], next_chips: [], revert_canvas: false })
+    expect(await extractUiHints({ userMessage: 'q', assistantMessage: '', classifier })).toEqual({ hints: [], next_chips: [], revert_canvas: false })
     expect(called).toBe(false)
   })
 
@@ -163,6 +163,7 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
       classifier: stub('{"hint": null, "next_chips": []}'),
     })
     expect(out.hints).toEqual([])
+    expect(out.revert_canvas).toBe(false)
   })
 
   it('extracts a terminal_map hint', async () => {
@@ -219,7 +220,7 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
       assistantMessage: 'a',
       classifier: async () => { throw new Error('LLM provider exploded') },
     })
-    expect(out).toEqual({ hints: [], next_chips: [] })
+    expect(out).toEqual({ hints: [], next_chips: [], revert_canvas: false })
   })
 
   it('returns no hint when classifier emits malformed JSON', async () => {
@@ -228,7 +229,7 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
       assistantMessage: 'a',
       classifier: stub('this is not json'),
     })
-    expect(out).toEqual({ hints: [], next_chips: [] })
+    expect(out).toEqual({ hints: [], next_chips: [], revert_canvas: false })
   })
 
   it('returns no hint when classifier emits an unknown hint type', async () => {
@@ -287,5 +288,125 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
       })),
     })
     expect(out.next_chips).toEqual(['one', 'two', 'three', 'four'])
+  })
+
+  it('surfaces revert_canvas=true when the model signals an off-topic pivot', async () => {
+    const out = await extractUiHints({
+      userMessage: 'Tell me a joke',
+      assistantMessage: 'I am here to help with airport questions.',
+      classifier: stub('{"hint": null, "next_chips": [], "revert_canvas": true}'),
+      context: { lastCanvasType: 'restaurants' },
+    })
+    expect(out.hints).toEqual([])
+    expect(out.revert_canvas).toBe(true)
+  })
+
+  it('defaults revert_canvas to false when the model omits it', async () => {
+    const out = await extractUiHints({
+      userMessage: 'q',
+      assistantMessage: 'a',
+      classifier: stub('{"hint": null, "next_chips": []}'),
+    })
+    expect(out.revert_canvas).toBe(false)
+  })
+
+  it('coerces non-boolean revert_canvas values to false', async () => {
+    const out = await extractUiHints({
+      userMessage: 'q',
+      assistantMessage: 'a',
+      classifier: stub('{"hint": null, "next_chips": [], "revert_canvas": "yes"}'),
+    })
+    expect(out.revert_canvas).toBe(false)
+  })
+
+  it('passes the active-terminal context to the classifier in a CONTEXT block', async () => {
+    let captured = ''
+    const classifier: UiHintClassifier = async (_sys, userInput) => {
+      captured = userInput
+      return '{"hint": null, "next_chips": []}'
+    }
+    await extractUiHints({
+      userMessage: 'Where can I get coffee?',
+      assistantMessage: 'Starbucks is nearby.',
+      classifier,
+      context: { activeTerminal: 'C', lastCanvasType: 'terminal_map' },
+    })
+    expect(captured).toContain('CONTEXT:')
+    expect(captured).toContain('active_terminal: C')
+    expect(captured).toContain('last_canvas_type: terminal_map')
+    expect(captured).toContain('USER: Where can I get coffee?')
+    expect(captured).toContain('ASSISTANT: Starbucks is nearby.')
+  })
+
+  it('omits the CONTEXT block when no context is provided', async () => {
+    let captured = ''
+    const classifier: UiHintClassifier = async (_sys, userInput) => {
+      captured = userInput
+      return '{"hint": null, "next_chips": []}'
+    }
+    await extractUiHints({ userMessage: 'q', assistantMessage: 'a', classifier })
+    expect(captured).not.toContain('CONTEXT:')
+    expect(captured).toContain('USER: q')
+  })
+
+  it('omits the CONTEXT block when context is empty', async () => {
+    let captured = ''
+    const classifier: UiHintClassifier = async (_sys, userInput) => {
+      captured = userInput
+      return '{"hint": null, "next_chips": []}'
+    }
+    await extractUiHints({ userMessage: 'q', assistantMessage: 'a', classifier, context: {} })
+    expect(captured).not.toContain('CONTEXT:')
+  })
+
+  it('round-trips a context-respecting restaurants hint', async () => {
+    const out = await extractUiHints({
+      userMessage: 'Where can I get coffee?',
+      assistantMessage: 'Starbucks and Cibo Espresso have outposts in Terminal C airside.',
+      classifier: stub('{"hint": {"type": "restaurants", "place_ids": [], "context": "terminal_c_airside"}, "next_chips": []}'),
+      context: { activeTerminal: 'C', lastCanvasType: 'terminal_map' },
+    })
+    expect(out.hints).toEqual([{ type: 'restaurants', place_ids: [], context: 'terminal_c_airside' }])
+  })
+})
+
+describe('UI_HINT_EXTRACTOR_PROMPT — context + revert + new link_card mappings', () => {
+  it('documents the CONTEXT block', () => {
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('CONTEXT block')
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('active_terminal')
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('last_canvas_type')
+  })
+
+  it('documents the NO-STRETCH rule', () => {
+    expect(UI_HINT_EXTRACTOR_PROMPT).toMatch(/NO-STRETCH/i)
+  })
+
+  it('documents the revert_canvas signal', () => {
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('revert_canvas')
+  })
+
+  it('lists the new link_card mappings (security, ground transportation, baggage)', () => {
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('speed-through-mco')
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('ground-transportation')
+    expect(UI_HINT_EXTRACTOR_PROMPT).toContain('lost-and-found')
+  })
+})
+
+describe('buildExtractorInput with context', () => {
+  it('prepends a CONTEXT block when activeTerminal is set', () => {
+    const s = buildExtractorInput('hi', 'there', { activeTerminal: 'C' })
+    expect(s.indexOf('CONTEXT:')).toBe(0)
+    expect(s).toContain('active_terminal: C')
+  })
+
+  it('prepends a CONTEXT block with both fields when both are set', () => {
+    const s = buildExtractorInput('hi', 'there', { activeTerminal: 'B', lastCanvasType: 'restaurants' })
+    expect(s).toContain('active_terminal: B')
+    expect(s).toContain('last_canvas_type: restaurants')
+  })
+
+  it('omits the CONTEXT block when neither field is set', () => {
+    const s = buildExtractorInput('hi', 'there', {})
+    expect(s).not.toContain('CONTEXT:')
   })
 })

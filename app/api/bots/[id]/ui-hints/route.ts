@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
-import { extractUiHints } from '@/lib/uiHints'
+import { extractUiHints, type ExtractorContext, type UiHint } from '@/lib/uiHints'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,7 +54,25 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!userMessage.trim() || !assistantMessage.trim()) {
     // Empty pair → no hint. Return 200 with an empty array (the canvas
     // shell handles the empty case by leaving the existing card in place).
-    return NextResponse.json({ ui_hints: [] }, { headers: cors })
+    return NextResponse.json({ ui_hints: [], next_chips: [], revert_canvas: false }, { headers: cors })
+  }
+
+  // Optional context block — the canvas shell sends what it has on screen
+  // so the extractor can keep restaurants/parking scoped to the active
+  // terminal and decide when to revert the canvas. Sanitize aggressively
+  // (untrusted from a public endpoint).
+  const rawCtx = body?.context
+  let extractorContext: ExtractorContext | undefined
+  if (rawCtx && typeof rawCtx === 'object') {
+    const ctx: ExtractorContext = {}
+    if (rawCtx.activeTerminal === 'A' || rawCtx.activeTerminal === 'B' || rawCtx.activeTerminal === 'C') {
+      ctx.activeTerminal = rawCtx.activeTerminal
+    }
+    const allowedTypes: UiHint['type'][] = ['terminal_map', 'parking', 'restaurants', 'link_card', 'welcome']
+    if (typeof rawCtx.lastCanvasType === 'string' && allowedTypes.includes(rawCtx.lastCanvasType)) {
+      ctx.lastCanvasType = rawCtx.lastCanvasType
+    }
+    if (ctx.activeTerminal || ctx.lastCanvasType) extractorContext = ctx
   }
 
   const service = createServiceRoleClient()
@@ -71,9 +89,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This bot is not currently active' }, { status: 403, headers: cors })
   }
 
-  const { hints, next_chips } = await extractUiHints({
+  const { hints, next_chips, revert_canvas } = await extractUiHints({
     userMessage,
     assistantMessage,
+    context: extractorContext,
     classifier: async (system, userInput) => {
       const res = await callAI({
         tier: 'fast',
@@ -92,5 +111,5 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
-  return NextResponse.json({ ui_hints: hints, next_chips }, { headers: cors })
+  return NextResponse.json({ ui_hints: hints, next_chips, revert_canvas }, { headers: cors })
 }

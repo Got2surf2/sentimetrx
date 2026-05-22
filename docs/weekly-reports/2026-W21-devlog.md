@@ -1680,3 +1680,26 @@ Fix: new `WelcomeCard.tsx` becomes the right-pane default for all three deployme
 | `app/demo/mco/canvas.css` | ~112 lines of welcome-card styling + kiosk overrides. |
 
 Demo strip auto-updates 4 → 5 cards. invenue's `defaultHint` flipped 1 → 0 (contextStripe still shows the Terminal B cue). Tests: 33/33 uiHints unit pass; tsc clean.
+
+---
+
+## 2026-05-21 (still later) — Brain commit: active-terminal scope + revert path + NO-STRETCH
+
+User feedback (paraphrased): (1) bot's prose and right-pane card sometimes disagree; (2) when at Terminal C, asking about restaurants returned Terminal A; (3) asked about security lines, right pane stayed on restaurants; (4) extractor stretches to fill the canvas instead of acknowledging "no good visual for this answer."
+
+Root cause: the extractor saw only `{userMessage, assistantMessage}` — no memory of what's on canvas, no anchor terminal, no way to say "clear the screen, this turn is unrelated." Three signals were missing.
+
+| File | Change |
+|---|---|
+| `lib/uiHints.ts` | New `ExtractorContext { activeTerminal, lastCanvasType }`. `buildExtractorInput` prepends a CONTEXT block when set. `ExtractorResult` gains `revert_canvas: boolean`. Prompt rewrite: NO-STRETCH rule, active-terminal honoring, revert_canvas signal, link_card cta_url allowlist extended with `/speed-through-mco` (security wait), `/ground-transportation`, `/lost-and-found`. |
+| `app/api/bots/[id]/ui-hints/route.ts` | Accepts `context` in POST body (sanitized — activeTerminal must be A/B/C, lastCanvasType must be a known hint type). Returns `revert_canvas` in response. |
+| `app/demo/mco/components/ChatPane.tsx` | New `activeContext` prop. Threaded into each `/ui-hints` POST. On `revert_canvas: true`, calls `onHintReceived(null)` so the canvas reverts to idle welcome. |
+| `app/demo/mco/CanvasShell.tsx` | `deriveActiveTerminal(hint)` extracts A/B/C from the currently-rendered hint (terminal_map.to/from, restaurants.context terminal_X_airside, single garage_x). invenue mode falls back to structural Terminal B. Passed down as `activeContext` prop. |
+| `tests/unit/uiHints.test.ts` | +16 tests: CONTEXT plumbing, revert_canvas signal, non-boolean coercion, prompt-text invariants for the three new sections. 47/47 passing total. |
+| `docs/MCO_AGENT.md` § 4 + § 10 + § 14 | Active context + revert documentation. §10 dropped its verbatim prompt copy (was already drifting from `UI_HINT_EXTRACTOR_PROMPT`) in favor of pointing at the source. Commit 5 entry in § 14. |
+
+**Why**: stale right-pane content is worse than no content. The three-signal contract (emit / stay / revert) is what makes the canvas trustworthy as a boardroom demo — the user can stop second-guessing whether the screen reflects the conversation.
+
+**Tests**: 47/47 uiHints unit tests pass. `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean.
+
+**Next**: link_card modal-overlay in all modes (so kiosk and home/invenue stop navigating away from the chat session). Restaurant logos. Polished terminal SVGs.
