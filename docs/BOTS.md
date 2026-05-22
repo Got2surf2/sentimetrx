@@ -348,6 +348,19 @@ Returns `{ processed: number, results: [{ botId, name, sessions, drift }] }` on 
 
 **There is no end-user authentication.** Sessions are identified by a client-generated `session_id` (`crypto.randomUUID()` stored in localStorage).
 
+### Deployment-context via `?site=` query param
+
+When the same agent is embedded on multiple sites and needs to know which site it's serving, the embed URL can pass a `?site=<value>` query parameter. The first agent to use this is **Hope** (Foundations Project + Coalition for the Homeless), embedded at `/b/hope?site=foundations` on foundationsproject.org and `/b/hope?site=coalition` on centralfloridahomeless.org.
+
+Mechanism:
+1. `BotClient` reads `searchParams.get('site')`, validates against a small allowlist (`foundations`, `coalition`), and sets `config.extraBody = { site }`.
+2. `ChatBot` spreads `config.extraBody` into every POST body to the chat API (greeting, name-capture, silence-probe, and user-message fetches).
+3. `lib/chatCore.ts` reads `body.site`, looks up a label from a small in-code map, and injects a `DEPLOYMENT CONTEXT:` block into the system prompt right after `system_prompt`. The block tells the model which site is primary, which is supporting context, and reminds it of the chunk title prefixes (`[FDN]`, `[CFCH]`, `[BOTH]`).
+
+KB chunks carry `metadata.site` so they're filterable in admin, and Hope's chunks are titled with the prefix above so the model can see in-context which site each chunk comes from when retrieval returns a mix.
+
+This is the MVP of the `bot_deployment_contexts` design — it doesn't yet do retrieval-side filtering, only system-prompt bias.
+
 ### Two-step opener (askName flow)
 
 When `config.askName !== false` (the default), the widget asks the user's name and the topical opener as **two separate** assistant messages, not one concatenated double-question:

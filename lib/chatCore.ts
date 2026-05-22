@@ -52,7 +52,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   const service = ctx.service
   const ip = ctx.ip
 
-  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger } = body
+  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger, site: deploymentSite } = body
 
   // Set usage context for persona/demographic extraction
   setPersonaUsageCtx({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'persona' })
@@ -469,6 +469,26 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
+
+  // Deployment-context injection — when the embed-site passes a ?site=
+  // param (allowlisted client-side), inject a short instruction so the
+  // model knows which site it's serving and biases between same-site
+  // and cross-site knowledge accordingly. Safe-listed values only.
+  const SITE_LABELS: Record<string, string> = {
+    foundations: 'the Foundations Project website (foundationsproject.org)',
+    coalition: 'the Coalition for the Homeless of Central Florida website (centralfloridahomeless.org)',
+  }
+  const sanitizedSite = typeof deploymentSite === 'string' ? deploymentSite.toLowerCase() : ''
+  if (SITE_LABELS[sanitizedSite]) {
+    const otherLabel = sanitizedSite === 'foundations' ? SITE_LABELS.coalition : SITE_LABELS.foundations
+    systemParts.push(
+      '\n\nDEPLOYMENT CONTEXT: You are currently embedded on ' + SITE_LABELS[sanitizedSite] + '. This is your PRIMARY site for this conversation.\n' +
+      '- When a user question can be answered from knowledge tagged for either site, prefer the chunk whose Source URL is from your primary site.\n' +
+      '- Treat content from ' + otherLabel + ' as supporting context — bring it in when the user explicitly asks about it, or when your primary site has no answer.\n' +
+      '- Knowledge chunks are titled with a prefix — [FDN] = Foundations Project, [CFCH] = Coalition for the Homeless, [BOTH] = applies to both.'
+    )
+  }
+
   systemParts.push('\nFACTUAL ACCURACY: Only state facts that appear in your knowledge base or system prompt. If you don\'t have specific information about something, say so — never fill gaps with assumptions or invented details. Getting a fact wrong is far worse than saying "I\'m not sure about that specific detail."')
   // Guardrails: inject as explicit rules in the system prompt
   const guardrails = (bot as any).guardrails

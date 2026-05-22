@@ -3,6 +3,7 @@
 // app/b/[slug]/BotClient.tsx
 // Client component that renders the shared ChatBot with dynamic bot config
 
+import { useSearchParams } from 'next/navigation'
 import ChatBot, { type ChatBotConfig } from '@/components/ui/ChatBot'
 
 interface Bot {
@@ -12,8 +13,13 @@ interface Bot {
   config: Partial<ChatBotConfig> & { initialMessage?: string; suggestions?: string[] }
 }
 
+const ALLOWED_SITES = new Set(['foundations', 'coalition'])
+
 export default function BotClient({ bot }: { bot: Bot }) {
   const c = bot.config || {}
+  const searchParams = useSearchParams()
+  const rawSite = searchParams?.get('site')?.toLowerCase() || ''
+  const site = ALLOWED_SITES.has(rawSite) ? rawSite : null
 
   const config: ChatBotConfig = {
     apiEndpoint: '/api/bots/' + bot.id + '/chat',
@@ -35,6 +41,7 @@ export default function BotClient({ bot }: { bot: Bot }) {
     askName: (c as any).askName !== 'false',
     languages: Array.isArray((c as any).languages) ? (c as any).languages : undefined,
     language: (c as any).language,
+    extraBody: site ? { site } : undefined,
   }
 
   return <ChatBot config={config} />

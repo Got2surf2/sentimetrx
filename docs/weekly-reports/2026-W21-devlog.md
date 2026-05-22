@@ -1904,3 +1904,26 @@ User feedback: "parking is the least useful thing inside the airport — complet
 - "Where are the nursing rooms?" → "every terminal — both before and after security"
 - "Where are the smoking areas?" → "MCO is fully non-smoking — exit the terminal to smoke"
 - "What is Annie's Space?" → location (Terminal A, before security), hours, what it's for
+
+## 2026-05-22 (later) — Hope agent (Foundations Project + Coalition KB) + ?site= deployment-context plumbing
+
+**Why**: Larry Kahn org needed a donor-facing agent for foundationsproject.org (the Coalition for the Homeless of Central Florida's capital campaign) with secondary KB coverage of centralfloridahomeless.org. The same agent (Hope) needs to live on both sites — when embedded on a given site she should bias retrieval and tone toward that site while still being able to draw from the other when relevant.
+
+**What changed**:
+- `scripts/_hope_scrape_pages.mjs` — NEW. Playwright crawl of 9 foundationsproject.org URLs (sitemap-driven) + 72 centralfloridahomeless.org URLs (sitemap, filtered to drop merch SKUs and empty stub pages). 81/81 successful; 5 returned empty bodies (Wix redirects to external donate processors — covered by synthetic action chunks instead).
+- `scripts/_hope_create_agent.ts` — NEW. Idempotent: creates the `hope` agent in the Larry Kahn org (`679024db-…`) or updates it in place; reseeds 168 KB chunks tagged `source=hope_kb_2026_05_22` (159 web + 6 PDF + 3 synthetic action chunks). PDF chunks are hand-encoded from the Campaign Brochure (Dec 2025) and Naming Rights Menu (May 2026) — both PDFs published on foundationsproject.org. Every chunk carries `metadata.site = 'foundations' | 'coalition' | 'both'`; titles are prefixed `[FDN]` / `[CFCH]` / `[BOTH]` so the model can see the source site in-context. Wires 3 intents (Donate / Volunteer / More Information Requested) with both keyword and AI-fallback descriptions, plus 8 focuses for post-reply coverage tagging. Personality + system_prompt set to dignity-first donor language (never "the homeless" as a noun).
+- `app/b/[slug]/BotClient.tsx` — added `useSearchParams` to read `?site=`, validate against allowlist (`foundations` | `coalition`), and set `config.extraBody = { site }`.
+- `components/ui/ChatBot.tsx` — added optional `extraBody?: Record<string, any>` field to `ChatBotConfig`. Spreads `config.extraBody` into all 5 fetch bodies (greeting, silence-probe, bad-name retry, name+opener, user-message) so deployment context survives the whole conversation.
+- `lib/chatCore.ts` — reads `body.site`, looks up a label, and injects a `DEPLOYMENT CONTEXT:` block into the system prompt right after `system_prompt`. Allowlist-only — invalid sites are dropped silently. This is the MVP of the `bot_deployment_contexts` design (no retrieval-side filtering yet — system-prompt bias only).
+- `docs/BOTS.md` § 5 — new "Deployment-context via `?site=` query param" subsection documenting the BotClient → ChatBot → chatCore flow.
+- `scripts/_hope_probe.ts` — NEW. 12-question regression: campaign overview, capacity metrics, naming dollar figures, client stories, donate/volunteer/more-info intents, and same-question / two-site bias comparison. 11/12 pass against the live bot. The 12th (site-bias) requires the `chatCore.ts` change to be deployed before it can pass — pending push.
+
+**Decision: donor survey responses NOT used for KB training.** Three Coalition donor surveys live in the system (study IDs `500fdb88-…`, `704414df-…`, `1e00f372-…`) — totaling 144 responses, ~101 substantive. Sampled both donor-perception studies; the substantive content is donor *paraphrases* of what they know about the Coalition (mostly accurate but secondhand) plus other-charity preferences (irrelevant) and donor psychographics (giving channel, motivation). The two websites + the campaign-brochure PDF + the naming-rights menu are authoritative; the surveys aren't. The surveys remain valuable for *understanding donor concerns and vocabulary* — informed the personality/tone choices (warm, grounded, never pressure) — but no response text was inserted into Hope's KB.
+
+**Verification** — 11/12 probes matched all expected anchors on the live bot. Sample:
+- "What is the Foundations Project?" → cited capital campaign, Coalition, Center for Women & Families, 800→1,160 expansion in 275 chars.
+- "How much does it cost to name the dining room?" → "$1,250,000" with Dr. Leon contact info.
+- "Can you share a story about a mother…" → Della (24-year-old mom of four, Empower Employee Program valedictorian).
+- Donate intent → DonorPerfect portal link + Dr. Leon contact.
+- Volunteer intent → Take Action hub link + group-day examples.
+- More-info intent → asked for name/email/phone/topic instead of pretending to schedule.

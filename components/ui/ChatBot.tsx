@@ -59,6 +59,11 @@ export interface ChatBotConfig {
   askName?: boolean
   languages?: string[]
   language?: string
+  // Extra fields merged into every POST body sent to apiEndpoint. Used by
+  // deployment-context plumbing — e.g. BotClient sets { site: 'foundations' }
+  // from the URL ?site= param so the chat handler can bias retrieval and
+  // the system prompt to the deploying site.
+  extraBody?: Record<string, any>
 }
 
 const LANG_LABELS: Record<string, { name: string; native: string }> = {
@@ -159,7 +164,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     fetch(config.apiEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: greetPrompt }], session_id: sessionId, language: selectedLang }),
+      body: JSON.stringify({ messages: [{ role: 'user', content: greetPrompt }], session_id: sessionId, language: selectedLang, ...(config.extraBody || {}) }),
     })
       .then(r => r.json())
       .then(data => {
@@ -253,6 +258,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             session_id: sessionId,
             trigger: 'silence',
             language: selectedLang || undefined,
+            ...(config.extraBody || {}),
           }),
         })
         const data = await res.json()
@@ -285,7 +291,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           fetch(config.apiEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: [{ role: 'user', content: 'The user gave an inappropriate name. Ask them to try a different name. One sentence.' }], session_id: sessionId, language: selectedLang }),
+            body: JSON.stringify({ messages: [{ role: 'user', content: 'The user gave an inappropriate name. Ask them to try a different name. One sentence.' }], session_id: sessionId, language: selectedLang, ...(config.extraBody || {}) }),
           }).then(r => r.json()).then(data => {
             setMessages(prev => [...prev, { role: 'assistant', content: data.reply || "Let's try a different name." }])
           }).finally(() => setLoading(false))
@@ -309,6 +315,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               session_id: sessionId,
               language: selectedLang,
               user_name: cleanName,
+              ...(config.extraBody || {}),
             }),
           }).then(r => r.json()).then(data => {
             setMessages(prev => {
@@ -363,6 +370,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           demo: demoMode || undefined,
           user_name: userName && userName !== '_skip' ? userName : undefined,
           language: selectedLang || undefined,
+          ...(config.extraBody || {}),
         }),
       })
       const data = await res.json()
