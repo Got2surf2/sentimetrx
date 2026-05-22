@@ -110,7 +110,7 @@ export default function QRHandoffModal({ botId, sessionId, messages, onClose }: 
           position: fixed; inset: 0; background: rgba(10, 37, 64, 0.6);
           backdrop-filter: blur(4px);
           display: flex; align-items: center; justify-content: center;
-          z-index: 100; padding: 24px;
+          z-index: 10000; padding: 24px;
           animation: fade 180ms ease-out;
         }
         @keyframes fade { from { opacity: 0 } to { opacity: 1 } }

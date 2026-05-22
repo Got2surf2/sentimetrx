@@ -243,6 +243,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
               <line x1="21" y1="14" x2="21" y2="18" />
               <line x1="18" y1="18" x2="18" y2="21" />
             </svg>
+            <span className="topbar-btn-label">Send to phone</span>
           </button>
         </div>
       </div>
