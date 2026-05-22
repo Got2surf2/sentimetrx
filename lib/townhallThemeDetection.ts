@@ -23,10 +23,10 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
   const supabase = createServiceRoleClient()
   // AI provider is resolved automatically from env vars by callAI()
 
-  // 1. Fetch session config
+  // 1. Fetch session config + org_id (needed for usage-log attribution).
   const { data: session } = await supabase
     .from('townhall_sessions')
-    .select('id, config')
+    .select('id, org_id, config')
     .eq('id', sessionId)
     .single()
   if (!session) return { inserted: 0, skipped: 0, error: 'Session not found' }
@@ -91,7 +91,7 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
       system: [{ type: 'text', text: systemFraming, cache: true }],
       messages: [{ role: 'user', content: userPrompt }],
     })
-    logUsage({ resource_type: 'townhall', resource_id: sessionId, event_type: 'theme_detect' }, result.usage)
+    logUsage({ org_id: (session as any).org_id, resource_type: 'townhall', resource_id: sessionId, event_type: 'theme_detect' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     aiThemes = parsed.themes || []

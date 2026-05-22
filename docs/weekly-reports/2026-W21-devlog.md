@@ -6,6 +6,30 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Doc sweep + AI accounting tightened
+
+**Why**: User asked to write out all specs + devlogs after a long session of substantive work (Question Log UI, Phase 5 c6, NOWOCATS readiness, Gap #5). Audit surfaced three accounting gaps worth fixing now rather than carrying as tech debt.
+
+**What changed**:
+- **`SPEC.md`** — § 5 PulseIQ rewritten with Convergence Phase 5 complete note pointing at unified substrate, `lib/chatCore`, `lib/townHallAdapter`, NOWOCATS-as-first-launch, multi-event rollup model. § 6 Agents adds Question Log feature description (capture signals, admin UI tabs, CSV export with PII redaction, superadmin reveal). Route inventory adds `/api/bots/[id]/questions{,/[questionId],/export.csv,/ui-hints}`.
+- **`FEATURES.md`** — Agents feature list adds Question Log bullet. § 14 PulseIQ section adds full Convergence Phase 5 status block (unified substrate, phase-3 routes wired, multi-event rollup pattern, NOWOCATS launch context, known follow-ups, prod env flags required).
+- **`docs/ANALYTICS.md`** — Overview rewritten to mention both substrates as data sources; Gap #5 substrate-aware sync block added (same DatasetRow shape, multi-event rollup unblocked, theme model auto-populated).
+- **`docs/CONVERGENCE.md`** changelog entries — already added today across the four commits; Gap #5 + Gap #6 follow-ups now in the trail.
+- **`docs/TOWNHALL.md`** Facilitator Console block — already updated today with phase-3 routes wired list + follow-ups.
+- **`docs/USAGE_ACCOUNTING.md`** — three accounting fixes:
+  1. `/api/bots/[id]/chat` row: replaced stale `persona` event with current `focus_classify`; added "delegates to `lib/chatCore.handleChatTurn`" pointer.
+  2. NEW `/api/townhall/chat` row variant for the phase-3 delegation path (active when `TOWNHALL_VIA_AGENT_HANDLER=true` + `session_id` resolves to a `town_halls` row). Documents the attribution shift — phase-3 town-hall AI usage logs under `resource_type='bot'` + `resource_id=agent.id` (chatCore is bot-centric). When NOWOCATS launches and the flag flips on, attribute town-hall AI cost via the underlying agent rather than the town hall slug.
+  3. `lib/townhallThemeDetection.ts:94` was logging usage WITHOUT `org_id` (May 15 audit item, still open). Fixed: `detectThemesForSession` now SELECTs `org_id` from `townhall_sessions` and passes it to `logUsage`. Phase-3 equivalent (`lib/cohortThemeAggregator.ts:145`) was already correct.
+
+**Verification**:
+- Typecheck clean.
+- Today's NEW code (Question Log, adapter, NOWOCATS routes, Gap #5) is verified zero-AI: regex / DB only. No new accounting requirements introduced.
+- chatCore's 5 emitters (`chat`, `summary`, `deflect`, `intent`, `focus_classify`) all pass `org_id` correctly.
+- cohortThemeAggregator emits with `org_id` correctly.
+- Legacy townhallThemeDetection now also emits with `org_id`.
+
+**Push gate**: lands as the 48th commit ahead of `origin/main`. **Push freeze still active.**
+
 ## 2026-05-22 — Gap #5: wire townhall analyze for phase-3 (multi-event rollup unblocked)
 
 **Why**: NOWOCATS launch is early June with multiple events likely to follow per audience (e.g. Vindman runs N events across different districts, each its own `town_halls` row). User's stated rollup pattern: "each town hall is an independent event, downstream we combine the datasets in Analytics." That workflow depends on `/api/townhall/sessions/[id]/analyze` POST being able to sync a phase-3 town hall's conversations into Ana. Pre-this-commit the route only read `townhall_sessions/_themes/_turns` — a phase-3 town hall would 404 on dataset sync.

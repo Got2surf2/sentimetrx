@@ -533,6 +533,7 @@ Major AI features by module:
 - Intent capture (keyword + AI)
 - Periodic conversation reviews (theme drift)
 - Insights deck export
+- **Question Log** (since 2026-05-21/22) — durable record of user turns the bot couldn't answer (`deflect`, `kb_miss`, `ai_uncertain`); admin UI at `/bots/[id]/questions` with All / Unanswered tabs + status mutation + notes; CSV export with PII redaction by default (superadmin `?reveal=1` unmasks). Driver: NOWOCATS PM-2 legal-defensibility; generic across all agents.
 
 **Social**
 - Content guard (sentiment + flags), OpenAI moderation overlay
@@ -549,7 +550,9 @@ See `docs/USAGE_ACCOUNTING.md § Estimator` for the 23 forward-looking usage pro
 
 ## 14. PulseIQ (Town Hall)
 
-*Gated by `organizations.features.townhall`. UI label: **PulseIQ**. Internal name: `townhall`. See `docs/TOWNHALL.md`.*
+*Gated by `organizations.features.townhall`. UI label: **PulseIQ**. Internal name: `townhall` (legacy substrate) + `town_halls` (phase-3 substrate, post-convergence). See `docs/TOWNHALL.md` and `docs/CONVERGENCE.md`.*
+
+> **Convergence Phase 5 complete (2026-05-22)**. PulseIQ runs on a unified conversational substrate shared with Agents (`conversations` + `conversation_turns`) plus PulseIQ-specific cohort tables (`town_halls`, `town_hall_topics`, `town_hall_conversations`). The chat handler is `lib/chatCore.handleChatTurn` — same code path as `/api/bots/[id]/chat`, with a town-hall context branch that pulls topics from `town_hall_topics`, picks the next via `lib/pickNextTopic`, and tags both turns of the pair with the chosen `topic_id`. The facilitator dashboard (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]` detail) accepts both substrates via `lib/townHallAdapter.ts`. Participant + facilitator-mutating routes (`join`, `live`, `themes/[id]`, `themes/custom`, `sessions/[id]` PATCH/DELETE, `sessions/[id]/analyze`) are all substrate-aware. **NOWOCATS** is the first town hall on the new substrate (Sarina bot, early June launch); **Vindman** follows post-launch using the Sir O'Gate bot. Each event = one `town_halls` row; multi-event rollup combines per-event datasets in Analytics. Legacy `townhall_sessions/_themes/_turns` tables remain in service for pre-convergence sessions and will be dropped in Tier 5 cleanup. Two known follow-ups not yet wired: `/api/townhall/responses` POST (post-session psycho/demo upsert) and bot-level analyze `town_hall_id` attribution — neither blocks NOWOCATS launch. Prod env flags required to activate: `TOWNHALL_VIA_AGENT_HANDLER=true` + `DUAL_WRITE_PHASE3=true`.
 
 ### Session Creation (6-step wizard at `app/townhall/new/`)
 1. **Basics** — session name, slug, industry, bot name/emoji, session type, expected attendees, org name, event description, opening/closing messages, tone

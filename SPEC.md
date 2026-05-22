@@ -287,11 +287,13 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 
 **Limits**: 4,490 reviews per location (DataForSEO max). Per-org cost ceiling enforced via `review_downloads`.
 
-### 5. PulseIQ (internal: `townhall`)
+### 5. PulseIQ (internal: `townhall` legacy + `town_halls` phase-3 substrate)
 
 **Routes**: `/townhall/*` (admin), `/th/[sessionId]` (public participant), `/api/townhall/*`
 
 AI-moderated live group discussions. Participants join via link/QR and chat with a named AI agent. Facilitator pre-loads a discussion guide of topics. (User-facing name is **PulseIQ**; tables and routes remain `townhall_*` internally.)
+
+> **Convergence Phase 5 complete (2026-05-22)**: PulseIQ now runs on a **unified conversational substrate** shared with Agents (`conversations` + `conversation_turns`), plus PulseIQ-specific tables (`town_halls`, `town_hall_conversations`, `town_hall_topics`) for the cohort layer. The chat handler is the same `lib/chatCore.handleChatTurn` that powers `/api/bots/[id]/chat`. The legacy `townhall_sessions/_themes/_turns` tables remain in service for pre-convergence sessions and will be dropped in Tier 5 cleanup after a prod verification window. Routing decisions are substrate-aware via `lib/townHallAdapter.ts` (read adapter projects new-substrate rows into the same JSON shape the facilitator dashboard consumes). NOWOCATS (early June launch) is the first town hall on the new substrate; Vindman follows post-launch using the same Sir O'Gate bot. Each event = one `town_halls` row; cross-event analysis combines per-event datasets in Analytics. See `docs/CONVERGENCE.md` for the architectural decision + sequencing plan and `docs/TOWNHALL.md` Facilitator Console block for the per-route substrate awareness.
 
 **Chat Engine** (`/api/townhall/chat`):
 - Opening question flow → AI matches response to best topic → follows thread → transitions
@@ -343,6 +345,7 @@ Embeddable AI agents with a configurable persona, knowledge base, and behavior. 
 - **JSON export/import** (`/api/bots/[id]/export`, `/api/bots/import`): versioned snapshot of bot row + knowledge chunks; import recreates a draft bot in the caller's org with auto-suffixed slug on collision. Pilot-clone pattern (clone-modify-test) lives on top of this without a separate "duplicate" feature.
 - **Probe enforcement** (`bot.config.probeEnforcement`): bot-specific required probes (e.g. counter-perspective probe in the Sir O'Gate Counter-Perspective Pilot). The chat route counts user turns server-side, scans assistant turns for a configured detection regex, and appends a CRITICAL OVERRIDE system instruction last when the turn count crosses `fallbackTurn` without the probe firing. See `docs/BOTS.md` § 7 for the prompt block and config shape.
 - **Regression harness** (`/admin/sarina-regression`, `scripts/_run_sarina_regression.ts`): 22-scenario test suite for the NOWOCATS Sarina agent — same source-of-truth tests file backs the admin UI button and the CLI runner. Encodes the May-2026 Arjun test log as machine-checkable `mustInclude` / `mustNotInclude` regex assertions.
+- **Question Log** (`logged_questions` table, `lib/logQuestion.ts`, `/bots/[id]/questions` admin UI, since 2026-05-21/22): durable record of every user turn the bot couldn't (or didn't) answer. Captured fire-and-forget from `lib/chatCore.ts` at three signals: `deflect` (deflection router fired), `kb_miss` (RAG topConfidence < 0.05 and no KB fallback), `ai_uncertain` (reply matched an "I don't know"-family regex). Admin UI: two tabs (All questions / Unanswered queue) with inline status mutation (`open | answered | referred | n_a`) + notes + deep-link to the source conversation. CSV export at `/api/bots/[id]/questions/export.csv` with PII redaction (email / NA-style phone / US street address) by default; superadmin `?reveal=1` unmasks (filename includes `_unredacted` so the artifact is self-describing). Driver: NOWOCATS PM-2 legal-defensibility requirement, but the feature is generic across every agent. See `docs/BOTS.md` § 9.x for the full spec + the deferred probe-focus tagging follow-up.
 
 ### 7. Social Media Monitoring
 
@@ -450,7 +453,7 @@ A focused mobile-first status surface that installs as a home-screen app on iOS 
 | Reviews (Google + Tripadvisor) | `/api/review-sources`, `/api/review-sources/{search,[sourceId]/{locations,sync,user-locations}}` |
 | Other Data Sources | `/api/reddit-sources/*`, `/api/substack-sources/*`, `/api/regulations-sources/*` |
 | PulseIQ | `/api/townhall/{chat,join/[sessionId],live/[sessionId],sessions/[id]/{analyze,duplicate,export,export/pptx},sessions/search,themes/{detect,custom,[id]},stats/[sessionId],status/[sessionId],simulate,suggest-guide,suggest-sensitive,suggest-topic,expand-terms,grade-description,responses}` |
-| Agents (bots) | `/api/bots`, `/api/bots/[id]/{chat,analyze,conversations/*,intents-stats,knowledge,knowledge/[chunkId],export,history}`, `/api/bots/{deep-crawl,fetch-url,research,import}`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat` |
+| Agents (bots) | `/api/bots`, `/api/bots/[id]/{chat,analyze,conversations/*,intents-stats,knowledge,knowledge/[chunkId],export,history,questions,questions/[questionId],questions/export.csv,ui-hints}`, `/api/bots/{deep-crawl,fetch-url,research,import}`, `/api/bot-chat`, `/api/clara-chat`, `/api/nora-chat` |
 | Social | `/api/social/{connect,callback,connections,connections/[id],webhook,sync,demo,stats,alerts,auto-config,comments,comments/[id]/{reply,ai-reply,hide,delete,dm,handle},comments/bulk,dm-templates,export-dataset}` |
 | Brands & Entities | `/api/brands`, `/api/collections`, `/api/collections/[id]`, `/api/industry-themes` |
 | AI Features | `/api/ai/study-suggest`, `/api/clarify`, `/api/deflect`, `/api/translate`, `/api/translate-responses`, `/api/suggest`, `/api/ana/render-deck`, `/api/ask-ana` |

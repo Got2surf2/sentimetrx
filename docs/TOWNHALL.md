@@ -218,6 +218,8 @@ In both modes:
 6. Compute mention_count via keyword regex
 7. Insert into `townhall_themes` as state='detected', source='auto_detected'
 
+> **AI usage attribution (2026-05-22 fix)**: `detectThemesForSession` now SELECTs `org_id` from `townhall_sessions` and passes it to `logUsage` (`event_type='theme_detect'`, `resource_type='townhall'`, `resource_id=session.id`). Previously the org_id was missing — May 15 audit item closed. Phase-3 equivalent (`lib/cohortThemeAggregator.ts`) was already passing org_id correctly. See `docs/USAGE_ACCOUNTING.md`.
+
 ### Discovery — new substrate (`lib/cohortThemeAggregator.ts`, Phase 5 commit 1, 2026-05-21)
 1. Load town hall + linked agent (`town_halls` joined to `agents` via `bot_id`)
 2. Fetch user turns across the town hall's conversations (`town_hall_conversations` → `conversations` → `conversation_turns` with `role='user'`, `content_en` || `content` ≥ 20 chars). PulseIQ's `skipped` boolean has no equivalent on the new schema — all user turns are candidates.
