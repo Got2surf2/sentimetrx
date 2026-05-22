@@ -6,7 +6,7 @@ Why: spec from the earlier same-day entry was a 4-question greenlight; code came
 
 One non-trivial design call: the existing user-turn `content_flags` write block in `lib/chatCore.ts` was probe-focus-only and read its in-memory `userRow.content_flags` value (not from the DB) before merging. Adding entity detection as a sibling fire-and-forget block would have raced — both writers read the stale in-memory value, last write wins. The shipped form bundles both classifiers into one fire-and-forget block with one merged UPDATE. Entity detection runs always (free, no AI); probe focuses still gated on `agents.probe_focus_enabled`. Future user-turn classifiers should fold into the same block (or migrate to a DB-side merge like `content_flags = content_flags || new_flags`).
 
-26 unit tests added (`tests/unit/entityMentionDetector.test.ts` 12 + `tests/unit/botEntityExtraction.test.ts` 14) — full suite 277/277 green, clean tsc. `sql/087` is authored but NOT yet applied to prod; surface routes will 500 until it's applied. Pushing this commit is safe (the dark route just returns 500 if the migration isn't there yet); apply migration as a separate step before announcing the feature.
+26 unit tests added (`tests/unit/entityMentionDetector.test.ts` 12 + `tests/unit/botEntityExtraction.test.ts` 14) — full suite 277/277 green, clean tsc. `sql/087` applied to prod via `supabase db query --linked` immediately after the commit landed locally — all 3 verify rows ready. Routes will function on push. Local commit stack remains unpushed pending user authorization.
 
 ## 2026-05-22 (later) — Entity-from-KB MVP spec drafted (BOTS.md § 9.y)
 
