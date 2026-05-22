@@ -27,7 +27,14 @@ function getFlagStyle(f: string): { bg: string; color: string; label: string } {
     return { bg: '#DBEAFE', color: '#1D4ED8', label: f.replace('intent:', '').replace(/_/g, ' ') }
   }
   if (f.startsWith('focus:')) {
+    // Assistant-side: what the bot's reply covered. Teal.
     return { bg: '#ECFEFF', color: '#0E7B7B', label: f.replace('focus:', '').replace(/[-_]/g, ' ') }
+  }
+  if (f.startsWith('topic:')) {
+    // User-side: what the user actually talked about (probe-focus
+    // tagging, BOTS § 9.x.1). Amber — distinct from focus so the
+    // matched/mismatched diff is visually obvious at a glance.
+    return { bg: '#FEF3C7', color: '#B45309', label: f.replace('topic:', '').replace(/[-_]/g, ' ') }
   }
   return { bg: '#F3F4F6', color: '#6b7280', label: f }
 }
