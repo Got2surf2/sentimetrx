@@ -6,6 +6,29 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — Probe-focus tagging shipped (BOTS § 9.x.1 — matched/mismatched analysis unblocked)
+
+**Why**: Closes the conceptual gap surfaced during the "new agent capabilities" walk-through earlier today. Pre this commit, `conversation_turns.content_flags` carried `focus:<slug>` on assistant turns (what the bot's reply covered) but NOTHING on user turns telling you what the user actually talked about. So matched/mismatched analysis ("bot asked about housing, user answered about traffic") was structurally impossible — the only off-topic signal was the binary `outside_scope` deflection flag. This adds the missing half: per-user-turn topic classification using the same `bot.focuses` catalog.
+
+**What changed**:
+- `sql/084_agents_probe_focus_enabled.sql` (applied to prod) — adds `agents.probe_focus_enabled boolean NOT NULL DEFAULT false`. Per-bot opt-in toggle to control AI cost.
+- `lib/probeFocusClassifier.ts` (new) — `classifyProbeFocuses(focuses, userText)` mirror of the existing `classifyResponseFocuses`. Same fast tier, same focus catalog, same response-shape contract (returns `{slugs, usage}`). Conservative skip: messages under 12 chars or 3 words.
+- `lib/chatCore.ts` — new fire-and-forget block parallel to the existing focus-classify block. Runs after user-turn insert lands. Gated on `bot.probe_focus_enabled` and `bot.focuses.length > 0`. On hit, merges `topic:<slug>` flags with any existing `content_flags` (safety tags, outside_scope) rather than overwriting. Writes to both substrates via `mirrorFocusFlagsUpdate` (reused — function is substrate-aware and turn-role-agnostic).
+- `app/api/bots/[id]/route.ts` — PATCH allowlist now accepts `probe_focus_enabled` so the bot edit UI can toggle it.
+- `docs/USAGE_ACCOUNTING.md` — `/api/bots/[id]/chat` row updated to add `probe_focus_classify` event_type.
+- `docs/BOTS.md` § 9.x.1 — full SHIPPED status block with the matched/mismatched analytics unlock explanation.
+
+**The matched/mismatched analytics unlock**:
+- `topic:X` on user turn N-1 + `focus:X` on assistant turn N = **matched** (bot asked about X, user answered about X)
+- `topic:Y` on user turn N-1 + `focus:X` on assistant turn N (X≠Y) = **mismatched** (user pivoted; bot's response covered a different topic)
+- `topic:Y` on user turn N-1 with no `focus:*` on assistant turn N = **user-led off-topic** (user raised Y that the bot's reply didn't address at all)
+
+Queryable directly in SQL on `conversation_turns.content_flags`, or surfaced as filters in Ana when datasets capture content_flags as columns (future enhancement, not in this commit).
+
+**For NOWOCATS launch**: feature ships OFF for every bot including Sarina. To activate for the NOWOCATS PM-2 record, the team also needs to author Sarina's `focuses` catalog (currently empty) — recommended 7 focuses corresponding to the 7 conversational topics in the NOWOCATS `discussion_guide` (who_they_are, where_in_nw_orange, how_they_get_around, biggest_frustration, growth_concerns_2050, priority_improvement, specific_road_or_intersection). Then `UPDATE agents SET probe_focus_enabled=true WHERE slug='sarina'`. Without this, NOWOCATS still captures the conversation but doesn't get the matched/mismatched diff.
+
+**Push gate**: 56th commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — Gap #5b: wire /api/townhall/responses POST for phase-3
 
 **Why**: Last item NOWOCATS needs to be fully launchable on the new substrate. Pre-this-commit, a phase-3 participant submitting post-session psycho/demo answers would 404 because the route validated against `townhall_turns` only and `townhall_participant_responses.session_id` had a NOT NULL FK to `townhall_sessions(id)`. NOWOCATS doesn't have post-session questions configured today, so this is future-proofing — but doing it now means we close out the convergence backlog cleanly before push.

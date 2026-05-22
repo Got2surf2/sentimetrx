@@ -18,6 +18,7 @@ import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
+import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
 import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
@@ -976,6 +977,31 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                 mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (assistantRow as any).turn_number, flags }).then(function() {})
               }
             }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
+          }
+        }
+
+        // Probe-focus classify (BOTS § 9.x.1) — user-side mirror, tags
+        // topic:<slug> on the just-saved user turn. Gated per-bot via
+        // agents.probe_focus_enabled (sql/084) — off by default to
+        // control AI cost. Unlocks matched/mismatched analysis vs the
+        // focus:<slug> tags written above.
+        if (botFocuses.length > 0 && (bot as any).probe_focus_enabled && insertedRows && insertedRows.length > 0 && lastUserMsg?.content) {
+          const userRow = insertedRows.find(function(r: any) { return r.role === 'user' && r.turn_number === turnBase })
+          if (userRow) {
+            classifyProbeFocuses(botFocuses, lastUserMsg.content).then(function(probeResult) {
+              if (probeResult.usage) {
+                logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'probe_focus_classify' }, probeResult.usage)
+              }
+              if (probeResult.slugs.length > 0) {
+                const topicFlags = probeResult.slugs.map(function(s) { return 'topic:' + s })
+                // Merge with any existing content_flags (safety tags from
+                // contentGuard, etc) instead of overwriting.
+                const existing = Array.isArray((userRow as any).content_flags) ? (userRow as any).content_flags : []
+                const merged = Array.from(new Set([...existing, ...topicFlags]))
+                service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', (userRow as any).id).then(function() {})
+                mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (userRow as any).turn_number, flags: merged }).then(function() {})
+              }
+            }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'probe focus classify failed', err: e?.message }) })
           }
         }
       } catch (e: any) {

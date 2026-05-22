@@ -795,15 +795,20 @@ Driver: NOWOCATS pilot needs a defensible, queryable record of *what residents a
 
 Still deferred: probe-focus tagging (§ 9.x.1 — replaces classification-grouping with topic-slug grouping once the user-side classifier ships), durability invariant tests (§ 9.x.4), suggested-KB-addition AI auto-fill, integration with `bot_change_log` so KB additions that resolve a logged question get cross-linked.
 
-#### 9.x.1 Probe focus tagging (user-side classifier)
+#### 9.x.1 Probe focus tagging (user-side classifier) — SHIPPED 2026-05-22
 
-Mirror the existing assistant-side `classifyResponseFocuses` over the user turn.
+Mirror of the existing assistant-side `classifyResponseFocuses` over the user turn. Shipped as `lib/probeFocusClassifier.ts` + wiring in `lib/chatCore.ts` + `sql/084_agents_probe_focus_enabled.sql`.
 
-- After the user turn inserts, kick off `classifyProbeFocuses(bot.focuses, userText)` as fire-and-forget (same pattern as the assistant classifier, post-insert, never block the response — preserves the 2026-05-20 lambda-kill fix).
-- Write tags onto the user row's `content_flags` jsonb with the prefix `topic:<slug>` so they're distinguishable from `focus:<slug>` (assistant coverage), `intent:<LABEL>` (action intent), and `safety:<flag>` (audit).
-- Use the same `bot.focuses` catalog — single source of truth for both directions of the conversation. The classifier prompt is identical to the response one, just framed as "what is the user asking about?" instead of "what did the reply cover?".
-- Skip the call for messages shorter than 12 chars or 3 words ("yep", "ok", "nope") — saves AI cost and avoids noise on follow-ups.
-- Cost guardrail: gate on `bot.probe_focus_enabled` (new bool column, default false) so the feature can be flipped per bot.
+- After the user turn inserts, `lib/chatCore.ts` kicks off `classifyProbeFocuses(bot.focuses, userText)` as fire-and-forget (same pattern as the assistant classifier, post-insert, never blocks the response — preserves the 2026-05-20 lambda-kill fix).
+- Tags written to the user row's `content_flags` jsonb with prefix `topic:<slug>` — distinguishable from `focus:<slug>` (assistant coverage), `intent:<LABEL>` (action intent), and `safety:<flag>` (audit). Existing flags (safety, outside_scope) are MERGED, not overwritten.
+- Same `bot.focuses` catalog — single source of truth for both directions of the conversation. Classifier prompt is the user-side version: "What topic areas is the user talking about?" instead of "What did the reply cover?".
+- Conservative skip: messages under 12 chars or 3 words ("yep", "ok", "nope") — saves AI cost and avoids noise on follow-ups.
+- Cost guardrail: gated on `agents.probe_focus_enabled` (new bool column, default `false`) — opt-in per bot. PATCH allowlist on `/api/bots/[id]` accepts the new field.
+- Usage emit: `event_type='probe_focus_classify'` on `resource_type='bot'`, fast tier. Phase-3 mirror writes via `mirrorFocusFlagsUpdate` so both substrates get the tags.
+
+**Analytics unlock**: matched/mismatched prompt↔response analysis becomes possible — `topic:X` on user turn N-1 paired with `focus:X` on assistant turn N = matched; `topic:Y` user / `focus:X` assistant = mismatched; `topic:Y` user with no `focus:*` assistant = user pivoted off-topic the bot didn't address. The three classes can be queried directly in SQL or surfaced as filters in Ana once the dataset captures content_flags as columns.
+
+**For NOWOCATS launch**: probe_focus_enabled defaults OFF. To turn it on for Sarina, also need to author Sarina's `focuses` catalog (currently empty) so the classifier has slugs to match against. Recommended: 7 focuses corresponding to the 7 conversational topics in the NOWOCATS `discussion_guide` (who_they_are, where_in_nw_orange, how_they_get_around, biggest_frustration, growth_concerns_2050, priority_improvement, specific_road_or_intersection). Then `UPDATE agents SET probe_focus_enabled = true WHERE slug = 'sarina';`.
 
 #### 9.x.2 "I've noted your question" acknowledgement
 
