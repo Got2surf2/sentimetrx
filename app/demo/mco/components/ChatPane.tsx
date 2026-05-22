@@ -27,10 +27,9 @@ interface Props {
   placeholder: string
   mode: DeploymentMode
   botOverride?: string | null
-  // What the canvas currently has on screen. Threaded into the extractor so
-  // restaurants/parking stay scoped to the user's active terminal and the
-  // extractor can decide to revert the canvas on off-topic pivots.
   activeContext?: ExtractorContext
+  pendingMessage?: string | null
+  onPendingMessageConsumed?: () => void
   onHintReceived?: (hint: UiHint | null) => void
   onExtractingChange?: (extracting: boolean) => void
 }
@@ -39,7 +38,7 @@ function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, onHintReceived, onExtractingChange }: Props) {
   const askanaBotId = botOverride || LIVE_ASKANA_BOT_ID
   const [sessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -69,6 +68,16 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
   useEffect(() => {
     if (!pending) inputRef.current?.focus()
   }, [pending])
+
+  // Tile clicks on the WelcomeCard are delivered as a pendingMessage.
+  // Tiles only appear before any conversation exists, so messages is always []
+  // at this point — no stale-closure concern.
+  useEffect(() => {
+    if (!pendingMessage) return
+    onPendingMessageConsumed?.()
+    send(pendingMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMessage])
 
   // Fire the extractor after a new assistant message lands. Fire-and-forget
   // by design — the prose answer is already on screen; we don't block the

@@ -50,7 +50,7 @@ function fillBar(available: number | null, total: number | null): { pct: number;
   return { pct, color, label: pct + '% full' }
 }
 
-export default function WelcomeCard({ hint }: { hint: WelcomeHint }) {
+export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; onTileClick?: (prompt: string) => void }) {
   const [lots, setLots] = useState<ApiLot[]>([])
   const [loading, setLoading] = useState(true)
   const [hasLive, setHasLive] = useState(false)
@@ -137,10 +137,15 @@ export default function WelcomeCard({ hint }: { hint: WelcomeHint }) {
         <div className="welcome-block-head">{isKiosk ? 'Quick actions' : 'Common questions'}</div>
         <div className="welcome-tile-grid">
           {tiles.map(t => (
-            <div key={t.label} className="welcome-tile" title={t.prompt}>
+            <button
+              key={t.label}
+              className="welcome-tile"
+              title={t.prompt}
+              onClick={() => onTileClick?.(t.prompt)}
+            >
               <div className="welcome-tile-icon" aria-hidden>{t.icon}</div>
               <div className="welcome-tile-label">{t.label}</div>
-            </div>
+            </button>
           ))}
         </div>
         <div className="welcome-cue">{isKiosk ? 'Tap the keyboard or pick a question on the left.' : 'Tap a question on the left, or type your own.'}</div>

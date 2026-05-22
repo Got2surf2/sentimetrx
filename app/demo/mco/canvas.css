@@ -636,8 +636,13 @@
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   background: #fffbeb;
-  cursor: default;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  transition: border-color 120ms, background 120ms;
 }
+.canvas-shell .welcome-tile:hover { border-color: #f59e0b; background: #fef3c7; }
 .canvas-shell .welcome-tile-icon { font-size: 22px; line-height: 1; }
 .canvas-shell .welcome-tile-label { font-size: 14px; font-weight: 500; color: #0a2540; }
 .canvas-shell .welcome-cue {

@@ -98,8 +98,8 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
   },
 }
 
-function HintRenderer({ hint, mode }: { hint: UiHint; mode: DeploymentMode }) {
-  if (hint.type === 'welcome') return <WelcomeCard hint={{ ...hint, mode }} />
+function HintRenderer({ hint, mode, onTileClick }: { hint: UiHint; mode: DeploymentMode; onTileClick?: (prompt: string) => void }) {
+  if (hint.type === 'welcome') return <WelcomeCard hint={{ ...hint, mode }} onTileClick={onTileClick} />
   if (hint.type === 'terminal_map') return <TerminalMapCard hint={hint} />
   if (hint.type === 'restaurants') return <RestaurantsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
@@ -126,6 +126,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [demoIdx, setDemoIdx] = useState<number>(config.defaultHint)
   const [liveHint, setLiveHint] = useState<UiHint | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const c = MODE_CONFIG[mode]
@@ -205,6 +206,8 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
             placeholder={config.placeholder}
             botOverride={botOverride}
             activeContext={activeContext}
+            pendingMessage={pendingMessage}
+            onPendingMessageConsumed={() => setPendingMessage(null)}
             onHintReceived={(h) => setLiveHint(h)}
             onExtractingChange={setExtracting}
           />
@@ -213,7 +216,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
         <div className="canvas-right">
           <div className={'canvas-card' + (extracting ? ' extracting' : '')}>
             {extracting && <div className="extracting-bar" aria-hidden />}
-            <HintRenderer hint={hint} mode={mode} />
+            <HintRenderer hint={hint} mode={mode} onTileClick={(p) => setPendingMessage(p)} />
           </div>
         </div>
       </div>
