@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DeploymentMode, UiHint } from '@/lib/uiHints'
 
-const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
+const LIVE_ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -26,6 +26,7 @@ interface Props {
   chips: string[]
   placeholder: string
   mode: DeploymentMode
+  botOverride?: string | null
   onHintReceived?: (hint: UiHint | null) => void
   onExtractingChange?: (extracting: boolean) => void
 }
@@ -34,7 +35,8 @@ function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, onHintReceived, onExtractingChange }: Props) {
+  const askanaBotId = botOverride || LIVE_ASKANA_BOT_ID
   const [sessionId] = useState(() => newSessionId())
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -70,7 +72,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
   async function extractHint(userText: string, assistantText: string) {
     onExtractingChange?.(true)
     try {
-      const res = await fetch('/api/bots/' + ASKANA_BOT_ID + '/ui-hints', {
+      const res = await fetch('/api/bots/' + askanaBotId + '/ui-hints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userMessage: userText, assistantMessage: assistantText }),
@@ -103,7 +105,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
 
     try {
       const apiMessages = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }))
-      const res = await fetch('/api/bots/' + ASKANA_BOT_ID + '/chat', {
+      const res = await fetch('/api/bots/' + askanaBotId + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

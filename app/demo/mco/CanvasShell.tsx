@@ -11,6 +11,7 @@ import TerminalMapCard from './components/TerminalMapCard'
 import RestaurantsCard from './components/RestaurantsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
+import WelcomeCard from './components/WelcomeCard'
 import type { DeploymentMode, UiHint } from '@/lib/uiHints'
 import './canvas.css'
 
@@ -36,7 +37,7 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
     greeting: "Hi, I'm Ana. Looks like you're at Terminal B from the entrance QR scan — let me know if that's off. What can I help you with right now?",
     chips: ["Where's gate B22?", 'Security wait now?', 'Closest restroom', 'Bag claim — Delta'],
     placeholder: 'Ask anything about MCO right now…',
-    defaultHint: 1,
+    defaultHint: 0,
     contextStripe: "You're at MCO · Terminal B · from entrance QR scan",
   },
   kiosk: {
@@ -48,10 +49,11 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
   },
 }
 
-// Demo hints — in Commit 3 these will be replaced by the real ui_hints
-// extractor running after each assistant turn. v1 just shows representative
-// content driven by the demo strip / turn clicks.
+// Demo hints — what shows in the right pane before the user has asked
+// anything (slot 0 = the welcome/landing card) and what the demo strip
+// cycles through for a boardroom walk-through.
 const DEMO_HINTS: UiHint[] = [
+  { type: 'welcome' },
   { type: 'terminal_map', from: 'C', to: 'A', via: 'terminal_link_apm' },
   { type: 'restaurants', place_ids: [], context: 'terminal_a_airside' },
   { type: 'parking', highlight: ['garage_c'] },
@@ -64,7 +66,8 @@ const DEMO_HINTS: UiHint[] = [
   },
 ]
 
-function HintRenderer({ hint }: { hint: UiHint }) {
+function HintRenderer({ hint, mode }: { hint: UiHint; mode: DeploymentMode }) {
+  if (hint.type === 'welcome') return <WelcomeCard hint={{ ...hint, mode }} />
   if (hint.type === 'terminal_map') return <TerminalMapCard hint={hint} />
   if (hint.type === 'restaurants') return <RestaurantsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
@@ -74,9 +77,10 @@ function HintRenderer({ hint }: { hint: UiHint }) {
 
 interface Props {
   initialMode: DeploymentMode
+  botOverride?: string | null
 }
 
-export default function CanvasShell({ initialMode }: Props) {
+export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [mode, setMode] = useState<DeploymentMode>(initialMode)
   const config = MODE_CONFIG[mode]
 
@@ -156,6 +160,7 @@ export default function CanvasShell({ initialMode }: Props) {
             greeting={config.greeting}
             chips={config.chips}
             placeholder={config.placeholder}
+            botOverride={botOverride}
             onHintReceived={(h) => setLiveHint(h)}
             onExtractingChange={setExtracting}
           />
@@ -164,7 +169,7 @@ export default function CanvasShell({ initialMode }: Props) {
         <div className="canvas-right">
           <div className={'canvas-card' + (extracting ? ' extracting' : '')}>
             {extracting && <div className="extracting-bar" aria-hidden />}
-            <HintRenderer hint={hint} />
+            <HintRenderer hint={hint} mode={mode} />
           </div>
         </div>
       </div>

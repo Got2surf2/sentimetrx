@@ -114,7 +114,7 @@ export default function RestaurantsCard({ hint }: { hint: RestaurantsHint }) {
               <div className="resto-info">
                 <div className="resto-name">
                   <span>{p.name}</span>
-                  {p.opening_hours_now !== 'unknown' && (
+                  {!p.is_mock && p.opening_hours_now !== 'unknown' && (
                     <span className={'open-pill ' + p.opening_hours_now}>
                       {p.opening_hours_now === 'open' ? 'Open' : 'Closed'}
                     </span>
@@ -124,12 +124,23 @@ export default function RestaurantsCard({ hint }: { hint: RestaurantsHint }) {
                   {p.primary_type ? p.primary_type.replace(/_/g, ' ') + ' · ' : ''}
                   {p.formatted_address || ''}
                 </div>
-                <div className="resto-rating">
-                  <span className="stars">{stars(p.rating)}</span>
-                  {p.rating != null && <strong>{p.rating.toFixed(1)}</strong>}
-                  {p.user_ratings_total != null && <span className="reviews">({p.user_ratings_total.toLocaleString()})</span>}
-                  {priceBand(p.price_level) && <span className="price">· {priceBand(p.price_level)}</span>}
-                </div>
+                {/* Suppress rating numbers in mock mode — synthetic values
+                    look authoritative next to the stars but won't match
+                    the real Google page the user lands on. Only show
+                    rating UI when the data is genuinely live. */}
+                {!p.is_mock && (
+                  <div className="resto-rating">
+                    <span className="stars">{stars(p.rating)}</span>
+                    {p.rating != null && <strong>{p.rating.toFixed(1)}</strong>}
+                    {p.user_ratings_total != null && <span className="reviews">({p.user_ratings_total.toLocaleString()})</span>}
+                    {priceBand(p.price_level) && <span className="price">· {priceBand(p.price_level)}</span>}
+                  </div>
+                )}
+                {p.is_mock && (
+                  <div className="resto-rating" style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: 12 }}>
+                    Tap to open in Google Maps for current rating &amp; hours
+                  </div>
+                )}
               </div>
             </a>
           ))}
@@ -137,7 +148,9 @@ export default function RestaurantsCard({ hint }: { hint: RestaurantsHint }) {
       )}
 
       <div className="resto-footer">
-        {hasLive ? 'Ratings & hours powered by Google · Live, refreshed on render' : 'Sample data shown — connect a Google Places key to see live ratings'}
+        {hasLive
+          ? 'Ratings & hours powered by Google · Live, refreshed on render'
+          : 'Sample list — live Google ratings & hours appear once a Google Places API key is connected. Tap any card to open the real listing on Google Maps.'}
       </div>
     </div>
   )

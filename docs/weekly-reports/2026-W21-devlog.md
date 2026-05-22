@@ -6,6 +6,23 @@
 
 **Push gate**: unchanged — still on the 40-commit local stack.
 
+## 2026-05-22 — MCO_AGENT WIP absorbed from parallel session (coordination commit)
+
+**Why**: A parallel Claude session was actively editing MCO_AGENT files (canvas components, `lib/places.ts`, new directory-scrape scripts, `MCO_AGENT.md`, `data/mco_live_ratings.json`) and had them staged-but-uncommitted when this session ran `git commit` on unrelated NOWOCATS work. The MCO changes leaked into a commit with a misleading message (`f1ada33 chore(nowocats): draft town_halls row SQL`). Honest fix: soft-reset that commit, split into two. NOWOCATS landed cleanly in `785de4f`. This commit captures the parallel-session MCO WIP with accurate provenance so the trail isn't misleading.
+
+**What changed** (NOT authored by this session — all from the parallel MCO session):
+- `app/demo/mco/CanvasShell.tsx`, `app/demo/mco/components/ChatPane.tsx`, `app/demo/mco/components/RestaurantsCard.tsx`, `app/demo/mco/page.tsx` — canvas + chat + restaurant card UX iterations.
+- `lib/places.ts` — Google Places integration changes (~173 lines).
+- `data/mco_live_ratings.json` — 388-line live ratings snapshot.
+- `docs/MCO_AGENT.md` — spec updates.
+- `scripts/_mco_create_pilot.ts`, `scripts/_mco_dfs_recon.ts`, `scripts/_mco_dfs_seed.ts`, `scripts/_mco_scrape_directory.mjs`, `scripts/_mco_seed_directory_kb.ts` — new pilot-creation + DataForSEO recon + directory KB seeding scripts (~977 lines combined).
+
+**Verification deferred to parallel session**: this session didn't review the code, didn't typecheck against the changes, didn't smoke-test. If anything in this commit breaks, it traces back to the parallel session's WIP. The git-author field is mine purely because I was the one who ran `git commit`; substantive authorship is the parallel session.
+
+**Coordination lesson**: check `git status --short` for files staged outside scope BEFORE running `git commit`. Skipping that check here caused the bad commit.
+
+**Push gate**: 50th commit ahead of `origin/main`. Push freeze still active.
+
 ## 2026-05-22 — NOWOCATS town_halls row SQL drafted (not run)
 
 **Why**: NOWOCATS launches early June and there's no UI yet to create a phase-3 `town_halls` row — provisioning goes via SQL until that UI lands. The existing `sarina-cohort` row in prod is Phase 6 substrate-testing data with misleading naming ("Vindman Supporters Phase 6 prep") and bare-minimum `cohort_config` — not suitable for the actual launch. This commit drafts the proper provisioning SQL but **does not run it** — wording + slug + topic list need an eyeball pass from the project team before going to prod.

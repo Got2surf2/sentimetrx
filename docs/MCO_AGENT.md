@@ -139,12 +139,17 @@ Future v2 can fold the hint into the primary call as a tool call, eliminating th
 - **Cache:** 60 seconds, per-canvas-renderer (not per-user).
 - **Failure mode:** if fetch fails, show the static garage list with "Live availability unavailable — refresh to retry" footnote. Never block the canvas render on this.
 
-### 5.2 Google Places API (New)
+### 5.2 Restaurant ratings — DataForSEO (default) + Google Places (fallback)
 
-- **SKU used in v1:** Basic (rating, user_ratings_total, price_level, current_opening_hours, formatted_address, name). **No photos, no reviews in v1** — those are the $17-20/1K SKU; defer to v2.
-- **Pricing:** ~$5 per 1,000 calls (Basic SKU). Demo session of 50 turns × 1.2 hints/turn × ~4 restaurants/restaurant-hint ≈ 240 calls per demo, ~$1.20. Negligible.
-- **Cacheability:** Google's terms allow caching `place_id` only; **all other fields must be refetched on render**. So we maintain a seed list of MCO `place_id`s (one-time research task: ~80 airside restaurants/shops × terminal × landside) and call Places at render time for each.
-- **Attribution:** "Powered by Google" badge required on any pane showing Places data. Each card links to the Google Maps profile via the `place_id`.
+**Default path: DataForSEO Google Maps SERP.** We already have DATAFORSEO_LOGIN/PASSWORD set, so this is the zero-additional-key path. One SERP query (`"restaurants Orlando International Airport MCO"`, ~$0.002) returns ~78 Google Maps results; `scripts/_mco_dfs_seed.ts` filters those to airport-only addresses (ZIP 32827 / Jeff Fuqua Blvd / Terminal mentions; excludes ground-level Orlando spots that share the ZIP), then matches each result against the authoritative flymco directory by normalized fuzzy name. flymco's "Terminal - A & B" / "Terminal - C" / "Entire Airport" labels win the bucket assignment (Google Maps addresses don't consistently say Terminal A/B/C). Output: `data/mco_live_ratings.json`, ~29 entries with real `rating` + `review_count` + `maps_url`. `lib/places.ts::livePlacesForContext()` reads this file at server boot — zero per-request API cost, no GOOGLE_PLACES_API_KEY needed.
+
+To refresh, re-run `node_modules/.bin/tsx scripts/_mco_dfs_seed.ts`. The matching pipeline is idempotent and costs ~$0.002 per run. Restaurant ratings rarely change daily; a weekly cron would be reasonable.
+
+**Fallback path: Google Places API (New).** Kept for callers that supply explicit Google `place_id` arrays (e.g. a future UI surface resolving a single specific place). Requires `GOOGLE_PLACES_API_KEY`. Basic SKU ($5/1K calls). Google's terms allow caching `place_id` only — all live fields refetch on render. Demo session of ~50 turns × ~1.2 hints/turn × ~4 places ≈ 240 calls / $1.20.
+
+**Honesty rule (critical):** when `is_mock: true` (no live data + no explicit place_ids), `RestaurantsCard.tsx` suppresses the rating numbers entirely and shows "Tap to open in Google Maps for current rating & hours". Synthetic ratings next to a tap-through link to the real Google page mislead users when the two numbers disagree — that exact mismatch broke trust in an earlier review of the canvas.
+
+**Attribution:** "Powered by Google" footnote on any pane showing rating data. Each card links to the Google Maps profile via the `maps_url`.
 
 ### 5.3 Static terminal SVGs
 
@@ -242,6 +247,20 @@ Caches in `lib/runtimeCache.ts` (Vercel Runtime Cache, 60 s TTL).
 - Latest assistant turn's `ui_hints[0]` (if any) drives `hint` state in `CanvasShell`.
 - On hint change: 250 ms cross-fade. No layout shift.
 - Hint stickiness: persists until the next assistant turn produces a different hint or `null`. A turn that explicitly says "no relevant canvas" emits `ui_hints: []` — canvas stays as-is. This keeps the canvas useful even when the user asks a follow-up that doesn't add new visual context.
+
+### 7.4 Pilot agent + `?bot=` override
+
+A pilot agent is a full clone of the live AskAna with its own `bot_id`, slug, and isolated KB. We use the pattern to test KB changes (re-crawled dining directory, prompt tweaks) before promoting to live. Established pattern in this codebase — same as the Sarina + Sir O'Gate pilots.
+
+- `scripts/_mco_create_pilot.ts` builds the pilot: clones the `agents` row (new name "AskAna (pilot)", new slug `askana-pilot`), clones all live KB chunks (preserving embeddings — no re-embed cost), then layers the proposed changes on top. Idempotent: re-running the script restores the pilot to a clean clone of live before re-applying the diff.
+- `app/demo/mco/page.tsx` accepts a `?bot=pilot` (alias) or `?bot=<uuid>` URL param. Whitelist enforced: only the literal alias `pilot` or a fully-formed UUID is honored; anything else falls through to the live AskAna bot_id. Threaded through `CanvasShell` → `ChatPane`.
+- Promote workflow (TBD): once a pilot is approved, flip its KB chunks onto live AskAna and either delete the pilot agent or leave it for the next iteration. A dedicated "flip script" should diff pilot vs live KB and apply the delta atomically.
+
+### 7.5 Live AskAna KB directory chunks
+
+The agent's `knowledge_base` has 20 directory chunks generated by `scripts/_mco_seed_directory_kb.ts` from `scripts/_mco_scrape_directory.mjs`. The scrape runs Playwright against `flymco.com/shops-restaurants-services` (server-rendered Next.js — client-side directory data requires a headless browser), iterates each filter pill (Shop / Dine / Amenity) × all paginated pages (~103 pages total). Captures 602 entries; the seeder buckets them by category × terminal/parking/airport-wide, packs into chunks ≤2000 chars each, embeds via `text-embedding-3-small`, and inserts. Replaces two stale dining chunks that had only Hyatt landside restaurants + a truncated alphabetical directory (first page = mostly elevators and airline counters).
+
+This is the fix for the previous behavior where the bot's prose response was "see flymco.com/dining" — there was nothing in the KB to retrieve. Now 79 named airside restaurants are in the KB by terminal.
 
 ---
 
