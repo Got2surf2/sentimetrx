@@ -1927,3 +1927,17 @@ User feedback: "parking is the least useful thing inside the airport — complet
 - Donate intent → DonorPerfect portal link + Dr. Leon contact.
 - Volunteer intent → Take Action hub link + group-day examples.
 - More-info intent → asked for name/email/phone/topic instead of pretending to schedule.
+
+## 2026-05-22 (latest) — Kiosk → phone "Continue on your phone" handoff
+
+**Why**: The QR icon in the topbar was a placeholder. Real value of a kiosk concierge: walk up, ask Ana, then transfer the conversation to your phone before you walk to your gate. Especially important in kiosk mode where the screen is shared / public.
+
+**What changed**:
+- `sql/086_mco_handoff_sessions.sql` — NEW. Table with code (PK, 6-char Crockford b32), bot_id, source_session_id, messages (jsonb), 15-min TTL via expires_at. RLS enabled with no client policies (service-role only). Applied to prod via `supabase db query --linked`.
+- `app/api/mco/handoff/route.ts` — NEW. POST endpoint. Generates code with `crypto.getRandomValues`, sanitizes messages (cap 50 turns × 4000 chars), retries on the ~1-in-a-billion code collision, returns `{ code, url, expires_in_seconds }`. CORS-open like other /api/mco routes.
+- `app/m/[code]/page.tsx` + `MobileChat.tsx` — NEW. Server lookup via service role; expired/not-found fallback view. Mobile chat re-renders the prior thread, mints a fresh session_id, and lets the user keep talking to the same bot (uses the same `/api/bots/[id]/chat` endpoint).
+- `app/demo/mco/components/QRHandoffModal.tsx` — NEW. Renders QR via `qrcode` npm (dark = MCO blue), shows full URL + 6-char fallback code in a Crockford-style chip. Empty/loading/ready/error states. Esc + backdrop + X close.
+- `app/demo/mco/CanvasShell.tsx` — wired the QR button to set `showQR=true`. Lifted chat state up from ChatPane via `onMessagesChange` / `onSessionIdChange` / `onBotIdChange` callbacks so the modal has the snapshot. **Kiosk inactivity timer pauses while showQR is true** — without this, the 60s timer would close the modal mid-scan.
+- `app/demo/mco/components/ChatPane.tsx` — three new optional callback props to mirror messages + session_id + bot_id to the parent. Fires on mount, on change, and on reset (resetKey).
+- `package.json` — added `qrcode` + `@types/qrcode`.
+- `docs/MCO_AGENT.md` § 7.4 — new "Continue on your phone" subsection documenting the flow.

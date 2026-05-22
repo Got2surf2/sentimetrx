@@ -330,6 +330,8 @@ The card has three sections: (a) hero with the big "MCO" mark + airport name + a
 
 **Markdown rendering in chat bubbles:** assistant messages are passed through a minimal renderer that handles `[text](url)` links and `**bold**` spans. No external dependency; anything outside those two patterns renders as plain text. Links open in a new tab with `noopener noreferrer`.
 
+**"Continue on your phone" handoff:** the QR icon in the topbar opens `QRHandoffModal`, which POSTs the current `{ session_id, bot_id, messages }` to `/api/mco/handoff`. The API generates a 6-char Crockford-base32 code, persists the snapshot to the `mco_handoff_sessions` table (15-min TTL, service-role only, no client RLS policies), and returns `{ code, url }`. The modal renders the URL as a QR code (via `qrcode` npm) plus the short code as a typing fallback. Scanning lands the user on `/m/[code]` where a mobile-optimized chat (`MobileChat.tsx`) re-hydrates the prior thread and mints a fresh session id so the phone conversation continues independently of the kiosk. The kiosk's 60s inactivity timer is paused while the modal is open (the user is scanning the code from their phone, away from the kiosk's pointer/touch surface).
+
 Hero text adapts to mode: `Orlando International Airport` (home) / `You're at MCO` (invenue) / `Welcome to MCO` (kiosk). Kiosk variant bumps hero + tile + glance-item sizes for touch.
 
 Implementation: the UiHint union has a `WelcomeHint` variant (`type: 'welcome'`, optional `mode`); `HintRenderer` accepts a `mode` prop and dispatches `welcome → WelcomeCard` while injecting the active mode. The extractor never emits this hint (deliberate — `validateHint` rejects it); it exists purely so `HintRenderer` can render the default state via the same union.

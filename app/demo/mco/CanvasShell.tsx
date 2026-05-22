@@ -6,12 +6,13 @@
 // auto-detected by app/demo/mco/page.tsx (URL params → geo → UA → default).
 
 import { useEffect, useState } from 'react'
-import ChatPane from './components/ChatPane'
+import ChatPane, { type ChatMessage } from './components/ChatPane'
 import TerminalMapCard from './components/TerminalMapCard'
 import RestaurantsCard from './components/RestaurantsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
 import WelcomeCard from './components/WelcomeCard'
+import QRHandoffModal from './components/QRHandoffModal'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
 import './canvas.css'
 
@@ -128,19 +129,29 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [extracting, setExtracting] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [resetKey, setResetKey] = useState(0)
+  const [showQR, setShowQR] = useState(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatSessionId, setChatSessionId] = useState('')
+  const [chatBotId, setChatBotId] = useState('')
 
   function clearConversation() {
     setResetKey(k => k + 1)
     setLiveHint(null)
     setDemoIdx(MODE_CONFIG[mode].defaultHint)
+    setShowQR(false)
   }
 
   // Kiosk auto-reset: after 60s of no interaction, clear the conversation
   // and return to the welcome card. Matches the LinkCardModal kiosk timeout.
   // Resets on pointer / keyboard / touch activity. Non-kiosk modes are
   // exempt — home and invenue sessions are personal devices.
+  //
+  // Paused while the QR modal is open so the user has time to scan the code
+  // from their phone (which they're doing AWAY from the kiosk's pointer/
+  // touch surface — the timer would otherwise fire and close the modal).
   useEffect(() => {
     if (mode !== 'kiosk') return
+    if (showQR) return
     let timer: ReturnType<typeof setTimeout>
     function poke() {
       clearTimeout(timer)
@@ -154,7 +165,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
       events.forEach(e => window.removeEventListener(e, poke))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, resetKey])
+  }, [mode, resetKey, showQR])
 
   useEffect(() => {
     const c = MODE_CONFIG[mode]
@@ -216,7 +227,12 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
               <polyline points="3 4 3 10 9 10" />
             </svg>
           </button>
-          <button className="topbar-btn qr-btn" title="Send to my phone" aria-label="Send to my phone">
+          <button
+            className="topbar-btn qr-btn"
+            title="Continue on your phone"
+            aria-label="Continue on your phone"
+            onClick={() => setShowQR(true)}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
               <rect x="3" y="3" width="7" height="7" />
               <rect x="14" y="3" width="7" height="7" />
@@ -252,6 +268,9 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
             resetKey={resetKey}
             onHintReceived={(h) => setLiveHint(h)}
             onExtractingChange={setExtracting}
+            onMessagesChange={setChatMessages}
+            onSessionIdChange={setChatSessionId}
+            onBotIdChange={setChatBotId}
           />
         </div>
 
@@ -277,6 +296,15 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
         <span className="demo-pos">{liveHint ? 'live' : (demoIdx + 1) + ' / ' + config.demoHints.length}</span>
         <button className="demo-arrow" onClick={() => cycleDemo(1)} aria-label="Next demo card">›</button>
       </div>
+
+      {showQR && chatBotId && chatSessionId && (
+        <QRHandoffModal
+          botId={chatBotId}
+          sessionId={chatSessionId}
+          messages={chatMessages}
+          onClose={() => setShowQR(false)}
+        />
+      )}
     </div>
   )
 }

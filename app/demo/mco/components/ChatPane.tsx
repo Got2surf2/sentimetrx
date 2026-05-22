@@ -68,15 +68,25 @@ interface Props {
   resetKey?: number
   onHintReceived?: (hint: UiHint | null) => void
   onExtractingChange?: (extracting: boolean) => void
+  // Exposed so the parent (CanvasShell) can pass these to the QR handoff
+  // modal when the user wants to continue the conversation on their phone.
+  onMessagesChange?: (messages: ChatMessage[]) => void
+  onSessionIdChange?: (sessionId: string) => void
+  onBotIdChange?: (botId: string) => void
 }
 
 function newSessionId() {
   return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
 }
 
-export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, resetKey, onHintReceived, onExtractingChange }: Props) {
+export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, resetKey, onHintReceived, onExtractingChange, onMessagesChange, onSessionIdChange, onBotIdChange }: Props) {
   const askanaBotId = botOverride || LIVE_ASKANA_BOT_ID
   const [sessionId, setSessionId] = useState(() => newSessionId())
+
+  // Bubble state up so the parent can open the QR handoff modal with the
+  // current session/messages context. Fires on every change including reset.
+  useEffect(() => { onBotIdChange?.(askanaBotId) }, [askanaBotId, onBotIdChange])
+  useEffect(() => { onSessionIdChange?.(sessionId) }, [sessionId, onSessionIdChange])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
@@ -92,8 +102,12 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
     setLiveChips(null)
     setSessionId(newSessionId())
     onHintReceived?.(null)
+    onMessagesChange?.([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [greeting, resetKey])
+
+  // Mirror messages out to the parent whenever they change.
+  useEffect(() => { onMessagesChange?.(messages) }, [messages, onMessagesChange])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
