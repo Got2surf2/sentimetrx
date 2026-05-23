@@ -14,14 +14,33 @@ export async function GET(req: NextRequest) {
   if (denied) return denied
 
   const service = createServiceRoleClient()
-  const days = parseInt(req.nextUrl.searchParams.get('days') || '30')
-  const since = new Date(Date.now() - days * 86400000).toISOString()
+  const fromParam = req.nextUrl.searchParams.get('from')
+  const toParam   = req.nextUrl.searchParams.get('to')
+
+  // `from`/`to` (YYYY-MM-DD) take precedence over `days`. `to` is inclusive (end of day).
+  let since: string
+  let until: string | null = null
+  let days: number
+  if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) {
+    since = new Date(fromParam + 'T00:00:00Z').toISOString()
+    if (toParam && /^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+      until = new Date(new Date(toParam + 'T00:00:00Z').getTime() + 86400000).toISOString()
+    }
+    const sinceMs = new Date(since).getTime()
+    const untilMs = until ? new Date(until).getTime() : Date.now()
+    days = Math.max(1, Math.round((untilMs - sinceMs) / 86400000))
+  } else {
+    days = parseInt(req.nextUrl.searchParams.get('days') || '30')
+    since = new Date(Date.now() - days * 86400000).toISOString()
+  }
 
   // Fetch all usage logs in range
-  const { data: logs } = await service
+  let logsQuery = service
     .from('usage_logs')
     .select('org_id, resource_type, resource_id, event_type, model, tier, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, created_at')
     .gte('created_at', since)
+  if (until) logsQuery = logsQuery.lt('created_at', until)
+  const { data: logs } = await logsQuery
     .order('created_at', { ascending: false })
     .limit(10000)
 
@@ -167,7 +186,7 @@ export async function GET(req: NextRequest) {
   function rc(n: number) { return Math.round(n * 10000) / 10000 }
 
   return NextResponse.json({
-    period: { days, since },
+    period: { days, since, until },
     totals: { calls: totalCalls, input_tokens: totalInput, output_tokens: totalOutput, cost: rc(totalCost) },
     by_type: Object.fromEntries(Object.entries(byType).map(function(e) { return [e[0], { ...e[1], cost: rc(e[1].cost) }] })),
     by_event: Object.fromEntries(Object.entries(byEvent).map(function(e) { return [e[0], { ...e[1], cost: rc(e[1].cost) }] })),

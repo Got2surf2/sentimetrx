@@ -17,8 +17,13 @@ interface DailyPoint { date: string; calls: number; cost: number }
 interface ResourceRow { resource_type: string; resource_id: string; name: string; calls: number; input: number; output: number; cost: number }
 interface OrgRow { org_id: string; name: string; calls: number; input: number; output: number; cost: number }
 
+function todayIso() { return new Date().toISOString().slice(0, 10) }
+function isoDaysAgo(n: number) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10) }
+
 export default function UsageClient() {
-  var [days, setDays] = useState(30)
+  var [days, setDays] = useState<number | null>(30)        // null when in custom-range mode
+  var [from, setFrom] = useState<string>('')
+  var [to, setTo]     = useState<string>('')
   var [loading, setLoading] = useState(true)
   var [totals, setTotals] = useState<Totals>({ calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 })
   var [byType, setByType] = useState<Record<string, TypeStat>>({})
@@ -31,7 +36,15 @@ export default function UsageClient() {
 
   useEffect(function() {
     setLoading(true)
-    fetch('/api/admin/usage?days=' + days)
+    var qs: string
+    if (days != null) {
+      qs = 'days=' + days
+    } else if (from) {
+      qs = 'from=' + from + (to ? '&to=' + to : '')
+    } else {
+      qs = 'days=30'
+    }
+    fetch('/api/admin/usage?' + qs)
       .then(function(r) { return r.json() })
       .then(function(d) {
         setTotals(d.totals || {})
@@ -44,7 +57,24 @@ export default function UsageClient() {
       })
       .catch(function() {})
       .finally(function() { setLoading(false) })
-  }, [days])
+  }, [days, from, to])
+
+  function pickQuick(n: number) {
+    setDays(n)
+    setFrom('')
+    setTo('')
+  }
+
+  function applyCustomRange(nextFrom: string, nextTo: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFrom)) return
+    setFrom(nextFrom)
+    setTo(nextTo)
+    setDays(null)
+  }
+
+  var rangeLabel = days != null
+    ? days + 'd'
+    : (from ? from + ' → ' + (to || 'today') : '')
 
   function fmt(n: number) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -78,8 +108,15 @@ export default function UsageClient() {
     URL.revokeObjectURL(url)
   }
 
+  function rangeSlug() {
+    if (days != null) return days + 'd'
+    if (from && to)   return from + '_to_' + to
+    if (from)         return 'since_' + from
+    return '30d'
+  }
+
   function exportResourcesCsv() {
-    downloadCsv('usage_resources_' + days + 'd_' + new Date().toISOString().slice(0, 10) + '.csv',
+    downloadCsv('usage_resources_' + rangeSlug() + '_' + new Date().toISOString().slice(0, 10) + '.csv',
       topResources.map(function(r) {
         return {
           type:     TYPE_LABELS[r.resource_type] || r.resource_type,
@@ -95,7 +132,7 @@ export default function UsageClient() {
   }
 
   function exportOrgsCsv() {
-    downloadCsv('usage_orgs_' + days + 'd_' + new Date().toISOString().slice(0, 10) + '.csv',
+    downloadCsv('usage_orgs_' + rangeSlug() + '_' + new Date().toISOString().slice(0, 10) + '.csv',
       byOrg.map(function(o) {
         return {
           org_id:   o.org_id,
@@ -113,24 +150,42 @@ export default function UsageClient() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>AI Usage</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Token consumption and cost estimates</p>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Token consumption and cost estimates{rangeLabel ? ' — ' + rangeLabel : ''}</p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[7, 30, 90].map(function(d) {
-            return (
-              <button key={d} onClick={function() { setDays(d) }}
-                style={{
-                  padding: '6px 14px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  background: days === d ? HERMES : '#f3f4f6', color: days === d ? 'white' : '#374151',
-                  border: 'none',
-                }}>
-                {d}d
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[7, 30, 90].map(function(d) {
+              return (
+                <button key={d} onClick={function() { pickQuick(d) }}
+                  style={{
+                    padding: '6px 14px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    background: days === d ? HERMES : '#f3f4f6', color: days === d ? 'white' : '#374151',
+                    border: 'none',
+                  }}>
+                  {d}d
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: '#6b7280' }}>
+            <label>From</label>
+            <input type="date" value={from} max={to || todayIso()}
+              onChange={function(e) { applyCustomRange(e.target.value, to) }}
+              style={{ fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', color: '#374151' }} />
+            <label>To</label>
+            <input type="date" value={to} min={from || undefined} max={todayIso()}
+              onChange={function(e) { applyCustomRange(from || isoDaysAgo(30), e.target.value) }}
+              style={{ fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', color: '#374151' }} />
+            {(from || to) && (
+              <button onClick={function() { pickQuick(30) }}
+                style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer' }}>
+                Clear
               </button>
-            )
-          })}
+            )}
+          </div>
         </div>
       </div>
 
@@ -305,7 +360,8 @@ export default function UsageClient() {
                     return (
                       <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
                         <td style={{ padding: '6px 0', color: '#111827', fontWeight: 600 }}>
-                          <Link href={'/admin/usage/' + r.resource_type + '/' + r.resource_id + '?days=' + days}
+                          <Link
+                            href={'/admin/usage/' + r.resource_type + '/' + r.resource_id + '?' + (days != null ? 'days=' + days : 'from=' + from + (to ? '&to=' + to : ''))}
                             style={{ color: '#111827', textDecoration: 'none', borderBottom: '1px dotted #9ca3af' }}>
                             {r.name}
                           </Link>

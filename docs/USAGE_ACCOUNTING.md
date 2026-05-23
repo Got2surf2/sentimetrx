@@ -287,7 +287,12 @@ Rates are **per 1M tokens, USD**. `cache_creation_tokens` are not billed — pro
 
 **Auth:** wrapped with `requireAdmin()` from `lib/auth/requireAdmin`. Returns a 401/403 response if the caller isn't authenticated or their org doesn't have `is_admin_org = true`.
 
-**Query params:** `days` (number, default 30). Window is `now() - days * 86400000`.
+**Query params:**
+- `days` (number, default 30) — relative window: `now() - days * 86400000`.
+- `from` (`YYYY-MM-DD`) — absolute start of window (UTC). When set, **takes precedence over `days`**.
+- `to` (`YYYY-MM-DD`) — absolute end of window (UTC, **inclusive** — server adds 1 day internally to bound `created_at < to+1`). Optional when `from` is set; if omitted, the window runs from `from` through now.
+
+Same params accepted by `/api/admin/usage/[type]/[id]`.
 
 **Implementation:**
 1. `requireAdmin()` gates the request; bail with its response if denied.
@@ -364,7 +369,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 ### Rendered sections
 
-1. **Header** — page title + day-range selector (7 / 30 / 90).
+1. **Header** — page title + day-range selector (7 / 30 / 90 quick-pills, plus a "From" / "To" custom-range picker that overrides the pills when used). The detail page reads the same `?days=` / `?from=`+`?to=` params from the URL on first load so the user's filter survives the drill-in click.
 2. **Summary cards** — total calls, input tokens, output tokens, total estimated cost.
 3. **By Module** — grid of cards, one per `resource_type`, color-coded with `TYPE_COLORS`. Shows calls + input/output tokens + cost.
 4. **By Organization** — table sorted by cost: org name | calls | input | output | cost. CSV export button at top-right.

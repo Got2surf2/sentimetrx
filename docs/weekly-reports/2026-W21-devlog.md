@@ -2022,3 +2022,43 @@ User feedback: "parking is the least useful thing inside the airport — complet
 **Result**: An admin viewing `/admin/usage` can now see "Larry Kahn org cost $X this month" at a glance, drill into any single bot/study/townhall/dataset row to see its daily trend + event/model breakdown, and export org + resource breakdowns to CSV for any 7/30/90 day window. Survey costs (creator-side translate + respondent-side clarify/translate-responses) now roll up under each study instead of vanishing into the `system` bucket.
 
 **Not pushed.** Code-only change (no migration). 12 commits ahead of origin/main after this lands; push freeze still active per CLAUDE.md.
+
+## 2026-05-23 — Roll-up: 2026-05-22→23 MCO_AGENT session (9 commits)
+
+This is a session-level index of the MCO work shipped over the 22nd→23rd. Each entry has its own incremental block above with the file-level changes; this is the cheat sheet.
+
+**Restaurants card** — cuisine-icon emoji overlay on the gradient photo block (`9755c4c`). `lib/places.ts` exports `cuisineIcon(name, primaryType)`; `PlaceCard` gains `cuisine_icon` + `logo_url` (scaffolded for future brand-curation pass). Deterministic, no external assets.
+
+**Kiosk welcome overhaul** — `9755c4c` + later commits. Replaced parking strip with "At a glance" 2×2 grid in kiosk mode (Wi-Fi · APM train · MCO Reserve · Power & charging — Ground Transport removed as it duplicated the Quick Actions tile). Quick-action tiles mode-specific (kiosk: Shopping · Food & Drinks · Security · Ground Transport). Mode-aware `DEMO_HINTS` → `MODE_CONFIG[mode].demoHints`; kiosk cycle is 4 cards (no parking).
+
+**Parking card no-counts layout** — when GOAA returns rows without spot counts (current state), shows 3 picks (⭐ RECOMMENDED, 💰 BEST VALUE, ⚡ QUICK ACCESS) instead of a flat status list.
+
+**Clickable welcome tiles** (`b00d7e72`) — converted to `<button>`. `CanvasShell` holds `pendingMessage` state; tile click sets it; `ChatPane` watches and calls `send()`. Glance items also clickable in the same flow.
+
+**Extractor terminal_map over-fire fix** — `lib/uiHints.ts` `terminal_map` rule tightened to navigation/wayfinding only; "I'm in Terminal A" during a dining conversation now correctly emits `restaurants` (context: terminal_a_airside), not a map card. Counter-example added to the prompt.
+
+**Markdown rendering + Clear button + kiosk 60s auto-reset** — inline `renderMarkdown` in ChatPane for `[text](url)` + `**bold**` (no dep). Topbar Clear button (`<svg>` circular arrow) wipes thread + mints fresh sessionId + reverts canvas. Kiosk-mode 60s inactivity timer auto-fires Clear (paused while QR modal is open).
+
+**WelcomeCard parking bar fallback** (`81efa8a8`) — when GOAA returns lots but with null `available`/`total`, the welcome card now shows "Live spot counts unavailable" instead of three grey-bar rows with em-dashes.
+
+**Broad flymco.com KB + anti-deflection prompt + branded favicons** (`de226879`) — `scripts/_mco_scrape_pages.mjs` crawls 83 traveler pages, `scripts/_mco_seed_pages_kb.ts` produces 134 chunks (source-tag `mco_pages_scrape_2026_05_22`, idempotent). `scripts/_mco_tighten_prompt.ts` rewrites personality + system_prompt to prefer KB over URL deflection + 4 new guardrails (9 → 13). `scripts/_mco_probe_deflection.ts`: 10/10 deflection-prone probes (bookstores, charging, terminal-A dining, lost & found, nursing rooms, smoking, etc.) now answered inline. Branded favicons via `app/demo/mco/icon.tsx` + dynamic `app/b/[slug]/icon.tsx`.
+
+**"Continue on your phone" QR handoff** (`9a1dd900` + fixes `50197aed`, `1e1c7873`) — `sql/086` table (RLS-on, no client policies, 15-min TTL, 6-char Crockford-b32 code). `POST /api/mco/handoff` API. `QRHandoffModal` renders QR via `qrcode` npm. `/m/[code]/page.tsx` + `MobileChat.tsx` re-hydrate the thread on mobile with a fresh session_id. Topbar button promoted to amber pill "Send to phone" (kiosk: bigger). Hidden via `@media (max-width: 900px)` on non-kiosk modes. Modal z-index bumped to 10000 (was being painted-over by the fixed demo-strip).
+
+**"Common Searches" header** (`2d85b30b`) — small uppercase label above the initial chip suggestion row on the opening page. Follow-up chips (post-turn) skip the header.
+
+**Push state**: 12 commits ahead of origin/main (count includes parallel-session work — Decision Study, Entity-from-KB, usage-accounting). NOT pushed. User authorization required per push policy.
+
+**Spec sync**: `docs/MCO_AGENT.md` § 14 Status updated through Commit 15. `docs/BOTS.md` updated for the per-bot dynamic favicon. Memory file `project_mco_agent.md` captures the current canvas state.
+
+## 2026-05-23 (later) — Usage accounting: custom date-range pickers on `/admin/usage` + drill-in detail
+
+**Why**: The day-range selector was fixed to 7/30/90. To answer billing-cycle questions ("how much did Larry's org cost us May 1-10?") the admin needed proper From/To pickers, not just relative-window pills.
+
+**What changed**:
+- `app/api/admin/usage/route.ts` + `app/api/admin/usage/[type]/[id]/route.ts` — both endpoints now accept optional `from=YYYY-MM-DD` + `to=YYYY-MM-DD` (UTC, `to` inclusive — server adds 1 day internally and uses `< to+1`). When `from` is set, it overrides `days`. Response `period` shape gains a `until` field (nullable) so the client knows the upper bound.
+- `app/admin/usage/UsageClient.tsx` — header gains a 2-row control: 7/30/90 quick-pills (unchanged) + a "From" / "To" `<input type="date">` pair below. Picking a date switches the dashboard into custom-range mode (`days` becomes `null`, request uses `from`/`to`). A "Clear" pill switches back to relative mode. CSV filenames now include the active range (e.g. `usage_resources_2026-05-01_to_2026-05-10_…csv`).
+- `app/admin/usage/[type]/[id]/UsageDetailClient.tsx` — same controls, plus `useSearchParams` reads initial `?days=` or `?from=`+`?to=` from the URL so a drill-in from the parent page carries the user's filter. Back-link area shows the resolved date window. Top Resources row links now propagate the active range as query params.
+- `docs/USAGE_ACCOUNTING.md` — query-params section rewritten to document `days` / `from` / `to` precedence + the inclusive-`to` semantics. Dashboard section's Header bullet updated.
+
+Typecheck clean, 277/277 tests still green.

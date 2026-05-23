@@ -5,13 +5,14 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 var HERMES = '#E8632A'
 var TYPE_LABELS: Record<string, string> = { bot: 'Agent', townhall: 'PulseIQ', social: 'Social', dataset: 'TextMine', study: 'Study', system: 'System' }
 var TYPE_COLORS: Record<string, string> = { bot: '#0891B2', townhall: '#7C3AED', social: '#E85A1A', dataset: '#059669', study: '#D97706', system: '#6b7280' }
 
 interface Detail {
-  period:   { days: number; since: string }
+  period:   { days: number; since: string; until: string | null }
   resource: { type: string; id: string; name: string; href: string | null }
   org:      { id: string; name: string | null } | null
   totals:   { calls: number; input_tokens: number; output_tokens: number; cost: number }
@@ -20,8 +21,20 @@ interface Detail {
   daily_trend: Array<{ date: string; calls: number; cost: number }>
 }
 
+function todayIso() { return new Date().toISOString().slice(0, 10) }
+function isoDaysAgo(n: number) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10) }
+
 export default function UsageDetailClient({ type, id }: { type: string; id: string }) {
-  var [days, setDays] = useState(30)
+  // Read initial range from the URL (so navigation from /admin/usage carries the user's filter).
+  var sp = useSearchParams()
+  var initialFrom = (sp?.get('from') || '').match(/^\d{4}-\d{2}-\d{2}$/) ? sp!.get('from')! : ''
+  var initialTo   = (sp?.get('to')   || '').match(/^\d{4}-\d{2}-\d{2}$/) ? sp!.get('to')!   : ''
+  var initialDaysParam = parseInt(sp?.get('days') || '')
+  var initialDays: number | null = initialFrom ? null : (Number.isFinite(initialDaysParam) && initialDaysParam > 0 ? initialDaysParam : 30)
+
+  var [days, setDays] = useState<number | null>(initialDays)
+  var [from, setFrom] = useState<string>(initialFrom)
+  var [to, setTo]     = useState<string>(initialTo)
   var [loading, setLoading] = useState(true)
   var [data, setData] = useState<Detail | null>(null)
   var [error, setError] = useState<string | null>(null)
@@ -29,7 +42,11 @@ export default function UsageDetailClient({ type, id }: { type: string; id: stri
   useEffect(function() {
     setLoading(true)
     setError(null)
-    fetch('/api/admin/usage/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '?days=' + days)
+    var qs: string
+    if (days != null) qs = 'days=' + days
+    else if (from)    qs = 'from=' + from + (to ? '&to=' + to : '')
+    else              qs = 'days=30'
+    fetch('/api/admin/usage/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '?' + qs)
       .then(function(r) {
         if (!r.ok) throw new Error('Failed to load (' + r.status + ')')
         return r.json()
@@ -37,7 +54,13 @@ export default function UsageDetailClient({ type, id }: { type: string; id: stri
       .then(function(d) { setData(d) })
       .catch(function(e) { setError(e.message || 'Failed to load') })
       .finally(function() { setLoading(false) })
-  }, [type, id, days])
+  }, [type, id, days, from, to])
+
+  function pickQuick(n: number) { setDays(n); setFrom(''); setTo('') }
+  function applyCustomRange(nextFrom: string, nextTo: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFrom)) return
+    setFrom(nextFrom); setTo(nextTo); setDays(null)
+  }
 
   function fmt(n: number) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -52,6 +75,11 @@ export default function UsageDetailClient({ type, id }: { type: string; id: stri
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
       <div style={{ marginBottom: 12 }}>
         <Link href="/admin/usage" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>← All usage</Link>
+        {data?.period && (
+          <span style={{ marginLeft: 12, fontSize: 11, color: '#9ca3af' }}>
+            {data.period.since.slice(0, 10)} → {data.period.until ? new Date(new Date(data.period.until).getTime() - 86400000).toISOString().slice(0, 10) : 'today'}
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -77,19 +105,37 @@ export default function UsageDetailClient({ type, id }: { type: string; id: stri
               </h1>
               <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, fontFamily: 'monospace' }}>{data.resource.id}</p>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[7, 30, 90].map(function(d) {
-                return (
-                  <button key={d} onClick={function() { setDays(d) }}
-                    style={{
-                      padding: '6px 14px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      background: days === d ? HERMES : '#f3f4f6', color: days === d ? 'white' : '#374151',
-                      border: 'none',
-                    }}>
-                    {d}d
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[7, 30, 90].map(function(d) {
+                  return (
+                    <button key={d} onClick={function() { pickQuick(d) }}
+                      style={{
+                        padding: '6px 14px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        background: days === d ? HERMES : '#f3f4f6', color: days === d ? 'white' : '#374151',
+                        border: 'none',
+                      }}>
+                      {d}d
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: '#6b7280' }}>
+                <label>From</label>
+                <input type="date" value={from} max={to || todayIso()}
+                  onChange={function(e) { applyCustomRange(e.target.value, to) }}
+                  style={{ fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', color: '#374151' }} />
+                <label>To</label>
+                <input type="date" value={to} min={from || undefined} max={todayIso()}
+                  onChange={function(e) { applyCustomRange(from || isoDaysAgo(30), e.target.value) }}
+                  style={{ fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', color: '#374151' }} />
+                {(from || to) && (
+                  <button onClick={function() { pickQuick(30) }}
+                    style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer' }}>
+                    Clear
                   </button>
-                )
-              })}
+                )}
+              </div>
             </div>
           </div>
 

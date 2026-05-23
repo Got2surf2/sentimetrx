@@ -21,15 +21,34 @@ export async function GET(req: NextRequest, { params }: { params: { type: string
   }
 
   const service = createServiceRoleClient()
-  const days = parseInt(req.nextUrl.searchParams.get('days') || '30')
-  const since = new Date(Date.now() - days * 86400000).toISOString()
+  const fromParam = req.nextUrl.searchParams.get('from')
+  const toParam   = req.nextUrl.searchParams.get('to')
 
-  const { data: logs } = await service
+  // `from`/`to` (YYYY-MM-DD) take precedence over `days`. `to` is inclusive (end of day).
+  let since: string
+  let until: string | null = null
+  let days: number
+  if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) {
+    since = new Date(fromParam + 'T00:00:00Z').toISOString()
+    if (toParam && /^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+      until = new Date(new Date(toParam + 'T00:00:00Z').getTime() + 86400000).toISOString()
+    }
+    const sinceMs = new Date(since).getTime()
+    const untilMs = until ? new Date(until).getTime() : Date.now()
+    days = Math.max(1, Math.round((untilMs - sinceMs) / 86400000))
+  } else {
+    days = parseInt(req.nextUrl.searchParams.get('days') || '30')
+    since = new Date(Date.now() - days * 86400000).toISOString()
+  }
+
+  let logsQuery = service
     .from('usage_logs')
     .select('org_id, event_type, model, tier, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, created_at')
     .eq('resource_type', params.type)
     .eq('resource_id', params.id)
     .gte('created_at', since)
+  if (until) logsQuery = logsQuery.lt('created_at', until)
+  const { data: logs } = await logsQuery
     .order('created_at', { ascending: false })
     .limit(50000)
 
@@ -100,7 +119,7 @@ export async function GET(req: NextRequest, { params }: { params: { type: string
   function rc(n: number) { return Math.round(n * 10000) / 10000 }
 
   return NextResponse.json({
-    period: { days, since },
+    period: { days, since, until },
     resource: {
       type: params.type,
       id:   params.id,
