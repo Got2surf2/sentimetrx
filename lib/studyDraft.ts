@@ -89,7 +89,7 @@ export function getStaleLanguages(config: StudyConfig): string[] {
  * Auto-translate all stale languages before publishing.
  * Returns updated translations object merged with existing translations.
  */
-export async function autoTranslateStale(config: StudyConfig): Promise<Record<string, any> | null> {
+export async function autoTranslateStale(config: StudyConfig, studyId?: string): Promise<Record<string, any> | null> {
   const stale = getStaleLanguages(config)
   if (stale.length === 0) return null
 
@@ -100,7 +100,7 @@ export async function autoTranslateStale(config: StudyConfig): Promise<Record<st
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, targetLanguage: code, targetLanguageName: lang.name }),
+        body: JSON.stringify({ config, targetLanguage: code, targetLanguageName: lang.name, studyId }),
         signal: AbortSignal.timeout(65000),
       })
       if (!res.ok) return null

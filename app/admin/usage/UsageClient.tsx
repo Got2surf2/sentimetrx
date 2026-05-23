@@ -4,16 +4,18 @@
 // Admin dashboard showing AI usage accounting, cost estimates, and per-resource breakdown
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 var HERMES = '#E8632A'
-var TYPE_COLORS: Record<string, string> = { bot: '#0891B2', townhall: '#7C3AED', social: '#E85A1A', dataset: '#059669', system: '#6b7280' }
-var TYPE_LABELS: Record<string, string> = { bot: 'Agents', townhall: 'PulseIQ', social: 'Social', dataset: 'TextMine', system: 'System' }
+var TYPE_COLORS: Record<string, string> = { bot: '#0891B2', townhall: '#7C3AED', social: '#E85A1A', dataset: '#059669', study: '#D97706', system: '#6b7280' }
+var TYPE_LABELS: Record<string, string> = { bot: 'Agents', townhall: 'PulseIQ', social: 'Social', dataset: 'TextMine', study: 'Studies', system: 'System' }
 
 interface Totals { calls: number; input_tokens: number; output_tokens: number; cost: number }
 interface TypeStat { calls: number; input: number; output: number; cache_read: number; cost: number }
 interface EventStat { calls: number; input: number; output: number; cost: number }
 interface DailyPoint { date: string; calls: number; cost: number }
 interface ResourceRow { resource_type: string; resource_id: string; name: string; calls: number; input: number; output: number; cost: number }
+interface OrgRow { org_id: string; name: string; calls: number; input: number; output: number; cost: number }
 
 export default function UsageClient() {
   var [days, setDays] = useState(30)
@@ -24,6 +26,8 @@ export default function UsageClient() {
   var [byModel, setByModel] = useState<Record<string, EventStat>>({})
   var [daily, setDaily] = useState<DailyPoint[]>([])
   var [topResources, setTopResources] = useState<ResourceRow[]>([])
+  var [byOrg, setByOrg] = useState<OrgRow[]>([])
+  var [resourcesVisible, setResourcesVisible] = useState(20)
 
   useEffect(function() {
     setLoading(true)
@@ -36,6 +40,7 @@ export default function UsageClient() {
         setByModel(d.by_model || {})
         setDaily(d.daily_trend || [])
         setTopResources(d.top_resources || [])
+        setByOrg(d.by_org || [])
       })
       .catch(function() {})
       .finally(function() { setLoading(false) })
@@ -46,6 +51,65 @@ export default function UsageClient() {
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
     return String(n)
   }
+
+  function escapeCsv(v: string | number): string {
+    var s = String(v)
+    if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
+      return '"' + s.replace(/"/g, '""') + '"'
+    }
+    return s
+  }
+
+  function downloadCsv(filename: string, rows: Array<Record<string, string | number>>) {
+    if (rows.length === 0) return
+    var header = Object.keys(rows[0])
+    var lines = [header.join(',')]
+    for (var row of rows) {
+      lines.push(header.map(function(h) { return escapeCsv(row[h] ?? '') }).join(','))
+    }
+    var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    var url = URL.createObjectURL(blob)
+    var a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  function exportResourcesCsv() {
+    downloadCsv('usage_resources_' + days + 'd_' + new Date().toISOString().slice(0, 10) + '.csv',
+      topResources.map(function(r) {
+        return {
+          type:     TYPE_LABELS[r.resource_type] || r.resource_type,
+          name:     r.name,
+          resource_id: r.resource_id,
+          calls:    r.calls,
+          input:    r.input,
+          output:   r.output,
+          cost_usd: r.cost.toFixed(6),
+        }
+      })
+    )
+  }
+
+  function exportOrgsCsv() {
+    downloadCsv('usage_orgs_' + days + 'd_' + new Date().toISOString().slice(0, 10) + '.csv',
+      byOrg.map(function(o) {
+        return {
+          org_id:   o.org_id,
+          name:     o.name,
+          calls:    o.calls,
+          input:    o.input,
+          output:   o.output,
+          cost_usd: o.cost.toFixed(6),
+        }
+      })
+    )
+  }
+
+  var visibleResources = topResources.slice(0, resourcesVisible)
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
@@ -101,6 +165,43 @@ export default function UsageClient() {
               })}
             </div>
           </div>
+
+          {/* By organization */}
+          {byOrg.length > 0 && (
+            <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h3 style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>By Organization</h3>
+                <button onClick={exportOrgsCsv}
+                  style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer' }}>
+                  Export CSV
+                </button>
+              </div>
+              <table style={{ width: '100%', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#9ca3af', fontSize: 10, textTransform: 'uppercase' }}>
+                    <th style={{ textAlign: 'left', padding: '4px 0' }}>Organization</th>
+                    <th style={{ textAlign: 'right' }}>Calls</th>
+                    <th style={{ textAlign: 'right' }}>Input</th>
+                    <th style={{ textAlign: 'right' }}>Output</th>
+                    <th style={{ textAlign: 'right' }}>Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byOrg.map(function(o, i) {
+                    return (
+                      <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '6px 0', color: '#111827', fontWeight: 600 }}>{o.name}</td>
+                        <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(o.calls)}</td>
+                        <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(o.input)}</td>
+                        <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(o.output)}</td>
+                        <td style={{ textAlign: 'right', color: HERMES, fontWeight: 700 }}>${o.cost.toFixed(4)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Daily trend */}
           {daily.length > 1 && (
@@ -180,7 +281,13 @@ export default function UsageClient() {
           {/* Top resources */}
           {topResources.length > 0 && (
             <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }}>
-              <h3 style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginBottom: 12 }}>Top Resources by Cost</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h3 style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Resources by Cost ({topResources.length})</h3>
+                <button onClick={exportResourcesCsv}
+                  style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer' }}>
+                  Export CSV
+                </button>
+              </div>
               <table style={{ width: '100%', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: '#9ca3af', fontSize: 10, textTransform: 'uppercase' }}>
@@ -193,11 +300,16 @@ export default function UsageClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topResources.map(function(r, i) {
+                  {visibleResources.map(function(r, i) {
                     var color = TYPE_COLORS[r.resource_type] || '#6b7280'
                     return (
                       <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '6px 0', color: '#111827', fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ padding: '6px 0', color: '#111827', fontWeight: 600 }}>
+                          <Link href={'/admin/usage/' + r.resource_type + '/' + r.resource_id + '?days=' + days}
+                            style={{ color: '#111827', textDecoration: 'none', borderBottom: '1px dotted #9ca3af' }}>
+                            {r.name}
+                          </Link>
+                        </td>
                         <td><span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: color + '15', color: color, fontWeight: 600 }}>{TYPE_LABELS[r.resource_type] || r.resource_type}</span></td>
                         <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(r.calls)}</td>
                         <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(r.input)}</td>
@@ -208,6 +320,14 @@ export default function UsageClient() {
                   })}
                 </tbody>
               </table>
+              {topResources.length > resourcesVisible && (
+                <div style={{ textAlign: 'center', marginTop: 12 }}>
+                  <button onClick={function() { setResourcesVisible(resourcesVisible + 20) }}
+                    style={{ fontSize: 11, fontWeight: 600, padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer' }}>
+                    Show 20 more ({topResources.length - resourcesVisible} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

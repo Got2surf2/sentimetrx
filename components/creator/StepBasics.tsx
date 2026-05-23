@@ -484,6 +484,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
           config: cfgToUse,
           targetLanguage: code,
           targetLanguageName: lang.name,
+          studyId: draft.id,
         }),
         signal: AbortSignal.timeout(65000),
       })

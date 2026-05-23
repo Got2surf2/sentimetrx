@@ -91,9 +91,10 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 
 ### Clarifier API (`POST /api/clarify`)
 - Rate limited: 10/min per IP
-- Input: study context, question asked, user answer, sentiment, scores
+- Input: study context, question asked, user answer, sentiment, scores, optional `studyGuid` (public)
 - Output: follow-up question or `null` (skip if answer is sufficient)
 - Rules: max 25 words, no repetition, only probe if vague
+- **Usage accounting**: when `studyGuid` resolves to a study row, the AI call is logged with `resource_type='study'` + `resource_id=studies.id` + `org_id=studies.org_id` (rolls up under the parent study on /admin/usage). Falls back to `resource_type='system'` if the guid is missing or unresolvable.
 
 ### Deflection (`POST /api/deflect`)
 - Rate limited: 10/min per IP
@@ -128,6 +129,7 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - `languages[]` — Supported language codes
 - `translations{}` — Per-language config overrides
 - `autoTranslateResponses` — Auto-translate to English on submit
+- **Usage accounting**: `POST /api/translate` (creator-side, pre-publish translation) and `POST /api/translate-responses` (respondent-side, on submit) both attribute AI usage to the parent study when `studyId` / `studyGuid` is supplied. `POST /api/ai/study-suggest` (wizard starter values) also tags `resource_type='study'` but with no `resource_id` since the study doesn't exist yet.
 
 ### Accessibility
 - `confirmBeforeRecord` — Tap-then-confirm mode

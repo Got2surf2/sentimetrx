@@ -14,9 +14,9 @@ export { RATES, TIER_DEFAULT_MODEL, estimateCost } from '@/lib/usageRates'
 
 export interface UsageContext {
   org_id?: string
-  resource_type: 'bot' | 'townhall' | 'social' | 'dataset' | 'system'
+  resource_type: 'bot' | 'townhall' | 'social' | 'dataset' | 'study' | 'system'
   resource_id?: string
-  event_type: string   // 'chat', 'persona', 'demographics', 'intent', 'deflect', 'summary', 'theme_detect', 'knowledge_classify', 'ai_reply', 'report', 'translate', 'research', 'ana'
+  event_type: string   // 'chat', 'persona', 'demographics', 'intent', 'deflect', 'summary', 'theme_detect', 'knowledge_classify', 'ai_reply', 'report', 'translate', 'research', 'ana', 'study_suggest', 'clarify'
 }
 
 /**

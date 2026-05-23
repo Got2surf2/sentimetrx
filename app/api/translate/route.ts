@@ -1,7 +1,7 @@
 // app/api/translate/route.ts
 // POST — translate study content to a target language using Claude
 
-import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, getAuthUser, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
@@ -18,8 +18,21 @@ export async function POST(req: NextRequest) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { config, targetLanguage, targetLanguageName } = body
+  const { config, targetLanguage, targetLanguageName, studyId } = body
   if (!config || !targetLanguage) return NextResponse.json({ error: 'config and targetLanguage required' }, { status: 400 })
+
+  // Look up org_id from studies if studyId provided so usage rolls up under the study.
+  let studyOrgId: string | undefined
+  if (studyId && typeof studyId === 'string') {
+    const { data: userRow } = await supabase
+      .from('users').select('org_id').eq('id', user.id).single()
+    if (userRow?.org_id) {
+      const svc = createServiceRoleClient()
+      const { data: studyRow } = await svc
+        .from('studies').select('org_id').eq('id', studyId).eq('org_id', userRow.org_id).maybeSingle()
+      if (studyRow?.org_id) studyOrgId = studyRow.org_id as string
+    }
+  }
 
   // Build content to translate
   const contentToTranslate: Record<string, string> = {}
@@ -200,7 +213,12 @@ Return ONLY valid JSON, no markdown, no explanation.`
       timeoutMs: 45000,
       messages: [{ role: 'user', content: prompt }],
     })
-    logUsage({ resource_type: 'system', event_type: 'translate' }, result.usage)
+    logUsage({
+      org_id:        studyOrgId,
+      resource_type: studyId ? 'study' : 'system',
+      resource_id:   studyId && studyOrgId ? studyId : undefined,
+      event_type:    'translate',
+    }, result.usage)
     let text = result.text?.trim() || ''
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
     return JSON.parse(text)

@@ -58,8 +58,8 @@ ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 | Column | Values | Meaning |
 |---|---|---|
 | `org_id` | nullable UUID | Caller's org. NULL for system-level calls (e.g. cron-driven moderation that isn't tied to a specific org). |
-| `resource_type` | `'bot' \| 'townhall' \| 'social' \| 'dataset' \| 'system'` | Which module made the call. Drives the dashboard's "By Module" breakdown. |
-| `resource_id` | nullable UUID | The specific bot / session / dataset. NULL for `system`-type calls. |
+| `resource_type` | `'bot' \| 'townhall' \| 'social' \| 'dataset' \| 'study' \| 'system'` | Which module made the call. Drives the dashboard's "By Module" breakdown. `study` was added 2026-05-23 so survey/study AI calls (translate, clarify, translate-responses, study_suggest) roll up under the parent study instead of the generic `system` bucket. |
+| `resource_id` | nullable UUID | The specific bot / session / dataset / study. NULL for `system`-type calls and for `study_suggest` (the study doesn't exist yet at wizard time). |
 | `event_type` | free TEXT | What the call did. Examples: `chat`, `summary`, `deflect`, `intent`, `mine_themes`, `expand_keywords`, `merge_themes`, `search`, `search_rerank`, `pptx`, `html_export`, `signals_pptx`, `insights`, `insights_deck`, `report`, `review`, `auto_reply`, `ai_reply`, `translate`, `clarify`, `study_suggest`, `persona`, `demographics`, `theme_detect`, `knowledge_classify`, `simulate`, `expand_terms`, `grade_description`, `suggest_guide`, `suggest_topic`, `suggest_sensitive`, `ana`, `demo`, `ghost_suggest`, `entity_discovery`, `entity_extract`, `score_comments`. |
 | `model` | TEXT | Resolved model string (e.g. `claude-haiku-4-5-20251001`). Used for cost lookup. |
 | `provider` | `'anthropic' \| 'openai' \| 'azure-openai'` | Which API was actually called. |
@@ -115,7 +115,7 @@ export interface AIProviderConfig {
 
 export interface AIUsageContext {
   org_id?:        string
-  resource_type:  'bot' | 'townhall' | 'social' | 'dataset' | 'system'
+  resource_type:  'bot' | 'townhall' | 'social' | 'dataset' | 'study' | 'system'
   resource_id?:   string
   event_type:     string
 }
@@ -292,13 +292,14 @@ Rates are **per 1M tokens, USD**. `cache_creation_tokens` are not billed — pro
 **Implementation:**
 1. `requireAdmin()` gates the request; bail with its response if denied.
 2. Fetches up to 10 000 rows from `usage_logs` since the cutoff via service role, ordered by `created_at DESC`.
-3. Aggregates in JavaScript across five dimensions (no GROUP BY — done in memory because dataset is bounded by the row cap):
+3. Aggregates in JavaScript across six dimensions (no GROUP BY — done in memory because dataset is bounded by the row cap):
    - Totals: calls, input tokens, output tokens, summed cost.
    - **By type**: `resource_type → { calls, input, output, cache_read, cost }`.
    - **By event**: `event_type → { calls, input, output, cost }`.
    - **By model**: `model → { calls, input, output, cost }`.
    - **By day**: `created_at.slice(0, 10) → { date, calls, cost }`, sorted chronologically.
-   - **Top resources**: keyed `${resource_type}:${resource_id}`, top 20 by cost. Names enriched via lookups: bots → `bots.name`, townhalls → `townhall_sessions.name`. Falls back to `resource_id.slice(0, 8)`.
+   - **By org**: `org_id → { calls, input, output, cost }`, sorted by cost descending. Names enriched via `organizations.name`. Rows with no `org_id` bucket into `(no org)`.
+   - **Top resources**: keyed `${resource_type}:${resource_id}`, **full list** sorted by cost (the prior 20-row cap was removed 2026-05-23 — UI paginates with a "Show 20 more" button and a CSV export). Names enriched via lookups: bots → `agents.name`, townhalls → `townhall_sessions.name`, studies → `studies.name`, datasets → `datasets.name`. Falls back to `resource_id.slice(0, 8)`.
 4. Costs are computed via `estimateCost()` row-by-row, summed, then rounded to 4 decimals (`Math.round(n * 1e4) / 1e4`).
 
 **Response shape:**
@@ -309,12 +310,13 @@ Rates are **per 1M tokens, USD**. `cache_creation_tokens` are not billed — pro
   "totals":  { "calls": 12345, "input_tokens": 9876543, "output_tokens": 1234567, "cost": 47.32 },
   "by_type": {
     "bot":      { "calls": ..., "input": ..., "output": ..., "cache_read": ..., "cost": ... },
-    "townhall": { ... }, "social": { ... }, "dataset": { ... }, "system": { ... }
+    "townhall": { ... }, "social": { ... }, "dataset": { ... }, "study": { ... }, "system": { ... }
   },
   "by_event":  { "chat": { ... }, "report": { ... }, /* ... */ },
   "by_model":  { "claude-haiku-4-5-20251001": { ... }, /* ... */ },
   "daily_trend":     [ { "date": "2026-04-30", "calls": 412, "cost": 1.84 }, /* ... */ ],
-  "top_resources":   [ { "resource_type": "bot", "resource_id": "...", "name": "MyBot", "calls": 5832, "input": ..., "output": ..., "cost": ... }, /* ... */ ]
+  "top_resources":   [ { "resource_type": "bot", "resource_id": "...", "name": "MyBot", "calls": 5832, "input": ..., "output": ..., "cost": ... }, /* ... */ ],
+  "by_org":          [ { "org_id": "...", "name": "Customer Org", "calls": ..., "input": ..., "output": ..., "cost": ... }, /* ... */ ]
 }
 ```
 
@@ -347,6 +349,7 @@ const TYPE_COLORS: Record<string, string> = {
   townhall: '#7C3AED',
   social:   '#E85A1A',
   dataset:  '#059669',
+  study:    '#D97706',
   system:   '#6b7280',
 }
 const TYPE_LABELS: Record<string, string> = {
@@ -354,6 +357,7 @@ const TYPE_LABELS: Record<string, string> = {
   townhall: 'PulseIQ',
   social:   'Social',
   dataset:  'TextMine',
+  study:    'Studies',
   system:   'System',
 }
 ```
@@ -363,10 +367,18 @@ const TYPE_LABELS: Record<string, string> = {
 1. **Header** — page title + day-range selector (7 / 30 / 90).
 2. **Summary cards** — total calls, input tokens, output tokens, total estimated cost.
 3. **By Module** — grid of cards, one per `resource_type`, color-coded with `TYPE_COLORS`. Shows calls + input/output tokens + cost.
-4. **Daily Cost Trend** — bar chart, normalized to the max cost in range.
-5. **By Event Type** — table sorted by cost: event_type | calls | cost.
-6. **By Model** — table sorted by cost: model | calls | cost.
-7. **Top Resources by Cost** — table of top 20 resources: name (resolved bot/townhall name) | type | calls | input | output | cost.
+4. **By Organization** — table sorted by cost: org name | calls | input | output | cost. CSV export button at top-right.
+5. **Daily Cost Trend** — bar chart, normalized to the max cost in range.
+6. **By Event Type** — table sorted by cost: event_type | calls | cost.
+7. **By Model** — table sorted by cost: model | calls | cost.
+8. **Resources by Cost** — table of all resources (initially 20 visible, "Show 20 more" button reveals the rest). Each row name is a link into the per-resource detail page (`/admin/usage/{type}/{id}`). Columns: name | type | calls | input | output | cost. CSV export button at top-right.
+
+### Per-resource detail page — `/admin/usage/[type]/[id]`
+
+Added 2026-05-23. Reached by clicking a row name in the Resources table.
+
+- **API**: `GET /api/admin/usage/[type]/[id]?days=N` — same `requireAdmin()` gate; returns `period`, `resource: { type, id, name, href }`, `org: { id, name } | null`, `totals`, `by_event`, `by_model`, `daily_trend` scoped to that one (resource_type, resource_id). Reads up to 50 000 rows from `usage_logs` for the resource.
+- **Page**: header chip + resource name + org line + summary cards + daily trend + by-event + by-model tables. Day-range selector (7/30/90). Name links to the source surface where applicable (`/bots/{id}`, `/studies/{id}`, `/analyze/{id}`).
 
 ### Linking
 
@@ -499,10 +511,10 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/social/demo` | social | `demo` | standard |
 | `/api/cron/social-sync` | social | `auto_reply` | fast |
 | `/api/deflect` | system | `deflect` | fast |
-| `/api/translate` | system | `translate` | fast |
-| `/api/translate-responses` | system | `translate` | fast |
-| `/api/clarify` | system | `clarify` | fast |
-| `/api/ai/study-suggest` | system | `study_suggest` | fast |
+| `/api/translate` | **study** (falls back to `system` when `studyId` isn't passed) | `translate` | fast |
+| `/api/translate-responses` | **study** (falls back to `system` when `studyGuid` isn't resolvable) | `translate` | fast |
+| `/api/clarify` | **study** (falls back to `system` when `studyGuid` isn't resolvable) | `clarify` | fast |
+| `/api/ai/study-suggest` | **study** (no `resource_id` — study doesn't exist yet during wizard) | `study_suggest` | fast |
 | `/api/bot-chat` | system | `chat` | fast |
 | `/api/suggest` | system | `ghost_suggest` | fast |
 

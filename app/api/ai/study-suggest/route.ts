@@ -51,6 +51,10 @@ export async function POST(req: Request) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userRow } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  const orgId = (userRow?.org_id as string | undefined) || undefined
+
   const body = await req.json().catch(() => ({}))
   const description: string = (body.description || '').trim()
 
@@ -72,7 +76,7 @@ export async function POST(req: Request) {
       }],
     })
 
-    logUsage({ resource_type: 'system', event_type: 'study_suggest' }, aiResult.usage)
+    logUsage({ org_id: orgId, resource_type: 'study', event_type: 'study_suggest' }, aiResult.usage)
 
     const raw = aiResult.text?.trim() || ''
 

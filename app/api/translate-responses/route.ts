@@ -7,6 +7,7 @@ import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,9 +20,24 @@ export async function POST(req: NextRequest) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { texts, customTexts, fromLanguage } = body
+  const { texts, customTexts, fromLanguage, studyGuid } = body
   if (!fromLanguage || fromLanguage === 'en') {
     return NextResponse.json({ texts: {}, customTexts: {} })
+  }
+
+  // Resolve study by guid (best-effort) so usage rolls up under the study.
+  let studyOrgId: string | undefined
+  let studyId: string | undefined
+  if (studyGuid && typeof studyGuid === 'string') {
+    try {
+      const svc = createServiceRoleClient()
+      const { data: studyRow } = await svc
+        .from('studies').select('id, org_id').eq('guid', studyGuid).maybeSingle()
+      if (studyRow) {
+        studyId = studyRow.id as string
+        studyOrgId = studyRow.org_id as string
+      }
+    } catch { /* swallow; usage logging is best-effort */ }
   }
 
   // Cap input size to prevent abuse
@@ -54,7 +70,12 @@ Return ONLY valid JSON, no markdown, no explanation.`
       messages: [{ role: 'user', content: prompt }],
     })
 
-    logUsage({ resource_type: 'system', event_type: 'translate' }, result.usage)
+    logUsage({
+      org_id:        studyOrgId,
+      resource_type: studyId ? 'study' : 'system',
+      resource_id:   studyId,
+      event_type:    'translate',
+    }, result.usage)
 
     let text = result.text?.trim() || ''
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()

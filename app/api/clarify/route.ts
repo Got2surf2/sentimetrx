@@ -5,12 +5,14 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 interface ClarifyRequest {
   studyName:       string
   studyPurpose:    string
+  studyGuid?:      string                 // public guid — lets server attribute usage to the study
   questionAsked:   string
   questionKey:     'q1' | 'q3' | 'q4'
   answer:          string
@@ -45,6 +47,21 @@ export async function POST(req: NextRequest) {
   // ── Input guardrail: skip before hitting the API ──────────────────────
   if (!isInputSafe(answer)) {
     return NextResponse.json({ question: null })
+  }
+
+  // Resolve study by guid (best-effort) so usage rolls up under the study.
+  let studyOrgId: string | undefined
+  let studyId: string | undefined
+  if (body.studyGuid && typeof body.studyGuid === 'string') {
+    try {
+      const svc = createServiceRoleClient()
+      const { data: studyRow } = await svc
+        .from('studies').select('id, org_id').eq('guid', body.studyGuid).maybeSingle()
+      if (studyRow) {
+        studyId = studyRow.id as string
+        studyOrgId = studyRow.org_id as string
+      }
+    } catch { /* swallow; usage logging is best-effort */ }
   }
 
   const priorContext = Object.entries(priorAnswers)
@@ -95,7 +112,12 @@ Generate a targeted follow-up question or return SKIP.`
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    logUsage({ resource_type: 'system', event_type: 'clarify' }, result.usage)
+    logUsage({
+      org_id:        studyOrgId,
+      resource_type: studyId ? 'study' : 'system',
+      resource_id:   studyId,
+      event_type:    'clarify',
+    }, result.usage)
 
     let rawText = result.text?.trim() || 'SKIP'
     let aiThinking: string[] = []

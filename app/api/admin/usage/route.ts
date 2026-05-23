@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
   var byDay: Record<string, { calls: number; cost: number }> = {}
   // Per-resource breakdown
   var byResource: Record<string, { resource_type: string; resource_id: string; calls: number; input: number; output: number; cost: number }> = {}
+  // Per-org breakdown (key is org_id; '' bucket holds rows with no org)
+  var byOrg: Record<string, { org_id: string; calls: number; input: number; output: number; cost: number }> = {}
 
   var totalCost = 0
   var totalCalls = rows.length
@@ -86,20 +88,32 @@ export async function GET(req: NextRequest) {
       byResource[key].output += r.output_tokens
       byResource[key].cost += cost
     }
+
+    // By org
+    var orgKey = r.org_id || ''
+    if (!byOrg[orgKey]) byOrg[orgKey] = { org_id: orgKey, calls: 0, input: 0, output: 0, cost: 0 }
+    byOrg[orgKey].calls++
+    byOrg[orgKey].input += r.input_tokens
+    byOrg[orgKey].output += r.output_tokens
+    byOrg[orgKey].cost += cost
   }
 
   // Sort by-day chronologically
   var dailyTrend = Object.entries(byDay).sort().map(function(e) { return { date: e[0], ...e[1] } })
 
-  // Top resources by cost
-  var topResources = Object.values(byResource).sort(function(a, b) { return b.cost - a.cost }).slice(0, 20)
+  // All resources by cost (UI used to slice to 20 — now returns the full list and the client filters/exports)
+  var topResources = Object.values(byResource).sort(function(a, b) { return b.cost - a.cost })
 
   // Resolve resource names
   var botIds = topResources.filter(function(r) { return r.resource_type === 'bot' }).map(function(r) { return r.resource_id })
   var sessionIds = topResources.filter(function(r) { return r.resource_type === 'townhall' }).map(function(r) { return r.resource_id })
+  var studyIds = topResources.filter(function(r) { return r.resource_type === 'study' }).map(function(r) { return r.resource_id })
+  var datasetIds = topResources.filter(function(r) { return r.resource_type === 'dataset' }).map(function(r) { return r.resource_id })
 
   var botNames: Record<string, string> = {}
   var sessionNames: Record<string, string> = {}
+  var studyNames: Record<string, string> = {}
+  var datasetNames: Record<string, string> = {}
 
   if (botIds.length > 0) {
     var { data: bots } = await service.from('agents').select('id, name').in('id', botIds)
@@ -109,10 +123,44 @@ export async function GET(req: NextRequest) {
     var { data: sessions } = await service.from('townhall_sessions').select('id, name').in('id', sessionIds)
     for (var s of sessions || []) sessionNames[s.id] = s.name
   }
+  if (studyIds.length > 0) {
+    var { data: studies } = await service.from('studies').select('id, name').in('id', studyIds)
+    for (var st of studies || []) studyNames[st.id] = st.name
+  }
+  if (datasetIds.length > 0) {
+    var { data: datasets } = await service.from('datasets').select('id, name').in('id', datasetIds)
+    for (var ds of datasets || []) datasetNames[ds.id] = ds.name
+  }
+
+  function nameFor(r: { resource_type: string; resource_id: string }): string {
+    if (r.resource_type === 'bot') return botNames[r.resource_id] || r.resource_id.slice(0, 8)
+    if (r.resource_type === 'townhall') return sessionNames[r.resource_id] || r.resource_id.slice(0, 8)
+    if (r.resource_type === 'study') return studyNames[r.resource_id] || r.resource_id.slice(0, 8)
+    if (r.resource_type === 'dataset') return datasetNames[r.resource_id] || r.resource_id.slice(0, 8)
+    return r.resource_id.slice(0, 8)
+  }
 
   var topResourcesNamed = topResources.map(function(r) {
-    var name = r.resource_type === 'bot' ? botNames[r.resource_id] : r.resource_type === 'townhall' ? sessionNames[r.resource_id] : r.resource_id
-    return { ...r, name: name || r.resource_id.slice(0, 8) }
+    return { ...r, name: nameFor(r) }
+  })
+
+  // Resolve org names for per-org rollup
+  var orgList = Object.values(byOrg).sort(function(a, b) { return b.cost - a.cost })
+  var orgIds = orgList.map(function(o) { return o.org_id }).filter(Boolean)
+  var orgNames: Record<string, string> = {}
+  if (orgIds.length > 0) {
+    var { data: orgsData } = await service.from('organizations').select('id, name').in('id', orgIds)
+    for (var o of orgsData || []) orgNames[o.id] = o.name
+  }
+  var byOrgNamed = orgList.map(function(o) {
+    return {
+      org_id: o.org_id,
+      name:   o.org_id ? (orgNames[o.org_id] || o.org_id.slice(0, 8)) : '(no org)',
+      calls:  o.calls,
+      input:  o.input,
+      output: o.output,
+      cost:   o.cost,
+    }
   })
 
   // Round costs
@@ -126,5 +174,6 @@ export async function GET(req: NextRequest) {
     by_model: Object.fromEntries(Object.entries(byModel).map(function(e) { return [e[0], { ...e[1], cost: rc(e[1].cost) }] })),
     daily_trend: dailyTrend.map(function(d) { return { ...d, cost: rc(d.cost) } }),
     top_resources: topResourcesNamed.map(function(r) { return { ...r, cost: rc(r.cost) } }),
+    by_org: byOrgNamed.map(function(o) { return { ...o, cost: rc(o.cost) } }),
   })
 }

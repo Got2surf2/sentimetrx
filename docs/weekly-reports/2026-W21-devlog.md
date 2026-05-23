@@ -2003,3 +2003,22 @@ User feedback: "parking is the least useful thing inside the airport — complet
 - `app/demo/mco/components/ChatPane.tsx` — three new optional callback props to mirror messages + session_id + bot_id to the parent. Fires on mount, on change, and on reset (resetKey).
 - `package.json` — added `qrcode` + `@types/qrcode`.
 - `docs/MCO_AGENT.md` § 7.4 — new "Continue on your phone" subsection documenting the flow.
+
+## 2026-05-23 — Usage accounting: `study` resource_type + per-org rollup + drill-in detail page + uncapped resources + CSV export
+
+**Why**: Admin couldn't answer "which org cost us the most this month?" or "what's the cost of any single study?" Survey/study AI calls were fragmenting across `system` (creation/translation/clarification) so they never rolled up under a parent study. Top Resources was capped at 20 — useless for orgs with many bots. No way to drill from a top row into the per-resource breakdown.
+
+**What changed**:
+- `lib/usageLog.ts` + `lib/ai.ts` — added `'study'` to the `resource_type` union. TypeScript-only enum gate; DB column was already free TEXT.
+- `app/api/ai/study-suggest/route.ts` — looks up caller's `org_id`, tags `resource_type: 'study'` (no `resource_id` since the study doesn't exist yet at wizard time).
+- `app/api/translate/route.ts` — accepts optional `studyId` in the body. When present, validates ownership via paired `(id, org_id)` lookup and tags as `study` with `resource_id`; falls back to `system` otherwise. `components/creator/StepBasics.tsx` + `lib/studyDraft.ts:autoTranslateStale` + `app/studies/[id]/edit/EditStudyClient.tsx` now thread `draft.id` / `study.id` through. `/studies/new` leaves it undefined (no study row yet).
+- `app/api/clarify/route.ts` + `app/api/translate-responses/route.ts` — accept optional `studyGuid` (public surface), resolve `study.id` + `study.org_id` via service-role lookup (best-effort try/catch — usage logging is never load-bearing on the respondent flow), tag as `study`. `components/survey/useSurveyEngine.ts` now passes `study.guid` in both call sites.
+- `app/api/admin/usage/route.ts` — adds `by_org` aggregation (per-org rollup with `organizations.name` lookup); drops the `.slice(0, 20)` cap on top resources; widens name resolution to studies + datasets in addition to bots + townhalls.
+- `app/admin/usage/UsageClient.tsx` — adds "By Organization" section, "Resources by Cost" now paginates with a "Show 20 more" button instead of hard-capping, CSV export buttons on both org + resource tables, each resource name links into `/admin/usage/{type}/{id}`. TYPE_COLORS / TYPE_LABELS extended with `study`.
+- `app/api/admin/usage/[type]/[id]/route.ts` (NEW) — per-resource detail endpoint. Reads up to 50K logs for one (resource_type, resource_id), returns totals + by_event + by_model + daily_trend scoped to that resource, plus resolved resource name + linked surface href + parent org name.
+- `app/admin/usage/[type]/[id]/page.tsx` + `UsageDetailClient.tsx` (NEW) — detail page with module chip, org line, summary cards, daily trend bar chart, by-event + by-model tables. Day-range selector (7/30/90). Name links to source surface (`/bots/{id}`, `/studies/{id}`, `/analyze/{id}`).
+- `docs/USAGE_ACCOUNTING.md` — column-semantics row updated, AIUsageContext snippet updated, dashboard section rewritten (added "By Organization" + detail page subsection), Integration Inventory updated (study-tagged routes now show `study` as primary type, with fallback note), response-shape JSON updated.
+
+**Result**: An admin viewing `/admin/usage` can now see "Larry Kahn org cost $X this month" at a glance, drill into any single bot/study/townhall/dataset row to see its daily trend + event/model breakdown, and export org + resource breakdowns to CSV for any 7/30/90 day window. Survey costs (creator-side translate + respondent-side clarify/translate-responses) now roll up under each study instead of vanishing into the `system` bucket.
+
+**Not pushed.** Code-only change (no migration). 12 commits ahead of origin/main after this lands; push freeze still active per CLAUDE.md.

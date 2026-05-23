@@ -20,7 +20,7 @@ export interface AIProviderConfig {
 
 export interface AIUsageContext {
   org_id?: string
-  resource_type: 'bot' | 'townhall' | 'social' | 'dataset' | 'system'
+  resource_type: 'bot' | 'townhall' | 'social' | 'dataset' | 'study' | 'system'
   resource_id?: string
   event_type: string
 }

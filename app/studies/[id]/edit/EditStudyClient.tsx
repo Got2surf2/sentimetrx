@@ -61,7 +61,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
       let configToSave = draft.config
       if (status === 'active' && getStaleLanguages(draft.config).length > 0) {
         setTranslating(true)
-        const translations = await autoTranslateStale(draft.config)
+        const translations = await autoTranslateStale(draft.config, study.id)
         if (translations) {
           configToSave = { ...draft.config, translations }
           setDraft(prev => ({ ...prev, config: configToSave }))

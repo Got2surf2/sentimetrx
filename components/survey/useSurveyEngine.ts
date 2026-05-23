@@ -514,6 +514,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         body: JSON.stringify({
           studyName:       orgName || study.name,
           studyPurpose:    config.greeting,
+          studyGuid:       study.guid,
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
           answer:          text,
@@ -592,7 +593,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const res = await fetch('/api/translate-responses', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ texts: textsToTranslate, customTexts, fromLanguage: lang }),
+            body: JSON.stringify({ texts: textsToTranslate, customTexts, fromLanguage: lang, studyGuid: study.guid }),
           })
           if (res.ok) {
             const data = await res.json()
