@@ -2062,3 +2062,12 @@ This is a session-level index of the MCO work shipped over the 22nd→23rd. Each
 - `docs/USAGE_ACCOUNTING.md` — query-params section rewritten to document `days` / `from` / `to` precedence + the inclusive-`to` semantics. Dashboard section's Header bullet updated.
 
 Typecheck clean, 277/277 tests still green.
+
+## 2026-05-23 (later still) — Scope: PulseIQ Podium Capture (concept doc)
+
+**Why**: Today PulseIQ only captures digital responses through `/th/[guid]`. At a NOWOCATS-class town hall, the loudest voices in the room — people who walk up to a mic and ask a question — never land in the corpus. Scoping a path to fix that before the early-June launch so we can ship it as a fast-follow without re-litigating the design later.
+
+**What changed**:
+- `docs/PODIUM_CAPTURE.md` (new) — scope doc for in-room Q&A capture. v1 = post-event audio upload → AssemblyAI async diarized transcription → one `townhall_messages` row per speaker turn tagged `source='podium'`, `speaker_label='A'/'B'/…`. Explicitly no speaker identity (anonymous diarization only), no live forum display, no real-time streaming, no automatic Q/A pairing. Schema: 5 new optional columns on `townhall_messages` (`source`, `speaker_label`, `audio_url`, `start_ts_ms`, `end_ts_ms`, `stt_confidence`) + new `podium_sessions` table for upload-level tracking (RLS-scoped). 3 admin-only routes (upload, transcribe job, sessions list) all `requireAdmin`-wrapped. Provider: AssemblyAI (~$0.37/hr, ~$0.56 per 90-min event), wrapped behind `lib/podium/transcribe.ts`. Effort estimate ~4 days. 4 open product questions to resolve before build (venue A/V setup, moderator workflow, audio retention, deck inclusion). v2 candidates: live streaming (~1 week), automatic Q/A pairing.
+
+No code touched; pure scope. Concept deck generated separately to `~/Downloads/podium-capture-concept-2026-05-23.pptx` for stakeholder review.
