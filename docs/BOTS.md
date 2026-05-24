@@ -997,31 +997,46 @@ The one design decision worth flagging for future work: the user-turn fire-and-f
 - Aggregation dashboards / charts (the data lands; views come after we see real volume).
 - Auto-suggesting new entities from user turns the catalog missed.
 
-### 9.z Decision Study agent (regret framework pilot) — SEEDED 2026-05-22
+### 9.z Decision Study agent — SEEDED 2026-05-22 / REDESIGNED 2026-05-23
 
-A research instrument operationalizing Dr. Sunil Contractor's Comparative Evaluation Framework (2026). Implemented as a fixed-protocol agent rather than a structured survey because the design is fundamentally conversational — silence, mirroring, echo — and the 5 study-scoped neutrality clauses fit naturally into a system prompt.
+A research instrument exploring how people feel about important decisions where the outcome violated their expectations, and how they attribute the cause. Adjacent to Dr. Sunil Contractor's Comparative Evaluation Framework (2026), but the underlying research interest is broader: **regret, disappointment, and blame attribution** — none of which may appear in any prompt the respondent sees or hears. Built as a fixed-protocol agent because the design is fundamentally conversational: silence, mirroring, echo, never name a feeling the respondent hasn't named, never propose an alternative action.
 
 - **Slug:** `decision-study` (public surface: `/b/decision-study`)
 - **Agent id:** `590ed9da-78ac-4d8e-9403-1f980252ac4f`
 - **Org:** Datanautix
-- **Status:** `active` (discussion draft for Dr. Contractor review; intended for pilot fielding, not currently linked from any product surface)
-- **Framework tag:** `config.framework='regret_v1'` — present so future code can opt-in to framework-specific instrumentation if the pilot graduates
-- **Seed:** `sql/one-off/2026-05-22-regret-framework-agent.sql` + name-fix `sql/one-off/2026-05-22-decision-study-name-fix.sql` (both idempotent on slug)
-- **Respondent-visible strings** (audited 2026-05-22):
-  - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — comes from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
+- **Status:** `active` (discussion draft, not currently linked from any product surface)
+- **Seed migrations** (apply in order, each idempotent on slug):
+  - `sql/one-off/2026-05-22-regret-framework-agent.sql` — initial seed (Contractor cognitive-UBC design, since redesigned)
+  - `sql/one-off/2026-05-22-decision-study-name-fix.sql` — strips "regret framework pilot" from widget header
+  - `sql/one-off/2026-05-22-decision-study-title-and-opener-fix.sql` — strips it from `<title>` / og:title and removes "Should" from the opener; removes `config.framework` key
+  - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — **current protocol** (emotion-first probing, expanded banned-word list)
+- **Respondent-visible strings** (re-audited after each fix; final audit clean):
+  - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
   - Widget header: `"Sarina"` — via `config.name` override (BotClient.tsx:26)
   - Subtitle: empty (`config.subtitle=''`)
   - Avatar letter: `"S"`
-  - Opener / `config.initialMessage`: uses "decision" (deck-approved) and "still on your mind" (deck slide 8 explicitly justifies this framing vs "you regret"). The word "Should" was caught + removed during initial QA.
-  - `config.framework` was REMOVED from the serialized config — it was visible to view-source. Slug `decision-study` is the only forward-looking marker; any framework-specific code paths should branch on slug, not a config field.
-- **Lesson for future instruments**: every respondent-visible string lives in TWO places — the widget header reads `config.name` first; the page title / Open Graph unfurl reads `agents.name`. Auditing only the widget misses the title. Add **both** to the QA checklist before declaring an instrument live.
-- **Do not surface the word "regret," "wish," "should," "mistake," "blame," "responsibility," "control," "research," or "study" anywhere a respondent can see** — violates the framework's design constraint #1.
+  - Opener / `config.initialMessage`: filters for *important* decisions where the *outcome wasn't what they'd been expecting* — without naming regret / disappointment / blame.
+- **Lesson for future conversational instruments**: every respondent-visible string lives in TWO places — the widget header reads `config.name` first; the page title / Open Graph unfurl reads `agents.name`. Auditing only the widget misses the title. Standard QA: `curl -s "$URL?_cb=$(date +%s)" | grep -ioE '\b(banned|words)\b' | sort -u` against the live HTML.
+- **Banned words** (must not appear in prompts, clarifying questions, or chrome — and the AI must NOT echo them even when the respondent uses them): **regret, regretful, regretting, wish, should, mistake, fault, blame, blamed, disappointment, disappointed, guilt, guilty, responsibility, control** + platform names (Sentimetrx, Datanautix) + methodology terms visible to the respondent (research, study).
 
-The agent runs a 10-phase protocol: 7 substantive phases (context → outcome → comparative space with verbatim-echo drill matrix → conditional magnitude likert → role → reversibility → open close), then 3 quick demographics (age range / gender / region), then 3 single-item attitude probes (Maximizer tendency / Internal locus of control / Trait anxiety), then a close. Demos and attitude items come last by design — putting them up front would prime the construct.
+**10-phase protocol** (current — 2026-05-23 redesign):
 
-Hard constraints baked into the system prompt: never use the words **regret / wish / should / mistake / fault / blame / responsibility / control**; never name an alternative the respondent hasn't themselves mentioned; mirror their own nouns and verbs; never validate or invalidate; if they justify the decision and construct no alternative, do not push. Each agent turn capped at 30 words.
+| Phase | Construct surfaced | Seed | Drill style |
+|---|---|---|---|
+| 1 | The decision itself | "...think of a decision...that really mattered to you...where the way things turned out wasn't quite what you'd been expecting." | None — listen |
+| 2 | Outcome (facts) | "What ended up happening?" | One factual probe if vague/evaluative |
+| 3 | **Emotional state now** | "When this comes up for you now, what's the feel of it?" | 4-route emotional drill matrix: mirror their feeling word; if cognitive → "what's it like inside"; if defensive → "even so, what comes up"; if non-answer → "what keeps you coming back to this one"; optional second probe "what stays with you the most" |
+| 4 | **Weight / persistence** | "How much does this take up space for you these days — not much, sometimes, regularly, a lot, or pretty constantly?" | Per-response follow-up: "what lets you set it down" / "what keeps bringing it back" / none |
+| 5 | **Attribution of cause** | "Looking back at how this went — what stands out to you as the reason it played out the way it did?" | Per-attribution drill: self → "what part of your own piece weighs on you"; other → "where do you land on your own piece"; circumstance → "was there a moment you could have moved it"; multiple → "which weighs most" |
+| 6 | Anything still open | "Is there anything still open here — anything you can do about it from where you sit now?" | "What would that look like" / "what's it like sitting with the fact that it's done" |
+| 7 | Open close | "Anything else about this you wanted to say?" | None |
+| 8 | Demographics | Age range, gender, country/US-state — one at a time | None |
+| 9 | Attitude items | Maximizer (Schwartz) / Internal LoC (Levenson) / Trait anxiety (TIPI) — verbal 5-point | None |
+| 10 | Close | Thanks, one to two sentences | — |
 
-Post-hoc analysis uses the 8-field coding schema from the discussion deck (counterfactual_constructed / cf_direction / cf_origin / cf_magnitude / decision_responsibility / management_responsibility / outcome_reversibility / justification_signal). Not yet wired as automatic transcript-coding — coded by hand or by a separate analysis pass.
+**Hard rules** baked into the system prompt: never name an emotion or alternative action the respondent hasn't named; mirror their feeling words exactly; never validate / invalidate / paraphrase / interpret; if they close a phase, move on; 30-word turn cap; if respondent uses a banned word, pick up a different thread instead of echoing.
+
+**Post-hoc coding** (manual, not yet wired as transcript-extraction): emotional valence + dominant feeling word(s); persistence band; attribution pattern (self / other / circumstance / mixed); whether an upward counterfactual surfaced unprompted (cognitive structure layered on emotional content); reversibility band. The original 8-field Contractor schema (cf_constructed / cf_direction / cf_origin / cf_magnitude / decision_responsibility / management_responsibility / outcome_reversibility / justification_signal) remains a valid lens for analysis but is no longer the primary frame — the redesigned protocol surfaces emotional and attributional content first; cognitive counterfactual structure emerges from the emotional drilling rather than being directly elicited.
 
 ---
 

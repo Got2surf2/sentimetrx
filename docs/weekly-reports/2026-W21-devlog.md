@@ -1,5 +1,25 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-23 — Decision Study agent: full protocol redesign (emotional probing)
+
+Why: yesterday's agent was Contractor's deck-as-written — a cognitive UBC-detection instrument that drilled into counterfactual structure (Q3 four-route verbatim-echo on alternative actions, Q4 magnitude comparison, Q5 decision-vs-management role). User clarification today: the broader research interest is **when people feel regret and disappointment and how they attribute the consequence in terms of blame** — none of which may appear in any prompt. The cognitive UBC-detection instrument was technically clean against the deck's neutrality rules but felt generic — the opener "a decision still on your mind" let respondents pick any memorable decision (including ones that went well), and the drilling was mechanical/cognitive rather than emotional.
+
+Two structural changes (`sql/one-off/2026-05-23-decision-study-emotional-redesign.sql`, applied to prod):
+
+1. **Opener now filters for IMPORTANT + UNANTICIPATED-OUTCOME decisions**: "think of a decision you made in the last year or so that really mattered to you...where the way things turned out wasn't quite what you'd been expecting." This selects the decision class where regret / disappointment / blame are most likely to be felt, without naming any of them. The phrase "wasn't quite what you'd been expecting" captures the anticipation-violation; "really mattered to you" captures importance.
+
+2. **Phases 3-6 reframed around emotional state, not cognitive structure**:
+   - Phase 3 (was Q3 cognitive comparative-space drill matrix) → "When this comes up for you now, what's the feel of it?" with 4-route emotional drill (mirror feeling word / cognitive-to-emotional redirect / defensive-but-what-comes-up / non-answer-but-what-keeps-you-coming-back).
+   - Phase 4 (was Q4 magnitude likert) → "How much does this take up space for you these days?" with persistence band (not much / sometimes / regularly / a lot / constantly) and per-band follow-up.
+   - Phase 5 (was Q5 decision-vs-management role) → "Looking back...what stands out as the reason it played out the way it did?" with per-attribution drill (self / other / circumstance / multiple). This captures blame attribution behaviorally — the word "blame" never appears.
+   - Phase 6 (was reversibility-only) → expanded with an explicit "what's it like sitting with the fact that it's done?" branch when reversibility = no.
+
+Banned-word list expanded: added `disappointment / disappointed / guilt / guilty` to the existing `regret / wish / should / mistake / fault / blame / responsibility / control`. New explicit rule #8: even if the respondent uses a banned word, the AI must NOT echo it back — pick up a different thread. Calibrating to the respondent's vocabulary is core to mirroring, but reinforcing the construct vocabulary would bias the next turn.
+
+Post-hoc coding plan shifts in tandem: emotion-first lens (valence + dominant feeling words + persistence band + attribution pattern + reversibility). Contractor's original 8-field cognitive schema remains a valid lens for analysis but no longer drives the elicitation — cognitive counterfactual structure emerges from emotional drilling rather than being directly elicited.
+
+Live audit (curl + grep `\b(regret|wish|should|mistake|fault|blame|disappoint(ed|ment)?|guilt|guilty|responsibility)\b` case-insensitive): zero matches on `https://www.sentimetrx.ai/b/decision-study`. SQL-only change; no code touched; no push needed for the agent's behavior to update.
+
 ## 2026-05-22 (latest 2) — Decision Study agent: page title + opener + framework-key fix
 
 First fix (`17dc2ae5`) caught the widget header by overriding `config.name`. Did not catch the page `<title>`, `og:title`, or `twitter:title` — those are generated from `agents.name` in `app/b/[slug]/page.tsx:56`, NOT from `config.name`. So every share-link preview (iMessage / Slack / Twitter unfurl) and the browser tab still said "Chat with Decision Study (regret framework pilot)". Caught by curl/grep audit of the live HTML.
