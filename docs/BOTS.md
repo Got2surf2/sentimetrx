@@ -1010,7 +1010,8 @@ A research instrument exploring how people feel about important decisions where 
   - `sql/one-off/2026-05-22-decision-study-name-fix.sql` — strips "regret framework pilot" from widget header
   - `sql/one-off/2026-05-22-decision-study-title-and-opener-fix.sql` — strips it from `<title>` / og:title and removes "Should" from the opener; removes `config.framework` key
   - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — emotion-first probing, expanded banned-word list
-  - `sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql` — **current protocol** (Phase 3 sharpened: legitimizes rumination, drill matrix explicitly routes evaluative-only answers back into the emotional register, probe 3 captures locus)
+  - `sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql` — Phase 3 sharpened (drill matrix routes evaluative-only answers back into the emotional register; probe 3 captures locus)
+  - `sql/one-off/2026-05-24-decision-study-plain-language-rewrite.sql` — **current protocol** (plain-language rewrite for 80-year-old accessibility + new Phase 7 "Other decisions since" capturing behavioral shadow on subsequent decisions; renumbers prior 7-10 → 8-11)
 - **Respondent-visible strings** (re-audited after each fix; final audit clean):
   - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
   - Widget header: `"Sarina"` — via `config.name` override (BotClient.tsx:26)
@@ -1020,20 +1021,23 @@ A research instrument exploring how people feel about important decisions where 
 - **Lesson for future conversational instruments**: every respondent-visible string lives in TWO places — the widget header reads `config.name` first; the page title / Open Graph unfurl reads `agents.name`. Auditing only the widget misses the title. Standard QA: `curl -s "$URL?_cb=$(date +%s)" | grep -ioE '\b(banned|words)\b' | sort -u` against the live HTML.
 - **Banned words** (must not appear in prompts, clarifying questions, or chrome — and the AI must NOT echo them even when the respondent uses them): **regret, regretful, regretting, wish, should, mistake, fault, blame, blamed, disappointment, disappointed, guilt, guilty, responsibility, control** + platform names (Sentimetrx, Datanautix) + methodology terms visible to the respondent (research, study).
 
-**10-phase protocol** (current — 2026-05-23 redesign):
+**11-phase protocol** (current — 2026-05-24 plain-language rewrite + new Phase 7):
 
 | Phase | Construct surfaced | Seed | Drill style |
 |---|---|---|---|
-| 1 | The decision itself | "...think of a decision...that really mattered to you...where the way things turned out wasn't quite what you'd been expecting." | None — listen |
+| 1 | The decision itself | "...think of an important decision you made in the last year or so...one where things didn't turn out the way you thought they would." | None — listen |
 | 2 | Outcome (facts) | "What ended up happening?" | One factual probe if vague/evaluative |
-| 3 | **Emotional state now** (valence + intensity + locus + processing mode) | "When this decision comes back to mind now — and important ones like this tend to come back — what's there for you in it?" | 4-route drill: **feeling-named** → mirror + locate ("what's the [their word] about — the decision, the outcome, where you ended up, or something else?"); **evaluative-only** → "setting aside whether it was right or wrong, when you sit with this, what's there for you?"; **defensive/dismissive** → "even so — what's the piece that pulls your attention back to it?"; **short/non-answer** → "stay with it for a second — what bubbles up?"; optional probe 3 (if thread surfaced) → "what's the part of it that pulls your attention back the most?" |
-| 4 | **Weight / persistence** | "How much does this take up space for you these days — not much, sometimes, regularly, a lot, or pretty constantly?" | Per-response follow-up: "what lets you set it down" / "what keeps bringing it back" / none |
-| 5 | **Attribution of cause** | "Looking back at how this went — what stands out to you as the reason it played out the way it did?" | Per-attribution drill: self → "what part of your own piece weighs on you"; other → "where do you land on your own piece"; circumstance → "was there a moment you could have moved it"; multiple → "which weighs most" |
-| 6 | Anything still open | "Is there anything still open here — anything you can do about it from where you sit now?" | "What would that look like" / "what's it like sitting with the fact that it's done" |
-| 7 | Open close | "Anything else about this you wanted to say?" | None |
-| 8 | Demographics | Age range, gender, country/US-state — one at a time | None |
-| 9 | Attitude items | Maximizer (Schwartz) / Internal LoC (Levenson) / Trait anxiety (TIPI) — verbal 5-point | None |
-| 10 | Close | Thanks, one to two sentences | — |
+| 3 | **How it sits** (valence + intensity + locus + processing mode) | "When you think about this decision now, what comes up for you?" | 4-route drill: **feeling-named** → mirror + locate ("what's the [word] about — the decision, the outcome, how it ended up, or something else?"); **evaluative-only** → "even if you think it was the right call, what comes up when you think about it now?"; **dismissive** → "even so — what part of it do you keep thinking about?"; **short/non-answer** → "take a second — what comes to mind?"; optional probe 3 → "what part of this do you keep going back to?" |
+| 4 | **How often it comes up** | "How often does this come up for you these days — not much, sometimes, often, a lot, or pretty much always?" | Per-response follow-up: "what helps you set it aside" / "what keeps bringing it back" / none |
+| 5 | **What you point to** (attribution) | "Looking back, what do you think was the main reason it went the way it did?" | Per-attribution drill: self → "what about your part in it still sticks with you"; other → "what about your own part in it"; circumstance → "was there a moment you could have done something different"; multiple → "if you had to pick the biggest reason, which one" |
+| 6 | Anything you can do now | "Is there anything you can still do about this now?" | "What would that look like" / "how do you handle knowing it's done" |
+| 7 | **Other decisions since** (NEW — behavioral shadow) | "Since this one, when you've had other big decisions to make — has this one been on your mind?" | yes → "how does it come up for you"; no → "is there anything you find yourself watching for now that you weren't before"; sometimes → "when it does come up, what part of it comes back" |
+| 8 | Open close | "Anything else about this you wanted to say?" | None |
+| 9 | Demographics | Age range / gender / where you live — one at a time | None |
+| 10 | Attitude items | Maximizer (Schwartz) / Internal LoC (Levenson) / Trait anxiety (TIPI) — verbal 5-point | None |
+| 11 | Close | Thanks, one to two plain sentences | — |
+
+**Language bar** baked into the system prompt: every prompt must be one an 80-year-old can understand and answer without thinking. No therapy-speak (banned: "in the room with you," "what bubbles up," "sit with this," "what's there for you," "pulls your attention back"). No clinical/corporate language (banned: "played out," "magnitude," "anticipated," "based," "setting aside"). Use the exact phrasings in the table.
 
 **Hard rules** baked into the system prompt: never name an emotion or alternative action the respondent hasn't named; mirror their feeling words exactly; never validate / invalidate / paraphrase / interpret; if they close a phase, move on; 30-word turn cap; if respondent uses a banned word, pick up a different thread instead of echoing.
 
