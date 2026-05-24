@@ -952,16 +952,35 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // collide on turn_number=0 and the admin transcript views see
         // them as duplicates.
         var insertedGreetingThisTurn = false
+        var insertedAskNameThisTurn = false
         if (maxExisting < 0) {
+          // If user_name is present, the widget already ran the askName
+          // flow client-side. Persist that exchange as T0 (assistant ask) +
+          // T1 (user reply) so the admin transcript shows the full
+          // conversation, not just from the topical greeting onward.
+          // Without this, the askName Q&A is invisible in the conversation
+          // modal — reviewers reading transcripts of name-collecting bots
+          // see the greeting prefixed with the name but no record of how
+          // the name was elicited.
+          if (user_name && typeof user_name === 'string' && user_name.trim()) {
+            var askPrompt = ((bot.config as any)?.askNamePrompt as string)?.trim() || "What's your name?"
+            var nameAnswer = user_name.trim().slice(0, 60)
+            turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: askPrompt, language: botLang, source: 'greeting' })
+            turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 1, role: 'user', content: nameAnswer, language: botLang, source: 'normal' })
+            insertedAskNameThisTurn = true
+          }
+
           var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
           if (initialMsg) {
-            turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
+            var greetingTurnNum = insertedAskNameThisTurn ? 2 : 0
+            turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: greetingTurnNum, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
             insertedGreetingThisTurn = true
           }
         }
 
         var turnBase = maxExisting + 1
-        if (insertedGreetingThisTurn) turnBase = 1  // greeting took T0; user → T1, assistant reply → T2.
+        if (insertedGreetingThisTurn && insertedAskNameThisTurn) turnBase = 3  // T0=askName Q, T1=name, T2=greeting; user → T3, reply → T4
+        else if (insertedGreetingThisTurn) turnBase = 1  // T0=greeting; user → T1, reply → T2.
         var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
         if (auditFlags.length > 0) userTurn.content_flags = auditFlags
         if (userContent) {

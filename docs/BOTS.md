@@ -369,7 +369,18 @@ When `config.askName !== false` (the default), the widget asks the user's name a
 2. **User** replies with their name. The client validates it (length 1–40, no profanity/slurs) and title-cases it.
 3. **Message 2** — topical opener. For English, rendered client-side as `"Nice to meet you, <name>. <config.initialMessage>"`. For non-English languages, the client calls `/api/bots/[id]/chat` once to translate `config.initialMessage` into the selected language and personalize it with the user's name.
 
-The first three messages (name-ask + name reply + topical opener) are tracked in `nameExchangeMessages` state and **sliced out** of every subsequent API call, so the server sees a clean conversation starting with the topical opener as turn 0 and the user's first real message as turn 1. This keeps `userTurnCount`-based features (`askProfile` profile-question injection in particular) firing on the correct turn.
+The first three messages (name-ask + name reply + topical opener) are tracked in `nameExchangeMessages` state and **sliced out** of every subsequent API call. The server sees only the topical opener and user messages from there onward.
+
+**Server-side transcript reconstruction (2026-05-24, `lib/chatCore.ts:954-984`):** even though the askName Q&A doesn't reach the server in the message stream, when the FIRST chat request arrives with `user_name` set, the server synthesises both turns so the admin transcript shows the full conversation:
+
+- T0 (assistant, `source='greeting'`): the askName prompt — defaults to `"What's your name?"`, overridable via `config.askNamePrompt`
+- T1 (user, `source='normal'`): the name they supplied
+- T2 (assistant, `source='greeting'`): the topical opener (`config.initialMessage`)
+- T3+ : normal conversation
+
+When `user_name` is absent (askName=false), only T0 (topical opener) is synthesised — same as before. Turn numbering shifts accordingly: `turnBase = 3` for askName flow, `turnBase = 1` for askName-skipped flow.
+
+This fixes the long-standing gap where admin modal views of name-collecting bots (Hope, Sarina, etc.) showed the greeting prefixed with the name but no record of how the name was elicited — confusing for reviewers reading transcripts.
 
 When `askName === false`, the topical opener (`config.initialMessage`) is the very first message and the name capture step is skipped (`userName` is initialised to `'_skip'`).
 

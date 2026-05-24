@@ -1,5 +1,22 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-24 (latest 2) — Persist askName Q&A as conversation turns (platform-wide fix)
+
+User caught it while testing the Decision Study agent: admin conversation modal showed the greeting prefixed with "Nice to meet you, Sanjay" but no record of how the name was elicited. The askName flow runs client-side in the widget (per BOTS.md § 5 "Two-step opener") and the resulting three messages (name-ask + name reply + topical opener) are sliced out of every API call before reaching the server. The server only sees the topical opener and subsequent turns — so it had nothing to write to `bot_conversation_turns` for the name exchange.
+
+**Code change** (`lib/chatCore.ts:954-984`): when the FIRST chat request arrives with `user_name` set, the server now synthesises both turns of the askName Q&A so the transcript reconstructs the full conversation:
+
+- T0 (assistant, `source='greeting'`): the askName prompt — defaults to `"What's your name?"`, overridable via `config.askNamePrompt`
+- T1 (user, `source='normal'`): the name they supplied
+- T2 (assistant, `source='greeting'`): the topical opener (was T0 prior to this change)
+- T3+ : normal conversation (was T1+ prior to this change)
+
+`turnBase` adjusted from `1` (greeting-only flow) to `3` (askName flow) when both synthetic exchanges are inserted. Downstream `mirrorTurns`, focus classifier, and user-turn classify all still target the right rows (`turnBase` for user, `turnBase + 1` for assistant). The pre-existing `userTurnCountForName` math at line 1045 produces non-integer values either way (already a no-op since `1/2 + 1 = 1.5` never matches `=== 2 || === 5` — pre-existing dead code; leaving in place since it's not load-bearing).
+
+Affects every agent with askName turned on (Hope, Sarina, Cubie, AskAna, plus the Decision Study pilot). Existing conversation rows are NOT retroactively updated — only NEW conversations post-deploy get the synthetic turn pair. Spec at BOTS.md § 5 (Two-step opener) updated to document the server-side reconstruction.
+
+Clean typecheck. No new tests added; existing chat-route integration tests still pass (no behavior change for askName=false agents). SQL untouched — code-only change. Requires push to activate.
+
 ## 2026-05-24 (latest) — Decision Study agent: hybrid C+D conversational architecture + focus catalog
 
 User probed an architectural question — "are you actually using AI or a canned program?" — that surfaced the core problem: the system_prompt had been written as a pure script ("Ask: '...'" for every phase including drills), so even though Claude was generating each turn, it was being instructed to read literal lines off a sheet. That's what made it feel stilted. The LLM had the capability to be natural; the prompt was handcuffing it.
