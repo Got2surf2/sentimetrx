@@ -11,6 +11,7 @@ import TerminalMapCard from './components/TerminalMapCard'
 import RestaurantsCard from './components/RestaurantsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
+import SecurityWaitCard from './components/SecurityWaitCard'
 import WelcomeCard from './components/WelcomeCard'
 import QRHandoffModal from './components/QRHandoffModal'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
@@ -104,6 +105,7 @@ function HintRenderer({ hint, mode, onTileClick }: { hint: UiHint; mode: Deploym
   if (hint.type === 'terminal_map') return <TerminalMapCard hint={hint} />
   if (hint.type === 'restaurants') return <RestaurantsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
+  if (hint.type === 'security_wait') return <SecurityWaitCard hint={hint} />
   if (hint.type === 'link_card') return <LinkCard hint={hint} mode={mode} />
   return null
 }

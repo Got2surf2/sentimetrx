@@ -20,6 +20,7 @@ export type UiHint =
   | ParkingHint
   | RestaurantsHint
   | LinkCardHint
+  | SecurityWaitHint
   | WelcomeHint
 
 // Welcome / default-state card. Never emitted by the extractor — only used
@@ -57,6 +58,12 @@ export interface LinkCardHint {
   image_url?: string
   cta_url: string
   cta_label: string
+}
+
+export interface SecurityWaitHint {
+  type: 'security_wait'
+  terminal?: 'A' | 'B' | 'C'   // filter to one checkpoint group (optional)
+  lane?: 'general' | 'precheck' // emphasize one lane type (optional)
 }
 
 // Deployment context — auto-detected by the page (URL param, geolocation,
@@ -113,9 +120,12 @@ Allowed hint types and required payload shapes:
 - restaurants: { "type": "restaurants", "place_ids": [], "context"?: string }
   Use whenever the user is asking about food, dining, restaurants, where to eat, snacks, coffee, drinks, or shopping — EVEN IF the assistant's response is vague or punts to a website. Set "context" to "terminal_a_airside", "terminal_b_airside", "terminal_c_airside", or "landside_main_terminal". Leave place_ids as [] — the renderer resolves them.
 
+- security_wait: { "type": "security_wait", "terminal"?: "A"|"B"|"C", "lane"?: "general"|"precheck" }
+  Use when the user is asking about CURRENT security wait times, checkpoint lines, or "how long is security right now" / "is the line short". The card renders LIVE wait times for all 3 checkpoints (West=A, East=B, South=C) × 2 lanes (general/precheck). Set "terminal" if the user asked about a specific terminal; set "lane" if they specifically mentioned PreCheck or general. Do NOT use this for questions about MCO Reserve, TSA PreCheck enrollment, or "how early should I arrive" — those are link_card or general answers, not live-wait questions.
+
 - link_card: { "type": "link_card", "title": string, "body": string, "cta_url": string, "cta_label": string }
   Use when the assistant addresses one specific MCO topic that has its own dedicated page. cta_url MUST be exactly one of:
-    - "https://flymco.com/speed-through-mco" — MCO Reserve (security wait, skipping the line, PreCheck alternative, "how long is security")
+    - "https://flymco.com/speed-through-mco" — MCO Reserve program info (HOW the program works, what it costs, how to book — NOT live wait times; use security_wait for "how long is the line right now")
     - "https://flymco.com/experience-mco-visitor-pass-program" — Visitor Pass
     - "https://flymco.com/accessibility" — Accessibility programs (Sunflower Lanyard, Annie's Space)
     - "https://flymco.com/mco-app" — MCO App
@@ -145,6 +155,8 @@ Examples:
 - User: "What's the security wait like?" → Assistant: "Standard 15-30 min; MCO Reserve lets you book a slot to skip the line for free." → { "hint": { "type": "link_card", "title": "MCO Reserve", "body": "Standard security at MCO runs 15-30 minutes most days. MCO Reserve is a free service that lets you book a security time slot so you can skip into a shorter line.", "cta_url": "https://flymco.com/speed-through-mco", "cta_label": "Reserve a time slot" }, "next_chips": ["When are slots released?", "Is it really free?", "Does it work with PreCheck?"] }
 - CONTEXT: active_terminal=C, last_canvas_type=terminal_map. User: "Where can I get coffee?" → Assistant: "Starbucks and Cibo Espresso have outposts in Terminal C airside." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_c_airside" }, "next_chips": ["What's open before 6 AM?", "Sit-down breakfast?"] }
 - User: "I'm in Terminal A" (prior context was about shops/dining) → Assistant: "Great! For Terminal A's shops and dining, browse the directory and filter by Terminal A..." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Best quick bite near the gate?", "Any bars open now?", "Coffee shops?"] }
+- User: "How long are the security lines right now?" → Assistant: "Here are the current waits at MCO..." → { "hint": { "type": "security_wait" }, "next_chips": ["Which lane is fastest?", "Where's the West checkpoint?", "Is PreCheck open?"] }
+- CONTEXT: active_terminal=B. User: "What's the wait at security?" → Assistant gives Terminal B-scoped wait → { "hint": { "type": "security_wait", "terminal": "B" }, "next_chips": ["What about PreCheck?", "How early should I arrive?"] }
 - CONTEXT: last_canvas_type=restaurants. User: "Tell me a joke." → Assistant: "Off-topic gentle deflect." → { "hint": null, "next_chips": [], "revert_canvas": true }
 
 Output JSON only. No prose, no markdown fences.`
@@ -195,6 +207,13 @@ export function validateHint(raw: any): UiHint | null {
       : []
     const h: RestaurantsHint = { type: 'restaurants', place_ids }
     if (typeof raw.context === 'string' && raw.context.length <= 64) h.context = raw.context
+    return h
+  }
+  if (t === 'security_wait') {
+    const allowed = ['A', 'B', 'C']
+    const h: SecurityWaitHint = { type: 'security_wait' }
+    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
+    if (raw.lane === 'general' || raw.lane === 'precheck') h.lane = raw.lane
     return h
   }
   if (t === 'link_card') {

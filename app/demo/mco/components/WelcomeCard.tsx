@@ -51,6 +51,19 @@ function fillBar(available: number | null, total: number | null): { pct: number;
   return { pct, color, label: pct + '% full' }
 }
 
+// When GOAA returns status only (no numeric counts) — current production
+// state — surface the open/full/closed status as a colored pill instead
+// of an empty bar. Garage C being "full" right now is genuinely useful
+// info, just not numeric.
+function statusBadge(status: string): { label: string; bg: string; fg: string } {
+  switch ((status || '').toLowerCase()) {
+    case 'full':   return { label: 'Full',   bg: '#fee2e2', fg: '#991b1b' }
+    case 'closed': return { label: 'Closed', bg: '#f3f4f6', fg: '#6b7280' }
+    case 'open':   return { label: 'Open',   bg: '#d1fae5', fg: '#065f46' }
+    default:       return { label: status || '–', bg: '#f3f4f6', fg: '#6b7280' }
+  }
+}
+
 export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; onTileClick?: (prompt: string) => void }) {
   const [lots, setLots] = useState<ApiLot[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,9 +131,10 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
           </div>
           {loading && lots.length === 0 ? (
             <div className="welcome-empty">Checking lots…</div>
-          ) : !hasLive ? (
-            <div className="welcome-empty">Live spot counts unavailable — ask Ana about parking options.</div>
-          ) : (
+          ) : lots.length === 0 ? (
+            <div className="welcome-empty">Live data unavailable — ask Ana about parking options.</div>
+          ) : hasLive ? (
+            // Numeric counts available → render fill bars
             <div className="welcome-parking-grid">
               {lots.map(l => {
                 const bar = fillBar(l.available, l.total)
@@ -131,6 +145,19 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
                       <div className="welcome-parking-fill" style={{ width: bar.pct + '%', background: bar.color }} />
                     </div>
                     <div className="welcome-parking-label">{l.available != null ? l.available.toLocaleString() + ' open' : bar.label}</div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            // Status-only path (current GOAA state): just show open/full/closed pills.
+            <div className="welcome-parking-grid">
+              {lots.map(l => {
+                const s = statusBadge(l.status)
+                return (
+                  <div key={l.id} className="welcome-parking-row welcome-parking-row-status">
+                    <div className="welcome-parking-name">{l.name}</div>
+                    <div className="welcome-parking-status-pill" style={{ background: s.bg, color: s.fg }}>{s.label}</div>
                   </div>
                 )
               })}

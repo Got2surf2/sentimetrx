@@ -2091,3 +2091,23 @@ Typecheck clean, 277/277 tests still green.
 - `docs/PODIUM_CAPTURE.md` (new) — scope doc for in-room Q&A capture. v1 = post-event audio upload → AssemblyAI async diarized transcription → one `townhall_messages` row per speaker turn tagged `source='podium'`, `speaker_label='A'/'B'/…`. Explicitly no speaker identity (anonymous diarization only), no live forum display, no real-time streaming, no automatic Q/A pairing. Schema: 5 new optional columns on `townhall_messages` (`source`, `speaker_label`, `audio_url`, `start_ts_ms`, `end_ts_ms`, `stt_confidence`) + new `podium_sessions` table for upload-level tracking (RLS-scoped). 3 admin-only routes (upload, transcribe job, sessions list) all `requireAdmin`-wrapped. Provider: AssemblyAI (~$0.37/hr, ~$0.56 per 90-min event), wrapped behind `lib/podium/transcribe.ts`. Effort estimate ~4 days. 4 open product questions to resolve before build (venue A/V setup, moderator workflow, audio retention, deck inclusion). v2 candidates: live streaming (~1 week), automatic Q/A pairing.
 
 No code touched; pure scope. Concept deck generated separately to `~/Downloads/podium-capture-concept-2026-05-23.pptx` for stakeholder review.
+
+## 2026-05-24 — Live TSA wait times + parking status pills
+
+**Why**: User asked me to confirm the parking API works (and check for a security-line API). Both must be live always.
+
+**What I found** (Playwright sniff of flymco.com/security + direct curls):
+- `api.goaa.aero/parking/availability/MCO` works — returns 17 lots — BUT every `available`/`occupied`/`total` field is **null**. Only the `status` field (open/full/closed) is populated. Today Garage C, Surface Lot Discovery, and Surface Lot Endeavour are all "full". Our welcome-card was throwing that data away with a generic "Live spot counts unavailable" message.
+- `api.goaa.aero/wait-times/checkpoint/MCO` works — returns 6 entries (3 checkpoints × 2 lanes). West/East/South map to Terminals A/B/C via the `attributes.minGate` field (1-59=A, 70-129=B, C230-C249=C). Each entry has `waitSeconds` + min/max bounds + `isOpen` + `lastUpdatedTimestamp`. Refreshing live (verified: 281s → 339s on the same checkpoint between two probes 5 min apart).
+
+**What changed**:
+- `lib/securityWait.ts` — NEW. Same shape as `lib/parking.ts` (60s in-memory cache, in-flight dedup, no-fail fallback). Exports `fetchSecurityWaits()` returning `CheckpointWait[]` with derived `terminal: 'A'|'B'|'C'|null`.
+- `app/api/mco/security/route.ts` — NEW. GET endpoint, CORS-open, JSON `{ checkpoints, fetched_at }`.
+- `lib/uiHints.ts` — `SecurityWaitHint` added to the `UiHint` union; `validateHint` parses `{terminal?, lane?}`; `UI_HINT_EXTRACTOR_PROMPT` gains a `security_wait` rule + two examples (general + active-terminal-scoped). MCO Reserve link_card rule tightened to "HOW the program works" only, since "how long is security right now" is now a security_wait hint.
+- `app/demo/mco/components/SecurityWaitCard.tsx` — NEW. Three checkpoint blocks (or one if `hint.terminal` is set), each with two lane pills (Standard/PreCheck). Color band <10m green / 10-20m amber / ≥20m red. Emphasized border on `hint.lane` match.
+- `app/demo/mco/CanvasShell.tsx` — imports + `HintRenderer` dispatch for `security_wait`.
+- `app/demo/mco/components/WelcomeCard.tsx` — when GOAA returns lots but with null counts (current state), the parking strip now shows per-garage open/full/closed pills instead of a generic "unavailable" line. `statusBadge()` helper added.
+- `app/demo/mco/canvas.css` — `.sec-*` rules for the new card; `.welcome-parking-row-status` + `.welcome-parking-status-pill` for the status-only rendering.
+- `docs/MCO_AGENT.md` — parking row updated, new `security_wait` row added to the hint table.
+
+Typecheck clean. 277/277 tests still passing.
