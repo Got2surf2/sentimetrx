@@ -1,5 +1,23 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-24 (latest) — Decision Study agent: hybrid C+D conversational architecture + focus catalog
+
+User probed an architectural question — "are you actually using AI or a canned program?" — that surfaced the core problem: the system_prompt had been written as a pure script ("Ask: '...'" for every phase including drills), so even though Claude was generating each turn, it was being instructed to read literal lines off a sheet. That's what made it feel stilted. The LLM had the capability to be natural; the prompt was handcuffing it.
+
+Spec'd four conversational architectures (A=pure script / B=intent-only / C=scripted seed + intent drills / D=intent everywhere) with tradeoffs around measurement reliability vs naturalness. User chose hybrid C+D given the use case: general public outreach, large N, post-hoc coding done by me (so focus tags handle bucketing, not exact-wording match), and a strong preference for natural conversation over rigid script.
+
+**Hybrid C+D structure** (`sql/one-off/2026-05-24-decision-study-hybrid-c-plus-d.sql`, applied to prod):
+
+- **OPEN phases (1, 2, 3, 5, 6, 7, 8)** — system_prompt gives Claude the GOAL of each phase + 2-3 example phrasings + drill intent. Claude generates each turn naturally within style guide + neutrality rules. The seed phrasings in the prompt are examples — explicit permission to find its own wording if it fits the moment better. Each respondent hears ~5-10% wording variance for the same construct probe.
+- **SCALED phases (4 + 10)** — Claude reads the seed VERBATIM. Phase 4 = persistence-band Likert; Phase 10 = three TIPI/LoC/Maximizer attitude items. Scale words are the measurement instrument; psychometric validity requires exact phrasing.
+- **Demographics (Phase 9)** — scripted question text with light warming allowed.
+
+**Focus catalog populated** in `agents.focuses` (11 entries — one per phase: decision / outcome / how_it_sits / how_often / attribution / can_do_now / decisions_since / open_close / demographics / attitudes / close), each with slug + label + description + keywords. `probe_focus_enabled=true` flipped on. Both bot and user turns now auto-tag with `focus:<slug>` / `topic:<slug>` per the existing `classifyResponseFocuses` classifier (BOTS.md § 9.x.1). Post-hoc coding query: `WHERE content_flags @> '["topic:how_it_sits"]'` returns every emotional-residue answer across the respondent set regardless of exact wording. Solves the large-N bucketing concern under D-style wording variance.
+
+system_prompt grew 7517 → 10615 chars (the example-phrasings + intent-only structure is more verbose than the pure-script form). Live audit clean (zero banned-word matches on the live page).
+
+Architectural takeaway for future research instruments: rigid-script + LLM = robot reading a sheet. Intent-only + LLM + focus-tag post-hoc coding = natural conversation + clean post-hoc data. The platform's existing focus-tagging feature was exactly the seam that made this viable without sacrificing measurement.
+
 ## 2026-05-24 (later) — Decision Study agent: plain-language rewrite + new Phase 7
 
 Two-fold user correction (testing transcripts pending):

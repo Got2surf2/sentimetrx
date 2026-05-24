@@ -1011,7 +1011,8 @@ A research instrument exploring how people feel about important decisions where 
   - `sql/one-off/2026-05-22-decision-study-title-and-opener-fix.sql` — strips it from `<title>` / og:title and removes "Should" from the opener; removes `config.framework` key
   - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — emotion-first probing, expanded banned-word list
   - `sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql` — Phase 3 sharpened (drill matrix routes evaluative-only answers back into the emotional register; probe 3 captures locus)
-  - `sql/one-off/2026-05-24-decision-study-plain-language-rewrite.sql` — **current protocol** (plain-language rewrite for 80-year-old accessibility + new Phase 7 "Other decisions since" capturing behavioral shadow on subsequent decisions; renumbers prior 7-10 → 8-11)
+  - `sql/one-off/2026-05-24-decision-study-plain-language-rewrite.sql` — plain-language rewrite for 80yo accessibility + new Phase 7 "Other decisions since" (behavioral shadow); renumbers prior 7-10 → 8-11
+  - `sql/one-off/2026-05-24-decision-study-hybrid-c-plus-d.sql` — **current protocol** (hybrid C+D conversational architecture: OPEN phases use intent + example phrasings, Claude generates each turn naturally; SCALED phases (4 + 10) use verbatim wording for instrument validity; demographics scripted with light warming. Also populates `agents.focuses` with 11-entry catalog and flips `probe_focus_enabled=true` so both bot and user turns auto-tag with `focus:<slug>` / `topic:<slug>` for post-hoc bucketing)
 - **Respondent-visible strings** (re-audited after each fix; final audit clean):
   - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
   - Widget header: `"Sarina"` — via `config.name` override (BotClient.tsx:26)
@@ -1036,6 +1037,16 @@ A research instrument exploring how people feel about important decisions where 
 | 9 | Demographics | Age range / gender / where you live — one at a time | None |
 | 10 | Attitude items | Maximizer (Schwartz) / Internal LoC (Levenson) / Trait anxiety (TIPI) — verbal 5-point | None |
 | 11 | Close | Thanks, one to two plain sentences | — |
+
+**Conversational architecture** (current — 2026-05-24 hybrid C+D rewrite):
+
+- **OPEN phases** (1, 2, 3, 5, 6, 7, 8) — system_prompt gives Claude the GOAL of each phase + 2-3 example phrasings + drill intent ("if they say X, mirror + locate"). Claude generates each turn naturally within style guide and neutrality rules. The seed phrasings in the table above are examples — Claude has explicit permission to find its own wording if it fits the moment better. Each respondent therefore hears slightly different wording (~5-10% variance) for the same construct.
+- **SCALED phases** (4 + 10) — Claude reads the seed VERBATIM. Phase 4 is the persistence-band Likert; Phase 10 is the three TIPI/LoC/Maximizer attitude items. The scale words ARE the measurement instrument; psychometric validity requires exact phrasing across all respondents.
+- **Demographics** (9) — scripted question text with light warming allowed.
+
+**Why hybrid not pure-script**: post-hoc bucketing is solved by `agents.focuses` + `probe_focus_enabled=true` (see below), not by exact-wording match. So the variance from D-style generation on OPEN phases is acceptable — what matters for analysis is the `topic:<slug>` tag on each user turn, not whether the bot's seed was worded identically.
+
+**Focus catalog** — 11 entries in `agents.focuses` (one per phase). `probe_focus_enabled=true` runs the user-side classifier (`classifyResponseFocuses`) on every respondent turn; bot turns get `focus:<slug>` from the assistant-side classifier. Post-hoc coding query: `WHERE content_flags @> '["topic:how_it_sits"]'` returns every emotional-residue answer across the whole respondent set, regardless of exact wording. Slugs: `decision / outcome / how_it_sits / how_often / attribution / can_do_now / decisions_since / open_close / demographics / attitudes / close`.
 
 **Language bar** baked into the system prompt: every prompt must be one an 80-year-old can understand and answer without thinking. No therapy-speak (banned: "in the room with you," "what bubbles up," "sit with this," "what's there for you," "pulls your attention back"). No clinical/corporate language (banned: "played out," "magnitude," "anticipated," "based," "setting aside"). Use the exact phrasings in the table.
 
