@@ -1009,7 +1009,8 @@ A research instrument exploring how people feel about important decisions where 
   - `sql/one-off/2026-05-22-regret-framework-agent.sql` — initial seed (Contractor cognitive-UBC design, since redesigned)
   - `sql/one-off/2026-05-22-decision-study-name-fix.sql` — strips "regret framework pilot" from widget header
   - `sql/one-off/2026-05-22-decision-study-title-and-opener-fix.sql` — strips it from `<title>` / og:title and removes "Should" from the opener; removes `config.framework` key
-  - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — **current protocol** (emotion-first probing, expanded banned-word list)
+  - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — emotion-first probing, expanded banned-word list
+  - `sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql` — **current protocol** (Phase 3 sharpened: legitimizes rumination, drill matrix explicitly routes evaluative-only answers back into the emotional register, probe 3 captures locus)
 - **Respondent-visible strings** (re-audited after each fix; final audit clean):
   - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
   - Widget header: `"Sarina"` — via `config.name` override (BotClient.tsx:26)
@@ -1025,7 +1026,7 @@ A research instrument exploring how people feel about important decisions where 
 |---|---|---|---|
 | 1 | The decision itself | "...think of a decision...that really mattered to you...where the way things turned out wasn't quite what you'd been expecting." | None — listen |
 | 2 | Outcome (facts) | "What ended up happening?" | One factual probe if vague/evaluative |
-| 3 | **Emotional state now** | "When this comes up for you now, what's the feel of it?" | 4-route emotional drill matrix: mirror their feeling word; if cognitive → "what's it like inside"; if defensive → "even so, what comes up"; if non-answer → "what keeps you coming back to this one"; optional second probe "what stays with you the most" |
+| 3 | **Emotional state now** (valence + intensity + locus + processing mode) | "When this decision comes back to mind now — and important ones like this tend to come back — what's there for you in it?" | 4-route drill: **feeling-named** → mirror + locate ("what's the [their word] about — the decision, the outcome, where you ended up, or something else?"); **evaluative-only** → "setting aside whether it was right or wrong, when you sit with this, what's there for you?"; **defensive/dismissive** → "even so — what's the piece that pulls your attention back to it?"; **short/non-answer** → "stay with it for a second — what bubbles up?"; optional probe 3 (if thread surfaced) → "what's the part of it that pulls your attention back the most?" |
 | 4 | **Weight / persistence** | "How much does this take up space for you these days — not much, sometimes, regularly, a lot, or pretty constantly?" | Per-response follow-up: "what lets you set it down" / "what keeps bringing it back" / none |
 | 5 | **Attribution of cause** | "Looking back at how this went — what stands out to you as the reason it played out the way it did?" | Per-attribution drill: self → "what part of your own piece weighs on you"; other → "where do you land on your own piece"; circumstance → "was there a moment you could have moved it"; multiple → "which weighs most" |
 | 6 | Anything still open | "Is there anything still open here — anything you can do about it from where you sit now?" | "What would that look like" / "what's it like sitting with the fact that it's done" |

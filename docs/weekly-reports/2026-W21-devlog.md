@@ -1,5 +1,24 @@
 # 2026-W21 — Dev log (Week of May 18 to May 24)
 
+## 2026-05-24 — Decision Study agent: Phase 3 sharpening
+
+Why: yesterday's Phase 3 seed "When this comes up for you now, what's the feel of it?" was too loose. User feedback ("what are you trying to uncover?") forced articulating it: Phase 3 needs to surface (1) valence + intensity of the current emotional residue (active/sharp vs settled/cool, positive vs negative vs mixed vs flat), (2) emotional **locus** — which piece of the decision/outcome/fallout carries the charge, (3) **mode of processing** — whether they describe the residue emotionally (heavy, raw, hollow) or evaluatively (it was the right call, I had no choice). The mode is itself diagnostic per deck slide 3 (P4b / §4.5 confirmatory-bias filter — evaluative framing without emotional content often signals suppression).
+
+"What's the feel of it?" failed all three: it admitted the evaluative register ("I feel like I made the right call") and admitted the conversation-ending short answer ("it's fine"), surfacing neither valence nor locus.
+
+Two changes (`sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql`, applied to prod):
+
+1. **New seed**: "When this decision comes back to mind now — and important ones like this tend to come back — what's there for you in it?" The "tends to come back" phrase legitimizes rumination so respondents don't feel weird describing involuntary recurrence (regret-relevant). "What's there for you in it" is broader than "feel" — admits emotional, somatic, cognitive content.
+
+2. **New drill matrix** explicitly routes the 4 dominant answer modes:
+   - Feeling named → mirror + locate ("what's the [word] about — the decision, the outcome, where you ended up, or something else?")
+   - **Evaluative-only** (this category is new — yesterday's "cognitive" was too broad) → "setting aside whether it was right or wrong, when you sit with this, what's there for you?" — pushes past evaluation into experience.
+   - Defensive/dismissive → "even so — what's the piece that pulls your attention back to it?"
+   - Short/non-answer → "stay with it for a second — what bubbles up?"
+   - Optional probe 3 (when first two surfaced something real) → "what's the part of it that pulls your attention back the most?" — explicitly captures rumination locus.
+
+System_prompt grew 6733 → 7371 chars. Live audit clean (zero matches for any banned word on the live page). SQL-only change; no code touched.
+
 ## 2026-05-23 — Decision Study agent: full protocol redesign (emotional probing)
 
 Why: yesterday's agent was Contractor's deck-as-written — a cognitive UBC-detection instrument that drilled into counterfactual structure (Q3 four-route verbatim-echo on alternative actions, Q4 magnitude comparison, Q5 decision-vs-management role). User clarification today: the broader research interest is **when people feel regret and disappointment and how they attribute the consequence in terms of blame** — none of which may appear in any prompt. The cognitive UBC-detection instrument was technically clean against the deck's neutrality rules but felt generic — the opener "a decision still on your mind" let respondents pick any memorable decision (including ones that went well), and the drilling was mechanical/cognitive rather than emotional.
