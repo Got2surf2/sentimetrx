@@ -1,5 +1,19 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 4: clarify data/mco_live_ratings.json disposition + tsbuildinfo .gitignore note
+
+**Why**: W21 audit (PR #7) flagged two Structure-category items:
+1. `data/mco_live_ratings.json` (388-line snapshot of Google ratings via DataForSEO) committed — TOS concern around caching Google ratings.
+2. `tsconfig.tsbuildinfo` committed — bloats diffs.
+
+**Item 2 was already resolved** in a prior commit (`0a4a0ae4 Stop tracking tsconfig.tsbuildinfo`) and `.gitignore` line 7 (`*.tsbuildinfo`) already covers all variants. The W21 audit finding was stale. No code change needed; .gitignore now carries an explanatory comment block calling out the explicit intent so future audits don't re-flag.
+
+**Item 1 disposition: retain with refresh policy.** Deleting the JSON breaks `/demo/mco` (the demo's primary data source via `lib/places.ts`) because Vercel builds have no `GOOGLE_PLACES_API_KEY` set, and runtime can't write to the bundle. The file's actual data source is DataForSEO (Google Maps SERP), not the Google Places API directly — the audit's "Google TOS prohibits caching rating data" concern applies less strictly to DataForSEO redistribution. Added a refresh-policy block in `lib/places.ts` documenting (a) the lineage, (b) the monthly-or-pre-demo re-seed cadence via `scripts/_mco_dfs_seed.ts`, (c) the reason the snapshot stays committed (Vercel deploys it). Locally cleared a pile of stray `tsconfig N.tsbuildinfo` artifacts that `tsc` had written when invoked with quoted/numbered config paths.
+
+**Verification**: clean `tsc --noEmit`. No code behavior change. `git ls-files | grep tsbuildinfo` → empty.
+
+W21 audit score-lift item 4/6 — Structure category, partial credit (1 of 2 findings disposed; the other deliberately retained with documented rationale).
+
 ## 2026-05-25 (later) — W21 audit score-lift item 3: strip `send_at` phantom field from campaign email editor
 
 **Why**: W21 audit flagged `send_at` as a phantom — the campaign email editor's "Specific date" Timing mode submits `send_at` in the PATCH body, but no `campaign_emails.send_at` column exists and the `/api/campaigns/[id]/emails` PATCH allowlist (`subject`, `body_html`, `send_delay_hours`, `send_time`, …) drops it silently. The UI looked like it worked; the value evaporated server-side. Better to ship the actual delay-based scheduler we have than to keep a broken UI surface around "until scheduling is a real feature."

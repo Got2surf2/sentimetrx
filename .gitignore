@@ -30,3 +30,9 @@ supabase/.temp/
 # track the JSON in git. The directory is kept locally so before/after diffs
 # work across sessions; baseline counts are captured in the weekly devlog.
 .regression-baselines/
+
+# Stray incremental-build snapshots that `tsc` writes alongside `tsconfig.tsbuildinfo`
+# when invoked with non-canonical config paths (e.g. `tsc -p tsconfig\ 5.json`).
+# Covered by the `*.tsbuildinfo` glob on line 7, but listed here so the intent
+# is explicit when grepping .gitignore for "tsbuildinfo".
+*.tsbuildinfo
