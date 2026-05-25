@@ -1,5 +1,19 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 3: strip `send_at` phantom field from campaign email editor
+
+**Why**: W21 audit flagged `send_at` as a phantom — the campaign email editor's "Specific date" Timing mode submits `send_at` in the PATCH body, but no `campaign_emails.send_at` column exists and the `/api/campaigns/[id]/emails` PATCH allowlist (`subject`, `body_html`, `send_delay_hours`, `send_time`, …) drops it silently. The UI looked like it worked; the value evaporated server-side. Better to ship the actual delay-based scheduler we have than to keep a broken UI surface around "until scheduling is a real feature."
+
+**What changed**:
+- `app/campaigns/[id]/CampaignDetailClient.tsx` — removed `sendAt` + `scheduleMode` state and the "Timing" select / "Specific date" datetime-local input. The email editor now shows Recipients + Delay (hours) + Send time directly — same widgets as the working delay-based mode.
+- `app/campaigns/[id]/CampaignDetailClient.tsx` PATCH body — `send_at` field removed.
+- `lib/types.ts` — `CampaignEmail.send_at` removed.
+- `docs/CAMPAIGNS.md` § Scheduling Options — replaced the `<TBD: send_at not wired>` warning block with a "Resolved 2026-05-25" note.
+
+**Verification**: clean `tsc --noEmit` (the removed field was already dropped by the API allowlist so server is unaffected). `grep -r send_at` returns zero hits across the repo (excluding node_modules / .next). No tests touched the field.
+
+W21 audit score-lift item 3/6 — Maintainability +0.5 pts.
+
 ## 2026-05-25 (later) — W21 audit score-lift item 2: Datanautix → Sentimetrx in customer-visible chrome + customer-export PPTX metadata
 
 **Why**: W21 audit flagged the platform identifying as "Datanautix" on customer-visible surfaces (agent widget chrome, customer dataset/conversation PPTX exports, survey creator default branding label). The product was renamed to Sentimetrx but the chrome lagged. Maintainability category +0.5 pts. Parent-attribution lines (TopNav, login footer via `DatanautixAttribution.tsx`, and internal Datanautix decks like rollup/pitch/architecture/restaurant-expansion/engineering-reality/signal-tiers/agent-capabilities) stay as-is — those are intentional "Sentimetrx is a Datanautix product" lines and the internal decks are *about* Datanautix.

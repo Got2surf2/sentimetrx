@@ -118,7 +118,7 @@ Tags interpolated at send time via simple regex replacement. Missing variables d
 - `send_time` — Time of day (24h format, e.g., "09:00"). When set on a reminder, the scheduled-at time is snapped to that wall-clock time (rolling to next day if it has already passed)
 - `send_timezone` — IANA timezone (default "America/New_York")
 
-> **<TBD: send_at not wired>** A specific-datetime override (`send_at`) appears in `lib/types.ts` and the email-editor UI submits it, but there is no `campaign_emails.send_at` column and the `/api/campaigns/[id]/emails` PATCH allowlist drops it. Either add the column + persist it in `send/route.ts` scheduling, or remove `send_at` from the type and UI.
+**Resolved 2026-05-25**: the phantom `send_at` field (no DB column, dropped by the PATCH allowlist) has been removed from `lib/types.ts`, `app/campaigns/[id]/CampaignDetailClient.tsx`, and the email-editor UI. The Timing dropdown's "Specific date" mode has been retired; all scheduling now goes through `send_delay_hours` + `send_time`. Reintroduce a real `send_at` column + scheduler change when specific-datetime scheduling becomes a customer-asked feature.
 
 ### Test Send (`POST /api/campaigns/[id]/test-send`)
 - Sends to current user's email

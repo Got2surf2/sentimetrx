@@ -795,8 +795,6 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
   const [sendTo, setSendTo] = useState('all')
   const [delayHours, setDelayHours] = useState(0)
   const [sendTime, setSendTime] = useState<string>('')
-  const [sendAt, setSendAt] = useState<string>('')
-  const [scheduleMode, setScheduleMode] = useState<'delay' | 'datetime'>('delay')
   const [showPreview, setShowPreview] = useState(true)
   const [editorMode, setEditorMode] = useState<'builder' | 'html'>('builder')
   const [tmplStruct, setTmplStruct] = useState<TemplateStructure>({ headerColor: '#E8632A', headerText: '', headerLogoUrl: '', headerLogoWidth: '150px', headerLayout: 'text', headerLogoUrl2: '', greeting: '', blocks: [], ctaText: '', ctaColor: '', closing: '' })
@@ -856,8 +854,6 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
     setSendTo(email.send_to)
     setDelayHours(email.send_delay_hours)
     setSendTime(email.send_time || '')
-    setSendAt(email.send_at || '')
-    setScheduleMode(email.send_at ? 'datetime' : 'delay')
     setTmplStruct(parseStructureFromHtml(email.body_html))
     setEditorMode('builder')
   }
@@ -928,17 +924,15 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email_id: emailId, subject, body_html: bodyHtml, send_to: sendTo,
-          send_delay_hours: scheduleMode === 'datetime' ? 0 : delayHours,
-          send_time: scheduleMode === 'datetime' ? null : (sendTime || null),
-          send_at: scheduleMode === 'datetime' ? (sendAt || null) : null,
+          send_delay_hours: delayHours,
+          send_time: sendTime || null,
         }),
       })
       if (!res.ok) throw new Error('Failed to save email')
       setEmails(prev => prev.map(e => e.id === emailId ? {
         ...e, subject, body_html: bodyHtml, send_to: sendTo as CampaignEmail['send_to'],
-        send_delay_hours: scheduleMode === 'datetime' ? 0 : delayHours,
-        send_time: scheduleMode === 'datetime' ? null : (sendTime || null),
-        send_at: scheduleMode === 'datetime' ? (sendAt || null) : null,
+        send_delay_hours: delayHours,
+        send_time: sendTime || null,
       } : e))
       setEditing(null)
     } finally { setSaving(false) }
@@ -958,7 +952,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
     })
     if (res.ok) {
       const data = await res.json()
-      setEmails(prev => [...prev, { ...data, ...defaults, campaign_id: campaignId, sequence: seq, send_to: seq === 0 ? 'all' : 'non_responders', send_delay_hours: seq === 0 ? 0 : seq === 1 ? 72 : 168, send_at: null, is_thank_you: false, body_text: null, created_at: '', updated_at: '' }])
+      setEmails(prev => [...prev, { ...data, ...defaults, campaign_id: campaignId, sequence: seq, send_to: seq === 0 ? 'all' : 'non_responders', send_delay_hours: seq === 0 ? 0 : seq === 1 ? 72 : 168, is_thank_you: false, body_text: null, created_at: '', updated_at: '' }])
     }
   }
 
@@ -1278,36 +1272,17 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                     <option value="incompletes">Incompletes only</option>
                   </select>
                 </div>
-                <div className="w-32">
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Timing</label>
-                  <select value={scheduleMode} onChange={e => setScheduleMode(e.target.value as 'delay' | 'datetime')}
-                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400">
-                    <option value="delay">Delay-based</option>
-                    <option value="datetime">Specific date</option>
-                  </select>
+                <div className="w-28">
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Delay (hours)</label>
+                  <input type="number" min={0} value={delayHours} onChange={e => setDelayHours(parseInt(e.target.value) || 0)}
+                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
                 </div>
-                {scheduleMode === 'delay' ? (
-                  <>
-                    <div className="w-28">
-                      <label className="text-xs font-medium text-gray-600 block mb-1">Delay (hours)</label>
-                      <input type="number" min={0} value={delayHours} onChange={e => setDelayHours(parseInt(e.target.value) || 0)}
-                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
-                    </div>
-                    <div className="w-28">
-                      <label className="text-xs font-medium text-gray-600 block mb-1">Send time</label>
-                      <input type="time" value={sendTime} onChange={e => setSendTime(e.target.value)}
-                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
-                      <p className="text-[9px] text-gray-400 mt-0.5">{sendTime ? 'ET' : 'Any time'}</p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="w-52">
-                    <label className="text-xs font-medium text-gray-600 block mb-1">Send at</label>
-                    <input type="datetime-local" value={sendAt} onChange={e => setSendAt(e.target.value)}
-                      className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
-                    <p className="text-[9px] text-gray-400 mt-0.5">Eastern Time</p>
-                  </div>
-                )}
+                <div className="w-28">
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Send time</label>
+                  <input type="time" value={sendTime} onChange={e => setSendTime(e.target.value)}
+                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+                  <p className="text-[9px] text-gray-400 mt-0.5">{sendTime ? 'ET' : 'Any time'}</p>
+                </div>
               </div>
               <button onClick={() => saveEmail(email.id)} disabled={saving}
                 className="text-xs px-4 py-1.5 rounded-lg text-white font-medium disabled:opacity-50"

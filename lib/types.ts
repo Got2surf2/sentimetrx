@@ -848,7 +848,6 @@ export interface CampaignEmail {
   body_html:        string
   body_text:        string | null
   send_delay_hours: number
-  send_at:          string | null    // specific date/time to send (ISO string), overrides delay
   sms_body:         string | null    // SMS message template (short, with {{survey_link}})
   send_time:        string | null    // time of day to send, e.g. '09:00'
   send_timezone:    string           // e.g. 'America/New_York'
