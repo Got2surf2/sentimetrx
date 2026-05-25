@@ -41,14 +41,17 @@ tests/
 │   ├── engagementSignals.test.ts
 │   ├── entityMentionDetector.test.ts
 │   ├── guardrails.test.ts
+│   ├── nameExtractor.test.ts  # post-hoc AI name extractor — gating + JSON parsing + defense-in-depth regex
 │   ├── personaExtractor.test.ts
 │   ├── phase3DualWrite.test.ts
+│   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
+│   ├── admin-usage-detail.test.ts     # GET /api/admin/usage/[type]/[id] — admin gate + aggregation roll-up + from/to range
 │   ├── decks.test.ts                  # 4 admin-only deck routes × {anon, admin}
 │   ├── respond.test.ts                # public survey-response endpoint
 │   ├── high-traffic-routes.test.ts    # clara/nora/bot/townhall chat + study/[guid]
@@ -87,6 +90,10 @@ makes the suite easy to reason about as a unit.
 | Deflection routing | `deflectionRouter` question-signal regex, sensitive-topic match, decision rule (sensitive overrides feedback; question signal required when no sensitive hit) | Shared between bot + town hall chat routes; a regression in the decision rule fires AI deflection on every short answer (cost + UX hit) or never deflects at all (off-topic answers pollute aggregates) |
 | Engagement signals | `engagementSignals` countWords edge cases, isCurtResponse threshold, SUBTLE_DISENGAGE anchor behavior, isSubtleDisengage wrapper | Used by the PulseIQ AI-tone-check fast path. Anchoring is critical — a bad regex matches "ok so what about housing" as disengagement and skips clarifying on real feedback |
 | Phase 3 dual-write | `phase3DualWrite` flag gating (no-op when off), mirror call shape for turns / focus-flags / delete | The dual-write is observation-only with the flag off; the unit tests pin that contract so a future refactor doesn't accidentally make it always-on or break the table/filter shape |
+| Sentry PII scrub | `sentryScrub` redacts `request.{data,body,cookies}` + auth/cookie headers + PII key names, reduces `user` to `{id}` only, scrubs email/phone in breadcrumb messages, drops the Office "Object Not Found" false-positive | The scrub is a `beforeSend` hook — bugs are silent (PII leaks to Sentry) and only caught at the next quarterly audit. Tests pin the contract so the redaction can't regress |
+| Post-hoc name extractor | `nameExtractor` input gating (≥10 char corpus), JSON-from-AI parsing (markdown-fenced + raw), name validation regex, source/confidence enum normalisation, AI-throw graceful fallback | Closes the "Anonymous in 88% of admin views" gap; the lib is fire-and-forget so silent regressions don't surface — tests cover the deterministic guardrails |
+| Probe-focus classifier | `probeFocusClassifier` skip-short-message gating, disabled-focus filtering, NONE handling, hallucinated-slug drop, dedup, mixed-case lowercase match, AI-throw fallback | Runs on every user turn ≥3 words when `probe_focus_enabled` is set; a bad slug filter pollutes the analytics with phantom topics, a missing dedup inflates the topic frequencies |
+| Admin usage drill-in | `/api/admin/usage/[type]/[id]` admin-gate, `VALID_TYPES` allowlist, totals + by_event + by_model + daily_trend aggregation, from/to + days range fallback, name/href resolution | The page surfaces per-bot/per-study cost; an aggregation bug shows misleading numbers to admins who use it for billing reconciliation |
 | Deck routes | `/api/{pitch,architecture,engineering-reality,rollup}-deck` × {anon, admin} | Confirms each route both calls `requireAdmin` AND emits a real PPTX |
 | Public survey endpoint | `/api/respond` happy + missing-field + invalid-JSON + inactive-study + 404 | This endpoint accepts traffic from anywhere — its validation is load-bearing |
 | High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |

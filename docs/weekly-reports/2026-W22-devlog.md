@@ -1,5 +1,21 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 7 (optional bonus): tests for four under-covered surfaces
+
+**Why**: W21 audit scored Tests 4/10 (headroom 0.9 pts × 15% weight = largest single category for an audit lift, but slowest to land). The 7 new sentryScrub tests in item 1 covered the new surface that landed today; the remaining tests in the queue's item 7 list (`nameExtractor`, `probeFocusClassifier`, `/api/admin/usage/[type]/[id]`, `/api/respond` partial save) were optional bonus.
+
+Shipped three of the four because mocking patterns were already established (`personaExtractor.test.ts` for callAI, `decks.test.ts` for admin-gate, etc.) — adding them was mechanical. `/api/respond` partial save is its own session (state-transition logic against status enum + supabase row updates, more setup).
+
+**What landed**:
+- `tests/unit/nameExtractor.test.ts` — 14 cases covering (a) input gating (empty array, ≤3-char-floor messages, ≤10-char corpus → AI not called), (b) clean self-id parsing, (c) markdown-fenced JSON unwrap, (d) defense-in-depth (denylist `Anonymous`/`User`/pronouns; sentence-fragment rejection; >30-char rejection; hyphen/apostrophe acceptance with lowercase-after constraint), (e) source/confidence enum normalisation, (f) graceful fallback on AI throw / malformed JSON / non-JSON text.
+- `tests/unit/probeFocusClassifier.test.ts` — 13 cases covering (a) gating (zero focuses → no AI; <12 chars → no AI; <3 words → no AI; disabled focuses filtered), (b) single + comma-separated parsing, (c) NONE handling (mixed-case), (d) hallucinated-slug drop (slugs not in catalog rejected), (e) dedup within response, (f) bracket / quote / newline tolerance, (g) lowercase normalisation, (h) AI-throw + whitespace fallback.
+- `tests/integration/admin-usage-detail.test.ts` — 8 cases covering (a) `requireAdmin` 404 passthrough for anon, (b) `VALID_TYPES` allowlist (rejects unknown resource_type with 400), (c) all 6 documented types accepted, (d) totals + by_event + by_model + daily_trend aggregation from a 3-row fixture, (e) zero-rows graceful response, (f) `from`/`to` window with computed `days`, (g) `days=N` fallback when from missing, (h) resource-name fallback to id-prefix when lookup returns null.
+- `docs/TESTING.md` — layout tree + What-we-test table extended.
+
+**Verification**: full suite **319 passed / 54 skipped** (was 277 at session start; +42 new tests across 4 new files). Clean `tsc --noEmit`.
+
+**Net W21 audit score-lift this session**: items 1-6 land + bonus tests. Expected Tests category lift ~+0.4 pts on top of the +5 from items 1-6. Estimated total: 72.5 → ~78.
+
 ## 2026-05-25 (later) — W21 audit score-lift item 6: `npm audit fix` brace-expansion DoS CVE
 
 **Why**: W21 audit Dependencies category sat at 7/10 with three open CVEs (one HIGH Next.js Image Optimizer DoS, two MEDIUM — postcss XSS + brace-expansion DoS). Two of the three are transitive via Next (postcss + most of the Next CVEs); patching those requires a Next major upgrade (`14 → 15/16`) which is its own scoped project. The brace-expansion CVE is fixable without that jump.
