@@ -1,5 +1,28 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 5: verify absorbed MCO parallel-session WIP
+
+**Why**: W21 audit Recommendation #3 — "Typecheck + smoke-test the absorbed MCO parallel-session WIP before any MCO demo deployment." Coordination commit `49e7b9b` had absorbed `lib/places.ts`, `lib/parking.ts`, `lib/securityWait.ts`, the four `/api/mco/*` routes, and the `/demo/mco` canvas without review or test. This item closes that loop.
+
+**Verification performed**:
+- `npx tsc --noEmit` — clean.
+- `npx vitest run tests/unit/uiHints.test.ts` — 47/47 passing (the canvas's intent-extraction layer).
+- Code review of the four MCO routes (parking, places, security, handoff):
+  - All set `dynamic = 'force-dynamic'` (correct — these read live data).
+  - All CORS-open with `Access-Control-Allow-Origin: *` + OPTIONS handlers (correct — the canvas is on a different origin in some demo contexts).
+  - `/places` POST validates input: `place_ids` array filtered to strings ≤96 chars, capped at 12; `context` string ≤64 chars.
+  - `/handoff` POST uses `crypto.getRandomValues` + Crockford base32 (no `I`/`L`/`O`/`U`) for codes, with 23505-collision retry, message-content sanitization (≤4000 chars/turn, ≤50 turns).
+  - Service-role client only used in `/handoff` (writing to `mco_handoff_sessions`); no cross-tenant exposure.
+- Prod smoke-test against `https://www.sentimetrx.ai`:
+  - `GET /api/mco/parking` — 200, returns live GOAA lot status (hotel/cell-phone/main lots with `rate.daily` + `status`).
+  - `POST /api/mco/places` with `{place_ids:[],context:"terminal_a_airside"}` — 200, returns real PlaceCards (Villa Italian Kitchen 4.4/650 reviews, McDonald's 4.1/71, etc.) with cuisine icons.
+  - `GET /api/mco/security` — 200, returns TSA checkpoint wait times in seconds.
+  - Skipped `/handoff` POST smoke-test (creates DB row; non-idempotent; code review sufficient).
+
+**No code changes** — the absorbed WIP is functionally clean. The W21 finding is now closed via documented review + prod-route-level verification.
+
+W21 audit score-lift item 5/6 — Maintainability +0.5 pts.
+
 ## 2026-05-25 (later) — W21 audit score-lift item 4: clarify data/mco_live_ratings.json disposition + tsbuildinfo .gitignore note
 
 **Why**: W21 audit (PR #7) flagged two Structure-category items:
