@@ -1,5 +1,21 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 6: `npm audit fix` brace-expansion DoS CVE
+
+**Why**: W21 audit Dependencies category sat at 7/10 with three open CVEs (one HIGH Next.js Image Optimizer DoS, two MEDIUM — postcss XSS + brace-expansion DoS). Two of the three are transitive via Next (postcss + most of the Next CVEs); patching those requires a Next major upgrade (`14 → 15/16`) which is its own scoped project. The brace-expansion CVE is fixable without that jump.
+
+**What changed**:
+- `npm audit fix` (non-force) bumped `brace-expansion` from `5.0.5` → `5.0.6` at two nested locations (`@fastify/otel`, `@sentry/bundler-plugin-core`). Closes GHSA-jxxr-4gwj-5jf2 ("Large numeric range defeats documented max DoS protection").
+- `package-lock.json` updated. `package.json` unchanged (transitive).
+
+**Out of scope** (deferred to a dedicated Next-upgrade session):
+- next 14.x → 16.2.6 (breaking change) — closes 14 Next CVEs incl. the HIGH Image Optimizer DoS, plus the transitive postcss XSS.
+- The HIGH Image Optimizer DoS (`GHSA-9g9p-9gw9-jx7f`) is partially mitigated in prod by Vercel's managed image-optimization runtime; the self-hosted exploit path doesn't directly apply.
+
+**Verification**: clean `tsc --noEmit`. Full test suite **284 passed / 54 skipped** (was 277 — gain from the 7 new `sentryScrub.test.ts` cases added in item 1).
+
+W21 audit score-lift item 6/6 — Dependencies +0.5 pts.
+
 ## 2026-05-25 (later) — W21 audit score-lift item 5: verify absorbed MCO parallel-session WIP
 
 **Why**: W21 audit Recommendation #3 — "Typecheck + smoke-test the absorbed MCO parallel-session WIP before any MCO demo deployment." Coordination commit `49e7b9b` had absorbed `lib/places.ts`, `lib/parking.ts`, `lib/securityWait.ts`, the four `/api/mco/*` routes, and the `/demo/mco` canvas without review or test. This item closes that loop.
