@@ -122,7 +122,7 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 
 ### Theming
 - `primaryColor`, `headerGradient`, `backgroundColor`, `accentColor`, `botAvatarGradient`
-- `brandingLabel` — "DATANAUTIX" (default), max 15 chars
+- `brandingLabel` — "SENTIMETRX" (default), max 15 chars
 - `showBranding` — Toggle footer branding
 
 ### Multi-Language

@@ -23,7 +23,7 @@ Order from `components/creator/CreatorNav.tsx::CREATOR_STEP_LABELS`: Basics → 
 - Industry selection with auto-defaults
 - 7 color presets (Ocean, Forest, Sunset, Violet, Rose, Slate, Gold) + custom color picker
 - 6 theme colors: primary, header gradient, background, accent, bot avatar gradient
-- Branding label (current default `"DATANAUTIX"`, customizable up to 15 chars, show/hide toggle — see `[[project-surveys-audit-2026-05-15]]` for the open rename-to-Sentimetrx item)
+- Branding label (default `"SENTIMETRX"`, customizable up to 15 chars, show/hide toggle)
 - Response limits: allow multiple responses or one per device
 - Response capture: instant capture (single tap) or tap-then-confirm mode
 - Survey font size (adjustable px)

@@ -451,7 +451,7 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
   solidRect(slide, pptx, 0, H - 0.48, W, 0.48, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.48, W, 0.03, DN.gold, 50)
   const generatedOn = new Date().toLocaleString()
-  slide.addText('Proprietary and Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
+  slide.addText('Proprietary and Confidential  ·  Prepared with Sentimetrx  ·  sentimetrx.ai  ·  Report generated ' + generatedOn, {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
     fontSize: 8.5, color: DN.slate, valign: 'middle',
   })
@@ -2626,8 +2626,8 @@ export async function POST(req: Request, { params }: Params) {
       title: 'NUMBERED',
       slideNumber: { x: W - PAD - 0.5, y: FY, w: 0.5, h: 0.26, color: DN.slate, fontSize: 7.5, align: 'right' },
     })
-    pptx.author    = 'Datanautix'
-    pptx.company   = 'Datanautix'
+    pptx.author    = 'Sentimetrx'
+    pptx.company   = 'Sentimetrx'
     pptx.subject   = datasetName + ' — Analysis Report'
     pptx.title     = datasetName
 

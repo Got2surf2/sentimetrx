@@ -433,9 +433,11 @@ analytics export — dataset-row CSV download is not part of this module.
 - **Slides**: Title, executive summary, NPS/rating distributions, theme deep-dives
   (keywords + quotes), sentiment breakdown, theme impact on scores, field breakdowns,
   demographic annotations, methodology appendix
-- **Branding**: Datanautix palette (navy, teal, gold), `datanautix.com` footer,
-  `pptx.author = pptx.company = 'Datanautix'`. **Note:** this is the legacy brand —
-  not yet rebranded to Sentimetrx in the exported deck.
+- **Branding**: Datanautix palette (navy, teal, gold) on slide chrome,
+  `sentimetrx.ai` footer ("Prepared with Sentimetrx"), and
+  `pptx.author = pptx.company = 'Sentimetrx'` in the file metadata
+  (W22 audit lift — customer-export PPTX identifies the platform, not
+  the parent company).
 - **Quote selection**: `pickBestComments()` selects 2-3 representative quotes per theme
 - **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
   About slide as `<audience> edition · v<version>`

@@ -1,5 +1,23 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 2: Datanautix → Sentimetrx in customer-visible chrome + customer-export PPTX metadata
+
+**Why**: W21 audit flagged the platform identifying as "Datanautix" on customer-visible surfaces (agent widget chrome, customer dataset/conversation PPTX exports, survey creator default branding label). The product was renamed to Sentimetrx but the chrome lagged. Maintainability category +0.5 pts. Parent-attribution lines (TopNav, login footer via `DatanautixAttribution.tsx`, and internal Datanautix decks like rollup/pitch/architecture/restaurant-expansion/engineering-reality/signal-tiers/agent-capabilities) stay as-is — those are intentional "Sentimetrx is a Datanautix product" lines and the internal decks are *about* Datanautix.
+
+**What changed**:
+- `components/ui/ChatBot.tsx` — header "powered by DATANAUTIX" → "powered by SENTIMETRX" (link sentimetrx.ai); footer "Powered by Datanautix" → "Powered by Sentimetrx".
+- `components/survey/SurveyWidget.tsx` — fallback `brandingLabel` default `'DATANAUTIX'` → `'SENTIMETRX'`.
+- `components/creator/StepBasics.tsx` — wizard `brandingLabel` default + placeholder + tooltip text updated to `SENTIMETRX`.
+- `app/api/studies/[id]/responses/[responseId]/conversation-export/route.ts` — PPTX `author` / `company` `Datanautix` → `Sentimetrx`; footer line `datanautix.com` → `sentimetrx.ai`.
+- `app/api/datasets/[datasetId]/export/pptx/route.ts` — PPTX `author` / `company` `Datanautix` → `Sentimetrx`; footer "Prepared by Datanautix · datanautix.com" → "Prepared with Sentimetrx · sentimetrx.ai".
+- `docs/BOTS.md` § "Mandatory Powered by … badge" updated.
+- `docs/SURVEYS.md` § Theming `brandingLabel` default flipped to `SENTIMETRX`.
+- `FEATURES.md` survey-creator bullet de-flagged (rename done).
+
+**Out of scope** (intentionally preserved): `DatanautixAttribution.tsx` and its callers (TopNav, login page) — those carry the "by Datanautix" parent attribution. PPTX route-handlers for internal Datanautix decks (rollup, pitch, signal-tiers, engineering-reality, restaurant-expansion, architecture, agent-capabilities, nowocats-approach, pulseiq-deck) keep author/company `Datanautix` because the decks are *about* Datanautix the company.
+
+**Verification**: clean `tsc --noEmit`. No tests added — visual change in widget chrome, eyeball-verified by reading the rendered JSX. PPTX metadata change is invisible at the slide level and shows up in PowerPoint's File → Properties.
+
 ## 2026-05-25 (later) — W21 audit score-lift item 1: Sentry beforeSend PII scrub
 
 **Why**: W21 audit (PR #7) scored 72.5/100, flat vs W20. SECURITY.md Open `<TBD>` item #1 — Sentry `beforeSend` scrub — has been three weeks overdue. Closing it is the highest ROI Security category lift (7→9) and the simplest mechanical fix in the score-lift plan.

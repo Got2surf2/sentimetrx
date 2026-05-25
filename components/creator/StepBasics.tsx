@@ -354,7 +354,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
           </button>
           <span className="text-sm text-gray-600">
             {draft.config.showBranding !== false
-              ? <><strong className="text-gray-800">Branding visible</strong> — shows &ldquo;by {draft.config.brandingLabel || 'DATANAUTIX'}&rdquo; in header</>
+              ? <><strong className="text-gray-800">Branding visible</strong> — shows &ldquo;by {draft.config.brandingLabel || 'SENTIMETRX'}&rdquo; in header</>
               : <><strong className="text-gray-800">Branding hidden</strong></>}
           </span>
         </div>
@@ -362,7 +362,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
           <div className="flex flex-col gap-1.5 mt-2">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label (max 15 characters)</label>
             <input
-              value={draft.config.brandingLabel ?? 'DATANAUTIX'}
+              value={draft.config.brandingLabel ?? 'SENTIMETRX'}
               onChange={e => updateConfig({ brandingLabel: e.target.value.slice(0, 15) })}
               placeholder="DATANAUTIX"
               maxLength={15}

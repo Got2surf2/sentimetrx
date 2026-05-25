@@ -90,8 +90,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
   // ── Build PPTX ──────────────────────────────────────────────────────────────
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
-  pptx.author = 'Datanautix'
-  pptx.company = 'Datanautix'
+  pptx.author = 'Sentimetrx'
+  pptx.company = 'Sentimetrx'
   pptx.title = `${study.name} — Conversation`
 
   const theme = (study.config as any)?.theme || {}
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
 
   // Footer
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal }, line: { width: 0 } })
-  slide.addText('datanautix.com  ·  ' + study.name, {
+  slide.addText('sentimetrx.ai  ·  ' + study.name, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
   slide.addText('Proprietary and Confidential', {

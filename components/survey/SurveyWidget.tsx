@@ -265,7 +265,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
               <span style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
               <span style={{ color: brandColor, fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                {(liveConfig.brandingLabel || 'DATANAUTIX').slice(0, 15)}
+                {(liveConfig.brandingLabel || 'SENTIMETRX').slice(0, 15)}
               </span>
             </div>
           )
