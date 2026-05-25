@@ -180,12 +180,14 @@ its corresponding entry.
   (Section 5 of SECURITY.md). When the logger lands, redaction
   moves to the logger boundary.
 - **Sentry** (`sentry.client/edge/server.config.ts`) catches
-  uncaught exceptions. The three configs currently call
-  `Sentry.init({ dsn, tracesSampleRate: 0.1, environment })` and
-  nothing else — `beforeSend` is **not yet wired**, so PII
-  scrubbing relies entirely on caller discipline (Section 5 of
-  SECURITY.md). Adding `beforeSend` is SECURITY.md Open `<TBD>`
-  item 1; once it lands, audit config quarterly.
+  uncaught exceptions. All three configs wire `beforeSend` to
+  `lib/sentryScrub.ts`, which redacts `request.{data,body,cookies}`
+  + auth/cookie headers, removes PII key names (email, phone,
+  password, token, secret, …) from `extra` / `contexts` / `tags`,
+  reduces `user` to `{id}` only, and pattern-scrubs email + phone
+  strings in breadcrumb messages. Also drops the Microsoft Office
+  "Object Not Found Matching Id…" content-script false positive.
+  SECURITY.md Open `<TBD>` item 1 is closed.
 - **Request IDs:** *target* state — generated in `middleware.ts`
   (or upstream), added to every response header (`x-request-id`),
   included in every log payload's `request_id` field for that

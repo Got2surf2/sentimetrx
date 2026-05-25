@@ -1,5 +1,18 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — W21 audit score-lift item 1: Sentry beforeSend PII scrub
+
+**Why**: W21 audit (PR #7) scored 72.5/100, flat vs W20. SECURITY.md Open `<TBD>` item #1 — Sentry `beforeSend` scrub — has been three weeks overdue. Closing it is the highest ROI Security category lift (7→9) and the simplest mechanical fix in the score-lift plan.
+
+**What changed**:
+- New `lib/sentryScrub.ts` — pure function `scrubSentryEvent(event)` that (a) drops the Microsoft Office "Object Not Found Matching Id…" content-script false positive, (b) redacts `request.{data,body,cookies}` wholesale, (c) redacts `authorization` + `cookie` headers and any header / extra / contexts / tags key whose name contains a PII substring (`email`, `phone`, `password`, `token`, `secret`, …), (d) reduces `user` to `{id}` only, (e) pattern-scrubs email + phone strings in breadcrumb messages + query strings.
+- Wired into `sentry.{client,server,edge}.config.ts` via the `beforeSend` option. Client also gets `beforeBreadcrumb` for early redaction.
+- `docs/SECURITY.md` §1, §5, Open TBD #1 — flipped from "NOT implemented" to "implemented" with the behavior contract listed; TBD #1 marked closed.
+- `tests/unit/sentryScrub.test.ts` — 7 cases covering each redaction path + the Office drop + the "clean event passes through" baseline. All green.
+- `scripts/specMap.ts` — `lib/sentryScrub.ts` added under `docs/SECURITY.md` mapping.
+
+**Verification**: `npx vitest run tests/unit/sentryScrub.test.ts` → 7/7 passing; clean `tsc --noEmit`. No prod state change — takes effect on next Vercel build.
+
 ## 2026-05-25 (later) — Decision Study agent: 6 second-pass fixes from Sanjay's test transcript
 
 After the first-pass mirroring rewrite landed (system_prompt 10615 → 12455 chars), Sanjay ran another test (`bs_mpl7gl4x_l7axkk`, 28 turns 12:52-12:55 UTC). Six new failure modes surfaced that the first pass didn't catch:

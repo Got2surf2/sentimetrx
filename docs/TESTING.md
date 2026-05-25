@@ -45,6 +45,7 @@ tests/
 │   ├── phase3DualWrite.test.ts
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
+│   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase

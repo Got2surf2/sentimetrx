@@ -7,6 +7,7 @@
 // and Preview in Vercel only).
 
 import * as Sentry from '@sentry/nextjs'
+import { scrubSentryEvent } from './lib/sentryScrub'
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
 if (dsn) {
@@ -19,5 +20,10 @@ if (dsn) {
     tracesSampleRate: 0.1,
     // Always send errors. tracesSampleRate is for performance only.
     environment: process.env.NEXT_PUBLIC_VERCEL_ENV || 'production',
+    beforeSend: scrubSentryEvent,
+    beforeBreadcrumb: (breadcrumb) => {
+      const scrubbed = scrubSentryEvent({ breadcrumbs: [breadcrumb] } as any)
+      return scrubbed?.breadcrumbs?.[0] ?? breadcrumb
+    },
   })
 }

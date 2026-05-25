@@ -36,6 +36,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'lib/moderation.ts',
     'lib/guardrails.ts',
     'lib/sentry.ts',
+    'lib/sentryScrub.ts',
     'lib/cronAuth.ts',
     'lib/orgValidate.ts',
     'lib/userContext.ts',

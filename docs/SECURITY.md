@@ -39,10 +39,14 @@ Primary threats we defend against, in priority order:
 4. **Secret leakage** — keys committed, leaked via logs, or pushed
    to Sentry. Mitigated by `.gitignore` (covers `.env`,
    `.env.local`, `.env.*.local`, `*.pem`, `*.key`, `*.p12`,
-   `*.pfx`). **Sentry `beforeSend` scrubbing is NOT implemented
-   today** — `sentry.{server,client,edge}.config.ts` only set
-   `dsn`, `tracesSampleRate`, `environment`. Tracked as Open
-   `<TBD>` item 1 below.
+   `*.pfx`). **Sentry `beforeSend` scrubbing IS implemented** —
+   `lib/sentryScrub.ts` is wired into all three Sentry configs
+   (`sentry.{server,client,edge}.config.ts`) and strips
+   `request.{data,body,cookies}`, auth/cookie headers, and known
+   PII key names anywhere in `extra` / `contexts` / `tags`. Also
+   drops the Microsoft Office content-script false-positive
+   ("Object Not Found Matching Id…"). Open `<TBD>` item 1 is
+   closed by commit 2026-05-25.
 5. **Supply-chain compromise** — a malicious npm dependency.
    Mitigated today by manual lockfile review on every PR.
    **Gap:** no automated `npm audit` or Dependabot gate in CI —
@@ -272,12 +276,17 @@ Rules:
 - **Never put PII in URL paths or query strings.** GUIDs only.
 - **Never put PII into a structured log message.** Use opaque ids;
   if a field must be logged for debugging, redact (`mask(email)`).
-- **Sentry `beforeSend` scrub** must drop email, phone, password
-  fields, and the contents of `req.body` for survey/response
-  endpoints. **Current state:** not implemented — none of the
-  three Sentry configs (`sentry.{server,client,edge}.config.ts`)
-  set a `beforeSend` handler today. Open `<TBD>` item 1 tracks
-  building it.
+- **Sentry `beforeSend` scrub** drops email, phone, password
+  fields, and the contents of `req.body` / `req.cookies` for
+  survey/response endpoints. **Current state:** implemented in
+  `lib/sentryScrub.ts` and wired into all three Sentry configs
+  (`sentry.{server,client,edge}.config.ts`). Behaviour:
+  `request.{data,body,cookies}` → `[redacted]`, auth/cookie
+  headers → `[redacted]`, PII key names (email, phone, password,
+  token, secret, …) replaced at any depth in `extra` / `contexts`
+  / `tags`, and `user` reduced to `{id}` only. Free-text strings
+  in breadcrumbs / query strings are pattern-scrubbed for emails
+  and phone numbers as a defense-in-depth pass.
 - **Claude prompts** must never include rows from more than one
   `org_id`. Scoped tool definitions only.
 
@@ -539,11 +548,10 @@ Renumbered to match in-line references above. Each item is a
 concrete decision the human owner needs to ratify or a piece of
 plumbing that needs to ship.
 
-1. **Implement Sentry `beforeSend` scrub** against §5 (email,
-   phone, password, `req.body` on survey/response endpoints).
-   None of the three Sentry configs sets `beforeSend` today —
-   this is a build, not an audit. Owner: solo founder.
-   Effort: 1-2 hours.
+1. *(closed 2026-05-25 — `lib/sentryScrub.ts` wired into all three
+   Sentry configs; see §5. Unit test in
+   `tests/unit/sentryScrub.test.ts`. Also drops the Microsoft
+   Office "Object Not Found Matching Id…" false positive.)*
 2. **Enable Dependabot weekly + `npm audit --audit-level=high`
    + CodeQL** in `.github/workflows/ci.yml`. Effort: 1 PR.
 3. *(retired — rotation cadence ratified in §4)*
