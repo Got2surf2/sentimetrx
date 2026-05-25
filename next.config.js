@@ -55,6 +55,18 @@ const nextConfig = {
     },
     // Required for Sentry's instrumentation.ts hook on Next.js 14.2.x.
     instrumentationHook: true,
+    // /admin/control-reports* reads docs/weekly-reports/*.md at runtime via
+    // fs.readdir + fs.readFile (both lib/governanceReports.ts and
+    // lib/specDriftReports.ts). Next.js' static tracer can't statically
+    // infer a glob over a dynamic dir, so without this hint the markdown
+    // files can be missing from the serverless function bundle on Vercel
+    // and the loaders would silently return []. Trace them so every
+    // committed weekly report is shipped with the build.
+    outputFileTracingIncludes: {
+      '/admin/control-reports':            ['./docs/weekly-reports/*.md'],
+      '/admin/control-reports/governance': ['./docs/weekly-reports/*.md'],
+      '/admin/control-reports/spec-drift': ['./docs/weekly-reports/*.md'],
+    },
   },
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,

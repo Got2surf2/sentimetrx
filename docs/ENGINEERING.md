@@ -439,6 +439,30 @@ deployment; rollback is one CLI command if the post-deploy smoke
 check fails. The "manual gate" check is on the honor system until
 item 19 lands.
 
+### Runtime file tracing for `docs/weekly-reports/*.md`
+
+Both `lib/governanceReports.ts` and `lib/specDriftReports.ts`
+read markdown files at request time via `fs.readdir` +
+`fs.readFile` from `path.join(process.cwd(), 'docs', 'weekly-reports')`.
+Next.js' static tracer cannot infer files reached via a dynamic
+`readdir`, so without an explicit hint, fresh weekly reports
+silently fail to bundle into the serverless function and the
+admin Control Reports pages render empty even though the file
+is on `main`.
+
+The hint lives in `next.config.js → experimental.outputFileTracingIncludes`:
+
+```js
+outputFileTracingIncludes: {
+  '/admin/control-reports':            ['./docs/weekly-reports/*.md'],
+  '/admin/control-reports/governance': ['./docs/weekly-reports/*.md'],
+  '/admin/control-reports/spec-drift': ['./docs/weekly-reports/*.md'],
+}
+```
+
+If a new admin surface starts reading from `docs/weekly-reports/`,
+add its route here too.
+
 ### Claude Code push discipline
 
 Codified in `CLAUDE.md` "Push policy" — committed to the repo so it
