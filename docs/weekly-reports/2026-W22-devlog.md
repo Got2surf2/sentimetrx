@@ -1,5 +1,29 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — Decision Study agent: 6 second-pass fixes from Sanjay's test transcript
+
+After the first-pass mirroring rewrite landed (system_prompt 10615 → 12455 chars), Sanjay ran another test (`bs_mpl7gl4x_l7axkk`, 28 turns 12:52-12:55 UTC). Six new failure modes surfaced that the first pass didn't catch:
+
+1. **"Fair enough" / "Fair" / "Got it" / "Okay" acknowledgements** at T10, T14, T16, T22 (four violations in 14 bot turns). Rule #4 listed specific phrases ("that makes sense," "I get it") but missed the natural conversational filler the LLM defaults to.
+2. **Phase 4 verbatim uses generic "this"** at T14: "How often does this come up..." instead of "How often does the dinner come up..." — the prompt's verbatim text itself used "this."
+3. **Asked already-answered question** at T12: Sanjay said "total waste of money" at T11; Sarina at T12 asked "is it the money, the food, or something else?" — money was explicitly named. Sanjay called it out at T13 ("i already said waster of money").
+4. **No Phase 3 route for counterfactual answers**. Sanjay at T7: "i wish i had gone someshere else" — rich data (counterfactual implying alternative). Sarina at T8 re-asked the same Phase 3 question. Should have treated it as a valid answer + asked one locus probe.
+5. **Non-answer drilled** at T22. Sanjay at T21: "how the heck do i know?" — non-answer. Sarina at T22 pushed the Phase 5 circumstance drill. Rule #7 said "accept silence/non-answer" but didn't list specific phrases or explicitly say "skip to next phase."
+6. **Scale abandoned under pushback** at T16. Sanjay at T15: "very stilted question." Sarina at T16 dropped the calibrated 5-band scale entirely — lost the measurement.
+
+Fixes (`sql/one-off/2026-05-25-decision-study-second-pass-fixes.sql`, applied to prod):
+
+- **Expanded rule #4 banned-acknowledgement list**: + "Fair," "Fair enough," "Got it," "Okay," "OK," "Alright," "All right," "Sure," "Right," "Of course," "Noted," "Understood," "Wow," "Hmm," "Yeah." Explicit instruction: start turns with the QUESTION, not an acknowledgement.
+- **Phase 4 verbatim uses `[decision]` placeholder**: "How often does the [decision] come up for you these days — not much, sometimes, often, a lot, or pretty much always?" The LLM substitutes the respondent's noun for `[decision]` while keeping the 5 scale words fixed.
+- **New "NEVER ASK A QUESTION THEY'VE ALREADY ANSWERED" block** added above the phase definitions with two concrete examples (locus already in prior answer; attribution already in prior answer). Listed as rule #10 in the neutrality block too.
+- **New Phase 3 drill route — Counterfactual**: when respondent says "I wish I had X" / "I should have Y" / "next time I would" → mirror the alternative noun (NOT "wish") + ask ONE locus probe, then move on. Treats counterfactual statements as both evaluative AND emotionally loaded — one probe captures locus, no extended drilling.
+- **Strengthened rule #7 — NON-ANSWERS ARE VALID ANSWERS**: lists specific phrases ("how do I know," "how the heck would I know," "I dunno," "no idea," "who knows," "I don't have an opinion," "you tell me," "no clue") and explicitly instructs to move DIRECTLY to the NEXT PHASE — not push the current phase's drill.
+- **Phase 4 pushback-recovery rule**: if respondent calls the scale stilted, rephrase shorter while keeping bands mappable ("Does the dinner come up barely, sometimes, or a lot?" — 3-band version that maps to the 5). Don't abandon measurement.
+
+system_prompt grew 12455 → 16566 chars. Live audit clean (zero banned-word matches on the live page).
+
+**Silence-probe template bug still showing in Sanjay's T27** ("your thoughts on The decision") because the code fix is in commit `646093e7` waiting on push. Once pushed, the silence-probe falls back to generic "Still there? Happy to keep going whenever you are." when no per-focus `probe_template` is set.
+
 ## 2026-05-25 — Decision Study agent: 4 fixes from Sunil's test transcript
 
 User pulled Sunil's latest test (`bs_mpkpocvx_kr9yfn`, 16 turns 2026-05-25 04:36-04:43 UTC) and named four problems. All four addressed in one sweep.
