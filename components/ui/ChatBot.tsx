@@ -11,6 +11,41 @@ function genSessionId() {
   return 'bs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 }
 
+// Per-bot session id stored in localStorage so a respondent who refreshes,
+// closes the tab, or hits a connectivity blip can resume the same
+// conversation (lib/chatCore.ts has the server-side history; the rehydrate
+// effect below fetches it on mount). One key per API endpoint so a
+// respondent talking to two different agents in the same browser keeps
+// distinct sessions.
+function getOrCreateSessionId(apiEndpoint: string): string {
+  if (typeof window === 'undefined') return genSessionId()
+  const key = 'cb_sid_' + apiEndpoint
+  try {
+    const existing = window.localStorage.getItem(key)
+    if (existing && /^[A-Za-z0-9_-]{8,80}$/.test(existing)) return existing
+  } catch { /* localStorage disabled (private mode etc.) — fall through */ }
+  const fresh = genSessionId()
+  try { window.localStorage.setItem(key, fresh) } catch { /* swallow quota / disabled errors */ }
+  return fresh
+}
+
+// Wrap fetch with a small retry-with-backoff so a transient network blip
+// (WiFi flap, Vercel Function cold-start, brief Claude API timeout) doesn't
+// surface as "I'm having trouble connecting" on the first try. Caller still
+// catches the final exception if all retries fail; the retry-button UI
+// below handles that case.
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
+  let lastErr: unknown
+  for (let i = 0; i <= retries; i++) {
+    try { return await fetch(url, options) }
+    catch (e) {
+      lastErr = e
+      if (i < retries) await new Promise(r => setTimeout(r, 600 * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
 // DATANAUTIX wordmark colors. Hermes orange against dark headers, Sarina
 // blue against light ones — same brand colors used elsewhere (lib/constants
 // HERMES, app/shared SARINA).
@@ -151,7 +186,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   // gate (`messages.length <= 1`) broke for askName=true bots because by the
   // time userName was set the bot had already replied and length was 3.
   const [hasFirstMessage, setHasFirstMessage] = useState(false)
-  const sessionId = useMemo(() => genSessionId(), [])
+  const sessionId = useMemo(() => getOrCreateSessionId(config.apiEndpoint), [config.apiEndpoint])
+  // Track the user's most recent failed send so we can offer a Retry button
+  // when fetchWithRetry exhausts its attempts. Cleared on successful send
+  // and on resetChat.
+  const [lastFailedInput, setLastFailedInput] = useState<string | null>(null)
 
   // When a non-English language is selected, fetch the greeting from the API in that language
   useEffect(() => {
@@ -183,8 +222,45 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setUserName(askName ? null : '_skip')
     setHasFirstMessage(false)
     setNameExchangeMessages(0)
+    setLastFailedInput(null)
     if (multiLang) setSelectedLang(null)
+    // Clear the stored session id so the user starts a fresh conversation
+    // — resetChat is the explicit "start over" surface.
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.removeItem('cb_sid_' + config.apiEndpoint) } catch { /* */ }
+    }
   }
+
+  // On mount, try to rehydrate the conversation from the server using the
+  // stored session_id. If turns exist, restore the full chat so the user
+  // picks up exactly where they left off. Only works for bot endpoints
+  // (matches the /api/bots/{id}/chat shape); other surfaces (clara/nora)
+  // get a 404 and silently fall through to the fresh-chat state.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!/\/api\/bots\/[^/]+\/chat$/.test(config.apiEndpoint)) return
+    const historyUrl = config.apiEndpoint.replace(/\/chat$/, '/session/' + encodeURIComponent(sessionId) + '/turns')
+    let cancelled = false
+    fetch(historyUrl)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled) return
+        if (!data || !Array.isArray(data.turns) || data.turns.length === 0) return
+        const hydrated: Message[] = data.turns.map((t: { role: string; content: string }) => ({
+          role: t.role === 'user' ? 'user' : 'assistant',
+          content: t.content,
+        }))
+        setMessages(hydrated)
+        setHasFirstMessage(true)
+        if (askName) {
+          setUserName('_skip')
+          setNameExchangeMessages(0)
+        }
+      })
+      .catch(() => { /* silently no-op — fresh-chat state remains */ })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const rootRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -360,7 +436,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         : newMessages.filter(m => m.content !== EN_INITIAL.content)
       ).map(m => ({ role: m.role, content: m.content }))
 
-      const res = await fetch(config.apiEndpoint, {
+      const res = await fetchWithRetry(config.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -374,9 +450,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         }),
       })
       const data = await res.json()
+      setLastFailedInput(null)
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.', _debug: data._debug, _signals: data._signals }])
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting. Please try again." }])
+      // All retries exhausted. Save the user's message so they can hit
+      // Retry instead of having to retype it; show a friendlier error.
+      setLastFailedInput(text)
+      setMessages(prev => [...prev, { role: 'assistant', content: "Connection hiccup — your message didn't go through. Tap Retry below to send it again." }])
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
@@ -603,6 +683,25 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               <span className="chatbot-typing-dot" style={{ animationDelay: '200ms' }} />
               <span className="chatbot-typing-dot" style={{ animationDelay: '400ms' }} />
             </div>
+          </div>
+        )}
+
+        {/* Retry button — surfaced when fetchWithRetry has exhausted its
+           retries and we've saved the user's last input. Tapping it
+           re-sends the same message so the respondent doesn't have to
+           retype after a connectivity blip. */}
+        {lastFailedInput && !loading && (
+          <div style={{ display: 'flex', marginTop: 8 }}>
+            <button onClick={() => { const t = lastFailedInput; setLastFailedInput(null); sendMessage(t) }}
+              style={{
+                padding: '8px 16px', borderRadius: 20,
+                background: config.accentColor, border: 'none',
+                color: 'white', fontSize: '0.8125rem', fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Retry
+            </button>
           </div>
         )}
 

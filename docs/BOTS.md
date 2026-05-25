@@ -384,6 +384,18 @@ This fixes the long-standing gap where admin modal views of name-collecting bots
 
 When `askName === false`, the topical opener (`config.initialMessage`) is the very first message and the name capture step is skipped (`userName` is initialised to `'_skip'`).
 
+### Connectivity resilience — session resumption + retry (2026-05-25)
+
+Three widget-side changes so a brief connectivity blip doesn't drop a respondent's session:
+
+- **session_id persistence** (`components/ui/ChatBot.tsx:14-32`, `getOrCreateSessionId()`). Was `useMemo(genSessionId, [])` — regenerated on every component mount, so a refresh / tab-close / browser restart produced a fresh session and orphaned the prior one on the server. Now stored in `localStorage` keyed `cb_sid_<apiEndpoint>` (one session per agent). On `resetChat()` the key is cleared.
+- **Auto-retry on network failure** (`ChatBot.tsx:38-50`, `fetchWithRetry()`). Wraps `fetch()` with 2 retries + linear backoff (600/1200ms). Catches transient WiFi flaps, Vercel Function cold-start timeouts, brief Claude API timeouts. Only the final exception bubbles out.
+- **Retry button** (`ChatBot.tsx:697-712`). When `fetchWithRetry` exhausts its attempts, the user's last input is saved in state and the error bubble reads "Connection hiccup — your message didn't go through. Tap Retry below to send it again." A `Retry` chip appears below the chat; tapping re-sends the same text. Cleared on the next successful send.
+
+**Rehydration endpoint**: `GET /api/bots/[id]/session/[sessionId]/turns` returns `{ turns: [{ role, content, turn_number }, …] }`, ordered by `turn_number`, capped at 200. Public (CORS-wildcarded like the chat endpoint), rate-limited at 30/min/IP, requires `agents.status='active'`. Session-id format-validated against `^[A-Za-z0-9_-]{8,80}$`. Access control IS the session_id itself — generated client-side as `bs_${ts36}_${rand36(6)}` (~30 bits, unguessable in practice). The widget calls this on mount if it found a stored session_id; if turns exist they're hydrated into `messages` state, `hasFirstMessage` is set true, and (for askName bots) `userName='_skip'` so the name flow doesn't re-fire.
+
+Only bot endpoints get rehydration — the regex `/api/bots/[^/]+/chat$` gates the fetch. Other surfaces (clara, nora) silently skip.
+
 ### Reply rendering — `formatHtml`
 
 The assistant bubble runs every reply through `ChatBot.formatHtml` before setting `dangerouslySetInnerHTML`. The pass is layered specifically so prompt-injection-style content can't break out:
@@ -579,7 +591,7 @@ A second probe mechanism — complementary to `probeEnforcement` above. Where pr
 - **Trigger.** The widget (`components/ui/ChatBot.tsx`) arms a 25-second idle timer when the last message is an assistant reply AND the user has had at least one real exchange (`hasFirstMessage === true`). Any keystroke in the textarea clears the timer. Once-per-session, both client- and server-side.
 - **Request shape.** `POST /api/bots/[id]/chat` accepts an optional `trigger: 'silence'`. When set, the route takes a fast path (no AI call) and returns either `{ reply: text, _silence: true }` (probe fired) or `{ reply: null, skipped: '<reason>' }` (no-op).
 - **Skip reasons.** `no_session` (no session_id on the request), `no_focuses` (bot has zero enabled `focuses`), `already_fired` (a turn with `source='silence_probe'` already exists for this session), `all_focuses_covered` (every focus already carries a `focus:<slug>` content_flag earlier in the session), `insert_failed` (DB error inserting the probe turn).
-- **Probe text.** Templated, not generated — `"By the way — while you're here, I'd love to hear your thoughts on {focus.label}. What comes to mind?"`. Cost is one SELECT + one INSERT per fired probe.
+- **Probe text.** Per-focus customisable (2026-05-25). If `focus.probe_template` is set on the focus catalog entry, that string is used verbatim. Otherwise falls back to a generic `"Still there? Happy to keep going whenever you are."` — no focus label inserted. The prior hard-template (`"...your thoughts on " + focus.label + "..."`) inserted admin-facing labels into respondent-facing text (e.g. for a focus labeled "The decision," the probe rendered awkwardly as "your thoughts on The decision"). Cost is one SELECT + one INSERT per fired probe.
 - **Persistence.** The probe is written as a regular assistant turn with `source='silence_probe'` and `content_flags=['silence_probe', 'focus:<slug>']`. The flags double as the once-per-session lock AND mark the focus as touched (so subsequent focus-classifier passes don't re-tag it).
 - **Sir O'Gate today has 0 focuses configured**, so the silence path is a no-op there. The mechanism is built for NOWOCATS-style bots (focuses-rich) and any future agent that wants idle-time nudges.
 
@@ -1023,7 +1035,8 @@ A research instrument exploring how people feel about important decisions where 
   - `sql/one-off/2026-05-23-decision-study-emotional-redesign.sql` — emotion-first probing, expanded banned-word list
   - `sql/one-off/2026-05-24-decision-study-phase3-sharpen.sql` — Phase 3 sharpened (drill matrix routes evaluative-only answers back into the emotional register; probe 3 captures locus)
   - `sql/one-off/2026-05-24-decision-study-plain-language-rewrite.sql` — plain-language rewrite for 80yo accessibility + new Phase 7 "Other decisions since" (behavioral shadow); renumbers prior 7-10 → 8-11
-  - `sql/one-off/2026-05-24-decision-study-hybrid-c-plus-d.sql` — **current protocol** (hybrid C+D conversational architecture: OPEN phases use intent + example phrasings, Claude generates each turn naturally; SCALED phases (4 + 10) use verbatim wording for instrument validity; demographics scripted with light warming. Also populates `agents.focuses` with 11-entry catalog and flips `probe_focus_enabled=true` so both bot and user turns auto-tag with `focus:<slug>` / `topic:<slug>` for post-hoc bucketing)
+  - `sql/one-off/2026-05-24-decision-study-hybrid-c-plus-d.sql` — hybrid C+D conversational architecture; populated `agents.focuses` (11 entries) + `probe_focus_enabled=true`
+  - `sql/one-off/2026-05-25-decision-study-mirroring-strengthening.sql` — **current protocol** (mirroring-is-non-negotiable rule with correct-vs-incorrect examples; explicit "drill examples are guidance, not script — don't extend with parenthetical alternatives"; recovery rule "if respondent says 'I don't understand' rephrase YOUR question, do NOT recap THEIR answer"; Phase 5 seed rewritten to mirror respondent's noun and use "turned out" instead of "went the way it did")
 - **Respondent-visible strings** (re-audited after each fix; final audit clean):
   - Browser tab + og:title + twitter:title: `"Chat with Decision Study"` — from `agents.name` via `app/b/[slug]/page.tsx:56` (NOT `config.name`)
   - Widget header: `"Sarina"` — via `config.name` override (BotClient.tsx:26)

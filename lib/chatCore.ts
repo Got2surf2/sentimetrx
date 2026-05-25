@@ -116,8 +116,15 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       return { reply: null, skipped: 'all_focuses_covered' }
     }
     const probeLang = userLanguage || (bot.config as any)?.language || 'en'
-    const probeLabel = (unfired as any).label || (unfired as any).slug
-    const probeText = "By the way — while you're here, I'd love to hear your thoughts on " + probeLabel + ". What comes to mind?"
+    // Per-focus probe template (set in agents.focuses[].probe_template) wins
+    // when present. Otherwise fall back to a generic nudge — the earlier
+    // "your thoughts on <label>" template inserted admin-facing labels
+    // ("The decision") into respondent-facing text, which read awkwardly
+    // and broke mirroring (focuses § 9.x.1).
+    const customTemplate = (unfired as any).probe_template
+    const probeText = (typeof customTemplate === 'string' && customTemplate.trim())
+      ? customTemplate.trim()
+      : "Still there? Happy to keep going whenever you are."
     const maxTurn = (existingTurns && existingTurns.length > 0) ? Math.max(...existingTurns.map((t: any) => t.turn_number || 0)) : -1
     const probeRow = {
       bot_id: bot.id,
