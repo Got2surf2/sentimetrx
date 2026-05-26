@@ -114,6 +114,20 @@ W21 audit score-lift item 3/6 — Maintainability +0.5 pts.
 
 **Verification**: `npx vitest run tests/unit/sentryScrub.test.ts` → 7/7 passing; clean `tsc --noEmit`. No prod state change — takes effect on next Vercel build.
 
+## 2026-05-25 (latest) — Decision Study: Phase 5 deeper-why + Phase 7 forward-looking probes (Option A)
+
+User question: "should we not be proving the why and the how as well as how they will avoid a similar future outcome?" Caught a real gap — the prior protocol got attribution (surface cause) at Phase 5 + presence-of-shadow at Phase 7, but did not surface (a) root cause vs proximate cause, or (b) any direct forward-looking behavioral content. Earlier I had argued against asking "what will you do differently?" because the change/avoid/learn frame primes the change-comparison and biases regret measurement (Connolly & Zeelenberg). That argument still holds for the bad framings — but a CONCRETE IMAGINED REPLAY question ("if the same kind of choice came up tomorrow, how would the moment look?") surfaces the same content with much weaker priming because the respondent fills in any "differently" themselves through what they describe.
+
+Two additions (`sql/one-off/2026-05-25-decision-study-why-depth-and-forward-looking.sql`, applied to prod):
+
+- **Phase 5 optional deeper-why probe** — fires ONLY if the first attribution drill surfaced a substantive response (expanded, named a piece, gave context). Mirror the respondent's noun for the proximate cause and probe one level down: "And underneath the rushing — what was it about that moment that made you go fast?" / "What was it about [their reason] that made it land the way it did?" Skips on dismissive / vague / non-answer drill responses.
+
+- **Phase 7 expanded** from pure presence-probing to presence + forward-looking. The presence drill (yes/no/sometimes) stays unchanged; an OPTIONAL forward-looking probe fires after it ONLY if the presence drill surfaced engagement. Phrased as concrete imagined replay: "If the same kind of choice came up tomorrow, how would the moment look for you now?" / "Picture being at a similar [dinner] tomorrow — what would the moment be like?" / "If you were standing at a similar moment again, what would the first beat look like?"
+
+- **Neutrality rule #1 extended** for Phase 7's forward-looking probe with explicit banned framings: `differently / change / avoid / learn / lesson / wiser`. These are the words that prime the change-comparison frame and contaminate measurement. The imagined-replay phrasings deliberately avoid all six. The respondent supplies any "differently" themselves.
+
+system_prompt grew 16566 → 18661 chars. No code changes.
+
 ## 2026-05-25 (later) — Decision Study agent: 6 second-pass fixes from Sanjay's test transcript
 
 After the first-pass mirroring rewrite landed (system_prompt 10615 → 12455 chars), Sanjay ran another test (`bs_mpl7gl4x_l7axkk`, 28 turns 12:52-12:55 UTC). Six new failure modes surfaced that the first pass didn't catch:
