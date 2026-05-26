@@ -551,15 +551,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               whiteSpace: 'nowrap',
             }}>New</button>
           )}
-          {/* Mandatory: Powered by Sentimetrx — always shown on every agent.
+          {/* Mandatory: Powered by Datanautix — always shown on every agent.
               Stacked: tiny "powered by" caption above the wordmark.
               Wordmark color picks Hermes orange on dark headers, Sarina
               blue on light ones, by sampling the first hex color in the
               header gradient string and computing perceived luminance. */}
-          <a href="https://www.sentimetrx.ai" target="_blank" rel="noopener noreferrer"
+          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
             style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1, fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
             <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.45)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>powered by</span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em', color: pickWordmarkColor(config.headerGradient), marginTop: 2 }}>SENTIMETRX</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em', color: pickWordmarkColor(config.headerGradient), marginTop: 2 }}>DATANAUTIX</span>
           </a>
         </div>
       </header>
@@ -791,8 +791,8 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         </div>
         <div style={{ textAlign: 'center', marginTop: 8 }}>
           <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
-            Powered by <a href="https://www.sentimetrx.ai" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#E8632A', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>Sentimetrx</a>
+            Powered by <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+              style={{ color: '#E8632A', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>Datanautix</a>
           </span>
         </div>
       </div>}

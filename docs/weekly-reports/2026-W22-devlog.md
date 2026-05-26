@@ -215,3 +215,16 @@ Clean typecheck. Full test suite 277/277 green (no new tests added; the rehydrat
 - `docs/ENGINEERING.md` § 12 — added a "Runtime file tracing for `docs/weekly-reports/*.md`" subsection explaining the pattern + when to extend the mapping (any new admin surface that reads these markdown files).
 
 No code behavior change. No migration. Affects only what files ship in the next Vercel build.
+
+---
+
+## 2026-05-26 — Agent widget "Powered by" reverts to Datanautix
+
+**Why**: Going into the UCF Business Incubator demo this week, the parent-company brand reads more credible than the product brand on a B2B/enterprise pitch — Datanautix is the established company name; Sentimetrx is the product line. The W22 rebrand (commit `ac54817e` on 2026-05-25) intentionally swapped customer-visible chrome to "Sentimetrx" for product-name visibility, but for agents specifically, the parent-attribution pattern (already preserved in TopNav / login / share / internal decks) reads better. This reverts the ChatBot widget portion of `ac54817e` only.
+
+**What changed**:
+- `components/ui/ChatBot.tsx` — both "Powered by" surfaces: the stacked wordmark in the chat header (line ~559) and the centered caption below the input box (line ~794). Text "Sentimetrx" → "Datanautix" in both. Link target `https://www.sentimetrx.ai` → `https://www.datanautix.com` in both (matches the brand consistently, so the click destination is the parent site).
+
+**Scope**: applies to ALL agents (Cubie, Sarina, Sir O'Gate, MCO AskAna, Decision Study, future ones) — both branding spots are hardcoded once, used everywhere.
+
+**Not changed**: SurveyWidget brandingLabel default ("DATANAUTIX" — was never changed by the W22 rebrand for the survey product), PPTX export metadata, TopNav, login pages, share pages, internal decks (all already reading "Datanautix").

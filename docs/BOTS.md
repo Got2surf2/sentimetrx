@@ -406,9 +406,9 @@ The assistant bubble runs every reply through `ChatBot.formatHtml` before settin
 4. **Inline formatting** — `**bold**`, newlines → `<br/>`, `- ` bullets, then auto-link bare URLs, emails, and known bare-domain TLDs (com/org/net/ai/io/gov/edu/us/co/info/biz/mil).
 5. **Placeholder restore** — markdown anchors are spliced back in last so the auto-linker can't see them.
 
-### Mandatory "Powered by SENTIMETRX" badge
+### Mandatory "Powered by DATANAUTIX" badge
 
-Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a hardcoded "powered by SENTIMETRX" wordmark stacked in the chat header (linking to `https://www.sentimetrx.ai`), plus a "Powered by Sentimetrx" line in the footer area. It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the platform. The customer's own `websiteLabel` link (when configured) sits to its left.
+Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a hardcoded "powered by DATANAUTIX" wordmark stacked in the chat header (linking to `https://www.datanautix.com`), plus a "Powered by Datanautix" line in the footer area. It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the parent platform. The customer's own `websiteLabel` link (when configured) sits to its left. (Reverted to Datanautix on 2026-05-26 — the W22 swap to "Sentimetrx" read less credible on B2B/enterprise agent demos; parent-company attribution is the platform standard for agents.)
 
 ---
 
