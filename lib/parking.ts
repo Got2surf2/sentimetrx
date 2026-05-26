@@ -126,6 +126,11 @@ async function load(): Promise<ParkingLot[]> {
  * Returns an empty array on upstream failure — callers should fall back
  * to whatever static data they want to show.
  */
+// Backoff after a failed refresh — keep serving the stale cache for this
+// long before retrying upstream. Prevents a hot Vercel instance from
+// hammering GOAA when the upstream is temporarily flaky.
+const FAILURE_BACKOFF_MS = 30_000
+
 export async function fetchParkingAvailability(): Promise<ParkingLot[]> {
   const now = Date.now()
   if (cache && now - cache.at < CACHE_TTL_MS) return cache.lots
@@ -136,9 +141,11 @@ export async function fetchParkingAvailability(): Promise<ParkingLot[]> {
       return lots
     })
     .catch(() => {
-      // On failure, return whatever we had cached (even if stale) — better
-      // than empty. If nothing cached, return [] so the card can show its
-      // fallback.
+      // On failure: keep serving the stale cache (better than empty), but
+      // ALSO bump cache.at so subsequent requests don't retry immediately.
+      // Without this bump every request after a failed refresh would re-hit
+      // GOAA, potentially DOS'ing them if they're recovering from an issue.
+      if (cache) cache.at = Date.now() - (CACHE_TTL_MS - FAILURE_BACKOFF_MS)
       return cache?.lots || []
     })
     .finally(() => { inFlight = null })

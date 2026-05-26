@@ -99,10 +99,15 @@ async function load(): Promise<CheckpointWait[]> {
   }).filter(r => r.isOpen || r.waitSeconds != null) // hide closed-and-empty rows
 }
 
+const FAILURE_BACKOFF_MS = 30_000
+
 /**
  * Live TSA security wait times for MCO. 60s in-memory cache. Dedupes
  * concurrent callers via an in-flight promise. Returns whatever is cached
  * (even if stale) on upstream failure; empty array if nothing cached.
+ * After a failed refresh we hold the stale cache for FAILURE_BACKOFF_MS
+ * before retrying, so a hot Vercel instance doesn't hammer GOAA when
+ * upstream is flaky.
  */
 export async function fetchSecurityWaits(): Promise<CheckpointWait[]> {
   const now = Date.now()
@@ -113,7 +118,10 @@ export async function fetchSecurityWaits(): Promise<CheckpointWait[]> {
       cache = { at: Date.now(), rows }
       return rows
     })
-    .catch(() => cache?.rows || [])
+    .catch(() => {
+      if (cache) cache.at = Date.now() - (CACHE_TTL_MS - FAILURE_BACKOFF_MS)
+      return cache?.rows || []
+    })
     .finally(() => { inFlight = null })
   return inFlight
 }

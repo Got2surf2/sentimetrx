@@ -2175,3 +2175,20 @@ No code touched; pure scope. Concept deck generated separately to `~/Downloads/p
 - `docs/MCO_AGENT.md` — parking row updated, new `security_wait` row added to the hint table.
 
 Typecheck clean. 277/277 tests still passing.
+
+## 2026-05-26 — Live-data resilience + anti-hallucination guardrails
+
+**Why**: During a demo, the first parking ask showed data; later asks "couldn't get the data." Separately, the chat bot claimed "Parking Garage C is full" at a moment when the right-pane card had no data — a hallucination, since the chat route has no live parking context.
+
+**Probe findings**:
+- GOAA `parking/availability/MCO` is NOT rate-limited (10 rapid calls all 200).
+- Prod `/api/mco/parking` returns 17 lots in ~200ms, 5/5 consistent.
+- KB has NO "garage full" content (verified grep of /tmp/mco_pages.json).
+- The "full" claim was therefore a model hallucination, not retrieval.
+
+**What changed**:
+- `lib/parking.ts` + `lib/securityWait.ts` — cache now bumps `cache.at` on `load()` failure so subsequent requests hold the stale data for `FAILURE_BACKOFF_MS = 30s` before retrying upstream. Prevents a hot Vercel instance from hammering GOAA when the upstream is flaky.
+- `scripts/_mco_tighten_prompt.ts` — 2 new guardrails (13 → 15) APPLIED TO LIVE BOT 920c571b: (a) never state a specific parking lot's current status; defer to the right-pane card. (b) never state a specific TSA checkpoint's current wait or open/closed lane; defer to the card. Both rules say: "I don't have live data" is better than confidently fabricating "full".
+- `scripts/_mco_probe_no_fake_status.ts` — new probe verifies behavior. 5/5 probes pass — Ana now says "I don't have live parking availability" + points to the right-pane card or flymco.com/parking-availability, instead of fabricating "full".
+
+**State**: guardrails are live in prod (DB update via SQL script, not via push). The cache-resilience code change is local until next push.
