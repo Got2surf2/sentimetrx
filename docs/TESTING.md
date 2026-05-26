@@ -351,3 +351,31 @@ guardrails, or knowledge base. Target ~$1–$3 per full pass.
 `.github/workflows/ci.yml` runs typecheck + Vitest on push to `main` and
 on every PR. Playwright is not in CI (real Supabase + login + dev server)
 — it's a manual local check. README has the badge.
+
+## Tracked test gaps
+
+The weekly audit (`docs/weekly-reports/YYYY-WXX.md`) has flagged
+"route handlers and React components remain largely untested" in every
+audit from W19 onward. The Tests score has been pinned at 4/10 (15%
+weight) by the test-files-to-source-files ratio (~0.044 in W21).
+
+**Queued route-handler test additions (highest leverage)**:
+
+- `/api/respond` — status enum transitions (in_progress → complete),
+  partial-save persistence across resumes, retry idempotency. Extends
+  `tests/integration/respond.test.ts` or new file.
+- `/api/bots/[id]/chat` — input validation (missing session_id,
+  oversize message, malformed JSON), rate-limit bucket exhaustion +
+  reset, inactive-agent → 404, CORS preflight, session_id regex.
+  New `tests/integration/bot-chat-validation.test.ts`. Highest-traffic
+  public endpoint.
+- `/api/townhall/*` participant routes — `join/[sessionId]` GET+POST
+  (bad slug, status-gate, participant-id mint), `live/[sessionId]` GET
+  (active-only), `themes/[id]` POST + `themes/custom` POST (input
+  shape, content-filter). Covers both legacy `townhall_*` substrate
+  and phase-3 `town_halls` (via `lib/townHallAdapter.ts`).
+
+Each surfaces 8–15 cases / file, adds a test file (lifts the
+file-count ratio), and exercises real route logic (closes the audit's
+narrative). Queued in the open-work-queue memory as the highest-ROI
+next-session items after the W22 push lands.
