@@ -1,5 +1,20 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-25 (later) — NOWOCATS facilitator Save blocked on every edit (slug lock)
+
+**Why**: User flagged `Save failed: slug edit on phase-3 town halls not yet supported` on the NOWOCATS (Sarina) facilitator setup at `/townhall/<id>`. Diagnosis: `SessionDetailClient.tsx::saveEdit` was sending `slug` in every PATCH body unconditionally — initialized from `session.slug` when the editor opened — so the server's phase-3 guard fired even when the facilitator didn't touch the field. NOWOCATS postcards have already been mailed with the participant URL printed on them, so the slug is operationally locked anyway. The 405 isn't a missing feature — it's a guardrail. The bug is the client sending an unchanged value.
+
+**What changed**:
+- `app/townhall/[sessionId]/SessionDetailClient.tsx::saveEdit` — only includes `slug` in the PATCH body when `trimmedSlug !== (session.slug || null)`. Unchanged-slug saves now go through.
+- `app/townhall/[sessionId]/SessionDetailClient.tsx` Step 0 input — renders `readOnly` + greyed-out + a "URL is locked — printed materials reference this slug" caption when `session.__substrate === 'phase3'`. Legacy substrate retains full slug-edit. The marker comes from `lib/townHallAdapter.ts` which already emits `__substrate: 'phase3'` on the JSON payload.
+- `docs/TOWNHALL.md` phase-3 PATCH block — calls out the slug-edit lock as deliberate (postcard / QR / signage protection), describes the readOnly UI surface, and documents the redirect-table follow-on path if a customer ever needs slug-renames.
+
+**Out of scope**: the full slug-edit + redirect feature (sql/088 `previous_slugs text[]`, server UPDATE + 23505→409 translation, `app/th/[slug]/page.tsx` fallback). Tracked in TOWNHALL.md as a future commit; not needed for NOWOCATS or any other customer today.
+
+**Verification**: clean `tsc --noEmit`. No tests added (UI-only fix; the server-side 405 stays in place and is its own future test surface).
+
+
+
 ## 2026-05-25 (later) — W21 audit score-lift item 7 (optional bonus): tests for four under-covered surfaces
 
 **Why**: W21 audit scored Tests 4/10 (headroom 0.9 pts × 15% weight = largest single category for an audit lift, but slowest to land). The 7 new sentryScrub tests in item 1 covered the new surface that landed today; the remaining tests in the queue's item 7 list (`nameExtractor`, `probeFocusClassifier`, `/api/admin/usage/[type]/[id]`, `/api/respond` partial save) were optional bonus.

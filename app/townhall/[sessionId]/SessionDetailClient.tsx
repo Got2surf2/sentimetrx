@@ -301,10 +301,22 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setSaving(true)
     setError(null)
     try {
+      // Only send slug when the facilitator actually changed it. Phase-3 town
+      // halls reject any slug field in the PATCH body (the URL on printed
+      // postcards / QR codes is the canonical handle), so sending an
+      // unchanged value blocks every save on a phase-3 surface.
+      const trimmedSlug = editSlug.trim() || null
+      const slugChanged = trimmedSlug !== (session.slug || null)
+      const body: Record<string, unknown> = {
+        name: editName,
+        config: editConfig,
+        discussion_guide: editGuide,
+      }
+      if (slugChanged) body.slug = trimmedSlug
       const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, slug: editSlug.trim() || null, config: editConfig, discussion_guide: editGuide }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -521,10 +533,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <ELabel>Participant Link</ELabel>
                 <div className="flex items-center">
                   <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
-                  <input type="text" value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  <input type="text" value={editSlug}
+                    onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    readOnly={(session as any)?.__substrate === 'phase3'}
                     placeholder="e.g. neighborhood-meeting"
-                    className="flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+                    className={'flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200' + ((session as any)?.__substrate === 'phase3' ? ' bg-gray-50 text-gray-500 cursor-not-allowed' : '')} />
                 </div>
+                {(session as any)?.__substrate === 'phase3' && (
+                  <p className="text-xs text-gray-500 -mt-1">URL is locked — printed materials (postcards, QR codes, signage) reference this slug.</p>
+                )}
                 <ELabel>Industry</ELabel>
                 <select
                   value={editConfig.industry || ''}
