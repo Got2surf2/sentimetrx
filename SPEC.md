@@ -499,6 +499,7 @@ A focused mobile-first status surface that installs as a home-screen app on iOS 
 | `lib/embeddings.ts` | Embedding generation for agent knowledge / RAG |
 | `lib/cronAuth.ts` | Cron bearer-token auth (`CRON_SECRET`) |
 | `lib/sentry.ts` | Sentry init / wrapping |
+| `lib/sentryScrub.ts` | Sentry `beforeSend` PII scrub — wired into `sentry.{client,server,edge}.config.ts`; drops `request.{data,body,cookies}`, auth/cookie headers, PII key names in `extra`/`contexts`/`tags`; reduces `user` to `{id}` only; also drops the MS Office "Object Not Found" content-script false-positive. Closes SECURITY.md TBD #1. |
 | `lib/loginLog.ts` / `lib/userEvents.ts` | Login + user-event logging |
 | `lib/auditLog.ts` | Bot audit log writer (`logBotChange`, `snapshotForDiff`, `diffSnapshots`) — server-side service-role writes to `bot_change_log` |
 | `lib/orgSnapshot.ts` | Per-tenant logical backup — `dumpOrgSnapshot(orgId)` returns versioned JSON of ~40 tenant-scoped tables. `TABLE_SPECS` map is the source of truth. |
