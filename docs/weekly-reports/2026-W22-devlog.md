@@ -228,3 +228,71 @@ No code behavior change. No migration. Affects only what files ship in the next 
 **Scope**: applies to ALL agents (Cubie, Sarina, Sir O'Gate, MCO AskAna, Decision Study, future ones) — both branding spots are hardcoded once, used everywhere.
 
 **Not changed**: SurveyWidget brandingLabel default ("DATANAUTIX" — was never changed by the W22 rebrand for the survey product), PPTX export metadata, TopNav, login pages, share pages, internal decks (all already reading "Datanautix").
+
+---
+
+## 2026-05-26 — Cubie (UCF Business Incubator agent) full retrieval-quality hardening
+
+**Why**: UCF Business Incubator demo this week — Cubie agent (`bot_id 669e33ba-8725-4b03-a7ee-6c33f3adcc9e`, slug `ucf-incubator`) was originally seeded 2026-05-21 with a thin name-only KB (52 KB, ~93 chunks, mostly noise from masonry-listing pages with no client blurbs). User asked for "a robust enough bot that can answer questions about the program for entrepreneurs, companies looking to expand to our area, and companies looking for certain capabilities or solutions." Initial pass shipped before discovering retrieval doesn't read `bots.knowledge_base` — it reads `agent_knowledge_chunks` (via the view `bot_knowledge_chunks` and the RPC `search_knowledge_chunks`). User caught two real misses ("who manages Winter Springs", "what AI companies") that proved the gap. Multiple iterations after that.
+
+**What changed (all DB-only updates against the linked prod project, no commits, no migrations — pure UPDATE on bots + DELETE/INSERT on agent_knowledge_chunks)**:
+
+1. **Crawled incubator.ucf.edu via WordPress wp-json REST API** (not in-product Deep Crawl — direct API hits). Pulled:
+   - All 108 active client posts (cat 22) — title, slug, link, content, categories
+   - All 287 graduate posts (cat 167) — same fields, half had clean blurbs, the other half wrapped in Avada/Fusion shortcodes
+   - All 23 Soft Landing posts (cat 181)
+   - Full category tree (~238 categories) to build location/sector resolver
+   - 9 location detail pages (downtown-incubator, orlando-incubator, research-park-incubator, lake-nona-life-sciences-incubator, photonics-incubator, kissimmee-incubator, heathrow-incubator, eustis-incubator, winter-springs-incubator) — full content with addresses, phones, on-site staff lists with emails, partner orgs, year established, square footage
+   - Program pages (incubation-programs, mentorship-cohort-program, accelerated-leadership-academy, excellence-in-entrepreneurship-course, soft-landing) — the latter three needed WebFetch to render Avada shortcodes since the API content was unrendered
+   - Staff page (14 names total)
+   - Impact Reports page — concrete published numbers ($1.25B 2022–2023 output, 2,835 jobs/yr, $10.45 ROI per $1 invested)
+
+2. **Built Avada/Fusion shortcode stripper** in Python (regex over `\[(?:av_|fusion_|ait_)[^\]]*\]` plus generic `\[[^\[\]]{1,200}\]` fallback). Recovered 161 of 287 graduate blurbs that were previously locked behind unrendered theme shortcodes.
+
+3. **Chunking algorithm ported from `app/api/bots/[id]/knowledge/route.ts::chunkText()`** to Python — splits on `##/###/####` headings, drops chunks under 20 chars, subdivides oversize chunks (>1500 chars) at paragraph boundaries. Same logic the admin UI uses on save. Insert bullets are blank-line-separated so the paragraph splitter can subdivide long lists.
+
+4. **Critical retrieval lesson** — when updating `bots.knowledge_base`, MUST also DELETE+rebuild `agent_knowledge_chunks` rows for that bot. The column is just source-of-truth text; chat retrieval uses the chunks. Lost an iteration before figuring this out — three SQL UPDATEs against the column had ZERO visible effect on bot behavior because the stale May-21 seed chunks were still what `search_knowledge_chunks` returned.
+
+5. **Capability buckets promoted to their own `###` chunks** (was a single bulleted list inside one Capability Index chunk). 15 buckets: AI/ML, Cybersecurity, Defense, Healthcare, Optics/Photonics, Aerospace/Space, Semiconductors, Energy/Cleantech, Manufacturing/Materials, Education/Training/Simulation, Software/SaaS, Marketing/Sales/CRM, Financial/Fintech, Hospitality/Consumer, Robotics/Drones. Each title includes synonyms ("AI / ML — Artificial intelligence and machine learning", "Cybersecurity (cyber, infosec, security)", etc.) so `plainto_tsquery('english', ...)` matches common phrasings — stem 'ai' doesn't match the stemmed 'artific' of "Artificial". Each bucket body explicitly reads "these N current UCFBIP client companies in the active portfolio are the full list of matches (complete list — no others exist in this capability among current clients)" so:
+   - The chunk matches 'client/clients' stem for "current clients" queries
+   - The LLM understands the list is COMPLETE (no padding allowed)
+
+6. **Per-company profile section** — every one of 107 active clients gets its own `### {Name}` chunk with blurb + sector + location + Soft Landing flag + profile URL. Same for 161 graduates with parsed blurbs (`### Graduate: {Name}`). Plus 12 by-sector graduate index chunks for "do you have biomedical graduates" type queries.
+
+7. **Events crawl — initial JSON-only attempt missed recurring events**. Tribe Events Calendar plugin exposes `/wp-json/tribe/events/v1/events` and `/wp-json/wp/v2/tribe_events` — both only return the template/first occurrence of recurring events. The iCal feed at `/events/?ical=1` correctly expands all recurrences. User caught this when a Jun 24 Mentor Insight Forum was visible on the events page but missing from the bot's answer. Switched the events crawl to parse the iCal feed (handles line continuations, escapes, DTSTART/DTEND/SUMMARY/DESCRIPTION/LOCATION/URL). Final state: 2 upcoming events (M3D 2026-05-28, Mentor Insight Forum 2026-06-24) + 10 historical events as recent-activity context, each its own `### Upcoming Event:` or `### Past Event:` chunk.
+
+8. **Anti-hallucination guardrails** — user caught the bot inventing "Healent" as an AI client (the name appears nowhere in any source — pure LLM fabrication, with a fabricated `incubator.ucf.edu/healent/` URL that 404s). Three new guardrails appended to `bots.guardrails` (9 existing → 12 total), idempotent via JSON-array dedupe SQL:
+   - Never mention a company/person/location/URL not present verbatim in retrieved context — refer to the [Companies directory](https://incubator.ucf.edu/companies/) or staff instead.
+   - When asked for a list, the in-context list IS the complete list — no padding, no "and several others."
+   - Never construct URLs from inferred slugs — constructed URLs almost always 404.
+   - **No specific company names hard-coded** in any guardrail (user explicitly rejected naming "Healent" as an example: "do not put a specific healent instruction — that seems really stupid").
+
+9. **System prompt rewritten through v3 → v4 → v5 → v6** (3.5 KB original → 12 KB final). Key additions:
+   - **ZERO-FABRICATION RULES block** at top of CORE RULES, 4 numbered points (verbatim only, complete lists, never construct URLs, admit ignorance is always better than guessing).
+   - **LINK FORMATTING block** — bans bare URLs, requires Markdown `[label](url)` syntax with worked examples for every common URL the bot surfaces. Includes a MANDATORY rule for company names: "WRONG: `**Intelligence Factory** — AI consulting/automation`. RIGHT: `**[Intelligence Factory](https://...)** — AI consulting/automation`." User caught a real instance where the bot stripped link wrappers on company names in lists.
+   - **LIST queries vs RECOMMENDATION queries** — distinguishes "what AI companies do you have" (give complete list from retrieved chunk) vs "I'm looking for a partner that does X" (pick 2–4 best fits). Original prompt said "Recommend 2–4 companies; don't dump the whole list" which made the bot truncate 13-company lists down to 2 for LIST queries.
+   - **Cross-turn consistency rule** — "if you tagged Talos Health as AI in turn 2, Talos Health is AI in turn 5." User caught the bot contradicting itself within a session.
+   - **Capability matching guidance** for "find me a company that does X" — search both the Capability Index and the per-location/per-company chunks, recommend by name with profile link, recommend 2–4 when it's a recommendation question, give the full list when it's a LIST question.
+   - **Upcoming events handling** — list real upcoming events from retrieved context; if none, give recent past events as proxy for cadence/types of activity; never invent dates.
+
+10. **Final state in prod (as of 2026-05-26 EOD)**:
+    - `bots.knowledge_base`: **270 KB** (was 52 KB at session start)
+    - `agent_knowledge_chunks` rows for Cubie: **390** (was 126 stale May-21 seed chunks)
+    - `bots.system_prompt`: **12 KB** (was 3.5 KB)
+    - `bots.guardrails`: **12** entries (was 9)
+    - `bots.training_urls`: **142** (was 35; added every per-company profile URL so any future automated re-crawl pulls fresh blurbs)
+
+**Verification — actual chat API tested (POST `/api/bots/[id]/chat`), not just retrieval RPC**:
+- "what AI companies are current clients" → all 13 listed with clickable Markdown links (was 2 with no links pre-fix)
+- "what events are coming up in the next few weeks?" → both real upcoming events (M3D May 28, Mentor Insight Jun 24) with venue, time, click links + recent-activity proxy
+- "who manages the Winter Springs site?" → Michael Weiss with email + phone + dual-site (Winter Springs + Heathrow) note
+- "tell me about Cympire" → correct location (Downtown Orlando), accurate blurb, clickable link, Soft Landing flag noted
+
+**Queued for post-demo (in `project_open_work_queue.md`)**:
+- Phase 1: Cubie-specific nightly KB refresh cron (~1 day). Port the Python crawl/parse/chunk logic to a TypeScript route at `/api/cron/cubie-refresh` gated by `CRON_SECRET`. Reference impl: `scripts/_rescan_abel_kb.ts`.
+- Phase 2: Generic agent-KB-refresh framework (~3–5 days, trigger = second web-source agent needs the same treatment). Adds `auto_refresh_config jsonb` column to `bots`, uses the existing-but-half-wired `review_interval_hours` / `last_reviewed_at` / `next_review_at` columns.
+- Rich link preview cards in the chat widget (polish, lets visitors preview without leaving the chat tab).
+- Entity-extraction-as-check validator (optional anti-hallucination second line of defense if prompt-level guardrails prove insufficient at scale).
+- Important caveat for BOTH refresh phases: DELETE+INSERT pattern wipes any manually-edited chunks in the admin UI. Decide before shipping: mark agent "auto-refresh source-of-truth" (banner in admin) vs preserve `metadata.source='manual'` chunks on refresh.
+
+**No code change required for this work — all DB UPDATEs. The separate code commit `b3ad96a0` (this commit) is unrelated branding revert.**
