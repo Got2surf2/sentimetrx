@@ -633,6 +633,20 @@
   color: #065f46;
   letter-spacing: 0.05em;
 }
+.canvas-shell .welcome-updated {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: #9ca3af;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-style: italic;
+}
+.canvas-shell .welcome-updated-stale { color: #b45309; font-weight: 600; font-style: normal; }
+
+/* Stale-data subtitle styling used by ParkingCard + SecurityWaitCard
+   headers when GOAA data is >5 min old (per liveDataCache.STALE_THRESHOLD_S). */
+.canvas-shell .subtitle.subtitle-stale { color: #b45309; font-weight: 600; }
 .canvas-shell .welcome-empty { font-size: 13px; color: #6b7280; padding: 6px 0; }
 .canvas-shell .welcome-parking-grid {
   display: grid;

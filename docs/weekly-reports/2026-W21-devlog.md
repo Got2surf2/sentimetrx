@@ -2192,3 +2192,15 @@ Typecheck clean. 277/277 tests still passing.
 - `scripts/_mco_probe_no_fake_status.ts` — new probe verifies behavior. 5/5 probes pass — Ana now says "I don't have live parking availability" + points to the right-pane card or flymco.com/parking-availability, instead of fabricating "full".
 
 **State**: guardrails are live in prod (DB update via SQL script, not via push). The cache-resilience code change is local until next push.
+
+## 2026-05-26 (later) — Cards keep showing last-known data when refetch fails
+
+**Why**: When the canvas re-mounted a parking or security card after a transient API blip, the card flashed empty / "Live data unavailable" instead of showing the last-good data we already had on screen. Per the user: "still show it at last call and indicate last updated."
+
+**What changed**:
+- `app/demo/mco/lib/liveDataCache.ts` — NEW. Thin localStorage helper: `loadCache` / `saveCache` / `maxTimestamp` / `relativeTime` / `isStale` (5 min threshold).
+- `app/demo/mco/components/ParkingCard.tsx`, `SecurityWaitCard.tsx`, and the parking strip in `WelcomeCard.tsx` — three changes each: (a) seed state from localStorage on mount → no Loading flash / blank flash; (b) only overwrite cache + state when the API response has data → empty refetch keeps the prior data on screen; (c) "Updated X ago" now uses GOAA's per-row `lastUpdatedTimestamp` (max across rows), not our server fetch time, so freshness shown is the upstream truth.
+- Cards paint an amber `subtitle-stale` / "Last known · …" label when data is >5 min old AND coming from the local cache (vs. a fresh fetch). The "Live" pill on the welcome parking strip hides when the data is stale.
+- `app/demo/mco/canvas.css` — `.subtitle-stale`, `.welcome-updated`, `.welcome-updated-stale`.
+
+Typecheck clean. 319/319 tests pass.

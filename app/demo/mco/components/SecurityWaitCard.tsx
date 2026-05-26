@@ -7,6 +7,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { SecurityWaitHint } from '@/lib/uiHints'
+import { loadCache, saveCache, maxTimestamp, relativeTime as relTime, isStale } from '../lib/liveDataCache'
+
+const CACHE_KEY = 'mco_security_v1'
 
 interface Checkpoint {
   id: string
@@ -33,13 +36,6 @@ function bandFor(seconds: number | null): { label: string; bg: string; fg: strin
   return         { label: min + ' min', bg: '#fee2e2', fg: '#991b1b' }
 }
 
-function relTime(ts: number) {
-  if (!ts) return ''
-  const ms = Date.now() - ts * 1000
-  if (ms < 60_000) return Math.floor(ms / 1000) + ' sec ago'
-  if (ms < 3_600_000) return Math.floor(ms / 60_000) + ' min ago'
-  return Math.floor(ms / 3_600_000) + ' h ago'
-}
 
 const CHECKPOINT_DESC: Record<'A' | 'B' | 'C', { label: string; sub: string }> = {
   A: { label: 'West Checkpoint',  sub: 'Terminal A · Gates 1–59' },
@@ -48,26 +44,39 @@ const CHECKPOINT_DESC: Record<'A' | 'B' | 'C', { label: string; sub: string }> =
 }
 
 export default function SecurityWaitCard({ hint }: { hint: SecurityWaitHint }) {
-  const [rows, setRows] = useState<Checkpoint[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchedAt, setFetchedAt] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  // Seed from localStorage so re-mounts show the last-good data immediately
+  // (no Loading flash, no blank state). Empty refetch responses won't blank
+  // the card — we only overwrite on a non-empty response.
+  const seed = loadCache<Checkpoint[]>(CACHE_KEY)
+  const [rows, setRows] = useState<Checkpoint[]>(seed?.payload || [])
+  const [loading, setLoading] = useState(!seed)
+  const [usingCache, setUsingCache] = useState(!!seed)
 
   useEffect(() => {
     let aborted = false
-    setLoading(true)
+    if (!seed) setLoading(true)
     fetch('/api/mco/security')
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((d: ApiResponse) => {
         if (aborted) return
-        setRows(Array.isArray(d.checkpoints) ? d.checkpoints : [])
-        setFetchedAt(d.fetched_at || Math.floor(Date.now() / 1000))
-        setError(null)
+        if (Array.isArray(d.checkpoints) && d.checkpoints.length > 0) {
+          setRows(d.checkpoints)
+          saveCache(CACHE_KEY, d.checkpoints)
+          setUsingCache(false)
+        }
       })
-      .catch((e) => { if (!aborted) { setRows([]); setError(String(e?.message || e)) } })
+      .catch(() => { /* keep whatever's on screen */ })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Real upstream freshness — max lastUpdatedTimestamp across rows.
+  const lastUpdatedTs = useMemo(
+    () => maxTimestamp(rows.map(r => r.lastUpdatedTimestamp)),
+    [rows],
+  )
+  const stale = isStale(lastUpdatedTs)
 
   // Group by terminal, then split lanes within each terminal.
   const grouped = useMemo(() => {
@@ -89,8 +98,10 @@ export default function SecurityWaitCard({ hint }: { hint: SecurityWaitHint }) {
     <div className="canvas-card-inner">
       <div className="canvas-header">
         <h2>Security Wait Times</h2>
-        <span className="subtitle">
-          {loading ? 'Loading…' : error ? 'Live data unavailable' : ('Updated ' + relTime(fetchedAt))}
+        <span className={'subtitle' + (stale ? ' subtitle-stale' : '')}>
+          {loading && rows.length === 0 ? 'Loading…' :
+            lastUpdatedTs ? (usingCache && stale ? 'Last known wait · ' + relTime(lastUpdatedTs) : 'Updated ' + relTime(lastUpdatedTs)) :
+            'Live data unavailable'}
         </span>
         <span className="badge">Live</span>
       </div>

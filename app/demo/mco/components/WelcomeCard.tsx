@@ -5,8 +5,11 @@
 // access tiles representing the most-asked topics. Replaces the previous
 // default of showing a C→A/B map before the user has asked anything.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { WelcomeHint } from '@/lib/uiHints'
+import { loadCache, saveCache, maxTimestamp, relativeTime as relTime, isStale } from '../lib/liveDataCache'
+
+const CACHE_KEY = 'mco_welcome_parking_v1'
 
 interface ApiLot {
   id: string
@@ -14,6 +17,7 @@ interface ApiLot {
   available: number | null
   total: number | null
   status: 'open' | 'closed' | string
+  lastUpdatedTimestamp?: number      // unix sec — GOAA's last refresh of this lot
 }
 interface ApiResponse { lots: ApiLot[] }
 
@@ -65,25 +69,41 @@ function statusBadge(status: string): { label: string; bg: string; fg: string } 
 }
 
 export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; onTileClick?: (prompt: string) => void }) {
-  const [lots, setLots] = useState<ApiLot[]>([])
-  const [loading, setLoading] = useState(true)
-  const [hasLive, setHasLive] = useState(false)
+  // Seed parking strip from localStorage so the kiosk reopen / remount
+  // doesn't flash empty before the fetch returns.
+  const seed = loadCache<ApiLot[]>(CACHE_KEY)
+  const [lots, setLots] = useState<ApiLot[]>(seed?.payload || [])
+  const [loading, setLoading] = useState(!seed)
+  const [usingCache, setUsingCache] = useState(!!seed)
+  const hasLive = useMemo(() => lots.some(g => g.available != null && g.total != null), [lots])
 
   useEffect(() => {
     let aborted = false
-    setLoading(true)
+    if (!seed) setLoading(true)
     fetch('/api/mco/parking', { method: 'GET' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((data: ApiResponse) => {
         if (aborted) return
         const garages = (data.lots || []).filter(l => /Garage [ABC]/i.test(l.name)).sort((a, b) => a.name.localeCompare(b.name))
-        setLots(garages)
-        setHasLive(garages.some(g => g.available != null && g.total != null))
+        if (garages.length > 0) {
+          setLots(garages)
+          saveCache(CACHE_KEY, garages)
+          setUsingCache(false)
+        }
+        // Empty response → keep cached lots (don't blank)
       })
-      .catch(() => { if (!aborted) setLots([]) })
+      .catch(() => { /* keep cached */ })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // True upstream freshness via per-lot GOAA timestamps.
+  const lastUpdatedTs = useMemo(
+    () => maxTimestamp(lots.map(l => l.lastUpdatedTimestamp ?? 0)),
+    [lots],
+  )
+  const stale = isStale(lastUpdatedTs)
 
   const greeting = hint.mode === 'invenue' ? "You're at MCO"
     : hint.mode === 'kiosk' ? 'Welcome to MCO'
@@ -127,7 +147,12 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
         <div className="welcome-block">
           <div className="welcome-block-head">
             <span>Parking availability right now</span>
-            {hasLive && <span className="welcome-live-pill">Live</span>}
+            {hasLive && !stale && <span className="welcome-live-pill">Live</span>}
+            {lastUpdatedTs > 0 && (
+              <span className={'welcome-updated' + (stale && usingCache ? ' welcome-updated-stale' : '')}>
+                {stale && usingCache ? 'Last known · ' : 'Updated '}{relTime(lastUpdatedTs)}
+              </span>
+            )}
           </div>
           {loading && lots.length === 0 ? (
             <div className="welcome-empty">Checking lots…</div>

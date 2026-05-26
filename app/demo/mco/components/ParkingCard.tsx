@@ -7,6 +7,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { ParkingHint } from '@/lib/uiHints'
+import { loadCache, saveCache, maxTimestamp, relativeTime as relTime, isStale } from '../lib/liveDataCache'
+
+const CACHE_KEY = 'mco_parking_v1'
 
 interface ApiLot {
   id: string
@@ -17,6 +20,7 @@ interface ApiLot {
   total: number | null
   terminalId: string | null
   rate: { hourly?: string; daily?: string } | null
+  lastUpdatedTimestamp?: number      // unix sec — GOAA's last refresh of this lot
 }
 interface ApiResponse { lots: ApiLot[]; fetched_at: number }
 
@@ -66,14 +70,6 @@ function categoryTag(c: string) {
   }
 }
 
-function relativeTime(ts: number) {
-  if (!ts) return ''
-  const ms = Date.now() - ts * 1000
-  if (ms < 60_000) return Math.floor(ms / 1000) + ' sec ago'
-  if (ms < 3_600_000) return Math.floor(ms / 60_000) + ' min ago'
-  return Math.floor(ms / 3_600_000) + ' h ago'
-}
-
 function lotNote(lot: ApiLot): string {
   if (lot.id === 'terminal-top') return 'Covered · walk directly to ticketing'
   if (lot.category === 'economy') return 'Economy · free shuttle runs all hours'
@@ -82,30 +78,43 @@ function lotNote(lot: ApiLot): string {
 }
 
 export default function ParkingCard({ hint }: { hint: ParkingHint }) {
-  const [lots, setLots] = useState<ApiLot[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchedAt, setFetchedAt] = useState<number>(0)
-  const [error, setError] = useState<string | null>(null)
+  // Seed state from the localStorage cache so re-mounts show the last
+  // known data immediately instead of a "Loading…" flash or blank card.
+  const seed = loadCache<ApiLot[]>(CACHE_KEY)
+  const [lots, setLots] = useState<ApiLot[]>(seed?.payload || [])
+  const [loading, setLoading] = useState(!seed)
+  const [usingCache, setUsingCache] = useState(!!seed)
 
   useEffect(() => {
     let aborted = false
-    setLoading(true)
+    if (!seed) setLoading(true)
     fetch('/api/mco/parking')
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((data: ApiResponse) => {
         if (aborted) return
-        setLots(Array.isArray(data.lots) && data.lots.length > 0 ? data.lots : STATIC_FALLBACK)
-        setFetchedAt(data.fetched_at || Math.floor(Date.now() / 1000))
-        setError(null)
+        // Only overwrite the cache + state when the response actually has data.
+        // An empty response from a cold Vercel instance must NOT blank the card.
+        if (Array.isArray(data.lots) && data.lots.length > 0) {
+          setLots(data.lots)
+          saveCache(CACHE_KEY, data.lots)
+          setUsingCache(false)
+        }
       })
-      .catch((e) => {
-        if (aborted) return
-        setLots(STATIC_FALLBACK)
-        setError(String(e?.message || e))
+      .catch(() => {
+        // Refetch failed — keep whatever's on screen (cached or [])
       })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hint.highlight?.join(',')])
+
+  // Use the most recent per-lot upstream timestamp as "last updated" so the
+  // freshness shown is GOAA's true refresh time, not our server-call time.
+  const lastUpdatedTs = useMemo(
+    () => maxTimestamp(lots.map(l => l.lastUpdatedTimestamp ?? 0)),
+    [lots],
+  )
+  const stale = isStale(lastUpdatedTs)
 
   const highlightIds = useMemo(
     () => new Set((hint.highlight || []).map((h) => HIGHLIGHT_TO_GOAA_ID[h] || h)),
@@ -145,12 +154,21 @@ export default function ParkingCard({ hint }: { hint: ParkingHint }) {
     ].filter((p): p is { lot: ApiLot; icon: string; label: string; note: string; hl: boolean } => !!p?.lot)
   }, [lots, haveLiveCounts, highlightIds])
 
+  // "Last updated" subtitle. When we have a real GOAA timestamp, show it;
+  // otherwise fall back to a "Loading…" / "Showing rates" / blank message.
+  // Stale (>5 min) data paints amber so a glance flags it.
+  const subtitleText =
+    loading && lots.length === 0 ? 'Loading…' :
+    lastUpdatedTs ? (usingCache && stale ? 'Last known status · ' + relTime(lastUpdatedTs) : 'Updated ' + relTime(lastUpdatedTs)) :
+    haveLiveCounts ? '' :
+    'Showing typical rates'
+
   return (
     <div className="canvas-card-inner">
       <div className="canvas-header">
         <h2>{haveLiveCounts ? 'Live Parking Availability' : 'MCO Parking'}</h2>
-        <span className="subtitle">
-          {loading ? 'Loading…' : haveLiveCounts ? ('Updated ' + relativeTime(fetchedAt)) : 'Live spot counts unavailable'}
+        <span className={'subtitle' + (stale ? ' subtitle-stale' : '')}>
+          {subtitleText}
         </span>
         <span className="badge">{haveLiveCounts ? 'Live' : 'Rates'}</span>
       </div>
