@@ -57,7 +57,7 @@ function ExpiredView({ reason }: { reason: 'not_found' | 'expired' }) {
   return (
     <main style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#f3f5f8' }}>
       <div style={{ maxWidth: 420, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '28px 24px', boxShadow: '0 6px 24px rgba(10, 37, 64, 0.06)' }}>
-        <div style={{ fontSize: 32 }}>✈️</div>
+        <img src="/mco/logo-mark.png" alt="MCO" style={{ height: 48, width: 'auto', display: 'block', marginBottom: 8 }} />
         <h1 style={{ fontSize: 20, margin: '12px 0 8px', color: '#0a2540' }}>{title}</h1>
         <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>{body}</p>
       </div>

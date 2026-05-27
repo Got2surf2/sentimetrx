@@ -1,11 +1,18 @@
 // app/b/[slug]/icon.tsx
 //
-// Per-bot favicon at /b/<slug>. Reads the bot's config.avatarLetter +
-// config.avatarGradient and renders them as a 64×64 PNG — so the browser tab
-// matches the bot's in-app identity instead of the generic Sentimetrx mark.
-// Next.js auto-wires this via its icon convention.
+// Per-bot favicon at /b/<slug>. Two paths:
+//
+//   1. slug === 'mco': serve the official MCO sunburst+plane logo directly
+//      (public/mco/favicon-64.png). The custom airline-themed letter-on-
+//      gradient we used before could be read as us inventing branding
+//      for someone else's airport. Using the official mark sidesteps it.
+//
+//   2. Every other bot: ImageResponse renders the bot's avatarLetter
+//      (config.avatarLetter, e.g. "S") on the bot's avatarGradient.
 
 import { ImageResponse } from 'next/og'
+import { readFileSync } from 'fs'
+import path from 'path'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
@@ -15,6 +22,19 @@ export const contentType = 'image/png'
 interface Props { params: { slug: string } }
 
 export default async function Icon({ params }: Props) {
+  // MCO override — serve the official logo PNG so we're not minting our own
+  // airport brand identity. Falls back to the dynamic letter render if the
+  // file is missing for any reason.
+  if (params.slug === 'mco') {
+    try {
+      const buf = readFileSync(path.join(process.cwd(), 'public', 'mco', 'favicon-64.png'))
+      return new Response(new Uint8Array(buf), {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' },
+      })
+    } catch { /* fall through to the dynamic render */ }
+  }
+
   const service = createServiceRoleClient()
   const { data: bot } = await service
     .from('agents')
@@ -25,7 +45,6 @@ export default async function Icon({ params }: Props) {
 
   const cfg = (bot?.config || {}) as Record<string, any>
   const avatarLetter   = cfg.avatarLetter || (bot?.name?.charAt(0) || 'A').toUpperCase()
-  // Matches BotClient + opengraph-image defaults
   const avatarGradient = cfg.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
 
   return new ImageResponse(

@@ -82,10 +82,10 @@ export default function MobileChat({ botId, initialMessages, code }: Props) {
   return (
     <div className="mob">
       <header className="mob-top">
-        <div className="mob-avatar">✈️</div>
+        <img className="mob-logo" src="/mco/logo-mark.png" alt="MCO" />
         <div>
-          <div className="mob-brand">AskAna</div>
-          <div className="mob-sub">Continued from the MCO kiosk · {code}</div>
+          <div className="mob-brand">MCO Concierge</div>
+          <div className="mob-sub">Continued from the kiosk · {code}</div>
         </div>
       </header>
 
@@ -132,10 +132,9 @@ export default function MobileChat({ botId, initialMessages, code }: Props) {
           display: flex; align-items: center; gap: 10px;
           padding: 12px 16px; background: #0a2540; color: #fff;
         }
-        .mob-avatar {
-          width: 32px; height: 32px; border-radius: 32px;
-          background: linear-gradient(135deg, #1e4d8b, #2b6cb0);
-          display: flex; align-items: center; justify-content: center; font-size: 18px;
+        .mob-logo {
+          height: 28px; width: auto; display: block;
+          background: #fff; padding: 4px 8px; border-radius: 6px;
         }
         .mob-brand { font-weight: 700; font-size: 15px; }
         .mob-sub { font-size: 11px; opacity: 0.7; letter-spacing: 0.04em; }
