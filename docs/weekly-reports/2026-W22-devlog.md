@@ -436,3 +436,18 @@ Two new regression cases added to `scripts/pilot-rc-regression.ts`:
 `mustNot: [product:steak]` also added to the existing "30 min late + food good" case.
 
 Regression now **7/7 pass at v4**. Re-classified all 10 pilot rows with --force; spot-check confirms row 6 dropped product:steak (now 4 chips: flavor+, server−, attentive−, not-recommend−) and row 8 dropped product:steak (now 1 chip: flavor−).
+
+---
+
+## 2026-05-27 (later×4) — Viewer: cross-highlight evidence on chip hover
+
+User asked for the obvious next-step UX: hover a Sentimetrx chip → light up the matching phrase in the review text. Implemented as a controlled hover state on the client component.
+
+- `hover: {rowId, evidence} | null` state; chip's `onMouseEnter` sets it, `onMouseLeave` clears it.
+- `renderWithHighlight()` does a case-insensitive substring locate on the review text and wraps the match in `<mark className="bg-amber-200 text-amber-950 rounded px-0.5">`. Gracefully returns plain text when the model's evidence isn't a literal substring (e.g. paraphrased — shouldn't happen at v4 but safer than crashing).
+- The hovered chip itself gets an `ring-2 ring-amber-300` glow so the two ends of the highlight are obvious.
+- When the review is in truncated/"Show more" state AND the hover-target lives in the truncated tail, the row auto-expands for the duration of the hover (and the "Show more" button hides). On mouse-leave the row collapses back. No state shuffle.
+
+Behavior is opt-in per chip: chips with no evidence (e.g. legacy mapping rows that didn't go through the LLM) don't fire hover and don't get a ring.
+
+Clean tsc; manual verification on the live dev server is the gating check before pitching.

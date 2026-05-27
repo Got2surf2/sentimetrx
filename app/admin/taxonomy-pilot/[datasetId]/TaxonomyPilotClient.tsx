@@ -58,6 +58,26 @@ const SEV_BADGE: Record<string, string> = {
   normal: '',
 }
 
+// Case-insensitive substring locate. Returns -1 if not found.
+function findEvidenceIndex(text: string, evidence: string): number {
+  if (!evidence) return -1
+  return text.toLowerCase().indexOf(evidence.toLowerCase())
+}
+
+// Wrap the matched evidence span in a <mark>. If no match, return plain text.
+function renderWithHighlight(text: string, evidence: string | null): React.ReactNode {
+  if (!evidence) return text
+  const idx = findEvidenceIndex(text, evidence)
+  if (idx < 0) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-200 text-amber-950 rounded px-0.5">{text.slice(idx, idx + evidence.length)}</mark>
+      {text.slice(idx + evidence.length)}
+    </>
+  )
+}
+
 export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }) {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,6 +85,8 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
   const [page, setPage] = useState(1)
   const [pageSize] = useState(25)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  // Cross-highlight: which assertion's evidence to highlight in the review.
+  const [hover, setHover] = useState<{ rowId: number; evidence: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -130,7 +152,10 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
         {data.rows.map(row => {
           const isOpen = expanded.has(row.row_id)
           const text = row.review_text || ''
-          const truncated = text.length > 240 && !isOpen
+          const hoverEvidence = hover?.rowId === row.row_id ? hover.evidence : null
+          // Force-expand while hovering an evidence chip so the highlight is visible.
+          const showFull = isOpen || (hoverEvidence !== null && findEvidenceIndex(text, hoverEvidence) >= 0)
+          const truncated = text.length > 240 && !showFull
           const display = truncated ? text.slice(0, 240) + '…' : text
           return (
             <div key={row.row_id} className="bg-white border border-slate-200 rounded-lg p-4">
@@ -147,8 +172,8 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
               </div>
 
               <div className="text-sm text-slate-800 mb-3 whitespace-pre-wrap">
-                {display}
-                {text.length > 240 && (
+                {renderWithHighlight(display, hoverEvidence)}
+                {text.length > 240 && !hoverEvidence && (
                   <button onClick={() => toggleExpand(row.row_id)} className="ml-2 text-xs text-blue-700 hover:underline">
                     {isOpen ? 'Show less' : 'Show more'}
                   </button>
@@ -183,8 +208,10 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
                         return (
                           <span
                             key={i}
-                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'}`}
+                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help transition-shadow ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'} ${hover?.rowId === row.row_id && hover?.evidence === a.evidence ? 'ring-2 ring-amber-300' : ''}`}
                             title={tipLines.join('\n')}
+                            onMouseEnter={() => { if (a.evidence) setHover({ rowId: row.row_id, evidence: a.evidence }) }}
+                            onMouseLeave={() => setHover(prev => (prev?.rowId === row.row_id && prev?.evidence === a.evidence ? null : prev))}
                           >
                             <span className="font-mono opacity-70">{a.axis[0]}</span>{':'}<strong>{a.sub}</strong>
                             {a.item && <span className="text-slate-600">·{a.item}</span>}
