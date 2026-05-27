@@ -195,6 +195,14 @@ export const AXES: Axis[] = [
   'touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome',
 ]
 
+/**
+ * Where this assertion came from.
+ *   'keyword' — Tier 1 deterministic keyword matcher (lib/taxonomyKeywordMatcher.ts)
+ *   'llm'     — Tier 2 LLM extractor (lib/taxonomyExtractor.ts)
+ *   'both'    — emitted by Tier 1 AND confirmed by Tier 2 on the same axis:sub
+ */
+export type AssertionSource = 'keyword' | 'llm' | 'both'
+
 export interface Assertion {
   axis: Axis
   sub: string
@@ -204,6 +212,7 @@ export interface Assertion {
   severity: Severity
   /** Short verbatim span from the review that triggered this assertion. */
   evidence?: string
+  source?: AssertionSource
 }
 
 // Axis → set of allowed sub-bucket values. Used by the extractor's

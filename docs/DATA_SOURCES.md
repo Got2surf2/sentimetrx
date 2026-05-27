@@ -621,9 +621,35 @@ GIN indexes on each `axis_*` array + `alert_tags`.
 
 ### LLM extraction — `lib/taxonomyExtractor.ts`
 
-- `buildSystemPrompt()` emits a closed-vocab structured-output prompt (current `PROMPT_VERSION = '2026-05-27.v2'`).
-- `classifyReview()` calls Haiku via `callAI` (dynamic-imported so the prompt helpers are usable outside Next.js). Output passes through `parseExtractorOutput()` which drops out-of-vocab subs and projects into per-axis arrays + `alert_tags`.
-- 5-anchor regression in `scripts/pilot-rc-regression.ts` (Raymond / day-old potato / food-poisoning + Olive Garden / gnats + Burger King / 30-min-late mixed-polarity) — green at v2.
+- `buildSystemPrompt()` emits a closed-vocab structured-output prompt (current `PROMPT_VERSION = '2026-05-27.v4'` — v4 bans dish inference from steakhouse context after the model started hallucinating product:steak from the word "food").
+- `classifyReview()` calls Haiku via `callAI` (dynamic-imported so the prompt helpers are usable outside Next.js). Output passes through `parseExtractorOutput()` which drops out-of-vocab subs, attaches `source: 'llm'`, and projects into per-axis arrays + `alert_tags`.
+- Every assertion carries a `evidence` field (≤12-word verbatim quote, required at v3+).
+- 7-anchor regression in `scripts/pilot-rc-regression.ts` covers: Raymond / day-old potato / food-poisoning + Olive Garden / gnats + Burger King / 30-min-late mixed-polarity / "food was horrible" (no-dish-inference guard) / "food was good but service bad" (no-dish-inference guard). Green at v4 across all three tiers.
+
+### Keyword (Tier 1) extraction — `lib/taxonomyKeywords.ts` + `lib/taxonomyKeywordMatcher.ts`
+
+Deterministic basket-of-words classifier that mirrors the competitor's approach, but emits assertions in our 7-axis taxonomy instead of their flat-label scheme.
+
+- `taxonomyKeywords.ts` — closed dictionary indexed by axis-sub. Each entry has `phrases: [{phrase, polarity, severity?}]`. Restaurant-vertical for the pilot; multi-word phrases preferred over single words to avoid false-alarms (e.g. `"food safety"` not just `"safety"`).
+- `taxonomyKeywordMatcher.ts::classifyByKeyword(text)` — word-boundary phrase scan, simple negation flip (sentiment phrase preceded by `not/no/wasn't/didn't/never` within 3 tokens flips polarity), dedup by `(axis, sub, item)` preferring higher severity. Emits assertions with `source: 'keyword'`, `confidence: 0.85`, evidence = matched phrase + ±20-char window.
+- `taxonomyKeywordMatcher.ts::mergeAssertions(keyword, llm)` — hybrid merge. Same `(axis, sub)` from both tiers → `source: 'both'` with LLM's evidence/polarity (context-aware) and the higher of the two severities; confidence bumped by 0.1 (capped at 0.99) as a cross-tier confirmation. Keyword-only or LLM-only assertions pass through with their own source.
+
+### Tiers — operational mode
+
+`scripts/pilot-rc-classify.ts --mode <keyword|llm|hybrid>` (default `hybrid`):
+
+- `--mode keyword` — Tier 1 only. Zero AI cost, instant, deterministic. What the competitor sells.
+- `--mode llm` — Tier 2 only. ~$0.006/row, ~1s/row. Catches mixed polarity, severity calls, novel phrasings, evidence quotes, polarity from negation in long sentences.
+- `--mode hybrid` — both tiers, merged. What ships. Customer-facing pitch: "keyword tier is the baseline (free); AI tier is the upgrade (per-row $$); both confirm = highest-confidence."
+
+### Viewer cues
+
+`/admin/taxonomy-pilot/[datasetId]` chip styling encodes provenance:
+- Solid border = keyword tier (Tier 1).
+- Dashed border + tiny `ⁱ` superscript = LLM-only (Tier 2).
+- Solid border + emerald ring + tiny `✓` = both tiers confirm. This is the high-confidence subset.
+
+The chip legend is rendered above the row list so first-time viewers learn the encoding.
 
 ### Pipeline
 

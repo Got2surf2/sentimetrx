@@ -459,3 +459,25 @@ Clean tsc; manual verification on the live dev server is the gating check before
 User reported the cross-highlight feature was "schizophrenic" — chips flickered on/off because the auto-expand-on-hover behavior pushed chips down out from under the cursor → mouseLeave → text collapsed → chips returned → mouseEnter → loop.
 
 Easy fix: truncation governed by the Show more button only. Highlight still works on whatever text is currently shown. If evidence is in the truncated tail, the user expands manually first, then hovers. Trade-off: a chip whose evidence is past the cut doesn't visibly highlight until expansion, but the chip's hover ring + title tooltip still confirm the link.
+
+---
+
+## 2026-05-27 (later×6) — Keyword tier (Tier 1) — hybrid classifier ships
+
+**Why**: User pushed back on a pure-AI pitch. Competitor sells a deterministic "basket of words" approach; framing Sentimetrx as "we replaced their keyword library with an LLM" is a weak commercial story. The right framing is hybrid: keyword tier is the free auditable baseline (parity with what they have), AI tier is the upgrade tier that adds what keywords can't do (mixed polarity, severity judgment, evidence quotes, polarity from negation in long sentences). Both confirm = highest confidence.
+
+**Shipped**:
+- `lib/taxonomyKeywords.ts` — restaurant-vertical closed dictionary, ~250 phrases across all 7 axes. Multi-word phrases preferred over single words (`"food safety"` not `"safety"`) to dodge the competitor's classic false-alarms.
+- `lib/taxonomyKeywordMatcher.ts::classifyByKeyword(text)` — word-boundary regex scan, simple negation flip (`not/no/wasn't/...` within 3 tokens flips polarity), dedup by `(axis, sub, item)` preferring higher severity. Emits assertions in the same shape as the LLM output, marked `source: 'keyword'`.
+- `lib/taxonomyKeywordMatcher.ts::mergeAssertions(keyword, llm)` — hybrid merge. Cross-tier overlap on `(axis, sub)` → `source: 'both'` with LLM's evidence/polarity (better at context), higher severity, confidence bumped 0.1. Keyword-only or LLM-only pass through with their own source.
+- `Assertion` type in `lib/taxonomyVocabulary.ts` gains `source: 'keyword' | 'llm' | 'both'`.
+- `scripts/pilot-rc-classify.ts --mode keyword|llm|hybrid` (default `hybrid`).
+- `scripts/pilot-rc-regression.ts` now prints all three tiers side-by-side per anchor so the working session has demo material. Pass/fail judged on hybrid (what ships).
+- Viewer chip styling encodes provenance: solid = keyword, dashed + `ⁱ` = LLM only, solid + emerald ring + `✓` = both tiers confirm. Legend added above the row list.
+
+**Demo material from regression** (worth pulling into the working session):
+- Day-old potato review: keyword fires `attribute:friendly −` on the word "cold" (food temperature, mis-mapped); AI correctly emits `attribute:temp −`. Hybrid shows both. Exact illustration of why the AI tier earns its money.
+- "Food was HORRIBLE" review: both tiers agree on `attribute:flavor −`; AI adds `outcome:not-recommend`. Shows both = baseline, AI = expansion.
+- 30-min-late review: keyword catches 2 chips (noise, return); AI catches 5 (adds host, speed, flavor). "Keyword caught 2, AI added 4, hybrid = 6" — that's the slide.
+
+**Verified**: 7/7 regression PASS at v4 across all three tiers. 10 pilot rows re-classified in hybrid mode. DB confirms a mix of `keyword`, `llm`, and `both` sources across the rows. Clean tsc.

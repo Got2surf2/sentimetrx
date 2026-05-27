@@ -189,6 +189,7 @@ export function validateAssertion(
     polarity,
     confidence,
     severity,
+    source: 'llm',
   }
   if (typeof a.item === 'string' && a.item.trim()) {
     const item = a.item.trim().toLowerCase()

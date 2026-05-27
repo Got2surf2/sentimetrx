@@ -20,7 +20,7 @@ interface RowVM {
     axis_context:    string[]
     axis_outcome:    string[]
     alert_tags:      string[]
-    assertions:      Array<{ axis: string; sub: string; item?: string; polarity: string; confidence: number; severity: string; evidence?: string }>
+    assertions:      Array<{ axis: string; sub: string; item?: string; polarity: string; confidence: number; severity: string; evidence?: string; source?: 'keyword' | 'llm' | 'both' }>
     classified_by:   string | null
     model_used:      string | null
     prompt_version:  string | null
@@ -56,6 +56,26 @@ const SEV_BADGE: Record<string, string> = {
   alert:  'bg-orange-500 text-white',
   crisis: 'bg-red-600 text-white',
   normal: '',
+}
+
+// Per-source visual cue:
+//   keyword (Tier 1)  → solid border (default)
+//   llm (Tier 2)      → dashed border + tiny "ai" superscript
+//   both              → solid border + ✓ tick to show cross-tier confirmation
+const SOURCE_STYLE: Record<string, string> = {
+  keyword: 'border-solid',
+  llm:     'border-dashed',
+  both:    'border-solid ring-1 ring-inset ring-emerald-400/40',
+}
+const SOURCE_BADGE: Record<string, string> = {
+  keyword: '',
+  llm:     'ⁱ',
+  both:    '✓',
+}
+const SOURCE_LABEL: Record<string, string> = {
+  keyword: 'keyword tier',
+  llm:     'AI tier',
+  both:    'keyword + AI (confirmed by both tiers)',
 }
 
 // Case-insensitive substring locate. Returns -1 if not found.
@@ -127,6 +147,12 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
           <span>Classified: <strong>{data.counts.classified.toLocaleString()}</strong> ({((data.counts.classified / Math.max(1, data.counts.total_rows)) * 100).toFixed(1)}%)</span>
           <span>Alert/Crisis rows: <strong className="text-orange-700">{data.counts.alerts.toLocaleString()}</strong></span>
           {data.dataset.brand_tag && <span>Brand: <strong>{data.dataset.brand_tag}</strong></span>}
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500 flex gap-3 flex-wrap items-center">
+          <span className="font-semibold">Chip legend:</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-solid border-slate-400 bg-slate-100">solid</span> = keyword tier</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-dashed border-slate-400 bg-slate-100">dashed<span className="ml-1 opacity-60">ⁱ</span></span> = AI tier only</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-solid border-slate-400 bg-slate-100 ring-1 ring-inset ring-emerald-400/40">solid + ring<span className="ml-1 opacity-60">✓</span></span> = both tiers confirm</span>
         </div>
       </div>
 
@@ -203,15 +229,17 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
                     <div className="flex flex-wrap gap-1">
                       {row.taxonomy.assertions.length === 0 && <span className="text-xs text-slate-400">no signal</span>}
                       {row.taxonomy.assertions.map((a, i) => {
+                        const source = a.source ?? 'llm'
                         const tipLines = [
                           `${a.axis}:${a.sub}${a.item ? ' · ' + a.item : ''}`,
                           `${a.polarity === 'pos' ? 'positive' : a.polarity === 'neg' ? 'negative' : 'neutral'} · ${a.severity} · confidence ${(a.confidence * 100).toFixed(0)}%`,
+                          `source: ${SOURCE_LABEL[source]}`,
                         ]
                         if (a.evidence) tipLines.push('', `"${a.evidence}"`)
                         return (
                           <span
                             key={i}
-                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help transition-shadow ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'} ${hover?.rowId === row.row_id && hover?.evidence === a.evidence ? 'ring-2 ring-amber-300' : ''}`}
+                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help transition-shadow ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'} ${SOURCE_STYLE[source]} ${hover?.rowId === row.row_id && hover?.evidence === a.evidence ? 'ring-2 ring-amber-300' : ''}`}
                             title={tipLines.join('\n')}
                             onMouseEnter={() => { if (a.evidence) setHover({ rowId: row.row_id, evidence: a.evidence }) }}
                             onMouseLeave={() => setHover(prev => (prev?.rowId === row.row_id && prev?.evidence === a.evidence ? null : prev))}
@@ -219,6 +247,9 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
                             <span className="font-mono opacity-70">{a.axis[0]}</span>{':'}<strong>{a.sub}</strong>
                             {a.item && <span className="text-slate-600">·{a.item}</span>}
                             <span className={`ml-1 ${POL_COLOR[a.polarity] || ''}`}>{a.polarity === 'pos' ? '+' : a.polarity === 'neg' ? '−' : '·'}</span>
+                            {SOURCE_BADGE[source] && (
+                              <span className="ml-1 text-[9px] opacity-60">{SOURCE_BADGE[source]}</span>
+                            )}
                             {a.severity !== 'normal' && (
                               <span className={`ml-1 text-[9px] px-1 rounded ${SEV_BADGE[a.severity] || ''}`}>{a.severity}</span>
                             )}

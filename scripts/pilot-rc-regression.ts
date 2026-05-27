@@ -29,6 +29,7 @@ import {
   parseExtractorOutput,
   type ExtractorResult,
 } from '../lib/taxonomyExtractor'
+import { classifyByKeyword, mergeAssertions } from '../lib/taxonomyKeywordMatcher'
 import type { Assertion } from '../lib/taxonomyVocabulary'
 
 const MODEL = 'claude-haiku-4-5-20251001'
@@ -183,18 +184,30 @@ function match(a: Assertion, e: Expectation): boolean {
   return true
 }
 
+function chip(a: Assertion): string {
+  const src = a.source === 'both' ? '✓' : a.source === 'llm' ? 'ⁱ' : ''
+  const sev = a.severity !== 'normal' ? `[${a.severity}]` : ''
+  const pol = a.polarity === 'pos' ? '+' : a.polarity === 'neg' ? '−' : '·'
+  return `${a.axis}:${a.sub}${a.item ? '·' + a.item : ''} ${pol}${src}${sev}`
+}
+
 async function runCase(c: Case): Promise<{ pass: boolean; details: string[] }> {
   const details: string[] = []
-  const result = await classify({ review_text: c.text, review_rating: c.rating })
 
-  details.push(`  Emitted ${result.assertions.length} assertions:`)
-  for (const a of result.assertions) {
-    details.push(`    [${a.axis}:${a.sub}${a.item ? '·'+a.item : ''}] ${a.polarity} ${a.severity} (conf=${a.confidence.toFixed(2)})`)
-  }
-  if (result.unmapped_subs.length) {
-    details.push(`  Unmapped: ${result.unmapped_subs.map(u => u.axis+':'+u.sub).join(', ')}`)
+  // Run all three tiers so the demo can compare.
+  const kw = classifyByKeyword(c.text)
+  const llmResult = await classify({ review_text: c.text, review_rating: c.rating })
+  const hybrid = mergeAssertions(kw.assertions, llmResult.assertions)
+
+  details.push(`  Keyword tier (${kw.assertions.length}): ${kw.assertions.map(chip).join('  |  ') || '—'}`)
+  details.push(`  AI tier      (${llmResult.assertions.length}): ${llmResult.assertions.map(chip).join('  |  ') || '—'}`)
+  details.push(`  HYBRID merge (${hybrid.length}): ${hybrid.map(chip).join('  |  ') || '—'}`)
+  if (llmResult.unmapped_subs.length) {
+    details.push(`  Unmapped (AI tier dropped): ${llmResult.unmapped_subs.map(u => u.axis+':'+u.sub).join(', ')}`)
   }
 
+  // Pass/fail is judged on the hybrid output — that's what production ships.
+  const result = { assertions: hybrid }
   let pass = true
 
   for (const e of c.must) {
