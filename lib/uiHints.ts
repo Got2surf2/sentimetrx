@@ -19,6 +19,7 @@ export type UiHint =
   | TerminalMapHint
   | ParkingHint
   | RestaurantsHint
+  | ShopsHint
   | LinkCardHint
   | SecurityWaitHint
   | WelcomeHint
@@ -49,6 +50,12 @@ export interface RestaurantsHint {
   type: 'restaurants'
   place_ids: string[]
   context?: string        // e.g. "terminal_a_airside"
+}
+
+export interface ShopsHint {
+  type: 'shops'
+  context?: string        // e.g. "terminal_a_airside" — scopes to terminal
+  category?: string       // e.g. "duty_free" | "gift" | "tech" — optional sub-filter
 }
 
 export interface LinkCardHint {
@@ -118,7 +125,10 @@ Allowed hint types and required payload shapes:
   Use when the user is asking about parking, garages, lots, or cell-phone areas. Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet.
 
 - restaurants: { "type": "restaurants", "place_ids": [], "context"?: string }
-  Use whenever the user is asking about food, dining, restaurants, where to eat, snacks, coffee, drinks, or shopping — EVEN IF the assistant's response is vague or punts to a website. Set "context" to "terminal_a_airside", "terminal_b_airside", "terminal_c_airside", or "landside_main_terminal". Leave place_ids as [] — the renderer resolves them.
+  Use ONLY when the user is asking about FOOD / DINING / DRINKS — restaurants, where to eat, snacks, coffee, bars, fast food, sit-down options — EVEN IF the assistant's response is vague or punts to a website. Do NOT use this for shopping or retail. Set "context" to "terminal_a_airside", "terminal_b_airside", "terminal_c_airside", or "landside_main_terminal". Leave place_ids as [] — the renderer resolves them.
+
+- shops: { "type": "shops", "context"?: string, "category"?: string }
+  Use when the user is asking about SHOPPING / RETAIL — stores, gifts, duty-free, books/magazines, electronics, souvenirs, sunglasses, cosmetics, candy/chocolate, apparel, toys, golf, sporting goods. The card renders the airport's shop directory (60 brands across terminals). Set "context" the same way as restaurants. The "category" field is optional and currently unused by the renderer.
 
 - security_wait: { "type": "security_wait", "terminal"?: "A"|"B"|"C", "lane"?: "general"|"precheck" }
   Use when the user is asking about CURRENT security wait times, checkpoint lines, or "how long is security right now" / "is the line short". The card renders LIVE wait times for all 3 checkpoints (West=A, East=B, South=C) × 2 lanes (general/precheck). Set "terminal" if the user asked about a specific terminal; set "lane" if they specifically mentioned PreCheck or general. Do NOT use this for questions about MCO Reserve, TSA PreCheck enrollment, or "how early should I arrive" — those are link_card or general answers, not live-wait questions.
@@ -152,6 +162,8 @@ Return a JSON object: { "hint": <hint object or null>, "next_chips": string[], "
 Examples:
 - User: "How do I get from C to A?" → Assistant: "Two options: Terminal Link APM in 6 min or the shuttle bus in 12..." → { "hint": { "type": "terminal_map", "from": "C", "to": "A", "via": "terminal_link_apm" }, "next_chips": ["How often does the APM run?", "Where do I catch the shuttle?", "Which is faster with luggage?"] }
 - User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
+- User: "What shops are at MCO?" → Assistant: "MCO has 60+ shops across the terminals..." → { "hint": { "type": "shops", "context": "terminal_a_airside" }, "next_chips": ["Any duty free?", "Tech & headphones?", "Gift shops?"] }
+- CONTEXT: active_terminal=C. User: "Show me Terminal C shops" → Assistant lists shops in Terminal C → { "hint": { "type": "shops", "context": "terminal_c_airside" }, "next_chips": ["Where's the duty-free?", "Any bookstores?"] }
 - User: "What's the security wait like?" → Assistant: "Standard 15-30 min; MCO Reserve lets you book a slot to skip the line for free." → { "hint": { "type": "link_card", "title": "MCO Reserve", "body": "Standard security at MCO runs 15-30 minutes most days. MCO Reserve is a free service that lets you book a security time slot so you can skip into a shorter line.", "cta_url": "https://flymco.com/speed-through-mco", "cta_label": "Reserve a time slot" }, "next_chips": ["When are slots released?", "Is it really free?", "Does it work with PreCheck?"] }
 - CONTEXT: active_terminal=C, last_canvas_type=terminal_map. User: "Where can I get coffee?" → Assistant: "Starbucks and Cibo Espresso have outposts in Terminal C airside." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_c_airside" }, "next_chips": ["What's open before 6 AM?", "Sit-down breakfast?"] }
 - User: "I'm in Terminal A" (prior context was about shops/dining) → Assistant: "Great! For Terminal A's shops and dining, browse the directory and filter by Terminal A..." → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Best quick bite near the gate?", "Any bars open now?", "Coffee shops?"] }
@@ -207,6 +219,12 @@ export function validateHint(raw: any): UiHint | null {
       : []
     const h: RestaurantsHint = { type: 'restaurants', place_ids }
     if (typeof raw.context === 'string' && raw.context.length <= 64) h.context = raw.context
+    return h
+  }
+  if (t === 'shops') {
+    const h: ShopsHint = { type: 'shops' }
+    if (typeof raw.context === 'string' && raw.context.length <= 64) h.context = raw.context
+    if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
     return h
   }
   if (t === 'security_wait') {

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (rawCtx.activeTerminal === 'A' || rawCtx.activeTerminal === 'B' || rawCtx.activeTerminal === 'C') {
       ctx.activeTerminal = rawCtx.activeTerminal
     }
-    const allowedTypes: UiHint['type'][] = ['terminal_map', 'parking', 'restaurants', 'link_card', 'welcome']
+    const allowedTypes: UiHint['type'][] = ['terminal_map', 'parking', 'restaurants', 'shops', 'link_card', 'security_wait', 'welcome']
     if (typeof rawCtx.lastCanvasType === 'string' && allowedTypes.includes(rawCtx.lastCanvasType)) {
       ctx.lastCanvasType = rawCtx.lastCanvasType
     }

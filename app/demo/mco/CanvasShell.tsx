@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import ChatPane, { type ChatMessage } from './components/ChatPane'
 import TerminalMapCard from './components/TerminalMapCard'
 import RestaurantsCard from './components/RestaurantsCard'
+import ShopsCard from './components/ShopsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
 import SecurityWaitCard from './components/SecurityWaitCard'
@@ -26,7 +27,7 @@ function deriveActiveTerminal(hint: UiHint | null): 'A' | 'B' | 'C' | undefined 
   if (hint.type === 'terminal_map') {
     return hint.to || hint.from || hint.terminal
   }
-  if (hint.type === 'restaurants' && hint.context) {
+  if ((hint.type === 'restaurants' || hint.type === 'shops') && hint.context) {
     const m = /^terminal_([abc])_/i.exec(hint.context)
     if (m) return m[1].toUpperCase() as 'A' | 'B' | 'C'
   }
@@ -104,6 +105,7 @@ function HintRenderer({ hint, mode, onTileClick }: { hint: UiHint; mode: Deploym
   if (hint.type === 'welcome') return <WelcomeCard hint={{ ...hint, mode }} onTileClick={onTileClick} />
   if (hint.type === 'terminal_map') return <TerminalMapCard hint={hint} />
   if (hint.type === 'restaurants') return <RestaurantsCard hint={hint} />
+  if (hint.type === 'shops') return <ShopsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
   if (hint.type === 'security_wait') return <SecurityWaitCard hint={hint} />
   if (hint.type === 'link_card') return <LinkCard hint={hint} mode={mode} />

@@ -2204,3 +2204,18 @@ Typecheck clean. 277/277 tests still passing.
 - `app/demo/mco/canvas.css` — `.subtitle-stale`, `.welcome-updated`, `.welcome-updated-stale`.
 
 Typecheck clean. 319/319 tests pass.
+
+## 2026-05-26 (even later) — Split shops from restaurants
+
+**Why**: Demo screenshot showed "What shops are at MCO?" emitting a `restaurants` card titled "Dining near you" (Villa Italian Kitchen, McDonald's, Asian Chao…). Original extractor rule on `restaurants` lumped shopping in with food ("food, dining, … or shopping"). That was a mistake — they're different.
+
+**What changed**:
+- `lib/uiHints.ts` — new `ShopsHint` type + validation; `restaurants` rule narrowed to food/drinks ONLY; new `shops` rule with examples for "What shops are at MCO?" and active-terminal-scoped shopping.
+- `app/api/bots/[id]/ui-hints/route.ts` — `lastCanvasType` allowlist now includes `shops` + `security_wait`.
+- `lib/shops.ts` + `data/mco_shops.json` (60 entries) — server-side directory lookup. Source data is the same `_mco_scrape_directory.mjs` Playwright crawl that powers the dining/directory KB chunks. Three buckets: 47 in Terminal A&B, 12 in Terminal C, 1 airport-wide (7-Eleven). Shop-category emoji classifier (🛍️ duty-free, 🕶️ sunglasses, 🎧 tech, 📰 books, 🍫 candy, 💍 jewelry, 💆 spa, 🧸 toys, etc.).
+- `POST /api/mco/shops` — CORS-open, returns `{ shops }` filtered by context.
+- `app/demo/mco/components/ShopsCard.tsx` — visual mirror of RestaurantsCard (gradient photo + emoji overlay + brand/gate-hint text), no rating row since flymco doesn't expose shop ratings.
+- `CanvasShell.tsx` — imports + HintRenderer dispatch for `shops`. `deriveActiveTerminal()` now also reads context off the shops hint so the active-terminal-anchored extractor flow works.
+- `docs/MCO_AGENT.md` § 4 — `shops` row added to the hint table; `restaurants` row unchanged.
+
+Typecheck clean. 319/319 tests still pass.

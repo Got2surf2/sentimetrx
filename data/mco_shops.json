@@ -1,0 +1,491 @@
+{
+  "fetched_at": "2026-05-27T02:14:59.903Z",
+  "count": 60,
+  "by_bucket": {
+    "terminal_ab_airside": 47,
+    "terminal_c_airside": 12,
+    "airport_wide": 1
+  },
+  "entries": [
+    {
+      "id": "15772028_5194384987389952",
+      "name": "3Sixty Duty Free",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5194384987389952"
+    },
+    {
+      "id": "4728932307959808_5567584164511744",
+      "name": "3Sixty Duty Free",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5567584164511744"
+    },
+    {
+      "id": "6328595544932352_5148890770833408",
+      "name": "7-Eleven",
+      "location_label": "Entire Airport",
+      "location_detail": null,
+      "bucket": "airport_wide",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6328595544932352_5148890770833408"
+    },
+    {
+      "id": "6362719976423424_5123984869949440",
+      "name": "All Sound and Lego Kiosk",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 1 - 29",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_5123984869949440"
+    },
+    {
+      "id": "4897895610318848_5831296425132032",
+      "name": "All Sound/Lego",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gate 102",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5831296425132032"
+    },
+    {
+      "id": "4999413604810752_6359394866429952",
+      "name": "All Sound/Lego",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 40-49",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_6359394866429952"
+    },
+    {
+      "id": "4897895610318848_5850520698748928",
+      "name": "Blossom",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 100-129",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5850520698748928"
+    },
+    {
+      "id": "15772028_5705373813309440",
+      "name": "Blossom",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5705373813309440"
+    },
+    {
+      "id": "4728932307959808_5969435129151488",
+      "name": "Brighton",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5969435129151488"
+    },
+    {
+      "id": "4813734383976448_6462092903186432",
+      "name": "Brookstone",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_6462092903186432"
+    },
+    {
+      "id": "4728932307959808_5151785461350400",
+      "name": "City Arts Market",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5151785461350400"
+    },
+    {
+      "id": "5329468895920128_6161691924627456",
+      "name": "Eola Market",
+      "location_label": "Terminal - C",
+      "location_detail": null,
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=5329468895920128_6161691924627456"
+    },
+    {
+      "id": "4813734383976448_4893332390674432",
+      "name": "Epic Universe",
+      "location_label": "Terminal - A & B",
+      "location_detail": "East Hall",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_4893332390674432"
+    },
+    {
+      "id": "4525498430521344_4936128408977408",
+      "name": "Gatlin Trade",
+      "location_label": "Terminal - C",
+      "location_detail": null,
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4525498430521344_4936128408977408"
+    },
+    {
+      "id": "6362719976423424_5759800252039168",
+      "name": "Hudson News",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gate 10",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_5759800252039168"
+    },
+    {
+      "id": "4999413604810752_6368543146770432",
+      "name": "Hudson News",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gate 50 (Kiosk)",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_6368543146770432"
+    },
+    {
+      "id": "6362719976423424_5727390428823552",
+      "name": "Hudson News",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 1-29",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_5727390428823552"
+    },
+    {
+      "id": "4999413604810752_5838406743490560",
+      "name": "Hudson News",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 30-59",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_5838406743490560"
+    },
+    {
+      "id": "4813734383976448_5293475251617792",
+      "name": "Hudson News",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Terminal B",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5293475251617792"
+    },
+    {
+      "id": "4897895610318848_5239123514228736",
+      "name": "InMotion",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 100-129",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5239123514228736"
+    },
+    {
+      "id": "4999413604810752_5905064635924480",
+      "name": "InMotion",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 30-59",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_5905064635924480"
+    },
+    {
+      "id": "4813734383976448_5831400578088960",
+      "name": "InMotion",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Terminal B",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5831400578088960"
+    },
+    {
+      "id": "15772028_5655608640405504",
+      "name": "International Essence",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5655608640405504"
+    },
+    {
+      "id": "4813734383976448_5842492331130880",
+      "name": "Johnston & Murphy",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5842492331130880"
+    },
+    {
+      "id": "15772028_5090214850592768",
+      "name": "Kylie Cosmetics",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gate 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5090214850592768"
+    },
+    {
+      "id": "4897895610318848_5839628661686272",
+      "name": "Kylie Cosmetics",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 100-129",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5839628661686272"
+    },
+    {
+      "id": "15772028_4815263294554112",
+      "name": "Kylie Skin",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 90-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_4815263294554112"
+    },
+    {
+      "id": "4813734383976448_5797360814784512",
+      "name": "LIDS",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5797360814784512"
+    },
+    {
+      "id": "15772028_5721036024709120",
+      "name": "MCO Market",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-79",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5721036024709120"
+    },
+    {
+      "id": "4813734383976448_5841971566346240",
+      "name": "Magic of Disney",
+      "location_label": "Terminal - A & B",
+      "location_detail": "East Hall",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5841971566346240"
+    },
+    {
+      "id": "4813734383976448_5843684721426432",
+      "name": "Magic of Disney",
+      "location_label": "Terminal - A & B",
+      "location_detail": "West Hall",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5843684721426432"
+    },
+    {
+      "id": "4728932307959808_6196835930734592",
+      "name": "Main Street Market with Einstein Bros. Bagels",
+      "location_label": "Terminal - C",
+      "location_detail": "Gates C230-C245",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_6196835930734592"
+    },
+    {
+      "id": "6362719976423424_4529965734428672",
+      "name": "Mint",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 1-29",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_4529965734428672"
+    },
+    {
+      "id": "4999413604810752_6354867970899968",
+      "name": "Mystic Silver- Gates 30-59",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_6354867970899968"
+    },
+    {
+      "id": "4999413604810752_5854263762747392",
+      "name": "Natalie’s Candy Jar",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 30-59",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_5854263762747392"
+    },
+    {
+      "id": "15772028_6039587781738496",
+      "name": "Natalie’s Candy Jar",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_6039587781738496"
+    },
+    {
+      "id": "4897895610318848_6530619386494976",
+      "name": "Naturally Inspired",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 100-129",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_6530619386494976"
+    },
+    {
+      "id": "4813734383976448_5264381143154688",
+      "name": "Naturally Inspired",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Terminal A",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5264381143154688"
+    },
+    {
+      "id": "4897895610318848_6127160684838912",
+      "name": "News Kiosk",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_6127160684838912"
+    },
+    {
+      "id": "4728932307959808_5725549672660992",
+      "name": "Olde Hearth Bread Co.",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5725549672660992"
+    },
+    {
+      "id": "4813734383976448_5908531748274176",
+      "name": "Orlando Market",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Terminal A",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5908531748274176"
+    },
+    {
+      "id": "4999413604810752_6453016394858496",
+      "name": "Polly Pocket",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 40-49",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_6453016394858496"
+    },
+    {
+      "id": "4813734383976448_5889032596750336",
+      "name": "SeaWorld",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Terminal A - East",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5889032596750336"
+    },
+    {
+      "id": "4728932307959808_4696019570917376",
+      "name": "SeaWorld",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_4696019570917376"
+    },
+    {
+      "id": "4897895610318848_5821521079566336",
+      "name": "Shoe Shine",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5821521079566336"
+    },
+    {
+      "id": "15772028_5724160613416960",
+      "name": "Sound & Mobile Accessories",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-79",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5724160613416960"
+    },
+    {
+      "id": "15772028_6240883356336128",
+      "name": "Sound & Mobile Accessories/Lego",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-79",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_6240883356336128"
+    },
+    {
+      "id": "6362719976423424_6261340763062272",
+      "name": "Sound & Mobile Accessories/Lego – Gates 23-25",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_6261340763062272"
+    },
+    {
+      "id": "4728932307959808_5194214532579328",
+      "name": "Sunglass Hut",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5194214532579328"
+    },
+    {
+      "id": "4897895610318848_5785460534149120",
+      "name": "The Bead Factory",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 100-129",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4897895610318848_5785460534149120"
+    },
+    {
+      "id": "15772028_5647512196218880",
+      "name": "The Bead Factory",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 70-99",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=15772028_5647512196218880"
+    },
+    {
+      "id": "4813734383976448_6279440646275072",
+      "name": "The Neighborhood",
+      "location_label": "Terminal - A & B",
+      "location_detail": null,
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_6279440646275072"
+    },
+    {
+      "id": "4728932307959808_5706253122797568",
+      "name": "The Walt Disney World store",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5706253122797568"
+    },
+    {
+      "id": "6362719976423424_5665319561461760",
+      "name": "This Socks! & Co",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 1-29",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_5665319561461760"
+    },
+    {
+      "id": "4728932307959808_6659239441465344",
+      "name": "Trip Advisor",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_6659239441465344"
+    },
+    {
+      "id": "4813734383976448_5048735130189824",
+      "name": "Universal Orlando",
+      "location_label": "Terminal - A & B",
+      "location_detail": "East Hall",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5048735130189824"
+    },
+    {
+      "id": "4728932307959808_5417549112147968",
+      "name": "Universal Orlando",
+      "location_label": "Terminal - C",
+      "location_detail": "Terminal C Palm Court",
+      "bucket": "terminal_c_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4728932307959808_5417549112147968"
+    },
+    {
+      "id": "4813734383976448_5217746388254720",
+      "name": "Universal Orlando",
+      "location_label": "Terminal - A & B",
+      "location_detail": "West Hall",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4813734383976448_5217746388254720"
+    },
+    {
+      "id": "6362719976423424_5872285445521408",
+      "name": "XpresSpa",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 1-29",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=6362719976423424_5872285445521408"
+    },
+    {
+      "id": "4999413604810752_5900202732945408",
+      "name": "XpresSpa",
+      "location_label": "Terminal - A & B",
+      "location_detail": "Gates 30-59",
+      "bucket": "terminal_ab_airside",
+      "maps_url": "https://flymco.com/terminal-maps/map/?placemarkId=4999413604810752_5900202732945408"
+    }
+  ]
+}
