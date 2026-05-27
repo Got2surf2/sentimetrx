@@ -253,7 +253,7 @@ export function parseExtractorOutput(rawText: string, modelUsed: string): Extrac
 export interface ClassifyOptions {
   tier?: 'fast' | 'standard'
   usage?: TaxonomyUsageContext
-  /** Override max tokens — defaults to 800 (assertions JSON is small). */
+  /** Override max tokens — defaults to 2000 (evidence quotes ~double output size). */
   maxTokens?: number
 }
 
@@ -272,7 +272,7 @@ export async function classifyReview(
     tier,
     system,
     messages: [{ role: 'user', content: userMsg }],
-    maxTokens: opts.maxTokens ?? 800,
+    maxTokens: opts.maxTokens ?? 2000,
     timeoutMs: 30000,
     usage: opts.usage,
   })

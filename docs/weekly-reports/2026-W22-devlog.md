@@ -407,3 +407,16 @@ User feedback after opening the viewer:
 - `scripts/pilot-rc-classify.ts` gains `--force` flag so already-classified rows can be re-run when the prompt is bumped.
 
 **Verified**: regression 5/5 PASS at v3. Re-classified the 10 existing pilot rows with `--force`; spot-check on row 278592 (the "potato cheese appetizer was absolute trash" review) now carries 4 assertions each with a direct verbatim evidence span ("It was absolute trash. Not edible." → attribute:flavor neg, etc.). Clean tsc.
+
+---
+
+## 2026-05-27 (later still) — Bug: v3 reclassify wiped tags on long reviews
+
+User opened a re-classified row (Row 2, 1064-char Scottsdale review) and saw "no signal" — but it had had legacy + Sentimetrx tags before the v3 reclassify. Root cause: v3 doubled the JSON output size by adding an evidence quote on every assertion, but `max_tokens` was still 800. Long reviews truncated mid-JSON → `tryParseJSON` failed → `parseExtractorOutput` returned `assertions: []` silently.
+
+Fixes:
+- Bumped default `max_tokens` to 2000 in `lib/taxonomyExtractor.ts::classifyReview` and in both script direct-callers.
+- Classify script now logs a warning on `stop_reason === 'max_tokens'` (truncation) AND on `assertions.length === 0` for reviews longer than 50 chars (silent-empty regression detector).
+- Re-ran classify --force --limit 10 — Scottsdale row now carries 11 assertions with evidence (attribute:speed, product:soup, attribute:flavor, beverage:wine, ambiance:appearance, ambiance:clean alert, attribute:pests alert, context:birthday, outcome:not-recommend, outcome:return, outcome:expensive).
+
+Open vocab observation worth noting before Day 1 of a real pilot: the model tagged "hair in my water glass" as `attribute:pests` (because pests is the closest closed-vocab sub for "foreign object in food/drink"). A reasonable extension would be a dedicated `attribute:foreign-object` sub, or instructions to route this to `attribute:food safety` (alert) instead.

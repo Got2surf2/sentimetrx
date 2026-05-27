@@ -36,7 +36,7 @@ import { mapLegacyLabels } from '../lib/taxonomyMapping'
 
 const MODEL = 'claude-haiku-4-5-20251001'
 
-async function callAnthropic(system: string, userMsg: string): Promise<{ text: string; model: string }> {
+async function callAnthropic(system: string, userMsg: string): Promise<{ text: string; model: string; stopReason: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY missing')
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -48,7 +48,7 @@ async function callAnthropic(system: string, userMsg: string): Promise<{ text: s
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 800,
+      max_tokens: 2000,
       system,
       messages: [{ role: 'user', content: userMsg }],
     }),
@@ -57,7 +57,7 @@ async function callAnthropic(system: string, userMsg: string): Promise<{ text: s
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`)
   const data = await res.json()
   const text = (data.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
-  return { text, model: data.model || MODEL }
+  return { text, model: data.model || MODEL, stopReason: data.stop_reason || 'end_turn' }
 }
 
 const ADMIN_ORG_ID = 'b72e9ee6-0466-459a-8440-988a8bd6d3c5'
@@ -175,6 +175,11 @@ async function main() {
       })
       const ai = await callAnthropic(system, userMsg)
       const result = parseExtractorOutput(ai.text, ai.model)
+      if (ai.stopReason === 'max_tokens') {
+        console.warn(`  row ${row.id}: TRUNCATED at max_tokens — review ${text.length} chars, ${result.assertions.length} assertions parsed`)
+      } else if (result.assertions.length === 0 && text.trim().length > 50) {
+        console.warn(`  row ${row.id}: 0 assertions on ${text.length}-char review (parse OK, stop=${ai.stopReason}). First 200 chars of model output: ${ai.text.slice(0, 200)}`)
+      }
 
       const legacy = mapLegacyLabels(row.data?.legacy_tags ?? [])
 
