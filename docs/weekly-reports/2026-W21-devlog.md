@@ -2262,3 +2262,20 @@ Typecheck clean. No test impact.
 - `app/api/bots/[id]/ui-hints/route.ts` — `lastCanvasType` allowlist includes `indoor_map`.
 
 Typecheck clean. 319/319 tests still passing.
+
+## 2026-05-27 (later) — Flight-prep panel: time-to-gate budget on the indoor map
+
+**Why**: User asked: when someone mentions a flight or gate, the kiosk (pre-security, main terminal) should answer "your gate is X, security is Y min for PreCheck and Z for Standard, walk is W min after security, so you have N min to shop or eat — want recs?" The previous indoor map just showed the gate pin. Now it shows the whole prep budget.
+
+**Found**: `api.goaa.aero/flights` works with **api-version 150** (not 140 — flights got bumped). Returns 252 flights in a 4h window, 251 with live gate assignments. Fields per row: gate, terminal, status (Scheduled/Boarding/Landed/Canceled), arrival flag, scheduledTimestamp + actualTimestamp + bestKnownTimestamp, isDelayed, baggageBelt[], departureAirport, arrivalAirport, iataOperatingAirline + flightNumber.
+
+**What changed**:
+- `lib/flights.ts` — NEW. 60s cache + 30s failure backoff. `findFlightByNumber(flights, "DL1455")` and `nextDepartureAtGate(flights, "B71")`. `parseFlightNumber` handles "DL1455", "DL 1455", "Delta 1455".
+- `lib/walkingTime.ts` — NEW. Hardcoded matrix of kiosk-to-gate walking times assuming the demo kiosk lives in main terminal Level 3 landside. Returns `{ pre_security_min, post_security_min, checkpoint, terminal }` per gate. Terminal C gates include the APM ride in pre_security.
+- `app/api/mco/flight-prep/route.ts` — NEW. POST with `{ flight? OR gate? }`. Joins flight lookup + live security wait (lib/securityWait.ts) + walking-time matrix. Returns per-lane totals, time-to-departure, time-to-boarding (30 min before scheduled), spare-time budget per lane, and a security_recommendation ("precheck" / "standard" / "either"). Also returns a prose `summary_line`.
+- `lib/uiHints.ts` — `IndoorMapHint` now accepts `flight`. Extractor prompt updated: indoor_map rule recognizes flight numbers ("DL1455", "Delta 1455"); 2 new examples. validateHint passes through `flight`.
+- `app/demo/mco/components/IndoorMapCard.tsx` — when `hint.flight` or `hint.gate` is set, fetches `/api/mco/flight-prep` in parallel with the indoor map. Renders a `FlightPrepPanel` above the map: headline (flight/gate + departure time + status), 3-column grid (PreCheck / Standard / Walk-to-gate), budget line with conditional copy ("you've got ~73 min to shop" / "head straight to security" / etc), and 3 recommendation chips (Dining / Shops / Coffee) that fire `window.dispatchEvent('mco:prompt', detail)` to drop a follow-up prompt into the chat.
+- `app/demo/mco/CanvasShell.tsx` — listens for `mco:prompt` window events and routes them through the existing `pendingMessage` → ChatPane.send() path. Avoids prop-drilling through HintRenderer.
+- `app/demo/mco/canvas.css` — `.prep-panel` (deep blue gradient), `.prep-grid` (3 lane tiles), `.prep-lane-rec` (amber pulse on recommended lane), `.prep-budget` (amber-tinted summary bar), `.prep-recs-chip` (clickable rec chips). Kiosk-mode size overrides.
+
+Typecheck clean. 319/319 tests still pass.

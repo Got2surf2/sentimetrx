@@ -137,6 +137,18 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
   const [liveHint, setLiveHint] = useState<UiHint | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+
+  // Listen for "mco:prompt" custom events fired by deep cards (e.g. the
+  // flight-prep panel's "Dining nearby" chip) and submit them as user
+  // messages. Avoids prop-drilling onTileClick through every card.
+  useEffect(() => {
+    function onPrompt(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (typeof detail === 'string' && detail.length > 0) setPendingMessage(detail)
+    }
+    window.addEventListener('mco:prompt', onPrompt as EventListener)
+    return () => window.removeEventListener('mco:prompt', onPrompt as EventListener)
+  }, [])
   const [resetKey, setResetKey] = useState(0)
   const [showQR, setShowQR] = useState(false)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])

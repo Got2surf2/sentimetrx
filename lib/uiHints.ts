@@ -79,6 +79,7 @@ export interface IndoorMapHint {
   terminal?: 'A' | 'B' | 'C'
   level?: string                  // "L3", "A4", etc. — Meridian's levelLabel
   gate?: string                   // e.g. "B22", "C235" — picks the concourse floor
+  flight?: string                 // e.g. "DL1455", "Delta 1455" — enables the time-to-gate panel
   category?: string               // restroom, restaurant, shop, gate, atm, …
 }
 
@@ -130,8 +131,8 @@ Allowed hint types and required payload shapes:
 - terminal_map: { "type": "terminal_map", "terminal"?: "A"|"B"|"C", "gate"?: string, "from"?: "A"|"B"|"C", "to"?: "A"|"B"|"C", "via"?: "shuttle"|"terminal_link_apm" }
   Use ONLY for INTER-TERMINAL movement (A↔B, A↔C, B↔C — the structural connections + Terminal Link APM + shuttle). This card is a high-level structural diagram. EXPLICITLY EXCLUDED: anything that's actually a floor plan / specific gate lookup / "where is X inside Terminal Y" — those are indoor_map hints. Also excluded: parking-related wayfinding ("how do I get to Garage A?" → parking hint), terminal mentions during dining/shopping conversations (the actual topic wins).
 
-- indoor_map: { "type": "indoor_map", "terminal"?: "A"|"B"|"C", "level"?: string, "gate"?: string, "category"?: string }
-  Use for FLOOR-PLAN / INSIDE-A-TERMINAL queries: "where is gate B22?", "find the nearest restroom", "where is the ATM in Terminal C?", "show me the Departures level". Renders a real MCO floor plan with pins for gates / restaurants / shops / restrooms / ATMs / nursing stations / pet relief / etc. Set "gate" when a specific gate is named (we auto-pick the right concourse). Set "terminal" always when context permits. Set "level" to a Meridian label if mentioned ("L3" = Departures, "L2" = Arrivals/Bag Claim for A&B; "L2" Departures for C). Set "category" to filter pins (one of: restroom, restaurant, cafe, bar, shop, gate, atm, aed, water_fountain, nursing_station, pet_relief, lounge, kiosk, information). Prefer indoor_map over terminal_map for any "where is …" or "find a …" inside a single terminal.
+- indoor_map: { "type": "indoor_map", "terminal"?: "A"|"B"|"C", "level"?: string, "gate"?: string, "flight"?: string, "category"?: string }
+  Use for FLOOR-PLAN / INSIDE-A-TERMINAL queries AND flight/gate lookups: "where is gate B22?", "find the nearest restroom", "where is my flight DL1455?", "when does Delta 2259 board?", "show me the Departures level". Renders a real MCO floor plan with pins, and when a flight or gate is set, ALSO shows a flight-prep panel above the map with live security wait + walking time + spare-time budget. Set "gate" when a specific gate is named (auto-picks the concourse floor). Set "flight" when the user mentions a flight number ("DL1455", "Delta 1455", "Southwest 581") — we look it up server-side to find the gate and departure time. Set "terminal" always when context permits. Set "level" to a Meridian label if mentioned ("L3" = Departures, "L2" = Arrivals/Bag Claim for A&B; "L2" Departures for C). Set "category" to filter pins (one of: restroom, restaurant, cafe, bar, shop, gate, atm, aed, water_fountain, nursing_station, pet_relief, lounge, kiosk, information). Prefer indoor_map over terminal_map for any "where is …" / "find a …" / flight-number query.
 
 - parking: { "type": "parking", "highlight"?: string[] }
   Use when the user is asking about parking, garages, lots, cell-phone areas, OR how to get to / where to find / walk to a specific parking lot ("how do I get to Garage A?", "where is the valet?", "directions to North Park Place"). Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet. Set "highlight" to the specific lot(s) the user named so the card can call them out.
@@ -176,6 +177,8 @@ Examples:
 - User: "Where is gate B22?" → Assistant describes gate B22 in Terminal B → { "hint": { "type": "indoor_map", "terminal": "B", "gate": "B22" }, "next_chips": ["Closest restroom?", "Coffee near my gate?", "How long to walk from security?"] }
 - CONTEXT: active_terminal=A. User: "Where's the nearest restroom?" → Assistant lists nearby restrooms → { "hint": { "type": "indoor_map", "terminal": "A", "category": "restroom" }, "next_chips": ["Any nursing rooms?", "ATM nearby?"] }
 - User: "Show me Terminal C departures" → Assistant: "Terminal C's Departures level is Level 2…" → { "hint": { "type": "indoor_map", "terminal": "C", "level": "L2" }, "next_chips": ["Dining on this level?", "Where's security?"] }
+- User: "Where's my flight DL1455?" → Assistant: "Delta 1455 departs from Terminal B, gate 71. Boards in about 90 min." → { "hint": { "type": "indoor_map", "flight": "DL1455" }, "next_chips": ["How long is security?", "Coffee near my gate?", "Send to my phone"] }
+- User: "When does Southwest 581 board?" → Assistant gives flight + gate info → { "hint": { "type": "indoor_map", "flight": "WN581" }, "next_chips": ["What's the walk like?", "Restaurants on the way?"] }
 - User: "How do I get to Garage A?" → Assistant: "Garage A is directly connected to Terminals A and B — walk over on Level 3 (Departures)…" → { "hint": { "type": "parking", "highlight": ["garage_a"] }, "next_chips": ["What's the rate?", "Is there valet?", "Where is the entrance?"] }
 - User: "Where is the valet?" → Assistant describes the valet locations → { "hint": { "type": "parking", "highlight": ["valet"] }, "next_chips": ["What does it cost?", "Hours?"] }
 - User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
@@ -257,6 +260,7 @@ export function validateHint(raw: any): UiHint | null {
     if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
     if (typeof raw.level === 'string' && raw.level.length <= 8) h.level = raw.level
     if (typeof raw.gate === 'string' && raw.gate.length <= 12) h.gate = raw.gate
+    if (typeof raw.flight === 'string' && raw.flight.length <= 24) h.flight = raw.flight
     if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
     return h
   }
