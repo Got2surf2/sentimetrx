@@ -44,17 +44,25 @@ const CHECKPOINT_DESC: Record<'A' | 'B' | 'C', { label: string; sub: string }> =
 }
 
 export default function SecurityWaitCard({ hint }: { hint: SecurityWaitHint }) {
-  // Seed from localStorage so re-mounts show the last-good data immediately
-  // (no Loading flash, no blank state). Empty refetch responses won't blank
-  // the card — we only overwrite on a non-empty response.
-  const seed = loadCache<Checkpoint[]>(CACHE_KEY)
-  const [rows, setRows] = useState<Checkpoint[]>(seed?.payload || [])
-  const [loading, setLoading] = useState(!seed)
-  const [usingCache, setUsingCache] = useState(!!seed)
+  // Empty initial state to match SSR markup. Hydrate from localStorage
+  // post-mount in a separate useEffect (client only) so we avoid the
+  // React hydration mismatch error.
+  const [rows, setRows] = useState<Checkpoint[]>([])
+  const [loading, setLoading] = useState(true)
+  const [usingCache, setUsingCache] = useState(false)
+
+  // Client-only localStorage hydration.
+  useEffect(() => {
+    const cached = loadCache<Checkpoint[]>(CACHE_KEY)
+    if (cached?.payload && cached.payload.length > 0) {
+      setRows(cached.payload)
+      setUsingCache(true)
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     let aborted = false
-    if (!seed) setLoading(true)
     fetch('/api/mco/security')
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((d: ApiResponse) => {

@@ -69,17 +69,27 @@ function statusBadge(status: string): { label: string; bg: string; fg: string } 
 }
 
 export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; onTileClick?: (prompt: string) => void }) {
-  // Seed parking strip from localStorage so the kiosk reopen / remount
-  // doesn't flash empty before the fetch returns.
-  const seed = loadCache<ApiLot[]>(CACHE_KEY)
-  const [lots, setLots] = useState<ApiLot[]>(seed?.payload || [])
-  const [loading, setLoading] = useState(!seed)
-  const [usingCache, setUsingCache] = useState(!!seed)
+  // Start with empty arrays (matches the server-rendered HTML) and hydrate
+  // the localStorage seed in a client-only useEffect — avoids the React
+  // hydration mismatch error when server and client renders disagree
+  // because localStorage isn't available on the server.
+  const [lots, setLots] = useState<ApiLot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [usingCache, setUsingCache] = useState(false)
   const hasLive = useMemo(() => lots.some(g => g.available != null && g.total != null), [lots])
+
+  // Hydrate from localStorage post-mount so SSR/CSR markup matches.
+  useEffect(() => {
+    const cached = loadCache<ApiLot[]>(CACHE_KEY)
+    if (cached?.payload && cached.payload.length > 0) {
+      setLots(cached.payload)
+      setUsingCache(true)
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     let aborted = false
-    if (!seed) setLoading(true)
     fetch('/api/mco/parking', { method: 'GET' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((data: ApiResponse) => {

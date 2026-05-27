@@ -78,16 +78,24 @@ function lotNote(lot: ApiLot): string {
 }
 
 export default function ParkingCard({ hint }: { hint: ParkingHint }) {
-  // Seed state from the localStorage cache so re-mounts show the last
-  // known data immediately instead of a "Loading…" flash or blank card.
-  const seed = loadCache<ApiLot[]>(CACHE_KEY)
-  const [lots, setLots] = useState<ApiLot[]>(seed?.payload || [])
-  const [loading, setLoading] = useState(!seed)
-  const [usingCache, setUsingCache] = useState(!!seed)
+  // Empty initial state to match SSR; hydrate from localStorage post-mount
+  // in a separate useEffect to avoid the React hydration mismatch error.
+  const [lots, setLots] = useState<ApiLot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [usingCache, setUsingCache] = useState(false)
+
+  // Post-mount localStorage hydration (client only).
+  useEffect(() => {
+    const cached = loadCache<ApiLot[]>(CACHE_KEY)
+    if (cached?.payload && cached.payload.length > 0) {
+      setLots(cached.payload)
+      setUsingCache(true)
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     let aborted = false
-    if (!seed) setLoading(true)
     fetch('/api/mco/parking')
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((data: ApiResponse) => {
