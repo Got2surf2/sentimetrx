@@ -2298,3 +2298,13 @@ Typecheck clean. 319/319 tests still pass.
 Now Ana can answer "what gate does the Delta flight to LaGuardia leave this evening?" with the actual flight number, gate, terminal, and scheduled departure — not "I don't have live data."
 
 Typecheck clean. 319/319 tests still pass.
+
+## 2026-05-27 (incident fix) — Directory seeder never landed in prod; finally ran
+
+**Why**: Ana said "I don't have an Epic Universe store listed in my MCO directory" — but the store IS on flymco.com and IS in our scrape output. Investigation showed the AskAna KB had ZERO chunks tagged `mco_directory_scrape_2026_05_21`. The proper 20-chunk bucketed directory (601 entries — Shop options/Dine options/Amenity options per terminal) was never inserted into prod. The two original stale "shops restaurants services" chunks (157 + 890 chars, mostly site nav + elevators) were still there.
+
+Likely cause: `_mco_seed_directory_kb.ts` was only ever run with `DRY_RUN=1` during development on 2026-05-21; never followed through to land in prod. The `data/mco_shops.json` seed (used by the ShopsCard) was generated from the same scrape so the CANVAS had Epic Universe; only Ana's chat KB was missing it.
+
+**What changed**: ran `node_modules/.bin/tsx scripts/_mco_seed_directory_kb.ts` against prod with `/tmp/mco_directory.json` from today's re-scrape. Deleted 2 stale chunks (the hardcoded IDs matched — logic was always correct, just never executed), inserted 20 new bucketed chunks, embedded with text-embedding-3-small. Live verified: Ana now answers "Yes! There's an Epic Universe shop located in the East Hall of Terminals A & B" sourcing from the new RAG chunk.
+
+**Lesson**: when a seeder script is meant to land in prod, the devlog entry must explicitly confirm the live run, not just the dry-run output. Future MCO data refreshes should re-run BOTH `_mco_scrape_directory.mjs` → `_mco_seed_directory_kb.ts` and verify the source-tag count in prod afterward.
