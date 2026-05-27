@@ -142,7 +142,13 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   turns: number
   conversations: { id: string; session_id: string; participant_id: string | null }[]
   perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number }>
-  perTopic: Record<string, number>
+  // For each topic_id: response_count = distinct conversations that touched
+  // this topic (how many participants we've heard from on it — the semantic
+  // the cron aggregator and chatCore's "under-target" sort already use).
+  // mention_count = total user turns tagged with this topic (how many times
+  // it came up in user messages overall — a conversation that stayed on one
+  // topic for 3 turns contributes 3 mentions but 1 response).
+  perTopic: Record<string, { responses: number; mentions: number }>
 }> {
   const { data: linkRows } = await db
     .from('town_hall_conversations')
@@ -176,7 +182,11 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   const perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number; topicSet: Set<string> }> = {}
   for (const c of conversations) perConv[c.id] = { turns: 0, firstAt: null, lastAt: null, topicCount: 0, topicSet: new Set<string>() }
 
-  const perTopic: Record<string, number> = {}
+  // For each topic, track which conversations touched it (Set for distinct
+  // count → response_count) and how many turns mentioned it (raw counter
+  // → mention_count).
+  const perTopicConvs: Record<string, Set<string>> = {}
+  const perTopicMentions: Record<string, number> = {}
 
   for (const t of (turnRows || []) as any[]) {
     const cid = t.conversation_id as string
@@ -186,9 +196,17 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
     if (!entry.firstAt) entry.firstAt = t.created_at as string
     entry.lastAt = t.created_at as string
     if (t.topic_id) {
-      entry.topicSet.add(t.topic_id as string)
-      perTopic[t.topic_id as string] = (perTopic[t.topic_id as string] || 0) + 1
+      const tid = t.topic_id as string
+      entry.topicSet.add(tid)
+      if (!perTopicConvs[tid]) perTopicConvs[tid] = new Set<string>()
+      perTopicConvs[tid].add(cid)
+      perTopicMentions[tid] = (perTopicMentions[tid] || 0) + 1
     }
+  }
+
+  const perTopic: Record<string, { responses: number; mentions: number }> = {}
+  for (const tid of Object.keys(perTopicMentions)) {
+    perTopic[tid] = { responses: perTopicConvs[tid].size, mentions: perTopicMentions[tid] }
   }
 
   // Flatten topicSet → count
@@ -245,15 +263,22 @@ export async function getTownHallAsLegacy(
 
   const basics = await computeBasicStats(db, hall.id, hall.org_id)
 
-  // Overlay live response_count (from conversation_turns.topic_id) onto
-  // the persisted town_hall_topics.response_count so theme cards reflect
-  // current activity rather than the lagging async-aggregator value.
+  // Overlay live counts onto the persisted town_hall_topics columns so
+  // theme cards reflect current activity rather than the lagging
+  // async-aggregator value:
+  //   - response_count = distinct conversations on this topic
+  //     ("how many people we've heard from" — the same semantic the
+  //     cron aggregator and pickNextTopic's under-target sort use).
+  //   - mention_count  = total user turns tagged with this topic
+  //     ("how many times the topic came up overall" — a conversation
+  //     that stayed on one topic for 3 turns contributes 3 mentions
+  //     but 1 response).
   const themes = (topics || []).map((t: any) => {
     const projected = projectTopicAsTheme(t, hall.id)
-    const live = basics.perTopic[t.id] || 0
-    if (live > 0) {
-      projected.response_count = live
-      projected.mention_count = Math.max(projected.mention_count || 0, live)
+    const live = basics.perTopic[t.id]
+    if (live) {
+      projected.response_count = Math.max(projected.response_count || 0, live.responses)
+      projected.mention_count  = Math.max(projected.mention_count  || 0, live.mentions)
     }
     return projected
   })

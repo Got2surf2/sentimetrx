@@ -352,3 +352,17 @@ The route already had a phase-3 augmentation block (lines 130+) that populates c
 4. Recompute `summary.total_turns` + `summary.answered` from the assembled `participants` map rather than `turns.length` — that count was 0 for pure phase-3 sessions even when participants had plenty of turns.
 
 The `participant_id` column now flows correctly into the modal via `conv.participant_id`, and the modal can finally render.
+
+---
+
+## 2026-05-26 — Count semantics fix: response_count vs mention_count
+
+User caught the previous overlay using "total user turns tagged with topic_id" for `response_count`. That's the wrong semantic — the rest of the system (cron aggregator + `pickNextTopic`'s under-target sort) treats `response_count` as "distinct participants who weighed in on this topic." A participant who returned to the same topic across three turns counts as 1 response, not 3.
+
+`computeBasicStats` now tracks two values per topic:
+- `responses` = `count(DISTINCT conversation_id)` — for `response_count` overlay
+- `mentions` = `count(*)` of user turns tagged with that topic_id — for `mention_count` overlay
+
+`getTownHallAsLegacy` uses `Math.max(persisted, live)` for both so the cron aggregator's own writes are honored if they're ever higher than the live count.
+
+For the current NOWOCATS sim (5 personas, 6 turns each, each topic covered once per persona at most) `responses == mentions` since no one returned to a topic. The two diverge only on real-world conversations where someone goes deep on one topic — which is exactly when the distinction matters.
