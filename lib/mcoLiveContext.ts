@@ -195,20 +195,27 @@ function detectIntent(userMessage: string, priorAssistantMessage: string): Detec
   return out
 }
 
-// Time-window filter for "tonight", "this morning", etc. Conservative —
-// we only narrow when the user gave an explicit window.
+// Time-window filter for "tonight", "this morning", etc. Default is the
+// rest of TODAY (not next-4h) because a user asking about "their flight"
+// without specifying time usually means later today, not in the next 4h.
 function timeWindow(userMessage: string): { startSec: number; endSec: number } {
   const now = Math.floor(Date.now() / 1000)
   const m = userMessage.toLowerCase()
-  const todayStart = new Date(); todayStart.setHours(0,0,0,0)
-  const todayEnd = new Date(); todayEnd.setHours(23,59,59,999)
-  const eveStart = new Date(); eveStart.setHours(17,0,0,0)
-  const morningEnd = new Date(); morningEnd.setHours(11,59,59,999)
-  if (/\btonight|this evening|tonight\b/.test(m)) return { startSec: Math.max(now, eveStart.getTime()/1000), endSec: todayEnd.getTime()/1000 }
-  if (/\bthis (morning|am)\b/.test(m)) return { startSec: now, endSec: Math.min(todayEnd.getTime()/1000, morningEnd.getTime()/1000) }
-  if (/\btoday\b/.test(m)) return { startSec: now, endSec: todayEnd.getTime()/1000 }
-  // default: next 4 hours
-  return { startSec: now, endSec: now + 4 * 3600 }
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+  const eveStart = new Date(); eveStart.setHours(17, 0, 0, 0)
+  const morningEnd = new Date(); morningEnd.setHours(11, 59, 59, 999)
+  const tomorrowEnd = new Date(); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1); tomorrowEnd.setHours(23, 59, 59, 999)
+  if (/\btonight|this evening\b/.test(m)) return { startSec: Math.max(now, eveStart.getTime() / 1000), endSec: todayEnd.getTime() / 1000 }
+  if (/\bthis (morning|am)\b/.test(m)) return { startSec: now, endSec: Math.min(todayEnd.getTime() / 1000, morningEnd.getTime() / 1000) }
+  if (/\btomorrow\b/.test(m)) {
+    const tStart = new Date(); tStart.setDate(tStart.getDate() + 1); tStart.setHours(0, 0, 0, 0)
+    return { startSec: tStart.getTime() / 1000, endSec: tomorrowEnd.getTime() / 1000 }
+  }
+  // Default = rest of today. If it's already past 8 PM, extend a few hours
+  // into tomorrow so red-eyes still show.
+  const endOfToday = todayEnd.getTime() / 1000
+  const minWindow = now + 6 * 3600
+  return { startSec: now, endSec: Math.max(endOfToday, minWindow) }
 }
 
 function fmtTime(unix: number): string {

@@ -35,7 +35,9 @@ function timeWindow(hint: string | undefined): { startSec: number; endSec: numbe
     return { startSec: now, endSec: Math.min(todayEnd.getTime() / 1000, morningEnd.getTime() / 1000) }
   }
   if (/today/.test(m)) return { startSec: now, endSec: todayEnd.getTime() / 1000 }
-  return { startSec: now, endSec: now + 4 * 3600 }
+  // Default — rest of today, with at least 6h forward so late-day queries
+  // still surface red-eyes / overnight flights.
+  return { startSec: now, endSec: Math.max(todayEnd.getTime() / 1000, now + 6 * 3600) }
 }
 
 export async function POST(req: NextRequest) {
