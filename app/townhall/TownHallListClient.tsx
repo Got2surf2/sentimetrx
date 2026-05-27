@@ -37,7 +37,7 @@ interface Props {
 const HERMES = '#E8632A'
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  setup:  { bg: '#f3f4f6', text: '#6b7280', label: 'Setup' },
+  setup:  { bg: '#ffedd5', text: '#9a3412', label: 'Draft' },
   active: { bg: '#dcfce7', text: '#166534', label: 'Active' },
   paused: { bg: '#fef3c7', text: '#92400e', label: 'Paused' },
   ended:  { bg: '#e5e7eb', text: '#374151', label: 'Ended' },
@@ -293,9 +293,21 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                 const badge = STATUS_BADGE[s.status] || STATUS_BADGE.setup
                 const topicCount = s.discussion_guide?.length || 0
                 const archived = isArchived(s)
+                // Draft sessions get a prominent amber pill so it's obvious
+                // at-a-glance why the data buttons (Analytics / Responses /
+                // Export / Analyze in Ana) are disabled.
                 const statusColor = s.status === 'active' ? 'bg-green-100 text-green-700 border-green-200'
                   : s.status === 'ended' ? 'bg-gray-100 text-gray-500 border-gray-200'
+                  : s.status === 'setup' ? 'bg-orange-100 text-orange-800 border-orange-300 font-semibold'
                   : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                // No data yet on a draft → grey the data-dependent buttons
+                // so users don't click into an empty Responses/Analytics
+                // view or POST a no-op /analyze that would only create an
+                // empty dataset.
+                const isDraft = s.status === 'setup'
+                const draftDisabledStyle = isDraft
+                  ? { background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed', pointerEvents: 'none' as const }
+                  : null
                 const match = matchHitMap[s.id]
                 return (
                   <div key={s.id} className={'bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden relative' + (archived ? ' opacity-60' : '')}>
@@ -383,22 +395,39 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
 
                       {/* Action pills — identical layout to survey cards */}
                       <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
-                        {/* Row 1: Analytics, Responses, Export (orange) */}
+                        {/* Row 1: Analytics, Responses, Export (orange — greyed when draft) */}
                         <Link href={'/townhall/' + s.id + '?tab=analytics'} target="_blank"
+                          aria-disabled={isDraft}
+                          tabIndex={isDraft ? -1 : undefined}
+                          title={isDraft ? 'No data yet — start the session to view analytics' : undefined}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
-                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                          style={draftDisabledStyle || { background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Analytics
                         </Link>
                         <Link href={'/townhall/' + s.id + '?tab=responses'} target="_blank"
+                          aria-disabled={isDraft}
+                          tabIndex={isDraft ? -1 : undefined}
+                          title={isDraft ? 'No responses yet — start the session to view conversations' : undefined}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
-                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                          style={draftDisabledStyle || { background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Responses
                         </Link>
-                        <DownloadButton
-                          label="Export"
-                          onChoose={fmt => handleExport(s.id, s.name, fmt)}
-                          className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all text-center bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100"
-                        />
+                        {isDraft ? (
+                          <button
+                            type="button"
+                            disabled
+                            title="No data to export yet"
+                            className="text-xs py-1.5 px-3 rounded-lg font-medium text-center"
+                            style={{ background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' }}>
+                            Export
+                          </button>
+                        ) : (
+                          <DownloadButton
+                            label="Export"
+                            onChoose={fmt => handleExport(s.id, s.name, fmt)}
+                            className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all text-center bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100"
+                          />
+                        )}
 
                         {/* Row 2: Close/Reopen, Archive */}
                         <button
@@ -440,8 +469,8 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           {shareLoading === s.id ? 'Copied!' : 'Share'}
                         </button>
 
-                        {/* Row 4: Analyze in Ana (purple, spans full width) */}
-                        <AnalyzeInAnaButton sessionId={s.id} />
+                        {/* Row 4: Analyze in Ana (purple, spans full width — greyed when draft) */}
+                        <AnalyzeInAnaButton sessionId={s.id} disabled={isDraft} />
                       </div>
                     </div>
                   </div>
@@ -476,7 +505,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
 }
 
 // Inline component: Analyze in Ana button for TH cards
-function AnalyzeInAnaButton({ sessionId }: { sessionId: string }) {
+function AnalyzeInAnaButton({ sessionId, disabled }: { sessionId: string; disabled?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -492,6 +521,17 @@ function AnalyzeInAnaButton({ sessionId }: { sessionId: string }) {
       setStatus('Error')
       setLoading(false)
     }
+  }
+
+  if (disabled) {
+    return (
+      <button type="button" disabled
+        title="No data to analyze yet \u2014 start the session to collect responses"
+        className="col-span-3 text-xs py-1.5 rounded-lg font-semibold text-center"
+        style={{ background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' }}>
+        \uD83D\uDCCA Analyze in Ana
+      </button>
+    )
   }
 
   return (

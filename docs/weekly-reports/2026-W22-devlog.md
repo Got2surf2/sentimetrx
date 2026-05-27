@@ -296,3 +296,44 @@ No code behavior change. No migration. Affects only what files ship in the next 
 - Important caveat for BOTH refresh phases: DELETE+INSERT pattern wipes any manually-edited chunks in the admin UI. Decide before shipping: mark agent "auto-refresh source-of-truth" (banner in admin) vs preserve `metadata.source='manual'` chunks on refresh.
 
 **No code change required for this work — all DB UPDATEs. The separate code commit `b3ad96a0` (this commit) is unrelated branding revert.**
+
+---
+
+## 2026-05-26 — Decision Study A/B + PulseIQ adapter fix + NOWOCATS sim infra
+
+**Why this is bundled:** three threads that converged in one session and share enough of the chatCore.ts edit window that splitting would have produced merge-noisy commits.
+
+### Decision Study A/B (4 SQL one-offs + chatCore state injection)
+
+Triggering session `bs_mpm28rvc_hbytgc` (54 turns, 6 "wtf" pushbacks, repeated re-asks of items already answered) made it clear the 11-phase Sarina prompt couldn't reliably skip captured items even with rule #10 ("scan transcript before asking") explicitly stated. Three architectural attempts, in order:
+
+1. **V1 + 4 patches** (`sql/one-off/2026-05-26-decision-study-v1-phase-machine-patches.sql`) — pushback escalation rule, `BEFORE ASKING` checklists at each phase block, "I already told you" hard stop, tightened P5 deeper-why gate. Applied to a cloned control slug `decision-study-v1`.
+2. **V2 goal-tracker** (`sql/one-off/2026-05-25-decision-study-goal-tracker.sql`) — replaced the phase scaffold with 7-data-point tracking + "scan the whole transcript before each turn." Reduced 280-line prompt to 90. **In live A/B testing this performed WORSE than V1+patches** — V2 re-asked persistence verbatim, re-asked how-it-sits, and re-asked attribution despite the self-scan instruction. Telling the model to scan a 25-turn context for state every turn is not reliable.
+3. **V2 + code-side state injection** (`lib/chatCore.ts` + `sql/one-off/2026-05-26-decision-study-stateful-focus.sql`) — opt-in `bot.config.statefulFocusTracking`. Before every model call, query `bot_conversation_turns` for `topic:<slug>` flags written by `classifyProbeFocuses`, build a `CAPTURED / REMAINING` block, inject as ground truth. The model treats it deterministically. **Same scenario ran in 13 user turns with zero re-asks** (V1+patches: 18 turns + 1 re-ask; V2 original: 17 turns + 3 re-asks). Tradeoff: less per-item depth than V1+patches' deeper-why / forward-looking probes.
+
+**Why it's worth keeping:** the architectural lesson generalizes — when state-tracking matters, computing state deterministically in code and injecting it beats instructing the model to derive it from context. Other research-style agents that grow long can opt in by setting `statefulFocusTracking: true` once they configure `focuses` + `probe_focus_enabled`.
+
+`sql/one-off/2026-05-25-decision-study-v1-control-clone.sql` is the clone-from-canonical SQL. Original phase-machine prompt is preserved on `/b/decision-study-v1`; current canonical `/b/decision-study` is the goal-tracker + state-injection variant.
+
+### PulseIQ admin UX — draft pill + greyed data buttons
+
+User reported all three data buttons (Analytics / Responses / Analyze in Ana) on a NOWOCATS draft card landed on the same view as Manage. Root cause: `SessionDetailClient.tsx:272` auto-enters edit mode when `session.status === 'setup'` (which is what new-substrate `draft` projects to via `lib/townHallAdapter.ts`), and the tabs are gated behind `!editing`. So clicking any data button just loaded the editor.
+
+Fix in `app/townhall/TownHallListClient.tsx`: when the card status is `setup`, the three data buttons render with disabled-style (`bg-#f9fafb`, `cursor: not-allowed`, tooltip explains why) and the status pill flips from muted grey "Setup" → bright orange "Draft" so it's obvious at a glance why the data buttons are dim. Manage / Duplicate / Share / admin actions stay functional.
+
+Originally tried a fix that bypassed the auto-edit when `?tab=` was in URL — reverted, because if the user can't click into an empty data view anyway, the URL bypass is dead code.
+
+### PulseIQ adapter fix — per-conversation + per-topic counts
+
+After running the first NOWOCATS sim (5 personas, 30 turns), the summary card showed correct aggregate counts (`5 participants, 30 turns`) but the per-conversation row in the Responses tab showed `turns: 0` and every topic card showed `response_count: 0`. Root cause in `lib/townHallAdapter.ts`:
+
+- `getTownHallAsLegacy` projected `participants[].turns: 0` (hardcoded — line 220, before fix)
+- Topic cards read `town_hall_topics.response_count` which is only updated by the async cohort theme aggregator (cron every 15 min) — never updated during the chat handler, only the **selection-time** tally in `chatCore.ts` is live
+
+`computeBasicStats` now selects `conversation_id, topic_id, created_at` per user-role turn in a single query and returns `perConv` (per-conversation turns / firstAt / lastAt / topicCount) + `perTopic` (live response count per topic). `getTownHallAsLegacy` overlays both — participants get real turn / timestamp / topic-count, themes get live response_count (only when > the persisted column, so the aggregator's own cohort numbers stay if they ever exceed the live count).
+
+### NOWOCATS sim infra
+
+- `NOWOCATS_PACK` (18 personas) added to `app/admin/simulator/townhall/TownhallSimulatorClient.tsx`. Geography across Apopka / Ocoee / Winter Garden / Plymouth / Clarcona; one Spanish-language-switcher persona reflecting Apopka's Hispanic demographic; 4 edge cases (single-issue deer commenter, disengaged teen, anti-gov skeptic, developer-conspiracy commenter).
+- `sql/one-off/2026-05-26-duplicate-nowocats-for-sim.sql` creates a `nowocats-sim` clone of the real NOWOCATS town hall (same Sarina agent, same topics, status=live) so sim runs don't pollute the real PM-2 record.
+- Out-of-tree runner script at `/tmp/abtest/nowocats_sim.py` drives 5 personas × 6 turns via the public `/api/townhall/join` + `/api/townhall/chat` endpoints, calling Anthropic directly to generate persona utterances (the in-app `/api/townhall/simulate` route requires authenticated session cookie). Same-origin `Origin` header bypasses the CSRF middleware. First run landed cleanly — language switch fired correctly, persona-specific tone retained, three personas chose the name "Marcus" autonomously (Haiku name-bias — needs hard-coded first-name field on the persona spec if name attribution matters for downstream analytics).

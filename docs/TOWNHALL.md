@@ -247,6 +247,11 @@ Both lib paths coexist; the cron (`app/api/cron/townhall-theme-detection/route.t
 - **Lightweight** (default): Live response counts, basic theme data
 - **Full analytics** (`?analytics=true`): Keyword matching, sentiment scoring, quote extraction with match reasons
 
+> **New-substrate adapter (2026-05-26 fix):** `lib/townHallAdapter.ts::getTownHallAsLegacy` now computes per-participant turn count, first/last activity timestamps, and per-participant topic-coverage count from one `conversation_turns` query (was hardcoded `turns: 0`). Topic cards also overlay a **live** `response_count` (counted from `conversation_turns.topic_id`) when it exceeds the persisted `town_hall_topics.response_count` — that persisted column is only updated by the async cohort aggregator (cron every 15 min), so without the overlay both the Responses tab and Theme cards displayed zeros for ~15 min after activity. The same `perTopic` map is used to deepen the analytics-mode `themes[].match_count` / `mention_count` fields.
+
+### List-page card UX (`app/townhall/TownHallListClient.tsx`)
+Draft sessions render the four data-dependent buttons (**Analytics**, **Responses**, **Export**, **Analyze in Ana**) with `disabled` styling + tooltips explaining there's no data yet. The status pill flips from muted "Setup" to a vivid orange "Draft" so the reason the buttons are dim is obvious at a glance. Manage / Duplicate / Share / Close-Reopen / Delete / Archive stay live on drafts.
+
 ### Enrichment (analytics mode)
 - **Seed topics**: Primary = AI-assigned `theme_id` from turns. Keywords supplement.
 - **Organic topics**: Primary = keyword regex matching. `theme_id` supplements.
@@ -286,6 +291,12 @@ Responses generated from persona profiles + session topics (not scripted lines).
 | Customer | 13 | Product, service, user feedback |
 | Restaurant | 14 | Dining, hospitality, food service |
 | Stakeholder | 13 | Board, donor, government, vendor |
+
+### Project-Specific Packs
+
+| Pack | Count | For |
+|------|-------|-----|
+| NOWOCATS (NW Orange County, FL) | 18 | Northwest Orange County Area Transportation Study, PM-2. Geography across Apopka / Ocoee / Winter Garden / Plymouth / Clarcona; one Spanish-language-switcher reflecting Apopka demographics; 4 edge cases (single-issue deer commenter, disengaged teen, anti-gov skeptic, developer-conspiracy commenter) |
 
 ### Florida Senate Campaign Packs (5)
 

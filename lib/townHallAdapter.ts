@@ -129,10 +129,20 @@ function projectTownHallAsSession(h: any): any {
 
 // Compute basic participant/turn stats from town_hall_conversations →
 // conversations → conversation_turns for a single town hall.
+//
+// Phase-3 fix 2026-05-26: also return per-conversation turn count, first
+// and last activity timestamps, and per-topic response counts (computed
+// live the same way chatCore picks the next topic — by counting
+// conversation_turns.topic_id rather than reading the async-updated
+// town_hall_topics.response_count column). The persisted column lags
+// behind real activity by up to ~15 min (cron) and was showing 0 on the
+// Responses tab and theme cards even for fully populated sessions.
 async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: string): Promise<{
   participants: number
   turns: number
   conversations: { id: string; session_id: string; participant_id: string | null }[]
+  perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number }>
+  perTopic: Record<string, number>
 }> {
   const { data: linkRows } = await db
     .from('town_hall_conversations')
@@ -146,20 +156,53 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
     .filter(Boolean)
     .map(c => ({ id: c.id as string, session_id: c.session_id as string, participant_id: c.participant_id ?? null }))
 
-  if (conversations.length === 0) return { participants: 0, turns: 0, conversations: [] }
+  if (conversations.length === 0) {
+    return { participants: 0, turns: 0, conversations: [], perConv: {}, perTopic: {} }
+  }
 
   const convIds = conversations.map(c => c.id)
-  const { count: turnCount } = await db
+
+  // One query: user-role turns with conversation + topic + timestamp. Lets
+  // us derive total turns, per-participant turns, and per-topic counts
+  // without three separate aggregations.
+  const { data: turnRows } = await db
     .from('conversation_turns')
-    .select('id', { count: 'exact', head: true })
+    .select('conversation_id, topic_id, created_at')
     .in('conversation_id', convIds)
     .eq('role', 'user')
     .eq('org_id', orgId)
+    .order('created_at', { ascending: true })
 
+  const perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number; topicSet: Set<string> }> = {}
+  for (const c of conversations) perConv[c.id] = { turns: 0, firstAt: null, lastAt: null, topicCount: 0, topicSet: new Set<string>() }
+
+  const perTopic: Record<string, number> = {}
+
+  for (const t of (turnRows || []) as any[]) {
+    const cid = t.conversation_id as string
+    const entry = perConv[cid]
+    if (!entry) continue
+    entry.turns += 1
+    if (!entry.firstAt) entry.firstAt = t.created_at as string
+    entry.lastAt = t.created_at as string
+    if (t.topic_id) {
+      entry.topicSet.add(t.topic_id as string)
+      perTopic[t.topic_id as string] = (perTopic[t.topic_id as string] || 0) + 1
+    }
+  }
+
+  // Flatten topicSet → count
+  const perConvOut: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number }> = {}
+  for (const cid of Object.keys(perConv)) {
+    const e = perConv[cid]
+    perConvOut[cid] = { turns: e.turns, firstAt: e.firstAt, lastAt: e.lastAt, topicCount: e.topicSet.size }
+  }
+
+  const totalTurns = Object.values(perConvOut).reduce((s, e) => s + e.turns, 0)
   const participantKeys = new Set<string>()
   for (const c of conversations) participantKeys.add(c.participant_id || c.session_id)
 
-  return { participants: participantKeys.size, turns: turnCount || 0, conversations }
+  return { participants: participantKeys.size, turns: totalTurns, conversations, perConv: perConvOut, perTopic }
 }
 
 // ── PUBLIC ────────────────────────────────────────────────────────────────
@@ -200,9 +243,20 @@ export async function getTownHallAsLegacy(
     .eq('org_id', hall.org_id)
     .order('sort_order', { ascending: true })
 
-  const themes = (topics || []).map((t: any) => projectTopicAsTheme(t, hall.id))
-
   const basics = await computeBasicStats(db, hall.id, hall.org_id)
+
+  // Overlay live response_count (from conversation_turns.topic_id) onto
+  // the persisted town_hall_topics.response_count so theme cards reflect
+  // current activity rather than the lagging async-aggregator value.
+  const themes = (topics || []).map((t: any) => {
+    const projected = projectTopicAsTheme(t, hall.id)
+    const live = basics.perTopic[t.id] || 0
+    if (live > 0) {
+      projected.response_count = live
+      projected.mention_count = Math.max(projected.mention_count || 0, live)
+    }
+    return projected
+  })
 
   const stats = {
     joined:           basics.participants,
@@ -215,17 +269,20 @@ export async function getTownHallAsLegacy(
     survey_responses: 0,
   }
 
-  const participantSummary = basics.conversations.map(c => ({
-    participant_id: c.participant_id || c.session_id,
-    turns:          0,
-    answered:       0,
-    skipped:        0,
-    topics:         0,
-    last_source:    null,
-    is_complete:    false,
-    started_at:     null,
-    last_activity:  null,
-  }))
+  const participantSummary = basics.conversations.map(c => {
+    const conv = basics.perConv[c.id] || { turns: 0, firstAt: null, lastAt: null, topicCount: 0 }
+    return {
+      participant_id: c.participant_id || c.session_id,
+      turns:          conv.turns,
+      answered:       conv.turns,
+      skipped:        0,
+      topics:         conv.topicCount,
+      last_source:    null,
+      is_complete:    false,
+      started_at:     conv.firstAt,
+      last_activity:  conv.lastAt,
+    }
+  })
 
   if (!opts.analyticsMode) {
     return { session, themes, stats, participants: participantSummary }

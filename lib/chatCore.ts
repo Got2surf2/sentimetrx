@@ -886,6 +886,62 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     }
   }
 
+  // ── Stateful focus tracking (CAPTURED / REMAINING state injection) ──
+  // Goal-tracker pattern. Instead of telling the model to "scan the
+  // transcript" itself (unreliable on long contexts — see Decision Study
+  // A/B 2026-05-26: V2 re-asked persistence and how-it-sits despite the
+  // self-scan instruction), we compute the captured-topic set
+  // deterministically from `topic:<slug>` content_flags written by
+  // classifyProbeFocuses on prior user turns, then inject a
+  // CAPTURED / REMAINING block so the model treats it as ground truth.
+  //
+  // Gated by bot.config.statefulFocusTracking — opt-in, default off, so
+  // non-research bots are unaffected.
+  const statefulFocus =
+    (bot.config as any)?.statefulFocusTracking === true &&
+    (bot as any).probe_focus_enabled &&
+    Array.isArray((bot as any).focuses) &&
+    ((bot as any).focuses as any[]).length > 0 &&
+    !!session_id
+  if (statefulFocus) {
+    try {
+      const { data: priorTurns } = await service
+        .from('bot_conversation_turns')
+        .select('content_flags')
+        .eq('bot_id', bot.id)
+        .eq('session_id', session_id)
+        .eq('role', 'user')
+      const capturedSlugs = new Set<string>()
+      for (const t of priorTurns || []) {
+        const flags = ((t as any).content_flags || []) as unknown[]
+        for (const f of flags) {
+          if (typeof f === 'string' && f.startsWith('topic:')) {
+            capturedSlugs.add(f.slice(6))
+          }
+        }
+      }
+      const focusList: any[] = ((bot as any).focuses as any[]).filter(function(f: any) { return f && f.enabled !== false && typeof f.slug === 'string' })
+      const captured: any[] = []
+      const remaining: any[] = []
+      for (const f of focusList) {
+        if (capturedSlugs.has(f.slug)) captured.push(f); else remaining.push(f)
+      }
+      const fmt = function(list: any[]): string {
+        if (list.length === 0) return '  (none)'
+        return list.map(function(f: any) { return '  • ' + f.slug + ' — ' + (f.label || f.slug) }).join('\n')
+      }
+      const stateBlock =
+        '\n\n--- CONVERSATION STATE (deterministic, computed from prior turn classifications) ---\n' +
+        'CAPTURED — the respondent has already answered these. Do NOT re-ask them, in any form:\n' + fmt(captured) + '\n\n' +
+        'REMAINING — ask the simplest natural next question to surface one of these (roughly in the order listed):\n' + fmt(remaining) + '\n\n' +
+        'Use this block as ground truth. Do not "double-check" a CAPTURED item by re-asking. If REMAINING contains only the trailing closing items (open_close / demographics / attitudes / close) and the respondent is not actively expanding, proceed through the closing block (open close → demographics → 3 attitude items → thanks) and end.'
+      systemParts.push(stateBlock)
+      if (debugMode) _debug.push('Stateful focus: ' + captured.length + ' captured / ' + remaining.length + ' remaining (' + remaining.slice(0, 3).map(function(f: any) { return f.slug }).join(', ') + (remaining.length > 3 ? ', …' : '') + ')')
+    } catch (e: any) {
+      console.error({ at: 'chat-core', msg: 'stateful focus injection failed', err: e?.message, sessionId: session_id })
+    }
+  }
+
   if (debugMode) {
     var guardrailCount = Array.isArray((bot as any).guardrails) ? (bot as any).guardrails.length : 0
     _debug.push('Guardrails: ' + guardrailCount + ' rules')
