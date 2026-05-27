@@ -93,6 +93,13 @@ interface DetectedIntent {
   gate: string | null
   /** Time references in the user message that select among carried flights. */
   timeHint: string | null
+  /** Bare digit strings in the user message (e.g. "2564" referring to DL2564
+   * from the prior assistant message). */
+  numericHint: string | null
+  /** Internal — set when the user message looks like a follow-up referent
+   * ("2564", "yes", "the first one"). Only triggers wantsFlights if the
+   * assistant scan also surfaces carryFlightNumbers. */
+  _userLooksLikeFollowUp?: boolean
 }
 
 // Scan a block of text and collect detected signals. When we run this against
@@ -110,6 +117,17 @@ function scanText(text: string, intoUserIntent: boolean, out: DetectedIntent) {
     }
     if (/\b(security|tsa|line|wait|checkpoint|precheck)\b/i.test(m)) out.wantsSecurity = true
     if (/\b(parking|garage|lot|valet|park place|cell phone)\b/i.test(m)) out.wantsParking = true
+
+    // Short follow-up referents — only meaningful when the bot's previous
+    // turn was about flights. Captures "2564", "the 7:50", "the first one",
+    // "yeah", "yes", "the early one", "the later one", etc.
+    // The actual wantsFlights flip happens later, after we've scanned the
+    // assistant message and know if we have carryFlightNumbers.
+    if (/\b(\d{2,4})\b/.test(m) ||
+        /\b(first|second|third|earlier|earliest|earl(y)?|later|latest|next|previous|that|this|the\s+\w+\s+one)\b/.test(m) ||
+        /^(yes|yeah|yep|sure|ok|okay)\b/.test(m.trim())) {
+      out._userLooksLikeFollowUp = true
+    }
   }
 
   // Flight number pattern — strict, must look like an IATA code + digits.
@@ -132,6 +150,13 @@ function scanText(text: string, intoUserIntent: boolean, out: DetectedIntent) {
   if (intoUserIntent) {
     const t = m.match(/\b(\d{1,2}:\d{2})\s*(am|pm)?\b/)
     if (t) out.timeHint = t[1]
+    // Numeric hint — bare 3-4 digit number that could be a flight number
+    // suffix ("2564" → match against DL2564 in carryFlightNumbers later).
+    const nums = m.match(/\b(\d{3,4})\b/g)
+    if (nums && !t) {
+      // Pick the first 3-4 digit number (don't confuse with the time-hint digits)
+      out.numericHint = nums[0]
+    }
   }
 
   // Gate, airline, destination — scan from both sources
@@ -154,13 +179,19 @@ function detectIntent(userMessage: string, priorAssistantMessage: string): Detec
   const out: DetectedIntent = {
     wantsFlights: false, wantsSecurity: false, wantsParking: false,
     airline: null, destination: null, flightNumber: null,
-    carryFlightNumbers: [], gate: null, timeHint: null,
+    carryFlightNumbers: [], gate: null, timeHint: null, numericHint: null,
   }
   // User message owns the "intent" signal — that's what determines whether
   // to enrich the prompt at all. Carry forward from assistant for the
   // specific entity references the user is shorthanding to.
   scanText(userMessage, true, out)
   scanText(priorAssistantMessage, false, out)
+  // Promote follow-up referents to a flight intent ONLY when the assistant's
+  // prior reply gave us flight numbers to disambiguate against. Otherwise a
+  // bare "2564" stays a no-op (it could just be a Zip code or address).
+  if (out._userLooksLikeFollowUp && out.carryFlightNumbers.length > 0) {
+    out.wantsFlights = true
+  }
   return out
 }
 
@@ -217,12 +248,20 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
       if (one) matches = [one]
     } else if (intent.carryFlightNumbers.length > 0) {
       // Follow-up reference — resolve to the carried numbers, optionally
-      // narrowed by a time hint ("the 7:50 one").
+      // narrowed by a time hint ("the 7:50 one") or numeric hint ("2564").
       const carried = intent.carryFlightNumbers
         .map(n => findFlightByNumber(flights, n))
         .filter((f): f is Flight => !!f)
-      if (intent.timeHint) {
-        // Match either by clock time or by hour
+      // Numeric hint wins if it matches the suffix of a carried number
+      if (intent.numericHint) {
+        const suffix = intent.numericHint
+        const numericMatches = carried.filter(f => f.operatingAirlineFlightNumber.endsWith(suffix))
+        if (numericMatches.length > 0) {
+          matches = numericMatches
+        } else {
+          matches = carried
+        }
+      } else if (intent.timeHint) {
         const [hh] = intent.timeHint.split(':')
         const targetHour = Number(hh)
         const narrowed = carried.filter(f => {
