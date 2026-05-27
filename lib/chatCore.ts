@@ -507,12 +507,18 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // MCO-specific live data injection. For the AskAna bot (and only her),
   // detect flight / gate / security / parking intent in the user message
-  // and fetch live data from the GOAA APIs. The block goes into the system
-  // prompt for THIS turn only — overrides the static KB for live questions.
+  // (and follow-up references in the prior assistant message — so
+  // "the 7:50 one" can still find DL2564 that the bot just listed).
   // No-op for all other bots (gated by bot id inside the helper).
   try {
     const { buildMcoLiveContext } = await import('@/lib/mcoLiveContext')
-    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '')
+    // Find the prior assistant message — it carries entity references the
+    // user's short follow-up may be pointing at.
+    let priorAssistant = ''
+    for (let i = messages.length - 2; i >= 0; i--) {
+      if (messages[i].role === 'assistant') { priorAssistant = String(messages[i].content || ''); break }
+    }
+    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '', priorAssistant)
     if (liveBlock) systemParts.push(liveBlock)
   } catch (e: any) {
     if (debugMode) _debug.push('mco-live-context: ' + (e?.message || String(e)))

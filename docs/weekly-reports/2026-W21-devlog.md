@@ -2308,3 +2308,18 @@ Likely cause: `_mco_seed_directory_kb.ts` was only ever run with `DRY_RUN=1` dur
 **What changed**: ran `node_modules/.bin/tsx scripts/_mco_seed_directory_kb.ts` against prod with `/tmp/mco_directory.json` from today's re-scrape. Deleted 2 stale chunks (the hardcoded IDs matched — logic was always correct, just never executed), inserted 20 new bucketed chunks, embedded with text-embedding-3-small. Live verified: Ana now answers "Yes! There's an Epic Universe shop located in the East Hall of Terminals A & B" sourcing from the new RAG chunk.
 
 **Lesson**: when a seeder script is meant to land in prod, the devlog entry must explicitly confirm the live run, not just the dry-run output. Future MCO data refreshes should re-run BOTH `_mco_scrape_directory.mjs` → `_mco_seed_directory_kb.ts` and verify the source-tag count in prod afterward.
+
+## 2026-05-27 (continued) — Live-context follow-ups + dead flight-status link
+
+**Why** (two bugs from the demo):
+1. User asked "Delta flights to LGA tonight" → Ana correctly listed DL1511 + DL2564 (live context worked). User said "the 7:50 one" → Ana said "I don't see that flight in my live feed." The live-context injector only scanned the LATEST user message; "the 7:50 one" has no flight keywords so it returned empty.
+2. Ana's prose included `flymco.com/flight-status` — which 404s. Working URL is `flymco.com/flights`. Sitemap.xml listed the old path but the page isn't actually served anymore.
+
+**What changed**:
+- `lib/mcoLiveContext.ts` — `detectIntent()` now scans BOTH the user message AND the prior assistant message. New `carryFlightNumbers` (flight numbers extracted from the bot's last reply, filtered to known IATA airlines) + `timeHint` ("7:50" parsed from "the 7:50 one"). Flight resolution now narrows carried numbers by the time hint when present. Falls back to all carried numbers if the hint doesn't match.
+- `lib/chatCore.ts` — passes the prior assistant message into `buildMcoLiveContext()`.
+- `scripts/_mco_fix_dead_links.ts` — NEW. Idempotent rewrite of dead flymco URLs in personality / system_prompt / guardrails. Currently: `flymco.com/flight-status` → `flymco.com/flights`. **Applied to prod** — 1 change to system_prompt, guardrails updated.
+
+Verified live: all 3 URLs in Ana's prompt now return 200 (flights, parking-availability, security).
+
+Typecheck clean. 319/319 tests pass.

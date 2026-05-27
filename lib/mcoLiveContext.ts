@@ -86,48 +86,81 @@ interface DetectedIntent {
   airline: string | null
   destination: string | null
   flightNumber: string | null
+  /** Flight numbers carried forward from a recent assistant message — used
+   * so follow-up questions like "the 7:50 one" can still find the right
+   * flight even though the user's latest message has no keywords. */
+  carryFlightNumbers: string[]
   gate: string | null
+  /** Time references in the user message that select among carried flights. */
+  timeHint: string | null
 }
 
-function detectIntent(userMessage: string): DetectedIntent {
-  const m = (userMessage || '').toLowerCase()
-  const out: DetectedIntent = {
-    wantsFlights: false,
-    wantsSecurity: false,
-    wantsParking: false,
-    airline: null,
-    destination: null,
-    flightNumber: null,
-    gate: null,
+// Scan a block of text and collect detected signals. When we run this against
+// both the user message AND the prior assistant message, we get the right
+// behavior for follow-ups: the assistant's prior reply containing "DL1511"
+// + "DL2564" sticks the relevant numbers into carryFlightNumbers; the
+// user's "the 7:50 one" supplies the timeHint that narrows them down.
+function scanText(text: string, intoUserIntent: boolean, out: DetectedIntent) {
+  const m = (text || '').toLowerCase()
+  if (!m) return
+
+  if (intoUserIntent) {
+    if (/\b(gate|flight|board(ing)?|depart(ure|s|ing)?|arrive|arrival|leaving|takes? off|that flight|the .+ one)\b/.test(m)) {
+      out.wantsFlights = true
+    }
+    if (/\b(security|tsa|line|wait|checkpoint|precheck)\b/i.test(m)) out.wantsSecurity = true
+    if (/\b(parking|garage|lot|valet|park place|cell phone)\b/i.test(m)) out.wantsParking = true
   }
 
-  // Flight / gate intent: keywords or pattern
-  if (/\b(gate|flight|board(ing)?|depart(ure|s|ing)?|arrive|arrival|leaving|takes? off)\b/.test(m)) {
-    out.wantsFlights = true
+  // Flight number pattern — strict, must look like an IATA code + digits.
+  // Runs on BOTH user + assistant text so "DL1511" in the bot's reply gets
+  // captured for the next turn.
+  const fnRe = /\b([A-Z]{2})\s?(\d{2,4}[A-Z]?)\b/g
+  let fnMatch: RegExpExecArray | null
+  while ((fnMatch = fnRe.exec(text)) !== null) {
+    const fn = fnMatch[1] + fnMatch[2]
+    // Filter — only keep if the airline code is a known airline (avoids false
+    // matches on random capital pairs like "TSA 901" or "FL 32827")
+    if (Object.values(AIRLINE_KEYWORDS).includes(fnMatch[1])) {
+      if (intoUserIntent && !out.flightNumber) out.flightNumber = fn
+      if (!out.carryFlightNumbers.includes(fn)) out.carryFlightNumbers.push(fn)
+      out.wantsFlights = true
+    }
   }
-  // Flight number pattern, e.g. "DL1455", "Delta 1455"
-  const fn = parseFlightNumber(userMessage)
-  if (fn) { out.flightNumber = fn.airline + fn.number; out.wantsFlights = true }
-  // Gate string, e.g. "B22", "C235", "gate 91"
-  const gm = m.match(/\bgate\s*([0-9]{1,3}|c[\s-]?\d{3})\b/i) || m.match(/\b(?:gate\s+)?(c\s?\d{3}|[a-c]?\d{1,3})\b(?=\s*(?:gate|terminal|please))/i)
-  if (gm && /\d/.test(gm[1])) { out.gate = gm[1].replace(/\s+/g, ''); out.wantsFlights = true }
 
-  // Airline keyword
+  // Time hint — "7:50", "8:30 PM", etc. (only meaningful from user message)
+  if (intoUserIntent) {
+    const t = m.match(/\b(\d{1,2}:\d{2})\s*(am|pm)?\b/)
+    if (t) out.timeHint = t[1]
+  }
+
+  // Gate, airline, destination — scan from both sources
+  const gm = m.match(/\bgate\s*([0-9]{1,3}|c[\s-]?\d{3})\b/i) || m.match(/\b(c\s?\d{3})\b/i)
+  if (gm && !out.gate) { out.gate = gm[1].replace(/\s+/g, ''); out.wantsFlights = true }
+
   for (const k of Object.keys(AIRLINE_KEYWORDS)) {
+    if (out.airline) break
     const re = new RegExp('\\b' + k + '\\b', 'i')
-    if (re.test(m)) { out.airline = AIRLINE_KEYWORDS[k]; out.wantsFlights = true; break }
+    if (re.test(m)) { out.airline = AIRLINE_KEYWORDS[k]; out.wantsFlights = true }
   }
-  // Destination keyword
   for (const k of Object.keys(DEST_KEYWORDS)) {
+    if (out.destination) break
     const re = new RegExp('\\b' + k.replace(/'/g, "['']?") + '\\b', 'i')
-    if (re.test(m)) { out.destination = DEST_KEYWORDS[k]; out.wantsFlights = true; break }
+    if (re.test(m)) { out.destination = DEST_KEYWORDS[k]; out.wantsFlights = true }
   }
+}
 
-  // Security intent
-  if (/\b(security|tsa|line|wait|checkpoint|precheck)\b/i.test(m)) out.wantsSecurity = true
-  // Parking intent
-  if (/\b(parking|garage|lot|valet|park place|cell phone)\b/i.test(m)) out.wantsParking = true
-
+function detectIntent(userMessage: string, priorAssistantMessage: string): DetectedIntent {
+  const out: DetectedIntent = {
+    wantsFlights: false, wantsSecurity: false, wantsParking: false,
+    airline: null, destination: null, flightNumber: null,
+    carryFlightNumbers: [], gate: null, timeHint: null,
+  }
+  // User message owns the "intent" signal — that's what determines whether
+  // to enrich the prompt at all. Carry forward from assistant for the
+  // specific entity references the user is shorthanding to.
+  scanText(userMessage, true, out)
+  scanText(priorAssistantMessage, false, out)
   return out
 }
 
@@ -156,12 +189,16 @@ function fmtTime(unix: number): string {
  * message. Returns empty string when no live intent matches (the default
  * for any non-MCO turn).
  *
+ * Accepts the prior assistant message so follow-up turns like "the 7:50
+ * one" still resolve — the assistant's previous reply seeded the flight
+ * numbers; the user's time/airline reference narrows them.
+ *
  * Called by chatCore for the AskAna bot only — gated by bot id.
  */
-export async function buildMcoLiveContext(botId: string, userMessage: string): Promise<string> {
+export async function buildMcoLiveContext(botId: string, userMessage: string, priorAssistantMessage: string = ''): Promise<string> {
   if (botId !== ASKANA_BOT_ID) return ''
   if (!userMessage) return ''
-  const intent = detectIntent(userMessage)
+  const intent = detectIntent(userMessage, priorAssistantMessage)
   if (!intent.wantsFlights && !intent.wantsSecurity && !intent.wantsParking) return ''
 
   const sections: string[] = []
@@ -178,6 +215,26 @@ export async function buildMcoLiveContext(botId: string, userMessage: string): P
     if (intent.flightNumber) {
       const one = findFlightByNumber(flights, intent.flightNumber)
       if (one) matches = [one]
+    } else if (intent.carryFlightNumbers.length > 0) {
+      // Follow-up reference — resolve to the carried numbers, optionally
+      // narrowed by a time hint ("the 7:50 one").
+      const carried = intent.carryFlightNumbers
+        .map(n => findFlightByNumber(flights, n))
+        .filter((f): f is Flight => !!f)
+      if (intent.timeHint) {
+        // Match either by clock time or by hour
+        const [hh] = intent.timeHint.split(':')
+        const targetHour = Number(hh)
+        const narrowed = carried.filter(f => {
+          const d = new Date(f.bestKnownTimestamp * 1000)
+          const h12 = d.getHours() % 12 || 12
+          const h24 = d.getHours()
+          return h12 === targetHour || h24 === targetHour
+        })
+        matches = narrowed.length > 0 ? narrowed : carried
+      } else {
+        matches = carried
+      }
     } else if (intent.gate) {
       const one = nextDepartureAtGate(flights, intent.gate)
       if (one) matches = [one]
