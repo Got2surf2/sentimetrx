@@ -2228,3 +2228,15 @@ Typecheck clean. 319/319 tests still pass.
 - `lib/uiHints.ts` — `terminal_map` rule now EXPLICITLY EXCLUDES parking-related wayfinding ("how do I get to Garage X?", "where is the valet?", "directions to North Park Place"). `parking` rule explicitly INCLUDES those phrasings and instructs the model to set `highlight` to the named lot. Added two counter-examples in the prompt: "How do I get to Garage A?" → `parking` with `highlight: ["garage_a"]`; "Where is the valet?" → `parking` with `highlight: ["valet"]`.
 
 Typecheck clean.
+
+## 2026-05-27 — MCO brand mark replaces ✈️ emoji avatar
+
+**Why**: User supplied the official MCO logo and asked to use the mark (sunburst + airplane) as the brand emoji — dropping the "Orlando International Airport" text below.
+
+**What changed**:
+- `public/mco/logo-mark.png` (275×120) — cropped via sharp from the original 414×236 supplied PNG. Mark only, no text.
+- `public/mco/favicon-64.png` + `app/demo/mco/icon.png` — 64×64 favicon: mark on a white tile, baked at build time. Replaces `app/demo/mco/icon.tsx` (deleted) so we don't need runtime image loading via ImageResponse.
+- `app/demo/mco/CanvasShell.tsx` — topbar avatar is now an `<img>` in a white pill (`.avatar-mco`), wider than tall to respect the mark's 2.3:1 aspect.
+- `app/demo/mco/components/WelcomeCard.tsx` — hero now leads with the logo mark instead of the "MCO" text block. `.welcome-logo-mark` styled at 72px tall (kiosk: 96px).
+
+Typecheck clean. No test impact.

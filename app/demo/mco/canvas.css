@@ -39,6 +39,22 @@
   font-size: 18px;
   flex-shrink: 0;
 }
+/* Brand-mark variant: white pill backing the MCO sunburst + plane PNG.
+   Wider than tall (logomark itself is roughly 2.3:1) so it doesn't crop. */
+.canvas-shell .avatar-mco {
+  width: 64px;
+  height: 32px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 4px 8px;
+}
+.canvas-shell .avatar-mco img {
+  height: 100%;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+.canvas-shell.mode-kiosk .avatar-mco { width: 84px; height: 44px; padding: 6px 10px; }
 .canvas-shell .brand-stack { line-height: 1.15; min-width: 0; }
 .canvas-shell .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
 .canvas-shell .brand-subtitle {
@@ -600,6 +616,12 @@
   color: #0a2540;
   line-height: 1;
 }
+.canvas-shell .welcome-logo-mark {
+  height: 72px;
+  width: auto;
+  display: block;
+  margin-bottom: 4px;
+}
 .canvas-shell .welcome-airport-name {
   font-size: 18px;
   font-weight: 600;
@@ -739,6 +761,7 @@
 
 /* Kiosk mode: make the welcome card hero + tiles bigger for touch */
 .canvas-shell.mode-kiosk .welcome-airport-code { font-size: 56px; }
+.canvas-shell.mode-kiosk .welcome-logo-mark { height: 96px; }
 .canvas-shell.mode-kiosk .welcome-airport-name { font-size: 22px; }
 .canvas-shell.mode-kiosk .welcome-tile { padding: 16px 18px; }
 .canvas-shell.mode-kiosk .welcome-tile-icon { font-size: 26px; }

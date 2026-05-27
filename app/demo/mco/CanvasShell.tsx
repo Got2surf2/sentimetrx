@@ -213,7 +213,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
     <div className={'canvas-shell mode-' + mode}>
       <div className="topbar">
         <div className="brand">
-          <div className="avatar">✈️</div>
+          <div className="avatar avatar-mco"><img src="/mco/logo-mark.png" alt="MCO" /></div>
           <div className="brand-stack">
             <div className="brand-name">AskAna</div>
             <div className="brand-subtitle">{config.subtitle}</div>

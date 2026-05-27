@@ -118,7 +118,7 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
   return (
     <div className="canvas-card-inner welcome-card">
       <div className="welcome-hero">
-        <div className="welcome-airport-code">MCO</div>
+        <img src="/mco/logo-mark.png" alt="MCO" className="welcome-logo-mark" />
         <div className="welcome-airport-name">{greeting}</div>
         <div className="welcome-sub">{sub}</div>
       </div>
