@@ -412,59 +412,97 @@
 /* ── Flight prep panel (above the indoor map) ──────── */
 .canvas-shell .prep-panel {
   background: linear-gradient(135deg, #0a2540, #1e4d8b);
-  color: #fff; border-radius: 14px; padding: 16px 18px;
-  margin-bottom: 12px;
-  box-shadow: 0 6px 20px rgba(10,37,64,0.18);
+  color: #fff; border-radius: 16px; padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 28px rgba(10,37,64,0.22);
 }
-.canvas-shell .prep-head { margin-bottom: 12px; }
-.canvas-shell .prep-flight { font-size: 18px; font-weight: 700; }
-.canvas-shell .prep-sub { font-size: 12.5px; opacity: 0.8; margin-top: 4px; }
-.canvas-shell .prep-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
-  margin-bottom: 12px;
-}
-.canvas-shell .prep-lane {
-  background: rgba(255,255,255,0.08); border-radius: 10px;
-  padding: 10px 12px; border: 1px solid rgba(255,255,255,0.1);
-}
-.canvas-shell .prep-lane-rec {
-  border-color: #f59e0b; background: rgba(245,158,11,0.15);
-  box-shadow: 0 0 0 1px #f59e0b;
-}
-.canvas-shell .prep-lane-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; opacity: 0.7;
-}
-.canvas-shell .prep-lane-value {
-  font-size: 22px; font-weight: 700; margin-top: 4px;
-  font-variant-numeric: tabular-nums; line-height: 1;
-}
-.canvas-shell .prep-lane-sub { font-size: 11px; opacity: 0.6; margin-top: 4px; }
-.canvas-shell .prep-budget {
-  display: flex; gap: 10px; align-items: center;
-  padding: 10px 12px; background: rgba(245,158,11,0.18);
-  border-radius: 10px; font-size: 13.5px; line-height: 1.4;
-}
-.canvas-shell .prep-budget-icon { font-size: 18px; flex-shrink: 0; }
-.canvas-shell .prep-recs {
-  display: flex; gap: 8px; align-items: center;
-  margin-top: 10px; flex-wrap: wrap;
-}
-.canvas-shell .prep-recs-label { font-size: 12px; opacity: 0.8; }
-.canvas-shell .prep-recs-chip {
-  display: inline-block; padding: 6px 12px;
-  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 14px; font-size: 12.5px; color: #fff;
-  text-decoration: none; cursor: pointer;
-  transition: background 0.15s;
-}
-.canvas-shell .prep-recs-chip:hover { background: rgba(255,255,255,0.25); }
+/* Tone variants — tint the gradient based on how much spare time the user has */
+.canvas-shell .prep-tone-lots   { background: linear-gradient(135deg, #064e3b, #0e7490); }
+.canvas-shell .prep-tone-plenty { background: linear-gradient(135deg, #0a2540, #1e4d8b); }
+.canvas-shell .prep-tone-snug   { background: linear-gradient(135deg, #92400e, #b45309); }
+.canvas-shell .prep-tone-tight  { background: linear-gradient(135deg, #9f1239, #b91c1c); }
+.canvas-shell .prep-tone-go     { background: linear-gradient(135deg, #7f1d1d, #ef4444); animation: prep-pulse 1.4s ease-in-out infinite; }
+@keyframes prep-pulse { 0%, 100% { box-shadow: 0 8px 28px rgba(239,68,68,0.35); } 50% { box-shadow: 0 8px 28px rgba(239,68,68,0.7); } }
 
-/* Kiosk-mode prep panel — larger type for arm's-length viewing */
-.canvas-shell.mode-kiosk .prep-flight { font-size: 22px; }
-.canvas-shell.mode-kiosk .prep-lane-value { font-size: 26px; }
-.canvas-shell.mode-kiosk .prep-budget { font-size: 15px; }
-.canvas-shell.mode-kiosk .prep-recs-chip { font-size: 14px; padding: 8px 14px; }
+/* Compact top strip — flight number + gate + time, single-line */
+.canvas-shell .prep-strip {
+  display: flex; align-items: baseline; gap: 12px;
+  font-size: 12.5px; opacity: 0.85; margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.canvas-shell .prep-strip-flight { font-weight: 700; font-size: 14px; opacity: 1; }
+.canvas-shell .prep-strip-meta { font-size: 12px; opacity: 0.75; }
+
+/* HERO — the killer kiosk moment. Big number, playful framing. */
+.canvas-shell .prep-hero {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 0 16px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  margin-bottom: 14px;
+}
+.canvas-shell .prep-hero-emoji { font-size: 52px; line-height: 1; flex-shrink: 0; }
+.canvas-shell .prep-hero-text { flex: 1; min-width: 0; }
+.canvas-shell .prep-hero-time {
+  font-size: 38px; font-weight: 800; line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.canvas-shell .prep-hero-head {
+  font-size: 15px; font-weight: 700; opacity: 0.95;
+  margin-top: 6px;
+}
+.canvas-shell .prep-hero-tag {
+  font-size: 13px; opacity: 0.78;
+  margin-top: 3px; line-height: 1.35;
+}
+
+/* Compact bottom row — security + walk + checkpoint, all in one line */
+.canvas-shell .prep-mini {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.canvas-shell .prep-mini-item {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: rgba(255,255,255,0.08); border-radius: 8px;
+  padding: 6px 10px; border: 1px solid rgba(255,255,255,0.1);
+  font-size: 12px;
+}
+.canvas-shell .prep-mini-rec {
+  border-color: #f59e0b; background: rgba(245,158,11,0.18);
+}
+.canvas-shell .prep-mini-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; opacity: 0.65;
+}
+.canvas-shell .prep-mini-value {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.canvas-shell .prep-mini-checkpoint .prep-mini-value { font-weight: 600; opacity: 0.9; }
+
+/* Rec chips — bottom row */
+.canvas-shell .prep-recs {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;
+}
+.canvas-shell .prep-recs-chip {
+  display: inline-block; padding: 7px 14px;
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 16px; font-size: 13px; font-weight: 600; color: #fff;
+  cursor: pointer; font-family: inherit;
+  transition: transform 120ms, background 120ms;
+}
+.canvas-shell .prep-recs-chip:hover {
+  background: rgba(255,255,255,0.28);
+  transform: translateY(-1px);
+}
+
+/* Kiosk-mode prep panel — even bigger type for arm's-length viewing */
+.canvas-shell.mode-kiosk .prep-hero { padding: 18px 0 20px; }
+.canvas-shell.mode-kiosk .prep-hero-emoji { font-size: 68px; }
+.canvas-shell.mode-kiosk .prep-hero-time { font-size: 56px; }
+.canvas-shell.mode-kiosk .prep-hero-head { font-size: 18px; }
+.canvas-shell.mode-kiosk .prep-hero-tag { font-size: 14.5px; }
+.canvas-shell.mode-kiosk .prep-strip-flight { font-size: 16px; }
+.canvas-shell.mode-kiosk .prep-recs-chip { font-size: 15px; padding: 10px 18px; }
 
 /* ── Flight list card (plural flight queries) ─────── */
 .canvas-shell .fl-list { display: flex; flex-direction: column; gap: 6px; }

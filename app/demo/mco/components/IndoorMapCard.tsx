@@ -306,76 +306,83 @@ export default function IndoorMapCard({ hint }: { hint: IndoorMapHint }) {
 // Renders the gate / departure / security / walking / spare-time summary
 // above the floor plan when the user mentioned a flight or gate.
 
+// Pick a playful headline + tagline based on how much spare time the user
+// has. The kiosk's killer moment — make it feel like an opportunity, not a
+// checklist item.
+function spareCopy(min: number): { emoji: string; head: string; tag: string; tone: 'lots' | 'plenty' | 'snug' | 'tight' | 'go' } {
+  if (min >= 240) return { emoji: '🌴', head: 'Plenty of time', tag: 'Whole afternoon at the airport. Eat, shop, take it slow.', tone: 'lots' }
+  if (min >= 150) return { emoji: '✨', head: 'You\'ve got time', tag: 'Sit-down lunch + a wander before security. Easy.', tone: 'lots' }
+  if (min >= 90)  return { emoji: '☕', head: 'Solid window', tag: 'Time for a real meal, or coffee + browsing.', tone: 'plenty' }
+  if (min >= 60)  return { emoji: '🍽️', head: 'About an hour', tag: 'A bite to eat works. Want a quick rec?', tone: 'plenty' }
+  if (min >= 30)  return { emoji: '⚡', head: 'Snack window', tag: 'Quick coffee, grab-and-go food, light browse.', tone: 'snug' }
+  if (min >= 15)  return { emoji: '🏃', head: 'Get moving soon', tag: 'Time for one quick coffee — then head for security.', tone: 'tight' }
+  if (min >= 0)   return { emoji: '⏳', head: 'Cutting it close', tag: 'Head straight to security — no detours.', tone: 'tight' }
+  return            { emoji: '🚨', head: 'Go now!', tag: 'Boarding\'s coming up — straight to security.', tone: 'go' }
+}
+
 function FlightPrepPanel({ prep }: { prep: FlightPrep }) {
   const f = prep.flight
   const sec = prep.security
-  const total = prep.total
   const spare = prep.spare_time_min
   const rec = prep.security_recommendation
   const pcAvail = !!sec?.precheck?.available
   const stAvail = !!sec?.standard?.available
   const bestSpare = pcAvail && rec !== 'standard' ? (spare?.precheck ?? 0) : (spare?.standard ?? 0)
+  const copy = spareCopy(bestSpare)
 
-  const headline = f
+  const flightLine = f
     ? `${f.number} ${f.arrival ? 'from' : 'to'} ${f.arrival ? f.arrived_from : f.departure_to}`
-    : `Gate ${prep.gate || ''}`
+    : null
 
   return (
-    <div className="prep-panel">
-      <div className="prep-head">
-        <div className="prep-flight">{headline}</div>
-        <div className="prep-sub">
+    <div className={'prep-panel prep-tone-' + copy.tone}>
+      {/* Compact flight strip — quick scan: which flight, where, when */}
+      <div className="prep-strip">
+        {flightLine && <span className="prep-strip-flight">{flightLine}</span>}
+        <span className="prep-strip-meta">
           Terminal {prep.terminal} · Gate {prep.gate}
-          {f && f.best_known_timestamp ? ` · Departs ${fmtClock(f.best_known_timestamp)}` : ''}
+          {f && f.best_known_timestamp ? ` · ${fmtClock(f.best_known_timestamp)}` : ''}
           {f && f.is_delayed ? ' · DELAYED' : ''}
-          {f && f.status && f.status !== 'Scheduled' ? ' · ' + f.status : ''}
+        </span>
+      </div>
+
+      {/* HERO — the killer kiosk moment. Big number, playful framing. */}
+      <div className="prep-hero">
+        <div className="prep-hero-emoji" aria-hidden>{copy.emoji}</div>
+        <div className="prep-hero-text">
+          <div className="prep-hero-time">{bestSpare > 0 ? fmtMin(bestSpare) : 'Now'}</div>
+          <div className="prep-hero-head">{copy.head}</div>
+          <div className="prep-hero-tag">{copy.tag}</div>
         </div>
       </div>
-      <div className="prep-grid">
-        <div className={'prep-lane' + (rec === 'precheck' ? ' prep-lane-rec' : '')}>
-          <div className="prep-lane-label">PreCheck</div>
-          <div className="prep-lane-value">{pcAvail ? fmtMin(sec?.precheck?.wait_min ?? 0) : 'Closed'}</div>
-          <div className="prep-lane-sub">{sec?.precheck?.checkpoint_name?.replace(' PreCheck','') || ''}</div>
-        </div>
-        <div className={'prep-lane' + (rec === 'standard' ? ' prep-lane-rec' : '')}>
-          <div className="prep-lane-label">Standard</div>
-          <div className="prep-lane-value">{stAvail ? fmtMin(sec?.standard?.wait_min ?? 0) : 'Closed'}</div>
-          <div className="prep-lane-sub">{sec?.standard?.checkpoint_name?.replace(' Standard','') || ''}</div>
-        </div>
-        <div className="prep-lane">
-          <div className="prep-lane-label">Walk to gate</div>
-          <div className="prep-lane-value">{fmtMin(prep.walk ? prep.walk.pre_security_min + prep.walk.post_security_min : 0)}</div>
-          <div className="prep-lane-sub">pre-sec {fmtMin(prep.walk?.pre_security_min ?? 0)} · gate side {fmtMin(prep.walk?.post_security_min ?? 0)}</div>
-        </div>
+
+      {/* Compact bottom row — security waits + walk, all at a glance */}
+      <div className="prep-mini">
+        <span className={'prep-mini-item' + (rec === 'precheck' ? ' prep-mini-rec' : '')}>
+          <span className="prep-mini-label">PreCheck</span>
+          <span className="prep-mini-value">{pcAvail ? fmtMin(sec?.precheck?.wait_min ?? 0) : '—'}</span>
+        </span>
+        <span className={'prep-mini-item' + (rec === 'standard' ? ' prep-mini-rec' : '')}>
+          <span className="prep-mini-label">Standard</span>
+          <span className="prep-mini-value">{stAvail ? fmtMin(sec?.standard?.wait_min ?? 0) : '—'}</span>
+        </span>
+        <span className="prep-mini-item">
+          <span className="prep-mini-label">Walk</span>
+          <span className="prep-mini-value">{fmtMin(prep.walk ? prep.walk.pre_security_min + prep.walk.post_security_min : 0)}</span>
+        </span>
+        <span className="prep-mini-item prep-mini-checkpoint">
+          <span className="prep-mini-label">via</span>
+          <span className="prep-mini-value">{sec?.precheck?.checkpoint_name?.replace(' PreCheck','') || sec?.standard?.checkpoint_name?.replace(' Standard','') || '—'}</span>
+        </span>
       </div>
-      <div className="prep-budget">
-        {bestSpare > 30 ? (
-          <>
-            <span className="prep-budget-icon">⏱️</span>
-            <span><strong>You've got ~{fmtMin(bestSpare)}</strong> to eat or shop before you should head to security
-              {pcAvail && stAvail && spare && (
-                <> (or {fmtMin(spare.standard)} via Standard).</>
-              )}
-            </span>
-          </>
-        ) : bestSpare >= 0 ? (
-          <>
-            <span className="prep-budget-icon">⚠️</span>
-            <span>About <strong>{fmtMin(bestSpare)} of buffer</strong> — grab coffee or a quick snack, then go.</span>
-          </>
-        ) : (
-          <>
-            <span className="prep-budget-icon">🚨</span>
-            <span><strong>Head straight to security now</strong> — you're tight on time.</span>
-          </>
-        )}
-      </div>
+
+      {/* Rec chips — only when there's real time to spend */}
       {bestSpare > 15 && (
         <div className="prep-recs">
-          <span className="prep-recs-label">Want recs?</span>
-          <a className="prep-recs-chip" href="#" onClick={(e) => { e.preventDefault(); dispatchPrompt('What restaurants are near gate ' + prep.gate + '?') }}>🍽️ Dining nearby</a>
-          <a className="prep-recs-chip" href="#" onClick={(e) => { e.preventDefault(); dispatchPrompt('What shops are in Terminal ' + prep.terminal + '?') }}>🛍️ Shops</a>
-          <a className="prep-recs-chip" href="#" onClick={(e) => { e.preventDefault(); dispatchPrompt('Coffee near gate ' + prep.gate + '?') }}>☕ Coffee</a>
+          <button type="button" className="prep-recs-chip" onClick={() => dispatchPrompt('What restaurants are near gate ' + prep.gate + '?')}>🍽️ Eat</button>
+          <button type="button" className="prep-recs-chip" onClick={() => dispatchPrompt('What shops are in Terminal ' + prep.terminal + '?')}>🛍️ Shop</button>
+          <button type="button" className="prep-recs-chip" onClick={() => dispatchPrompt('Coffee near gate ' + prep.gate + '?')}>☕ Coffee</button>
+          <button type="button" className="prep-recs-chip" onClick={() => dispatchPrompt('Where can I find a quiet place to wait in Terminal ' + prep.terminal + '?')}>🧘 Chill</button>
         </div>
       )}
     </div>
