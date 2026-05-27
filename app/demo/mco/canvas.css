@@ -466,6 +466,40 @@
 .canvas-shell.mode-kiosk .prep-budget { font-size: 15px; }
 .canvas-shell.mode-kiosk .prep-recs-chip { font-size: 14px; padding: 8px 14px; }
 
+/* ── Flight list card (plural flight queries) ─────── */
+.canvas-shell .fl-list { display: flex; flex-direction: column; gap: 6px; }
+.canvas-shell .fl-row {
+  display: grid;
+  grid-template-columns: 0.9fr 1.4fr 0.9fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  transition: border-color 120ms, background 120ms;
+}
+.canvas-shell .fl-row:hover { border-color: #f59e0b; background: #fffbeb; }
+.canvas-shell .fl-flightno { font-size: 14.5px; font-weight: 700; color: #0a2540; font-variant-numeric: tabular-nums; }
+.canvas-shell .fl-airline { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
+.canvas-shell .fl-route { font-size: 13px; color: #0a2540; font-weight: 500; }
+.canvas-shell .fl-gate { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
+.canvas-shell .fl-row-r { text-align: right; }
+.canvas-shell .fl-time { font-size: 14px; font-weight: 700; color: #0a2540; font-variant-numeric: tabular-nums; }
+.canvas-shell .fl-status {
+  display: inline-block; margin-top: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
+  padding: 2px 8px; border-radius: 10px;
+  text-transform: uppercase;
+}
+.canvas-shell.mode-kiosk .fl-row { padding: 14px 16px; }
+.canvas-shell.mode-kiosk .fl-flightno { font-size: 17px; }
+.canvas-shell.mode-kiosk .fl-time { font-size: 16px; }
+
 /* ── Indoor map card (Meridian floor plan) ─────────── */
 .canvas-shell .indoor-map-card { display: flex; flex-direction: column; min-height: 0; }
 .canvas-shell .indoor-floors {

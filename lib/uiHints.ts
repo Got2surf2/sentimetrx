@@ -23,6 +23,7 @@ export type UiHint =
   | LinkCardHint
   | SecurityWaitHint
   | IndoorMapHint
+  | FlightListHint
   | WelcomeHint
 
 // Welcome / default-state card. Never emitted by the extractor — only used
@@ -83,6 +84,16 @@ export interface IndoorMapHint {
   category?: string               // restroom, restaurant, shop, gate, atm, …
 }
 
+export interface FlightListHint {
+  type: 'flight_list'
+  airline?: string                // IATA code: "DL", "AA", "WN" — optional filter
+  destination?: string            // IATA code: "LGA", "ATL", … — optional filter
+  origin?: string                 // for arrivals
+  terminal?: 'A' | 'B' | 'C'
+  arrivals?: boolean              // true = show arrivals, false/undef = departures
+  time_window?: string            // free-text "tonight" / "this evening" / "today" — server interprets
+}
+
 // Deployment context — auto-detected by the page (URL param, geolocation,
 // user agent, deployment env), demo-strip-overridable in the prototype.
 export type DeploymentMode = 'home' | 'invenue' | 'kiosk'
@@ -132,7 +143,10 @@ Allowed hint types and required payload shapes:
   Use ONLY for INTER-TERMINAL movement (A↔B, A↔C, B↔C — the structural connections + Terminal Link APM + shuttle). This card is a high-level structural diagram. EXPLICITLY EXCLUDED: anything that's actually a floor plan / specific gate lookup / "where is X inside Terminal Y" — those are indoor_map hints. Also excluded: parking-related wayfinding ("how do I get to Garage A?" → parking hint), terminal mentions during dining/shopping conversations (the actual topic wins).
 
 - indoor_map: { "type": "indoor_map", "terminal"?: "A"|"B"|"C", "level"?: string, "gate"?: string, "flight"?: string, "category"?: string }
-  Use for FLOOR-PLAN / INSIDE-A-TERMINAL queries AND flight/gate lookups: "where is gate B22?", "find the nearest restroom", "where is my flight DL1455?", "when does Delta 2259 board?", "show me the Departures level". Renders a real MCO floor plan with pins, and when a flight or gate is set, ALSO shows a flight-prep panel above the map with live security wait + walking time + spare-time budget. Set "gate" when a specific gate is named (auto-picks the concourse floor). Set "flight" when the user mentions a flight number ("DL1455", "Delta 1455", "Southwest 581") — we look it up server-side to find the gate and departure time. Set "terminal" always when context permits. Set "level" to a Meridian label if mentioned ("L3" = Departures, "L2" = Arrivals/Bag Claim for A&B; "L2" Departures for C). Set "category" to filter pins (one of: restroom, restaurant, cafe, bar, shop, gate, atm, aed, water_fountain, nursing_station, pet_relief, lounge, kiosk, information). Prefer indoor_map over terminal_map for any "where is …" / "find a …" / flight-number query.
+  Use for FLOOR-PLAN / INSIDE-A-TERMINAL queries AND SINGLE flight/gate lookups: "where is gate B22?", "find the nearest restroom", "where is my flight DL1455?", "when does Delta 2259 board?", "show me the Departures level". Renders a real MCO floor plan with pins, and when a flight or gate is set, ALSO shows a flight-prep panel above the map with live security wait + walking time + spare-time budget. Set "gate" when a specific gate is named (auto-picks the concourse floor). Set "flight" when the user mentions a flight number ("DL1455", "Delta 1455", "Southwest 581"). Set "terminal" always when context permits. Set "level" to a Meridian label if mentioned. Set "category" to filter pins. **Do NOT use for plural lists** ("flights to LGA", "all Delta departures") — that's flight_list.
+
+- flight_list: { "type": "flight_list", "airline"?: string, "destination"?: string, "origin"?: string, "terminal"?: "A"|"B"|"C", "arrivals"?: boolean, "time_window"?: string }
+  Use for PLURAL flight lookups: "flights to LGA", "Delta departures tonight", "all flights to Atlanta today", "arrivals from JFK". Renders a clickable list on the right pane — the prose answer should be ONE LINE (e.g. "5 Delta flights to LGA today — pick one"), NEVER a markdown table. Set "airline" to an IATA code (DL, AA, WN, B6, UA, NK, F9, etc.). Set "destination" or "origin" to an IATA code (LGA, ATL, MCO, ORD, DTW, etc. — convert from city names yourself). Set "arrivals": true for arrivals, omit/false for departures. Set "time_window" to whatever the user said ("tonight", "this morning", "today", etc.) — server interprets.
 
 - parking: { "type": "parking", "highlight"?: string[] }
   Use when the user is asking about parking, garages, lots, cell-phone areas, OR how to get to / where to find / walk to a specific parking lot ("how do I get to Garage A?", "where is the valet?", "directions to North Park Place"). Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet. Set "highlight" to the specific lot(s) the user named so the card can call them out.
@@ -179,6 +193,8 @@ Examples:
 - User: "Show me Terminal C departures" → Assistant: "Terminal C's Departures level is Level 2…" → { "hint": { "type": "indoor_map", "terminal": "C", "level": "L2" }, "next_chips": ["Dining on this level?", "Where's security?"] }
 - User: "Where's my flight DL1455?" → Assistant: "Delta 1455 departs from Terminal B, gate 71. Boards in about 90 min." → { "hint": { "type": "indoor_map", "flight": "DL1455" }, "next_chips": ["How long is security?", "Coffee near my gate?", "Send to my phone"] }
 - User: "When does Southwest 581 board?" → Assistant gives flight + gate info → { "hint": { "type": "indoor_map", "flight": "WN581" }, "next_chips": ["What's the walk like?", "Restaurants on the way?"] }
+- User: "Flights to LGA tonight" → Assistant: "5 flights to LaGuardia this evening — pick one for details." → { "hint": { "type": "flight_list", "destination": "LGA", "time_window": "tonight" }, "next_chips": ["The earliest one?", "PreCheck wait?", "Send list to my phone"] }
+- User: "All Delta arrivals from Atlanta today" → Assistant: "3 Delta arrivals from ATL today — pick one for gate + baggage details." → { "hint": { "type": "flight_list", "airline": "DL", "origin": "ATL", "arrivals": true, "time_window": "today" }, "next_chips": ["Bag claim belt?", "Did mine land?"] }
 - User: "How do I get to Garage A?" → Assistant: "Garage A is directly connected to Terminals A and B — walk over on Level 3 (Departures)…" → { "hint": { "type": "parking", "highlight": ["garage_a"] }, "next_chips": ["What's the rate?", "Is there valet?", "Where is the entrance?"] }
 - User: "Where is the valet?" → Assistant describes the valet locations → { "hint": { "type": "parking", "highlight": ["valet"] }, "next_chips": ["What does it cost?", "Hours?"] }
 - User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
@@ -262,6 +278,17 @@ export function validateHint(raw: any): UiHint | null {
     if (typeof raw.gate === 'string' && raw.gate.length <= 12) h.gate = raw.gate
     if (typeof raw.flight === 'string' && raw.flight.length <= 24) h.flight = raw.flight
     if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
+    return h
+  }
+  if (t === 'flight_list') {
+    const allowed = ['A', 'B', 'C']
+    const h: FlightListHint = { type: 'flight_list' }
+    if (typeof raw.airline === 'string' && raw.airline.length <= 4) h.airline = raw.airline.toUpperCase()
+    if (typeof raw.destination === 'string' && raw.destination.length <= 4) h.destination = raw.destination.toUpperCase()
+    if (typeof raw.origin === 'string' && raw.origin.length <= 4) h.origin = raw.origin.toUpperCase()
+    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
+    if (typeof raw.arrivals === 'boolean') h.arrivals = raw.arrivals
+    if (typeof raw.time_window === 'string' && raw.time_window.length <= 32) h.time_window = raw.time_window
     return h
   }
   if (t === 'link_card') {

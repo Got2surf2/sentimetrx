@@ -14,6 +14,7 @@ import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
 import SecurityWaitCard from './components/SecurityWaitCard'
 import IndoorMapCard from './components/IndoorMapCard'
+import FlightListCard from './components/FlightListCard'
 import WelcomeCard from './components/WelcomeCard'
 import QRHandoffModal from './components/QRHandoffModal'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
@@ -113,6 +114,7 @@ function HintRenderer({ hint, mode, onTileClick }: { hint: UiHint; mode: Deploym
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
   if (hint.type === 'security_wait') return <SecurityWaitCard hint={hint} />
   if (hint.type === 'indoor_map') return <IndoorMapCard hint={hint} />
+  if (hint.type === 'flight_list') return <FlightListCard hint={hint} />
   if (hint.type === 'link_card') return <LinkCard hint={hint} mode={mode} />
   return null
 }
