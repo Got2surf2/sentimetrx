@@ -17,8 +17,9 @@ import 'server-only'
 // bots are unaffected.
 
 import { fetchFlights, findFlightByNumber, nextDepartureAtGate, parseFlightNumber, type Flight } from '@/lib/flights'
-import { fetchSecurityWaits } from '@/lib/securityWait'
+import { fetchSecurityWaits, type CheckpointWait } from '@/lib/securityWait'
 import { fetchParkingAvailability } from '@/lib/parking'
+import { walkLegsForGate, formatMinutes } from '@/lib/walkingTime'
 
 const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
@@ -222,6 +223,55 @@ function fmtTime(unix: number): string {
   return new Date(unix * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
+// Compute the joined prep math for one flight: which checkpoint to use,
+// pre/post-security walking time, current live wait per lane, the
+// recommended "head to security at" clock time, and the spare time the
+// user has to spend at MCO before they should go. Returns null when the
+// flight has no usable gate or we have no walking matrix entry.
+function computePrep(f: Flight, waits: CheckpointWait[]): {
+  gate: string; terminal: string; checkpoint: 'West' | 'East' | 'South';
+  walkPreMin: number; walkPostMin: number;
+  precheckMin: number | null; standardMin: number | null;
+  totalPrecheckMin: number; totalStandardMin: number;
+  bestLane: 'PreCheck' | 'Standard'; bestTotalMin: number;
+  headToSecurityAt: number;  // unix seconds
+  spareMin: number;          // minutes between now and "head to security"
+  departureUnix: number;
+} | null {
+  if (!f.gate) return null
+  const legs = walkLegsForGate(f.gate)
+  if (!legs) return null
+  const cp = legs.checkpoint
+  const cpName = cp + ' '
+  const pcRow = waits.find(w => (w.name || '').startsWith(cpName) && w.lane === 'precheck')
+  const stRow = waits.find(w => (w.name || '').startsWith(cpName) && w.lane !== 'precheck')
+  const pc = pcRow?.waitSeconds != null ? Math.round(pcRow.waitSeconds / 60) : null
+  const st = stRow?.waitSeconds != null ? Math.round(stRow.waitSeconds / 60) : null
+  const totalPc = legs.pre_security_min + (pc ?? 0) + legs.post_security_min
+  const totalSt = legs.pre_security_min + (st ?? 0) + legs.post_security_min
+  const pcOpen = pcRow?.isOpen && pc != null
+  const stOpen = stRow?.isOpen && st != null
+  // Pick the lane the user is "likely" to use: PreCheck when open, else Standard.
+  const bestLane: 'PreCheck' | 'Standard' = pcOpen ? 'PreCheck' : 'Standard'
+  const bestTotal = bestLane === 'PreCheck' ? totalPc : totalSt
+  const dep = f.bestKnownTimestamp || f.scheduledTimestamp
+  // Boarding starts ~30 min before scheduled departure for domestic.
+  const boardingUnix = dep - 30 * 60
+  // "Head to security" = boarding minus (sec wait + walk_post + 5 min slack).
+  // walk_pre isn't subtracted — that's the walk we're starting WHEN they head out.
+  const headToSecurityAt = boardingUnix - ((bestLane === 'PreCheck' ? (pc ?? 0) : (st ?? 0)) + legs.post_security_min + 5) * 60
+  const nowSec = Math.floor(Date.now() / 1000)
+  const spareMin = Math.max(0, Math.round((headToSecurityAt - nowSec) / 60))
+  return {
+    gate: f.gate, terminal: legs.terminal, checkpoint: cp,
+    walkPreMin: legs.pre_security_min, walkPostMin: legs.post_security_min,
+    precheckMin: pcOpen ? pc : null, standardMin: stOpen ? st : null,
+    totalPrecheckMin: totalPc, totalStandardMin: totalSt,
+    bestLane, bestTotalMin: bestTotal,
+    headToSecurityAt, spareMin, departureUnix: dep,
+  }
+}
+
 /**
  * Build a system-prompt block of LIVE MCO data relevant to the user's
  * message. Returns empty string when no live intent matches (the default
@@ -241,9 +291,12 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
 
   const sections: string[] = []
   // Fetch in parallel — each fail-soft.
+  // When the user asks about flights, ALSO fetch security wait — we need
+  // it to compute the joined "head to security at X" prep math. Cheap (cached).
+  const needsSecurity = intent.wantsSecurity || intent.wantsFlights
   const [flights, waits, parking] = await Promise.all([
     intent.wantsFlights ? fetchFlights().catch(() => []) : Promise.resolve([] as Flight[]),
-    intent.wantsSecurity ? fetchSecurityWaits().catch(() => []) : Promise.resolve([] as any[]),
+    needsSecurity ? fetchSecurityWaits().catch(() => []) : Promise.resolve([] as any[]),
     intent.wantsParking ? fetchParkingAvailability().catch(() => []) : Promise.resolve([] as any[]),
   ])
 
@@ -303,7 +356,7 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
     }
 
     if (matches.length === 0) {
-      sections.push('LIVE FLIGHT LOOKUP (next 4 h window): no matching flights found in the current GOAA feed.')
+      sections.push('LIVE FLIGHT LOOKUP: no matching flights found in the current GOAA feed for that window.')
     } else {
       const lines = matches.slice(0, 6).map(f => {
         const dir = f.arrival ? `from ${f.departureAirport || f.viaAirport || '?'}` : `to ${f.arrivalAirport || f.viaAirport || '?'}`
@@ -314,6 +367,31 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
         return `  - ${f.iataOperatingAirline}${f.operatingAirlineFlightNumber} ${dir} · ${term}, ${gate} · ${when} · ${status}`
       }).join('\n')
       sections.push(`LIVE FLIGHT LOOKUP (sourced from the GOAA feed at api.goaa.aero/flights, current as of right now):\n${lines}\n  ${matches.length > 6 ? '… and ' + (matches.length - 6) + ' more.' : ''}`)
+
+      // Joined PREP math — only for the top 3 matches (avoids overwhelming
+      // the model when the user asked something broad like "all DL flights").
+      // Each line includes the EXACT checkpoint mapping for this gate so
+      // the bot can't mix up West/East/South.
+      if (waits.length > 0) {
+        const prepLines = matches.slice(0, 3).map(f => {
+          const p = computePrep(f, waits as CheckpointWait[])
+          if (!p) return null
+          const fnNum = `${f.iataOperatingAirline}${f.operatingAirlineFlightNumber}`
+          const headBy = fmtTime(p.headToSecurityAt)
+          const dep = fmtTime(p.departureUnix)
+          // Explicit checkpoint mapping baked into each prep line so the model
+          // doesn't guess wrong. Gate → Concourse → Checkpoint relationship is:
+          //  gates 1-29 / 30-59 → Concourse A1/A3 → WEST checkpoint
+          //  gates 70-99 / 100-129 → Concourse A4/A2 → EAST checkpoint
+          //  gates C230+ → Terminal C → SOUTH checkpoint
+          const pcStr = p.precheckMin != null ? `PreCheck ${p.precheckMin}min` : 'PreCheck closed'
+          const stStr = p.standardMin != null ? `Standard ${p.standardMin}min` : 'Standard closed'
+          return `  - ${fnNum} (gate ${p.gate}, dep ${dep}): use the **${p.checkpoint} CHECKPOINT** (it serves Terminal ${p.terminal} / gate ${p.gate}). ${pcStr} · ${stStr}. Walk: ${p.walkPreMin} min to checkpoint + ${p.walkPostMin} min to gate. Head to security around **${headBy}** (best lane: ${p.bestLane}). User has ~${formatMinutes(p.spareMin)} of spare time before then.`
+        }).filter(Boolean).join('\n')
+        if (prepLines) {
+          sections.push(`FLIGHT PREP RECOMMENDATIONS (joined flight + live security wait + walking times):\n${prepLines}`)
+        }
+      }
     }
   }
 
@@ -353,5 +431,7 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
     `2. DO NOT say "I don't have live data" or "check flymco.com" — you DO have it, it's right here.\n` +
     `3. If the LIVE block shows zero matches, say so directly ("I see no Delta flights to LGA tonight in the live feed").\n` +
     `4. The static KB and guardrails about "never invent live status" exist for turns WITHOUT this block — they do NOT apply when this block is present.\n` +
-    `5. The kiosk also renders these on the right pane (parking/security/flight cards). Your prose should match what the cards show.`
+    `5. The kiosk also renders these on the right pane (parking/security/flight cards). Your prose should match what the cards show.\n` +
+    `6. CHECKPOINT MAPPING — when discussing security for a specific flight, READ THE CHECKPOINT FROM THE FLIGHT PREP RECOMMENDATIONS SECTION ABOVE. Never guess from your own knowledge. Mapping is: gates 1-29 + 30-59 (Terminal A) → WEST checkpoint; gates 70-99 + 100-129 (Terminal B) → EAST checkpoint; gates C230+ (Terminal C) → SOUTH checkpoint. If you see a FLIGHT PREP line that says "use the EAST CHECKPOINT", say East — do not say West.\n` +
+    `7. PROACTIVE RECOMMENDATIONS — when the FLIGHT PREP section shows spare time > 30 min before the user needs to head to security, ALWAYS end your reply by offering activity recs: "You've got about 4h 23min before you should head to security — want recs for restaurants, shops, or a quiet place to wait?" Phrase as a question they can answer with one chip. This is the killer kiosk feature; surface it whenever spare time allows.`
 }
