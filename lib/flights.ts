@@ -103,15 +103,17 @@ export async function fetchFlights(): Promise<Flight[]> {
 // ── Lookup helpers ─────────────────────────────────────────────────────────
 
 /**
- * Normalize a flight number string (DL1455, "DL 1455", "Delta 1455", etc.)
- * to { airline, number } for matching against the GOAA flight list. Returns
- * null if we can't parse one.
+ * Normalize a flight number string (DL1455, "DL 1455", "Delta 1455",
+ * "B6 1098", "F92432", etc.) to { airline, number } for matching against
+ * the GOAA flight list. IATA airline codes are exactly 2 chars: first
+ * must be a letter, second can be letter or digit (B6, F9, G4, DL, AA,
+ * etc.). Returns null if we can't parse one.
  */
 export function parseFlightNumber(raw: string): { airline: string; number: string } | null {
   if (!raw) return null
   const s = raw.toUpperCase().trim()
-  // IATA prefix "XX1234" / "XX 1234" / "XX-1234"
-  const m = s.match(/\b([A-Z0-9]{2,3})[\s\-]?(\d{1,4}[A-Z]?)\b/)
+  // IATA airline code (2 chars: letter + alnum) + optional space/dash + 1-4 digits.
+  const m = s.match(/\b([A-Z][A-Z0-9])[\s\-]?(\d{1,4}[A-Z]?)\b/)
   if (!m) return null
   return { airline: m[1], number: m[2] }
 }

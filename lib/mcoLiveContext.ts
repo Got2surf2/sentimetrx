@@ -131,15 +131,15 @@ function scanText(text: string, intoUserIntent: boolean, out: DetectedIntent) {
     }
   }
 
-  // Flight number pattern — strict, must look like an IATA code + digits.
-  // Runs on BOTH user + assistant text so "DL1511" in the bot's reply gets
-  // captured for the next turn.
-  const fnRe = /\b([A-Z]{2})\s?(\d{2,4}[A-Z]?)\b/g
+  // Flight number pattern — first char must be letter, second can be letter
+  // OR digit (so JetBlue "B6", Frontier "F9", Allegiant "G4" all match — the
+  // old `[A-Z]{2}` regex silently dropped them).
+  const fnRe = /\b([A-Z][A-Z0-9])\s?(\d{2,4}[A-Z]?)\b/g
   let fnMatch: RegExpExecArray | null
   while ((fnMatch = fnRe.exec(text)) !== null) {
     const fn = fnMatch[1] + fnMatch[2]
     // Filter — only keep if the airline code is a known airline (avoids false
-    // matches on random capital pairs like "TSA 901" or "FL 32827")
+    // matches like "FL 32827" zip codes).
     if (Object.values(AIRLINE_KEYWORDS).includes(fnMatch[1])) {
       if (intoUserIntent && !out.flightNumber) out.flightNumber = fn
       if (!out.carryFlightNumbers.includes(fn)) out.carryFlightNumbers.push(fn)
@@ -364,7 +364,7 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
         const gate = f.gate ? `gate ${f.gate}` : 'no gate yet'
         const term = f.terminal ? `Terminal ${f.terminal}` : 'no terminal yet'
         const status = f.status + (f.isDelayed ? ' (DELAYED)' : '')
-        return `  - ${f.iataOperatingAirline}${f.operatingAirlineFlightNumber} ${dir} · ${term}, ${gate} · ${when} · ${status}`
+        return `  - ${f.operatingAirlineFlightNumber} ${dir} · ${term}, ${gate} · ${when} · ${status}`
       }).join('\n')
       sections.push(`LIVE FLIGHT LOOKUP (sourced from the GOAA feed at api.goaa.aero/flights, current as of right now):\n${lines}\n  ${matches.length > 6 ? '… and ' + (matches.length - 6) + ' more.' : ''}`)
 
@@ -376,7 +376,7 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
         const prepLines = matches.slice(0, 3).map(f => {
           const p = computePrep(f, waits as CheckpointWait[])
           if (!p) return null
-          const fnNum = `${f.iataOperatingAirline}${f.operatingAirlineFlightNumber}`
+          const fnNum = `${f.operatingAirlineFlightNumber}`
           const headBy = fmtTime(p.headToSecurityAt)
           const dep = fmtTime(p.departureUnix)
           // Explicit checkpoint mapping baked into each prep line so the model
