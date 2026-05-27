@@ -141,6 +141,37 @@ const cases: Case[] = [
       { axis: 'ambiance',   sub: 'noise',  polarity: 'neg' },
       { axis: 'attribute',  sub: 'flavor', polarity: 'pos' },
     ],
+    mustNot: [
+      // The word "food" alone must NOT trigger product:steak — steakhouse context
+      // is background knowledge, not textual evidence.
+      { axis: 'product', sub: 'steak' },
+    ],
+  },
+  {
+    name: '★1 "food was HORRIBLE" — no dish named, must NOT infer steak',
+    rating: 1,
+    text: `The food was HORRIBLE! It tasted like frozen food.`,
+    must: [
+      { axis: 'attribute', sub: 'flavor', polarity: 'neg' },
+    ],
+    mustNot: [
+      { axis: 'product', sub: 'steak' },
+      { axis: 'product', sub: 'beef' },
+      { axis: 'product', sub: 'seafood' },
+    ],
+  },
+  {
+    name: '★1 "Food was good" but service was bad — no dish named',
+    rating: 1,
+    text: `Food was good. But I had the worst service ever at such a fancy restaurant. My family was so disappointed.`,
+    must: [
+      { axis: 'attribute',  sub: 'flavor', polarity: 'pos' },
+      { axis: 'touchpoint', sub: 'server', polarity: 'neg' },
+    ],
+    mustNot: [
+      { axis: 'product', sub: 'steak' },
+      { axis: 'product', sub: 'beef' },
+    ],
   },
 ]
 

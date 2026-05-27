@@ -420,3 +420,19 @@ Fixes:
 - Re-ran classify --force --limit 10 — Scottsdale row now carries 11 assertions with evidence (attribute:speed, product:soup, attribute:flavor, beverage:wine, ambiance:appearance, ambiance:clean alert, attribute:pests alert, context:birthday, outcome:not-recommend, outcome:return, outcome:expensive).
 
 Open vocab observation worth noting before Day 1 of a real pilot: the model tagged "hair in my water glass" as `attribute:pests` (because pests is the closest closed-vocab sub for "foreign object in food/drink"). A reasonable extension would be a dedicated `attribute:foreign-object` sub, or instructions to route this to `attribute:food safety` (alert) instead.
+
+---
+
+## 2026-05-27 (later still still) — Prompt v4: ban dish inference from steakhouse context
+
+User opened rows 6 (Honolulu: "Food was good. But I had the worst service…") and 8 (Coral Gables: "The food was HORRIBLE! It tasted like frozen food.") and caught Sentimetrx chips firing `product:steak` despite neither review naming any dish. The model was inferring steak from "Ruth's Chris is a steakhouse" — background-knowledge hallucination. Model's own confidence on those calls was 70% (vs. 90+% on grounded calls) — a real signal we could surface in the UI but mostly should be addressed at the prompt layer.
+
+Fix in `lib/taxonomyExtractor.ts` system prompt — new rule 2a explicitly bans product:<sub> inference when the review uses only the word "food"/"meal"/"dinner" without naming a dish or category. Explicit "do NOT use steakhouse context to infer product:steak" line. PROMPT_VERSION → v4.
+
+Two new regression cases added to `scripts/pilot-rc-regression.ts`:
+- `★1 "food was HORRIBLE"` — must emit attribute:flavor (neg), must NOT emit any product axis tag.
+- `★1 "Food was good" but service was bad` — must emit attribute:flavor (pos) + touchpoint:server (neg), must NOT emit product:steak / product:beef.
+
+`mustNot: [product:steak]` also added to the existing "30 min late + food good" case.
+
+Regression now **7/7 pass at v4**. Re-classified all 10 pilot rows with --force; spot-check confirms row 6 dropped product:steak (now 4 chips: flavor+, server−, attentive−, not-recommend−) and row 8 dropped product:steak (now 1 chip: flavor−).

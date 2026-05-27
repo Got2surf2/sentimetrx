@@ -32,7 +32,7 @@ export interface TaxonomyUsageContext {
   event_type: string
 }
 
-export const PROMPT_VERSION = '2026-05-27.v3'
+export const PROMPT_VERSION = '2026-05-27.v4'
 
 export interface ExtractorInput {
   review_text: string
@@ -95,6 +95,13 @@ SEVERITY: cross-cutting flag on any assertion:
 CRITICAL RULES:
 1. Emit only sub-bucket values from the closed lists above. Do NOT invent new sub-buckets.
 2. Capture mixed polarity: if the food tasted great but the service was slow, emit BOTH attribute:flavor (pos) AND attribute:speed (neg). "The food was good" → attribute:flavor (pos); only add product:<sub> when the review names a specific dish.
+2a. STRICT RULE on the product axis: DO NOT emit product:<sub> unless the review TEXTUALLY names that food category or a specific dish in it.
+    - "The food was great" → NO product tag (just attribute:flavor pos). The word "food" alone is not a product.
+    - "Meal was bad" / "dinner was disappointing" → NO product tag.
+    - DO NOT use the fact that this is a steakhouse to infer product:steak. If the customer didn't write "steak" / "ribeye" / "filet" / "prime rib" / etc., do NOT emit product:steak. This is a hallucination from background knowledge — forbidden.
+    - "I ordered the steak" → product:steak. "Best ribeye I've had" → product:steak (item:ribeye).
+    - "The lobster bisque was terrible" → product:soup (lobster bisque is a soup).
+    - When in doubt, emit attribute:flavor on its own — that captures food sentiment without claiming what was ordered.
 3. Touchpoint pairing rules:
    - "Seated late" / "wait for table" / "hostess" / "no one greeted us" → touchpoint:host  +  attribute:speed (neg).
    - "Slow to bring drinks" / "had to flag down" / "server forgot" → touchpoint:server + attribute:speed or attribute:attentive (neg).
