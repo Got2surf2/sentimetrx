@@ -36,14 +36,27 @@ interface ApiResponse {
   rows: RowVM[]
 }
 
-const AXIS_COLOR: Record<string, string> = {
-  touchpoint: 'bg-indigo-100 text-indigo-900 border-indigo-200',
-  attribute:  'bg-blue-100 text-blue-900 border-blue-200',
-  product:    'bg-emerald-100 text-emerald-900 border-emerald-200',
-  beverage:   'bg-amber-100 text-amber-900 border-amber-200',
-  ambiance:   'bg-violet-100 text-violet-900 border-violet-200',
-  context:    'bg-slate-100 text-slate-900 border-slate-200',
-  outcome:    'bg-rose-100 text-rose-900 border-rose-200',
+// Filled (solid bg) variants — used for keyword tier and 'both' tier.
+const AXIS_COLOR_FILLED: Record<string, string> = {
+  touchpoint: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+  attribute:  'bg-blue-100 text-blue-900 border-blue-300',
+  product:    'bg-emerald-100 text-emerald-900 border-emerald-300',
+  beverage:   'bg-amber-100 text-amber-900 border-amber-300',
+  ambiance:   'bg-violet-100 text-violet-900 border-violet-300',
+  context:    'bg-slate-100 text-slate-900 border-slate-300',
+  outcome:    'bg-rose-100 text-rose-900 border-rose-300',
+}
+
+// Outlined (white bg) variants — used for AI-tier-only chips so they pop
+// distinctly from the filled keyword/both chips.
+const AXIS_COLOR_OUTLINED: Record<string, string> = {
+  touchpoint: 'bg-white text-indigo-800 border-indigo-400',
+  attribute:  'bg-white text-blue-800 border-blue-400',
+  product:    'bg-white text-emerald-800 border-emerald-400',
+  beverage:   'bg-white text-amber-800 border-amber-400',
+  ambiance:   'bg-white text-violet-800 border-violet-400',
+  context:    'bg-white text-slate-700 border-slate-400',
+  outcome:    'bg-white text-rose-800 border-rose-400',
 }
 
 const POL_COLOR: Record<string, string> = {
@@ -58,20 +71,19 @@ const SEV_BADGE: Record<string, string> = {
   normal: '',
 }
 
-// Per-source visual cue:
-//   keyword (Tier 1)  → solid border (default)
-//   llm (Tier 2)      → dashed border + tiny "ai" superscript
-//   both              → solid border + ✓ tick to show cross-tier confirmation
-const SOURCE_STYLE: Record<string, string> = {
-  keyword: 'border-solid',
-  llm:     'border-dashed',
-  both:    'border-solid ring-1 ring-inset ring-emerald-400/40',
+// Per-source visual encoding:
+//   keyword (Tier 1) — filled bg, solid border          (default look)
+//   both             — filled bg + emerald ring + ✓     (highest confidence)
+//   llm (Tier 2)     — WHITE bg + colored border + 'AI' badge (clearly distinct)
+function chipClasses(axis: string, source: 'keyword' | 'llm' | 'both'): string {
+  const palette = source === 'llm' ? AXIS_COLOR_OUTLINED : AXIS_COLOR_FILLED
+  const colors = palette[axis] || (source === 'llm'
+    ? 'bg-white text-slate-700 border-slate-400'
+    : 'bg-slate-100 text-slate-800 border-slate-300')
+  const ring = source === 'both' ? 'ring-1 ring-inset ring-emerald-400/50' : ''
+  return `${colors} ${ring}`
 }
-const SOURCE_BADGE: Record<string, string> = {
-  keyword: '',
-  llm:     'ⁱ',
-  both:    '✓',
-}
+
 const SOURCE_LABEL: Record<string, string> = {
   keyword: 'keyword tier',
   llm:     'AI tier',
@@ -150,9 +162,18 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
         </div>
         <div className="mt-2 text-[11px] text-slate-500 flex gap-3 flex-wrap items-center">
           <span className="font-semibold">Chip legend:</span>
-          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-solid border-slate-400 bg-slate-100">solid</span> = keyword tier</span>
-          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-dashed border-slate-400 bg-slate-100">dashed<span className="ml-1 opacity-60">ⁱ</span></span> = AI tier only</span>
-          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded border border-solid border-slate-400 bg-slate-100 ring-1 ring-inset ring-emerald-400/40">solid + ring<span className="ml-1 opacity-60">✓</span></span> = both tiers confirm</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="px-1.5 py-0.5 rounded border border-solid border-blue-300 bg-blue-100 text-blue-900">a:flavor +</span>
+            = keyword tier
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="px-1.5 py-0.5 rounded border border-solid border-blue-400 bg-white text-blue-800">a:flavor + <span className="text-[9px] font-bold opacity-70 tracking-wide ml-0.5">AI</span></span>
+            = AI tier only
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="px-1.5 py-0.5 rounded border border-solid border-blue-300 bg-blue-100 text-blue-900 ring-1 ring-inset ring-emerald-400/50">a:flavor + <span className="text-[10px] text-emerald-700 ml-0.5">✓</span></span>
+            = both tiers confirm
+          </span>
         </div>
       </div>
 
@@ -239,16 +260,19 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
                         return (
                           <span
                             key={i}
-                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help transition-shadow ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'} ${SOURCE_STYLE[source]} ${hover?.rowId === row.row_id && hover?.evidence === a.evidence ? 'ring-2 ring-amber-300' : ''}`}
+                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help transition-shadow ${chipClasses(a.axis, source)} ${hover?.rowId === row.row_id && hover?.evidence === a.evidence ? 'ring-2 ring-amber-300' : ''}`}
                             title={tipLines.join('\n')}
                             onMouseEnter={() => { if (a.evidence) setHover({ rowId: row.row_id, evidence: a.evidence }) }}
                             onMouseLeave={() => setHover(prev => (prev?.rowId === row.row_id && prev?.evidence === a.evidence ? null : prev))}
                           >
                             <span className="font-mono opacity-70">{a.axis[0]}</span>{':'}<strong>{a.sub}</strong>
-                            {a.item && <span className="text-slate-600">·{a.item}</span>}
+                            {a.item && <span className="opacity-70">·{a.item}</span>}
                             <span className={`ml-1 ${POL_COLOR[a.polarity] || ''}`}>{a.polarity === 'pos' ? '+' : a.polarity === 'neg' ? '−' : '·'}</span>
-                            {SOURCE_BADGE[source] && (
-                              <span className="ml-1 text-[9px] opacity-60">{SOURCE_BADGE[source]}</span>
+                            {source === 'llm' && (
+                              <span className="ml-1 text-[9px] font-bold opacity-70 tracking-wide">AI</span>
+                            )}
+                            {source === 'both' && (
+                              <span className="ml-1 text-[10px] text-emerald-700">✓</span>
                             )}
                             {a.severity !== 'normal' && (
                               <span className={`ml-1 text-[9px] px-1 rounded ${SEV_BADGE[a.severity] || ''}`}>{a.severity}</span>

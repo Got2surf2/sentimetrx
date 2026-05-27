@@ -481,3 +481,24 @@ Easy fix: truncation governed by the Show more button only. Highlight still work
 - 30-min-late review: keyword catches 2 chips (noise, return); AI catches 5 (adds host, speed, flavor). "Keyword caught 2, AI added 4, hybrid = 6" — that's the slide.
 
 **Verified**: 7/7 regression PASS at v4 across all three tiers. 10 pilot rows re-classified in hybrid mode. DB confirms a mix of `keyword`, `llm`, and `both` sources across the rows. Clean tsc.
+
+---
+
+## 2026-05-27 (later×7) — Viewer: chip provenance now actually visible
+
+**Why**: User screenshot showed dashed borders against pastel chip fills were nearly invisible at normal viewing size — the AI-only vs keyword vs both distinction wasn't doing its job in the demo.
+
+**What changed** (app/admin/taxonomy-pilot/[datasetId]/TaxonomyPilotClient.tsx):
+- AI-only chips now use **inverted fill** — white background + colored border + bold "AI" text badge. Pops distinctly from the filled keyword/both chips.
+- Keyword-only chips keep the original filled colored look (the default).
+- Both-tier chips keep filled bg + emerald ring + green ✓ badge.
+- Border weights bumped from `border-X-200` → `border-X-300` (filled) / `border-X-400` (outlined) so edges read clearly even at small sizes.
+- Tiny `ⁱ` superscript dropped in favor of an explicit "AI" letter pair — readable at all zoom levels.
+- Chip legend updated with sample chips showing the actual three styles so first-time viewers learn the encoding instantly.
+
+Three styles are now visually distinct at a glance:
+- Filled colored chip = catches the obvious (keyword tier)
+- White chip with colored border + "AI" = AI-only call (Tier 2's unique value-add)
+- Filled chip + emerald ring + ✓ = both tiers agree (highest confidence)
+
+That maps directly to the pitch slide: "filled = baseline, white = AI upgrade, ringed = highest-confidence subset".
