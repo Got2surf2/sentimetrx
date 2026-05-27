@@ -2219,3 +2219,12 @@ Typecheck clean. 319/319 tests pass.
 - `docs/MCO_AGENT.md` § 4 — `shops` row added to the hint table; `restaurants` row unchanged.
 
 Typecheck clean. 319/319 tests still pass.
+
+## 2026-05-26 (later still) — Extractor: "How do I get to Garage A?" was emitting terminal_map
+
+**Why**: Demo showed "How do I get to Garage A?" causing the right pane to render a Terminal C → A APM map instead of a parking card highlighting Garage A. Parking-related wayfinding was tripping the `terminal_map` rule because the user said "how do I get to". The `parking` rule covered the topic but didn't claim wayfinding phrasings explicitly.
+
+**What changed**:
+- `lib/uiHints.ts` — `terminal_map` rule now EXPLICITLY EXCLUDES parking-related wayfinding ("how do I get to Garage X?", "where is the valet?", "directions to North Park Place"). `parking` rule explicitly INCLUDES those phrasings and instructs the model to set `highlight` to the named lot. Added two counter-examples in the prompt: "How do I get to Garage A?" → `parking` with `highlight: ["garage_a"]`; "Where is the valet?" → `parking` with `highlight: ["valet"]`.
+
+Typecheck clean.
