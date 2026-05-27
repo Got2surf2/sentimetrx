@@ -302,6 +302,13 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Run history logged to `entity_catalog_refresh` (before/after counts, sample size, schema-field selection)
 - See `docs/ANALYTICS.md § Entity Discovery & Catalog`
 
+### Per-Row Taxonomy (admin pilot)
+- 7-axis ABSA classifier (touchpoint, attribute, product, beverage, ambiance, context, outcome) with severity flag {normal, alert, crisis}
+- Closed-vocab structured-output prompt via Claude Haiku; per-row assertions stored in `dataset_row_taxonomy`
+- Admin-only side-by-side viewer at `/admin/taxonomy-pilot/[datasetId]` — verbatim · legacy tags · structured assertions
+- Driving use case: Ruth's Chris Steak House CX-tagging-replacement pilot (2026-05-27)
+- See `docs/DATA_SOURCES.md § 14 Per-Row Taxonomy`
+
 ### Full-Text Search (TextMine SearchPanel)
 - Two modes: plain `tsvector` full-text or AI-augmented synonym expansion + Claude re-rank
 - GIN index on `dataset_rows_flat.tsv` (migration `031_dataset_search.sql`); `search_dataset_rows()` RPC

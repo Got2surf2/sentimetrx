@@ -366,3 +366,26 @@ User caught the previous overlay using "total user turns tagged with topic_id" f
 `getTownHallAsLegacy` uses `Math.max(persisted, live)` for both so the cron aggregator's own writes are honored if they're ever higher than the live count.
 
 For the current NOWOCATS sim (5 personas, 6 turns each, each topic covered once per persona at most) `responses == mentions` since no one returned to a topic. The two diverge only on real-world conversations where someone goes deep on one topic — which is exactly when the distinction matters.
+
+---
+
+## 2026-05-27 — Ruth's Chris taxonomy pilot — full infra shipped
+
+**WHY**: Sales pitch to Ruth's Chris (43,196 Google reviews / 15 months) replacing their current CX-tagging vendor. Three decks already delivered to the prospect ($15K fixed-fee 2-week pilot proposal + 18-slide working session + 8-slide exec). This session built the Phase-1 pilot infrastructure end-to-end so we can ingest the CSV, run the classifier, and demo the side-by-side viewer.
+
+**WHAT**:
+- `sql/088_dataset_row_taxonomy.sql` — new `dataset_row_taxonomy` table keyed by `(dataset_id, dataset_rows_flat.id)`. Per-row arrays for each of the 7 axes (touchpoint, attribute, product, beverage, ambiance, context, outcome) + `alert_tags` (severity:alert/crisis subset) + full structured `assertions` jsonb + `raw_legacy_tags`. RLS enabled with org-scoped SELECT; GIN indexes on every axis array. **Applied to prod.**
+- `lib/taxonomyVocabulary.ts` — closed vocab for all 7 axes, product items (filet/ribeye/etc.), severity `{normal, alert, crisis}`, polarity `{pos, neg, neu}`. Per-axis `isValidAxisSub()` validator + `isAlertSeverity` helper.
+- `lib/taxonomyMapping.ts` — canonicalizes legacy labels (`Menu - Salads ≡ menu - salads`), routes `Service-X / SERV-X / Staff-X` parallels to `(touchpoint, attribute)` tuples, projects `Alert - X` to `severity:alert`, quarantines TEST / Brand Alert / campaign tags / `LH/OG/CSK Menu-*` competitor prefixes.
+- `lib/taxonomyExtractor.ts` — closed-vocab structured-output prompt (v2 has rule-level guidance on host-vs-server pairing for seating-timing complaints + flavor-as-attribute). `classifyReview()` uses `callAI` (`fast` tier = Haiku); `parseExtractorOutput()` is the pure parser/validator so scripts can bypass the `'server-only'` chain.
+- `scripts/pilot-rc-ingest.ts` — inline RFC4180 parser, idempotent on dataset name, creates dataset under Datanautix admin org with `legacy_classification` preserved on each row + parsed `legacy_tags` array.
+- `scripts/pilot-rc-classify.ts` — concurrent classifier driver (default `--limit 50 --concurrency 4`), idempotent upsert on `(dataset_id, row_id)`, attaches usage context for cost tracking.
+- `scripts/pilot-rc-regression.ts` — 5-anchor regression test (Raymond / day-old potato / food-poisoning + Olive Garden / gnats + Burger King / 30-min-late mixed-polarity). **5/5 PASS at prompt v2.**
+- `/admin/taxonomy-pilot/[datasetId]` — side-by-side viewer (server-component wrapper + client paginator). Axis-colored chips, alert/crisis badges, expand-to-full-text, classification provenance footer. Wrapped with admin-org redirect.
+- `/api/admin/taxonomy-pilot/[datasetId]` — paged read (page/pageSize), joins `dataset_rows_flat` with `dataset_row_taxonomy`, counts classified + alerts. Wrapped with `requireAdmin`.
+
+**Smoke results**: 50-row ingest + 10-row classify ran end-to-end against prod in ~10s. Dataset `a82faef9-b251-42ff-9f44-49098790ad2b` is the pilot dataset for the admin viewer.
+
+**Spec sync**: SPEC.md § Database Tables (new `dataset_row_taxonomy` row) + § Reviews Integration (taxonomy pilot block), FEATURES.md § Analyze (new Per-Row Taxonomy subsection), DATA_SOURCES.md § 14 (full per-row taxonomy spec including the production-scope notes).
+
+**Out of scope for this session** (deferred to Week 1 of pilot execution if/when sold): 300-review human-gold annotator workflow, full 43K classify run (~$240 at current Haiku pricing), TextMine filter-by-axis-sub UI, production analyze-route trigger to replace the script driver.

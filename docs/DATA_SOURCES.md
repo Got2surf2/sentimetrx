@@ -580,3 +580,60 @@ A single Google Reviews source for a multi-location brand can produce 50K+ revie
 8. Wire feature flags into `organizations.features`: `reddit`, `googleReviews`, `substack` (Regulations is gated by `analyze`).
 9. Add row-shape definitions to `lib/datasetUtils.ts` (`buildRedditSchema`, `buildGoogleReviewsSchema`, etc.) so the analytics layer renders the right fields.
 10. Test each end-to-end: small subreddit → small docket → small Substack post → small brand on Google Reviews. Verify rows appear in `dataset_rows_flat` and analytics + Charts + TextMine load.
+
+---
+
+## 14. Per-Row Taxonomy (admin pilot — Ruth's Chris 2026-05-27)
+
+Closed-vocab 7-axis ABSA layered over `dataset_rows_flat`. Separate table — does **not** add columns to the flat row table.
+
+### Table — `sql/088_dataset_row_taxonomy.sql`
+
+```sql
+dataset_row_taxonomy (
+  id uuid PK,
+  org_id uuid NOT NULL,
+  dataset_id uuid NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  row_id bigint NOT NULL,   -- references dataset_rows_flat.id
+  axis_touchpoint text[]    -- subset of {server, manager, host, bartender, ...}
+  axis_attribute  text[]    -- {flavor, speed, attentive, clean, ..., food safety, pests, rude}
+  axis_product    text[]    -- {steak, sides, apps, desserts, salads, ...}
+  axis_beverage   text[]    -- {wine, cocktail, beer, nab, ...}
+  axis_ambiance   text[]    -- {noise, light, music, decor, ...}
+  axis_context    text[]    -- daypart ∪ holiday ∪ channel ∪ {weekend, prime-hour, sporting-event}
+  axis_outcome    text[]    -- IOR + value + improvement
+  alert_tags      text[]    -- subset of any axis sub at severity ∈ {alert, crisis}
+  assertions      jsonb     -- [{axis, sub, item?, polarity, confidence, severity}]
+  raw_legacy_tags text[]    -- canonicalized prospect Classification column for audit
+  classified_by, model_used, prompt_version  -- provenance
+  UNIQUE (dataset_id, row_id)
+)
+```
+
+RLS: enabled, `dataset_row_taxonomy_org_read` SELECT policy scoped to the caller's `users.org_id`. No write policies — service-role only.
+
+GIN indexes on each `axis_*` array + `alert_tags`.
+
+### Closed vocab
+
+- `lib/taxonomyVocabulary.ts` — 7 axes, sub-buckets, product items (filet/ribeye/etc.), severity `{normal, alert, crisis}`, polarity `{pos, neg, neu}`. `isValidAxisSub(axis, sub)` drops out-of-vocab emissions from the LLM.
+- `lib/taxonomyMapping.ts` — projects raw legacy labels to assertions or quarantine buckets (`campaign_tags`, `system_tags`, `competitor_menu`, `_unmapped`). Canonicalizes case duplicates (`Menu - Salads` ≡ `menu - salads`) and `Service-X / SERV-X / Staff-X` parallel parents to `(touchpoint, attribute)` tuples.
+
+### LLM extraction — `lib/taxonomyExtractor.ts`
+
+- `buildSystemPrompt()` emits a closed-vocab structured-output prompt (current `PROMPT_VERSION = '2026-05-27.v2'`).
+- `classifyReview()` calls Haiku via `callAI` (dynamic-imported so the prompt helpers are usable outside Next.js). Output passes through `parseExtractorOutput()` which drops out-of-vocab subs and projects into per-axis arrays + `alert_tags`.
+- 5-anchor regression in `scripts/pilot-rc-regression.ts` (Raymond / day-old potato / food-poisoning + Olive Garden / gnats + Burger King / 30-min-late mixed-polarity) — green at v2.
+
+### Pipeline
+
+- `scripts/pilot-rc-ingest.ts` — RFC4180 parser → `dataset_rows_flat` under Datanautix admin org, preserves prospect's `Classification` column as `legacy_classification` + parsed `legacy_tags` array on each row.
+- `scripts/pilot-rc-classify.ts` — concurrent driver (default `--limit 50 --concurrency 4`), idempotent on `(dataset_id, row_id)`.
+- `/admin/taxonomy-pilot/[datasetId]` — side-by-side viewer (admin-only). API route at `/api/admin/taxonomy-pilot/[datasetId]` returns paged rows + their taxonomy.
+
+### Production scope
+
+Pilot-only. If the prospect signs, productionizing means:
+- Replace the script driver with an analyze-route trigger (or a per-dataset "classify" button) so this works for any Google Reviews dataset, not just the pilot.
+- Lift the closed vocab into a per-dataset / per-vertical config (the Ruth's Chris vocab is steakhouse-specific).
+- Add filter-by-axis-sub queries to the TextMine UI so the GIN indexes earn their keep.

@@ -89,6 +89,7 @@ Browser ─── Next.js (Vercel Fluid) ─── Supabase (PostgreSQL + Auth +
 | `dataset_rows_flat` | Individual rows as JSON documents (dataset_id, row_index, data JSONB). Source of truth — every read and write goes here. GIN-indexed `tsv` column for full-text search. |
 | `dataset_state` | Computation state (status, theme_model JSON, analytics JSON) |
 | `archived_dataset_rows_flat` | Archive snapshot of `dataset_rows_flat` for retention / deletion safety |
+| `dataset_row_taxonomy` | Per-row 7-axis ABSA taxonomy (Ruth's Chris pilot 2026-05-27). One row per `(dataset_id, row_id)` with `axis_touchpoint`, `axis_attribute`, `axis_product`, `axis_beverage`, `axis_ambiance`, `axis_context`, `axis_outcome` text[] arrays + `alert_tags` (severity:alert/crisis subset) + full structured `assertions` jsonb + `raw_legacy_tags`. Closed vocabulary in `lib/taxonomyVocabulary.ts`. RLS org-scoped + GIN indexes on each axis. |
 
 ### Reviews / Locations (Google + Tripadvisor)
 | Table | Purpose |
@@ -284,6 +285,15 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 - Per-location status dots: green (synced), amber pulsing (pending), red (error), grey (unsynced)
 - Retry Failed button clears errors for re-submission
 - Auto-sync polling every 10s during download
+
+**Taxonomy pilot (admin-only, Ruth's Chris 2026-05-27)** — closed-vocab 7-axis ABSA replacement for vendor CX tagging.
+- Storage: `dataset_row_taxonomy` (see § Database Tables). One row per `(dataset_id, dataset_rows_flat.id)`.
+- Vocabulary: `lib/taxonomyVocabulary.ts` (axes + sub-buckets + product items + severity {normal|alert|crisis}).
+- Legacy projection: `lib/taxonomyMapping.ts` canonicalizes case-duplicate labels, routes `Service-X/SERV-X/Staff-X` parallels to `(touchpoint, attribute)` tuples, quarantines TEST (~21% of source rows), `Brand Alert`, campaign tags, and competitor `LH/OG/CSK Menu-*` prefixes.
+- LLM extractor: `lib/taxonomyExtractor.ts` wraps `callAI` (`fast` tier = Haiku) with a closed-vocab structured-output prompt. Output validation drops out-of-vocab subs into `unmapped_subs` for monthly triage. `parseExtractorOutput()` exported for script use without the `'server-only'` chain.
+- Pipeline: `scripts/pilot-rc-ingest.ts` (CSV → dataset under admin org), `scripts/pilot-rc-classify.ts` (concurrent classifier driver), `scripts/pilot-rc-regression.ts` (5-anchor regression — must pass before declaring the pilot green).
+- Viewer: `/admin/taxonomy-pilot/[datasetId]` — side-by-side verbatim · legacy tags · structured assertions with axis-colored chips + alert/crisis badges. Wrapped with `requireAdmin`.
+- API: `/api/admin/taxonomy-pilot/[datasetId]` paged read of rows + taxonomy.
 
 **Limits**: 4,490 reviews per location (DataForSEO max). Per-org cost ceiling enforced via `review_downloads`.
 
