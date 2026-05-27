@@ -451,3 +451,11 @@ User asked for the obvious next-step UX: hover a Sentimetrx chip → light up th
 Behavior is opt-in per chip: chips with no evidence (e.g. legacy mapping rows that didn't go through the LLM) don't fire hover and don't get a ring.
 
 Clean tsc; manual verification on the live dev server is the gating check before pitching.
+
+---
+
+## 2026-05-27 (later×5) — Viewer: drop hover-auto-expand (flicker fix)
+
+User reported the cross-highlight feature was "schizophrenic" — chips flickered on/off because the auto-expand-on-hover behavior pushed chips down out from under the cursor → mouseLeave → text collapsed → chips returned → mouseEnter → loop.
+
+Easy fix: truncation governed by the Show more button only. Highlight still works on whatever text is currently shown. If evidence is in the truncated tail, the user expands manually first, then hovers. Trade-off: a chip whose evidence is past the cut doesn't visibly highlight until expansion, but the chip's hover ring + title tooltip still confirm the link.

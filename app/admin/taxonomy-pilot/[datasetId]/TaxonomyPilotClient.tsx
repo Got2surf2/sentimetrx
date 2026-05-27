@@ -153,9 +153,12 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
           const isOpen = expanded.has(row.row_id)
           const text = row.review_text || ''
           const hoverEvidence = hover?.rowId === row.row_id ? hover.evidence : null
-          // Force-expand while hovering an evidence chip so the highlight is visible.
-          const showFull = isOpen || (hoverEvidence !== null && findEvidenceIndex(text, hoverEvidence) >= 0)
-          const truncated = text.length > 240 && !showFull
+          // Truncation is governed by manual Show more only — auto-expanding on
+          // chip hover causes a layout-shift flicker loop because chips sit
+          // below the text and get pushed off the cursor when the text grows.
+          // If the evidence is in the truncated tail, the highlight just won't
+          // render until the user expands manually.
+          const truncated = text.length > 240 && !isOpen
           const display = truncated ? text.slice(0, 240) + '…' : text
           return (
             <div key={row.row_id} className="bg-white border border-slate-200 rounded-lg p-4">
@@ -173,7 +176,7 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
 
               <div className="text-sm text-slate-800 mb-3 whitespace-pre-wrap">
                 {renderWithHighlight(display, hoverEvidence)}
-                {text.length > 240 && !hoverEvidence && (
+                {text.length > 240 && (
                   <button onClick={() => toggleExpand(row.row_id)} className="ml-2 text-xs text-blue-700 hover:underline">
                     {isOpen ? 'Show less' : 'Show more'}
                   </button>
