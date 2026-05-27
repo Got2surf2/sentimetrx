@@ -502,3 +502,17 @@ Three styles are now visually distinct at a glance:
 - Filled chip + emerald ring + ✓ = both tiers agree (highest confidence)
 
 That maps directly to the pitch slide: "filled = baseline, white = AI upgrade, ringed = highest-confidence subset".
+
+---
+
+## 2026-05-27 (later×8) — Path B scoped: AI-generated keyword library (NOT BUILT)
+
+**Why**: User spot-checked the demo and flagged that the hand-written 250-phrase keyword dictionary in `lib/taxonomyKeywords.ts` is "pretty weak from a competitive viewpoint." Mature CX-tagging vendors run libraries of thousands of phrases tuned over years; my v1 was a one-pass effort sitting at a desk. The competitive pitch "we have a keyword tier + AI on top" undermines itself if the keyword tier visibly catches fewer signals than what they already have.
+
+**Decision** (scoping only, no code this session): build Path B — mine a keyword library from ~5K actual reviews via Haiku, replacing the hand-written one. Three-stage pipeline (mine → build → swap), ~$8.50 Haiku spend, ~3.5h build, ~12min runtime. Repositions us ahead of the competitor — "our library was machine-generated from your reviews, pre-trained on your customers."
+
+**Full spec**: `~/.claude/projects/-Users-sanjaypatel-Documents-GitHub-sentimetrx/memory/project_rc_keyword_mining.md`. Includes 5 default decisions on open design questions (negation handling, polarity-conflict threshold, phrase length cap, item resolution, legacy_tags as hint).
+
+**Acceptance criteria**: regression 7/7 must still pass at hybrid mode, the 10 currently-classified pilot rows must show ≥2× the number of keyword+both tier chips, and a spot-check of 30 random learned entries must hit ≥90% correct.
+
+**Queued in `project_open_work_queue.md` as the highest-priority next-session work.**
