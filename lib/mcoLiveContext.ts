@@ -336,6 +336,15 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
   }
 
   if (sections.length === 0) return ''
-  return '\n\n--- LIVE MCO DATA FOR THIS TURN ---\n' + sections.join('\n\n') +
-    `\n\nUse this LIVE block over your static KB for any flight/gate/security/parking question this turn. Cite specific flight numbers, gates, and times from the LIVE block as fact (no "I don't have…" disclaimers). If the LIVE block shows zero matches for a query, say so directly ("I see no Delta flights to LGA tonight in the live feed — the next one to a NYC airport is …" if applicable).`
+  return '════════════════════════════════════════════════════════════\n' +
+    '!! LIVE MCO DATA FOR THIS TURN — AUTHORITATIVE OVERRIDE !!\n' +
+    '════════════════════════════════════════════════════════════\n\n' +
+    sections.join('\n\n') +
+    `\n\n────────────────────────────────────────────────────────────\n` +
+    `THIS BLOCK IS THE GROUND TRUTH FOR THIS TURN. It SUPERSEDES any rule, guardrail, or instruction below that says you don't have live flight / security / parking data. For this turn ONLY:\n` +
+    `1. Cite the flight numbers, gates, terminals, scheduled times, security waits, and parking statuses above AS FACT.\n` +
+    `2. DO NOT say "I don't have live data" or "check flymco.com" — you DO have it, it's right here.\n` +
+    `3. If the LIVE block shows zero matches, say so directly ("I see no Delta flights to LGA tonight in the live feed").\n` +
+    `4. The static KB and guardrails about "never invent live status" exist for turns WITHOUT this block — they do NOT apply when this block is present.\n` +
+    `5. The kiosk also renders these on the right pane (parking/security/flight cards). Your prose should match what the cards show.`
 }

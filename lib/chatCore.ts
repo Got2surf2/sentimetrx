@@ -473,6 +473,25 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // Build system prompt from personality + config + knowledge base
   const systemParts = []
   systemParts.push('Today is ' + new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + '.')
+
+  // MCO-specific live data injection. Placed AT THE TOP of the system prompt
+  // (before personality, system_prompt, factual-accuracy, and guardrails)
+  // because conservative anti-fabrication rules further down were causing
+  // the model to ignore the block when placed below. The block itself
+  // contains an explicit "supersedes the never-speculate rule for this
+  // turn" instruction. No-op for non-AskAna bots (gated by bot id).
+  try {
+    const { buildMcoLiveContext } = await import('@/lib/mcoLiveContext')
+    let priorAssistant = ''
+    for (let i = messages.length - 2; i >= 0; i--) {
+      if (messages[i].role === 'assistant') { priorAssistant = String(messages[i].content || ''); break }
+    }
+    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '', priorAssistant)
+    if (liveBlock) systemParts.push(liveBlock)
+  } catch (e: any) {
+    if (debugMode) _debug.push('mco-live-context: ' + (e?.message || String(e)))
+  }
+
   if ((bot as any).personality) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
@@ -505,24 +524,6 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (rules) systemParts.push('\n\nRULES YOU MUST FOLLOW:\n' + rules)
   }
 
-  // MCO-specific live data injection. For the AskAna bot (and only her),
-  // detect flight / gate / security / parking intent in the user message
-  // (and follow-up references in the prior assistant message — so
-  // "the 7:50 one" can still find DL2564 that the bot just listed).
-  // No-op for all other bots (gated by bot id inside the helper).
-  try {
-    const { buildMcoLiveContext } = await import('@/lib/mcoLiveContext')
-    // Find the prior assistant message — it carries entity references the
-    // user's short follow-up may be pointing at.
-    let priorAssistant = ''
-    for (let i = messages.length - 2; i >= 0; i--) {
-      if (messages[i].role === 'assistant') { priorAssistant = String(messages[i].content || ''); break }
-    }
-    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '', priorAssistant)
-    if (liveBlock) systemParts.push(liveBlock)
-  } catch (e: any) {
-    if (debugMode) _debug.push('mco-live-context: ' + (e?.message || String(e)))
-  }
 
   // RAG: semantic search with embeddings + full-text + trigram
   // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge
