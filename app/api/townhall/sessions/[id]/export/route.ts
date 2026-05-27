@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
+import { projectHallAsSession } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,12 +20,44 @@ export async function GET(req: NextRequest, { params }: Params) {
   const db = createServiceRoleClient()
   const format = req.nextUrl.searchParams.get('format') || 'csv'
 
-  // Fetch session
-  const { data: session } = await db
-    .from('townhall_sessions')
-    .select('name, status, config, started_at, ended_at')
-    .eq('id', params.id)
-    .single()
+  // Fetch session — try legacy townhall_sessions first, then fall back
+  // to the phase-3 town_halls table (projected into legacy shape so the
+  // downstream code stays substrate-agnostic). Pure phase-3 sessions
+  // like NOWOCATS have no townhall_sessions row at all, so without this
+  // fallback the magnifying-glass conversation modal silently 404s.
+  let session: { name: string; status: string; config: any; started_at: string | null; ended_at: string | null } | null = null
+  {
+    const { data } = await db
+      .from('townhall_sessions')
+      .select('name, status, config, started_at, ended_at')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (data) session = data as any
+  }
+  let purePhase3 = false
+  if (!session) {
+    const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
+    let hall: any = null
+    if (isUUID) {
+      const { data } = await db.from('town_halls').select('*').eq('id', params.id).maybeSingle()
+      if (data) hall = data
+    }
+    if (!hall) {
+      const { data } = await db.from('town_halls').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
+      if (data) hall = data
+    }
+    if (hall) {
+      const projected = projectHallAsSession(hall)
+      session = {
+        name: projected.name,
+        status: projected.status,
+        config: projected.config,
+        started_at: projected.started_at,
+        ended_at: projected.ended_at,
+      }
+      purePhase3 = true
+    }
+  }
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
@@ -39,12 +72,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   for (const t of themes || []) themeMap[t.id] = t.label
 
   // Fetch all turns
-  const { data: turns } = await db
+  const { data: turnsData } = await db
     .from('townhall_turns')
     .select('participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, theme_label, source, skipped, created_at')
     .eq('session_id', params.id)
     .order('created_at', { ascending: true })
     .range(0, 49999)
+  // Phase-3 sessions don't populate townhall_turns. Coerce null → [] so
+  // the downstream pairing/grouping code (which used to be guarded by
+  // the empty-turns early return) stays well-typed without a sea of
+  // ?. checks.
+  const turns = turnsData || []
 
   // Fetch participant post-session responses
   const { data: postResponses } = await db
@@ -71,7 +109,10 @@ export async function GET(req: NextRequest, { params }: Params) {
   const demoKeyArr = Array.from(allDemoKeys).sort()
   const psychoKeyArr = Array.from(allPsychoKeys).sort()
 
-  if (!turns || turns.length === 0) {
+  // Skip the empty-turns short-circuit for phase-3 sessions — they don't
+  // populate townhall_turns at all; their data lives in conversation_turns
+  // and is pulled in the json branch below.
+  if ((!turns || turns.length === 0) && !purePhase3) {
     return new NextResponse('No responses to export\n', { status: 200, headers: { 'Content-Type': 'text/csv' } })
   }
 
@@ -271,8 +312,11 @@ export async function GET(req: NextRequest, { params }: Params) {
       conversations,
       summary: {
         participants: Object.keys(participants).length,
-        total_turns: turns.length,
-        answered: turns.filter(t => !t.skipped && t.user_message).length,
+        // Sum user-turn count across all participants. For phase-3 sessions
+        // `turns` (the legacy townhall_turns query) is empty; the real count
+        // is on the per-participant entries built from conversation_turns.
+        total_turns: Object.values(participants).reduce((s: number, ts: any[]) => s + ts.filter(t => t.user).length, 0),
+        answered: Object.values(participants).reduce((s: number, ts: any[]) => s + ts.filter(t => !t.skipped && t.user).length, 0),
       },
     }
 

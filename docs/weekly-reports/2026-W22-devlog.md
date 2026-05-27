@@ -337,3 +337,18 @@ After running the first NOWOCATS sim (5 personas, 30 turns), the summary card sh
 - `NOWOCATS_PACK` (18 personas) added to `app/admin/simulator/townhall/TownhallSimulatorClient.tsx`. Geography across Apopka / Ocoee / Winter Garden / Plymouth / Clarcona; one Spanish-language-switcher persona reflecting Apopka's Hispanic demographic; 4 edge cases (single-issue deer commenter, disengaged teen, anti-gov skeptic, developer-conspiracy commenter).
 - `sql/one-off/2026-05-26-duplicate-nowocats-for-sim.sql` creates a `nowocats-sim` clone of the real NOWOCATS town hall (same Sarina agent, same topics, status=live) so sim runs don't pollute the real PM-2 record.
 - Out-of-tree runner script at `/tmp/abtest/nowocats_sim.py` drives 5 personas × 6 turns via the public `/api/townhall/join` + `/api/townhall/chat` endpoints, calling Anthropic directly to generate persona utterances (the in-app `/api/townhall/simulate` route requires authenticated session cookie). Same-origin `Origin` header bypasses the CSRF middleware. First run landed cleanly — language switch fired correctly, persona-specific tone retained, three personas chose the name "Marcus" autonomously (Haiku name-bias — needs hard-coded first-name field on the persona spec if name attribution matters for downstream analytics).
+
+---
+
+## 2026-05-26 — Export route: phase-3 fallback (magnifying-glass fix)
+
+Right after the adapter fix above shipped, user reported the Responses-tab magnifying-glass click did nothing on the NOWOCATS-sim session. Root cause: the modal handler fetches `GET /api/townhall/sessions/[id]/export?format=json`, and the export route's session lookup hit only `townhall_sessions` (legacy table). Pure phase-3 sessions like NOWOCATS-sim have no row there → 404 → the client's silent `.catch {}` swallowed it → no modal.
+
+The route already had a phase-3 augmentation block (lines 130+) that populates conversations from `town_hall_conversations → conversations → conversation_turns`, but it was unreachable behind the 404. Fix in `app/api/townhall/sessions/[id]/export/route.ts`:
+
+1. After the `townhall_sessions` lookup, fall back to `town_halls` (by id or slug) and project through `projectHallAsSession` so the downstream code stays substrate-agnostic.
+2. Mark `purePhase3 = true` when the legacy table missed.
+3. Skip the "No responses to export" early return when `purePhase3` (turns lives in conversation_turns, loaded later in the json branch).
+4. Recompute `summary.total_turns` + `summary.answered` from the assembled `participants` map rather than `turns.length` — that count was 0 for pure phase-3 sessions even when participants had plenty of turns.
+
+The `participant_id` column now flows correctly into the modal via `conv.participant_id`, and the modal can finally render.

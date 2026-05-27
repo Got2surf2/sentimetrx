@@ -275,6 +275,8 @@ Draft sessions render the four data-dependent buttons (**Analytics**, **Response
 | JSON | `GET .../export?format=json` | Grouped by participant: conversation threads + demographics + psychographics |
 | PPTX | `POST .../export/pptx` | Branded deck: title, stats, sentiment, per-theme cards with quotes |
 
+> **Phase-3 fallback (2026-05-26):** the export route's session lookup tries `townhall_sessions` first and falls back to `town_halls` (via `projectHallAsSession`) when the legacy row is missing. Pure phase-3 sessions like NOWOCATS keep their data in `conversation_turns`, not `townhall_turns`, so the legacy turn count is 0 — the `json` branch's per-participant `participants` map is the authoritative source for those and feeds `summary.total_turns` directly. The Responses-tab conversation modal (`SessionDetailClient.tsx`'s magnifying-glass button) depends on this route returning the populated `conversations` array.
+
 ---
 
 ## Simulator (`/admin/simulator/townhall`)
