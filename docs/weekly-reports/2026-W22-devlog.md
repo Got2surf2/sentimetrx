@@ -389,3 +389,21 @@ For the current NOWOCATS sim (5 personas, 6 turns each, each topic covered once 
 **Spec sync**: SPEC.md § Database Tables (new `dataset_row_taxonomy` row) + § Reviews Integration (taxonomy pilot block), FEATURES.md § Analyze (new Per-Row Taxonomy subsection), DATA_SOURCES.md § 14 (full per-row taxonomy spec including the production-scope notes).
 
 **Out of scope for this session** (deferred to Week 1 of pilot execution if/when sold): 300-review human-gold annotator workflow, full 43K classify run (~$240 at current Haiku pricing), TextMine filter-by-axis-sub UI, production analyze-route trigger to replace the script driver.
+
+---
+
+## 2026-05-27 (later) — Taxonomy pilot: evidence spans + 1-indexed rows + --force reclassify
+
+User feedback after opening the viewer:
+1. Row count starting at 0 is "REALLY ODD" — flip to 1-indexed display (`row_index + 1`); page header now reads "rows 1–25 of 50".
+2. Want hover on each Sentimetrx chip to show the verbatim span that triggered the assertion.
+3. Confirm this is our own classifier (yes — `lib/taxonomyExtractor.ts` + `lib/taxonomyVocabulary.ts` + `lib/taxonomyMapping.ts`, all written this session, calling Haiku via our `callAI` abstraction with our closed-vocab structured-output prompt).
+
+**Shipped**:
+- `Assertion` type in `lib/taxonomyVocabulary.ts` gains optional `evidence?: string`.
+- `lib/taxonomyExtractor.ts` prompt v3 requires per-assertion evidence (≤12-word verbatim quote, no paraphrase, drop assertion if no direct phrase available). `validateAssertion` threads evidence through.
+- Viewer chip gets a `title` tooltip showing `axis:sub · polarity · severity · confidence% · "evidence"`. Cursor → `cursor-help`. Title attribute is the minimum that works without a popover library; can iterate to a styled popover later if needed.
+- Viewer row label flipped to `row_index + 1` (1-indexed).
+- `scripts/pilot-rc-classify.ts` gains `--force` flag so already-classified rows can be re-run when the prompt is bumped.
+
+**Verified**: regression 5/5 PASS at v3. Re-classified the 10 existing pilot rows with `--force`; spot-check on row 278592 (the "potato cheese appetizer was absolute trash" review) now carries 4 assertions each with a direct verbatim evidence span ("It was absolute trash. Not edible." → attribute:flavor neg, etc.). Clean tsc.

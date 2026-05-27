@@ -32,7 +32,7 @@ export interface TaxonomyUsageContext {
   event_type: string
 }
 
-export const PROMPT_VERSION = '2026-05-27.v2'
+export const PROMPT_VERSION = '2026-05-27.v3'
 
 export interface ExtractorInput {
   review_text: string
@@ -105,11 +105,12 @@ CRITICAL RULES:
 7. If a review explicitly compares to a competitor (Olive Garden, Capital Grille, Longhorn, etc.), do NOT emit any tags for the competitor's food — only emit Ruth's Chris assertions. The competitor mention itself is metadata, not an assertion.
 8. Each assertion needs a confidence score 0–1. Use 0.9+ for explicit text, 0.6–0.8 for clear inference, 0.4–0.55 only when guessing from weak signals.
 9. Return strictly valid JSON. No commentary, no Markdown fences.
+10. EVIDENCE is REQUIRED on every assertion. Quote the SHORTEST verbatim phrase from the review (≤ 12 words) that supports the assertion. Copy the words exactly — do NOT paraphrase, summarize, or generate text that isn't in the review. If you can't find a direct phrase, drop the assertion entirely. If two assertions share evidence (e.g. "great steak" → product:steak + attribute:flavor), repeat the same evidence on both.
 
 OUTPUT SHAPE:
 {
   "assertions": [
-    { "axis": "<one of 7>", "sub": "<closed-vocab sub>", "item": "<optional product item>", "polarity": "pos|neg|neu", "confidence": 0.0-1.0, "severity": "normal|alert|crisis" }
+    { "axis": "<one of 7>", "sub": "<closed-vocab sub>", "item": "<optional product item>", "polarity": "pos|neg|neu", "confidence": 0.0-1.0, "severity": "normal|alert|crisis", "evidence": "<short verbatim quote>" }
   ]
 }
 
@@ -185,6 +186,9 @@ export function validateAssertion(
   if (typeof a.item === 'string' && a.item.trim()) {
     const item = a.item.trim().toLowerCase()
     if ((PRODUCT_ITEMS as readonly string[]).includes(item)) out.item = item
+  }
+  if (typeof a.evidence === 'string' && a.evidence.trim()) {
+    out.evidence = a.evidence.trim()
   }
   return out
 }

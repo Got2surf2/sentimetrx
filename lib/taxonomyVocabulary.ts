@@ -202,6 +202,8 @@ export interface Assertion {
   polarity: Polarity
   confidence: number
   severity: Severity
+  /** Short verbatim span from the review that triggered this assertion. */
+  evidence?: string
 }
 
 // Axis → set of allowed sub-bucket values. Used by the extractor's

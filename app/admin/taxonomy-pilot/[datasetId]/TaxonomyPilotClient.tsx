@@ -20,7 +20,7 @@ interface RowVM {
     axis_context:    string[]
     axis_outcome:    string[]
     alert_tags:      string[]
-    assertions:      Array<{ axis: string; sub: string; item?: string; polarity: string; confidence: number; severity: string }>
+    assertions:      Array<{ axis: string; sub: string; item?: string; polarity: string; confidence: number; severity: string; evidence?: string }>
     classified_by:   string | null
     model_used:      string | null
     prompt_version:  string | null
@@ -110,7 +110,7 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
 
       <div className="flex justify-between items-center mb-3">
         <div className="text-sm text-slate-500">
-          Page {data.page} of {totalPages} · showing rows {((data.page - 1) * pageSize) + 1}–{Math.min(data.counts.total_rows, data.page * pageSize)}
+          Page {data.page} of {totalPages} · rows {((data.page - 1) * pageSize) + 1}–{Math.min(data.counts.total_rows, data.page * pageSize)} of {data.counts.total_rows.toLocaleString()}
         </div>
         <div className="flex gap-2">
           <button
@@ -136,7 +136,7 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
             <div key={row.row_id} className="bg-white border border-slate-200 rounded-lg p-4">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="text-xs text-slate-500">
-                  Row {row.row_index} · {row.unit_name || '—'} · {row.city}, {row.state}
+                  Row {row.row_index + 1} · {row.unit_name || '—'} · {row.city}, {row.state}
                   {row.review_rating !== null && <span className="ml-2">{'★'.repeat(row.review_rating)}{'☆'.repeat(5 - row.review_rating)}</span>}
                 </div>
                 {row.taxonomy?.alert_tags && row.taxonomy.alert_tags.length > 0 && (
@@ -174,20 +174,27 @@ export default function TaxonomyPilotClient({ datasetId }: { datasetId: string }
                   {row.taxonomy ? (
                     <div className="flex flex-wrap gap-1">
                       {row.taxonomy.assertions.length === 0 && <span className="text-xs text-slate-400">no signal</span>}
-                      {row.taxonomy.assertions.map((a, i) => (
-                        <span
-                          key={i}
-                          className={`text-[11px] px-1.5 py-0.5 rounded border ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'}`}
-                          title={`confidence ${(a.confidence * 100).toFixed(0)}% · ${a.severity}`}
-                        >
-                          <span className="font-mono opacity-70">{a.axis[0]}</span>{':'}<strong>{a.sub}</strong>
-                          {a.item && <span className="text-slate-600">·{a.item}</span>}
-                          <span className={`ml-1 ${POL_COLOR[a.polarity] || ''}`}>{a.polarity === 'pos' ? '+' : a.polarity === 'neg' ? '−' : '·'}</span>
-                          {a.severity !== 'normal' && (
-                            <span className={`ml-1 text-[9px] px-1 rounded ${SEV_BADGE[a.severity] || ''}`}>{a.severity}</span>
-                          )}
-                        </span>
-                      ))}
+                      {row.taxonomy.assertions.map((a, i) => {
+                        const tipLines = [
+                          `${a.axis}:${a.sub}${a.item ? ' · ' + a.item : ''}`,
+                          `${a.polarity === 'pos' ? 'positive' : a.polarity === 'neg' ? 'negative' : 'neutral'} · ${a.severity} · confidence ${(a.confidence * 100).toFixed(0)}%`,
+                        ]
+                        if (a.evidence) tipLines.push('', `"${a.evidence}"`)
+                        return (
+                          <span
+                            key={i}
+                            className={`text-[11px] px-1.5 py-0.5 rounded border cursor-help ${AXIS_COLOR[a.axis] || 'bg-slate-100 text-slate-800 border-slate-200'}`}
+                            title={tipLines.join('\n')}
+                          >
+                            <span className="font-mono opacity-70">{a.axis[0]}</span>{':'}<strong>{a.sub}</strong>
+                            {a.item && <span className="text-slate-600">·{a.item}</span>}
+                            <span className={`ml-1 ${POL_COLOR[a.polarity] || ''}`}>{a.polarity === 'pos' ? '+' : a.polarity === 'neg' ? '−' : '·'}</span>
+                            {a.severity !== 'normal' && (
+                              <span className={`ml-1 text-[9px] px-1 rounded ${SEV_BADGE[a.severity] || ''}`}>{a.severity}</span>
+                            )}
+                          </span>
+                        )
+                      })}
                     </div>
                   ) : (
                     <span className="text-xs text-slate-400">Run classifier to populate</span>

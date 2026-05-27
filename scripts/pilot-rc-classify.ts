@@ -72,6 +72,7 @@ function getFlag(name: string): string | undefined {
 const limit = parseInt(getFlag('--limit') ?? '50', 10)
 const concurrency = parseInt(getFlag('--concurrency') ?? '4', 10)
 const datasetIdArg = getFlag('--dataset-id')
+const force = args.includes('--force')
 
 interface FlatRow {
   id: number
@@ -106,15 +107,20 @@ async function main() {
     console.log(`Resolved dataset: ${datasetId} (row_count=${ds[0].row_count})`)
   }
 
-  // Find already-classified row ids
-  const { data: existingRows, error: exErr } = await service
-    .from('dataset_row_taxonomy')
-    .select('row_id')
-    .eq('dataset_id', datasetId)
-    .eq('org_id', ADMIN_ORG_ID)
-  if (exErr) throw exErr
-  const done = new Set<number>((existingRows ?? []).map((r: any) => r.row_id))
-  console.log(`Already classified: ${done.size} rows`)
+  // Find already-classified row ids (skip unless --force)
+  let done = new Set<number>()
+  if (!force) {
+    const { data: existingRows, error: exErr } = await service
+      .from('dataset_row_taxonomy')
+      .select('row_id')
+      .eq('dataset_id', datasetId)
+      .eq('org_id', ADMIN_ORG_ID)
+    if (exErr) throw exErr
+    done = new Set<number>((existingRows ?? []).map((r: any) => r.row_id))
+    console.log(`Already classified: ${done.size} rows (skip with --force to re-classify)`)
+  } else {
+    console.log(`--force: ignoring existing rows; will overwrite via upsert`)
+  }
 
   // Pull next batch of unclassified rows
   const { data: rows, error: rowErr } = await service
