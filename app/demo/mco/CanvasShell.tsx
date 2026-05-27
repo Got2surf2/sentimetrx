@@ -13,6 +13,7 @@ import ShopsCard from './components/ShopsCard'
 import ParkingCard from './components/ParkingCard'
 import LinkCard from './components/LinkCard'
 import SecurityWaitCard from './components/SecurityWaitCard'
+import IndoorMapCard from './components/IndoorMapCard'
 import WelcomeCard from './components/WelcomeCard'
 import QRHandoffModal from './components/QRHandoffModal'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
@@ -26,6 +27,9 @@ function deriveActiveTerminal(hint: UiHint | null): 'A' | 'B' | 'C' | undefined 
   if (!hint) return undefined
   if (hint.type === 'terminal_map') {
     return hint.to || hint.from || hint.terminal
+  }
+  if (hint.type === 'indoor_map') {
+    return hint.terminal
   }
   if ((hint.type === 'restaurants' || hint.type === 'shops') && hint.context) {
     const m = /^terminal_([abc])_/i.exec(hint.context)
@@ -108,6 +112,7 @@ function HintRenderer({ hint, mode, onTileClick }: { hint: UiHint; mode: Deploym
   if (hint.type === 'shops') return <ShopsCard hint={hint} />
   if (hint.type === 'parking') return <ParkingCard hint={hint} />
   if (hint.type === 'security_wait') return <SecurityWaitCard hint={hint} />
+  if (hint.type === 'indoor_map') return <IndoorMapCard hint={hint} />
   if (hint.type === 'link_card') return <LinkCard hint={hint} mode={mode} />
   return null
 }

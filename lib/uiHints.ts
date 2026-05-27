@@ -22,6 +22,7 @@ export type UiHint =
   | ShopsHint
   | LinkCardHint
   | SecurityWaitHint
+  | IndoorMapHint
   | WelcomeHint
 
 // Welcome / default-state card. Never emitted by the extractor — only used
@@ -73,6 +74,14 @@ export interface SecurityWaitHint {
   lane?: 'general' | 'precheck' // emphasize one lane type (optional)
 }
 
+export interface IndoorMapHint {
+  type: 'indoor_map'
+  terminal?: 'A' | 'B' | 'C'
+  level?: string                  // "L3", "A4", etc. — Meridian's levelLabel
+  gate?: string                   // e.g. "B22", "C235" — picks the concourse floor
+  category?: string               // restroom, restaurant, shop, gate, atm, …
+}
+
 // Deployment context — auto-detected by the page (URL param, geolocation,
 // user agent, deployment env), demo-strip-overridable in the prototype.
 export type DeploymentMode = 'home' | 'invenue' | 'kiosk'
@@ -119,7 +128,10 @@ CONTEXT block — if present in the user input, the canvas has accumulated state
 Allowed hint types and required payload shapes:
 
 - terminal_map: { "type": "terminal_map", "terminal"?: "A"|"B"|"C", "gate"?: string, "from"?: "A"|"B"|"C", "to"?: "A"|"B"|"C", "via"?: "shuttle"|"terminal_link_apm" }
-  Use ONLY when INTER-TERMINAL or IN-TERMINAL wayfinding is the primary topic: finding a specific gate, getting between Terminals A/B/C, or locating a non-parking, non-dining facility (bag claim, restroom, check-in counter, ticketing). Do NOT emit this just because the user mentions a terminal name. If the user says "I'm in Terminal A" or "which terminal" while the conversation is about food, shopping, or services, emit the card for the ACTUAL topic — not terminal_map. EXPLICITLY EXCLUDED: parking-related wayfinding ("how do I get to Garage A?", "where is Garage C?", "directions to valet") — those are PARKING hints with the lot highlighted, not terminal_map. Inter-TERMINAL movement (Terminal A↔C) is terminal_map; lot-to-terminal walking is also parking. The assistant's answer determines the card type, not the wayfinding phrasing alone.
+  Use ONLY for INTER-TERMINAL movement (A↔B, A↔C, B↔C — the structural connections + Terminal Link APM + shuttle). This card is a high-level structural diagram. EXPLICITLY EXCLUDED: anything that's actually a floor plan / specific gate lookup / "where is X inside Terminal Y" — those are indoor_map hints. Also excluded: parking-related wayfinding ("how do I get to Garage A?" → parking hint), terminal mentions during dining/shopping conversations (the actual topic wins).
+
+- indoor_map: { "type": "indoor_map", "terminal"?: "A"|"B"|"C", "level"?: string, "gate"?: string, "category"?: string }
+  Use for FLOOR-PLAN / INSIDE-A-TERMINAL queries: "where is gate B22?", "find the nearest restroom", "where is the ATM in Terminal C?", "show me the Departures level". Renders a real MCO floor plan with pins for gates / restaurants / shops / restrooms / ATMs / nursing stations / pet relief / etc. Set "gate" when a specific gate is named (we auto-pick the right concourse). Set "terminal" always when context permits. Set "level" to a Meridian label if mentioned ("L3" = Departures, "L2" = Arrivals/Bag Claim for A&B; "L2" Departures for C). Set "category" to filter pins (one of: restroom, restaurant, cafe, bar, shop, gate, atm, aed, water_fountain, nursing_station, pet_relief, lounge, kiosk, information). Prefer indoor_map over terminal_map for any "where is …" or "find a …" inside a single terminal.
 
 - parking: { "type": "parking", "highlight"?: string[] }
   Use when the user is asking about parking, garages, lots, cell-phone areas, OR how to get to / where to find / walk to a specific parking lot ("how do I get to Garage A?", "where is the valet?", "directions to North Park Place"). Highlight names come from: garage_a, garage_b, garage_c, terminal_top, atlantis, discovery, endeavour, north_economy, south_economy, west_economy, north_cell, south_cell, valet. Set "highlight" to the specific lot(s) the user named so the card can call them out.
@@ -161,6 +173,9 @@ Return a JSON object: { "hint": <hint object or null>, "next_chips": string[], "
 
 Examples:
 - User: "How do I get from C to A?" → Assistant: "Two options: Terminal Link APM in 6 min or the shuttle bus in 12..." → { "hint": { "type": "terminal_map", "from": "C", "to": "A", "via": "terminal_link_apm" }, "next_chips": ["How often does the APM run?", "Where do I catch the shuttle?", "Which is faster with luggage?"] }
+- User: "Where is gate B22?" → Assistant describes gate B22 in Terminal B → { "hint": { "type": "indoor_map", "terminal": "B", "gate": "B22" }, "next_chips": ["Closest restroom?", "Coffee near my gate?", "How long to walk from security?"] }
+- CONTEXT: active_terminal=A. User: "Where's the nearest restroom?" → Assistant lists nearby restrooms → { "hint": { "type": "indoor_map", "terminal": "A", "category": "restroom" }, "next_chips": ["Any nursing rooms?", "ATM nearby?"] }
+- User: "Show me Terminal C departures" → Assistant: "Terminal C's Departures level is Level 2…" → { "hint": { "type": "indoor_map", "terminal": "C", "level": "L2" }, "next_chips": ["Dining on this level?", "Where's security?"] }
 - User: "How do I get to Garage A?" → Assistant: "Garage A is directly connected to Terminals A and B — walk over on Level 3 (Departures)…" → { "hint": { "type": "parking", "highlight": ["garage_a"] }, "next_chips": ["What's the rate?", "Is there valet?", "Where is the entrance?"] }
 - User: "Where is the valet?" → Assistant describes the valet locations → { "hint": { "type": "parking", "highlight": ["valet"] }, "next_chips": ["What does it cost?", "Hours?"] }
 - User: "Where can I eat near gate A14?" → Assistant lists Chick-fil-A, Shake Shack → { "hint": { "type": "restaurants", "place_ids": [], "context": "terminal_a_airside" }, "next_chips": ["Anything sit-down?", "What's open late?", "Vegetarian options?"] }
@@ -234,6 +249,15 @@ export function validateHint(raw: any): UiHint | null {
     const h: SecurityWaitHint = { type: 'security_wait' }
     if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
     if (raw.lane === 'general' || raw.lane === 'precheck') h.lane = raw.lane
+    return h
+  }
+  if (t === 'indoor_map') {
+    const allowed = ['A', 'B', 'C']
+    const h: IndoorMapHint = { type: 'indoor_map' }
+    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
+    if (typeof raw.level === 'string' && raw.level.length <= 8) h.level = raw.level
+    if (typeof raw.gate === 'string' && raw.gate.length <= 12) h.gate = raw.gate
+    if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
     return h
   }
   if (t === 'link_card') {

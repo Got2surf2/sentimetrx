@@ -2240,3 +2240,25 @@ Typecheck clean.
 - `app/demo/mco/components/WelcomeCard.tsx` — hero now leads with the logo mark instead of the "MCO" text block. `.welcome-logo-mark` styled at 72px tall (kiosk: 96px).
 
 Typecheck clean. No test impact.
+
+## 2026-05-27 — Real Meridian indoor maps wired into the canvas
+
+**Why**: User asked if MCO has indoor maps. They do — flymco.com's `/terminal-maps/map` page uses the Meridian indoor-maps platform (32 floor plans + 2,313 placemarks). Our existing `terminal_map` card was a structural 3-box diagram, fine for "C → A" but useless for "where is gate B22?". This wires the real floor plans in.
+
+**Sniff** (via `_mco_meridian_sniff.mjs` + `_mco_meridian_sniff2.mjs`):
+- Map list: `api.goaa.aero/content/meridian_map` (open, our existing GOAA api-key works).
+- Placemark list: `api.goaa.aero/content/meridian_placemark` (2,313 entries, fields = name/description/keywords/x/y/type/typeName/typeCategory/categoryIds/url/phone/imageUrl/hideOnMap/color).
+- Floor-plan SVG: `edit.meridianapps.com/api/locations/2315199/maps/<id>.svg` — requires `Authorization: Token <JWT>`. The JWT is shipped to every flymco visitor in their JS bundle (same posture as the GOAA api-key — not a secret).
+- The viewBox of each SVG (e.g. 3122×3474) matches the placemark x/y coordinate system → pins overlay perfectly via percentages.
+
+**What changed**:
+- `lib/meridian.ts` — NEW. 5-min metadata cache + 1-hr SVG cache. `fetchMaps()`, `fetchPlacemarks()`, `fetchMapSvg()`, `fetchMapDimensions()`, `findMap({terminal,level,gate})` (gate-range → concourse map mapping), `placemarksForMap(allPms, mapId, category?)`. Fail-soft on upstream errors (returns stale cache; empty if none).
+- `POST /api/mco/indoor-map` — picks the best floor for `{terminal,level,gate,category}` and returns `{map, placemarks, svg_url, other_floors}`.
+- `GET /api/mco/indoor-map/svg/[id]` — server proxy that injects the Meridian Token, so the JWT never leaves the server. 1-day public cache.
+- `lib/uiHints.ts` — new `IndoorMapHint` type + validation. Extractor prompt: `terminal_map` narrowed to inter-terminal connections only; `indoor_map` is the new rule for "where is X" / "find a Y" inside one terminal, with three examples (gate lookup, nearest restroom, level-specific view).
+- `app/demo/mco/components/IndoorMapCard.tsx` — NEW. Renders the SVG via `<img src="/api/mco/indoor-map/svg/<id>">`, overlays placemark pins as absolute-positioned buttons (x/y → % of `map.width`/`map.height`). 5 category filter chips (All / Gates / Dining & Shops / Restrooms / Amenities), floor switcher pills, hover tooltip per pin, amber pulse highlight for the `hint.gate` pin. Generic-category pins (fire extinguishers, paging displays) hidden by default. Emoji per pin type via `pinIcon()`.
+- `app/demo/mco/canvas.css` — `.indoor-map-card`, `.indoor-floors`, `.indoor-cat-filters`, `.indoor-map-viewport`, `.indoor-pin`, `.indoor-pin-hl` (pulse animation), `.indoor-pin-tip`.
+- `app/demo/mco/CanvasShell.tsx` — HintRenderer dispatch + active-terminal derivation for `indoor_map`.
+- `app/api/bots/[id]/ui-hints/route.ts` — `lastCanvasType` allowlist includes `indoor_map`.
+
+Typecheck clean. 319/319 tests still passing.
