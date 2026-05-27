@@ -505,6 +505,19 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (rules) systemParts.push('\n\nRULES YOU MUST FOLLOW:\n' + rules)
   }
 
+  // MCO-specific live data injection. For the AskAna bot (and only her),
+  // detect flight / gate / security / parking intent in the user message
+  // and fetch live data from the GOAA APIs. The block goes into the system
+  // prompt for THIS turn only — overrides the static KB for live questions.
+  // No-op for all other bots (gated by bot id inside the helper).
+  try {
+    const { buildMcoLiveContext } = await import('@/lib/mcoLiveContext')
+    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '')
+    if (liveBlock) systemParts.push(liveBlock)
+  } catch (e: any) {
+    if (debugMode) _debug.push('mco-live-context: ' + (e?.message || String(e)))
+  }
+
   // RAG: semantic search with embeddings + full-text + trigram
   // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge
   const userQuery = lastUserMsg?.content || ''

@@ -2279,3 +2279,22 @@ Typecheck clean. 319/319 tests still passing.
 - `app/demo/mco/canvas.css` — `.prep-panel` (deep blue gradient), `.prep-grid` (3 lane tiles), `.prep-lane-rec` (amber pulse on recommended lane), `.prep-budget` (amber-tinted summary bar), `.prep-recs-chip` (clickable rec chips). Kiosk-mode size overrides.
 
 Typecheck clean. 319/319 tests still pass.
+
+## 2026-05-27 (even later) — Ana now has live flight/security/parking data in her chat prose
+
+**Why**: User showed me a chat where Ana said "I don't have live flight or gate info" — but our /api/mco/flight-prep had the info, and the canvas card was about to render the gate. The discrepancy was real: the flight-prep panel ran client-side; the chat route's prose came from a separate code path that only saw Ana's static KB.
+
+**What changed**:
+- `lib/mcoLiveContext.ts` — NEW. Detects live-data intent in the user message (regex/keyword, no AI call) and assembles a "LIVE MCO DATA FOR THIS TURN" block from /flights, /security/checkpoint, and /parking/availability. Bot-id-gated to AskAna (920c571b…). Handles:
+  - Flight numbers ("DL1455")
+  - Gate strings ("B22", "gate 91", "C235")
+  - Airline keywords (Delta, Southwest, JetBlue, Spirit, etc.) → IATA codes
+  - Destination keywords (LaGuardia/LGA, Atlanta/ATL, London/Heathrow, etc.) → 35+ mappings
+  - Time windows ("tonight" / "this morning" / "today" / default next 4h)
+  - Security intent → live wait times per checkpoint
+  - Parking intent → open/full status (suppresses noise rows; only garages + full lots shown)
+- `lib/chatCore.ts` — `await buildMcoLiveContext(bot.id, lastUserMsg)` right after guardrails. Injection is empty for non-AskAna bots and for AskAna turns with no live intent (negligible per-turn cost).
+
+Now Ana can answer "what gate does the Delta flight to LaGuardia leave this evening?" with the actual flight number, gate, terminal, and scheduled departure — not "I don't have live data."
+
+Typecheck clean. 319/319 tests still pass.
