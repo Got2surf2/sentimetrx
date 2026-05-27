@@ -64,7 +64,7 @@ const MCO_RESERVE_HINT: UiHint = {
 const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
   home: {
     subtitle: 'Orlando International Airport · Planning your trip',
-    greeting: "Hi, I'm Ana — your guide to Orlando International Airport. Heading to MCO? I can help you plan parking, terminals, security, and how to get there. Just ask.",
+    greeting: "Hi, I'm Ana, the MCO Concierge. Heading to Orlando International? I can help you plan parking, terminals, security, and how to get to the airport. Just ask.",
     chips: ['How early should I arrive?', 'Where should I park?', 'Cheapest way to get to MCO?', 'What is MCO Reserve?'],
     placeholder: 'Ask Ana about MCO…',
     defaultHint: 0,
@@ -78,7 +78,7 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
   },
   invenue: {
     subtitle: "You're at MCO · Terminal B",
-    greeting: "Hi, I'm Ana. Looks like you're at Terminal B from the entrance QR scan — let me know if that's off. What can I help you with right now?",
+    greeting: "Hi, I'm Ana, the MCO Concierge. Looks like you're at Terminal B from the entrance QR scan — let me know if that's off. What can I help you with right now?",
     chips: ["Where's gate B22?", 'Security wait now?', 'Closest restroom', 'Bag claim — Delta'],
     placeholder: 'Ask anything about MCO right now…',
     defaultHint: 0,
@@ -93,7 +93,7 @@ const MODE_CONFIG: Record<DeploymentMode, ModeConfig> = {
   },
   kiosk: {
     subtitle: 'Orlando International Airport · Touch a question or ask your own',
-    greeting: "Hi! Ask me anything about Orlando International Airport. Touch a question below — and tap the QR icon any time to send what we discussed straight to your phone.",
+    greeting: "Hi! I'm Ana, the MCO Concierge. Touch a question below to get started — or tap the QR icon any time to send what we discussed straight to your phone.",
     chips: ['Find a restaurant', "Where's my gate?", 'Security wait times', 'Getting to my flight', 'Help finding the train station'],
     placeholder: 'Touch the keyboard or pick a question…',
     defaultHint: 0,
@@ -234,7 +234,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
         <div className="brand">
           <div className="avatar avatar-mco"><img src="/mco/logo-mark.png" alt="MCO" /></div>
           <div className="brand-stack">
-            <div className="brand-name">AskAna</div>
+            <div className="brand-name">MCO Concierge</div>
             <div className="brand-subtitle">{config.subtitle}</div>
           </div>
         </div>

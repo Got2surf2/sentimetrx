@@ -55,10 +55,10 @@ export default function MCODemoPage({ searchParams }: Props) {
 }
 
 export const metadata: Metadata = {
-  title: 'AskAna — Orlando International Airport',
+  title: 'MCO Concierge — Orlando International Airport',
   description: 'A digital concierge for MCO. Ask anything about parking, terminals, security, ground transportation, accessibility, and more.',
   openGraph: {
-    title: 'AskAna — Orlando International Airport',
+    title: 'MCO Concierge — Orlando International Airport',
     description: 'A digital concierge for MCO from Sentimetrx.',
   },
   robots: { index: false, follow: false },
