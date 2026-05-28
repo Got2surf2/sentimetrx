@@ -28,6 +28,14 @@ function timeWindow(hint: string | undefined): { startSec: number; endSec: numbe
   const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
   const eveStart = new Date(); eveStart.setHours(17, 0, 0, 0)
   const morningEnd = new Date(); morningEnd.setHours(11, 59, 59, 999)
+  // Tomorrow / tomorrow morning / tomorrow evening / tomorrow night
+  if (/tomorrow/.test(m)) {
+    const tStart = new Date(); tStart.setDate(tStart.getDate() + 1); tStart.setHours(0, 0, 0, 0)
+    const tEnd   = new Date(); tEnd.setDate(tEnd.getDate() + 1);   tEnd.setHours(23, 59, 59, 999)
+    if (/morning|am/.test(m)) tEnd.setHours(11, 59, 59, 999)
+    if (/evening|tonight|night|pm/.test(m)) tStart.setHours(17, 0, 0, 0)
+    return { startSec: tStart.getTime() / 1000, endSec: tEnd.getTime() / 1000 }
+  }
   if (/tonight|this evening|evening/.test(m)) {
     return { startSec: Math.max(now, eveStart.getTime() / 1000), endSec: todayEnd.getTime() / 1000 }
   }

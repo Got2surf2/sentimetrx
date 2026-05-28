@@ -20,12 +20,13 @@ const ENDPOINT = 'https://api.goaa.aero/flights'
 const PUBLIC_GOAA_KEY = '8eaac7209c824616a8fe58d22268cd59'
 const CACHE_TTL_MS = 60_000
 const FAILURE_BACKOFF_MS = 30_000
-// 12-hour window — covers "is my flight today" queries for almost the
-// whole day. 4 hours (the prior value) was too narrow: a user asking about
-// their flight at 11 AM with a 6 PM departure got "no matching flights"
-// because the flight wasn't in the next-4h window. The GOAA feed handles
-// 12h queries fine (~500-700 flights in the response, still manageable).
-const WINDOW_SECONDS = 12 * 3600
+// 36-hour fetch window — wide enough to cover "tomorrow morning" and
+// "red-eye tonight" queries without re-fetching per turn. Earlier values
+// (4h, then 12h) clipped late-tomorrow flights: a user asking "flights
+// to JFK tomorrow" at 5 PM gets back the 6 AM departures only if the
+// fetch reaches into tomorrow's full day. GOAA handles ~1000 flights
+// in this range fine; per-query filtering narrows it for the card.
+const WINDOW_SECONDS = 36 * 3600
 
 export interface Flight {
   iataOperatingAirline: string         // "DL"
