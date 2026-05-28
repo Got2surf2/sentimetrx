@@ -1,5 +1,25 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-27 — Town hall activation gate + optional agent linkage on create
+
+**Why**: User flagged that the converged stack lets a facilitator save a town hall with no topics and then flip it `setup → active` via PATCH — no server-side validation. Same hole on the legacy substrate. Also asked for an explicit "import this agent's focuses as starter topics" affordance on `/townhall/new` (default empty so importing is a conscious decision), and a hard rule that a town hall can't go live until the **event description** is complete. Idiot-proofing in advance of NOWOCATS / June Vindman launch where the same agent (Sarina) backs the cohort.
+
+**What changed**:
+- `lib/townhallActivationGate.ts` (new) — single gate shared by both substrate PATCH paths and the grader route. Exports `checkTopicsReady`, `gradeEventDescription` (lifted from the route), and `checkActivationReadiness({ config, discussion_guide })` returning `{ ready, topics_ok, description_ok, description_score, missing[] }`. Rules: ≥1 enabled topic with label + opening_question AND event description grades ≥ 3. The grader snapshot stored on the session (`config.event_description_grade.graded_text`) is re-used **only** when it matches the current description verbatim — editing the description forces a re-grade so a user can't pass the gate, weaken the description, and ship.
+- `app/api/townhall/sessions/[id]/route.ts` — both PATCH paths (`handlePhase3Patch` + legacy) call `checkActivationReadiness` before flipping to active/live and return `400 { error, readiness }` on failure. Merges in-flight body edits over the stored row so a combined PATCH (edit topics + activate in one request) is evaluated against the post-edit state.
+- `app/api/townhall/grade-description/route.ts` — thin shim over the new `gradeEventDescription` helper (no behavior change for callers).
+- `lib/types.ts` — `TownHallConfig` gains `bot_id_link?: string` (optional underlying-agent link for legacy substrate, UI-only) and `event_description_grade?: { score, suggestion?, graded_text, graded_at }`.
+- `app/townhall/new/NewSessionClient.tsx` — Step 0 adds an "Underlying agent (optional)" dropdown (fetches `/api/bots` on mount; selected id stored in `config.bot_id_link`). Step 1 adds an "Import focuses from agent" panel that appears only when an agent is linked; clicking it lazy-fetches `/api/bots/[id]`, filters `BotFocus[]` to enabled focuses, and maps each into a `TownHallGuideTopic` (label/description copied; opening_question left blank — Topics-step validation still requires it). If the placeholder topic is empty, import replaces it; otherwise it appends. `handleSave` persists the latest grader snapshot keyed to the description text.
+- `app/townhall/[sessionId]/SessionDetailClient.tsx` — `saveEdit` persists the grader snapshot too (same shape). Computes `activationMissing[]` from `session.discussion_guide` + `session.config.event_description_grade`, mirroring the server gate. Start Session button is disabled (grey, "Not ready to start") with the missing reasons listed beneath when the gate fails; the title tooltip carries the same list. `handleSessionAction`'s error toast now appends `readiness.missing` if the server returns 400 on Start.
+- `docs/TOWNHALL.md` — new sections "Underlying agent (optional)" and "Activation gate" under Session Creation.
+
+**Decisions**:
+- Default for the import button is empty / opt-in (user instruction: "by default leave empty — makes it a conscious decision").
+- Stored agent link on legacy substrate goes in `config.bot_id_link` (JSONB) rather than a new column. Pre-convergence + UI-only. No migration. Phase-3 `town_halls` already has the canonical `bot_id` column.
+- Activation gate hits the AI grader only on the activation attempt when the saved snapshot doesn't cover the current text. Net cost: one `callAI({ tier: 'fast' })` per Start attempt in the worst case — bounded.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit`. Manual UI verification deferred — committed but **not pushed** (user-controlled).
+
 ## 2026-05-25 (later) — NOWOCATS facilitator Save blocked on every edit (slug lock)
 
 **Why**: User flagged `Save failed: slug edit on phase-3 town halls not yet supported` on the NOWOCATS (Sarina) facilitator setup at `/townhall/<id>`. Diagnosis: `SessionDetailClient.tsx::saveEdit` was sending `slug` in every PATCH body unconditionally — initialized from `session.slug` when the editor opened — so the server's phase-3 guard fired even when the facilitator didn't touch the field. NOWOCATS postcards have already been mailed with the participant URL printed on them, so the slug is operationally locked anyway. The 405 isn't a missing feature — it's a guardrail. The bug is the client sending an unchanged value.

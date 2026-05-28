@@ -948,6 +948,22 @@ export interface TownHallConfig {
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
   testing?:            boolean  // testing mode: bot messages include AI thinking/reasoning inline
   // Debug mode: activated via #debug SESSION_ID in chat or ?debug=SESSION_ID in URL
+  // Optional underlying agent this session is built on. UI-only on the
+  // legacy substrate (townhall_sessions has no bot_id column) — used by
+  // the create/edit screens to enable the "Import focuses from agent"
+  // helper. Phase-3 town_halls carry the canonical link in its own
+  // bot_id column.
+  bot_id_link?: string
+  // Snapshot of the last `/api/townhall/grade-description` result, keyed
+  // to the graded text so the activation gate can re-verify the score
+  // still applies to the current description without an extra AI call
+  // every time.
+  event_description_grade?: {
+    score: number          // 1-5 from the grader; 0 means "not yet graded"
+    suggestion?: string
+    graded_text: string    // exact event_description the score was computed against
+    graded_at: string      // ISO timestamp
+  }
   // Content safety: profanity filtering + strike escalation
   content_safety?: {
     enabled?: boolean          // master toggle (default true)

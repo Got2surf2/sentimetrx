@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+import type { BotFocus } from '@/lib/focusClassifier'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
@@ -559,6 +560,60 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setGeneratingGuide(false)
   }
 
+  // -- Underlying agent (optional) --
+  // Lets the facilitator link this session to an existing agent so the
+  // Topics step can offer "Import focuses from agent". The link is stored
+  // in config.bot_id_link (legacy substrate has no bot_id column).
+  type AgentOption = { id: string; name: string; slug?: string | null }
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
+  const [agentFocuses, setAgentFocuses] = useState<BotFocus[] | null>(null)
+  const [importingFocuses, setImportingFocuses] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/bots').then(r => r.json()).then((data: { bots?: AgentOption[] }) => {
+      if (cancelled) return
+      setAgentOptions((data.bots || []).map(b => ({ id: b.id, name: b.name, slug: b.slug })))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const selectedAgentId = config.bot_id_link
+  useEffect(() => {
+    setAgentFocuses(null)
+    if (!selectedAgentId) return
+    let cancelled = false
+    fetch('/api/bots/' + selectedAgentId).then(r => r.json()).then((bot: any) => {
+      if (cancelled) return
+      const focuses: BotFocus[] = Array.isArray(bot?.focuses) ? bot.focuses : []
+      setAgentFocuses(focuses)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedAgentId])
+
+  const importFocusesFromAgent = () => {
+    if (!agentFocuses || agentFocuses.length === 0) return
+    setImportingFocuses(true)
+    const existingLabels = new Set(guide.map(t => t.label.trim().toLowerCase()).filter(Boolean))
+    const imported: TownHallGuideTopic[] = agentFocuses
+      .filter(f => f && f.enabled !== false && f.label && !existingLabels.has(f.label.trim().toLowerCase()))
+      .map(f => ({
+        id: generateId(),
+        label: f.label,
+        description: f.description || '',
+        opening_question: '',
+        follow_up_angles: [],
+        keywords: [],
+        response_target: DEFAULT_CONFIG.engine.default_response_target,
+        enabled: true,
+      }))
+    // If the user hasn't typed anything into the placeholder topic yet,
+    // replace it with the imported set; otherwise append.
+    const placeholderOnly = guide.length === 1 && !guide[0].label.trim() && !guide[0].opening_question.trim()
+    setGuide(placeholderOnly ? imported : [...guide, ...imported])
+    setImportingFocuses(false)
+  }
+
   // Step management (6 steps: Basics, Topics, Sensitive Topics, Conversation, Post-Session, Review)
   const [step, setStep] = useState(0)
   const [highestVisited, setHighestVisited] = useState(0)
@@ -610,11 +665,24 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setSaving(true)
     setError(null)
 
+    // Persist the last grader snapshot so the server-side activation gate
+    // doesn't have to re-grade on every Start attempt. Snapshot is keyed
+    // to the exact description text so an edit invalidates it.
+    const configToSave: TownHallConfig = { ...config }
+    if (descGrade && descGrade.score > 0 && config.context.event_description.trim()) {
+      configToSave.event_description_grade = {
+        score: descGrade.score,
+        suggestion: descGrade.suggestion,
+        graded_text: config.context.event_description,
+        graded_at: new Date().toISOString(),
+      }
+    }
+
     try {
       const res = await fetch('/api/townhall/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), slug: slug.trim() || undefined, config, discussion_guide: guide }),
+        body: JSON.stringify({ name: name.trim(), slug: slug.trim() || undefined, config: configToSave, discussion_guide: guide }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -705,6 +773,20 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                   <option value="">Select industry (optional)</option>
                   {(Object.keys(INDUSTRY_LABELS) as Industry[]).sort((a, b) => INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])).map(k => (
                     <option key={k} value={k}>{INDUSTRY_EMOJIS[k]} {INDUSTRY_LABELS[k]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <Label sub="Optional — lets you import this agent's focuses as starter topics on the next step">Underlying agent</Label>
+                <select
+                  value={config.bot_id_link || ''}
+                  onChange={e => setConfig(c => ({ ...c, bot_id_link: e.target.value || undefined }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 bg-white"
+                >
+                  <option value="">None — start the topic list from scratch</option>
+                  {agentOptions.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
               </div>
@@ -824,6 +906,27 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                   {generatingGuide ? 'Generating...' : '\u2728 Generate from Description'}
                 </button>
               </div>
+
+              {/* Import focuses from underlying agent \u2014 only when one is picked */}
+              {config.bot_id_link && (
+                <div className="mb-4 p-3 rounded-xl border border-blue-200 bg-blue-50/60 flex items-center justify-between gap-3">
+                  <div className="text-xs text-gray-700">
+                    <span className="font-semibold">Underlying agent linked.</span>{' '}
+                    {agentFocuses === null
+                      ? 'Loading this agent\u2019s focuses\u2026'
+                      : agentFocuses.length === 0
+                        ? 'This agent has no focuses defined, so there\u2019s nothing to import.'
+                        : 'Import this agent\u2019s ' + agentFocuses.filter(f => f.enabled !== false).length + ' focus area(s) as starter topics. You\u2019ll still need to add an opening question for each.'}
+                  </div>
+                  <button
+                    onClick={importFocusesFromAgent}
+                    disabled={importingFocuses || !agentFocuses || agentFocuses.filter(f => f.enabled !== false).length === 0}
+                    className="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                    style={{ background: '#2563eb' }}>
+                    {importingFocuses ? 'Importing\u2026' : 'Import focuses'}
+                  </button>
+                </div>
+              )}
 
               <div className="space-y-4">
                 {guide.map((topic, i) => (

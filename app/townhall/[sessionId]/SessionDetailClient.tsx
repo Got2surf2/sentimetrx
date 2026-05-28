@@ -307,9 +307,23 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       // unchanged value blocks every save on a phase-3 surface.
       const trimmedSlug = editSlug.trim() || null
       const slugChanged = trimmedSlug !== (session.slug || null)
+
+      // Persist the latest grader snapshot keyed to the exact description
+      // text — mirrors NewSessionClient so the server activation gate has
+      // a fresh score to read on Start.
+      const configToSave: TownHallConfig = { ...editConfig }
+      if (descGrade && descGrade.score > 0 && editConfig.context.event_description.trim()) {
+        configToSave.event_description_grade = {
+          score: descGrade.score,
+          suggestion: descGrade.suggestion,
+          graded_text: editConfig.context.event_description,
+          graded_at: new Date().toISOString(),
+        }
+      }
+
       const body: Record<string, unknown> = {
         name: editName,
-        config: editConfig,
+        config: configToSave,
         discussion_guide: editGuide,
       }
       if (slugChanged) body.slug = trimmedSlug
@@ -350,7 +364,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setError('Failed to ' + action + ': ' + (d.error || res.status))
+        const reasons = d?.readiness?.missing as string[] | undefined
+        const tail = reasons && reasons.length > 0 ? ' — ' + reasons.join('; ') : ''
+        setError('Failed to ' + action + ': ' + (d.error || res.status) + tail)
       }
     } catch (err: any) { setError('Network error: ' + (err?.message || 'unknown')) }
     await fetchData()
@@ -392,6 +408,28 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const isActive = session.status === 'active'
   const isPaused = session.status === 'paused'
   const isEnded = session.status === 'ended'
+
+  // Mirrors the server-side gate in lib/townhallActivationGate.ts so the
+  // facilitator sees the same reasons here that the API would return on
+  // Start. Description score is read from the saved snapshot — only valid
+  // when the snapshot text matches the current description verbatim; a
+  // mismatch (or missing snapshot) is treated as "needs grading."
+  const activationMissing: string[] = []
+  const topicsReady = Array.isArray(session.discussion_guide) && session.discussion_guide.some((t: any) =>
+    t && t.enabled !== false && (t.label || '').trim() && (t.opening_question || '').trim())
+  if (!topicsReady) activationMissing.push('Add at least one enabled topic with a label and opening question.')
+
+  const savedDesc = (cfg?.context?.event_description || '').trim()
+  const savedGrade = cfg?.event_description_grade as { score?: number; graded_text?: string } | undefined
+  const gradeApplies = !!savedGrade && (savedGrade.graded_text || '') === (cfg?.context?.event_description || '')
+  const descScore = gradeApplies && typeof savedGrade?.score === 'number' ? savedGrade.score : 0
+  const descReady = descScore >= 3
+  if (!descReady) {
+    if (!savedDesc) activationMissing.push('Add an event description so the AI moderator has context.')
+    else if (!gradeApplies) activationMissing.push('Re-grade the event description (it has changed since the last grade).')
+    else activationMissing.push('Event description needs to grade at least "Adequate" (3/5). Current: ' + descScore + '/5.')
+  }
+  const canStart = activationMissing.length === 0
 
   // Separate themes into sections — by status
   const activeTopics = themes.filter(t => t.state === 'active')
@@ -442,11 +480,19 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </button>
             )}
             {isSetup && (
-              <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start'}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                style={{ background: '#22c55e' }}>
-                {actionLoading === 'start' ? 'Starting...' : 'Start Session'}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start' || !canStart}
+                  className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: canStart ? '#22c55e' : '#9ca3af' }}
+                  title={canStart ? 'Start the session' : activationMissing.join('\n')}>
+                  {actionLoading === 'start' ? 'Starting...' : canStart ? 'Start Session' : 'Not ready to start'}
+                </button>
+                {!canStart && (
+                  <div className="text-[10px] text-amber-700 max-w-xs text-right leading-snug">
+                    {activationMissing.map((m, i) => <div key={i}>• {m}</div>)}
+                  </div>
+                )}
+              </div>
             )}
             {(isActive || isPaused) && (
               <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}

@@ -30,6 +30,18 @@ Live group feedback sessions with AI moderation. Participants chat anonymously w
 - **Staged Keyword Expansion** — S (similar word forms) and A (associated terms) toggle buttons on every keyword and sensitive topic pill
 - **Description Grading** — Real-time 1-5 quality score on event description
 
+### Underlying agent (optional) — Step 0 picker + Step 1 import button
+The facilitator can optionally link the session to one of their existing agents via the **Underlying agent** dropdown on Basics. Stored in `config.bot_id_link` (legacy `townhall_sessions` has no `bot_id` column; phase-3 `town_halls` carries the canonical link in its own column).
+
+When linked, Step 1 shows an **Import focuses from agent** action that appends each enabled `BotFocus` as a starter `TownHallGuideTopic` (`focus.label → topic.label`, `focus.description → topic.description`; `opening_question` left blank for the facilitator to author — the topic-step validation still requires it). Skipped by default — the user has to opt in, so import is a conscious decision (memory: `project_nowocats_town_hall_launch`). If the placeholder topic is still empty, the import replaces it; otherwise it appends.
+
+### Activation gate (`lib/townhallActivationGate.ts`)
+A session cannot transition from `setup → active` until **both** rules pass:
+1. `discussion_guide` has at least one enabled topic with a non-empty `label` and `opening_question`.
+2. `config.context.event_description` grades ≥ 3 ("Adequate") on the 1-5 grader. The grader snapshot is stored in `config.event_description_grade = { score, suggestion, graded_text, graded_at }` and re-used by the server gate **only when `graded_text` matches the current description verbatim** — editing the description invalidates the snapshot and forces a re-grade.
+
+Both PATCH paths in `/api/townhall/sessions/[id]` (legacy + `handlePhase3Patch`) call `checkActivationReadiness()` before flipping status to active/live, and return `400 { error, readiness: { ready, topics_ok, description_ok, description_score, missing[] } }` on failure. The facilitator console (`SessionDetailClient.tsx`) mirrors the gate client-side — the Start button is disabled and lists the missing reasons inline beneath it, and the server's `readiness.missing[]` is appended to the action-error toast if the user still tries to start.
+
 ### Session Types
 community, employee, customer, student, member, other — drives AI tone and peer references
 

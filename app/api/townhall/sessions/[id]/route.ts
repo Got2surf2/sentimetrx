@@ -5,6 +5,7 @@ import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
 import { bleepText } from '@/lib/contentGuard'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
+import { checkActivationReadiness } from '@/lib/townhallActivationGate'
 
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
@@ -177,6 +178,23 @@ async function handlePhase3Patch(
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+  }
+
+  // Activation gate (phase-3): refuse the setup→live transition until the
+  // discussion guide has real topics AND the event description grades >= 3.
+  // Merge body overrides on top of the persisted row so a single PATCH that
+  // edits config/discussion_guide and flips status in one go is evaluated
+  // against the post-edit state.
+  if (nextStatusLegacy === 'active') {
+    const mergedGuide  = 'discussion_guide' in body ? (body.discussion_guide as any) : (hall as any).discussion_guide
+    const mergedConfig = 'config'           in body ? (body.config           as any) : (hall as any).cohort_config
+    const readiness = await checkActivationReadiness({ config: mergedConfig, discussion_guide: mergedGuide })
+    if (!readiness.ready) {
+      return NextResponse.json({
+        error: 'Town hall is not ready to start',
+        readiness,
+      }, { status: 400 })
+    }
   }
 
   const { data: updated, error } = await db
@@ -836,6 +854,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     updates.started_at = new Date().toISOString()
   } else if (updates.status === 'ended') {
     updates.ended_at = new Date().toISOString()
+  }
+
+  // Activation gate (legacy substrate): same rules as phase-3. Refuse to
+  // flip to 'active' until topics + description grade pass. Merge body
+  // overrides on top of the persisted row for combined-PATCH cases.
+  if (updates.status === 'active') {
+    const { data: current } = await db
+      .from('townhall_sessions')
+      .select('config, discussion_guide')
+      .eq('id', params.id)
+      .single()
+    const mergedGuide  = 'discussion_guide' in body ? body.discussion_guide : (current as any)?.discussion_guide
+    const mergedConfig = 'config'           in body ? body.config           : (current as any)?.config
+    const readiness = await checkActivationReadiness({ config: mergedConfig as any, discussion_guide: mergedGuide as any })
+    if (!readiness.ready) {
+      return NextResponse.json({
+        error: 'Town hall is not ready to start',
+        readiness,
+      }, { status: 400 })
+    }
   }
 
   const { data, error } = await db
