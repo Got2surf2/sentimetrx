@@ -565,3 +565,24 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 
 **Lesson reinforced**: when scripts in `scripts/_*.ts` have layered "update_X → flip_X → maybe_more_X" sequences, the latest script is not necessarily the current state — the admin UI can edit the same field. Verify live, not just the latest script you happened to grep.
 
+
+---
+
+## 2026-05-28 (later) — NOWOCATS deck: +2 substance slides (town hall focus areas, Sarina's known entities) + first entity extraction run
+
+**Why**: User QC of the substance section called out two gaps. (1) The town-hall slide treated the "7 feedback topics" as an abstraction without listing them or showing what facilitator saturation looks like. (2) The deck never showed what entities Sarina actually recognizes — and a check of the live catalog showed that despite the schema supporting bot-scoped entities (migration 087), no extraction had ever been run on Sarina's KB.
+
+**What changed**:
+- `app/api/nowocats-approach-deck/route.ts` — inserted 2 new slides between the town-hall wrapper overview (slide 13) and the visual flow (now slide 16):
+  - Slide 14 — "The 7 focus areas the town hall tracks": enumerates the 7 feedback topics (resident profile, geographic context, travel mode, biggest frustration, 2050 concern, priority category, specific locations) with Sarina's typical opening for each, the 2 anchor asks confirmed before closing, and a mock facilitator saturation panel ("asked per conversation", "on track", "needs nudge", "open — N mentions").
+  - Slide 15 — "Entities Sarina already recognizes": real extracted data from the catalog, grouped by category — Places (51 visible, top 15 surfaced: US 441, Plymouth Sorrento, Rock Springs, Ocoee Apopka, SR 436, ...), Programs (8: NOWOCATS, NEOCATS, ...), People (5: Babuji Ambikapathy, Christine Moore, Commissioner Moore, Nicola Norton, Natalia Garcia), Organizations (3: FDOT, VHB, LYNX), Policy (1: ADA), Event (1: NOWOCATS CMS).
+- Section comments renumbered (Visual → 16, Recommendation → 17, Timeline → 18, Close → 19). Total deck length 19 slides.
+- `scripts/_extract_sarina_entities.ts` (new) — one-off runner that calls `lib/botEntityExtraction.extractBotEntities()` for Sarina. Non-destructive (UPSERT-only — checked source before running, distinct from the dataset-scope flow that bit prod previously).
+- `scripts/_read_sarina_entities.ts` (new) — read-only catalog inspector.
+- `scripts/_no_server_only.cjs` + `scripts/_server_only_stub.cjs` (new) — preload shim for one-off scripts that need to import `lib/*.ts` files gated by `import 'server-only'`. Usage: `NODE_OPTIONS='--require ./scripts/_no_server_only.cjs' tsx scripts/foo.ts`.
+- `scripts/_render_sarina_new_slides_qc.ts` — extended to render all 6 substance slides for cohesive QC.
+
+**Production state change** (read-only docs DO get this right but want it visible): ran the first entity extraction for Sarina (`bot_id=5c468b9...`). Inserted 202 rows into `entity_catalog` (scope_type=bot), of which 71 are visible (sample_count > 1) and 131 are hidden (single mentions). Cost: $0.03. One `entity_catalog_refresh` audit row written, `triggered_by='manual'`. Hatem's name landed in the hidden tier — admin can promote via /bots/[id]/entities before launch if desired.
+
+**Spec drift status**: ran `npm run spec-drift` for the full 128-commit range since the 2026-05-15 baseline audit. Result: **zero drift** — every spec doc that maps to touched code has an accompanying spec edit. Pre-commit hook has been holding the line. (Latent drift from earlier SKIP_SPEC_CHECK bypasses isn't caught by this check; deeper audit would be a separate task.)
+
