@@ -250,6 +250,16 @@ prototypes can lag.
   Tab order is logical; focus-visible styles are present.
 - **Color contrast** ≥ 4.5:1 for normal text; 3:1 for ≥18pt.
 - **Form fields** have `<label>` (visible or `aria-label`).
+- **Typeable inputs render at ≥16px on mobile.** Every
+  `<input type="text|email|tel|search|password|number">` and
+  every `<textarea>` needs `fontSize: '16px'` (inline) or
+  `text-base` (Tailwind) at minimum. iOS Safari auto-zooms the
+  page on focus when the input's computed font-size is below
+  16px, which shifts Send buttons off-screen and visually
+  balloons auto-growing textareas. Already hit `ChatBot` (now
+  `fontSize: '16px'`) and the kiosk chat input. Larger is fine
+  (OTP-style fields are routinely larger). Doesn't apply to
+  `type="file"`, `checkbox`, `radio`, or hidden inputs.
 - **Error messages** are programmatically associated with the
   invalid field via `aria-describedby`.
 - **Images** have `alt` (descriptive or `""` if decorative).

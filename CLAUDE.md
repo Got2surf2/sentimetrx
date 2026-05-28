@@ -73,6 +73,7 @@ After multi-file sweeps, run `rm tsconfig.tsbuildinfo && npx tsc --noEmit` — i
 
 - **No fabricated market data.** Don't invent TAM/SAM, segment $, CAGRs, or % statistics. Use qualitative claims, user-provided data, or cited sources only.
 - **No invented emails / URLs / phones.** Don't put fabricated support addresses, dashboards, or domain assets into shipped UI — ask for the real value or omit.
+- **Typeable inputs must be ≥16px.** Every `<input type="text|email|tel|search|password|number">` and every `<textarea>` needs `fontSize: '16px'` (inline) or `text-base` (Tailwind) at minimum. iOS Safari auto-zooms the page on focus when the input's computed font-size is < 16px, which shifts Send buttons off-screen and visually balloons auto-growing textareas — already bitten the ChatBot textarea (now `fontSize: '16px'`) and the kiosk chat input. Larger is fine. Doesn't apply to `type="file"`, `checkbox`, `radio`, or hidden inputs.
 
 ## Specs
 
