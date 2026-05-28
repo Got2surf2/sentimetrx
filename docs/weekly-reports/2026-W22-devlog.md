@@ -536,3 +536,18 @@ That maps directly to the pitch slide: "filled = baseline, white = AI upgrade, r
 **Acceptance criteria**: regression 7/7 must still pass at hybrid mode, the 10 currently-classified pilot rows must show ≥2× the number of keyword+both tier chips, and a spot-check of 30 random learned entries must hit ≥90% correct.
 
 **Queued in `project_open_work_queue.md` as the highest-priority next-session work.**
+
+---
+
+## 2026-05-28 — NOWOCATS approach deck: +4 substance slides for Babuji + Hatem
+
+**Why**: Existing 13-slide deck pitches the customer-facing narrative (gap → Sarina → conversation flow → guardrails → outputs → recommendation). For the VHB / Orange County review with Babuji (VHB SE division lead, gateway to more VHB work) and Hatem (Orange County PM with budget authority), the deck needed engineering substance — concretely what feeds Sarina's brain, exactly how her voice is steered, what the town hall wrapper adds beyond bare 1:1 chat, and a visual showing how the same agent serves both individuals (QR/widget) and the room (town hall layer).
+
+**What changed** (app/api/nowocats-approach-deck/route.ts):
+- **Slide 11 — What's in Sarina's brain**: 5 ingested NOWOCATS docs (ECR, PM-1 deck, PM-1 Q&A, PM-1 posters, PM-2 postcard) as a 2×3 card grid + RAG mechanics callout (chunking, text-embedding-3-small, semantic retrieval, source labels) + commitment to ingest PM-2 slides when they publish.
+- **Slide 12 — How Sarina is steered**: 3-column knob breakdown (Personality / System Prompt / Guardrails) + plain-language jargon table example (LOS F → "essentially stop-and-go in rush hour", PCI / LTS / AADT) + explicit OFF-LIMITS strip (no political positions, no promised outcomes, no funding commitments).
+- **Slide 13 — What the town hall wrapper adds**: side-by-side comparison of bare 1:1 Sarina vs +town-hall-wrapper showing the 6 pooling-only signals (shared topic plan, live saturation counter, emergent theme detection, cross-resident sentiment, facilitator dashboard, geographic hotspot rollup).
+- **Slide 14 — From documents to a smarter room**: 3-row visual (INGEST → AGENT → ENGAGE) ending with split into Individual channel (QR + widget) and Town Hall layer ("what the room knows") under one agent.
+
+Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow via the existing `p++` increment pattern. No spec doc behavior change — this is presentation content describing existing Sarina + PulseIQ substrate.
+

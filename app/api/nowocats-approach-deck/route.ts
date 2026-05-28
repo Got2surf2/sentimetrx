@@ -447,7 +447,286 @@ export async function GET() {
     'You get the synthesis on day one — themed, geo-tagged, quoted — and the raw transcript is there if you need to drill in.'
   )
 
-  // ═══ SLIDE 11: Recommendation — Sarina on www.nowocats.com ═══
+  // ═══ SLIDE 11: What's in Sarina's brain — KB sources ═══
+  p++
+  const sKb = pptx.addSlide()
+  sKb.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(sKb, 'What\'s in Sarina\'s brain', 'Five public NOWOCATS documents. Chunked, embedded, source-cited. Nothing beyond them.')
+  ftr(sKb, p)
+
+  const kbDocs = [
+    {
+      title: 'Existing Conditions Report',
+      meta:  'September 2025  ·  Study Report',
+      body:  '143.8 sq mi study area. 44 intersections + 27 roadway segments evaluated. 2025 baseline + 2050 build vs no-build forecasts. Multimodal — roads, transit, bike/ped, freight.',
+      accent: C.teal,
+    },
+    {
+      title: 'PM-1 Community Meeting Presentation',
+      meta:  'Jan 26 & 28, 2026  ·  44 slides',
+      body:  'Study purpose, existing conditions, programmed vs planned improvements, future conditions, timeline, engagement. Hatem (Orange County) + Babuji (VHB) ingested as project contacts.',
+      accent: C.orange,
+    },
+    {
+      title: 'PM-1 Q&A Forum',
+      meta:  'Verbatim Q&A  ·  28 pairs / 12 topics',
+      body:  'Every resident question and project-team response from Community Meeting #1. Sarina cites the team\'s exact wording — not paraphrased, not synthesized.',
+      accent: C.purple,
+    },
+    {
+      title: 'PM-1 Posters + Meeting Notice',
+      meta:  'Plain-language explainers  ·  Meeting Materials',
+      body:  'LOS definitions in resident-friendly language, programmed-vs-planned framing, venue / contact details from the Community Meeting #1 poster set.',
+      accent: C.gold,
+    },
+    {
+      title: 'PM-2 Postcard',
+      meta:  'Meeting #2 Notice  ·  June 16, 2026',
+      body:  'Date, time, venue. ADA contact (Nicola Norton, 407-836-6568). Title VI contact (Natalia Garcia, 407-836-7334). Bilingual outreach commitment.',
+      accent: C.tealMid,
+    },
+  ]
+  kbDocs.forEach(function(d, i) {
+    const col = i % 3
+    const row = Math.floor(i / 3)
+    const x = 0.5 + col * 4.27
+    const y = 1.35 + row * 2.55
+    sKb.addShape('roundRect', { x, y, w: 4.0, h: 2.4, rectRadius: 0.1, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+    sKb.addShape('rect', { x, y, w: 0.06, h: 2.4, fill: { color: d.accent } })
+    sKb.addText(d.title, { x: x + 0.22, y: y + 0.12, w: 3.65, h: 0.38, fontSize: 14, fontFace: 'Arial', color: C.navy, bold: true })
+    sKb.addText(d.meta,  { x: x + 0.22, y: y + 0.5,  w: 3.65, h: 0.28, fontSize: 9.5, fontFace: 'Arial', color: d.accent, bold: true, charSpacing: 1.5 })
+    sKb.addText(d.body,  { x: x + 0.22, y: y + 0.82, w: 3.65, h: 1.5,  fontSize: 11, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.4 })
+  })
+
+  // Sixth cell — RAG mechanics callout (navy)
+  const xR = 0.5 + 2 * 4.27
+  const yR = 1.35 + 1 * 2.55
+  sKb.addShape('roundRect', { x: xR, y: yR, w: 4.0, h: 2.4, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sKb.addText('HOW IT WORKS', { x: xR + 0.22, y: yR + 0.12, w: 3.65, h: 0.3, fontSize: 9, fontFace: 'Arial', color: C.tealMid, bold: true, charSpacing: 3 })
+  sKb.addText(
+    'Each ## heading = one chunk.\n' +
+    'Chunks vectorized with text-embedding-3-small.\n' +
+    'Resident question → semantic search → top-N chunks → answer grounded in ONLY those chunks.\n' +
+    'Every chunk carries its source label.',
+    { x: xR + 0.22, y: yR + 0.48, w: 3.65, h: 1.85, fontSize: 11, fontFace: 'Arial', color: C.white, wrap: true, lineSpacingMultiple: 1.4 }
+  )
+
+  // Bottom strip — re-ingest commitment
+  sKb.addShape('roundRect', { x: 0.5, y: 6.55, w: 12.3, h: 0.5, rectRadius: 0.08, fill: { color: C.gold }, line: { color: C.gold, width: 0 } })
+  sKb.addText('PM-2 presentation slides become a sixth document the moment they publish — same pipeline, no rebuild.', {
+    x: 0.5, y: 6.55, w: 12.3, h: 0.5, fontSize: 12, fontFace: 'Arial', color: C.navy, bold: true, align: 'center', valign: 'middle',
+  })
+
+  sKb.addNotes(
+    'This is the slide Babuji will lean in on. Five public documents, chunked at section level, embedded with text-embedding-3-small, retrieved by semantic similarity at query time. ' +
+    'Every chunk carries a source label so Sarina knows which document she\'s citing — and the system prompt forces her to ground every answer in retrieved chunks, not in pre-training knowledge. ' +
+    'When PM-2 slides drop, they become a sixth document through the same pipeline — no model retraining, no separate code path. ' +
+    'For Hatem: nothing in this brain came from outside Orange County / VHB public materials. The corpus is the corpus.'
+  )
+
+  // ═══ SLIDE 12: How Sarina is steered — tone, guardrails, off-limits ═══
+  p++
+  const sSt = pptx.addSlide()
+  sSt.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(sSt, 'How Sarina is steered', 'Three explicit knobs control her voice — personality, system prompt, guardrails — plus a deflection router for off-topic asks')
+  ftr(sSt, p)
+
+  const knobs = [
+    {
+      title: 'Personality',
+      sub:   'WHO SHE SOUNDS LIKE',
+      body:  'Civic. Measured. Neighbor-helpful. Matches the wording Hatem and Babuji already use in the PM-1 Q&A forum. Bilingual from the first message — if the resident writes Spanish, Sarina responds in Spanish the entire conversation.',
+      accent: C.teal,
+    },
+    {
+      title: 'System Prompt',
+      sub:   'WHAT SHE DOES + HOW SHE SPEAKS',
+      body:  'Mission, conversation arc, and a plain-language translation table.\n\nEngineering term leads, plain English in parentheses:\n· LOS F (essentially stop-and-go in rush hour)\n· PCI (0-100 pavement score; <60 is poor)\n· LTS (how comfortable a road feels to walk/bike)\n· AADT (vehicles per day)\n20+ acronyms covered.',
+      accent: C.orange,
+    },
+    {
+      title: 'Guardrails',
+      sub:   'WHAT SHE WILL NOT DO',
+      body:  'Explicit rule list applied per-reply:\n1. Answer only from ingested NOWOCATS corpus\n2. No political positions for or against any project\n3. No promised outcomes or timelines beyond PM materials\n4. No funding, budget, or developer commitments\n5. No comparison with other county initiatives',
+      accent: C.purple,
+    },
+  ]
+  knobs.forEach(function(k, i) {
+    const x = 0.5 + i * 4.27
+    const y = 1.35
+    const h = 4.45
+    sSt.addShape('roundRect', { x, y, w: 4.0, h, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+    sSt.addShape('rect', { x, y, w: 4.0, h: 0.62, fill: { color: k.accent }, line: { color: k.accent, width: 0 } })
+    sSt.addText(k.title, { x: x + 0.22, y: y + 0.05, w: 3.65, h: 0.32, fontSize: 16, fontFace: 'Arial', color: C.white, bold: true })
+    sSt.addText(k.sub,   { x: x + 0.22, y: y + 0.36, w: 3.65, h: 0.24, fontSize: 9, fontFace: 'Arial', color: C.white, bold: true, charSpacing: 2 })
+    sSt.addText(k.body,  { x: x + 0.22, y: y + 0.78, w: 3.65, h: h - 0.95, fontSize: 11, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.4 })
+  })
+
+  // Off-limits strip
+  sSt.addShape('roundRect', { x: 0.5, y: 5.95, w: 12.3, h: 1.1, rectRadius: 0.1, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sSt.addText('OFF-LIMITS', { x: 0.7, y: 6.02, w: 2.2, h: 0.34, fontSize: 11, fontFace: 'Arial', color: C.gold, bold: true, charSpacing: 3 })
+  sSt.addText(
+    'Sarina will not advocate for or against any specific project · will not name a politician favorably or critically · will not promise that any road or improvement will or will not be built · will not opine on funding, land deals, or developer-driven projects · will not discuss matters outside NW Orange County transportation. Off-topic asks are redirected by a deflection router with a configurable message.',
+    { x: 2.95, y: 6.02, w: 9.7, h: 0.96, fontSize: 11, fontFace: 'Arial', color: C.white, wrap: true, lineSpacingMultiple: 1.35 }
+  )
+
+  sSt.addNotes(
+    'For Babuji: these are three separate fields on the bot record — personality, system_prompt, guardrails — plus a deflection router that fires before the main LLM call. ' +
+    'The jargon translation table was iterated through two passes after we caught LOS F leaking into replies verbatim. Engineering term leads, plain-English in parens — because LPA members and residents will hear residents quoting Sarina, and they should be quoting accurate technical language, not invented synonyms. ' +
+    'For Hatem: the off-limits list is the answer to "what if a resident asks something politically charged?" The deflection router catches it before Sarina answers — she redirects with a configurable message. Reputation risk for VHB and the county is bounded by code, not by hope.'
+  )
+
+  // ═══ SLIDE 13: What the town hall wrapper adds ═══
+  p++
+  const sTh = pptx.addSlide()
+  sTh.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(sTh, 'What the town hall wrapper adds', 'Bare Sarina = one resident at a time. The town hall layer pools many residents into one analytical surface.')
+  ftr(sTh, p)
+
+  // LEFT — Bare Sarina (1:1)
+  sTh.addShape('roundRect', { x: 0.5, y: 1.3, w: 5.4, h: 5.5, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
+  sTh.addShape('rect', { x: 0.5, y: 1.3, w: 5.4, h: 0.55, fill: { color: C.slate }, line: { color: C.slate, width: 0 } })
+  sTh.addText('BARE SARINA (1:1)', { x: 0.7, y: 1.3, w: 5.0, h: 0.55, fontSize: 11, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  sTh.addText(
+    'WHAT YOU GET\n' +
+    '· One resident per conversation\n' +
+    '· Themed per-conversation report\n' +
+    '· Source-tagged transcript (qr or web)\n' +
+    '· Per-session sentiment and topic flags',
+    { x: 0.75, y: 2.0, w: 5.0, h: 1.95, fontSize: 12, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.5 }
+  )
+  sTh.addText('WHAT\'S MISSING', { x: 0.75, y: 4.05, w: 5.0, h: 0.3, fontSize: 10, fontFace: 'Arial', color: C.red, bold: true, charSpacing: 2 })
+  sTh.addText(
+    '· Who else mentioned this corridor?\n' +
+    '· What share of the room raised safety vs transit?\n' +
+    '· Did residents raise themes we didn\'t preload?\n' +
+    '· Have we heard enough on each topic to act?',
+    { x: 0.75, y: 4.38, w: 5.0, h: 2.3, fontSize: 11.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.5 }
+  )
+
+  // RIGHT — Town Hall wrapper
+  sTh.addShape('roundRect', { x: 6.2, y: 1.3, w: 6.65, h: 5.5, rectRadius: 0.12, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sTh.addShape('rect', { x: 6.2, y: 1.3, w: 6.65, h: 0.55, fill: { color: C.teal }, line: { color: C.teal, width: 0 } })
+  sTh.addText('+ TOWN HALL WRAPPER', { x: 6.4, y: 1.3, w: 6.25, h: 0.55, fontSize: 11, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  sTh.addText('SIGNALS YOU CAN ONLY EXTRACT BY POOLING', { x: 6.4, y: 2.0, w: 6.25, h: 0.3, fontSize: 9, fontFace: 'Arial', color: C.tealMid, bold: true, charSpacing: 2 })
+
+  const thRows = [
+    ['Shared topic plan',           'Per-topic response targets (e.g., "50 responses across the 6 priority categories"). Counts toward target every time a resident addresses the topic.'],
+    ['Live saturation counter',     'Which of the 7 feedback topics have hit target. Which still need outreach. Visible in real time during PM-2.'],
+    ['Emergent theme detection',    'AI sweeps every N responses for patterns NOT in the preloaded topic list. Catches what the project team didn\'t anticipate.'],
+    ['Cross-resident sentiment',    'Pooled sentiment per topic with representative quotes pulled across many respondents — not just one voice.'],
+    ['Facilitator dashboard',       'What the room is saying RIGHT NOW. Live during the June 16 open house. Lets staff steer conversation while it\'s happening.'],
+    ['Geographic hotspot rollup',   'Corridors and intersections mentioned by N residents, weighted by user type. Only visible with many inputs.'],
+  ]
+  thRows.forEach(function(r, i) {
+    const y = 2.4 + i * 0.71
+    sTh.addText(r[0], { x: 6.4, y, w: 2.4, h: 0.65, fontSize: 11, fontFace: 'Arial', color: C.gold, bold: true, valign: 'middle' })
+    sTh.addText(r[1], { x: 8.85, y, w: 3.85, h: 0.65, fontSize: 10, fontFace: 'Arial', color: C.white, wrap: true, valign: 'middle', lineSpacingMultiple: 1.3 })
+  })
+
+  sTh.addNotes(
+    'For Hatem this is the budget slide. The 1:1 chat alone is useful — each resident gets a careful conversation and you get a themed report. But with 200+ residents you can\'t read every transcript by hand. ' +
+    'The town hall wrapper is the synthesis layer: topic saturation tells you which feedback topics have enough signal to act on, emergent theme detection catches things the project team didn\'t anticipate (a specific corridor concern, a new safety pattern), and the facilitator dashboard is what you watch the night of June 16 — as PM-2 unfolds, you see what the room is actually saying, not just who happens to be at the microphone. ' +
+    'For Babuji: same Sarina, same corpus, same guardrails — the wrapper sits on top, not beside. One agent to maintain.'
+  )
+
+  // ═══ SLIDE 14: Visual — Docs → Sarina → Individual + Town Hall ═══
+  p++
+  const sVi = pptx.addSlide()
+  sVi.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
+  hdr(sVi, 'From documents to a smarter room', 'NOWOCATS public materials → one trained agent → engagement at the individual level AND at the panel level')
+  ftr(sVi, p)
+
+  // ── Row 1: INGEST ──────────────────────────────────────────────
+  const r1Y = 1.3
+  sVi.addShape('roundRect', { x: 0.5, y: r1Y, w: 1.1, h: 1.1, rectRadius: 0.08, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sVi.addText('INGEST', { x: 0.5, y: r1Y, w: 1.1, h: 1.1, fontSize: 11, fontFace: 'Arial', color: C.gold, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+
+  const docLabels = ['ECR\n(Sept 2025)', 'PM-1 Deck\n(44 slides)', 'PM-1 Q&A\n(28 pairs)', 'PM-1 Posters\n+ Notice', 'PM-2 Postcard\n(Jun 16)']
+  docLabels.forEach(function(lbl, i) {
+    const x = 1.85 + i * 1.55
+    sVi.addShape('roundRect', { x, y: r1Y, w: 1.4, h: 1.1, rectRadius: 0.08, fill: { color: C.white }, line: { color: C.tealLineMid, width: 0.6 } })
+    sVi.addText(lbl, { x, y: r1Y, w: 1.4, h: 1.1, fontSize: 9.5, fontFace: 'Arial', color: C.navy, bold: true, align: 'center', valign: 'middle', lineSpacingMultiple: 1.3 })
+  })
+  // Arrow into RAG store
+  sVi.addText('▶', { x: 9.75, y: r1Y + 0.32, w: 0.4, h: 0.46, fontSize: 22, fontFace: 'Arial', color: C.teal, align: 'center' })
+  sVi.addShape('roundRect', { x: 10.25, y: r1Y, w: 2.6, h: 1.1, rectRadius: 0.08, fill: { color: C.tealTint }, line: { color: C.teal, width: 0.8 } })
+  sVi.addText('Vector store\n(text-embedding-3-small)', { x: 10.25, y: r1Y, w: 2.6, h: 1.1, fontSize: 11, fontFace: 'Arial', color: C.teal, bold: true, align: 'center', valign: 'middle', lineSpacingMultiple: 1.3 })
+
+  // ── Row 2: AGENT (Sarina) ──────────────────────────────────────
+  const r2Y = 2.6
+  sVi.addShape('roundRect', { x: 0.5, y: r2Y, w: 1.1, h: 1.2, rectRadius: 0.08, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sVi.addText('AGENT', { x: 0.5, y: r2Y, w: 1.1, h: 1.2, fontSize: 11, fontFace: 'Arial', color: C.gold, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+
+  // Sarina center badge
+  sVi.addShape('roundRect', { x: 1.85, y: r2Y, w: 3.6, h: 1.2, rectRadius: 0.12, fill: { color: C.navy }, line: { color: C.gold, width: 1.2 } })
+  sVi.addText('Sarina', { x: 1.85, y: r2Y + 0.05, w: 3.6, h: 0.6, fontSize: 24, fontFace: 'Arial', color: C.white, bold: true, align: 'center' })
+  sVi.addText('NOWOCATS Assistant', { x: 1.85, y: r2Y + 0.62, w: 3.6, h: 0.4, fontSize: 11, fontFace: 'Arial', color: C.tealMid, italic: true, align: 'center' })
+
+  // 3 capability pills
+  const caps = [
+    { label: 'Personality',   sub: 'civic · bilingual',          accent: C.teal },
+    { label: 'System Prompt', sub: 'mission + jargon table',     accent: C.orange },
+    { label: 'Guardrails',    sub: '5 rules + deflection router', accent: C.purple },
+  ]
+  caps.forEach(function(c, i) {
+    const x = 5.7 + i * 2.45
+    sVi.addShape('roundRect', { x, y: r2Y, w: 2.3, h: 1.2, rectRadius: 0.08, fill: { color: C.white }, line: { color: c.accent, width: 0.8 } })
+    sVi.addText(c.label, { x, y: r2Y + 0.18, w: 2.3, h: 0.4, fontSize: 12.5, fontFace: 'Arial', color: c.accent, bold: true, align: 'center' })
+    sVi.addText(c.sub,   { x, y: r2Y + 0.6,  w: 2.3, h: 0.5, fontSize: 10, fontFace: 'Arial', color: C.mid, italic: true, align: 'center', wrap: true, lineSpacingMultiple: 1.3 })
+  })
+
+  // Down arrow into engagement row
+  sVi.addText('▼', { x: 3.35, y: 3.85, w: 0.6, h: 0.3, fontSize: 16, fontFace: 'Arial', color: C.faint, align: 'center' })
+  sVi.addText('▼', { x: 9.05, y: 3.85, w: 0.6, h: 0.3, fontSize: 16, fontFace: 'Arial', color: C.faint, align: 'center' })
+
+  // ── Row 3: ENGAGE — two channels ───────────────────────────────
+  const r3Y = 4.25
+  const r3H = 2.45
+  sVi.addShape('roundRect', { x: 0.5, y: r3Y, w: 1.1, h: r3H, rectRadius: 0.08, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sVi.addText('ENGAGE', { x: 0.5, y: r3Y, w: 1.1, h: r3H, fontSize: 11, fontFace: 'Arial', color: C.gold, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+
+  // LEFT — Individual channel
+  sVi.addShape('roundRect', { x: 1.85, y: r3Y, w: 4.8, h: r3H, rectRadius: 0.12, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.6 } })
+  sVi.addShape('rect', { x: 1.85, y: r3Y, w: 4.8, h: 0.5, fill: { color: C.orange }, line: { color: C.orange, width: 0 } })
+  sVi.addText('INDIVIDUAL  —  QR + WIDGET', { x: 2.0, y: r3Y, w: 4.5, h: 0.5, fontSize: 10.5, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  sVi.addText(
+    '· 1:1 conversation per resident\n' +
+    '· Themed per-conversation report\n' +
+    '· Source attribution (qr | web)\n' +
+    '· Individual transcript in the record',
+    { x: 2.05, y: r3Y + 0.6, w: 4.5, h: r3H - 0.7, fontSize: 11.5, fontFace: 'Arial', color: C.mid, wrap: true, lineSpacingMultiple: 1.5 }
+  )
+
+  // RIGHT — Town Hall layer
+  sVi.addShape('roundRect', { x: 6.95, y: r3Y, w: 5.9, h: r3H, rectRadius: 0.12, fill: { color: C.navy }, line: { color: C.navy, width: 0 } })
+  sVi.addShape('rect', { x: 6.95, y: r3Y, w: 5.9, h: 0.5, fill: { color: C.teal }, line: { color: C.teal, width: 0 } })
+  sVi.addText('TOWN HALL LAYER  —  WHAT THE ROOM KNOWS', { x: 7.1, y: r3Y, w: 5.6, h: 0.5, fontSize: 10.5, fontFace: 'Arial', color: C.white, bold: true, valign: 'middle', charSpacing: 2 })
+  sVi.addText(
+    '· Topic saturation across all residents\n' +
+    '· Emergent themes the team didn\'t preload\n' +
+    '· Cross-resident sentiment + representative quotes\n' +
+    '· Geographic hotspot map (corridors, intersections)\n' +
+    '· Live facilitator dashboard during PM-2',
+    { x: 7.15, y: r3Y + 0.6, w: 5.55, h: r3H - 0.7, fontSize: 11.5, fontFace: 'Arial', color: C.white, wrap: true, lineSpacingMultiple: 1.45 }
+  )
+
+  // Bottom caption
+  sVi.addShape('roundRect', { x: 0.5, y: 6.85, w: 12.3, h: 0.32, rectRadius: 0.05, fill: { color: C.gold }, line: { color: C.gold, width: 0 } })
+  sVi.addText('Individual = what each resident knows.   Town hall = what the room knows.   Same agent feeds both.', {
+    x: 0.5, y: 6.85, w: 12.3, h: 0.32, fontSize: 11, fontFace: 'Arial', color: C.navy, bold: true, align: 'center', valign: 'middle',
+  })
+
+  sVi.addNotes(
+    'This is the punchline visual. Read it left-to-right, top-to-bottom. ' +
+    'Five public NOWOCATS documents become Sarina in the middle — one agent shaped by personality + system prompt + guardrails. ' +
+    'From there Sarina engages residents two ways: individually via the postcard QR or the website chat widget — and at the town hall layer where many individual conversations pool into one analytical surface. ' +
+    'The town hall isn\'t another channel — it\'s the synthesis layer on top. You learn things you can only learn by pooling: who in aggregate is concerned about 441 and SR-50, where the room sits on transit versus safety, which themes are emergent versus expected, where the geographic hotspots actually are. ' +
+    'Hatem will use the town hall view to decide what to bring to the LPA. Babuji will use it to scope what goes in the Final Study Report. ' +
+    'And critically — it\'s ONE agent, ONE corpus, ONE set of guardrails. The wrapper is operationally free once the agent exists.'
+  )
+
+  // ═══ SLIDE 15: Recommendation — Sarina on www.nowocats.com ═══
   p++
   const s10b = pptx.addSlide()
   s10b.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
@@ -501,7 +780,7 @@ export async function GET() {
     'For VHB the win is clean attribution: every record has a source field, so you can report "X% of engagement came via the postcard, Y% via the website" in the Final Study Report.'
   )
 
-  // ═══ SLIDE 12: Timeline + What We Need ═══
+  // ═══ SLIDE 16: Timeline + What We Need ═══
   p++
   const s11 = pptx.addSlide()
   s11.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
@@ -556,7 +835,7 @@ export async function GET() {
     'No infrastructure on their side beyond pasting the widget snippet, no contract complications.'
   )
 
-  // ═══ SLIDE 13: Close ═══
+  // ═══ SLIDE 17: Close ═══
   p++
   const s12 = pptx.addSlide()
   s12.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.navy } })
