@@ -541,7 +541,7 @@ export async function GET() {
     {
       title: 'System Prompt',
       sub:   'WHAT SHE DOES + HOW SHE SPEAKS',
-      body:  'Mission, conversation arc, and a plain-language translation table.\n\nEngineering term leads, plain English in parentheses:\n· LOS F (essentially stop-and-go in rush hour)\n· PCI (0-100 pavement score; <60 is poor)\n· LTS (how comfortable a road feels to walk/bike)\n· AADT (vehicles per day)\n20+ acronyms covered.',
+      body:  'Mission, conversation arc, and a plain-language translation table.\n\nPlain English leads, engineering term in parentheses:\n· essentially stop-and-go in rush hour (LOS F)\n· 0-100 pavement score; <60 is poor (PCI)\n· how comfortable a road feels to walk/bike (LTS)\n· average vehicles per day (AADT)\n20+ acronyms covered.',
       accent: C.orange,
     },
     {
@@ -572,7 +572,7 @@ export async function GET() {
 
   sSt.addNotes(
     'For Babuji: these are three separate fields on the bot record — personality, system_prompt, guardrails — plus a deflection router that fires before the main LLM call. ' +
-    'The jargon translation table was iterated through two passes after we caught LOS F leaking into replies verbatim. Engineering term leads, plain-English in parens — because LPA members and residents will hear residents quoting Sarina, and they should be quoting accurate technical language, not invented synonyms. ' +
+    'The jargon translation table was iterated through multiple passes after we caught LOS F leaking into replies verbatim. Final order: plain English leads, technical term in parens — so the resident understands immediately, but can still match what Sarina said to the technical terminology in other NOWOCATS materials they may have read. ' +
     'For Hatem: the off-limits list is the answer to "what if a resident asks something politically charged?" The deflection router catches it before Sarina answers — she redirects with a configurable message. Reputation risk for VHB and the county is bounded by code, not by hope.'
   )
 

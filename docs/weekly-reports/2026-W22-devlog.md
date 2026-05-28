@@ -551,3 +551,17 @@ That maps directly to the pitch slide: "filled = baseline, white = AI upgrade, r
 
 Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow via the existing `p++` increment pattern. No spec doc behavior change — this is presentation content describing existing Sarina + PulseIQ substrate.
 
+
+---
+
+## 2026-05-28 (later) — NOWOCATS deck: fix jargon-format order (plain English leads, not engineering term)
+
+**Why**: User QC caught it. My slide 12 "System Prompt" card and speaker notes claimed Sarina uses `<engineering term> (<plain English>)` based on reading `scripts/_flip_sarina_jargon_format.ts` (May 18 01:36). I didn't verify the live `bots.system_prompt` field. A read-only query confirmed a third change has happened since — the actual current format is `<plain-English explanation> (<technical term>)` with stated rationale "so the resident can still match what we said to other project materials they read." Engineering terms now sit in parens, not the other way around.
+
+**What changed**:
+- `app/api/nowocats-approach-deck/route.ts` slide 12 — System Prompt card examples re-ordered and speaker notes updated to reflect the actual order and the actual rationale (resident-comprehension first, technical-attribution second).
+- `scripts/_render_sarina_new_slides_qc.ts` — same fix in the standalone QC runner.
+- `scripts/_read_sarina_jargon_rule.ts` (new) — read-only diagnostic so future deck/spec changes can verify the live system_prompt without spelunking through layered modification scripts.
+
+**Lesson reinforced**: when scripts in `scripts/_*.ts` have layered "update_X → flip_X → maybe_more_X" sequences, the latest script is not necessarily the current state — the admin UI can edit the same field. Verify live, not just the latest script you happened to grep.
+
