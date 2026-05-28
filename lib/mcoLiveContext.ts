@@ -97,6 +97,11 @@ interface DetectedIntent {
   /** Bare digit strings in the user message (e.g. "2564" referring to DL2564
    * from the prior assistant message). */
   numericHint: string | null
+  /** Time-window phrase carried forward from the prior turn ("tomorrow",
+   * "tonight", "this morning"). Used as a fallback when the current user
+   * message has no explicit time but the conversation has been about a
+   * specific day part. */
+  carryTimeWindow: string | null
   /** Internal — set when the user message looks like a follow-up referent
    * ("2564", "yes", "the first one"). Only triggers wantsFlights if the
    * assistant scan also surfaces carryFlightNumbers. */
@@ -164,6 +169,16 @@ function scanText(text: string, intoUserIntent: boolean, out: DetectedIntent) {
   const gm = m.match(/\bgate\s*([0-9]{1,3}|c[\s-]?\d{3})\b/i) || m.match(/\b(c\s?\d{3})\b/i)
   if (gm && !out.gate) { out.gate = gm[1].replace(/\s+/g, ''); out.wantsFlights = true }
 
+  // Time-window keywords — scan BOTH user and assistant for "tomorrow",
+  // "tonight", "this morning", "today". Carry forward so a short follow-up
+  // ("jfk") inherits the time scope ("tomorrow") from the prior turn.
+  if (!out.carryTimeWindow) {
+    if (/\btomorrow\b/.test(m)) out.carryTimeWindow = 'tomorrow'
+    else if (/\btonight|this evening\b/.test(m)) out.carryTimeWindow = 'tonight'
+    else if (/\bthis morning\b/.test(m)) out.carryTimeWindow = 'this morning'
+    else if (/\btoday\b/.test(m)) out.carryTimeWindow = 'today'
+  }
+
   for (const k of Object.keys(AIRLINE_KEYWORDS)) {
     if (out.airline) break
     const re = new RegExp('\\b' + k + '\\b', 'i')
@@ -181,6 +196,7 @@ function detectIntent(userMessage: string, priorAssistantMessage: string): Detec
     wantsFlights: false, wantsSecurity: false, wantsParking: false,
     airline: null, destination: null, flightNumber: null,
     carryFlightNumbers: [], gate: null, timeHint: null, numericHint: null,
+    carryTimeWindow: null,
   }
   // User message owns the "intent" signal — that's what determines whether
   // to enrich the prompt at all. Carry forward from assistant for the
@@ -196,24 +212,37 @@ function detectIntent(userMessage: string, priorAssistantMessage: string): Detec
   return out
 }
 
-// Time-window filter for "tonight", "this morning", etc. Default is the
-// rest of TODAY (not next-4h) because a user asking about "their flight"
-// without specifying time usually means later today, not in the next 4h.
-function timeWindow(userMessage: string): { startSec: number; endSec: number } {
+// Time-window filter for "tonight", "this morning", "tomorrow", etc.
+// Takes both the current user message AND an optional carry hint from a
+// prior turn, so a terse follow-up like "jfk" inherits "tomorrow" from
+// the conversation that established the day-part.
+function timeWindow(userMessage: string, carryHint?: string | null): { startSec: number; endSec: number } {
   const now = Math.floor(Date.now() / 1000)
-  const m = userMessage.toLowerCase()
+  const m = (userMessage || '').toLowerCase()
   const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
   const eveStart = new Date(); eveStart.setHours(17, 0, 0, 0)
   const morningEnd = new Date(); morningEnd.setHours(11, 59, 59, 999)
   const tomorrowEnd = new Date(); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1); tomorrowEnd.setHours(23, 59, 59, 999)
-  if (/\btonight|this evening\b/.test(m)) return { startSec: Math.max(now, eveStart.getTime() / 1000), endSec: todayEnd.getTime() / 1000 }
-  if (/\bthis (morning|am)\b/.test(m)) return { startSec: now, endSec: Math.min(todayEnd.getTime() / 1000, morningEnd.getTime() / 1000) }
-  if (/\btomorrow\b/.test(m)) {
+
+  // Effective time phrase: current message wins; carry from prior turn is
+  // a fallback when the current message has no time keyword.
+  const explicit = /\btomorrow\b/.test(m) ? 'tomorrow'
+                : /\btonight|this evening\b/.test(m) ? 'tonight'
+                : /\bthis (morning|am)\b/.test(m) ? 'this morning'
+                : /\btoday\b/.test(m) ? 'today'
+                : null
+  const phrase = explicit || (carryHint || '').toLowerCase()
+
+  if (phrase === 'tomorrow') {
     const tStart = new Date(); tStart.setDate(tStart.getDate() + 1); tStart.setHours(0, 0, 0, 0)
     return { startSec: tStart.getTime() / 1000, endSec: tomorrowEnd.getTime() / 1000 }
   }
-  // Default = rest of today. If it's already past 8 PM, extend a few hours
-  // into tomorrow so red-eyes still show.
+  if (phrase === 'tonight') return { startSec: Math.max(now, eveStart.getTime() / 1000), endSec: todayEnd.getTime() / 1000 }
+  if (phrase === 'this morning') return { startSec: now, endSec: Math.min(todayEnd.getTime() / 1000, morningEnd.getTime() / 1000) }
+  if (phrase === 'today') return { startSec: now, endSec: todayEnd.getTime() / 1000 }
+
+  // Default = rest of today, with at least 6h forward so late-day queries
+  // still surface red-eyes / overnight flights.
   const endOfToday = todayEnd.getTime() / 1000
   const minWindow = now + 6 * 3600
   return { startSec: now, endSec: Math.max(endOfToday, minWindow) }
@@ -339,7 +368,7 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
       if (one) matches = [one]
     } else {
       // Destination / airline filter, narrowed by the time window the user mentioned
-      const { startSec, endSec } = timeWindow(userMessage)
+      const { startSec, endSec } = timeWindow(userMessage, intent.carryTimeWindow)
       matches = flights.filter(f => {
         if (intent.airline && f.iataOperatingAirline !== intent.airline) return false
         if (intent.destination && f.arrivalAirport !== intent.destination) return false
