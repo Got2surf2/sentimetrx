@@ -30,20 +30,18 @@ We already have the agent ([/b/mco](https://www.sentimetrx.ai/b/mco), seeded 202
 
 ---
 
-## 2. Brand: AskAna
+## 2. Brand: MCO Concierge / Ana
 
-Following Changi's "AskMax" precedent. Ana is an existing Sentimetrx-internal brand (legacy Ana product); reusing the name gives the airport agent a personable identity rather than a generic "MCO Concierge" label.
+Rebranded 2026-05-27 (prior identity "AskAna" was flak-risk — invented branding for someone else's airport). Now:
 
-- **Display name:** `AskAna`
-- **Persona name (referred to by the bot itself):** Ana
-- **Subtitle:** `Orlando International Airport`
-- **Avatar:** `✈️` (kept from the initial branding pass; the plane emoji + the "Ana" name reads as "Ana, your airport guide" without needing a face avatar).
-- **Greeting (first message):** "Hi, I'm Ana — your guide to Orlando International Airport. Ask me about parking, terminals, security, ground transportation, accessibility, or anything else about flying through MCO."
-- **Self-reference rule (system prompt addition):** the bot may refer to herself as "Ana" or use the first-person — never as "the MCO Concierge" or "the assistant."
+- **Wordmark:** `MCO Concierge` (everywhere her role is shown — topbar, page title, OG card, mobile pickup page)
+- **First-person name:** `Ana` (in chat: "Hi, I'm Ana, the MCO Concierge…"; subsequent turns just "Ana")
+- **Logo:** the official MCO sunburst+plane mark, cropped to remove the "Orlando International Airport" text. Lives at `public/mco/logo-mark.png` (275×120) and `public/mco/favicon-64.png` (white tile + mark). Wherever the agent visually presents (topbar, WelcomeCard hero, mobile pickup, /b/mco favicon, /demo/mco favicon).
+- **Self-reference rule:** introduce as "Ana, the MCO Concierge" once per conversation; never as "AskAna" or "Avia" (a leftover artifact). Subsequent turns just "Ana".
 
 ### Reusability note
 
-The Ana brand is **agent-deployment-specific, not site-wide**. Other future deployments may use other personified names (e.g. "AskUma" for the UCF Incubator, "AskMia" for a municipal agent). The canvas shell is brand-agnostic; the agent's `personality` field carries the name.
+The canvas shell is brand-agnostic; the agent's `personality` field carries the name. A municipal/transit/UCF variant would swap the logo file + rebrand the bot row.
 
 ---
 
@@ -139,6 +137,8 @@ Together with the prompt's **NO-STRETCH** rule ("if NONE of the four card types 
 | `parking` | `{ highlight?: ["garage_a","garage_b","garage_c","atlantis","discovery","endeavour","north_economy","south_economy","west_economy"] }` | When live spot counts are available: grid with fill bars, highlighted entry pulses amber. When counts are unavailable: 3-pick recommendation layout — ⭐ RECOMMENDED (highlighted lot or Garage C), 💰 BEST VALUE (cheapest lot), ⚡ QUICK ACCESS (premium/Terminal Top) — each with rate and a contextual note. WelcomeCard parking strip also surfaces the per-lot `status` (Open/Full/Closed) as colored pills when counts are null but status is populated (current GOAA state). |
 | `security_wait` | `{ terminal?: "A"\|"B"\|"C", lane?: "general"\|"precheck" }` | Live TSA wait times for all 3 checkpoints (West=A, East=B, South=C) × 2 lanes (Standard/PreCheck). Sourced from `api.goaa.aero/wait-times/checkpoint/MCO` via `lib/securityWait.ts` + `GET /api/mco/security`. Pill color: <10m green, 10-20m amber, ≥20m red. Refreshes every minute. |
 | `shops` | `{ context?: "terminal_a_airside"\|"terminal_b_airside"\|"terminal_c_airside"\|"landside_main_terminal", category?: string }` | Shopping directory. Mirrors `restaurants` but for retail (60 brands across the airport, bucketed terminal_ab_airside / terminal_c_airside / airport_wide). Backed by `data/mco_shops.json` (derived from `_mco_scrape_directory.mjs`) via `lib/shops.ts` + `POST /api/mco/shops`. No ratings — flymco doesn't expose them for shops. Shop-category emoji (🛍️ 🕶️ 🎧 📰 etc.) replaces the cuisine icon. The extractor's `restaurants` rule was narrowed to FOOD ONLY in the same change. |
+| `indoor_map` | `{ terminal?: "A"\|"B"\|"C", level?: string, gate?: string, flight?: string, category?: string }` | Real MCO floor plan via Meridian. 32 floors + 2,313 placemarks; SVG via `edit.meridianapps.com/api/locations/2315199/maps/<id>.svg` proxied through `GET /api/mco/indoor-map/svg/[id]`. Placemarks overlaid as absolute-positioned pins via x/y → percentages of `map.width`/`map.height`. Category filter chips (All / Gates / Dining & Shops / Restrooms / Amenities), floor switcher, amber-pulse highlight for `hint.gate`. When `hint.gate` or `hint.flight` is set, ALSO renders `FlightPrepPanel` above the map — see § 4a. |
+| `flight_list` | `{ airline?: string, destination?: string, origin?: string, terminal?: "A"\|"B"\|"C", arrivals?: boolean, time_window?: string }` | PLURAL flight lookups ("flights to LGA", "Delta departures tonight", "arrivals from JFK"). `POST /api/mco/flights-list` joins on the live GOAA flight feed. Up to 12 rows, sorted by scheduled time. Each row clickable → fires `mco:prompt` event with "Tell me about flight X" → drops into the IndoorMapCard + FlightPrepPanel. Use this NEVER `indoor_map` for plural queries; prose answer should be ONE line ("5 flights to LGA today — pick one"), tables in chat are forbidden per guardrail #17. |
 | `restaurants` | `{ place_ids: ["ChIJ…", ...], context?: "terminal_a_airside" }` | Vertical list of cards: photo, name, cuisine tag, ★ rating + review count, price band, hours-now-open chip, "Powered by Google" footer. |
 | `link_card` | `{ title: string, body: string, image_url?: string, cta_url: string, cta_label: string }` | Generic info card. Used for visitor pass program, MCO Reserve, accessibility programs, Hyatt hotel, etc. |
 
@@ -154,6 +154,40 @@ Cost discipline: extractor is gated behind a `UI_HINTS_ENABLED` env flag. When o
 Future v2 can fold the hint into the primary call as a tool call, eliminating the second round-trip. v1 keeps it separate so we can disable it without touching the prose contract.
 
 ---
+
+## 4a. Live-context injector + FlightPrepPanel (2026-05-27)
+
+The agent's prose used to operate purely off her static KB — so even though `/api/mco/flight-prep` had live flight + gate data, she'd answer "I don't have live flight info." Fix: `lib/mcoLiveContext.ts` runs per-turn for bot `920c571b` only. Detects flight/security/parking intent via regex/keyword (no AI call), fetches the live GOAA APIs, builds a **LIVE MCO DATA** block injected at the **TOP** of the system prompt with explicit "AUTHORITATIVE OVERRIDE" framing. Belt-and-suspenders with guardrail #16 in the bot's DB row.
+
+**What the block contains** (per-turn, sections present only when relevant):
+
+1. **LIVE FLIGHT LOOKUP** — up to 6 matches, formatted as `- DL1455 to DTW · Terminal B, gate 71 · 6:00 PM · Scheduled`. Uses `f.operatingAirlineFlightNumber` directly (already includes IATA prefix; do NOT concatenate with `iataOperatingAirline` — that double-prefix produced "B6B61098" garbage that the bot would then dismiss).
+2. **FLIGHT PREP RECOMMENDATIONS** — top 3 matches joined with security wait + walking matrix → per-flight `Use the EAST CHECKPOINT, head to security around 6:35 PM, spare time 1h 23min`. The exact checkpoint name is BAKED IN (model can't guess West vs East).
+3. **LIVE SECURITY WAIT TIMES** — per-checkpoint × per-lane.
+4. **LIVE PARKING STATUS** — open/full pills.
+
+**Carry-forward** (so short follow-ups don't break):
+- Flight numbers from the prior assistant message — `[A-Z][A-Z0-9]\d{2,4}` regex (covers B6/F9/G4 letter+digit IATA codes; the old `[A-Z]{2}` regex silently dropped them).
+- Time-window phrases (`tomorrow`, `tonight`, `this morning`, `today`) — so a "jfk" reply after a "tomorrow morning" prompt inherits the tomorrow scope.
+- Numeric hints (bare "2564" → match suffix of carried flight numbers).
+- Gate strings.
+
+**FlightPrepPanel** rendered above the IndoorMapCard floor plan when the hint includes `gate` or `flight`. Hero layout: 38px (kiosk: 56px) spare-time number + playful tagline keyed on 8 tone buckets:
+
+| spare min | emoji | head | tag |
+|---|---|---|---|
+| ≥240 | 🌴 | Plenty of time | Whole afternoon at the airport. Eat, shop, take it slow. |
+| ≥150 | ✨ | You've got time | Sit-down lunch + a wander before security. Easy. |
+| ≥90 | ☕ | Solid window | Time for a real meal, or coffee + browsing. |
+| ≥60 | 🍽️ | About an hour | A bite to eat works. Want a quick rec? |
+| ≥30 | ⚡ | Snack window | Quick coffee, grab-and-go food, light browse. |
+| ≥15 | 🏃 | Get moving soon | Time for one quick coffee — then head for security. |
+| ≥0 | ⏳ | Cutting it close | Head straight to security — no detours. |
+| <0 | 🚨 | Go now! | Boarding's coming up — straight to security. |
+
+Panel gradient + pulse animation also vary by tone (emerald/blue/amber/red/red+pulse).
+
+Compact bottom row: PreCheck wait · Standard wait · Walking time · Checkpoint name (all as inline tabular-num pills). Rec chips below: 🍽️ Eat · 🛍️ Shop · ☕ Coffee · 🧘 Chill. Each chip fires a `mco:prompt` custom event that CanvasShell catches and threads through `pendingMessage` → ChatPane → drops into the bot.
 
 ## 5. Data integrations
 
