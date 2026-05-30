@@ -490,6 +490,30 @@ export function buildSocialSchema(): SchemaConfig {
   return { fields, primaryTextField: 'text', autoDetected: false, version: 1 }
 }
 
+export function buildRecordingSchema(): SchemaConfig {
+  // One row per extracted unit from a Q&A recording (focus_group / interview /
+  // meeting variants add fields here when those session types ship).
+  // primaryTextField = 'response_text' which the analyzer fills with
+  // "<question> → <answer>" so TextMine / theme mining work on the combined
+  // exchange without further configuration.
+  const fields: SchemaFieldConfig[] = [
+    { field: 'extraction_id',   type: 'id' },
+    { field: 'response_text',   type: 'open-ended',  sqt: 'open-text', label: 'Question → Answer' },
+    { field: 'question',        type: 'open-ended',  sqt: 'open-text', label: 'Question' },
+    { field: 'answer',          type: 'open-ended',  sqt: 'open-text', label: 'Answer' },
+    { field: 'topic',           type: 'categorical', label: 'Topic' },
+    { field: 'typology',        type: 'categorical', label: 'Question Type' },
+    { field: 'asker',           type: 'categorical', label: 'Asker' },
+    { field: 'panelist',        type: 'categorical', label: 'Panelist' },
+    { field: 'confidence',      type: 'numeric',     label: 'Confidence', min: 0, max: 1 },
+    { field: 'flagged',         type: 'categorical', label: 'Flagged for Review' },
+    { field: 'flag_reason',     type: 'categorical', label: 'Flag Reason' },
+    { field: 'start_sec',       type: 'numeric',     label: 'Start (sec)' },
+    { field: 'source_file',     type: 'categorical', label: 'Source Clip' },
+  ]
+  return { fields, primaryTextField: 'response_text', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }

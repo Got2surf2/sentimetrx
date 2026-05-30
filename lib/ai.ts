@@ -41,6 +41,8 @@ export interface AIRequestOptions {
   providerConfig?: AIProviderConfig   // explicit override
   apiKey?: string                     // shorthand: user-provided key (uses env AI_PROVIDER)
   usage?: AIUsageContext              // if provided, auto-logs token usage for cost tracking
+  modelOverride?: string              // explicit model name, bypasses MODEL_MAP[provider][tier]
+                                      // (tier is still used as the usage-log label)
 }
 
 export interface AIUsage {
@@ -114,7 +116,7 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
       apiKey: p.apiKey || getEnvKey(p.provider),
       azureEndpoint: p.azureEndpoint || process.env.AZURE_OPENAI_ENDPOINT,
       azureApiVersion: p.azureApiVersion || process.env.AZURE_OPENAI_API_VERSION || '2024-02-01',
-      model: MODEL_MAP[p.provider][opts.tier],
+      model: opts.modelOverride || MODEL_MAP[p.provider][opts.tier],
     }
   }
 
@@ -127,7 +129,7 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
     apiKey: key,
     azureEndpoint: process.env.AZURE_OPENAI_ENDPOINT,
     azureApiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-02-01',
-    model: MODEL_MAP[envProvider][opts.tier],
+    model: opts.modelOverride || MODEL_MAP[envProvider][opts.tier],
   }
 }
 

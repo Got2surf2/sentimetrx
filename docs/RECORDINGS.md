@@ -899,8 +899,8 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 
 | Phase | Status | Notes |
 |---|---|---|
-| Phase 0 — substrate | **In progress (2026-05-30)** | `sql/089_org_user_features.sql`, `sql/090_recordings.sql`, `sql/091_recordings_storage_bucket.sql`, `lib/featureFlags.ts` written. Not applied to prod yet. Spec deviation: `org_id` denormalized on `recording_files` / `_transcripts` / `_extractions` for service-role pairing uniformity. |
-| Phase 1 — pipeline | Pending | Earliest start 2026-06-03 per plan in § 11. |
+| Phase 0 — substrate | **Complete (2026-05-30)** | Applied to prod: org_features/user_features + 4 recording tables + storage bucket + RLS. Spec deviation: `org_id` denormalized on `recording_files` / `_transcripts` / `_extractions` for service-role pairing uniformity. |
+| Phase 1 — pipeline | **In progress (2026-05-30)** | Logic libs written: `lib/recordings/types.ts`, `lib/asr/{whisper,deepgram,hybrid,router}.ts`, `lib/recordings/prompts/qa.ts`, `lib/recordings/analyze.ts` (Opus + Sonnet curator), `lib/recordings/mirror.ts`, `lib/recordings/coverage.ts`. `lib/ai.ts` gained `modelOverride`. `lib/datasetUtils.ts` gained `buildRecordingSchema()`. **Pending**: `lib/recordings/extract.ts` (ffmpeg on Vercel Sandbox), `lib/recordings/transcribe.ts` (vendor dispatch glue), Vercel Queues worker handlers, PM-1 smoke test. |
 | Phase 2 — UX | Pending | |
 | Phase 3 — collections + public sharing | Pending | |
 | Phase 4 — calibration soak | Pending | |

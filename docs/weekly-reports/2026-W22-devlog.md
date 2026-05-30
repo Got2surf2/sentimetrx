@@ -1,5 +1,37 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-30 (later) — Recordings module Phase 1a — logic libs (no infra yet)
+
+**Why**: Phase 0 substrate is live in prod; pressing forward with the pure-logic layer of Phase 1 so the risky infra bits (ffmpeg-on-Vercel-Sandbox + Vercel Queues) get a clean foundation to plug into. Phase 1 in the plan is dated 6/3-6/6; getting the testable pieces in earlier de-risks the calendar.
+
+**What changed**:
+- `lib/recordings/types.ts` (new) — shared row + payload types mirroring `sql/090_recordings.sql`. Recording, RecordingFile, TranscriptSegment, Extraction, SetupInputs per session_type, CoverageReport. One source of truth across route handlers and queue workers.
+- `lib/asr/router.ts` (new) — pure `resolveAsrVendor()` per spec § 3.4 (multilingual → Whisper, single-speaker → Whisper, multi-speaker meeting → Deepgram, default → Deepgram).
+- `lib/asr/whisper.ts` (new) — `transcribeWhisper()` + `mergeWhisperChunks()`. Multipart-form upload to Whisper `verbose_json`, segment-offset support for chunked oversized files. Confidence derived from `avg_logprob` (exp-clamped).
+- `lib/asr/deepgram.ts` (new) — `transcribeDeepgram()` against Nova-3 batch with diarization. Maps `speaker: <int>` → `S<n+1>` labels.
+- `lib/asr/hybrid.ts` (new) — `alignHybrid()` — Whisper text + Deepgram speaker turn labels, majority-overlap assignment.
+- `lib/recordings/prompts/qa.ts` (new) — extraction + curator prompts verbatim per spec § 3.5. Static system block flagged for prompt caching (`cache: true`) so re-processing during Phase-4 calibration only pays input tokens once per session.
+- `lib/recordings/analyze.ts` (new) — `analyzeRecording()`. Two-pass: Opus 4.7 extraction (`modelOverride: 'claude-opus-4-7'`, `tier: 'advanced'`), then Sonnet 4.6 curator (`modelOverride: 'claude-sonnet-4-6'`). Curator-flagged + low-confidence auto-flagging at 0.65 threshold (TBD per § 3.5; tune in Phase 4).
+- `lib/recordings/mirror.ts` (new) — `mirrorExtractionsToDataset()`. Creates the `source='recording'` dataset if absent, writes the schema_config, inserts `recording_extractions`, mirrors to `dataset_rows_flat` per spec § 2.6 (combined `<question> → <answer>` as the primary text field so TextMine works without configuration).
+- `lib/recordings/coverage.ts` (new) — `computeCoverage()` — per-topic density, ≥5-min gaps, confidence histogram per spec § 3.6. Pure function; caller persists onto `recordings.coverage_report`.
+- `lib/datasetUtils.ts` — added `buildRecordingSchema()` (12-field schema_config with `response_text` as primary).
+- `lib/ai.ts` — added optional `modelOverride: string` to `AIRequestOptions`. Bypasses `MODEL_MAP[provider][tier]` while keeping `tier` as the usage-log label. Needed for Opus 4.7 (not in the tier table; recordings is the only consumer today).
+- `lib/usageRates.ts` — added `claude-opus-4-7` pricing ($15/M input, $75/M output, $1.50/M cache_read).
+- `docs/USAGE_ACCOUNTING.md` — documents the new `modelOverride` field.
+- `docs/RECORDINGS.md` — Phase 0 → Complete, Phase 1 → In progress with what's done vs pending.
+
+**Decisions**:
+- `modelOverride` instead of a new tier. Adding a tier (e.g. `'premium'`) would touch every existing tier-typed call site; the override is surgical and the recordings module is the only consumer for the foreseeable. Re-evaluate when the second Opus-tier feature lands.
+- Two-pass Claude over single-pass-with-larger-model. Spec § 3.5 makes the case; the curator is the productized substitute for the PM-1 PDF-as-ground-truth feedback loop. Cost is negligible ($1/meeting vs $5K customer price).
+- Low-confidence threshold = 0.65. Starting value; Phase 4 calibration against PM-1 PDF tunes it.
+- Mirror is append-only. Re-runs after curator iteration during Phase 4 should delete the recording's `dataset_rows_flat` first; we don't bake idempotent UPSERT here because the wizard happy path is one-and-done per recording.
+
+**Not implemented yet (intentional)**: `lib/recordings/extract.ts` (ffmpeg on Vercel Sandbox), `lib/recordings/transcribe.ts` (the glue that calls router → vendor adapter → DB insert), Vercel Queues worker handlers, the API routes (`/api/recordings/*`), and the smoke test against PM-1 audio. Those are the infra-risk pieces and want their own focused sessions.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit`. No runtime smoke yet — no API route wired so there's nothing to invoke. PM-1-audio smoke comes after ffmpeg + transcribe + queue worker exist.
+
+**Not pushed** — commit-only per CLAUDE.md push policy.
+
 ## 2026-05-30 — Recordings module Phase 0 — feature-gating + recording tables + storage bucket
 
 **Why**: Kick-off of the 17-day build to the 2026-06-16 NOWOCATS PM-2 free-pilot. Full spec lives at `docs/RECORDINGS.md` (shipped 2026-05-30 in commit `38a18d13`). Phase 0 (5/31 → 6/2 per the plan) lays the substrate everything else stands on: a generic feature-gate (so paid recording can be enabled per-org without sprinkling env-var checks across the route handlers) and the four recording tables with org-scoped RLS from day one — non-negotiable per CLAUDE.md multi-tenancy invariants. Doing it tonight (5/30) buys a day on the calendar.

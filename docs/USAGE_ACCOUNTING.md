@@ -135,6 +135,8 @@ export interface AIRequestOptions {
   providerConfig?: AIProviderConfig    // explicit override
   apiKey?:         string              // shorthand: user-provided key (uses env AI_PROVIDER)
   usage?:          AIUsageContext      // if provided, auto-logs token usage
+  modelOverride?:  string              // explicit model name, bypasses MODEL_MAP[provider][tier]
+                                       // (tier is still used as the usage-log label)
 }
 
 export interface AIUsage {
@@ -153,6 +155,12 @@ export interface AIResponse {
   usage?:      AIUsage
 }
 ```
+
+### Model override
+
+Most callers stay on tier-based resolution (`tier: 'fast' | 'standard' | 'advanced'` → `MODEL_MAP[provider][tier]`). When a feature needs a specific model that isn't in the tier table — e.g. the recordings module's Opus 4.7 extraction pass — pass `modelOverride: 'claude-opus-4-7'` alongside the usual `tier`. The tier still labels the `usage_logs` row for accounting buckets; the model field carries the actual executed model.
+
+Rates for override-able models must be present in `RATES` in `lib/usageRates.ts` so the cost computation is correct. Today: `claude-opus-4-7` is the only model added beyond the tier defaults (recordings module, May 2026).
 
 ### Tier → model resolution
 
