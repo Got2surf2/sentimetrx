@@ -1,5 +1,28 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-30 (latest) — Recordings spec refinements from PM-1 pilot review
+
+**Why**: User reviewed the manual PM-1 pipeline output at https://nowocats-meeting-1.vercel.app/ and surfaced five product-design refinements. Capturing in the spec NOW so when Phase 2 (UX) ships, we build the right thing the first time. No new code beyond the prompt update — these are forward-looking decisions for the productized v1.
+
+**What changed in the spec (`docs/RECORDINGS.md`)**:
+1. **Multi-Q&A extraction rule (§ 3.5).** The current prompt was vulnerable to merging chained exchanges into one extraction (PM-1 baseline missed one Q&A in a "Q1 → A1 → Q2 → A2" turn). New explicit rule: "ONE Q→A pair per distinct question. Emit each as its OWN extraction in order. Do NOT merge multiple questions into one extraction." Same edit lands in `lib/recordings/prompts/qa.ts` so spec ≡ code.
+2. **Audio playback uses a modal pattern (§ 5.4).** Every "▶ Play" button opens a centered modal with prominent controls — ≥48px play/pause, full-width scrubber, current/total time labels, ±15s/±30s skip, 0.75×–2× speed, close, "Open in full audio viewer" link. Rationale: inline players in long scrollable Q&A lists end up tiny and hard to control; modal gives the controls real estate. Below the player: synced transcript segments scrolling with playhead.
+3. **Records-of-truth doctrine (§ 5.4).** Stitched audio = legal record. Full transcript = printed record of truth. AI Q&A summary = derived view, regeneratable on demand. PDF export defaults to "Q&A summary + transcript appendix" (Both) for the send-to-principals workflow.
+4. **Q&A cards are collapsible (§ 5.4).** Collapsed = question + asker + 1-line answer preview. Expanded = full Q + A + panelist + topic + timestamp + Play. Expand-all / Collapse-all controls at the top of the tab. The summary view is a *lens* the user controls — not a fixed report.
+5. **`POST /api/recordings/[id]/reanalyze` (§ 4.10, new).** Re-runs the Opus + Sonnet curator pass on the stored transcript without re-transcribing — no ASR call, ~$1 Claude cost. Trigger from a "Resummarize" button at the top of the Q&A Summary tab. Verifies recording.status='complete', wipes existing `recording_extractions` + `dataset_rows_flat` for the recording, re-mirrors, recomputes coverage. Quota does NOT double-count.
+
+**What changed in code**:
+- `lib/recordings/prompts/qa.ts` — added the multi-Q&A rule to the extraction prompt (rule 2). All other rules renumbered.
+
+**Decisions**:
+- Don't ship the audio-modal player + collapsible cards + Resummarize button now (Phase 1a is the logic layer; UI is Phase 2). Capture in spec + memory for Phase 2.
+- `reanalyze` re-runs both Opus AND the Sonnet curator. Cheaper variants (curator-only retune) are a v1.5 consideration; for the June 16 deadline we keep it simple.
+- Quota does NOT count reanalysis. Reasoning: the user is iterating on prompt quality / their own review process, not consuming new analyst capacity. If we cap reanalysis later, do it via a separate `recording_reanalyses_per_month` quota, not by conflating with the recording-completed counter.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit`. The prompt edit is verifiable via the smoke test against PM-1 audio (Phase 1 step 11).
+
+**Not pushed**.
+
 ## 2026-05-30 (later) — Recordings module Phase 1a — logic libs (no infra yet)
 
 **Why**: Phase 0 substrate is live in prod; pressing forward with the pure-logic layer of Phase 1 so the risky infra bits (ffmpeg-on-Vercel-Sandbox + Vercel Queues) get a clean foundation to plug into. Phase 1 in the plan is dated 6/3-6/6; getting the testable pieces in earlier de-risks the calendar.

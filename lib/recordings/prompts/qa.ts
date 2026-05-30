@@ -49,12 +49,13 @@ ${agenda || '  (no agenda provided)'}
 
 RULES
 1. Extract ONLY audience-to-panel questions and their answers. Filter out panel-to-panel exchanges, panel-to-self commentary, and audience side-comments that are not actual questions.
-2. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
-3. Use ONLY the agenda topics above as section headers. If a Q/A genuinely doesn't fit any agenda topic, put it under "Other" — do NOT invent new section names.
-4. Quote the question and answer verbatim from the transcript. Do not paraphrase.
-5. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
-6. If the panelist who answered is identifiable from the transcript (e.g. "Thanks Maria, this is John responding..."), capture panelist_name.
-7. Include start_sec + end_sec timestamps pointing at the question's start in the transcript.
+2. ONE Q→A pair per distinct question. When the same asker chains multiple questions in a single turn ("My question is X. Also, can you address Y?") OR when an answer is followed by a follow-up question and a separate answer ("Q1 → A1 → Q2 → A2"), emit each pair as its OWN extraction in order. Do NOT merge multiple questions into one extraction. (This is the most common miss in the manual baseline.)
+3. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
+4. Use ONLY the agenda topics above as section headers. If a Q/A genuinely doesn't fit any agenda topic, put it under "Other" — do NOT invent new section names.
+5. Quote the question and answer verbatim from the transcript. Do not paraphrase.
+6. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
+7. If the panelist who answered is identifiable from the transcript (e.g. "Thanks Maria, this is John responding..."), capture panelist_name.
+8. Include start_sec + end_sec timestamps pointing at the question's start in the transcript.
 
 OUTPUT FORMAT
 Respond with a single JSON object — no prose before or after, no markdown fences. Schema:

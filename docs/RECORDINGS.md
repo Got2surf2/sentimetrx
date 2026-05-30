@@ -403,12 +403,13 @@ CONTEXT
 
 RULES
 1. Extract ONLY audience-to-panel questions and their answers. Filter out panel-to-panel exchanges, panel-to-self commentary, and audience side-comments that are not actual questions.
-2. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
-3. Use ONLY the agenda topics above as section headers. If a Q/A genuinely doesn't fit any agenda topic, put it under "Other" — do NOT invent new section names.
-4. Quote the question and answer verbatim from the transcript. Do not paraphrase.
-5. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
-6. If the panelist who answered is identifiable from the transcript (e.g. "Thanks Maria, this is John responding..."), capture panelist_name.
-7. Include start_sec + end_sec timestamps pointing at the question's start in the transcript.
+2. **One Q→A pair per distinct question.** When the same asker chains multiple questions in a single turn (e.g. "Hi, my question is X. Also, can you address Y?") OR when an answer is followed by the asker's follow-up question and a separate answer ("Q1 → A1 → Q2 → A2"), emit each pair as its own extraction in order. Do NOT merge multiple questions into one extraction. This is the most common miss in the manual PM-1 baseline — explicit instruction is required. (Added 2026-05-30 from user review of PM-1 pilot output.)
+3. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
+4. Use ONLY the agenda topics above as section headers. If a Q/A genuinely doesn't fit any agenda topic, put it under "Other" — do NOT invent new section names.
+5. Quote the question and answer verbatim from the transcript. Do not paraphrase.
+6. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
+7. If the panelist who answered is identifiable from the transcript (e.g. "Thanks Maria, this is John responding..."), capture panelist_name.
+8. Include start_sec + end_sec timestamps pointing at the question's start in the transcript.
 
 OUTPUT (JSON, conforming to the schema below):
 {
@@ -573,6 +574,30 @@ Pagination via `?limit=50&offset=0`. Filter: `?status=processing|complete|failed
 
 Both require `is_admin_org` user via `requireAdmin`.
 
+### 4.10 `POST /api/recordings/[id]/reanalyze` — re-run extraction without re-transcribing
+
+**Added 2026-05-30 from user review of PM-1 pilot output.** The transcript is the durable artifact; the AI Q&A summary is a derived view that users can regenerate when:
+- prompt was tightened (e.g. the multi-Q&A rule added in § 3.5);
+- a calibration iteration produced a better curator pass;
+- the extracted pairs felt off and the user wants a fresh attempt.
+
+**Auth:** session cookie + CSRF. Owner or org admin only.
+
+**Body:** `{}` (empty for v1; future: `{ prompt_overrides?: {...} }` to tune specific aspects).
+
+**Behavior:**
+1. Verify recording is in `status='complete'` (cannot re-analyze a still-processing recording).
+2. Delete existing `recording_extractions` for this recording.
+3. Delete existing `dataset_rows_flat` rows for the recording's dataset.
+4. Re-run `analyzeRecording()` (Opus 4.7 extract + Sonnet 4.6 curator) against the stored `recording_transcripts.segments`. No ASR call — saves the $0.50 vendor cost.
+5. Re-run `mirrorExtractionsToDataset()` (appends fresh rows; row_count is reset since we deleted).
+6. Re-run `computeCoverage()` and update `recordings.coverage_report`.
+7. Bump `recordings.cost_cents` by the new Claude cost; bump `recordings.completed_at` to now.
+
+**Response:** `{ extractions_count: number, coverage_report: CoverageReport, cost_delta_cents: number }`.
+
+Cost: ~$1 per re-run (Opus + Sonnet curator, no ASR). Quota-counted same as initial analysis (the recording was already counted at first-completion; reanalysis does NOT double-count).
+
 ---
 
 ## 5. UI Surface
@@ -618,15 +643,30 @@ Shows current stage + ETA + last completed step. Long-poll or `EventSource` for 
 
 ### 5.4 Report — `/analyze/[datasetId]/report`
 
-Tabs:
+**Records of truth** (added 2026-05-30 from user review of the PM-1 pilot output):
+- **The stitched audio is the legal record** of the meeting. Always retrievable; never delete on default-retention orgs.
+- **The full transcript is the printed record of truth.** PDF export defaults to including the full transcript section. The AI Q&A summary is a derived view *on top of* the transcript, not a substitute.
+- **The AI Q&A summary is regeneratable.** Users see when it was last computed and can re-run extraction on demand (`POST /api/recordings/[id]/reanalyze` — see § 4.10) without re-transcribing. The transcript is the durable artifact; the summary is the editable lens.
 
-1. **Q&A** — sections by agenda topic, Q/A pairs in order, verbatim quotes, timestamps with click-to-play (post-v1).
-2. **Appendix** — non-`ask` typology pairs (complaints, commentary, clarifications).
+**Tabs:**
+
+1. **Q&A summary** — sections by agenda topic, Q/A pairs in order, verbatim quotes. Each pair is a collapsible card:
+   - Collapsed: question + asker + a one-line preview of the answer.
+   - Expanded: full Q + full A + panelist + topic chip + timestamp + "▶ Play this segment" button.
+   - **Expand-all / Collapse-all** controls at the top of the tab so a reader can scan vs read-in-detail.
+   - "Resummarize" button at the top of the tab, prominent, calls `POST /api/recordings/[id]/reanalyze` and shows progress. (Re-runs Opus + Sonnet curator; does NOT re-transcribe.)
+2. **Appendix** — non-`ask` typology pairs (complaints, commentary, clarifications). Same collapsible card shape as Q&A.
 3. **Coverage** — per-topic density chart, flagged-for-review list, confidence histogram.
-4. **Transcript** — full transcript with speaker labels.
-5. **Export & Share** — PDF download, XLSX download, "Enable public link" toggle, "Send to principals" email-list field.
+4. **Transcript** — full transcript with speaker labels + timestamps. Toggle "Group by speaker turn" vs "Segment-level". Search-in-transcript box. Each segment has a "▶ Play from here" button. **This tab is the record of truth — preserved verbatim from ASR, never edited by AI.**
+5. **Export & Share** — PDF download, XLSX download, "Enable public link" toggle, "Send to principals" email-list field. PDF export options: (a) Q&A summary only, (b) Full transcript only, (c) **Both — Q&A summary + transcript appendix** (default for "send to principals at end of meeting").
 
-Export → PDF prints the visible tab via Playwright. XLSX exports the structured extractions only. The Share panel calls `POST /api/recordings/[id]/share`.
+**Audio playback — modal pattern (added 2026-05-30 from PM-1 review)**:
+- Every "▶ Play" button (per Q/A card OR per transcript segment) opens a **modal player** rather than playing inline. Rationale: inline players in long scrollable lists end up tiny and hard to control; a centered modal gives the controls real estate.
+- The modal player carries: large play/pause (≥48px touch target), prominent scrubber with the full duration visible, current-time / total-duration labels, ±15s / ±30s skip buttons, **playback speed** (0.75× / 1× / 1.25× / 1.5× / 2×), close button, and an "Open in full audio viewer" link that drops the modal and routes to a full-page player keyed to the same `start_sec`.
+- Below the player: the synced transcript segment(s) for the current playhead, scrolling automatically as audio plays. Clicking a segment seeks to that time.
+- Source URL: server mints a short-TTL signed URL for the stitched mp3 in the `recordings` bucket (`<org_id>/<recording_id>/audio/stitched.mp3`). The TUS-uploaded source files are NOT served to the report directly.
+
+Export → PDF prints the chosen tabs via Playwright. XLSX exports the structured extractions only. The Share panel calls `POST /api/recordings/[id]/share`.
 
 ### 5.5 Org-admin recordings list — `/recordings`
 
