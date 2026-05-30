@@ -22,6 +22,7 @@ export type SpecKey =
   | 'docs/BOTS.md'
   | 'docs/TOWNHALL.md'
   | 'docs/MCO_AGENT.md'
+  | 'docs/RECORDINGS.md'
 
 export const TOP_LEVEL_SPECS = ['SPEC.md', 'FEATURES.md'] as const
 
@@ -287,5 +288,28 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'lib/places.ts',
     'lib/parking.ts',
     'public/mco/**',
+  ],
+
+  // RECORDINGS.md covers the audio/video meeting recording module —
+  // wizard, chunked upload, ffmpeg-on-Sandbox, ASR (Whisper / Deepgram /
+  // hybrid), Claude two-pass analytical extraction, public share link,
+  // and the generic feature-gate substrate (org_features / user_features)
+  // that recording is the first consumer of.
+  'docs/RECORDINGS.md': [
+    'app/analyze/new/recording/**',
+    'app/analyze/[datasetId]/report/**',
+    'app/api/recordings/**',
+    'app/api/admin/orgs/[orgId]/features/**',
+    'app/api/admin/users/[userId]/features/**',
+    'app/api/collections/[id]/members/**',
+    'app/recordings/**',
+    'app/r/**',
+    'components/recordings/**',
+    'lib/recordings/**',
+    'lib/asr/**',
+    'lib/featureFlags.ts',
+    'sql/089_*',
+    'sql/090_*',
+    'sql/091_*',
   ],
 }

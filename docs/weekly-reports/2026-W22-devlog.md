@@ -1,5 +1,24 @@
 # 2026-W22 — Dev log (Week of May 25 to May 31)
 
+## 2026-05-30 — Recordings module Phase 0 — feature-gating + recording tables + storage bucket
+
+**Why**: Kick-off of the 17-day build to the 2026-06-16 NOWOCATS PM-2 free-pilot. Full spec lives at `docs/RECORDINGS.md` (shipped 2026-05-30 in commit `38a18d13`). Phase 0 (5/31 → 6/2 per the plan) lays the substrate everything else stands on: a generic feature-gate (so paid recording can be enabled per-org without sprinkling env-var checks across the route handlers) and the four recording tables with org-scoped RLS from day one — non-negotiable per CLAUDE.md multi-tenancy invariants. Doing it tonight (5/30) buys a day on the calendar.
+
+**What changed**:
+- `sql/089_org_user_features.sql` (new) — `org_features (org_id, feature, enabled, quota_per_month, enabled_at, enabled_by)` + `user_features (user_id, feature, enabled, quota_per_month, updated_at)`. RLS on both: org members read their org's gates, users read their own override row. Writes service-role only. Recordings is the first consumer; the substrate is reusable for the next expensive feature (deck-gen, dataforseo bulk, …).
+- `sql/090_recordings.sql` (new) — `recordings` + `recording_files` + `recording_transcripts` + `recording_extractions`. Every table carries denormalized `org_id` (small spec deviation, called out in the header comment) so the `(id, org_id)` service-role pairing invariant lives at every layer instead of relying on transitive joins. RLS enabled with org-scoped SELECT on each; no INSERT/UPDATE/DELETE policy → writes are service-role only, matching the convention from `sql/088`. Indexes for the active-job sweep, share-token lookup, flagged-for-review filter.
+- `sql/091_recordings_storage_bucket.sql` (new) — private `recordings` bucket with 20GB sanity cap + allowlisted video/audio/PDF MIME types. Four RLS policies on `storage.objects` (read / insert / update / delete) all scoped to `(storage.foldername(name))[1] = users.org_id::text` so chunked direct-browser TUS uploads from the wizard land in the caller's org folder and cross-org access is denied at the storage layer. Service-role bypasses RLS for queue workers + signed URL minting.
+- `lib/featureFlags.ts` (new) — `assertFeatureAllowed(feature, orgId, userId, {unitsConsumed?})` returning `{ allowed: true | false, reason?, quotaPerMonth?, used? }`. Resolution order: user override (if `enabled IS NOT NULL`) → org row → default-false. Quota check counts feature-specific usage this calendar month; only `recording` has a counter wired (recordings reaching `analyzing` / `rendering` / `complete` this month). When the next feature comes online, add a branch to `countFeatureUsageThisMonth`.
+
+**Decisions**:
+- Denormalize `org_id` on the three child recording tables. The spec uses `recording_id IN (SELECT id FROM recordings WHERE …)` for RLS; the codebase prefers the denormalized form (see `sql/088_dataset_row_taxonomy.sql`). Pick consistency with the codebase. RLS-test coverage stays the same shape.
+- `quota_per_month` semantics: counts *successfully-processed* recordings (status reached `analyzing` or beyond). Uploads still in `uploading` / `cancelled` / `failed`-before-analyze don't consume the quota. Matches the cost model — failed jobs that didn't transcribe / call Claude shouldn't count.
+- Generic feature-gate substrate v.s. recording-only ad-hoc: spec § 2.5 already calls for the generic shape because deck-gen and dataforseo-bulk are next. Worth the +30 minutes of design now to avoid a refactor later.
+
+**Verification**: file-level only — migrations not applied to prod yet (waiting on sign-off + the spec doc push). `npx tsc --noEmit` on `lib/featureFlags.ts` will run once Phase 1 starts (it depends on `@/lib/supabase/server`'s `createServiceRoleClient` which already exists).
+
+**Not pushed** — commit-only per CLAUDE.md push policy. User authorizes before any prod migration.
+
 ## 2026-05-27 — Town hall activation gate + optional agent linkage on create
 
 **Why**: User flagged that the converged stack lets a facilitator save a town hall with no topics and then flip it `setup → active` via PATCH — no server-side validation. Same hole on the legacy substrate. Also asked for an explicit "import this agent's focuses as starter topics" affordance on `/townhall/new` (default empty so importing is a conscious decision), and a hard rule that a town hall can't go live until the **event description** is complete. Idiot-proofing in advance of NOWOCATS / June Vindman launch where the same agent (Sarina) backs the cohort.

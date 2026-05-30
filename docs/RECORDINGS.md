@@ -895,4 +895,17 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 
 ---
 
-*Last reviewed: 2026-05-30 (pre-build design). Refresh after v1 ships.*
+## 14. Implementation status
+
+| Phase | Status | Notes |
+|---|---|---|
+| Phase 0 — substrate | **In progress (2026-05-30)** | `sql/089_org_user_features.sql`, `sql/090_recordings.sql`, `sql/091_recordings_storage_bucket.sql`, `lib/featureFlags.ts` written. Not applied to prod yet. Spec deviation: `org_id` denormalized on `recording_files` / `_transcripts` / `_extractions` for service-role pairing uniformity. |
+| Phase 1 — pipeline | Pending | Earliest start 2026-06-03 per plan in § 11. |
+| Phase 2 — UX | Pending | |
+| Phase 3 — collections + public sharing | Pending | |
+| Phase 4 — calibration soak | Pending | |
+| Phase 5 — dry run + ship | Pending | Hard pin: 2026-06-16 NOWOCATS PM-2 free pilot. |
+
+---
+
+*Last reviewed: 2026-05-30 (Phase 0 substrate landed; Phase 1 pending). Refresh after each phase ships.*
