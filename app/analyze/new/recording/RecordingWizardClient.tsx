@@ -240,7 +240,7 @@ export default function RecordingWizardClient() {
           >
             <div className="text-3xl mb-2">📥</div>
             <div className="text-sm text-gray-700">Drop files here or click to browse</div>
-            <div className="text-xs text-gray-500 mt-1">Up to 20 files, 20GB each</div>
+            <div className="text-xs text-gray-500 mt-1">Audio or video — drop a mix and we'll stitch them in order. Up to 20 files, 20 GB each.</div>
             <input
               type="file"
               multiple

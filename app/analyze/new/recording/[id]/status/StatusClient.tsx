@@ -17,19 +17,20 @@ type Status =
   | 'uploading' | 'queued' | 'extracting' | 'transcribing'
   | 'analyzing' | 'rendering' | 'complete' | 'failed' | 'cancelled'
 
-// Display order; matches recordings.status check_constraint minus 'cancelled'
-// (cancelled is a terminal off-path state rendered separately).
-const STAGES: Status[] = [
+// Step list — vertical, Claude-Code-style. Each step renders with a
+// past/current/future/failed icon + an optional sub-detail derived from
+// the § 4.3 status payload.
+const STEPS: Status[] = [
   'uploading', 'queued', 'extracting', 'transcribing', 'analyzing', 'complete',
 ]
 
-const STAGE_LABELS: Record<Status, string> = {
-  uploading:    'Uploading',
+const STEP_LABELS: Record<Status, string> = {
+  uploading:    'Files uploaded',
   queued:       'Queued',
   extracting:   'Extracting audio',
   transcribing: 'Transcribing',
-  analyzing:    'Analyzing',
-  rendering:    'Rendering',     // present in enum but skipped today; treat as a flicker between analyzing → complete
+  analyzing:    'Analyzing Q&A',
+  rendering:    'Rendering',
   complete:     'Complete',
   failed:       'Failed',
   cancelled:    'Cancelled',
@@ -149,7 +150,7 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         <p className="text-sm text-gray-500 mt-1">Recording {recordingId.slice(0, 8)}…</p>
       </header>
 
-      <StageLadder current={status} />
+      <StepList status={status} data={data} />
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
@@ -205,37 +206,166 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
 
 // ── Components ───────────────────────────────────────────────────────────────
 
-function StageLadder({ current }: { current: Status }) {
-  const currentIdx = STAGES.indexOf(current)
+type StepState = 'past' | 'current' | 'future' | 'failed'
+
+function StepList({ status, data }: { status: Status; data: StatusResponse | null }) {
+  const failedStepIdx = status === 'failed' ? inferFailedStepIdx(data) : -1
+
   return (
-    <ol className="flex items-center gap-2 overflow-x-auto pb-1">
-      {STAGES.map((s, i) => {
-        const isPast = currentIdx >= 0 && i < currentIdx
-        const isCurrent = i === currentIdx
-        const isFailed = current === 'failed' && i === Math.max(0, STAGES.length - 1)
+    <ol className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
+      {STEPS.map((step, i) => {
+        const state = computeStepState(step, i, status, failedStepIdx)
+        const detail = computeStepDetail(step, state, data)
         return (
-          <li key={s} className="flex items-center gap-2 shrink-0">
-            <span className={
-              `inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ` +
-              (isCurrent
-                ? 'bg-orange-500 text-white animate-pulse'
-                : isPast
-                ? 'bg-green-500 text-white'
-                : isFailed
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-200 text-gray-500')
-            }>
-              {isPast ? '✓' : i + 1}
-            </span>
-            <span className={`text-xs ${isCurrent ? 'text-orange-700 font-semibold' : isPast ? 'text-gray-700' : 'text-gray-400'}`}>
-              {STAGE_LABELS[s]}
-            </span>
-            {i < STAGES.length - 1 && <span className="text-gray-300">›</span>}
+          <li key={step} className="flex items-start gap-3 px-4 py-3">
+            <StepIcon state={state} />
+            <div className="flex-1 min-w-0">
+              <div className={
+                'text-sm font-medium ' +
+                (state === 'current' ? 'text-orange-700' :
+                 state === 'failed'  ? 'text-red-700' :
+                 state === 'past'    ? 'text-gray-900' :
+                                       'text-gray-400')
+              }>
+                {STEP_LABELS[step]}
+              </div>
+              {detail && (
+                <div className={`text-xs mt-0.5 ${state === 'current' ? 'text-orange-600' : state === 'failed' ? 'text-red-600' : 'text-gray-500'}`}>
+                  {detail}
+                </div>
+              )}
+            </div>
           </li>
         )
       })}
     </ol>
   )
+}
+
+function StepIcon({ state }: { state: StepState }) {
+  if (state === 'past') {
+    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-[10px] font-bold shrink-0">✓</span>
+  }
+  if (state === 'current') {
+    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-orange-400 text-orange-500 text-[10px] shrink-0 animate-spin">⟳</span>
+  }
+  if (state === 'failed') {
+    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold shrink-0">✗</span>
+  }
+  return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-gray-200 text-gray-300 text-[10px] shrink-0">○</span>
+}
+
+function computeStepState(step: Status, idx: number, status: Status, failedIdx: number): StepState {
+  if (status === 'failed') {
+    if (idx < failedIdx) return 'past'
+    if (idx === failedIdx) return 'failed'
+    return 'future'
+  }
+  if (status === 'cancelled') {
+    // Treat cancelled the same as failed — paint the suspected step red and dim the rest.
+    const cancelIdx = failedIdx >= 0 ? failedIdx : STEPS.indexOf(status as Status)
+    if (idx < cancelIdx) return 'past'
+    if (idx === cancelIdx) return 'failed'
+    return 'future'
+  }
+  if (status === 'complete') {
+    return 'past'   // every step including 'complete' shows the check
+  }
+  const currentIdx = STEPS.indexOf(status)
+  if (idx < currentIdx) return 'past'
+  if (idx === currentIdx) return 'current'
+  return 'future'
+}
+
+// Server-side data → human sub-detail for each step.
+function computeStepDetail(step: Status, state: StepState, data: StatusResponse | null): string | null {
+  if (!data) return null
+  const { files, transcript, extraction_count, recording } = data
+
+  switch (step) {
+    case 'uploading': {
+      const total = files.length
+      const totalMb = files.reduce((sum, f) => sum + f.size_bytes, 0) / (1024 * 1024)
+      const audioCount = files.filter(f => !f.is_video).length
+      const videoCount = total - audioCount
+      const mix = videoCount > 0 && audioCount > 0
+        ? `${videoCount} video + ${audioCount} audio`
+        : videoCount > 0 ? `${videoCount} video file${videoCount === 1 ? '' : 's'}`
+        : `${audioCount} audio file${audioCount === 1 ? '' : 's'}`
+      return `${mix} · ${totalMb.toFixed(1)} MB total`
+    }
+    case 'queued': {
+      if (state === 'current') return 'waiting for a worker'
+      return null
+    }
+    case 'extracting': {
+      const total = files.length
+      const extracted = files.filter(f => f.upload_status === 'extracted').length
+      if (state === 'past') {
+        const stitchedNote = total > 1 ? ` + stitched` : ''
+        return `${total} file${total === 1 ? '' : 's'} extracted${stitchedNote}`
+      }
+      if (state === 'current') {
+        if (extracted < total) {
+          return `${extracted} of ${total} ${extracted === 1 ? 'file' : 'files'} extracted · ffmpeg in Vercel Sandbox`
+        }
+        // All files extracted, stitching the canonical 16kHz mono mp3
+        return total > 1 ? 'stitching files in order' : 'finalizing audio'
+      }
+      return null
+    }
+    case 'transcribing': {
+      if (state === 'past' && transcript) {
+        return `${transcript.vendor} · ${transcript.word_count?.toLocaleString() ?? '?'} words · ${formatCost(transcript.cost_cents)}`
+      }
+      if (state === 'current') {
+        const vendor = recording.asr_vendor_chosen
+        if (vendor === 'hybrid') return 'running Whisper + Deepgram in parallel'
+        if (vendor === 'whisper') return 'running OpenAI Whisper'
+        if (vendor === 'deepgram') return 'running Deepgram Nova-3 (batch)'
+        return 'resolving ASR vendor + uploading stitched audio'
+      }
+      return null
+    }
+    case 'analyzing': {
+      if (state === 'past') {
+        return `${extraction_count} Q&A pair${extraction_count === 1 ? '' : 's'} extracted · Opus + Sonnet curator`
+      }
+      if (state === 'current') {
+        if (extraction_count > 0) return `${extraction_count} pair${extraction_count === 1 ? '' : 's'} extracted so far · Sonnet curator running`
+        return 'Opus 4.7 reading the transcript'
+      }
+      return null
+    }
+    case 'complete': {
+      if (state === 'past') {
+        // The complete step itself is "checked" when status is 'complete'.
+        const totalCost = recording.cost_cents
+        return `${extraction_count} Q&A pair${extraction_count === 1 ? '' : 's'} · ${formatCost(totalCost)} total`
+      }
+      return null
+    }
+    default:
+      return null
+  }
+}
+
+// When status='failed', guess which step failed by reading what made it to disk.
+// Heuristic: walk forward; the first step we can't prove succeeded is the failed one.
+function inferFailedStepIdx(data: StatusResponse | null): number {
+  if (!data) return STEPS.indexOf('queued')
+  const { files, transcript, extraction_count, recording } = data
+  if (recording.status !== 'failed') return -1
+
+  // Did extraction complete? Every file has upload_status='extracted'.
+  const allExtracted = files.length > 0 && files.every(f => f.upload_status === 'extracted')
+  if (!allExtracted) return STEPS.indexOf('extracting')
+  if (!transcript) return STEPS.indexOf('transcribing')
+  if (extraction_count === 0) return STEPS.indexOf('analyzing')
+  // Files extracted, transcript written, extractions written — fail must have been
+  // very late (mirror / coverage / complete). Pin to 'analyzing' since that's the
+  // stage that owns mirror + coverage.
+  return STEPS.indexOf('analyzing')
 }
 
 function FilesPanel({ files }: { files: FileRow[] }) {

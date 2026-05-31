@@ -717,18 +717,26 @@ Upload runs in background; user fills setup in parallel. Process button disabled
 
 **v1 scope:** session_type is locked to `qa` in the UI (the field is rendered but disabled) because `analyzeRecording` throws for other types today. The other types are kept in the schema so adding them later is a UI-only change.
 
+**Mixed audio + video drops:** the wizard accepts both `video/*` and `audio/*` in the file picker. The drop-zone caption explicitly tells the user "Audio or video — drop a mix and we'll stitch them in order" because the extract path always re-encodes everything to canonical 16kHz mono 32kbps mp3 before the concat-demuxer stitch. Mixed drops are first-class; the analyst can stage GoPro clips alongside a phone backup recording without any pre-processing.
+
 ### 5.3 Status surface — `/analyze/new/recording/[id]/status`
 
 Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`.
 
 **Rendered:**
-- Stage ladder — six steps (`uploading → queued → extracting → transcribing → analyzing → complete`); past steps green check, current step pulsing orange, future steps grey. `failed` lights the trailing step red.
+- Step list — vertical, six rows, Claude-Code-style. Each row: status icon (✓ green for past, ⟳ orange spinning for current, ○ grey for future, ✗ red for failed) + step label + a sub-detail line derived from the § 4.3 payload. Examples:
+  - Files uploaded · *3 video + 2 audio · 412.7 MB total*
+  - Queued · *waiting for a worker*
+  - Extracting audio · *3 of 5 files extracted · ffmpeg in Vercel Sandbox* — current step shows mid-run progress; on complete it reads *5 files extracted + stitched*
+  - Transcribing · *running Deepgram Nova-3 (batch)* — once `asr_vendor_chosen` is set; on complete it reads *deepgram · 12,478 words · $0.44*
+  - Analyzing Q&A · *Opus 4.7 reading the transcript* → *42 pairs extracted so far · Sonnet curator running* (extraction_count grows live) → *42 Q&A pairs extracted · Opus + Sonnet curator*
+  - Complete · *42 Q&A pairs · $1.96 total*
 - Source files panel — per-file row with name, size, duration (when extract has populated it), and an `upload_status` badge (`pending | uploaded | extracted | failed`).
 - Transcript panel — vendor, language detected, word count, duration, ASR cost — appears once `recording_transcripts` is written.
 - Extraction panel — Q&A pair count + total cost-to-date — appears once `extraction_count > 0`.
 - Terminal-state banners:
   - `complete + dataset_id` → green banner + "Open report" link, plus a 1.2s `router.push('/analyze/[dataset_id]/report')` auto-redirect for the user who just kicked off the run.
-  - `failed` → red banner with the recording's `error_message` and a "Retry from failed stage" button that POSTs to `/api/recordings/[id]/process` (the process route already accepts `status='failed'` and re-starts the WDK run from the beginning).
+  - `failed` → red banner with the recording's `error_message` and a "Retry from failed stage" button that POSTs to `/api/recordings/[id]/process` (the process route already accepts `status='failed'` and re-starts the WDK run from the beginning). The failed step in the list is decorated red via a heuristic that walks forward — first step we can't prove succeeded is the failure point (extracting if any file is missing `audio_storage_path`, transcribing if no `recording_transcripts` row, analyzing if no extractions, late-analyzing for mirror/coverage failures).
 
 Closes-tab-friendly: user can come back to this URL anytime; on revisit the page server-renders the current name + status, then the client picks up polling from there.
 

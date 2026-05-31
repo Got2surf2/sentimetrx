@@ -801,3 +801,28 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Decision worth capturing #2**: mirror-row deletes go through `filter('data->>extraction_id', 'eq', id)` per-id rather than `.in('data->>extraction_id', list)`. Supabase JS's `.in()` builder doesn't compose with JSONB-extracted columns; the per-id approach is verbose but correct. Could be optimized to a single SQL `DELETE … WHERE data->>'extraction_id' = ANY($1)` via `service.rpc()` later — not a v1 hotspot since reanalyze is bounded.
 
 **Phase 2 affordance state**: per-card regenerate ✅, per-topic re-extract ✅, full re-extract ✅. Still stub: audio playback (needs signed-URL route + modal), Export & Share (needs § 4.5 + § 4.7). The PM-1 calibration loop is now fully buildable from inside the report — every "this doesn't match the PDF" finding has a 1-click → modal → 30s → fixed flow.
+
+
+---
+
+## 2026-05-31 (later) — Status surface: vertical step list with live sub-details
+
+**Why**: User feedback after § 4.11 wired — the horizontal stage ladder reads as decoration, not progress. They want what Claude Code shows for multi-step work: vertical list, ✓ / ⟳ / ○ per step, sub-detail line under each saying what's actually happening right now. Also asked whether mixed audio + video drops "just work" in the wizard — they do, but the UI didn't say so.
+
+**What changed**:
+- `app/analyze/new/recording/[id]/status/StatusClient.tsx` — replaced `StageLadder` (horizontal pills with chevrons) with `StepList` (vertical card with per-row icon + label + sub-detail). Sub-details derived server-side from data already fetched via § 4.3, no new tables or endpoints:
+  - **Files uploaded** — `"3 video + 2 audio · 412.7 MB total"` from the recording_files rows.
+  - **Queued** — `"waiting for a worker"` while current; silent otherwise.
+  - **Extracting audio** — `"3 of 5 files extracted · ffmpeg in Vercel Sandbox"` mid-run (counts files with `upload_status='extracted'`); transitions to `"stitching files in order"` once all are extracted but the workflow hasn't moved on; `"5 files extracted + stitched"` once past.
+  - **Transcribing** — `"resolving ASR vendor + uploading stitched audio"` before `asr_vendor_chosen` lands; then vendor-aware (`"running Deepgram Nova-3 (batch)"`, `"running OpenAI Whisper"`, `"running Whisper + Deepgram in parallel"`); on complete, `"deepgram · 12,478 words · $0.44"` from the recording_transcripts row.
+  - **Analyzing Q&A** — `"Opus 4.7 reading the transcript"` at start; `"42 pairs extracted so far · Sonnet curator running"` once `extraction_count > 0` (live, since extractions get inserted incrementally by the analyze step's mirror call); `"42 Q&A pairs extracted · Opus + Sonnet curator"` on complete.
+  - **Complete** — `"42 Q&A pairs · $1.96 total"`.
+- Same component: `inferFailedStepIdx()` heuristic walks forward through the data — first step we can't prove succeeded is the failure point. Marks that step ✗ red, prior steps ✓ green, later steps ○ grey. Avoids needing per-stage transition timestamps in the recordings table.
+- `app/analyze/new/recording/RecordingWizardClient.tsx` — drop-zone caption updated from "Up to 20 files, 20GB each" to "Audio or video — drop a mix and we'll stitch them in order. Up to 20 files, 20 GB each." Server already does the right thing; this just makes the contract visible.
+- `docs/RECORDINGS.md` § 5.2 — added a "Mixed audio + video drops" paragraph naming the canonical 16kHz mono 32kbps mp3 re-encode + concat-demuxer behavior. § 5.3 — replaced the "Stage ladder" paragraph with the step list spec including sub-detail examples per stage and the failed-step inference heuristic.
+
+**Decision worth capturing**: per-stage transition times not added to `recordings` for this iteration. Considered adding `extract_started_at / transcribe_started_at / analyze_started_at` columns so the step list could show per-step durations, but the WDK run journal already captures this and § 4.3 has enough to drive the UX without it. Adding columns is forward-compatible if the calibration soak finds it actually useful.
+
+**Decision worth capturing #2**: extraction_count is a live progress signal during "Analyzing Q&A" but a misleading one — the analyze step does ONE big call to mirrorExtractionsToDataset that inserts all rows at once, not incrementally. So in practice the count jumps from 0 to N at the end, not 0→1→2→…→N. Kept the conditional copy ("X pairs extracted so far") because (a) it's still correct, (b) if the future moves to streaming inserts the UI is already right, and (c) when count=0 the alternative copy "Opus 4.7 reading the transcript" is the more interesting signal anyway.
+
+**Mixed-drop reality check**: I re-read `lib/recordings/extract.ts`. Every input file goes through `ffmpeg -y -i <input> -vn -ac 1 -ar 16000 -c:a libmp3lame -b:a 32k <output>.mp3`. `-vn` is a no-op on audio inputs, so the same command handles both. The concat-demuxer step works because all per-file outputs share codec params (16kHz mono 32kbps mp3). The spec's "for audio-source rows: probe duration, no extraction" guidance is technically a deviation, but the deviation is intentional and correct — uniform re-encode is what makes the stitch clean. Comment in extract.ts already explains this.
