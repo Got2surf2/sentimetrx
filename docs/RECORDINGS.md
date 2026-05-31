@@ -496,18 +496,35 @@ Resend email to `recordings.created_by` (and optionally org admins per `<TBD: or
 }
 ```
 
-**Response:**
+**Response (201):**
 ```json
 {
   "recording_id": "uuid",
+  "upload": {
+    "protocol": "tus",
+    "endpoint": "https://<project>.supabase.co/storage/v1/upload/resumable",
+    "bucket": "recordings"
+  },
   "files": [
-    { "id": "uuid", "upload_url": "https://...tus-resumable-url", "storage_path": "..." },
-    { "id": "uuid", "upload_url": "https://...", "storage_path": "..." }
+    { "id": "uuid", "original_filename": "GX010114.MP4", "storage_path": "<org>/<rec>/GX010114.MP4", "upload_url": "https://<project>.supabase.co/storage/v1/upload/resumable" },
+    { "id": "uuid", "original_filename": "GX020114.MP4", "storage_path": "<org>/<rec>/GX020114.MP4", "upload_url": "https://<project>.supabase.co/storage/v1/upload/resumable" }
   ]
 }
 ```
 
-Returns one signed TUS upload URL per file. Browser PUTs file bytes directly.
+Browser uses `tus-js-client` against `upload.endpoint` with the user's Supabase session JWT in the `Authorization` header and per-file metadata `{ bucketName, objectName: <storage_path>, contentType }`. Per-file `upload_url` is included for clients that prefer to keep the TUS endpoint inside the per-file object — it's the same string as `upload.endpoint` today.
+
+**Validation:** soft caps enforced server-side — at most 20 files per recording, at most 20GB per file, no duplicate filenames within a recording, `session_type` ∈ enum, `asr_strategy` ∈ enum.
+
+**Rollback:** if the `recording_files` insert fails after the `recordings` row was created, the route deletes the recordings row before returning the error so the user isn't left with a phantom.
+
+### 4.1a `POST /api/recordings/[id]/files/[fileId]/uploaded` — ack upload completion
+
+Companion to § 4.1. Called by the wizard after each TUS upload succeeds; flips `recording_files.upload_status` from `'pending'` to `'uploaded'`. Idempotent: returns `{ already: true }` if the file is already past 'pending'.
+
+**Server-side guard:** before flipping the flag, the route calls `storage.from(BUCKET).list(dir, { search: basename })` and verifies the object actually exists at the expected `storage_path`. Stops a hostile or buggy client from marking a non-existent file as uploaded (which would surface as an opaque extract failure later).
+
+**Response:** `{ ok: true, upload_status: 'uploaded' }` or `{ ok: true, upload_status: 'uploaded' | 'extracted', already: true }`.
 
 ### 4.2 `POST /api/recordings/[id]/process` — start the pipeline
 
@@ -515,7 +532,20 @@ Called after all files report `upload_status='uploaded'`. Transitions `uploading
 
 ### 4.3 `GET /api/recordings/[id]` — status + details
 
-Returns the recording row + files + (if available) transcript metadata + extraction count + coverage report. Used by the status surface.
+Drives the status surface (§ 5.3) and the report page header.
+
+**Response shape:**
+```json
+{
+  "recording": { /* row minus segments/extraction payloads */ },
+  "files": [ /* recording_files rows, sort_order ASC */ ],
+  "transcript": { "id", "vendor", "language_detected", "word_count", "duration_sec", "cost_cents", "completed_at" } | null,
+  "extraction_count": <int>,
+  "share": { "enabled": <bool>, "expires_at": <iso|null>, "token": <string|null> }
+}
+```
+
+Deliberately omits `recording_transcripts.segments` and `recording_extractions.payload` — those are large and only the report page (server-rendered) needs them. `share.token` is only returned to the recording owner; org members see `share.enabled` but not the raw token.
 
 ### 4.4 `POST /api/collections/[id]/members` — **NEW** (fills the gap)
 

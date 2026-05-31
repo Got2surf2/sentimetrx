@@ -681,3 +681,20 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Architectural note worth remembering**: Workflow DevKit step functions are full Node.js (no sandbox), so wrapping our `extractRecording` / `transcribeRecording` / `analyzeRecording` libs as steps is straightforward — those libs use `@vercel/sandbox` + `fetch` + Supabase service client without modification. The `"use workflow"` outer function is the only sandboxed bit and it just orchestrates step calls. Pattern to keep: orchestration in workflow, I/O in steps.
 
 **Pending live exercise (Phase 4)**: real PM-1 audio through the wizard once Phase 2 lands; smoke-test diff vs PDF ground truth; iterate the Opus extraction + Sonnet curator prompts until F1 ≥ 0.90. Cost per smoke iteration ≈ $1 (Claude only, no ASR re-run).
+
+
+---
+
+## 2026-05-30 (later) — Recordings § 4.1 + § 4.3 + § 4.1a: wizard-facing routes
+
+**Why**: Phase 1b wired the pipeline but there was no entrypoint for the wizard to call. The recording row only exists if § 4.1 creates it; the status surface (§ 5.3) only renders if § 4.3 returns data; and the implicit "this file finished uploading" step has to live somewhere — added § 4.1a explicitly rather than leaving it ambient.
+
+**What changed**:
+- `app/api/recordings/route.ts` (new) — POST § 4.1 creates the `recordings` row (status='uploading'), inserts one `recording_files` row per source (upload_status='pending') with `storage_path = <org>/<rec>/<filename>`, returns the Supabase Storage TUS endpoint + per-file metadata for `tus-js-client`. Validates server-side: ≤20 files, ≤20GB each, no duplicate filenames, enum'd session_type + asr_strategy. Rolls back the recording row if the files insert fails.
+- `app/api/recordings/[id]/route.ts` (new) — GET § 4.3 returns recording + files + transcript metadata + extraction count + share state. Deliberately omits `recording_transcripts.segments` and `recording_extractions.payload` — those are big and only the server-rendered report page needs them. `share.token` is owner-only.
+- `app/api/recordings/[id]/files/[fileId]/uploaded/route.ts` (new) — POST § 4.1a ack endpoint. Verifies the object actually exists at the expected `storage_path` via `storage.from(BUCKET).list(dir, { search: basename })` before flipping `upload_status` from 'pending' to 'uploaded'. Idempotent.
+- `docs/RECORDINGS.md` § 4.1 — response shape updated to include `upload.{protocol,endpoint,bucket}` block alongside per-file `upload_url` (same string today, kept per-file for clients that prefer it). Added validation + rollback notes. Added § 4.1a documenting the ack endpoint and its storage-existence guard. § 4.3 fleshed out with the actual response shape and the share.token owner-only rule.
+
+**Decision worth capturing**: the spec drafted § 4.1's response with per-file `upload_url` strings but didn't specify which protocol. Went with TUS over signed-PUT because a 20GB single PUT is not survivable. Browser uses its existing session JWT against the TUS endpoint (no server-minted upload tokens needed) — simplest auth path with `@supabase/ssr` already in place.
+
+**What's missing for the wizard to be functional**: the wizard itself (Phase 2 item 13) — needs to construct the multipart upload UI, drive `tus-js-client`, call § 4.1a per file, then § 4.2 once all are done. Routes are ready; only the React surface is left.
