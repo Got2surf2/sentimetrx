@@ -717,3 +717,21 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Decision worth capturing**: WDK steps would also have let me wire status updates through a workflow event channel, but plain polling against § 4.3 with a 3s cadence is what the existing /admin tools do, costs ~$0 vs SSE complexity, and lets the user close the tab and come back without losing visibility. EventSource is the right answer if we ever care about <3s update latency (we don't for a multi-minute pipeline).
 
 **What's left for Phase 2**: the report page (§ 5.4 — Q&A summary tab, transcript tab, etc.), the org-admin recordings list page (§ 5.5 — needs § 4.8 which now exists), the `/admin/downloads` recordings section (§ 5.6), exports (§ 4.5 PDF + XLSX), and the public report (§ 4.6 + § 5 routing). Wizard → status → report is the critical-path triple; the first two now exist, report is next.
+
+
+---
+
+## 2026-05-31 — Recordings report page (§ 5.4): four-tab layout shipped, three deferred affordances stubbed
+
+**Why**: Wizard + status surface land the analyst on a report URL (`/analyze/[datasetId]/report`) that didn't exist yet — the auto-redirect from the status page after `complete` would have 404'd. This commit closes that critical-path triple (wizard → status → report) so a meeting can be processed end-to-end with no broken edges.
+
+**What changed**:
+- `app/analyze/[datasetId]/report/page.tsx` (new) — server component. Resolves dataset → recording via `recordings.dataset_id` reverse lookup, redirects non-recording datasets back to `/analyze/[id]`, parallel-loads files + transcript + extractions, hands a single `ReportData` object to the client.
+- `app/analyze/[datasetId]/report/ReportClient.tsx` (new) — five-tab UI with all state local: tab navigation, card expand/collapse, transcript search. Q&A cards group by topic in agenda order (non-agenda topics trail); flagged cards render with a yellow background + the `flag_reason`. Coverage tab renders the existing `coverage_report` JSONB: per-topic horizontal bar density, confidence histogram (10-bucket vertical bars), flagged count summary, long-quiet stretches list. Transcript tab is a verbatim segment list with a search input that highlights matches via `<mark>`; capped to a `max-h-[70vh] overflow-y-auto` window so long meetings stay scrollable. Export & Share tab is a stub listing the four pending affordances.
+- `docs/RECORDINGS.md` § 5.4 — added a "Phase 2 shipped state (2026-05-31)" paragraph documenting which affordances are stubs and which routes wire them up later: § 4.5 (PDF + XLSX), § 4.7 (share), § 4.10 (per-card regenerate), § 4.11 (scoped re-extract), and the not-yet-numbered audio signed-URL route.
+
+**Decision worth capturing**: the spec's § 4.10/§ 4.11 regenerate UX is rich (inline composer, instructions textarea, cost-aware modal). Could have stubbed the buttons differently — hidden them, or rendered them as "coming soon" links. Chose to render the exact affordances the spec describes, but with `disabled` + a `title` tooltip naming the route they need. Two upsides: (a) the spec → UI mapping is visually obvious when you load the page, so future-me knows where to plug things in, (b) when the routes land, swapping `disabled` for the real handler is a localized change. Downside: a fresh PM-1 viewer sees grey buttons. Acceptable for an internal pilot.
+
+**Critical path now closed**: tile → wizard → § 4.1 → TUS upload → § 4.1a → § 4.2 → WDK extract+transcribe+analyze → status surface poll → § 4.3 → auto-redirect → report page. Every link in that chain exists in code. Next blocker for an actual end-to-end run is the SQL migrations being applied to prod + the Vercel Sandbox being provisioned + Deepgram + OpenAI keys set.
+
+**Phase 2 remainder**: org-admin recordings list page (§ 5.5; needs no new routes — uses § 4.8), `/admin/downloads` recordings section (§ 5.6), then the deferred report affordances when the regenerate/export/share/audio routes land.
