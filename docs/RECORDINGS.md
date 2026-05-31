@@ -574,29 +574,56 @@ Pagination via `?limit=50&offset=0`. Filter: `?status=processing|complete|failed
 
 Both require `is_admin_org` user via `requireAdmin`.
 
-### 4.10 `POST /api/recordings/[id]/reanalyze` — re-run extraction without re-transcribing
+### 4.10 `POST /api/recordings/[id]/extractions/[extractionId]/regenerate` — fix one card
 
-**Added 2026-05-30 from user review of PM-1 pilot output.** The transcript is the durable artifact; the AI Q&A summary is a derived view that users can regenerate when:
-- prompt was tightened (e.g. the multi-Q&A rule added in § 3.5);
-- a calibration iteration produced a better curator pass;
-- the extracted pairs felt off and the user wants a fresh attempt.
+**Added 2026-05-30 from user review of PM-1 pilot output.** Most "this looks wrong" moments are local — one answer's preview reads weirdly, one asker is mis-attributed, one topic chip is wrong. Re-running Opus on the full 35K-token transcript to fix one card is wasteful. This route regenerates a single `recording_extractions` row using Sonnet only.
 
 **Auth:** session cookie + CSRF. Owner or org admin only.
 
-**Body:** `{}` (empty for v1; future: `{ prompt_overrides?: {...} }` to tune specific aspects).
+**Body:** `{ instructions?: string }` — optional free-text guidance from the user (e.g. "the asker was the woman in the red coat, not the moderator"; "make the answer summary one sentence"; "topic should be Education, not Schools").
 
 **Behavior:**
-1. Verify recording is in `status='complete'` (cannot re-analyze a still-processing recording).
-2. Delete existing `recording_extractions` for this recording.
-3. Delete existing `dataset_rows_flat` rows for the recording's dataset.
-4. Re-run `analyzeRecording()` (Opus 4.7 extract + Sonnet 4.6 curator) against the stored `recording_transcripts.segments`. No ASR call — saves the $0.50 vendor cost.
-5. Re-run `mirrorExtractionsToDataset()` (appends fresh rows; row_count is reset since we deleted).
-6. Re-run `computeCoverage()` and update `recordings.coverage_report`.
-7. Bump `recordings.cost_cents` by the new Claude cost; bump `recordings.completed_at` to now.
+1. Verify recording is in `status='complete'` and the extraction belongs to it.
+2. Sonnet 4.6 pass fed: the existing extraction row + the transcript span from `start_sec − 30s` to `end_sec + 30s` (pre/post context to catch corrections like "sorry, my name's actually Jane") + the recording's panelist roster + the recording's agenda topic list + `instructions` if provided.
+3. Output is the revised `payload` (same shape per § 2.4), revised `topic`, revised `confidence`, recomputed `flagged_for_review`. `start_sec` / `end_sec` / `unit_type` are not edited by this route — span changes require a full or topic-scoped re-extraction (§ 4.11).
+4. Update the single `recording_extractions` row in place.
+5. Update the mirrored `dataset_rows_flat` row per § 2.6.
+6. If `topic` changed, re-run `computeCoverage()` and update `recordings.coverage_report`. Otherwise skip — coverage is unaffected.
+7. Bump `recordings.cost_cents` by the Sonnet cost.
 
-**Response:** `{ extractions_count: number, coverage_report: CoverageReport, cost_delta_cents: number }`.
+**Response:** `{ extraction: ExtractionRow, cost_cents: number, coverage_report?: CoverageReport }`.
 
-Cost: ~$1 per re-run (Opus + Sonnet curator, no ASR). Quota-counted same as initial analysis (the recording was already counted at first-completion; reanalysis does NOT double-count).
+Cost: ~$0.005–$0.02 per call (Sonnet on a ~2K-token context). Quota: not counted — the recording was already counted at first-completion, and per-card edits are cheap enough that capping them is more friction than the savings warrant.
+
+### 4.11 `POST /api/recordings/[id]/reanalyze` — re-extract pairs, with user instructions
+
+For when the *structure* is wrong, not just one card — Opus missed a Q/A pair entirely, split one question into two, the topic chips don't match the agenda, or the prompt itself changed and the user wants a fresh pass. Re-uses the stored transcript; no ASR call.
+
+**Auth:** session cookie + CSRF. Owner or org admin only.
+
+**Body:** `{ scope: 'all' | 'topic', topic?: string, instructions?: string }`
+- `scope='all'`: re-extract the entire meeting. Default.
+- `scope='topic'` with `topic='Schools'`: re-extract only pairs currently tagged with that topic. Other topics' pairs are untouched.
+- `instructions`: optional free-text guidance appended to the Opus system prompt as a "User notes" section (e.g. "you missed a question about parking near the new development"; "the 'Schools' chip should have been 'Education' throughout"; "asker names should default to 'Audience member' if not self-introduced"). Honored by both Opus and the Sonnet curator.
+
+**Behavior — `scope='all'`:**
+1. Verify recording is in `status='complete'`.
+2. Delete existing `recording_extractions` for this recording and the corresponding `dataset_rows_flat` rows for the recording's dataset.
+3. Re-run `analyzeRecording(transcript, { instructions })` — Opus 4.7 extract + Sonnet 4.6 curator on the full `recording_transcripts.segments`.
+4. Re-run `mirrorExtractionsToDataset()`.
+5. Re-run `computeCoverage()` and update `recordings.coverage_report`.
+6. Bump `recordings.cost_cents` by the new Claude cost; bump `recordings.completed_at` to now.
+
+**Behavior — `scope='topic'`:**
+1. Compute the topic-scoped transcript span: the union of all `[start_sec − 60s, end_sec + 60s]` ranges from existing extractions where `topic = X`, merged and clipped to the transcript bounds. (60s padding lets Opus catch boundary pairs the prior pass mis-attributed to an adjacent topic.)
+2. Delete existing `recording_extractions` for this recording where `topic = X`, and the corresponding `dataset_rows_flat` rows.
+3. Re-run Opus + Sonnet curator on the scoped span with `instructions` and a system note that this is a topic-scoped re-extraction for `X` — emitted pairs must be within the scoped time range and should default to `topic = X` unless the content clearly belongs to a sibling topic.
+4. Append the new extractions, then re-mirror and re-run `computeCoverage()`.
+5. Bump `recordings.cost_cents` by the new Claude cost.
+
+**Response:** `{ extractions_count: number, replaced: number, coverage_report: CoverageReport, cost_delta_cents: number, scope: 'all' | 'topic' }`.
+
+Cost: `scope='all'` ≈ ~$1 (Opus + Sonnet on the full transcript, no ASR). `scope='topic'` scales with the scoped span — typically $0.10–$0.40 for a 5–15 minute topic. Quota: not double-counted on either scope (the recording was already counted at first-completion).
 
 ---
 
@@ -646,15 +673,17 @@ Shows current stage + ETA + last completed step. Long-poll or `EventSource` for 
 **Records of truth** (added 2026-05-30 from user review of the PM-1 pilot output):
 - **The stitched audio is the legal record** of the meeting. Always retrievable; never delete on default-retention orgs.
 - **The full transcript is the printed record of truth.** PDF export defaults to including the full transcript section. The AI Q&A summary is a derived view *on top of* the transcript, not a substitute.
-- **The AI Q&A summary is regeneratable.** Users see when it was last computed and can re-run extraction on demand (`POST /api/recordings/[id]/reanalyze` — see § 4.10) without re-transcribing. The transcript is the durable artifact; the summary is the editable lens.
+- **The AI Q&A summary is regeneratable, granularly.** The default fix path is per-card regeneration (§ 4.10) — a sub-cent Sonnet pass on the one card the user wants to change, with an optional free-text "what should change?" note. Topic-scoped and full-meeting re-extractions (§ 4.11) are available for the rarer cases where the pair *structure* is wrong, both accepting user instructions to steer the new pass. The transcript is the durable artifact; the summary is the editable lens — and the lens is editable card by card, not all-or-nothing.
 
 **Tabs:**
 
 1. **Q&A summary** — sections by agenda topic, Q/A pairs in order, verbatim quotes. Each pair is a collapsible card:
    - Collapsed: question + asker + a one-line preview of the answer.
-   - Expanded: full Q + full A + panelist + topic chip + timestamp + "▶ Play this segment" button.
+   - Expanded: full Q + full A + panelist + topic chip + timestamp + "▶ Play this segment" button + **"↻ Regenerate this card"** affordance.
    - **Expand-all / Collapse-all** controls at the top of the tab so a reader can scan vs read-in-detail.
-   - "Resummarize" button at the top of the tab, prominent, calls `POST /api/recordings/[id]/reanalyze` and shows progress. (Re-runs Opus + Sonnet curator; does NOT re-transcribe.)
+   - **Per-card regenerate (primary fix path):** the "↻" on each card opens a small inline composer with a "What should change? (optional)" text input and a Regenerate button. Submitting calls `POST /api/recordings/[id]/extractions/[extractionId]/regenerate` (§ 4.10) with the user's instructions and replaces the card in place when the response returns. Sub-cent cost, no confirmation modal, no cost warning. The spinner sits on the one card, not the whole tab.
+   - **Per-topic re-extraction:** each topic section header carries a "⋯" menu with "Re-extract pairs for this topic…". Opens a modal: instructions textarea + estimated cost (computed from the scoped span) + Confirm. Calls `POST /api/recordings/[id]/reanalyze` (§ 4.11) with `{ scope: 'topic', topic, instructions }`. The topic section spins; other topics keep their pairs.
+   - **Full re-extraction (nuclear option):** the tab header carries a "⋯ More" menu (not a prominent button) with "Re-extract all pairs from transcript…". Opens a modal: instructions textarea + a "~$1, replaces all pairs" warning + Confirm. Calls `POST /api/recordings/[id]/reanalyze` (§ 4.11) with `{ scope: 'all', instructions }`. Use when the pair structure across the whole meeting is wrong — Opus missed pairs, split questions, or the agenda mapping is off everywhere.
 2. **Appendix** — non-`ask` typology pairs (complaints, commentary, clarifications). Same collapsible card shape as Q&A.
 3. **Coverage** — per-topic density chart, flagged-for-review list, confidence histogram.
 4. **Transcript** — full transcript with speaker labels + timestamps. Toggle "Group by speaker turn" vs "Segment-level". Search-in-transcript box. Each segment has a "▶ Play from here" button. **This tab is the record of truth — preserved verbatim from ASR, never edited by AI.**
