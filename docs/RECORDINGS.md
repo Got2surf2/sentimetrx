@@ -591,11 +591,25 @@ Generates `share_token` if not already set (24-char URL-safe). Returns `{ url: "
 
 ### 4.8 `GET /api/recordings` — list (scoped by role)
 
-- Org admins: see all recordings in their org.
-- Admin-org users: see all recordings across all orgs (`?org_id=X` filter optional).
-- Non-admin users: see only recordings they `created_by`.
+Scope resolved from the caller's `userContext` (see `lib/userContext.ts`):
+- `isAdminOrg` users: see all recordings across all orgs; `?org_id=X` narrows to one.
+- `isAdmin` (org-level admin) users: see all recordings in their own org.
+- Regular users: see only recordings where `created_by = self`.
 
-Pagination via `?limit=50&offset=0`. Filter: `?status=processing|complete|failed`.
+Pagination via `?limit` (1–100, default 50) + `?offset` (default 0). Filter via `?status=` against the recordings.status enum (`uploading | queued | extracting | transcribing | analyzing | rendering | complete | failed | cancelled`); unknown values 400.
+
+**Response:**
+```json
+{
+  "recordings": [{ "id", "org_id", "created_by", "name", "session_type", "meeting_date",
+                   "status", "asr_vendor_chosen", "source_duration_sec", "cost_cents",
+                   "created_at", "started_at", "completed_at" }],
+  "pagination": { "limit", "offset", "total", "has_more" },
+  "scope": "all" | "org" | "self"
+}
+```
+
+The list response omits `setup_inputs`, `coverage_report`, and `error_message` — those are detail-view fields fetched via § 4.3 on click.
 
 ### 4.9 Feature management routes (admin-only)
 
@@ -692,11 +706,31 @@ Three-pane layout:
                           [ Process ]  (enabled when files uploaded + form valid)
 ```
 
-Upload runs in background; user fills setup in parallel. Process button disabled until both ready.
+Upload runs in background; user fills setup in parallel. Process button disabled until at least one file is added + the name and ≥1 agenda topic are filled.
+
+**Drive sequence on Process click (RecordingWizardClient.tsx):**
+1. `POST /api/recordings` (§ 4.1) → recording_id + per-file IDs + TUS endpoint.
+2. `tus-js-client` uploads every file in parallel against the Supabase Storage TUS endpoint, authenticating with the user's session JWT in the `Authorization` header. 6MB chunks; auto-retry on transient failure.
+3. On each TUS `onSuccess`, the wizard calls `POST /api/recordings/[id]/files/[fileId]/uploaded` (§ 4.1a). The server verifies the object exists before flipping `upload_status` to `'uploaded'`.
+4. Once `Promise.all` over the per-file uploads resolves, `POST /api/recordings/[id]/process` (§ 4.2) starts the Workflow DevKit run.
+5. `router.push('/analyze/new/recording/[id]/status')` hands off to the status surface (§ 5.3).
+
+**v1 scope:** session_type is locked to `qa` in the UI (the field is rendered but disabled) because `analyzeRecording` throws for other types today. The other types are kept in the schema so adding them later is a UI-only change.
 
 ### 5.3 Status surface — `/analyze/new/recording/[id]/status`
 
-Shows current stage + ETA + last completed step. Long-poll or `EventSource` for live updates. Closes-tab-friendly: user can come back to this URL anytime, or wait for the Resend email.
+Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`.
+
+**Rendered:**
+- Stage ladder — six steps (`uploading → queued → extracting → transcribing → analyzing → complete`); past steps green check, current step pulsing orange, future steps grey. `failed` lights the trailing step red.
+- Source files panel — per-file row with name, size, duration (when extract has populated it), and an `upload_status` badge (`pending | uploaded | extracted | failed`).
+- Transcript panel — vendor, language detected, word count, duration, ASR cost — appears once `recording_transcripts` is written.
+- Extraction panel — Q&A pair count + total cost-to-date — appears once `extraction_count > 0`.
+- Terminal-state banners:
+  - `complete + dataset_id` → green banner + "Open report" link, plus a 1.2s `router.push('/analyze/[dataset_id]/report')` auto-redirect for the user who just kicked off the run.
+  - `failed` → red banner with the recording's `error_message` and a "Retry from failed stage" button that POSTs to `/api/recordings/[id]/process` (the process route already accepts `status='failed'` and re-starts the WDK run from the beginning).
+
+Closes-tab-friendly: user can come back to this URL anytime; on revisit the page server-renders the current name + status, then the client picks up polling from there.
 
 ### 5.4 Report — `/analyze/[datasetId]/report`
 

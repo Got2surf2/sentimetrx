@@ -48,6 +48,7 @@
     "react-dom": "^18",
     "sentiment": "^5.0.2",
     "server-only": "^0.0.1",
+    "tus-js-client": "^4.3.1",
     "workflow": "^4.2.5",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

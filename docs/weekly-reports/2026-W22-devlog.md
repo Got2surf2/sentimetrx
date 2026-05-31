@@ -698,3 +698,22 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Decision worth capturing**: the spec drafted § 4.1's response with per-file `upload_url` strings but didn't specify which protocol. Went with TUS over signed-PUT because a 20GB single PUT is not survivable. Browser uses its existing session JWT against the TUS endpoint (no server-minted upload tokens needed) — simplest auth path with `@supabase/ssr` already in place.
 
 **What's missing for the wizard to be functional**: the wizard itself (Phase 2 item 13) — needs to construct the multipart upload UI, drive `tus-js-client`, call § 4.1a per file, then § 4.2 once all are done. Routes are ready; only the React surface is left.
+
+
+---
+
+## 2026-05-30 (later) — Recordings Phase 2 start: list route + wizard + status surface + tile
+
+**Why**: Phase 1 left the pipeline buildable but with no human-facing way to drive it. The pilot deadline is 2026-06-16; we need the wizard (§ 5.2), status surface (§ 5.3), and list endpoint (§ 4.8) for analysts to actually upload a meeting and watch it process. Bundled in one turn because they share types and the wizard's drive sequence touches every API route written so far.
+
+**What changed**:
+- `app/api/recordings/route.ts` — added GET (§ 4.8). Role-scoped via `getUserContext`: `isAdminOrg` → all recordings (with optional `?org_id` narrow), `isAdmin` → own org, regular user → `created_by = self`. Pagination `?limit` (1–100, default 50) + `?offset`, plus `?status=` filter. Response includes `pagination.{limit,offset,total,has_more}` and a `scope: 'all'|'org'|'self'` echo for debugging visibility checks. Omits big columns (`setup_inputs`, `coverage_report`, `error_message`) since they're § 4.3 territory.
+- `app/analyze/new/recording/page.tsx` + `RecordingWizardClient.tsx` (new) — wizard (§ 5.2). Two-pane Tailwind layout (drop zone + per-file progress on the left, setup form on the right). Drive sequence: POST § 4.1 → `tus-js-client` parallel uploads with the user's session JWT against Supabase Storage's TUS endpoint → per-file § 4.1a ack on each `onSuccess` → POST § 4.2 → `router.push` to the status surface. Session type locked to `qa` in v1 (others would throw in `analyzeRecording`); kept in the schema so adding them is UI-only later. Inputs use `fontSize: '16px'` per the iOS Safari rule.
+- `app/analyze/new/recording/[id]/status/page.tsx` + `StatusClient.tsx` (new) — status surface (§ 5.3). Server-renders the nav + initial name/status snapshot; client polls § 4.3 every 3s while non-terminal, stops once `complete | failed | cancelled`. Stage ladder shows six steps with past=green-check, current=pulsing-orange, future=grey, failed=red. Panels for files / transcript / extraction render as data shows up. On `complete + dataset_id`: green banner + "Open report" link + 1.2s auto-redirect to `/analyze/[datasetId]/report`. On `failed`: red banner with `error_message` + "Retry from failed stage" button that re-POSTs § 4.2 (the route already accepts `status='failed'` and restarts the WDK run from scratch).
+- `app/analyze/new/UploadClient.tsx` — sixth tile added between Regulations.gov and the existing tiles. Routes via `router.push('/analyze/new/recording')` rather than the inline `setSourceMode` pattern since the wizard is its own page.
+- `package.json` + lockfiles — `tus-js-client` (browser TUS client; no Node-side dep).
+- `docs/RECORDINGS.md` § 4.8 — response shape filled in (was just bullet points). § 5.2 — drive sequence documented + v1 session_type lock noted. § 5.3 — what's actually rendered + the auto-redirect / retry button behavior pinned down.
+
+**Decision worth capturing**: WDK steps would also have let me wire status updates through a workflow event channel, but plain polling against § 4.3 with a 3s cadence is what the existing /admin tools do, costs ~$0 vs SSE complexity, and lets the user close the tab and come back without losing visibility. EventSource is the right answer if we ever care about <3s update latency (we don't for a multi-minute pipeline).
+
+**What's left for Phase 2**: the report page (§ 5.4 — Q&A summary tab, transcript tab, etc.), the org-admin recordings list page (§ 5.5 — needs § 4.8 which now exists), the `/admin/downloads` recordings section (§ 5.6), exports (§ 4.5 PDF + XLSX), and the public report (§ 4.6 + § 5 routing). Wizard → status → report is the critical-path triple; the first two now exist, report is next.

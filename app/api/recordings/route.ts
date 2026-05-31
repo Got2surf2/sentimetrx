@@ -1,17 +1,20 @@
 // app/api/recordings/route.ts
 //
 // POST /api/recordings — § 4.1 create a recording (pre-upload).
+// GET  /api/recordings — § 4.8 list recordings (role-scoped).
 //
-// Creates the recordings row (status='uploading') and one recording_files
-// row per source file (upload_status='pending'). Returns the TUS upload
-// endpoint + per-file storage_path so the wizard's tus-js-client can PUT
-// bytes directly to Supabase Storage with the user's session JWT. The
-// wizard calls POST /api/recordings/[id]/files/[fileId]/uploaded after
-// each successful upload to flip upload_status='uploaded' (§ 4.1a), then
-// POST /api/recordings/[id]/process (§ 4.2) once all files are done.
+// POST creates the recordings row (status='uploading') and one
+// recording_files row per source file (upload_status='pending'). Returns
+// the TUS upload endpoint + per-file storage_path so the wizard's
+// tus-js-client can PUT bytes directly to Supabase Storage with the
+// user's session JWT. The wizard calls POST
+// /api/recordings/[id]/files/[fileId]/uploaded after each successful
+// upload to flip upload_status='uploaded' (§ 4.1a), then POST
+// /api/recordings/[id]/process (§ 4.2) once all files are done.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getUserContext } from '@/lib/userContext'
 import { assertFeatureAllowed } from '@/lib/featureFlags'
 import type {
   AsrStrategy,
@@ -204,4 +207,69 @@ function requireSupabaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (!url) throw new Error('NEXT_PUBLIC_SUPABASE_URL is required to build the TUS upload endpoint')
   return url.replace(/\/+$/, '')
+}
+
+// ── § 4.8 GET — list ─────────────────────────────────────────────────────────
+//
+// Scoping per spec:
+//   isAdminOrg=true       → see all recordings; honor optional ?org_id=X filter
+//   isAdmin (org admin)   → see all in own org
+//   regular user          → see only created_by=self
+// Pagination via ?limit (1..100, default 50) + ?offset (default 0).
+// Filter ?status= passes through to the recordings.status enum.
+
+const LIST_VALID_STATUSES: ReadonlySet<string> = new Set([
+  'uploading', 'queued', 'extracting', 'transcribing',
+  'analyzing', 'rendering', 'complete', 'failed', 'cancelled',
+])
+
+export async function GET(req: Request) {
+  const supabase = createClient()
+  const ctx = await getUserContext(supabase)
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
+  const url = new URL(req.url)
+  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50))
+  const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0)
+  const statusFilter = url.searchParams.get('status')
+  if (statusFilter && !LIST_VALID_STATUSES.has(statusFilter)) {
+    return NextResponse.json({ error: `unknown status filter: ${statusFilter}` }, { status: 400 })
+  }
+  const orgFilter = url.searchParams.get('org_id')
+
+  const service = createServiceRoleClient()
+
+  let q = service
+    .from('recordings')
+    .select(
+      'id, org_id, created_by, name, session_type, meeting_date, status, asr_vendor_chosen, ' +
+      'source_duration_sec, cost_cents, created_at, started_at, completed_at',
+      { count: 'exact' },
+    )
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (ctx.isAdminOrg) {
+    if (orgFilter) q = q.eq('org_id', orgFilter)
+    // else: no scope — admin-org sees everything
+  } else if (ctx.isAdmin) {
+    q = q.eq('org_id', ctx.orgId)
+  } else {
+    q = q.eq('org_id', ctx.orgId).eq('created_by', ctx.userId)
+  }
+  if (statusFilter) q = q.eq('status', statusFilter)
+
+  const { data, error, count } = await q
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({
+    recordings: data ?? [],
+    pagination: {
+      limit,
+      offset,
+      total: count ?? 0,
+      has_more: count != null ? offset + (data?.length ?? 0) < count : (data?.length ?? 0) === limit,
+    },
+    scope: ctx.isAdminOrg ? 'all' : ctx.isAdmin ? 'org' : 'self',
+  })
 }
