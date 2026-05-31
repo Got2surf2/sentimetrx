@@ -149,6 +149,23 @@ factory is mocked before any module that calls it is imported.
 4. Each test file must run independently. No shared mutable fixtures across
    files.
 
+## Workflow DevKit tests
+
+The recordings pipeline is a Workflow DevKit run (`workflows/recordings.ts`).
+For these:
+
+- **Unit-test the steps directly.** Each `"use step"` is just an async
+  function — the directive is a no-op without the compiler. Import and
+  call them under `tests/unit/recordings/` with mocked Supabase + libs.
+- **For workflow-level orchestration tests** (try/catch behavior,
+  step ordering, status transitions), wire `@workflow/vitest` in a
+  separate integration config when needed — not installed today; the
+  per-step unit tests cover the v1 PM-1 milestone.
+- **`scripts/pm1-smoke.ts` is the calibration harness, not a unit test.**
+  It calls real Claude (Opus + Sonnet, ~$1/run) against a stored PM-1
+  transcript fixture and scores extraction quality vs PDF ground truth.
+  Run manually; never invoked from CI.
+
 ## Env-gated tests
 
 Six suites need real infrastructure and are **skipped** unless the

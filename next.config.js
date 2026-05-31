@@ -1,6 +1,7 @@
 // next.config.js
 const { execSync } = require('child_process')
 const { withSentryConfig } = require('@sentry/nextjs')
+const { withWorkflow } = require('workflow/next')
 
 // Build info: injected at build time as NEXT_PUBLIC_ env vars
 const commitCount = (() => { try { return execSync('git rev-list --count HEAD').toString().trim() } catch { return '0' } })()
@@ -95,9 +96,14 @@ const nextConfig = {
 // dev server starts fast — Sentry's webpack plugins add significant compile
 // time on first start. In production/preview the DSN is set and the wrapper
 // runs, enabling source-map upload (when SENTRY_AUTH_TOKEN is also set).
+// Workflow DevKit wrap enables `"use workflow"` / `"use step"` directives and
+// installs the internal `/.well-known/workflow/*` route handler used by the
+// runtime. Must wrap before Sentry so Sentry sees the augmented config.
+const withWdk = withWorkflow(nextConfig)
+
 const sentryDsnSet = !!process.env.NEXT_PUBLIC_SENTRY_DSN
 module.exports = sentryDsnSet
-  ? withSentryConfig(nextConfig, {
+  ? withSentryConfig(withWdk, {
       silent: true,
       org: process.env.SENTRY_ORG,
       project: process.env.SENTRY_PROJECT,
@@ -109,4 +115,4 @@ module.exports = sentryDsnSet
         treeshake: { removeDebugLogging: true },
       },
     })
-  : nextConfig
+  : withWdk

@@ -10,7 +10,7 @@
 - **Resend** — completion notification email
 - **Playwright headless** (via existing test infrastructure or `@sparticuz/chromium` on Vercel) — HTML report → PDF export
 
-**Job runner:** Vercel Queues for the multi-step async pipeline.
+**Job runner:** Vercel Workflow DevKit (`workflow` + `@workflow/next`) for the multi-step async pipeline. Spec drafted this as "Vercel Queues" before the product name landed — same primitive, durable steps with automatic retry and `recordings.status` as the human-facing cursor.
 **ffmpeg runtime:** Vercel Sandbox (GA Jan 2026) for audio extraction and multi-file stitching.
 
 **Feature gate:** `recording` in the generic `org_features` / `user_features` tables (this spec also defines that gating substrate — recording is its first consumer).
@@ -826,7 +826,7 @@ Defined in `vercel.json` / `vercel.ts`.
 | `RESEND_API_KEY` | Yes (existing) | Completion email |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes (existing) | Bypass RLS for queue workers |
 | `RECORDINGS_BUCKET` | **NEW** | Storage bucket name. Default `recordings`. |
-| `VERCEL_QUEUE_NAME_RECORDINGS` | **NEW** | Queue name for the recording pipeline. `<TBD: vendor>` |
+| `FFMPEG_SANDBOX_SNAPSHOT_ID` | Optional | Vercel Sandbox snapshot ID with ffmpeg pre-installed. Skips the ~30s `dnf install` cold-boot on every extract job. Build with the `scripts/create-ffmpeg-snapshot.ts` helper (TBD) and set this env var to the returned `snap_*` id. |
 
 ---
 
@@ -879,15 +879,15 @@ Defined in `vercel.json` / `vercel.ts`.
 
 ### Phase 1 — pipeline (2026-06-03 → 2026-06-06)
 
-**Highest-risk phase.** First time on Vercel Sandbox + Vercel Queues + Deepgram in this repo.
+**Highest-risk phase.** First time on Vercel Sandbox + Workflow DevKit + Deepgram in this repo.
 
 5. `lib/asr/whisper.ts`, `lib/asr/deepgram.ts`, `lib/asr/hybrid.ts`, `lib/asr/router.ts`.
 6. `lib/recordings/extract.ts` — ffmpeg job on Vercel Sandbox.
 7. `lib/recordings/transcribe.ts` — vendor dispatch.
 8. `lib/recordings/analyze.ts` — Opus extraction + Sonnet curator pass.
 9. `lib/recordings/mirror.ts` — `dataset_rows_flat` mirror.
-10. Vercel Queues wiring + worker handlers per stage.
-11. Internal smoke test against re-uploaded NOWOCATS PM-1 audio → assert extractions ≈ PDF ground truth.
+10. `workflows/recordings.ts` + `app/api/recordings/[id]/process/route.ts` — Workflow DevKit run that drives extract → transcribe → analyze, with each stage as a `"use step"` and `recordings.status` updated between them.
+11. `scripts/pm1-smoke.ts` — calibration harness that re-runs `analyzeRecording` against a stored PM-1 transcript and diffs against PDF ground truth (count, F1, per-field accuracy, per-topic recall). Fixtures live outside the repo and are pointed at via `PM1_TRANSCRIPT_PATH` / `PM1_SETUP_PATH` / `PM1_GROUND_TRUTH_PATH`. Full end-to-end re-upload through the wizard is Phase 4.
 
 ### Phase 2 — UX (2026-06-07 → 2026-06-10)
 
@@ -938,7 +938,7 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 | # | Question | Decided by | Status |
 |---|---|---|---|
 | 1 | ffmpeg runtime | Pre-build | ✓ **Vercel Sandbox** |
-| 2 | Job queue | Pre-build | ✓ **Vercel Queues** |
+| 2 | Job queue | Pre-build | ✓ **Vercel Workflow DevKit** (`workflow` + `@workflow/next`) |
 | 3 | Claude model | Pre-build | ✓ **Opus 4.7 extract + Sonnet 4.6 curator** |
 | 4 | Confidence threshold for `flagged_for_review` | Phase 4 calibration | Open — set during PM-1 soak |
 | 5 | Org notification preference (who gets completion email) | Phase 2 | Open — default to owner only for v1 |
@@ -969,7 +969,7 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 0 — substrate | **Complete (2026-05-30)** | Applied to prod: org_features/user_features + 4 recording tables + storage bucket + RLS. Spec deviation: `org_id` denormalized on `recording_files` / `_transcripts` / `_extractions` for service-role pairing uniformity. |
-| Phase 1 — pipeline | **In progress (2026-05-30)** | Logic libs written: `lib/recordings/types.ts`, `lib/asr/{whisper,deepgram,hybrid,router}.ts`, `lib/recordings/prompts/qa.ts`, `lib/recordings/analyze.ts` (Opus + Sonnet curator), `lib/recordings/mirror.ts`, `lib/recordings/coverage.ts`. `lib/ai.ts` gained `modelOverride`. `lib/datasetUtils.ts` gained `buildRecordingSchema()`. **Pending**: `lib/recordings/extract.ts` (ffmpeg on Vercel Sandbox), `lib/recordings/transcribe.ts` (vendor dispatch glue), Vercel Queues worker handlers, PM-1 smoke test. |
+| Phase 1 — pipeline | **Complete in code (2026-05-30)** | All libs written: `lib/recordings/{types,analyze,mirror,coverage,extract,transcribe}.ts`, `lib/asr/{whisper,deepgram,hybrid,router}.ts`, `lib/recordings/prompts/qa.ts`. `lib/ai.ts` gained `modelOverride`. `lib/datasetUtils.ts` gained `buildRecordingSchema()`. Pipeline wired as a Workflow DevKit run at `workflows/recordings.ts` + `app/api/recordings/[id]/process/route.ts`; `next.config.js` wraps with `withWorkflow`. PM-1 calibration harness at `scripts/pm1-smoke.ts`. **Pending live exercise:** real PM-1 audio through the wizard + ASR + smoke-test diff vs ground truth (Phase 4 deliverable). |
 | Phase 2 — UX | Pending | |
 | Phase 3 — collections + public sharing | Pending | |
 | Phase 4 — calibration soak | Pending | |
@@ -977,4 +977,4 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 
 ---
 
-*Last reviewed: 2026-05-30 (Phase 0 substrate landed; Phase 1 pending). Refresh after each phase ships.*
+*Last reviewed: 2026-05-30 (Phase 0 substrate landed; Phase 1 code complete, awaiting live PM-1 exercise). Refresh after each phase ships.*

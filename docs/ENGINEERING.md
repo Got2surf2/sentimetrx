@@ -422,6 +422,28 @@ we get the 11pm pages.
 queue + the CI `npm audit` step are the live signal. Until then,
 manual `npm audit` is part of the quarterly governance routine.
 
+### `next.config.js` wrap order
+
+Two third-party wrappers compose around the base `nextConfig` object,
+and the order matters:
+
+```js
+const withWdk = withWorkflow(nextConfig)
+module.exports = sentryDsnSet ? withSentryConfig(withWdk, {...}) : withWdk
+```
+
+- **`workflow/next` (`withWorkflow`)** — installs the Workflow DevKit
+  runtime + the internal `/.well-known/workflow/v1/*` route handler.
+  Required for `"use workflow"` / `"use step"` directives to compile.
+  Lives inside the Sentry wrap so Sentry instruments the WDK paths.
+- **`@sentry/nextjs` (`withSentryConfig`)** — outermost wrapper;
+  conditionally applied only when `NEXT_PUBLIC_SENTRY_DSN` is set so
+  local dev startup stays fast.
+
+When adding a new wrapper, place it between `nextConfig` and the
+Sentry wrap unless the wrapper itself documents a Sentry-outside
+requirement.
+
 ---
 
 ## 12. Release process

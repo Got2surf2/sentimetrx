@@ -660,3 +660,24 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 
 **Spec drift status**: ran `npm run spec-drift` for the full 128-commit range since the 2026-05-15 baseline audit. Result: **zero drift** — every spec doc that maps to touched code has an accompanying spec edit. Pre-commit hook has been holding the line. (Latent drift from earlier SKIP_SPEC_CHECK bypasses isn't caught by this check; deeper audit would be a separate task.)
 
+
+
+---
+
+## 2026-05-30 (later) — Recordings phase 1b: pipeline wiring (Sandbox extract + ASR dispatch + Workflow DevKit)
+
+**Why**: Phase 1a (commit 2e95d278) landed the analytical libs (`analyze`, `mirror`, `coverage`, ASR adapters, prompts), but there was no entrypoint, no job runner, no Sandbox glue, and no calibration tooling. The pilot deadline is 2026-06-16 and the wizard needs an API surface to talk to, so this finishes Phase 1 in code (live PM-1 exercise is the Phase 4 deliverable). Also clarifies an architectural unknown: the spec called the queue "Vercel Queues" pre-launch; the shipped product is the Workflow DevKit (`workflow` + `@workflow/next`) — same primitive, renamed during GA.
+
+**What changed**:
+- `lib/recordings/transcribe.ts` (new) — vendor dispatch from a recording row to an ASR adapter. Downloads stitched mp3 bytes for Whisper (must fit 25MB), mints a signed URL for Deepgram (vendor fetches it), runs both in parallel for hybrid. Upserts `recording_transcripts` (UNIQUE on `recording_id` makes re-runs idempotent), records the resolved vendor on `recordings.asr_vendor_chosen`, accumulates ASR cost into `recordings.cost_cents`. Chunking for stitched audio > 25MB is a TODO — PM-1 at 32kbps mono mp3 fits comfortably.
+- `lib/recordings/extract.ts` (new) — ffmpeg orchestration in a Vercel Sandbox VM. Mints signed READ URLs for each source file and signed UPLOAD URLs for each output, hands them to the sandbox so multi-GB GoPro source files never pass through worker memory. Per file: `curl` down → ffmpeg to canonical 16kHz mono 32kbps mp3 → ffprobe duration → `curl PUT` up. Concat-demuxer stitches per-file mp3s into `stitched.mp3` (skipped when there's only one file). Boots from snapshot when `FFMPEG_SANDBOX_SNAPSHOT_ID` is set, else cold-installs ffmpeg via `dnf` (~30s).
+- `workflows/recordings.ts` (new) — Workflow DevKit `"use workflow"` orchestration with five `"use step"` units: `setStatus`, `runExtract`, `runTranscribe`, `runAnalyze` (which also mirrors + computes coverage), `setCompletedAt`. Try/catch writes `recordings.status='failed'` + `error_message` on any throw. `FatalError` for unrecoverable conditions (row disappeared mid-run). `recordings.status` is the UI cursor; the WDK run is the operational retry cursor.
+- `app/api/recordings/[id]/process/route.ts` (new) — § 4.2. Verifies files have all reached `upload_status='uploaded'`, transitions `uploading → queued`, calls `start(processRecordingWorkflow, [id, org_id])`. Idempotent — returns `already_running` if status is past uploading. Same-tenant guard pairs `(id, org_id)` per CLAUDE.md.
+- `scripts/pm1-smoke.ts` (new) — calibration harness. Takes `PM1_TRANSCRIPT_PATH` / `PM1_SETUP_PATH` / `PM1_GROUND_TRUTH_PATH` env paths (fixtures stay out of the repo), runs `analyzeRecording`, scores extracted vs ground truth via greedy Jaccard-on-question matching (threshold 0.4), reports F1 + per-field accuracy (topic / asker / panelist / typology) + per-topic recall, writes a side-by-side markdown diff, exits 2 when F1 < 0.90.
+- `next.config.js` — wraps with `withWorkflow` before `withSentryConfig` so Sentry sees the augmented config.
+- `package.json` + `package-lock.json` — `@vercel/sandbox`, `workflow`, `@workflow/next`.
+- `docs/RECORDINGS.md` — § 3 / § 9 / § 11 tracker updated: "Vercel Queues" → "Vercel Workflow DevKit" everywhere, `VERCEL_QUEUE_NAME_RECORDINGS` env replaced with the optional `FFMPEG_SANDBOX_SNAPSHOT_ID`, Phase 1 status flipped to "Complete in code (2026-05-30), awaiting live PM-1 exercise", Phase 1 plan items 10 and 11 rewritten to reflect what actually landed.
+
+**Architectural note worth remembering**: Workflow DevKit step functions are full Node.js (no sandbox), so wrapping our `extractRecording` / `transcribeRecording` / `analyzeRecording` libs as steps is straightforward — those libs use `@vercel/sandbox` + `fetch` + Supabase service client without modification. The `"use workflow"` outer function is the only sandboxed bit and it just orchestrates step calls. Pattern to keep: orchestration in workflow, I/O in steps.
+
+**Pending live exercise (Phase 4)**: real PM-1 audio through the wizard once Phase 2 lands; smoke-test diff vs PDF ground truth; iterate the Opus extraction + Sonnet curator prompts until F1 ≥ 0.90. Cost per smoke iteration ≈ $1 (Claude only, no ASR re-run).
