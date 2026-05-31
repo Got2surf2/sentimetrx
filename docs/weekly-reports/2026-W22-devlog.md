@@ -735,3 +735,20 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Critical path now closed**: tile → wizard → § 4.1 → TUS upload → § 4.1a → § 4.2 → WDK extract+transcribe+analyze → status surface poll → § 4.3 → auto-redirect → report page. Every link in that chain exists in code. Next blocker for an actual end-to-end run is the SQL migrations being applied to prod + the Vercel Sandbox being provisioned + Deepgram + OpenAI keys set.
 
 **Phase 2 remainder**: org-admin recordings list page (§ 5.5; needs no new routes — uses § 4.8), `/admin/downloads` recordings section (§ 5.6), then the deferred report affordances when the regenerate/export/share/audio routes land.
+
+
+---
+
+## 2026-05-31 (later) — Recordings list (§ 5.5) + admin monitor section (§ 5.6)
+
+**Why**: Phase 2 needs both views — the org-admin's day-to-day "where are my recordings" page, and the admin-org's cross-org operational monitor. Both consume § 4.8 (already shipped) so this is pure UI.
+
+**What changed**:
+- `app/recordings/page.tsx` (new) — server-rendered table. Scoping via `getUserContext` (matches § 4.8): isAdminOrg → all, isAdmin → own org, regular user → created_by=self. Columns: Name (link), Type, Date, Status pill, Cost, Owner, and an Org column when scope is cross-org. Row link routes to `/analyze/[datasetId]/report` when `status='complete' && dataset_id`, else to `/analyze/new/recording/[id]/status` so the retry button on the status surface is reachable. Empty state nudges toward the wizard. Caps at 200 most recent rows — Phase 2 v1 scale; adding ?status / ?limit later is a localized change.
+- `components/downloads/DownloadMonitor.tsx` — added `recordings?: any[]` prop, `'recordings'` to the Tab union, a Recordings tab entry, and a render section that mirrors the Uploads block's table style. Status pill mapping reuses the shared palette: `complete → done`, `failed → error`, mid-pipeline → `downloading`, default → `pending`. Error column truncates to 80 chars + ellipsis in red. Name links to status / report exactly like § 5.5. Empty-state guard updated to include `recordings.length === 0`.
+- `app/admin/downloads/page.tsx` — service-role fetch of the most recent 50 recordings with `organizations(name)` join; org-name flattened and passed to DownloadMonitor.
+- `docs/RECORDINGS.md` § 5.5 + § 5.6 — rewritten from the spec mock to match what shipped. § 5.5 documents the scope table and the conditional Org column. § 5.6 documents the column set, the StatusPill mapping (since the recording status enum has more states than the existing palette), and notes that retry routes through the status surface rather than living inline (the spec line had said "retry action" — I deliberately didn't add an inline button because the failed → process route is already idempotent and the status surface is the natural recovery UI).
+
+**Decision worth capturing**: declined to add ?status / pagination on § 5.5 for v1. Reason: phased rollout starts with one customer (NOWOCATS pilot), and getting the column choices + row routing right matters more than the pagination plumbing. Capping at 200 rows is honest — easier to spot the limit and lift it than to ship pagination unused and discover later it's wired wrong.
+
+**Phase 2 status**: § 5.1 (tile), § 5.2 (wizard), § 5.3 (status), § 5.4 (report), § 5.5 (list), § 5.6 (admin monitor) all shipped. Critical-path chain is now end-to-end + observable from both the analyst and admin-org sides. Remaining for Phase 2 spec: the deferred report affordances (PDF, XLSX, share, audio playback, regenerate) — each needs its API route built first.

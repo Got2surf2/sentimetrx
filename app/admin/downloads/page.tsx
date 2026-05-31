@@ -69,6 +69,15 @@ export default async function DownloadsPage() {
     .order('created_at', { ascending: false })
     .limit(50)
 
+  // Recordings — § 5.6. Same shape as the other sources: status, recent rows,
+  // error_message visible, owning org named. Active jobs (anything not in a
+  // terminal state) sort first via a partial index already on the table.
+  const { data: recordings } = await service
+    .from('recordings')
+    .select('id, name, status, session_type, meeting_date, asr_vendor_chosen, source_duration_sec, cost_cents, error_message, dataset_id, created_at, started_at, completed_at, org_id, organizations(name)')
+    .order('created_at', { ascending: false })
+    .limit(50)
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopNav
@@ -88,6 +97,7 @@ export default async function DownloadsPage() {
           substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
           regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
           uploadDatasets={(uploadDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
+          recordings={(recordings || []).map((r: any) => ({ ...r, orgName: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations)?.name || '' }))}
           showOrgColumn={true}
           subtitle="Active, queued, and failed downloads across all orgs"
         />

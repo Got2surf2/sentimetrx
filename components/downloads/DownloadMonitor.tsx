@@ -77,12 +77,13 @@ interface Props {
   substackDatasets: any[]
   regDatasets:      any[]
   uploadDatasets:   any[]
+  recordings?:      any[]
   showOrgColumn?:   boolean   // false for single-org user view
   title?:           string
   subtitle?:        string
 }
 
-type Tab = 'all' | 'reddit' | 'reviews' | 'substack' | 'regulations' | 'uploads'
+type Tab = 'all' | 'reddit' | 'reviews' | 'substack' | 'regulations' | 'uploads' | 'recordings'
 
 export default function DownloadMonitor({
   redditSources,
@@ -91,6 +92,7 @@ export default function DownloadMonitor({
   substackDatasets,
   regDatasets,
   uploadDatasets,
+  recordings = [],
   showOrgColumn = true,
   title = 'Download Monitor',
   subtitle = 'Active, queued, and failed downloads',
@@ -187,6 +189,7 @@ export default function DownloadMonitor({
     { key: 'substack',    label: 'Substack',        count: substackDatasets.length },
     { key: 'regulations', label: 'Regulations.gov', count: regDatasets.length },
     { key: 'uploads',     label: 'Uploads',         count: uploadDatasets.length },
+    { key: 'recordings',  label: 'Recordings',      count: recordings.length },
   ]
 
   return (
@@ -424,7 +427,40 @@ export default function DownloadMonitor({
         </Section>
       )}
 
-      {redditSources.length === 0 && reviewSources.length === 0 && substackDatasets.length === 0 && regDatasets.length === 0 && uploadDatasets.length === 0 && (
+      {/* Recordings */}
+      {(tab === 'all' || tab === 'recordings') && recordings.length > 0 && (
+        <Section title="Recordings" icon="🎙️">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <th style={th}>Name</th>{showOrgColumn && <th style={th}>Org</th>}<th style={th}>Type</th><th style={th}>Date</th><th style={th}>Status</th><th style={th}>Vendor</th><th style={th}>Duration</th><th style={th}>Cost</th><th style={th}>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recordings.map((r: any) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    <a href={r.status === 'complete' && r.dataset_id ? `/analyze/${r.dataset_id}/report` : `/analyze/new/recording/${r.id}/status`}
+                       style={{ color: '#111827', textDecoration: 'none' }}>
+                      {r.name}
+                    </a>
+                  </td>
+                  {showOrgColumn && <td style={td}>{r.orgName}</td>}
+                  <td style={td}>{r.session_type === 'qa' ? 'Q&A' : r.session_type}</td>
+                  <td style={td}>{r.meeting_date || '—'}</td>
+                  <td style={td}><StatusPill status={r.status === 'complete' ? 'done' : r.status === 'failed' ? 'error' : r.status === 'queued' || r.status === 'extracting' || r.status === 'transcribing' || r.status === 'analyzing' || r.status === 'rendering' ? 'downloading' : 'pending'} /></td>
+                  <td style={td}>{r.asr_vendor_chosen || '—'}</td>
+                  <td style={td}>{r.source_duration_sec ? Math.round(r.source_duration_sec / 60) + 'm' : '—'}</td>
+                  <td style={td}>{r.cost_cents ? '$' + (r.cost_cents / 100).toFixed(2) : '—'}</td>
+                  <td style={{ ...td, maxWidth: 240, color: '#dc2626', fontSize: 11 }}>{r.error_message ? r.error_message.slice(0, 80) + (r.error_message.length > 80 ? '…' : '') : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
+
+      {redditSources.length === 0 && reviewSources.length === 0 && substackDatasets.length === 0 && regDatasets.length === 0 && uploadDatasets.length === 0 && recordings.length === 0 && (
         <div style={{ textAlign: 'center', padding: 64, color: '#9ca3af' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📥</div>
           <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>No downloads found</p>

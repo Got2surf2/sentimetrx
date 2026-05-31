@@ -765,25 +765,22 @@ Export → PDF prints the chosen tabs via Playwright. XLSX exports the structure
 
 ### 5.5 Org-admin recordings list — `/recordings`
 
-A simple per-org list:
+Server-rendered table at `app/recordings/page.tsx`. Scoping uses `getUserContext` and mirrors § 4.8:
+- `isAdminOrg` → all recordings across all orgs (extra Org column visible)
+- `isAdmin` (org-level admin) → all recordings in own org
+- regular user → only `created_by = self`
 
-```
-Recordings                                                       [ + New recording ]
+Columns: Name, Type (Q&A / Focus group / …), Date (meeting_date), Status (pill), Cost (USD, `—` when zero), Owner (full_name fallback email), and Org when scope is cross-org.
 
-Name                          Type    Date         Status        Cost     Owner
-─────────────────────────────────────────────────────────────────────────────────
-NOWOCATS PM-2                Q&A     2026-06-12   ✓ Complete    $3.42    Sanjay
-NOWOCATS PM-1                Q&A     2026-05-18   ✓ Complete    $4.81    Sanjay
-Vindman Tidewater Forum      Q&A     2026-05-30   ⟳ Analyzing   —        Analyst1
-```
+Row click routes to:
+- `/analyze/[datasetId]/report` when `status='complete' && dataset_id != null` (jump straight to the report)
+- `/analyze/new/recording/[id]/status` otherwise (still processing, failed, or cancelled — land on the status surface where the retry button lives)
 
-Filter by status, click into one for the status page or the report.
-
-Visible to: org admins (all in org), non-admins (only their own).
+Empty state shows the mic glyph + a one-line nudge toward the wizard. `+ New recording` button in the header routes to `/analyze/new/recording`. Status filter / pagination — out of scope for v1; the page caps at the 200 most recent rows, which covers the foreseeable pilot scale. Add ?status= + ?limit when a real customer hits the ceiling.
 
 ### 5.6 Admin-org monitor — `/admin/downloads` adds a Recordings section
 
-Mirrors the existing Reddit / Google Reviews / Substack / Regulations / Upload sections. Same shape: status, recent rows, error messages, retry action. Shows ALL orgs' recordings. Already gated by `is_admin_org` redirect.
+`components/downloads/DownloadMonitor.tsx` gains a `recordings: any[]` prop and a `Recordings` tab next to the existing Reddit / Reviews / Substack / Regulations / Uploads tabs. Columns: Name (linked the same way as § 5.5), Org, Type, Date, Status (mapped to the shared `StatusPill` palette — `complete → done`, `failed → error`, mid-pipeline statuses → `downloading`, default → `pending`), Vendor (`asr_vendor_chosen`), Duration (minutes), Cost (USD), Error (truncated `error_message`, red). Shows ALL orgs' recordings; the page is already gated by `is_admin_org` redirect in the route handler. Retry isn't a one-click button here yet — admins jump to the recording's status surface (link on the Name) and use the Retry button rendered there.
 
 ---
 
