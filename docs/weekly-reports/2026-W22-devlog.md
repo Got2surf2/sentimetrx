@@ -780,3 +780,24 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 - `DEEPGRAM_API_KEY` needs to be set in Vercel envs (not in `.env.local`).
 - `recordings` Storage bucket needs to exist with the RLS policies from sql/091.
 - 15 commits ahead of origin — none pushed.
+
+
+---
+
+## 2026-05-31 (later) — § 4.11 re-extract wired (full + topic-scoped, both with instructions)
+
+**Why**: Pairs with § 4.10 to close the per-card / per-topic / full-meeting fix triangle. Per-card handles wording/typology/asker slips; per-topic handles structural problems within one agenda chip ("you missed two questions about Schools"); full re-extract is the nuclear button for prompt-iteration moments. All three accept free-text user instructions that Opus + Sonnet honor.
+
+**What changed**:
+- `lib/recordings/prompts/qa.ts` — extended `buildQaExtractionPrompt()` and `buildQaCuratorPrompt()` with optional `instructions` (rendered as a "USER NOTES (steer your extraction by these…)" block before the transcript) and `topicScopedTo` (adds a "TOPIC-SCOPED RE-EXTRACTION" paragraph to the system prompt explaining that the window has been narrowed to the topic's time ranges ±60s, and that new pairs should default to that topic unless content clearly belongs elsewhere). The curator gets the same `instructions` text under "USER NOTES (the user asked the extractor to follow these — honor the same intent in your review)" so it doesn't flag pairs that comply with the user's steer.
+- `lib/recordings/analyze.ts` — `AnalyzeInput` gained `instructions?: string` and `topicScopedTo?: string`. Threaded into both prompt builders.
+- `lib/recordings/reanalyze.ts` (new) — `reanalyzeRecording({ recording_id, org_id, scope, topic, instructions })`. For `scope='all'`: collects every existing extraction id, deletes them + their `dataset_rows_flat` mirrors (per-id `filter('data->>extraction_id', 'eq', id)` since JSONB-extracted columns don't compose with `.in()`), runs Opus + Sonnet on the full transcript with instructions threaded through, mirrors the new extractions, recomputes coverage, bumps `cost_cents` + `completed_at`. For `scope='topic'`: pulls existing extractions tagged with the topic, computes the union of `[start − 60s, end + 60s]` ranges via a standard merge-overlapping-intervals pass, slices the transcript to those ranges, deletes the topic's extractions + their mirrors, runs Opus + Sonnet on the scoped slice with `topicScopedTo=X`, appends + mirrors. Coverage recomputed from the full extraction set in both scopes.
+- `app/api/recordings/[id]/reanalyze/route.ts` (new) — POST § 4.11. Auth + same-tenant + recording exists. Body validation: `scope` must be 'all' or 'topic', `topic` required when scope='topic', `instructions` ≤4000 chars. Maps thrown messages to HTTP codes: not-found → 404, transcript-missing / wrong-status / empty-scoped-window → 409.
+- `app/analyze/[datasetId]/report/ReportClient.tsx` — replaced the two stub menus ("⋯ More" on the tab header, "⋯" on each topic header) with real buttons that open a shared `ReanalyzeModal`. Modal shows scope-aware title, scope-aware warning, instructions textarea (≤4000 chars, fontSize 16px for iOS), cost line ('~$1' / '~$0.10–$0.40'), Cancel/Confirm. On success: `router.refresh()` re-fetches the server-rendered page so the new extractions + coverage land without losing the active tab.
+- `docs/RECORDINGS.md` § 5.4 affordance state — both § 4.11 entries flipped to "wired (2026-05-31)" with the modal behavior + status-bump notes.
+
+**Decision worth capturing**: chose `router.refresh()` over a partial in-place update for the reanalyze success path. Reason: a scope='all' rerun can rewrite 50+ cards plus coverage + completed_at; threading all that through React state is more code than it's worth, and `router.refresh()` keeps client state (active tab, expand/collapse toggles for surviving cards) while re-pulling the server data. The momentary loading flash is acceptable for an operation that already took 30–60s on the Claude side.
+
+**Decision worth capturing #2**: mirror-row deletes go through `filter('data->>extraction_id', 'eq', id)` per-id rather than `.in('data->>extraction_id', list)`. Supabase JS's `.in()` builder doesn't compose with JSONB-extracted columns; the per-id approach is verbose but correct. Could be optimized to a single SQL `DELETE … WHERE data->>'extraction_id' = ANY($1)` via `service.rpc()` later — not a v1 hotspot since reanalyze is bounded.
+
+**Phase 2 affordance state**: per-card regenerate ✅, per-topic re-extract ✅, full re-extract ✅. Still stub: audio playback (needs signed-URL route + modal), Export & Share (needs § 4.5 + § 4.7). The PM-1 calibration loop is now fully buildable from inside the report — every "this doesn't match the PDF" finding has a 1-click → modal → 30s → fixed flow.

@@ -33,13 +33,22 @@ export interface ExtractionDraft {
 export function buildQaExtractionPrompt(opts: {
   setup: QaSetupInputs
   transcript: TranscriptSegment[]
+  instructions?: string            // § 4.11: appended as "USER NOTES" before the transcript
+  topicScopedTo?: string           // § 4.11 scope='topic': only emit pairs about this topic
 }): { system: string; userPrompt: string } {
   const panel = opts.setup.panel
     .map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`)
     .join('\n')
   const agenda = opts.setup.agenda.map((t, i) => `  ${i + 1}. ${t}`).join('\n')
 
-  const system = `You are extracting structured Q&A from a recorded forum or town hall.
+  const scopedSuffix = opts.topicScopedTo
+    ? `
+
+TOPIC-SCOPED RE-EXTRACTION
+This is a topic-scoped re-extraction for "${opts.topicScopedTo}". The transcript window below has already been filtered to the time ranges where this topic was discussed (with ±60s padding). Emit pairs that genuinely belong to "${opts.topicScopedTo}". Default new pairs to topic="${opts.topicScopedTo}" unless the content clearly belongs to a sibling agenda topic.`
+    : ''
+
+  const system = `You are extracting structured Q&A from a recorded forum or town hall.${scopedSuffix}
 
 CONTEXT
 - Panel members (these people may answer questions; their speech does NOT count as audience questions):
@@ -79,7 +88,14 @@ Respond with a single JSON object — no prose before or after, no markdown fenc
   ]
 }`
 
-  const userPrompt = `TRANSCRIPT
+  const notesBlock = opts.instructions?.trim()
+    ? `USER NOTES (steer your extraction by these — they override the defaults above when they conflict)
+${opts.instructions.trim()}
+
+`
+    : ''
+
+  const userPrompt = `${notesBlock}TRANSCRIPT
 ${formatTranscript(opts.transcript)}`
 
   return { system, userPrompt }
@@ -91,6 +107,7 @@ export function buildQaCuratorPrompt(opts: {
   setup: QaSetupInputs
   transcript: TranscriptSegment[]
   drafts: ExtractionDraft[]
+  instructions?: string            // § 4.11: passed through so the curator honors the same steer
 }): { system: string; userPrompt: string } {
   const panel = opts.setup.panel
     .map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`)
@@ -135,7 +152,14 @@ You MUST include one review per draft, in order. Drafts you wouldn't flag get "f
     A: ${d.payload.answer}`
   }).join('\n\n')
 
-  const userPrompt = `DRAFTS TO REVIEW
+  const notesBlock = opts.instructions?.trim()
+    ? `USER NOTES (the user asked the extractor to follow these — honor the same intent in your review)
+${opts.instructions.trim()}
+
+`
+    : ''
+
+  const userPrompt = `${notesBlock}DRAFTS TO REVIEW
 ${draftBlock}
 
 TRANSCRIPT (for cross-reference)

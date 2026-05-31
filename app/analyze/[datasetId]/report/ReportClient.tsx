@@ -10,6 +10,7 @@
 // click handlers show a "not yet wired" tooltip rather than firing.
 
 import { useCallback, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type {
   RecordingRow,
@@ -166,9 +167,11 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
   agenda: string[]
   onReplaced: (e: RecordingExtractionRow) => void
 }) {
+  const router = useRouter()
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
   const [expandedAll, setExpandedAll] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [reanalyzeModal, setReanalyzeModal] = useState<{ scope: 'all' | 'topic'; topic?: string } | null>(null)
 
   const toggleCard = (id: string) => setExpanded(prev => {
     const next = new Set(prev)
@@ -185,10 +188,14 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
           <button type="button" onClick={() => { setExpandedAll(false); setExpanded(new Set()) }}
             className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Collapse all</button>
         </div>
-        <StubMenu
-          label="⋯ More"
-          tooltip="Full re-extract (§ 4.11) — wiring pending"
-        />
+        <button
+          type="button"
+          onClick={() => setReanalyzeModal({ scope: 'all' })}
+          className="text-sm px-3 py-1 text-gray-600 hover:text-gray-900"
+          title="Re-extract all pairs from transcript (§ 4.11)"
+        >
+          ⋯ More
+        </button>
       </div>
 
       {grouped.length === 0 && (
@@ -201,11 +208,14 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
             <h2 className="text-base font-bold text-gray-900">
               {topic} <span className="text-gray-400 text-sm font-normal">· {items.length}</span>
             </h2>
-            <StubMenu
-              label="⋯"
-              tooltip="Re-extract pairs for this topic (§ 4.11) — wiring pending"
-              small
-            />
+            <button
+              type="button"
+              onClick={() => setReanalyzeModal({ scope: 'topic', topic })}
+              className="text-xs px-2 py-1 text-gray-500 hover:text-gray-900"
+              title={`Re-extract pairs for "${topic}" (§ 4.11)`}
+            >
+              ⋯
+            </button>
           </header>
           <ul className="space-y-2">
             {items.map(e => (
@@ -221,6 +231,111 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
           </ul>
         </section>
       ))}
+
+      {reanalyzeModal && (
+        <ReanalyzeModal
+          recordingId={recordingId}
+          scope={reanalyzeModal.scope}
+          topic={reanalyzeModal.topic}
+          onClose={() => setReanalyzeModal(null)}
+          onSuccess={() => { setReanalyzeModal(null); router.refresh() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Reanalyze modal (§ 4.11) ────────────────────────────────────────────────
+
+function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
+  recordingId: string
+  scope: 'all' | 'topic'
+  topic?: string
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [instructions, setInstructions] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const title = scope === 'all'
+    ? 'Re-extract all pairs from transcript'
+    : `Re-extract pairs for "${topic}"`
+  const cost = scope === 'all' ? '~$1' : '~$0.10–$0.40'
+  const warning = scope === 'all'
+    ? 'Deletes every existing pair and re-runs Opus + Sonnet on the full transcript.'
+    : `Deletes pairs in "${topic}" only — other topics keep their pairs. Re-runs on the topic-scoped window (±60s padding).`
+
+  const handleConfirm = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/reanalyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          topic: scope === 'topic' ? topic : undefined,
+          instructions: instructions.trim() || undefined,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        setErr(body?.error || `reanalyze ${res.status}`)
+        return
+      }
+      onSuccess()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'network error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+        <p className="text-sm text-gray-600">{warning}</p>
+        <label className="block">
+          <span className="block text-xs font-semibold text-gray-600 mb-1">Instructions (optional)</span>
+          <textarea
+            value={instructions}
+            onChange={e => setInstructions(e.target.value)}
+            placeholder={scope === 'topic'
+              ? `e.g. "You missed a question about funding for ${topic}."`
+              : 'e.g. "Asker names should default to \'Audience member\' if not self-introduced."'}
+            disabled={busy}
+            maxLength={4000}
+            rows={4}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+            style={{ fontSize: '16px' }}
+          />
+        </label>
+        {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{err}</div>}
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>Cost: <span className="font-semibold">{cost}</span> · Opus + Sonnet</span>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="text-sm px-4 py-2 rounded border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={busy}
+            className="text-sm px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
+            style={{ backgroundColor: HERMES }}
+          >
+            {busy ? 'Re-extracting…' : 'Confirm re-extract'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

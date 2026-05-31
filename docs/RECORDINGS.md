@@ -765,9 +765,9 @@ Export → PDF prints the chosen tabs via Playwright. XLSX exports the structure
 
 Affordance wiring state:
 - **↻ Regenerate (per-card, § 4.10):** wired (2026-05-31). Click opens an inline composer with a "What should change? (optional)" textarea (≤2000 chars), Regenerate / Cancel, and a "~$0.01 · Sonnet" cost hint. POST to `/api/recordings/[id]/extractions/[extractionId]/regenerate`; success swaps the card in place via React state (no page reload). Used to fix individual mismatches during PM-1 calibration.
+- **Per-topic "⋯" Re-extract (§ 4.11 scope='topic'):** wired (2026-05-31). The "⋯" on each topic header opens a modal: title "Re-extract pairs for «topic»", an instructions textarea (≤4000 chars) with a topic-aware placeholder, a `~$0.10–$0.40 · Opus + Sonnet` cost line, Cancel / Confirm. POST `/api/recordings/[id]/reanalyze` with `{ scope: 'topic', topic, instructions }`. On success: `router.refresh()` re-pulls the server-rendered report; the active tab stays put.
+- **Tab-header "⋯ More" full re-extract (§ 4.11 scope='all'):** wired (2026-05-31). Same modal shell as the per-topic variant with "Deletes every existing pair…" warning and a `~$1` cost line. POST `{ scope: 'all', instructions }`. `completed_at` is bumped on the recording row per spec.
 - **▶ Play this segment:** stub. Pending the audio signed-URL route + the modal player UI.
-- **Per-topic "⋯" Re-extract:** stub. Pending § 4.11 implementation.
-- **Tab-header "⋯ More" full re-extract:** stub. Pending § 4.11 implementation.
 - **Export & Share tab:** stub. Pending § 4.5 (PDF + XLSX) + § 4.7 (share).
 
 ### 5.5 Org-admin recordings list — `/recordings`

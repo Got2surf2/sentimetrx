@@ -44,6 +44,10 @@ export interface AnalyzeInput {
   session_type: SessionType
   setup_inputs: SetupInputs | Record<string, unknown>
   transcript: TranscriptSegment[]
+  /** § 4.11: free-text guidance, appended to both Opus + Sonnet prompts. */
+  instructions?: string
+  /** § 4.11 scope='topic': narrow the extraction to a single agenda topic. */
+  topicScopedTo?: string
 }
 
 export interface AnalyzeResult {
@@ -65,6 +69,8 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
   const { system: extractSystem, userPrompt: extractUser } = buildQaExtractionPrompt({
     setup,
     transcript: input.transcript,
+    instructions: input.instructions,
+    topicScopedTo: input.topicScopedTo,
   })
 
   const opusResp = await callAI({
@@ -90,6 +96,7 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
       setup,
       transcript: input.transcript,
       drafts,
+      instructions: input.instructions,
     })
 
     const sonnetResp = await callAI({
