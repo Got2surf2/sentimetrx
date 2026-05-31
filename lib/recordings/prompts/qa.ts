@@ -165,3 +165,81 @@ function formatTime(sec: number): string {
 export const VALID_TYPOLOGIES: ReadonlySet<QuestionTypology> = new Set<QuestionTypology>([
   'ask', 'complaint', 'commentary', 'clarification',
 ])
+
+// ── Regenerate prompt (Sonnet 4.6) — per-card fix (§ 4.10) ──────────────────
+
+export function buildQaRegeneratePrompt(opts: {
+  setup: QaSetupInputs
+  existing: {
+    topic: string | null
+    payload: QaPairPayload
+    confidence: number | null
+    start_sec: number | null
+    end_sec: number | null
+  }
+  transcriptWindow: TranscriptSegment[]
+  instructions?: string
+}): { system: string; userPrompt: string } {
+  const panel = opts.setup.panel
+    .map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`)
+    .join('\n')
+  const agenda = opts.setup.agenda.map((t, i) => `  ${i + 1}. ${t}`).join('\n')
+
+  const system = `You are revising a single Q&A pair previously extracted from a town hall transcript. Output a revised version of the same pair — same time window, possibly corrected wording, asker, panelist, topic, or typology.
+
+CONTEXT
+- Panel members (their speech does NOT count as audience questions):
+${panel || '  (no panel provided)'}
+- Agenda topics (use these as the topic value; do not invent new ones — "Other" is the fallback):
+${agenda || '  (no agenda provided)'}
+
+RULES
+1. Honor the user's instructions explicitly when given.
+2. If no user instructions are given, infer the most likely correction from the transcript context (e.g. the asker self-identified later, the panelist who answered was named after the fact, the typology is clearly wrong).
+3. Question and answer must be verbatim quotes from the transcript window — do not paraphrase or summarize.
+4. Topic must be one of the agenda topics above, or "Other" if it genuinely doesn't fit.
+5. Typology must be one of: ask | complaint | commentary | clarification. "ask" is the only one that surfaces in the main Q&A summary; the rest go to the appendix.
+6. Confidence is your self-assessment of how sure you are about the revised pair (0.0–1.0).
+
+OUTPUT FORMAT
+Respond with a single JSON object — no prose before or after, no markdown fences:
+
+{
+  "topic": "<one of the agenda topics or 'Other'>",
+  "question_typology": "ask" | "complaint" | "commentary" | "clarification",
+  "question": "<verbatim from the transcript window>",
+  "asker_name": "<if known, else null>",
+  "answer": "<verbatim from the transcript window>",
+  "panelist_name": "<if known, else null>",
+  "confidence": <0.0-1.0>
+}`
+
+  const userInstructionsBlock = opts.instructions?.trim()
+    ? `USER INSTRUCTIONS\n${opts.instructions.trim()}\n`
+    : `USER INSTRUCTIONS\n(none — infer the best correction from transcript context)\n`
+
+  const existingBlock = `EXISTING EXTRACTION
+topic:     ${opts.existing.topic ?? '(none)'}
+typology:  ${opts.existing.payload.question_typology}
+question:  ${opts.existing.payload.question}
+asker:     ${opts.existing.payload.asker_name ?? '(unknown)'}
+panelist:  ${opts.existing.payload.panelist_name ?? '(unknown)'}
+answer:    ${opts.existing.payload.answer}
+confidence: ${opts.existing.confidence ?? '(none)'}
+time:      ${formatTimestamp(opts.existing.start_sec)}-${formatTimestamp(opts.existing.end_sec)}`
+
+  const userPrompt = `${userInstructionsBlock}
+${existingBlock}
+
+TRANSCRIPT WINDOW (the ~60s of speech surrounding this pair, ±30s for context)
+${formatTranscript(opts.transcriptWindow)}`
+
+  return { system, userPrompt }
+}
+
+function formatTimestamp(sec: number | null): string {
+  if (sec == null) return '?'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}

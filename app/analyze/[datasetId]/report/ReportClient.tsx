@@ -9,7 +9,7 @@
 // § 4.5 / § 4.6 / § 4.10 / § 4.11 routes — the affordances render but their
 // click handlers show a "not yet wired" tooltip rather than firing.
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
 import type {
   RecordingRow,
@@ -36,16 +36,27 @@ const HERMES = '#E8632A'
 export default function ReportClient({ data }: { data: ReportData }) {
   const [tab, setTab] = useState<Tab>('qa')
 
+  // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
+  // replaces individual rows in place, so we keep state here and rebuild
+  // ask/nonAsk + grouping off of it.
+  const [extractions, setExtractions] = useState<RecordingExtractionRow[]>(data.extractions)
+
+  const replaceExtraction = useCallback((next: RecordingExtractionRow) => {
+    setExtractions(prev => prev.map(e => (e.id === next.id ? next : e)))
+  }, [])
+
+  const recordingId = data.recording.id
+
   const { askExtractions, nonAskExtractions } = useMemo(() => {
     const ask: RecordingExtractionRow[] = []
     const nonAsk: RecordingExtractionRow[] = []
-    for (const e of data.extractions) {
+    for (const e of extractions) {
       const payload = e.payload as QaPairPayload
       if (payload?.question_typology === 'ask') ask.push(e)
       else nonAsk.push(e)
     }
     return { askExtractions: ask, nonAskExtractions: nonAsk }
-  }, [data.extractions])
+  }, [extractions])
 
   const agenda = useMemo(() => {
     const setup = data.recording.setup_inputs as Partial<QaSetupInputs>
@@ -54,7 +65,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      <ReportHeader recording={data.recording} extractionCount={data.extractions.length} />
+      <ReportHeader recording={data.recording} extractionCount={extractions.length} />
 
       <TabBar
         tab={tab}
@@ -67,8 +78,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        {tab === 'qa' && <QATab extractions={askExtractions} agenda={agenda} />}
-        {tab === 'appendix' && <AppendixTab extractions={nonAskExtractions} agenda={agenda} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} />}
+        {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} />}
         {tab === 'export' && <ExportTab />}
@@ -149,7 +160,12 @@ function TabBar({
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ extractions, agenda }: { extractions: RecordingExtractionRow[]; agenda: string[] }) {
+function QATab({ recordingId, extractions, agenda, onReplaced }: {
+  recordingId: string
+  extractions: RecordingExtractionRow[]
+  agenda: string[]
+  onReplaced: (e: RecordingExtractionRow) => void
+}) {
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
   const [expandedAll, setExpandedAll] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -195,9 +211,11 @@ function QATab({ extractions, agenda }: { extractions: RecordingExtractionRow[];
             {items.map(e => (
               <QACard
                 key={e.id}
+                recordingId={recordingId}
                 extraction={e}
                 expanded={expandedAll || expanded.has(e.id)}
                 onToggle={() => toggleCard(e.id)}
+                onReplaced={onReplaced}
               />
             ))}
           </ul>
@@ -207,13 +225,47 @@ function QATab({ extractions, agenda }: { extractions: RecordingExtractionRow[];
   )
 }
 
-function QACard({ extraction, expanded, onToggle }: {
+function QACard({ recordingId, extraction, expanded, onToggle, onReplaced }: {
+  recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
   onToggle: () => void
+  onReplaced: (e: RecordingExtractionRow) => void
 }) {
   const payload = extraction.payload as QaPairPayload
   const flagged = extraction.flagged_for_review
+  const [showComposer, setShowComposer] = useState(false)
+  const [instructions, setInstructions] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const handleRegenerate = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch(
+        `/api/recordings/${recordingId}/extractions/${extraction.id}/regenerate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instructions: instructions.trim() || undefined }),
+        },
+      )
+      const body = await res.json()
+      if (!res.ok) {
+        setErr(body?.error || `regenerate ${res.status}`)
+        return
+      }
+      onReplaced(body.extraction as RecordingExtractionRow)
+      setShowComposer(false)
+      setInstructions('')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'network error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <li className={`border rounded-lg ${flagged ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
       <button
@@ -255,8 +307,52 @@ function QACard({ extraction, expanded, onToggle }: {
           </div>
           <div className="flex gap-2 pt-2">
             <StubButton label="▶ Play this segment" tooltip="Audio modal player — wiring pending (needs signed-URL route + tus-uploaded stitched.mp3 available)" />
-            <StubButton label="↻ Regenerate" tooltip="Per-card regenerate (§ 4.10) — wiring pending" />
+            {!showComposer ? (
+              <button
+                type="button"
+                onClick={() => setShowComposer(true)}
+                className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
+              >
+                ↻ Regenerate
+              </button>
+            ) : null}
           </div>
+          {showComposer && (
+            <div className="border border-gray-200 rounded p-3 bg-gray-50 space-y-2">
+              <label className="block text-xs font-semibold text-gray-600">What should change? (optional)</label>
+              <textarea
+                value={instructions}
+                onChange={e => setInstructions(e.target.value)}
+                placeholder="e.g. The asker was the woman in the red coat, not the moderator."
+                disabled={busy}
+                maxLength={2000}
+                rows={2}
+                className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                style={{ fontSize: '16px' }}
+              />
+              {err && <div className="text-xs text-red-600">{err}</div>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  disabled={busy}
+                  className="text-xs px-3 py-1 rounded text-white font-semibold disabled:opacity-60"
+                  style={{ backgroundColor: HERMES }}
+                >
+                  {busy ? 'Regenerating…' : 'Regenerate'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowComposer(false); setInstructions(''); setErr(null) }}
+                  disabled={busy}
+                  className="text-xs px-3 py-1 rounded border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <span className="text-xs text-gray-400 self-center ml-auto">~$0.01 · Sonnet</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </li>
@@ -265,13 +361,18 @@ function QACard({ extraction, expanded, onToggle }: {
 
 // ── Appendix tab ─────────────────────────────────────────────────────────────
 
-function AppendixTab({ extractions, agenda }: { extractions: RecordingExtractionRow[]; agenda: string[] }) {
+function AppendixTab({ recordingId, extractions, agenda, onReplaced }: {
+  recordingId: string
+  extractions: RecordingExtractionRow[]
+  agenda: string[]
+  onReplaced: (e: RecordingExtractionRow) => void
+}) {
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500">
-        Pairs the model classified as <em>complaint</em>, <em>commentary</em>, or <em>clarification</em> — kept for completeness but not surfaced in the main Q&amp;A summary.
+        Pairs the model classified as <em>complaint</em>, <em>commentary</em>, or <em>clarification</em> — kept for completeness but not surfaced in the main Q&amp;A summary. Use Regenerate with an instruction like "this is actually an ask" to move a card back into the main summary.
       </p>
       {grouped.length === 0 && <EmptyState label="No appendix pairs." />}
       {grouped.map(({ topic, items }) => (
@@ -283,6 +384,7 @@ function AppendixTab({ extractions, agenda }: { extractions: RecordingExtraction
             {items.map(e => (
               <QACard
                 key={e.id}
+                recordingId={recordingId}
                 extraction={e}
                 expanded={expanded.has(e.id)}
                 onToggle={() => setExpanded(prev => {
@@ -290,6 +392,7 @@ function AppendixTab({ extractions, agenda }: { extractions: RecordingExtraction
                   if (next.has(e.id)) next.delete(e.id); else next.add(e.id)
                   return next
                 })}
+                onReplaced={onReplaced}
               />
             ))}
           </ul>

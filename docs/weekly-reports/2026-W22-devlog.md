@@ -752,3 +752,31 @@ Slide 11–13 in the previous deck became 15–17. Footer page numbers re-flow v
 **Decision worth capturing**: declined to add ?status / pagination on § 5.5 for v1. Reason: phased rollout starts with one customer (NOWOCATS pilot), and getting the column choices + row routing right matters more than the pagination plumbing. Capping at 200 rows is honest — easier to spot the limit and lift it than to ship pagination unused and discover later it's wired wrong.
 
 **Phase 2 status**: § 5.1 (tile), § 5.2 (wizard), § 5.3 (status), § 5.4 (report), § 5.5 (list), § 5.6 (admin monitor) all shipped. Critical-path chain is now end-to-end + observable from both the analyst and admin-org sides. Remaining for Phase 2 spec: the deferred report affordances (PDF, XLSX, share, audio playback, regenerate) — each needs its API route built first.
+
+
+---
+
+## 2026-05-31 (later) — § 4.10 per-card regenerate wired end-to-end
+
+**Why**: First of the deferred report affordances, picked because (a) it's the smallest unit of work — one Sonnet pass on a ~2K-token context, no Opus, no orchestration — and (b) it's the highest-leverage tool for the upcoming PM-1 vs PDF baseline comparison. Most "this doesn't match the PDF" moments will be one-card fixes (wrong asker, wrong topic chip, paraphrased answer, misclassified typology), and per-card regenerate at $0.01/click is the right cost shape for an iterative analyst loop.
+
+**What changed**:
+- `lib/recordings/prompts/qa.ts` — added `buildQaRegeneratePrompt()`. System prompt explains the existing-vs-revised shape, gives panel + agenda context, names the rules (verbatim quotes from the transcript window, agenda-bound topic, enum'd typology). User-facing message carries USER INSTRUCTIONS block (verbatim user note when present, otherwise an "infer from context" fallback), the EXISTING EXTRACTION as labeled fields, and the TRANSCRIPT WINDOW.
+- `lib/recordings/regenerate.ts` (new) — `regenerateExtraction()` loads extraction + recording + transcript in parallel, slices a ±30s window from `recording_transcripts.segments`, calls Sonnet via `callAI({ tier: 'advanced', modelOverride: 'claude-sonnet-4-6' })` with `event_type: 'recording_regenerate'` for usage tracking, parses the JSON response (tolerant of markdown fences), persists the revised row, mirrors to `dataset_rows_flat` (matches the column shape from `lib/recordings/mirror.ts`), accumulates Sonnet cost into `recordings.cost_cents` (Sonnet 4.6: $3/M input, $15/M output; floor of 1¢ to ensure non-zero accounting). Recomputes `coverage_report` only when topic changed — within-topic content changes don't move the coverage needle, no point burning the read on `recording_extractions`.
+- `app/api/recordings/[id]/extractions/[extractionId]/regenerate/route.ts` (new) — POST § 4.10. Auth + same-tenant (id, org_id paired), recording must be `status='complete'`, body `{ instructions?: string }` capped at 2000 chars. Maps thrown messages to HTTP codes: "not found" → 404, "transcript missing" / "wrong status" → 409, default → 500.
+- `app/analyze/[datasetId]/report/ReportClient.tsx` — lifted `extractions` from a `useMemo` over props to a `useState<RecordingExtractionRow[]>` so the parent can swap a card in place when its regenerate returns. New `onReplaced` callback threads down through QATab + AppendixTab + QACard. The ↻ Regenerate button (was a disabled stub) opens an inline composer below the expanded card body: textarea + Regenerate / Cancel + "~$0.01 · Sonnet" cost hint. Submitting calls the API, swaps the card in place on success, surfaces the error on failure. AppendixTab's intro copy now hints at the cross-typology move ("Use Regenerate with 'this is actually an ask' to bring a card back into the main summary").
+- `docs/RECORDINGS.md` § 5.4 — added an "Affordance wiring state" sub-list documenting which buttons are live vs stub, with the routes they wait on. Per-card regenerate flipped to "wired (2026-05-31)".
+
+**Decision worth capturing**: kept the cost-flow on `recordings.cost_cents` rather than introducing a new `recording_extractions.cost_cents_to_date` column. Reason: the regenerate flow is bounded (one card at a time) and the analyst gets a "~$0.01 · Sonnet" cost hint in the UI before clicking — that's the right signal at the right time. The per-row breakdown is interesting but not necessary; usage_logs already carries the precise figure for accounting reconciliation per the `callAI` usage event.
+
+**Pilot calibration workflow now possible**:
+1. Run the pipeline end-to-end on PM-1 GoPro audio (needs SQL applied, Deepgram key, Sandbox available).
+2. Open the report at `/analyze/[datasetId]/report` and walk through the Q&A tab side-by-side with the PM-1 PDF.
+3. For each mismatch: expand the card, click ↻ Regenerate, type a one-line instruction ("answer should be one sentence" / "topic is Education not Schools" / "this is actually an ask"), submit. Card swaps in place.
+4. For systemic mismatches (e.g. lots of cards missing entirely, or topic chips wrong everywhere): use § 4.11 — but that's not built yet, so for now those need a re-run of the whole pipeline.
+
+**Pre-flight blockers for an actual PM-1 dry run** (not new in this commit, surfacing for context):
+- SQL migrations sql/090_recordings.sql + sql/091_recordings_storage_bucket.sql need to be applied to prod (still on local-only).
+- `DEEPGRAM_API_KEY` needs to be set in Vercel envs (not in `.env.local`).
+- `recordings` Storage bucket needs to exist with the RLS policies from sql/091.
+- 15 commits ahead of origin — none pushed.

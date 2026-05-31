@@ -761,7 +761,14 @@ Closes-tab-friendly: user can come back to this URL anytime; on revisit the page
 
 Export → PDF prints the chosen tabs via Playwright. XLSX exports the structured extractions only. The Share panel calls `POST /api/recordings/[id]/share`.
 
-**Phase 2 shipped state (2026-05-31):** route at `app/analyze/[datasetId]/report/{page,ReportClient}.tsx`. Server resolves dataset → recording (reverse lookup via `recordings.dataset_id`), redirects non-recording datasets back to `/analyze/[id]`. Tabs 1–4 are live; tab 5 (Export & Share) is a stub listing what's coming. The "▶ Play this segment" / "↻ Regenerate" / per-topic "⋯" / "⋯ More" affordances render as disabled buttons with tooltips pointing at the route they need — they wire up once § 4.5 (PDF + XLSX), § 4.7 (share), § 4.10 (per-card regenerate), § 4.11 (scoped re-extract), and the audio signed-URL route land. Flagged cards render with a yellow background + their `flag_reason`. Topic ordering follows the agenda from `setup_inputs.agenda`; non-agenda topics ("Other", anything the model invented despite the prompt) trail at the end of the tab.
+**Phase 2 shipped state (2026-05-31):** route at `app/analyze/[datasetId]/report/{page,ReportClient}.tsx`. Server resolves dataset → recording (reverse lookup via `recordings.dataset_id`), redirects non-recording datasets back to `/analyze/[id]`. Tabs 1–4 are live; tab 5 (Export & Share) is a stub listing what's coming. Flagged cards render with a yellow background + their `flag_reason`. Topic ordering follows the agenda from `setup_inputs.agenda`; non-agenda topics ("Other", anything the model invented despite the prompt) trail at the end of the tab.
+
+Affordance wiring state:
+- **↻ Regenerate (per-card, § 4.10):** wired (2026-05-31). Click opens an inline composer with a "What should change? (optional)" textarea (≤2000 chars), Regenerate / Cancel, and a "~$0.01 · Sonnet" cost hint. POST to `/api/recordings/[id]/extractions/[extractionId]/regenerate`; success swaps the card in place via React state (no page reload). Used to fix individual mismatches during PM-1 calibration.
+- **▶ Play this segment:** stub. Pending the audio signed-URL route + the modal player UI.
+- **Per-topic "⋯" Re-extract:** stub. Pending § 4.11 implementation.
+- **Tab-header "⋯ More" full re-extract:** stub. Pending § 4.11 implementation.
+- **Export & Share tab:** stub. Pending § 4.5 (PDF + XLSX) + § 4.7 (share).
 
 ### 5.5 Org-admin recordings list — `/recordings`
 
