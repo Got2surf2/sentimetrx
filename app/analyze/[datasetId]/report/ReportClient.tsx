@@ -569,7 +569,7 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
           <p className="text-sm text-gray-500">Nothing flagged — every extracted pair passed the curator.</p>
         ) : (
           <p className="text-sm text-gray-700">
-            {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} flagged. They appear in the Q&amp;A tab with a yellow background and a flag reason.
+            {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} flagged — shown with a yellow background and a flag reason in whichever tab holds them ({'Q&A'} for asks, Appendix for clarifications / commentary / complaints).
           </p>
         )}
       </section>
