@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   const typeRaw   = (url.searchParams.get('type') || '').toLowerCase()
   const next      = url.searchParams.get('next') || ''
 
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // (1) PKCE code — what Supabase's own /auth/v1/verify redirect produces
   // when the email template uses {{ .ConfirmationURL }}.

@@ -87,7 +87,7 @@ export async function DELETE(req: Request, { params }: Params) {
   const denied = await requireAdmin()
   if (denied) return denied
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

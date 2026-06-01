@@ -32,7 +32,7 @@ interface Params { params: { datasetId: string } }
 interface ThemeModelTheme { id: string; keywords?: string[] }
 
 export async function GET(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -97,7 +97,7 @@ function normaliseAliases(input: unknown): string[] {
 }
 
 export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

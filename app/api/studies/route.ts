@@ -6,7 +6,7 @@ import type { StudyConfig } from '@/lib/types'
 
 // GET /api/studies — list studies for the current user's client
 export async function GET() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -25,7 +25,7 @@ export async function GET() {
 
 // POST /api/studies — create a new study
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

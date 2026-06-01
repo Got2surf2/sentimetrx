@@ -50,7 +50,7 @@ function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
   arr.length = n
 }
 
-async function authCheck(supabase: ReturnType<typeof createClient>) {
+async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
@@ -64,7 +64,7 @@ function projectRow(row: Record<string, unknown>, fieldSet: Set<string> | null):
 }
 
 export async function GET(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -217,7 +217,7 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
 }
 
 export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -269,7 +269,7 @@ export async function POST(req: Request, { params }: Params) {
 
 // DELETE /api/datasets/[datasetId]/rows — rollback batches by index
 export async function DELETE(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

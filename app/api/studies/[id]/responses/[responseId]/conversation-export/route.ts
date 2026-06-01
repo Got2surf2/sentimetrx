@@ -72,7 +72,7 @@ function buildConversationFromPayload(payload: any, config: any, botName: string
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string; responseId: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

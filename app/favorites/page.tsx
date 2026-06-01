@@ -24,7 +24,7 @@ interface EnrichedFav {
 }
 
 export default async function FavoritesPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?next=/favorites')
 

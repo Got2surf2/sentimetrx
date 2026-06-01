@@ -39,7 +39,7 @@ function normaliseAliases(input: unknown): string[] {
 }
 
 async function authorise(req: Request, params: Params['params']) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
 

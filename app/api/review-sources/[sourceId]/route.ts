@@ -28,7 +28,7 @@ async function resolveOrg(supabase: any) {
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -66,7 +66,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -113,7 +113,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

@@ -20,7 +20,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
   const recording_id = ctx.params.id
   if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
@@ -116,7 +116,7 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
   const recording_id = ctx.params.id
   if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const uc = await getUserContext(supabase)
   if (!uc) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

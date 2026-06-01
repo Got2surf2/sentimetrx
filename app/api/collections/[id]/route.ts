@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 interface Props { params: { id: string } }
 
 export async function GET(_req: Request, { params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -76,7 +76,7 @@ export async function GET(_req: Request, { params }: Props) {
 // DELETE /api/collections/[id]?member=<datasetId> — remove a member from collection
 // If removing the last member, auto-deletes the collection
 export async function DELETE(req: Request, { params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

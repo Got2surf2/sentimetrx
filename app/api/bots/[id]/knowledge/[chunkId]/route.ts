@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: { id: string; chunkId: string } }
 
-async function gateBotAccess(supabase: ReturnType<typeof createClient>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -26,7 +26,7 @@ async function gateBotAccess(supabase: ReturnType<typeof createClient>, service:
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  var supabase = createClient()
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  var supabase = createClient()
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

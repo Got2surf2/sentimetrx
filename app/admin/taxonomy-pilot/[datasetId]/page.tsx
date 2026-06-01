@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { datasetId: string } }
 
 export default async function TaxonomyPilotPage({ params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

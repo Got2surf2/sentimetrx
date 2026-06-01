@@ -16,7 +16,7 @@ interface Params { params: { id: string } }
 
 // ── GET: list chunks ──────────────────────────────────────────
 export async function GET(_req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -47,7 +47,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 // ── POST: ingest text → chunks ────────────────────────────────
 export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -201,7 +201,7 @@ export async function POST(req: Request, { params }: Params) {
 
 // ── DELETE: clear chunks (all, or by source_type) ────────────
 export async function DELETE(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

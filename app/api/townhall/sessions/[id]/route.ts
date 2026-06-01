@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 // Phase 5 commit 6: also accepts town_halls rows so the dashboard surface
 // can render new-substrate town halls. Mutations (PATCH/DELETE) on the
 // new substrate are not wired through this route yet — only GET.
-async function gateSessionAccess(supabase: ReturnType<typeof createClient>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
+async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -304,7 +304,7 @@ async function handlePhase3Patch(
 
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -702,7 +702,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 // PATCH /api/townhall/sessions/:id — update session config or status
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -1015,7 +1015,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 // DELETE /api/townhall/sessions/:id — delete session and all related data
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

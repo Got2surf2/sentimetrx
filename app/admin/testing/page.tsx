@@ -6,7 +6,7 @@ import TestingClient from './TestingClient'
 export const dynamic = 'force-dynamic'
 
 export default async function TestingPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

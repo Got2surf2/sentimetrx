@@ -11,8 +11,8 @@ import { createClient as createServiceClient, type User } from '@supabase/supaba
 // request cookies, write back the ones Supabase asks us to refresh.
 // `setAll` is wrapped in try/catch because cookie writes outside a
 // request context (e.g. background revalidation) throw in Next.js 14.
-export function createClient() {
-  const cookieStore = cookies()
+export async function createClient() {
+  const cookieStore = await cookies()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
@@ -39,7 +39,7 @@ export function createClient() {
 // tokens — required for any route that gates access to org-scoped data.
 // Previously used getSession() which only decodes the cookie locally;
 // that left revoked sessions accepted until the cookie expired.
-export async function getAuthUser(supabase: ReturnType<typeof createClient>): Promise<User | null> {
+export async function getAuthUser(supabase: Awaited<ReturnType<typeof createClient>>): Promise<User | null> {
   const { data: { user } } = await supabase.auth.getUser()
   return user ?? null
 }

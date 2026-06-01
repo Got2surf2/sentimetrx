@@ -16,7 +16,7 @@ const CHUNK_SIZE = 50
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    var supabase = createClient()
+    var supabase = await createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

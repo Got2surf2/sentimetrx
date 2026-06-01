@@ -9,7 +9,7 @@ import { listTownHallsAsLegacy } from '@/lib/townHallAdapter'
 // Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
 // ?org=<id> when supplied (Phase E filter UI).
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/townhall/sessions — create a new session
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

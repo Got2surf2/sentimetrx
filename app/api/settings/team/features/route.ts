@@ -8,7 +8,7 @@ const MODULE_KEYS: (keyof ModuleFeatures)[] = [
 
 // PATCH /api/settings/team/features — update a user's feature flags
 export async function PATCH(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
   // Content safety check on latest user message
   const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
   if (lastUserMsg) {
-    const check = checkMessage('bot_' + req.ip, lastUserMsg.content)
+    const check = checkMessage('bot_' + (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon'), lastUserMsg.content)
     if (!check.safe) {
       return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Datanautix products?" }, { headers: cors })
     }

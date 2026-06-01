@@ -5,7 +5,7 @@ import { sendInviteEmail } from '@/lib/email/sendInvite'
 interface Ctx { params: { id: string } }
 
 export async function POST(_req: NextRequest, { params }: Ctx) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

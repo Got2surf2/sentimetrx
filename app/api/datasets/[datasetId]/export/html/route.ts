@@ -802,7 +802,7 @@ document.addEventListener('keydown', function(e) {
 
 // ── POST handler ──────────────────────────────────────────────────────────────
 export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

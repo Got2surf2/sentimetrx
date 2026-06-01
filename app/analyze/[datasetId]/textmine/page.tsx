@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 interface Props { params: { datasetId: string }; searchParams?: { editThemes?: string } }
 
 export default async function TextMinePage({ params, searchParams }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

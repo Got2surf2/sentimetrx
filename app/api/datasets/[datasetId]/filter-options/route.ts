@@ -12,7 +12,7 @@ interface Props { params: { datasetId: string } }
 export const dynamic = 'force-dynamic'
 
 export async function GET(_req: Request, { params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

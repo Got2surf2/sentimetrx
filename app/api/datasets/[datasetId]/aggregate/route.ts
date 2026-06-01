@@ -8,13 +8,13 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 type Params = { params: { datasetId: string } }
 
-async function authCheck(supabase: ReturnType<typeof createClient>) {
+async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 export async function POST(req: Request, { params }: Params) {
-  var supabase = createClient()
+  var supabase = await createClient()
   var auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

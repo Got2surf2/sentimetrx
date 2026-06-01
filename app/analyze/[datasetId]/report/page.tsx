@@ -23,7 +23,7 @@ import type {
 export const dynamic = 'force-dynamic'
 
 export default async function RecordingReportPage({ params }: { params: { datasetId: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
   if (!ctx.features.analyze) redirect('/dashboard')

@@ -8,7 +8,7 @@ interface Props { params: { id: string } }
 export const dynamic = 'force-dynamic'
 
 export default async function AdminClientPage({ params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

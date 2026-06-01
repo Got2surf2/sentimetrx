@@ -18,7 +18,7 @@ export const maxDuration = 60
 interface Props { params: { datasetId: string } }
 
 export async function POST(request: Request, { params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

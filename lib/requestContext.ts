@@ -18,9 +18,10 @@ export const REQUEST_ID_HEADER = 'x-request-id'
 
 // Returns the current request's correlation ID, or `null` outside a request
 // scope (e.g. cron initialization, module-load side effects).
-export function getRequestId(): string | null {
+// Async because `headers()` is async as of Next.js 15.
+export async function getRequestId(): Promise<string | null> {
   try {
-    return headers().get(REQUEST_ID_HEADER)
+    return (await headers()).get(REQUEST_ID_HEADER)
   } catch {
     // headers() throws outside a request scope.
     return null

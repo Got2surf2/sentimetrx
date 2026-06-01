@@ -46,8 +46,8 @@ function detectMode(ctx: string | undefined, kioskFlag: string | undefined, ua: 
   return 'home'
 }
 
-export default function MCODemoPage({ searchParams }: Props) {
-  const ua = headers().get('user-agent') || ''
+export default async function MCODemoPage({ searchParams }: Props) {
+  const ua = (await headers()).get('user-agent') || ''
   const mode = detectMode(searchParams.ctx, searchParams.kiosk, ua)
   const botOverride = resolveBotOverride(searchParams.bot)
 

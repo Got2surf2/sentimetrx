@@ -6,7 +6,7 @@ import NewSessionClient from './NewSessionClient'
 export const dynamic = 'force-dynamic'
 
 export default async function NewTownHallPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

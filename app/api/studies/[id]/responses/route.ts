@@ -10,7 +10,7 @@ import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxEx
 interface Params { params: { id: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -255,7 +255,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   // Auth check: use user client to verify identity, then use service role to delete
-  const userClient = createClient()
+  const userClient = await createClient()
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

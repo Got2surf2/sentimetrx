@@ -21,7 +21,7 @@ const BUCKET = 'report-exports'
 const EXPIRY_SECONDS = 7 * 24 * 60 * 60  // 7 days
 
 export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

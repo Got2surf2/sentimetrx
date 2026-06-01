@@ -53,7 +53,7 @@ interface CreateBody {
 }
 
 export async function POST(req: Request) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   if (!ctx.features.analyze || !ctx.features.recordings) {
@@ -211,7 +211,7 @@ const LIST_VALID_STATUSES: ReadonlySet<string> = new Set([
 ])
 
 export async function GET(req: Request) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   if (!ctx.features.analyze || !ctx.features.recordings) {

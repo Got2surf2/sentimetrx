@@ -20,7 +20,7 @@ export async function POST(_req: Request, ctx: { params: { id: string; fileId: s
   const { id: recording_id, fileId } = ctx.params
   if (!recording_id || !fileId) return NextResponse.json({ error: 'missing ids' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // POST /api/townhall/themes/:id/approve (or dismiss, pause, resume, close)
 // Action is passed in the body: { action: 'approve' | 'dismiss' | 'pause' | 'resume' | 'close', response_target?, question? }
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

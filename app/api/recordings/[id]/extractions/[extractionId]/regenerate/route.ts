@@ -24,7 +24,7 @@ export async function POST(
     return NextResponse.json({ error: 'missing ids' }, { status: 400 })
   }
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

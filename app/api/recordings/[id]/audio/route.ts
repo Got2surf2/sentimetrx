@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
   const recording_id = ctx.params.id
   if (!recording_id) return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

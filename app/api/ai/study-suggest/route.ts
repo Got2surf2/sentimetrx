@@ -47,7 +47,7 @@ Rules:
 - npsEnabled should be false for internal HR/employee surveys and political research`
 
 export async function POST(req: Request) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

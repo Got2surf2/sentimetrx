@@ -11,7 +11,7 @@ import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-async function getAuth(supabase: ReturnType<typeof createClient>) {
+async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
@@ -20,7 +20,7 @@ async function getAuth(supabase: ReturnType<typeof createClient>) {
 
 // ── GET: check for existing social dataset ─────────────────────────
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
 // ── POST: create or sync ───────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

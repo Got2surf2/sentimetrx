@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { orgId: string } }
 
 export default async function OrgBackupsPage({ params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

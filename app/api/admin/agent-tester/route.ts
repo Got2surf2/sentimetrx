@@ -26,7 +26,7 @@ type TargetType = 'bot' | 'session'
 export async function POST(req: Request) {
   const denied = await requireAdmin()
   if (denied) return denied
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -174,7 +174,7 @@ export async function POST(req: Request) {
 export async function GET() {
   const denied = await requireAdmin()
   if (denied) return denied
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()

@@ -16,7 +16,7 @@ const TIER_RANK: Record<string, number> = { high: 3, moderate: 2, low: 1 }
 const TREND_RANK: Record<string, number> = { up: 2, steady: 1, down: 0 }
 
 export async function POST(request: Request, { params }: Props) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

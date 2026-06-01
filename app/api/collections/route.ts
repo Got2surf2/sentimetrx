@@ -13,7 +13,7 @@ import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

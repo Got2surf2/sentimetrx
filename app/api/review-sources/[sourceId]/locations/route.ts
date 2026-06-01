@@ -10,7 +10,7 @@ interface Params { params: { sourceId: string } }
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

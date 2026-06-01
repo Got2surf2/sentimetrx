@@ -35,7 +35,7 @@ export const fetchCache = 'force-no-store'
 interface Params { params: { datasetId: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

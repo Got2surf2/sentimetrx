@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 interface Ctx { params: { id: string } }
 
-async function authorize(supabase: ReturnType<typeof createClient>, userId: string, inviteOrgId: string) {
+async function authorize(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, inviteOrgId: string) {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, role, organizations(is_admin_org)')
@@ -20,7 +20,7 @@ async function authorize(supabase: ReturnType<typeof createClient>, userId: stri
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
