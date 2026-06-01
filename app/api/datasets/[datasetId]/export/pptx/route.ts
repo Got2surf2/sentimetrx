@@ -17,7 +17,10 @@ import { expandLemma } from '@/lib/lemmas'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill as bg, logo, trunc } from '@/lib/pptx/shared'
-import { renderProvenance, renderCustomDecks } from '@/lib/pptx/slideRenderer'
+import { renderProvenance, renderCustomDecks, renderEntityGrid, renderBarChart, renderQuotes } from '@/lib/pptx/slideRenderer'
+import { catalogToAggregate, entitySlideSpecs } from '@/lib/entityAnalysis'
+import { getEntitiesWithCounts } from '@/lib/entityFilter'
+import { discoverEntities } from '@/lib/entityDiscovery'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -1105,10 +1108,19 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
   footer(slide, pptx, datasetName)
 }
 
-function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[], getStripColor?: (text: string) => string | undefined) {
+// Field-level analytics counts for a text-analytics slide subtitle.
+// comments = responses with text in this field; signals = total theme
+// mentions (a response can hit multiple themes, so signals ≥/≤ comments).
+interface TextCounts { comments: number; signals: number }
+function withCounts(base: string, meta?: TextCounts): string {
+  if (!meta) return base
+  return base + ' · ' + meta.comments.toLocaleString() + ' comments · ' + meta.signals.toLocaleString() + ' signals'
+}
+
+function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[], getStripColor?: (text: string) => string | undefined, meta?: TextCounts) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.tealDark, 'Open-ended verbatim responses')
+  hdr(slide, pptx, f.label, DN.tealDark, withCounts('Open-ended verbatim responses', meta))
   logo(slide)
 
   const s = f.summary
@@ -1361,7 +1373,7 @@ function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
 // Compact grid overview: multiple themes per page (summary before the per-theme detail slides)
-function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fieldLabel?: string) {
+function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fieldLabel?: string, meta?: TextCounts) {
   if (!themes || themes.length === 0) return
   function chooseGrid(n: number) {
     if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
@@ -1380,7 +1392,7 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
     bg(slide, pptx)
     const gridTitle = fieldLabel ? 'Theme Analysis — ' + fieldLabel : 'Theme Analysis'
     const pgTag = totalPages > 1 ? (pg + 1) + ' of ' + totalPages : themes.length + ' themes identified'
-    hdr(slide, pptx, gridTitle, DN.tealDark, pgTag)
+    hdr(slide, pptx, gridTitle, DN.tealDark, withCounts(pgTag, meta))
     logo(slide)
     pageThemes.forEach(function(t: any, i: number) {
       const col = i % cols, row = Math.floor(i / cols)
@@ -1433,6 +1445,7 @@ async function buildThemeSlides(
   pptx: any, datasetName: string, themes: any[], fieldLabel?: string,
   allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[],
   usedComments?: Set<string>, orgId?: string, getStripColor?: (text: string) => string | undefined,
+  meta?: TextCounts,
 ) {
   if (!themes || themes.length === 0) return
 
@@ -1482,7 +1495,7 @@ async function buildThemeSlides(
       ? 'Theme Analysis — ' + fieldLabel
       : 'Theme Analysis'
     const themeSubtitle = (tidx + 1) + ' of ' + totalThemes + ' themes'
-    hdr(slide, pptx, themeTitle, DN.tealDark, themeSubtitle)
+    hdr(slide, pptx, themeTitle, DN.tealDark, withCounts(themeSubtitle, meta))
     logo(slide)
 
     const themeColor = (t.color || DN.teal).replace('#', '')
@@ -2292,6 +2305,11 @@ export async function POST(req: Request, { params }: Params) {
   // Closer-slide toggles — default ON; ExportModal lets the user opt out per export
   const includeCustomDecks: boolean    = body.includeCustomDecks !== false
   const includeProvenance:  boolean    = body.includeProvenance  !== false
+  // Entity analysis: field keys to run org/charity entity analysis on (native
+  // slides). skipTextAnalytics drops the theme/verbatim sections entirely so a
+  // deck can be entity-only (e.g. "skip text analytics, just analyse Charities").
+  const entityFields: string[]         = Array.isArray(body.entityFields) ? body.entityFields : []
+  const skipTextAnalytics: boolean     = body.skipTextAnalytics === true
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -2849,7 +2867,7 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     // ── 4: Open-ended fields → theme grid → per-theme detail (one per theme) ──
-    if (openEndedSelected.length > 0) {
+    if (!skipTextAnalytics && openEndedSelected.length > 0) {
       for (const f of openEndedSelected) {
         // Divider slide per OE field with prompt
         const divPrompt = f.prompt || (f.label !== f.field ? f.label : 'Open-ended verbatim responses')
@@ -2860,16 +2878,65 @@ export async function POST(req: Request, { params }: Params) {
         const fieldThemes = allRows.length > 0
           ? computeFieldThemes(f.field, sortedThemes)
           : sortedThemes
+        // comments = responses with text in this field; signals = total theme
+        // mentions (sum of per-theme match counts). Shown on every theme slide.
+        const fieldComments = fieldThemes[0]?.totalResponses
+          ?? allRows.filter(function(r) { return rowVal(r, f.field).trim().length > 0 }).length
+        const fieldMeta: TextCounts = {
+          comments: fieldComments,
+          signals: fieldThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
+        }
         // a) Overview slide (AI narrative + theme bar chart)
-        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8), getStripColor)
+        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8), getStripColor, fieldMeta)
         // b) Theme grid overview (multiple themes per page)
         if (includeThemeSlides && fieldThemes.length > 0) {
-          buildThemeGridSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined)
+          buildThemeGridSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, fieldMeta)
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (dataset as any).org_id, getStripColor)
+          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (dataset as any).org_id, getStripColor, fieldMeta)
         }
+      }
+    }
+
+    // ── 4b: Entity analysis — native StoryTime slides from the STORED entity catalog ──
+    // Reuses pre-extracted entities (already canonicalised + categorised by the
+    // discovery pipeline, with live mention counts) so it costs ZERO additional AI.
+    // If the catalog is empty, runs one discovery pass — which STORES the entities
+    // back into the dataset's catalog for next time — unless AI is off.
+    if (entityFields.length > 0) {
+      const entLabels = entityFields.map(function(k) {
+        const sf = (schema?.fields || []).find((s: any) => s.field === k)
+        return sf?.label || k
+      })
+      const sectionTitle = entLabels.length === 1 ? entLabels[0] + ' — Entity Analysis' : 'Entity Analysis'
+      try {
+        let ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200 })
+        let entityRows = 'notFound' in ents ? [] : ents.entities
+        let entityCats: { category: string; mentions: number }[] = 'notFound' in ents ? [] : ents.categories
+        // Empty catalog → run discovery once to populate + STORE it (needs AI)
+        if (entityRows.length === 0 && !skipAI) {
+          try {
+            await discoverEntities({ service, datasetId: params.datasetId, mode: 'manual', triggeredByUser: user.id })
+            ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200 })
+            entityRows = 'notFound' in ents ? [] : ents.entities
+            entityCats = 'notFound' in ents ? [] : ents.categories
+          } catch (e) {
+            console.error({ at: 'export/pptx', msg: 'entity discovery failed', err: e })
+          }
+        }
+        if (entityRows.length > 0) {
+          const agg = catalogToAggregate(entityRows, entityCats)
+          buildSectionDivider(pptx, sectionTitle, 'Organisations from your saved entity catalog · canonicalised and categorised', 1)
+          const specs = entitySlideSpecs(entLabels[0] || 'Entities', agg)
+          for (const spec of specs) {
+            if (spec.type === 'entity_grid') renderEntityGrid(pptx, spec, datasetName)
+            else if (spec.type === 'bar_chart') renderBarChart(pptx, spec, datasetName)
+            else if (spec.type === 'quotes') renderQuotes(pptx, spec, datasetName)
+          }
+        }
+      } catch (e) {
+        console.error({ at: 'export/pptx', msg: 'entity analysis failed', err: e })
       }
     }
 
@@ -2942,7 +3009,7 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     // ── 6: Sample comments (verbatim pages) at the end ────────────────────
-    if (openEndedSelected.length > 0) {
+    if (!skipTextAnalytics && openEndedSelected.length > 0) {
       openEndedSelected.forEach(function(f) {
         const dividerSubtitle = f.prompt || 'Sample verbatim responses'
         buildSectionDivider(pptx, f.label, dividerSubtitle, 1)

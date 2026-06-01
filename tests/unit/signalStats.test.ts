@@ -17,7 +17,7 @@ interface FakeOpts {
   flatCount: number
   // value every count_theme_matches RPC returns
   rpcVal: number
-  updateSpy: ReturnType<typeof vi.fn>
+  updateSpy: (payload: unknown) => void
 }
 
 // Minimal Supabase fake covering exactly the chains signalStats walks:

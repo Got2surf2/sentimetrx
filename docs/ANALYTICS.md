@@ -459,6 +459,27 @@ analytics export — dataset-row CSV download is not part of this module.
   (W22 audit lift — customer-export PPTX identifies the platform, not
   the parent company).
 - **Quote selection**: `pickBestComments()` selects 2-3 representative quotes per theme
+- **Comments + signals on text-analytics slides**: every open-ended/theme slide header
+  carries `N comments · M signals`, where *comments* = responses with text in that field
+  and *signals* = total theme mentions (sum of per-theme match counts; one response can
+  hit multiple themes, so signals ≠ comments). Computed live per field via
+  `computeFieldThemes` and passed to `buildOpenEndedSlide` / `buildThemeGridSlides` /
+  `buildThemeSlides` as a `meta` arg (`withCounts()` appends it to the subtitle).
+- **Entity analysis (`body.entityFields`)**: the Custom Builder's Entity Analysis picker
+  selects open-ended fields that name organisations (e.g. "Charities Donated To").
+  Slides are built from the **stored `entity_catalog`** (`getEntitiesWithCounts`) — the
+  same pre-extracted, canonicalised, categorised entities shown on the Entities tab — so
+  it costs **no extra AI**. If the catalog is empty it runs `discoverEntities` once (which
+  stores the result for next time), unless AI is off. Rendered with the shared
+  `entitySlideSpecs` + `renderEntityGrid/renderBarChart/renderQuotes` from
+  `lib/pptx/slideRenderer` (same renderers as `/api/entity-analysis-deck`, which now also
+  shares the extraction core in `lib/entityAnalysis.ts`).
+- **Skip text analytics (`body.skipTextAnalytics`)**: when set (paired with entity fields),
+  the theme/verbatim sections are dropped so the deck is entity-focused; categorical/numeric
+  slides still render. Lets a deck be "just analyse Charities, no theme walls of text."
+- **Theme picker counts**: the ExportModal theme cards fetch live counts from
+  `/api/datasets/[datasetId]/theme-counts` (the saved `theme_model.themes` persist
+  `count`/`percentage` as 0), so the cards show real `n`/`%` instead of zeros.
 - **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
   About slide as `<audience> edition · v<version>`
 

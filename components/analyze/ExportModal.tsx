@@ -81,6 +81,10 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
+  // Entity analysis: which open-ended fields to run org/charity entity analysis on,
+  // and whether to drop the theme/verbatim text-analytics slides entirely.
+  const [entityFields,       setEntityFields]       = useState<Set<string>>(new Set())
+  const [skipTextAnalytics,  setSkipTextAnalytics]  = useState(false)
   // Closer-slide toggles — both default on; user can opt out per export
   const [includeCustomDecks, setIncludeCustomDecks] = useState(true)
   const [includeProvenance,  setIncludeProvenance]  = useState(true)
@@ -132,13 +136,48 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
         setCommentConfig(defCmt)
         // Default: all OE fields selected for impact analysis
         setImpactOEFields(new Set(f.filter(function(fld: SchemaField) { return fld.type === 'open-ended' && fieldHasData(fld) }).map(function(fld: SchemaField) { return fld.field })))
+        // Pre-select an obvious entity field (e.g. "Charities donated to") if present
+        const entityPre = new Set<string>()
+        f.forEach(function(fld: SchemaField) {
+          if (fld.type === 'open-ended' && /charit|organi[sz]ation|nonprofit|donate/i.test(fld.label || fld.field)) entityPre.add(fld.field)
+        })
+        setEntityFields(entityPre)
         setCommentAnnotations(f.filter(function(fld: SchemaField) {
           return (fld.section === 'demographic' || fld.section === 'psychographic') && fieldHasData(fld)
         }).map(function(fld: SchemaField) { return fld.field }))
         // Load themes from theme_model
-        const themeList: any[] = d.theme_model?.themes || []
+        const tm = d.theme_model || {}
+        const themeList: any[] = tm.themes || []
         setThemes(themeList)
         setSelectedThemeIds(new Set(themeList.map(function(t: any) { return t.id })))
+        // The saved theme_model persists count/percentage as 0 (real counts are
+        // computed live in TextMine, never written back), which made the picker
+        // cards read n=0 / 0%. Fetch live per-theme counts and merge them in.
+        const tmFields: string[] = (tm.fieldNames && tm.fieldNames.length)
+          ? tm.fieldNames
+          : (tm.fieldName ? [tm.fieldName] : [])
+        if (themeList.length > 0 && tmFields.length > 0) {
+          fetch('/api/datasets/' + datasetId + '/theme-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              themes: themeList.map(function(t: any) { return { id: t.id, keywords: t.keywords || [] } }),
+              fields: tmFields,
+            }),
+          })
+            .then(function(r) { return r.ok ? r.json() : null })
+            .then(function(data) {
+              if (!data || !Array.isArray(data.counts)) return
+              const byId: Record<string, { count: number; percentage: number }> = {}
+              data.counts.forEach(function(c: any) { byId[c.id] = { count: c.count, percentage: c.percentage } })
+              setThemes(function(prev) {
+                return prev.map(function(t: any) {
+                  return byId[t.id] ? Object.assign({}, t, byId[t.id]) : t
+                })
+              })
+            })
+            .catch(function() { /* picker just shows 0 if counts can't load */ })
+        }
       })
       .catch(function() { setError('Could not load dataset fields') })
       .finally(function() { setLoading(false) })
@@ -201,6 +240,8 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
 
     try {
       const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance }
+      if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
+      if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
       if (impactOEFields.size > 0) body.impactOEFields = Array.from(impactOEFields)
       if (impactScoreFields.size > 0) body.impactScoreFields = Array.from(impactScoreFields)
@@ -546,6 +587,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
+                  <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   <CloserSlidesToggles
@@ -627,6 +669,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
+                  <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   <CloserSlidesToggles
@@ -1158,6 +1201,61 @@ function ThemePicker({
             })}
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+function EntityAnalysisPicker({
+  fields, entityFields, setEntityFields, skipTextAnalytics, setSkipTextAnalytics, aiEnabled,
+}: {
+  fields: SchemaField[]
+  entityFields: Set<string>
+  setEntityFields: (v: Set<string>) => void
+  skipTextAnalytics: boolean
+  setSkipTextAnalytics: (v: boolean) => void
+  aiEnabled: boolean
+}) {
+  const oeFields = fields.filter(function(f) { return f.type === 'open-ended' })
+  if (oeFields.length === 0) return null
+
+  function toggle(field: string) {
+    const next = new Set(entityFields)
+    next.has(field) ? next.delete(field) : next.add(field)
+    setEntityFields(next)
+  }
+
+  const PURPLE = '#6D28D9'
+  return (
+    <div style={{ marginBottom: 14, border: '1.5px solid ' + PURPLE + '30', borderRadius: 10, padding: '14px 14px 12px', background: '#faf8ff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 14 }}>🏷️</span>
+        <div style={{ fontSize: 11, fontWeight: 700, color: PURPLE, flex: 1 }}>Entity Analysis</div>
+      </div>
+      <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.5, marginBottom: 10 }}>
+        Pick open-ended fields that name organisations (e.g. <em>Charities donated to</em>). Adds slides — top organisations, by category, the long tail — built from your <strong>saved entity catalog</strong> (the same entities shown on the Entities tab), so it costs no extra AI. If none are saved yet, they&apos;re extracted once and stored for next time.
+      </div>
+      {!aiEnabled && (
+        <div style={{ fontSize: 10, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, padding: '6px 9px', marginBottom: 10, lineHeight: 1.4 }}>
+          Saved entities are used as-is. If none exist yet, extracting them the first time needs AI — turn on AI in the header, or run Discover on the Entities tab first.
+        </div>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: entityFields.size > 0 ? 10 : 0 }}>
+        {oeFields.map(function(f) {
+          const active = entityFields.has(f.field)
+          return (
+            <button key={f.field} type="button" onClick={function() { toggle(f.field) }}
+              style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', background: active ? '#f3eaff' : '#f4f5f7', color: active ? PURPLE : '#9ca3af', border: '1px solid ' + (active ? PURPLE + '80' : '#e5e7eb') }}>
+              {active ? '✓ ' : ''}{f.label || f.field}
+            </button>
+          )
+        })}
+      </div>
+      {entityFields.size > 0 && (
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: S.textMid, cursor: 'pointer' }}>
+          <input type="checkbox" checked={skipTextAnalytics} onChange={function(e) { setSkipTextAnalytics(e.target.checked) }} style={{ marginTop: 2, accentColor: PURPLE }} />
+          <span>Skip the theme &amp; verbatim text-analytics slides — build an entity-focused deck (categorical/numeric slides still included).</span>
+        </label>
       )}
     </div>
   )
