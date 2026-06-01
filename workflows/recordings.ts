@@ -1,11 +1,15 @@
 // workflows/recordings.ts
 //
-// Recording pipeline as a Vercel Workflow DevKit run — one workflow instance
-// per recording. Spec § 3.1: stage diagram lives in code here.
+// Recording pipeline as a Vercel Workflow DevKit run. Spec § 3.1: stage diagram
+// lives in code here. Gate 1 (on-demand analysis) splits the pipeline in two
+// workflows so the expensive Opus + Sonnet pass never auto-fires:
 //
-//   queued → extracting → transcribing → analyzing → complete
-//                                              ↓
-//                          (any throw)  →  failed (with error_message)
+//   processRecordingWorkflow:  queued → extracting → transcribing → transcribed
+//                                                                       ↑ PAUSE
+//   analyzeRecordingWorkflow:  transcribed → analyzing → complete
+//                                   (user-triggered via POST .../analyze)
+//
+//   (any throw in either) → failed (with error_message)
 //
 // recordings.status is the durable cursor the UI watches; the WDK run is the
 // operational cursor the platform uses for retry/replay. The two stay in sync
@@ -28,6 +32,9 @@ import type {
   RecordingStatus,
 } from '@/lib/recordings/types'
 
+// Phase 1 — ingest through transcription, then PAUSE at 'transcribed'. The
+// analysis pass is deliberately NOT run here (Gate 1): the user reviews the
+// transcript and adjusts setup before triggering analyzeRecordingWorkflow.
 export async function processRecordingWorkflow(recording_id: string, org_id: string) {
   "use workflow"
 
@@ -38,8 +45,23 @@ export async function processRecordingWorkflow(recording_id: string, org_id: str
     await setStatus(recording_id, org_id, 'transcribing')
     await runTranscribe(recording_id, org_id)
 
+    await setStatus(recording_id, org_id, 'transcribed')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await setFailed(recording_id, org_id, message)
+    throw err
+  }
+}
+
+// Phase 2 — user-triggered analysis. Runs the Opus + Sonnet two-pass on the
+// already-stored transcript. `instructions` is the optional free-text steer the
+// user supplies in the review-and-generate gate (§ 5.3).
+export async function analyzeRecordingWorkflow(recording_id: string, org_id: string, instructions?: string) {
+  "use workflow"
+
+  try {
     await setStatus(recording_id, org_id, 'analyzing')
-    await runAnalyze(recording_id, org_id)
+    await runAnalyze(recording_id, org_id, instructions)
 
     await setStatus(recording_id, org_id, 'complete')
     await setCompletedAt(recording_id, org_id)
@@ -64,7 +86,7 @@ async function runTranscribe(recording_id: string, org_id: string) {
   await transcribeRecording({ recording: rec })
 }
 
-async function runAnalyze(recording_id: string, org_id: string) {
+async function runAnalyze(recording_id: string, org_id: string, instructions?: string) {
   "use step"
   const rec = await loadRecording(recording_id, org_id)
   if (!rec) throw new FatalError(`recording ${recording_id} disappeared before analyze`)
@@ -78,6 +100,7 @@ async function runAnalyze(recording_id: string, org_id: string) {
     session_type: rec.session_type,
     setup_inputs: rec.setup_inputs,
     transcript: transcript.segments,
+    instructions,
   })
 
   await mirrorExtractionsToDataset({

@@ -322,6 +322,15 @@ A recording dataset is a normal `datasets` row with `source='recording'`. It is 
 
 Each post-upload stage is a queue job. `recordings.status` is the durable cursor; the queue worker reads the current status, runs the stage, advances status. Failure marks status='failed' + writes `error_message`; the admin / org-admin monitor can retry from the last successful stage.
 
+**Gate 1 — analysis is on-demand.** The pipeline does **not** run end-to-end on a single trigger. `processRecordingWorkflow` runs Upload → Extract → Transcribe and then **pauses** at `status='transcribed'`. The expensive Analyze pass (Opus + Sonnet, ~$1) never auto-fires: the user reviews the transcript on the status surface, optionally refines the agenda / panel roster / adds a free-text steer, then explicitly triggers `analyzeRecordingWorkflow` via `POST /api/recordings/[id]/analyze` (§ 4.2b). This is split into two WDK runs:
+
+```
+processRecordingWorkflow:  queued → extracting → transcribing → transcribed   ← PAUSE (awaiting user)
+analyzeRecordingWorkflow:  transcribed → analyzing → complete                 ← user-triggered
+```
+
+Gate 2 (the polished/formatted report + PDF deliverable, § 4.5) is likewise on-demand by design — it is a separate user-invoked export route, never produced automatically as part of the pipeline.
+
 ### 3.2 Upload (browser → Supabase Storage)
 
 - **Chunked resumable upload** using Supabase Storage's TUS-protocol endpoint (`POST /storage/v1/upload/resumable`). Browser uploads directly to Storage, bypassing Vercel function body limits.
@@ -535,7 +544,23 @@ Companion to § 4.1. Called by the wizard after each TUS upload succeeds; flips 
 
 ### 4.2 `POST /api/recordings/[id]/process` — start the pipeline
 
-Called after all files report `upload_status='uploaded'`. Transitions `uploading → queued` and enqueues the extract job.
+Called after all files report `upload_status='uploaded'`. Transitions `uploading → queued` and starts `processRecordingWorkflow`, which runs extract → transcribe and **pauses at `status='transcribed'`** (Gate 1). It does **not** run the analysis pass. Idempotent: accepts `status='uploading'` or `'failed'` (restart from the beginning); any other status returns `{ already_running: true }`.
+
+### 4.2b `POST /api/recordings/[id]/analyze` — generate Q&A pairs (Gate 1, user-triggered)
+
+Called from the review-and-generate gate (§ 5.3) once the pipeline is paused at `status='transcribed'`. Starts `analyzeRecordingWorkflow` (analyzing → complete), which runs the Opus + Sonnet two-pass on the stored transcript, mirrors extractions into `dataset_rows_flat`, and computes coverage.
+
+**Auth:** session cookie + CSRF. Same-tenant `(id, org_id)` pair.
+
+**Body (all optional):**
+```json
+{
+  "setup_inputs": { /* full edited QaSetupInputs — agenda[], panel[] */ },
+  "instructions": "free-text steer appended to both Opus + Sonnet prompts"
+}
+```
+
+If `setup_inputs` is present it replaces `recordings.setup_inputs` before analysis (last-minute agenda / panel-roster fixes that steer extraction quality). `instructions` ≤ 4000 chars. Accepts `status='transcribed'` (first generation) or `'failed'` (retry the analysis pass without re-transcribing); other statuses return `{ already_running }`.
 
 ### 4.3 `GET /api/recordings/[id]` — status + details
 
@@ -603,7 +628,7 @@ Scope resolved from the caller's `userContext` (see `lib/userContext.ts`):
 - `isAdmin` (org-level admin) users: see all recordings in their own org.
 - Regular users: see only recordings where `created_by = self`.
 
-Pagination via `?limit` (1–100, default 50) + `?offset` (default 0). Filter via `?status=` against the recordings.status enum (`uploading | queued | extracting | transcribing | analyzing | rendering | complete | failed | cancelled`); unknown values 400.
+Pagination via `?limit` (1–100, default 50) + `?offset` (default 0). Filter via `?status=` against the recordings.status enum (`uploading | queued | extracting | transcribing | transcribed | analyzing | rendering | complete | failed | cancelled`); unknown values 400.
 
 **Response:**
 ```json
@@ -728,7 +753,7 @@ Upload runs in background; user fills setup in parallel. Process button disabled
 
 ### 5.3 Status surface — `/analyze/new/recording/[id]/status`
 
-Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`.
+Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll.
 
 **Rendered:**
 - Step list — vertical, six rows, Claude-Code-style. Each row: status icon (✓ green for past, ⟳ orange spinning for current, ○ grey for future, ✗ red for failed) + step label + a sub-detail line derived from the § 4.3 payload. Examples:
@@ -741,9 +766,10 @@ Server page hands an initial recording snapshot to `StatusClient.tsx`, which pol
 - Source files panel — per-file row with name, size, duration (when extract has populated it), and an `upload_status` badge (`pending | uploaded | extracted | failed`).
 - Transcript panel — vendor, language detected, word count, duration, ASR cost — appears once `recording_transcripts` is written.
 - Extraction panel — Q&A pair count + total cost-to-date — appears once `extraction_count > 0`.
+- **Review-and-generate gate** (Gate 1, `status='transcribed'`): an orange-bordered panel above the file/transcript panels. For QA sessions it shows the agenda topics (one per line) and panel roster (`Name — role`, one per line) seeded from `setup_inputs`, both editable, plus an optional extraction-instructions textarea and a **"Generate Q&A pairs"** button (cost note: ~$1 · Opus + Sonnet). Submitting POSTs the edited `setup_inputs` + `instructions` to `/api/recordings/[id]/analyze` (§ 4.2b); on success polling resumes as status moves to `analyzing`. The step list paints everything through *Transcribing* as done and *Analyzing*/*Complete* as pending (no spinner — the gate is the next action). The ASR vendor can't be changed here (re-running ASR would require re-transcription); it's already fixed by this point.
 - Terminal-state banners:
   - `complete + dataset_id` → green banner + "Open report" link, plus a 1.2s `router.push('/analyze/[dataset_id]/report')` auto-redirect for the user who just kicked off the run.
-  - `failed` → red banner with the recording's `error_message` and a "Retry from failed stage" button that POSTs to `/api/recordings/[id]/process` (the process route already accepts `status='failed'` and re-starts the WDK run from the beginning). The failed step in the list is decorated red via a heuristic that walks forward — first step we can't prove succeeded is the failure point (extracting if any file is missing `audio_storage_path`, transcribing if no `recording_transcripts` row, analyzing if no extractions, late-analyzing for mirror/coverage failures).
+  - `failed` → red banner with the recording's `error_message` and a "Retry" button. If a transcript already exists (the failure was in the analysis pass) it POSTs to `/api/recordings/[id]/analyze` to retry just analysis; otherwise it POSTs to `/api/recordings/[id]/process` to re-run the pipeline from the beginning (the process route accepts `status='failed'`). The failed step in the list is decorated red via a heuristic that walks forward — first step we can't prove succeeded is the failure point (extracting if any file is missing `audio_storage_path`, transcribing if no `recording_transcripts` row, analyzing if no extractions, late-analyzing for mirror/coverage failures).
 
 Closes-tab-friendly: user can come back to this URL anytime; on revisit the page server-renders the current name + status, then the client picks up polling from there.
 
@@ -971,7 +997,7 @@ Defined in `vercel.json` / `vercel.ts`.
 7. `lib/recordings/transcribe.ts` — vendor dispatch.
 8. `lib/recordings/analyze.ts` — Opus extraction + Sonnet curator pass.
 9. `lib/recordings/mirror.ts` — `dataset_rows_flat` mirror.
-10. `workflows/recordings.ts` + `app/api/recordings/[id]/process/route.ts` — Workflow DevKit run that drives extract → transcribe → analyze, with each stage as a `"use step"` and `recordings.status` updated between them.
+10. `workflows/recordings.ts` + `app/api/recordings/[id]/{process,analyze}/route.ts` — two Workflow DevKit runs (Gate 1): `processRecordingWorkflow` drives extract → transcribe → `transcribed` (pause), and the user-triggered `analyzeRecordingWorkflow` drives analyzing → complete. Each stage is a `"use step"` and `recordings.status` is updated between them.
 11. `scripts/pm1-smoke.ts` — calibration harness that re-runs `analyzeRecording` against a stored PM-1 transcript and diffs against PDF ground truth (count, F1, per-field accuracy, per-topic recall). Fixtures live outside the repo and are pointed at via `PM1_TRANSCRIPT_PATH` / `PM1_SETUP_PATH` / `PM1_GROUND_TRUTH_PATH`. Full end-to-end re-upload through the wizard is Phase 4.
 
 ### Phase 2 — UX (2026-06-07 → 2026-06-10)

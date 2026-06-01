@@ -29,6 +29,7 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = 
   queued:       { bg: '#ffedd5', fg: '#c2410c', label: 'Queued' },
   extracting:   { bg: '#ffedd5', fg: '#c2410c', label: 'Extracting' },
   transcribing: { bg: '#ffedd5', fg: '#c2410c', label: 'Transcribing' },
+  transcribed:  { bg: '#fef9c3', fg: '#a16207', label: 'Review & generate' },
   analyzing:    { bg: '#ffedd5', fg: '#c2410c', label: 'Analyzing' },
   rendering:    { bg: '#ffedd5', fg: '#c2410c', label: 'Rendering' },
 }
