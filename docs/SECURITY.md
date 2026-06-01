@@ -401,16 +401,16 @@ quarterly):
   Open `<TBD>` item 7 tracks a `lib/ai.ts` wrapper that asserts
   the row set has a single `org_id` before dispatch, with a unit
   test.
-- **Model output sanitization:** the survey-engine path
-  (`components/survey/useSurveyEngine.ts`) sanitizes AI output
-  with `isomorphic-dompurify` before any HTML render.
-  **Gap:** `app/bots/[id]/conversations/ConversationsClient.tsx`,
+- **Model output sanitization:** every surface that renders
+  AI- or user-derived HTML routes through `isomorphic-dompurify`
+  first — the survey engine (`components/survey/useSurveyEngine.ts`)
+  plus, as of 2026-06-01, the three `dangerouslySetInnerHTML`
+  callsites that previously did not:
+  `app/bots/[id]/conversations/ConversationsClient.tsx`,
   `components/ui/ChatBot.tsx`, and
-  `app/campaigns/[id]/CampaignDetailClient.tsx` each call
-  `dangerouslySetInnerHTML` on AI-derived content without
-  routing through DOMPurify — tracked as Open `<TBD>` item 14
-  below. URLs are stripped from any surface that doesn't
-  explicitly need them.
+  `app/campaigns/[id]/CampaignDetailClient.tsx` (3 email-preview
+  renders). Open `<TBD>` item 14 is now closed. URLs are stripped
+  from any surface that doesn't explicitly need them.
 
 **How we verify:** `lib/guardrails.ts` has unit coverage in
 `tests/unit/`; output sanitization is exercised by component
@@ -610,14 +610,9 @@ plumbing that needs to ship.
     never include PII fields.
 13. **Quarterly DR restore drill** + S3 versioning audit on
     every bucket holding customer data.
-14. **Wrap remaining `dangerouslySetInnerHTML` callsites with
-    DOMPurify.** Three surfaces render AI-derived content
-    without going through `isomorphic-dompurify`:
-    `app/bots/[id]/conversations/ConversationsClient.tsx:563`
-    (agent conversation turns via `linkify`),
-    `components/ui/ChatBot.tsx:454` (chat messages via
-    `formatHtml`), and
-    `app/campaigns/[id]/CampaignDetailClient.tsx` (campaign
-    body). Each should `DOMPurify.sanitize(...)` before
-    `dangerouslySetInnerHTML`, matching the survey-engine
-    pattern.
+14. **✅ CLOSED (2026-06-01).** All three `dangerouslySetInnerHTML`
+    callsites now `DOMPurify.sanitize(...)` before render, matching
+    the survey-engine pattern: `ConversationsClient.tsx` (agent
+    conversation turns via `linkify`), `ChatBot.tsx` (chat messages
+    via `formatHtml`), and `CampaignDetailClient.tsx` (the 3
+    email-preview renders).

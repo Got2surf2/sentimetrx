@@ -34,6 +34,7 @@ tests/
 ├── setup.ts              # global setup (env stubs, next/headers shim)
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
+│   ├── components/       # BrandTagInput (first component test — render + onChange + datalist fetch)
 │   ├── recordings/       # coverage (per-topic/gap/histogram), analyze (Opus+Sonnet parse + flag-merge, callAI mocked)
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
@@ -63,7 +64,8 @@ tests/
 │   ├── campaign-routes-egress.test.ts # env-gated — service-role campaign-by-id routes
 │   ├── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
 │   ├── recordings-routes.test.ts      # 8 recordings routes — auth/feature/org gates + validation (mocked)
-│   └── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes (mocked)
+│   ├── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes (mocked)
+│   └── tenant-routes-gate.test.ts     # campaign-send / social-handle / dataset route — 401 + cross-org 404 (mocked)
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
 └── loadtest/

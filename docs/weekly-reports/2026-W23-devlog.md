@@ -72,3 +72,19 @@
 **Tests**: `tests/unit/signalStats.test.ts` (3) — cache hit when hash+count match (no recompute), recompute when row_count changes under a stable hash (the Coalition case, 67→80), recompute for a legacy cache missing `row_count`.
 
 **Verification**: `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm test` 373 passed / 54 skipped (+3). Diagnosis confirmed by live read-only counts, not asserted. ANALYTICS.md § "Signal-stats toolbar" documents the keying + the intentional records-vs-responses denominator difference.
+
+## 2026-06-01 — Audit push (DOMPurify, .env.example, test batch); Next 14→16 scoped
+
+Driven by a fresh `/audit-codebase` run (7.5/10 on the skill's framework). Did the safe wins; scoped the Next upgrade separately.
+
+**DOMPurify on the 3 `dangerouslySetInnerHTML` surfaces** (Security; closes the long-standing SECURITY.md TBD #14): wrapped the rendered HTML in `DOMPurify.sanitize` (existing `isomorphic-dompurify` dep) on `app/bots/[id]/conversations/ConversationsClient.tsx` (conversation message linkify), `components/ui/ChatBot.tsx` (chat bubble formatHtml), and `app/campaigns/[id]/CampaignDetailClient.tsx` (3 email-preview renders). All strip script/on*/javascript: while keeping the safe markup the helpers emit.
+
+**`.env.example`** committed (Secrets 9→10 + onboarding/DD): enumerated all 56 `process.env.*` refs from the code and grouped them (core Supabase, AI providers, email/SMS, data sources, Meta social, AWS backups, recordings infra, secrets/signing, Sentry, URLs, internal flags) with placeholder values — no real credentials. Notes the GOAA/Meridian public-fallback pattern and the build-time-derived vars.
+
+**Test batch** (Tests): `tests/unit/components/BrandTagInput.test.tsx` — the repo's **first component test** (render contract + onChange + `/api/brands` datalist population via mocked fetch). `tests/integration/tenant-routes-gate.test.ts` — gate coverage for campaign-send / social-comment-handle / dataset-route (401 + cross-org 404). Suite +10.
+
+**Deliberately skipped `.claude/rules`** (the audit's AI-Patterns nudge): Claude Code auto-loads `CLAUDE.md`, not a `.claude/rules/` dir, in this repo — creating files there would be non-functional score-gaming. AI-Patterns is already healthy (rich CLAUDE.md + hooks + 4 commands + spec-drift/devlog/governance automation).
+
+**Next 14→16 scoped (not executed):** 0 direct `cookies()`/`headers()` sites and 0 `next/image` (the scariest 15 migrations barely apply), but **235 route handlers + 36 pages** read `params`/`searchParams` (async in 15, codemod-assisted), 62 server-component `fetch()` sites need a caching-default audit, 8 `useSearchParams` need Suspense boundaries, and the config (instrumentationHook/serverActions relocation + Turbopack-default vs the Sentry webpack plugin) + a React 18→19 bump make it a stacked two-major. Estimate ~3–5 day spike + prod canary. Full write-up handed to the user.
+
+**Verification**: `tsc --noEmit` clean; `npm test` 383 passed / 54 skipped.

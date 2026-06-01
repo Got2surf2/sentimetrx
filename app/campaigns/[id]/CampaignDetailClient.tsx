@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import DOMPurify from 'isomorphic-dompurify'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import ShareModal from '@/components/ui/ShareModal'
@@ -1242,7 +1243,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                   <div className="border border-gray-200 rounded-lg overflow-hidden bg-white sticky top-0">
                     <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-400 uppercase">Live Preview</div>
                     <div className="p-3 text-sm overflow-y-auto" style={{ maxHeight: 600 }}
-                      dangerouslySetInnerHTML={{ __html: previewHtml(buildHtmlFromStructure(tmplStruct)) }} />
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml(buildHtmlFromStructure(tmplStruct))) }} />
                   </div>
                 </div>
               ) : (
@@ -1255,7 +1256,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                       <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-400 uppercase">Preview</div>
                       <div className="px-3 py-3 text-sm overflow-y-auto" style={{ maxHeight: 340 }}
-                        dangerouslySetInnerHTML={{ __html: previewHtml(bodyHtml) }} />
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml(bodyHtml)) }} />
                     </div>
                   </div>
                 </div>
@@ -1294,7 +1295,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
             <div>
               <p className="text-sm font-medium text-gray-700">{email.subject}</p>
               <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto font-mono whitespace-pre-wrap"
-                dangerouslySetInnerHTML={{ __html: email.body_html.slice(0, 500) + (email.body_html.length > 500 ? '...' : '') }} />
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(email.body_html.slice(0, 500) + (email.body_html.length > 500 ? '...' : '')) }} />
             </div>
           )}
         </div>
