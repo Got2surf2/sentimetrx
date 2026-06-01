@@ -24,7 +24,7 @@ import type { OrgSnapshot } from '@/lib/orgSnapshot'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-interface Params { params: { orgId: string } }
+interface Params { params: Promise<{ orgId: string }> }
 
 interface TableReport {
   table: string
@@ -35,7 +35,8 @@ interface TableReport {
   first_error?: string
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 

@@ -11,7 +11,7 @@ import { logBotChange } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
 
-async function getUserContext(supabase: ReturnType<typeof createClient>) {
+async function getUserContext(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase
@@ -25,7 +25,7 @@ async function getUserContext(supabase: ReturnType<typeof createClient>) {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!ctx.isAdmin && !ctx.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

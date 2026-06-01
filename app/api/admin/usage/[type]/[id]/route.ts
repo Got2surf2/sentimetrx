@@ -12,7 +12,8 @@ export const fetchCache = 'force-no-store'
 
 const VALID_TYPES = new Set(['bot', 'townhall', 'social', 'dataset', 'study', 'system'])
 
-export async function GET(req: NextRequest, { params }: { params: { type: string; id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ type: string; id: string }> }) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 

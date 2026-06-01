@@ -8,7 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { expandLemma } from '@/lib/lemmas'
 import { olsRegression } from '@/lib/statsUtils'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -36,8 +36,9 @@ function matchesTheme(text: string, keywords: string[]): boolean {
   return false
 }
 
-export async function POST(req: Request, { params }: Props) {
-  const supabase = createClient()
+export async function POST(req: Request, props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

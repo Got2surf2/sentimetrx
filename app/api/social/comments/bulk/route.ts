@@ -6,7 +6,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-async function getAuth(supabase: ReturnType<typeof createClient>) {
+async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
@@ -14,7 +14,7 @@ async function getAuth(supabase: ReturnType<typeof createClient>) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

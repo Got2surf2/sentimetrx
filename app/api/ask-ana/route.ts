@@ -185,7 +185,7 @@ function computeMemberBudgets(
 export async function POST(req: Request) {
   // Auth + admin-org context. Admin-org users get cross-org dataset visibility
   // (same pattern as the rest of the platform; see lib/auth/orgAccess.ts).
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = { id: userId }

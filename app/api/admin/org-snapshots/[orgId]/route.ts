@@ -13,9 +13,10 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-interface Params { params: { orgId: string } }
+interface Params { params: Promise<{ orgId: string }> }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(_req: NextRequest, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
   try {
@@ -26,7 +27,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(_req: NextRequest, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 

@@ -7,7 +7,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function logDeckDownload(deckName: string, variant?: string): Promise<void> {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     let userId: string | null = null
     let orgId: string | null = null

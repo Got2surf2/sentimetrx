@@ -24,7 +24,7 @@ const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: str
   townhall_session: { table: 'townhall_sessions', ts: 'created_at', href: (id) => '/townhall/' + id },
 }
 
-async function resolveCaller(supabase: ReturnType<typeof createClient>) {
+async function resolveCaller(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase
@@ -38,7 +38,7 @@ async function resolveCaller(supabase: ReturnType<typeof createClient>) {
 }
 
 export async function GET() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const caller = await resolveCaller(supabase)
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -95,7 +95,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const caller = await resolveCaller(supabase)
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

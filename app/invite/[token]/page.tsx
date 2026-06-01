@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -8,7 +8,7 @@ const HERMES = '#E8632A'
 const HERMES_DEEP = '#c84e1d'
 const TEAL = '#0F7173'
 
-interface Props { params: { token: string } }
+interface Props { params: Promise<{ token: string }> }
 
 interface Invite {
   id:        string
@@ -25,7 +25,8 @@ const ROLE_LABEL: Record<string, string> = {
   viewer: 'Viewer',
 }
 
-export default function InvitePage({ params }: Props) {
+export default function InvitePage(props: Props) {
+  const params = use(props.params);
   const [invite,   setInvite]   = useState<Invite | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)

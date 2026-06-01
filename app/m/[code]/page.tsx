@@ -21,9 +21,10 @@ export const metadata: Metadata = {
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
-interface Props { params: { code: string } }
+interface Props { params: Promise<{ code: string }> }
 
-export default async function MobileHandoffPage({ params }: Props) {
+export default async function MobileHandoffPage(props: Props) {
+  const params = await props.params;
   const code = (params.code || '').toUpperCase().slice(0, 6)
   const service = createServiceRoleClient()
 

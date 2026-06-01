@@ -10,7 +10,7 @@ import PosPreviewClient from './PosPreviewClient'
 export const dynamic = 'force-dynamic'
 
 export default async function PosPreviewPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

@@ -3,11 +3,12 @@ import { redirect, notFound } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import EditStudyClient from './EditStudyClient'
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 export const dynamic = 'force-dynamic'
 
-export default async function EditStudyPage({ params }: Props) {
-  const supabase = createClient()
+export default async function EditStudyPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

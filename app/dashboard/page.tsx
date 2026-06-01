@@ -6,8 +6,9 @@ import DashboardClient from './DashboardClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage({ searchParams }: { searchParams: { org?: string; user?: string } }) {
-  const supabase = createClient()
+export default async function DashboardPage(props: { searchParams: Promise<{ org?: string; user?: string }> }) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

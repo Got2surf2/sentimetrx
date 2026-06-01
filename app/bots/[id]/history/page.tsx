@@ -8,10 +8,11 @@ import HistoryClient from './HistoryClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export default async function BotHistoryPage({ params }: Params) {
-  const supabase = createClient()
+export default async function BotHistoryPage(props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

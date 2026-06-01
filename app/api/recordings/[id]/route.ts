@@ -16,11 +16,11 @@ export const dynamic = 'force-dynamic'
 
 const BUCKET = 'recordings'
 
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
-  const recording_id = ctx.params.id
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
   if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
@@ -112,11 +112,11 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
 // its mirrored rows, and the recording row (which cascades recording_files,
 // recording_transcripts, recording_extractions). Permitted for the owner, an
 // org admin, or a platform admin. This is irreversible.
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
-  const recording_id = ctx.params.id
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
   if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const uc = await getUserContext(supabase)
   if (!uc) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

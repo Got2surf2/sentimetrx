@@ -7,12 +7,13 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: Request, { params }: Props) {
-  const supabase = createClient()
+export async function GET(_req: Request, props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

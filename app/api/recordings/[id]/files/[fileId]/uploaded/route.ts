@@ -16,11 +16,11 @@ export const dynamic = 'force-dynamic'
 
 const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
 
-export async function POST(_req: Request, ctx: { params: { id: string; fileId: string } }) {
-  const { id: recording_id, fileId } = ctx.params
+export async function POST(_req: Request, ctx: { params: Promise<{ id: string; fileId: string }> }) {
+  const { id: recording_id, fileId } = (await ctx.params)
   if (!recording_id || !fileId) return NextResponse.json({ error: 'missing ids' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

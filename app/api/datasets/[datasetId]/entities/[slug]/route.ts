@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic'
 const CATEGORIES = ['food', 'drink', 'place', 'person', 'brand', 'other']
 const MAX_ALIASES_PER_ENTITY = 25
 
-interface Params { params: { datasetId: string; slug: string } }
+interface Params { params: Promise<{ datasetId: string; slug: string }> }
 
 function normaliseAliases(input: unknown): string[] {
   if (!Array.isArray(input)) return []
@@ -38,8 +38,8 @@ function normaliseAliases(input: unknown): string[] {
   return out
 }
 
-async function authorise(req: Request, params: Params['params']) {
-  const supabase = createClient()
+async function authorise(req: Request, params: Awaited<Params['params']>) {
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
 
@@ -54,7 +54,8 @@ async function authorise(req: Request, params: Params['params']) {
   return { service, scope, userId }
 }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
   const auth = await authorise(req, params)
   if ('error' in auth) return auth.error
   const { service, scope } = auth
@@ -93,7 +94,8 @@ export async function PATCH(req: Request, { params }: Params) {
   return NextResponse.json({ entity: data })
 }
 
-export async function DELETE(req: Request, { params }: Params) {
+export async function DELETE(req: Request, props: Params) {
+  const params = await props.params;
   const auth = await authorise(req, params)
   if ('error' in auth) return auth.error
   const { service, scope } = auth

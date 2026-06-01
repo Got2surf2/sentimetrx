@@ -3,8 +3,9 @@
 
 import { redirect } from 'next/navigation'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
-export default function DatasetPage({ params }: Props) {
+export default async function DatasetPage(props: Props) {
+  const params = await props.params;
   redirect('/analyze/' + params.datasetId + '/textmine')
 }

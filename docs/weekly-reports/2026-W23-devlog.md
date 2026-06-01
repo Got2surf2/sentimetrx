@@ -106,3 +106,41 @@ Driven by a fresh `/audit-codebase` run (7.5/10 on the skill's framework). Did t
 ## 2026-06-01 — Fix: signals-pptx export wrote to server ~/Downloads (prod crash)
 
 CI on PR #11 surfaced a pre-existing bug: `app/api/datasets/[datasetId]/export/signals-pptx/route.ts` called `fs.writeFileSync(os.homedir()/Downloads/...)` server-side after rendering the deck — leftover dev convenience. It ENOENT-crashes on Vercel's serverless filesystem (no `~/Downloads`), and an API route shouldn't write to local disk anyway (it already returns the PPTX as an HTTP attachment). Removed the write; the download response is unchanged. The export-org-gate test's same-org case (which exercises the full route) now passes on CI.
+
+## 2026-06-01 — Next 14 → 15 upgrade (Phase 1 of the 14→16 spike) — branch upgrade/next-15
+
+Executed Phase 1 of the scoped Next upgrade. Branch `upgrade/next-15`, commit-only (not pushed), 3 checkpoint commits. **Bumping to Next 15 clears the last HIGH CVE — `npm audit` now 0 high / 2 moderate.**
+
+**What changed**:
+- `next` ^14.2.35 → ^15.5.18 (eslint-config-next already 15).
+- **Async request APIs** (the bulk): `lib/supabase/server.ts` `createClient()` is now `async` (`await cookies()`); the ~262 server-side call sites became `await createClient()` (browser-client sites untouched). `tsc` was the worklist — making the wrapper return `Promise` flagged every un-awaited site, so none were missed. `ReturnType<typeof createClient>` refs → `Awaited<...>` (incl. the `createBrowserClient` alias in `lib/auth/orgAccess.ts`, which cascaded to ~30 callers via `getCallerOrgContext`).
+- `headers()` async: `lib/requestContext.ts` `getRequestId()` → async; `app/demo/mco/page.tsx` → async.
+- `NextRequest.ip` removed in 15: bot/clara/nora chat routes derive the rate-limit key from `x-forwarded-for`.
+- **`@next/codemod next-async-request-api`** → 153 files: `params`/`searchParams` now `Promise<>` with `await props.params` in pages + route handlers. `entities/[slug]` local helper typed `Awaited<Params['params']>`. Test call sites wrapped `params` in `Promise.resolve(...)` (30 sites).
+- **`next.config.js`**: removed `experimental.instrumentationHook` (stable in 15); moved `outputFileTracingIncludes` out of `experimental` to top-level (keeps the control-reports markdown bundling working).
+
+**Verification**: `tsc --noEmit` clean; `npm test` 388 passed / 54 skipped; `next build` succeeds (only pre-existing ESLint `warn`s — the known 374 — no migration warnings, no invalid-config, no missing-Suspense). fetch-caching default flip (62 server fetches) did not surface in build; app is force-dynamic-heavy so low risk — flagged for the prod canary smoke.
+
+**Not done (Phase 2, separate)**: Next 15 → 16 (Turbopack default vs the Sentry webpack plugin; React 18 → 19). Held for a separate branch + canary. This Phase-1 branch is commit-only pending review.
+
+## 2026-06-01 — Next 15 canary caught a prod-breaker: jsdom ESM require fails on Node 20
+
+Pushed `upgrade/next-15` to a Vercel **preview** (one-time, user-authorized) and smoke-tested. Login ✅, PPTX export ✅, auth redirects ✅, `/demo/mco` (the `await headers()` fix) ✅ — but **`/s/<real-survey>` returned 500** (a fake guid returned 200, so it was the actual-render path).
+
+**Root cause (from Vercel runtime logs):** `ERR_REQUIRE_ESM` — `html-encoding-sniffer/lib/html-encoding-sniffer.js` does `require()` of the ESM `@exodus/bytes/encoding-lite.js`. The chain is `isomorphic-dompurify` (used by Survey/Agent/PulseIQ widgets for SSR sanitization) → `jsdom@29` → its `@exodus/bytes`-based `html-encoding-sniffer@6` / `data-urls@7` / `whatwg-url@16` cluster. These deps are **identical on main** — so it's not a regression from the bump; Next 15 externalizes jsdom to a runtime `require()` (Next 14 bundled it), and the Vercel function runs **Node 20**, where `require()` of ESM is unsupported. It does **not** reproduce locally because local Node is 24 (require-of-ESM is supported in Node 22+).
+
+**Fix:** `engines.node` `">=20.0.0"` → `"22.x"` so Vercel runs the functions on Node 22+ (require-of-ESM supported, matching local). One line. **Caveat:** if the Vercel project has an explicit dashboard Node.js Version pin at 20, that must also be set to 22.x for the engines change to take effect. Fallback if Node can't move: npm `overrides` to force jsdom's WHATWG deps back to their CJS majors (riskier).
+
+**Cannot verify locally** (local Node 24 already passes) — needs a re-push to the preview to confirm the survey/agent/PulseIQ widgets render on Node 22. Commit-only on the branch pending that re-canary.
+
+## 2026-06-01 — Next 15 jsdom ESM blocker SOLVED (downgrade to CJS jsdom), verified locally
+
+The `engines:"22.x"` bump did NOT fix the survey/agent/PulseIQ 500 on the preview (still `ERR_REQUIRE_ESM`) — Vercel either ignored engines or ran a 22.x without `require(ESM)` default (only default in Node 22.12+/24). Relying on the Vercel Node version was too fragile, so switched to a **Node-independent** fix.
+
+**Repro without canary pushes:** `node --no-experimental-require-module` on local Node 24 disables `require(ESM)`, reproducing Vercel's Node-20 behavior exactly. `NODE_OPTIONS=--no-experimental-require-module npm run start` + curl `/s/vindman` → reproduced the 500 locally. This gave a fast fix-loop with zero deploys.
+
+**Root cause:** `isomorphic-dompurify@3.12` → modern **jsdom@29 (ESM)** whose WHATWG deps (`html-encoding-sniffer@6`, `whatwg-url@16`, `data-urls@7`, `@exodus/bytes`) are ESM-only. Next 15 externalizes jsdom to a runtime `require()`, which throws on any Node without `require(ESM)`. (jsdom went ESM at v27; v26 is the last CJS.)
+
+**Fix:** `isomorphic-dompurify` ^3.12 → **^2.26.0** (uses jsdom@^26) and the `jsdom` devDep ^29.1.1 → **^26.1.0** → single **jsdom@26 (CJS)**, `@exodus/bytes` gone. SSR sanitization still works (jsdom@26 supplies the server DOM).
+
+**Verified locally under the Node-20 simulation:** `/s/vindman` → **200** (renders the real survey), 0 `ERR_REQUIRE_ESM`; `tsc` clean; `npm test` 388 passed (vitest jsdom env fine on @26); `next build` green. Node-independent, so it holds regardless of Vercel's Node version. (`engines:"22.x"` kept as hygiene — Node 20 is deprecated — but is no longer load-bearing.)

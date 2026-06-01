@@ -9,9 +9,9 @@ import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-async function getOrgAndCheck(supabase: ReturnType<typeof createClient>) {
+async function getOrgAndCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return { user: null, orgId: null, isAdmin: false, error: 'Unauthorized' }
 
@@ -28,8 +28,9 @@ async function getOrgAndCheck(supabase: ReturnType<typeof createClient>) {
   return { user, orgId: userData?.org_id as string, isAdmin: !!orgData?.is_admin_org, error: null }
 }
 
-export async function GET(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin: _isAdmin, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
@@ -51,8 +52,9 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json({ dataset: { ...rest, study_name: studyName, state } })
 }
 
-export async function PATCH(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
@@ -138,8 +140,9 @@ export async function PATCH(req: Request, { params }: Params) {
   return NextResponse.json({ ok: true })
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function DELETE(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin: _isAdminDel, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })

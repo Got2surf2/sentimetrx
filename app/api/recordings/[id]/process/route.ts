@@ -13,13 +13,13 @@ import { processRecordingWorkflow } from '@/workflows/recordings'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(_req: Request, ctx: { params: { id: string } }) {
-  const recording_id = ctx.params.id
+export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
   if (!recording_id) {
     return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
   }
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 

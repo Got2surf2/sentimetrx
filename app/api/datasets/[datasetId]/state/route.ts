@@ -9,15 +9,16 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-async function authCheck(supabase: ReturnType<typeof createClient>) {
+async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
-export async function GET(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -35,8 +36,9 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json(data)
 }
 
-export async function PUT(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function PUT(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -66,8 +68,9 @@ export async function PUT(req: Request, { params }: Params) {
   return NextResponse.json({ ok: true })
 }
 
-export async function PATCH(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

@@ -12,11 +12,12 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string; questionId: string } }
+interface Params { params: Promise<{ id: string; questionId: string }> }
 
 const ALLOWED_STATUSES = new Set(['open', 'answered', 'referred', 'n_a'])
 
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

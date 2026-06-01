@@ -13,7 +13,8 @@ import { fetchMapSvg } from '@/lib/meridian'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = (params?.id || '').slice(0, 64).replace(/[^a-z0-9_-]/gi, '')
   if (!id) return new NextResponse('bad id', { status: 400 })
   const svg = await fetchMapSvg(id)

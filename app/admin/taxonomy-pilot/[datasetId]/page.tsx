@@ -11,10 +11,11 @@ import TaxonomyPilotClient from './TaxonomyPilotClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export default async function TaxonomyPilotPage({ params }: Params) {
-  const supabase = createClient()
+export default async function TaxonomyPilotPage(props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

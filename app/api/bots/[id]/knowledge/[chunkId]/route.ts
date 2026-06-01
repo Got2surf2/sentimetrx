@@ -7,9 +7,9 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string; chunkId: string } }
+interface Params { params: Promise<{ id: string; chunkId: string }> }
 
-async function gateBotAccess(supabase: ReturnType<typeof createClient>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -25,8 +25,9 @@ async function gateBotAccess(supabase: ReturnType<typeof createClient>, service:
   return { ok: true }
 }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
-  var supabase = createClient()
+export async function PATCH(req: NextRequest, props: Params) {
+  const params = await props.params;
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -63,8 +64,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true })
 }
 
-export async function DELETE(req: NextRequest, { params }: Params) {
-  var supabase = createClient()
+export async function DELETE(req: NextRequest, props: Params) {
+  const params = await props.params;
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

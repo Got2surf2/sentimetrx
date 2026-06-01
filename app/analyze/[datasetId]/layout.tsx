@@ -12,11 +12,17 @@ export const dynamic = 'force-dynamic'
 
 interface Props {
   children: ReactNode
-  params: { datasetId: string }
+  params: Promise<{ datasetId: string }>
 }
 
-export default async function DatasetLayout({ children, params }: Props) {
-  const supabase = createClient()
+export default async function DatasetLayout(props: Props) {
+  const params = await props.params;
+
+  const {
+    children
+  } = props;
+
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

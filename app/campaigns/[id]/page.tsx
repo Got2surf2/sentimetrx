@@ -5,8 +5,9 @@ import CampaignDetailClient from './CampaignDetailClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function CampaignDetailPage({ params }: { params: { id: string } }) {
-  const supabase = createClient()
+export default async function CampaignDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

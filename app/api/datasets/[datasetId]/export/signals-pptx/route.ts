@@ -14,7 +14,7 @@ import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRende
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 // Tier colors (without # prefix for PPTX)
 const TIER_COLORS: Record<string, string> = {
@@ -22,7 +22,8 @@ const TIER_COLORS: Record<string, string> = {
   Resonant: '059669', Discussed: 'D97706', 'Low Engagement': 'DC2626', Ignored: '9CA3AF',
 }
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

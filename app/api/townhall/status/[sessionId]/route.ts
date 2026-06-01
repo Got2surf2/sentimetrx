@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/townhall/status/:sessionId — public endpoint, no auth required
 // Returns only the info a participant needs: name, status, config.display
-export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
+  const params = await props.params;
   const supabase = createServiceRoleClient()
 
   const { data: session } = await supabase

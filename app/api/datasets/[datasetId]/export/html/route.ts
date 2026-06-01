@@ -16,7 +16,7 @@ import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 // ── Brand palette ─────────────────────────────────────────────────────────────
 const DN = {
@@ -51,8 +51,8 @@ function trimNatural(s: string, max: number): string {
   const lastSpace = candidate.lastIndexOf(' ')
   return (lastSpace > 0 ? candidate.slice(0, lastSpace) : candidate) + '…'
 }
-function esc(s: string) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
-function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') }
+function esc(s: string) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
 
 // ── AI narratives (shared logic with pptx route) ──────────────────────────────
 async function generateNarratives(
@@ -801,8 +801,9 @@ document.addEventListener('keydown', function(e) {
 }
 
 // ── POST handler ──────────────────────────────────────────────────────────────
-export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

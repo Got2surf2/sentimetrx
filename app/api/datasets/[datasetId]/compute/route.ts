@@ -21,10 +21,11 @@ export const dynamic = 'force-dynamic'
 // streaming approach handles up to ~100k rows well within 30s.
 export const maxDuration = 120
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function POST(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

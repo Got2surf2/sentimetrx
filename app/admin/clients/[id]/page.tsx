@@ -3,12 +3,13 @@ import { redirect, notFound } from 'next/navigation'
 import { getReviewBudget } from '@/lib/reviewLimits'
 import AdminClientDetail from './AdminClientDetail'
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminClientPage({ params }: Props) {
-  const supabase = createClient()
+export default async function AdminClientPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

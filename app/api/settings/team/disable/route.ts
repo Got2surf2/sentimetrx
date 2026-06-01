@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const FAR_FUTURE = '2099-12-31T23:59:59Z'
 
 export async function PATCH(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

@@ -8,7 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { sourceId: string } }
+interface Params { params: Promise<{ sourceId: string }> }
 
 async function resolveOrg(supabase: any) {
   const user = await getAuthUser(supabase)
@@ -26,9 +26,10 @@ async function resolveOrg(supabase: any) {
   return { error: null, status: 200, user, orgId }
 }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -64,9 +65,10 @@ export async function GET(_req: Request, { params }: Params) {
   }
 }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -111,9 +113,10 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(_req: Request, props: Params) {
+  const params = await props.params;
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const auth = await resolveOrg(supabase)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

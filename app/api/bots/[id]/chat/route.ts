@@ -11,7 +11,7 @@ import { handleChatTurn } from '@/lib/chatCore'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 // CORS headers for cross-origin embedding.
 //
@@ -33,7 +33,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: cors })
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   const rl = await checkRateLimit('bot_chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })

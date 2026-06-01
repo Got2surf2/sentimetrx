@@ -5,7 +5,7 @@ import { SLUG_REGEX } from '@/lib/constants'
 // GET /api/studies/check-slug?slug=xxx&exclude=studyId
 // Returns { available: boolean }
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

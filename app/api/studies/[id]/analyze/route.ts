@@ -12,10 +12,11 @@ import { buildStudySchema, formatResponsesAsRows } from '@/lib/datasetUtils'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function POST(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

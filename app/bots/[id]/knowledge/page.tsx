@@ -10,7 +10,7 @@ import KnowledgeClient from './KnowledgeClient'
 export const dynamic = 'force-dynamic'
 
 export default async function KnowledgePage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

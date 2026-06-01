@@ -10,7 +10,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { userId, orgId } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ brands: [] })
 

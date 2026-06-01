@@ -9,11 +9,12 @@ import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-interface Params { params: { sourceId: string } }
+interface Params { params: Promise<{ sourceId: string }> }
 
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
   try {
-    var supabase = createClient()
+    var supabase = await createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

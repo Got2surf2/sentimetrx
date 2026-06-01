@@ -6,7 +6,7 @@ import HealthClient from './HealthClient'
 export const dynamic = 'force-dynamic'
 
 export default async function HealthPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

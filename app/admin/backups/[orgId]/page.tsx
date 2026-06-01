@@ -8,10 +8,11 @@ import OrgBackupsClient from './OrgBackupsClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { orgId: string } }
+interface Params { params: Promise<{ orgId: string }> }
 
-export default async function OrgBackupsPage({ params }: Params) {
-  const supabase = createClient()
+export default async function OrgBackupsPage(props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

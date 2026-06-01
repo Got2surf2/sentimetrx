@@ -8,9 +8,10 @@ import { isPhase3ReadSafe } from '@/lib/phase3Read'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -67,5 +68,5 @@ export async function GET(req: NextRequest, { params }: Params) {
     name: 'Conversations',
     headers: ['Session ID', 'Turn', 'Role', 'Content', 'Language', 'Timestamp'],
     rows: turns.map(t => [t.session_id, t.turn_number, t.role, (t.content || '').replace(/\n/g, ' '), t.language, t.created_at]),
-  }])
+  }]);
 }

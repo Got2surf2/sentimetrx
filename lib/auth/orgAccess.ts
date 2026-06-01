@@ -17,7 +17,7 @@
 import 'server-only'
 import type { createClient as createBrowserClient } from '@/lib/supabase/server'
 
-type AuthCookiedClient = ReturnType<typeof createBrowserClient>
+type AuthCookiedClient = Awaited<ReturnType<typeof createBrowserClient>>
 
 export interface CallerOrgContext {
   userId:  string | null

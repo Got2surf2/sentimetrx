@@ -57,7 +57,7 @@ describe('bot admin page — org gate', () => {
     ctx.userData = { org_id: 'orgA', full_name: 'X', organizations: { is_admin_org: false } }
     ctx.bot = { data: { org_id: 'orgA', name: 'Bot', slug: 'bot' } }
 
-    await Page({ params: { id: 'bot_1' } })
+    await Page({ params: Promise.resolve({ id: 'bot_1' }) })
 
     expect(ctx.agentEq).toContainEqual(['id', 'bot_1'])
     expect(ctx.agentEq).toContainEqual(['org_id', 'orgA'])
@@ -67,7 +67,7 @@ describe('bot admin page — org gate', () => {
     ctx.userData = { org_id: 'orgA', full_name: 'X', organizations: { is_admin_org: false } }
     ctx.bot = { data: null }   // org filter excluded the other org's bot
 
-    await expect(Page({ params: { id: 'other_org_bot' } })).rejects.toThrow('REDIRECT:/bots')
+    await expect(Page({ params: Promise.resolve({ id: 'other_org_bot' }) })).rejects.toThrow('REDIRECT:/bots')
     expect(ctx.agentEq).toContainEqual(['org_id', 'orgA'])
   })
 
@@ -75,7 +75,7 @@ describe('bot admin page — org gate', () => {
     ctx.userData = { org_id: 'orgAdmin', full_name: 'X', organizations: { is_admin_org: true } }
     ctx.bot = { data: { org_id: 'orgB', name: 'Bot', slug: 'bot' } }
 
-    await Page({ params: { id: 'bot_in_orgB' } })
+    await Page({ params: Promise.resolve({ id: 'bot_in_orgB' }) })
 
     expect(ctx.agentEq).toContainEqual(['id', 'bot_in_orgB'])
     expect(ctx.agentEq.some(([c]) => c === 'org_id')).toBe(false)

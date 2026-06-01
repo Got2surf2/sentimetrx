@@ -6,9 +6,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { token: string } }
+interface Params { params: Promise<{ token: string }> }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(_req: NextRequest, props: Params) {
+  const params = await props.params;
   if (params.token === 'test-preview') {
     return new NextResponse(unsubscribePage('This is a test preview — no action taken.'), {
       headers: { 'Content-Type': 'text/html' },

@@ -8,7 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 // GET /api/settings/profile
 export async function GET(_req: NextRequest) {
-  var supabase = createClient()
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest) {
 
 // PATCH /api/settings/profile — update display name
 export async function PATCH(req: NextRequest) {
-  var supabase = createClient()
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest) {
 
 // POST /api/settings/profile — trigger password reset email
 export async function POST(req: NextRequest) {
-  var supabase = createClient()
+  var supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

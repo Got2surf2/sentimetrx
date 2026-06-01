@@ -2,10 +2,11 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 // GET /api/admin/clients/[id] - org detail with users, studies, invites
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(_req: NextRequest, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 
@@ -47,7 +48,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/admin/clients/[id] - update org (plan, name, is_admin_org, limits)
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(req: NextRequest, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 

@@ -3,7 +3,8 @@ import SharedConversationView from './SharedConversationView'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SharedConversationPage({ params }: { params: { token: string } }) {
+export default async function SharedConversationPage(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const db = createServiceRoleClient()
 
   const { data: link } = await db

@@ -110,7 +110,7 @@ function buildPrompt(req: SuggestRequest): { system: string; user: string } | nu
 
 export async function POST(req: NextRequest) {
   // Auth — never serve suggestions to anonymous callers.
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ suggestion: '' }, { status: 401 })
 

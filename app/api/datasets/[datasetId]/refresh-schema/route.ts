@@ -19,7 +19,7 @@ import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 const FLAT_PAGE = 1000
 
@@ -80,8 +80,9 @@ async function refreshOne(service: Service, datasetId: string, userId: string, r
   return { datasetId, rowsScanned: rows.length, fieldsGrown: grew }
 }
 
-export async function POST(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

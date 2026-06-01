@@ -32,7 +32,7 @@ interface Row {
 }
 
 export default async function RecordingsListPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
   if (!ctx.features.analyze) redirect('/dashboard')

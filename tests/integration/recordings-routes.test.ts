@@ -161,7 +161,7 @@ describe('GET /api/recordings (list)', () => {
 
 // ── GET + DELETE /api/recordings/[id] ─────────────────────────────────────────
 describe('GET /api/recordings/[id]', () => {
-  const p = { params: { id: 'rec_1' } }
+  const p = { params: Promise.resolve({ id: 'rec_1' }) }
 
   it('401 unauthenticated / 403 no org', async () => {
     expect(await status(await byId.GET(req(), p))).toBe(401)
@@ -179,7 +179,7 @@ describe('GET /api/recordings/[id]', () => {
 })
 
 describe('DELETE /api/recordings/[id]', () => {
-  const p = { params: { id: 'rec_1' } }
+  const p = { params: Promise.resolve({ id: 'rec_1' }) }
 
   it('401 unauthenticated', async () => {
     expect(await status(await byId.DELETE(req(), p))).toBe(401)
@@ -201,7 +201,7 @@ describe('DELETE /api/recordings/[id]', () => {
 
 // ── action sub-routes share the getAuthUser + org-scoped lookup pattern ───────
 describe('action sub-routes — auth + org scoping', () => {
-  const p = { params: { id: 'rec_1' } }
+  const p = { params: Promise.resolve({ id: 'rec_1' }) }
 
   const cases: Array<{ name: string; call: () => Promise<Response> }> = [
     { name: 'process', call: () => process_.POST(req(), p) },
@@ -227,7 +227,7 @@ describe('action sub-routes — auth + org scoping', () => {
   }
 
   it('uploaded: 401 / 404 file-not-found (id+recording_id+org_id paired)', async () => {
-    const pf = { params: { id: 'rec_1', fileId: 'file_1' } }
+    const pf = { params: Promise.resolve({ id: 'rec_1', fileId: 'file_1' }) }
     expect(await status(await uploaded.POST(req(), pf))).toBe(401)
     ctx.authUser = { id: 'u1' }; ctx.userOrg = 'orgA'
     ctx.results['recording_files'] = { single: { data: null, error: null } }
@@ -238,7 +238,7 @@ describe('action sub-routes — auth + org scoping', () => {
   })
 
   it('regenerate: 401 / 404 cross-org', async () => {
-    const pe = { params: { id: 'rec_1', extractionId: 'ex_1' } }
+    const pe = { params: Promise.resolve({ id: 'rec_1', extractionId: 'ex_1' }) }
     expect(await status(await regenerate.POST(req(), pe))).toBe(401)
     ctx.authUser = { id: 'u1' }; ctx.userOrg = 'orgA'
     ctx.results['recordings'] = { single: { data: null, error: null } }
@@ -256,19 +256,19 @@ describe('action sub-routes — input validation', () => {
 
   it('analyze: 400 when instructions exceed 4000 chars', async () => {
     recFound('transcribed')
-    const res = await analyze.POST(req({ instructions: 'x'.repeat(4001) }), { params: { id: 'rec_1' } })
+    const res = await analyze.POST(req({ instructions: 'x'.repeat(4001) }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(400)
   })
 
   it('reanalyze: 400 on an invalid scope', async () => {
     recFound('complete')
-    const res = await reanalyze.POST(req({ scope: 'galaxy' }), { params: { id: 'rec_1' } })
+    const res = await reanalyze.POST(req({ scope: 'galaxy' }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(400)
   })
 
   it('regenerate: 400 when instructions exceed 2000 chars', async () => {
     recFound('complete')
-    const res = await regenerate.POST(req({ instructions: 'x'.repeat(2001) }), { params: { id: 'rec_1', extractionId: 'ex_1' } })
+    const res = await regenerate.POST(req({ instructions: 'x'.repeat(2001) }), { params: Promise.resolve({ id: 'rec_1', extractionId: 'ex_1' }) })
     expect(res.status).toBe(400)
   })
 })

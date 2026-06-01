@@ -69,7 +69,7 @@ async function gateShareTarget(service: ReturnType<typeof createServiceRoleClien
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
 
   // List active links for a target (requires auth + access to the target)
   if (listType && listTargetId) {
-    const supabase = createClient()
+    const supabase = await createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -372,7 +372,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

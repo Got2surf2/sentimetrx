@@ -24,7 +24,7 @@ interface RecentItem {
 }
 
 export default async function MobilePage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?next=/m')
 

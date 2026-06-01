@@ -18,9 +18,10 @@ import { invalidateEntityCache } from '@/lib/entityMentionDetector'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(_req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

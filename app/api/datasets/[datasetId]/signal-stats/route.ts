@@ -7,13 +7,14 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { computeSignalStats } from '@/lib/signalStats'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function GET(_req: Request, { params }: Props) {
-  const supabase = createClient()
+export async function GET(_req: Request, props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

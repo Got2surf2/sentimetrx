@@ -8,10 +8,11 @@ import SettingsClient from './SettingsClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
-export default async function SettingsPage({ params }: Props) {
-  const supabase = createClient()
+export default async function SettingsPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

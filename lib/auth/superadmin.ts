@@ -10,7 +10,7 @@
 import type { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function isCallerSuperadmin(
-  client: ReturnType<typeof createClient> | ReturnType<typeof createServiceRoleClient>,
+  client: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceRoleClient>,
   userId: string,
 ): Promise<boolean> {
   const { data } = await (client as any)

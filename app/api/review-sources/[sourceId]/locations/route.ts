@@ -6,11 +6,12 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { sourceId: string } }
+interface Params { params: Promise<{ sourceId: string }> }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

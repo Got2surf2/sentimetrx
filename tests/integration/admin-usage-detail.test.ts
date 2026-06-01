@@ -79,14 +79,14 @@ describe('GET /api/admin/usage/[type]/[id] — admin gate', () => {
   it('returns the gate response for anonymous callers (no admin)', async () => {
     requireAdminMock.mockResolvedValue(new NextResponse('Not Found', { status: 404 }))
     const GET = await loadGet()
-    const res = await GET(buildReq(), { params: { type: 'bot', id: 'agent_abc' } })
+    const res = await GET(buildReq(), { params: Promise.resolve({ type: 'bot', id: 'agent_abc' }) })
     expect(res.status).toBe(404)
   })
 
   it('rejects unknown resource_type with 400', async () => {
     requireAdminMock.mockResolvedValue(undefined)
     const GET = await loadGet()
-    const res = await GET(buildReq(), { params: { type: 'not-a-thing', id: 'x' } })
+    const res = await GET(buildReq(), { params: Promise.resolve({ type: 'not-a-thing', id: 'x' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toMatch(/Invalid resource_type/)
@@ -96,7 +96,7 @@ describe('GET /api/admin/usage/[type]/[id] — admin gate', () => {
     requireAdminMock.mockResolvedValue(undefined)
     const GET = await loadGet()
     for (const type of ['bot', 'townhall', 'social', 'dataset', 'study', 'system']) {
-      const res = await GET(buildReq(), { params: { type, id: 'x_1' } })
+      const res = await GET(buildReq(), { params: Promise.resolve({ type, id: 'x_1' }) })
       expect(res.status).toBe(200)
     }
   })
@@ -117,7 +117,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
       { org_id: 'org_1', event_type: 'summarize', model: 'claude-sonnet', tier: 'balanced', input_tokens: 500, output_tokens: 300, cache_read_tokens: 100, cache_creation_tokens: 0, created_at: '2026-05-21T09:00:00Z' },
     ]
     const GET = await loadGet()
-    const res = await GET(buildReq(), { params: { type: 'bot', id: 'agent_abc' } })
+    const res = await GET(buildReq(), { params: Promise.resolve({ type: 'bot', id: 'agent_abc' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
 
@@ -150,7 +150,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
   it('handles zero usage rows gracefully', async () => {
     usageLogsRows = []
     const GET = await loadGet()
-    const res = await GET(buildReq(), { params: { type: 'bot', id: 'agent_abc' } })
+    const res = await GET(buildReq(), { params: Promise.resolve({ type: 'bot', id: 'agent_abc' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.totals).toEqual({ calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 })
@@ -164,7 +164,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
     usageLogsRows = []
     const GET = await loadGet()
     const res = await GET(buildReq({ from: '2026-05-01', to: '2026-05-15' }), {
-      params: { type: 'bot', id: 'agent_abc' },
+      params: Promise.resolve({ type: 'bot', id: 'agent_abc' }),
     })
     const body = await res.json()
     expect(body.period.days).toBe(15)
@@ -175,7 +175,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
   it('falls back to a `days` window when from is missing or malformed', async () => {
     usageLogsRows = []
     const GET = await loadGet()
-    const res = await GET(buildReq({ days: '7' }), { params: { type: 'bot', id: 'agent_abc' } })
+    const res = await GET(buildReq({ days: '7' }), { params: Promise.resolve({ type: 'bot', id: 'agent_abc' }) })
     const body = await res.json()
     expect(body.period.days).toBe(7)
     expect(body.period.until).toBe(null)
@@ -185,7 +185,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
     agentLookup = null
     usageLogsRows = []
     const GET = await loadGet()
-    const res = await GET(buildReq(), { params: { type: 'bot', id: 'agent_abcdef_long' } })
+    const res = await GET(buildReq(), { params: Promise.resolve({ type: 'bot', id: 'agent_abcdef_long' }) })
     const body = await res.json()
     expect(body.resource.name).toBe('agent_ab') // first 8 chars
     expect(body.resource.href).toBe(null)

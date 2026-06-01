@@ -15,9 +15,10 @@ import BotClient from './BotClient'
 export const revalidate = 3600
 export const fetchCache = 'force-no-store'
 
-interface Props { params: { slug: string } }
+interface Props { params: Promise<{ slug: string }> }
 
-export default async function BotPage({ params }: Props) {
+export default async function BotPage(props: Props) {
+  const params = await props.params;
   const service = createServiceRoleClient()
   const { data: bot } = await service
     .from('agents')
@@ -39,7 +40,8 @@ export default async function BotPage({ params }: Props) {
 // Without these, iMessage falls back to "Chat / sentimetrx.ai / Safari icon".
 // The dynamically generated card image lives at opengraph-image.tsx in this
 // same route segment — Next.js auto-wires it as og:image.
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const service = createServiceRoleClient()
   const { data: bot } = await service
     .from('agents')

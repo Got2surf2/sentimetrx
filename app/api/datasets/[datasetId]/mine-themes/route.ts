@@ -15,10 +15,11 @@ import { logUsage } from '@/lib/usageLog'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
-export async function POST(request: Request, { params }: Props) {
-  const supabase = createClient()
+export async function POST(request: Request, props: Props) {
+  const params = await props.params;
+  const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

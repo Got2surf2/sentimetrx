@@ -10,7 +10,7 @@ import { resolveOrg } from '@/lib/resolveOrg'
 export async function requireAdmin(): Promise<NextResponse | null> {
   const notFound = new NextResponse('Not Found', { status: 404 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return notFound
 

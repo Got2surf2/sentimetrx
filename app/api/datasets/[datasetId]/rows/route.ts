@@ -23,7 +23,7 @@ import { ROWS_PER_BATCH } from '@/lib/constants'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 // Tiny deterministic PRNG (mulberry32). Same seed → same sequence.
 function mulberry32(seed: number): () => number {
@@ -50,7 +50,7 @@ function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
   arr.length = n
 }
 
-async function authCheck(supabase: ReturnType<typeof createClient>) {
+async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
@@ -63,8 +63,9 @@ function projectRow(row: Record<string, unknown>, fieldSet: Set<string> | null):
   return out
 }
 
-export async function GET(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function GET(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -216,8 +217,9 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
   })
 }
 
-export async function POST(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -268,8 +270,9 @@ export async function POST(req: Request, { params }: Params) {
 }
 
 // DELETE /api/datasets/[datasetId]/rows — rollback batches by index
-export async function DELETE(req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function DELETE(req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

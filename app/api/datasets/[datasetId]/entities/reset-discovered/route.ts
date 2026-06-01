@@ -15,10 +15,11 @@ import { resolveEntityScope } from '@/lib/entityFilter'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function POST(_req: Request, { params }: Params) {
-  const supabase = createClient()
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
