@@ -10,7 +10,8 @@ import StatusClient from './StatusClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function RecordingStatusPage({ params }: { params: { id: string } }) {
+export default async function RecordingStatusPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')

@@ -10,9 +10,10 @@ import EntitiesClient from './EntitiesClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export default async function BotEntitiesPage({ params }: Params) {
+export default async function BotEntitiesPage(props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

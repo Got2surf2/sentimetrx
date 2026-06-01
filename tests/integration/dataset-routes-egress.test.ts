@@ -195,7 +195,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       'http://test.local/api/datasets/' + ids.studyDatasetA + '/sync',
       { method: 'POST' },
     )
-    const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+    const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -218,7 +218,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         'http://test.local/api/datasets/' + ids.studyDatasetA + '/sync',
         { method: 'POST' },
       )
-      const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+      const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
       expect(res.status).not.toBe(404)
     } finally {
       ctx.signedIn = prev
@@ -290,7 +290,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
       { method: 'POST' },
     )
-    const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+    const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -311,7 +311,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
         { method: 'POST' },
       )
-      const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+      const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
       expect(res.status).not.toBe(404)
     } finally {
       ctx.signedIn = prev

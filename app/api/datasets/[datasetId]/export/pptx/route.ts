@@ -28,7 +28,7 @@ export const maxDuration = 120
 // ── Generator version ────────────────────────────────────────────────────────
 const STORYTIME_VERSION = '1.2.0'  // bump on each release
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 // Extended palette with datasets-specific colors
 const DN = {
@@ -1456,7 +1456,7 @@ async function buildThemeSlides(
     return keywords.some(function(kw) {
       const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(lower)
-    })
+    });
   }
 
   // Pick 5 best responses for a theme using AI relevance scoring,
@@ -1585,7 +1585,7 @@ async function buildThemeSlides(
       const qGap   = 0.08
       // Strip newlines and collapse whitespace so quotes don't waste vertical space
       const cleaned = comments.map(function(hc) {
-        return { ...hc, text: hc.text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim() }
+        return { ...hc, text: hc.text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim() };
       })
       const qh     = (availH - qGap * (cleaned.length - 1)) / cleaned.length
       // Dynamic trim: shorter quotes when cards are small
@@ -2279,7 +2279,8 @@ function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) 
 
 // ── Main route handler ────────────────────────────────────────────────────────
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -2478,7 +2479,7 @@ export async function POST(req: Request, { params }: Params) {
 
   // Build a normalized key map so we can find columns regardless of case/spaces
   // e.g. schema field "general_experience_comments" matches row key "General Experience Comments"
-  function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') }
+  function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
   const rowKeyMap: Record<string, string> = {}  // normalizedKey → actualKey in first row
   if (allRows.length > 0) {
     for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k

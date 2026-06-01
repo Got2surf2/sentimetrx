@@ -7,9 +7,10 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -253,7 +254,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   }])
 }
 
-export async function DELETE(req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, props: Params) {
+  const params = await props.params;
   // Auth check: use user client to verify identity, then use service role to delete
   const userClient = await createClient()
   const { data: { user } } = await userClient.auth.getUser()

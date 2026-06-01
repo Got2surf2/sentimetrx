@@ -11,7 +11,8 @@ import AnalyzeClient from './AnalyzeClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AnalyzePage({ searchParams }: { searchParams: { org?: string } }) {
+export default async function AnalyzePage(props: { searchParams: Promise<{ org?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

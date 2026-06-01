@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, use } from 'react';
 import { detectScale } from '@/lib/scaleUtils'
 import { autoBucket, bucketKey, formatBucketLabel, TimeBucket, BUCKET_OPTIONS } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 const SARINA = '#00b4d8'
 
-export default function SharedDashboard({ params }: { params: { token: string } }) {
+export default function SharedDashboard(props: { params: Promise<{ token: string }> }) {
+  const params = use(props.params);
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)

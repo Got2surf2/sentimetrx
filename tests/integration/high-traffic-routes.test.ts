@@ -272,7 +272,7 @@ describe('GET /api/study/[guid]', () => {
   it('returns 400 when guid is empty', async () => {
     const GET = await loadHandler()
     const req = new NextRequest('http://localhost/api/study/')
-    const res = await GET(req, { params: { guid: '' } })
+    const res = await GET(req, { params: Promise.resolve({ guid: '' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toMatch(/guid/i)
@@ -282,7 +282,7 @@ describe('GET /api/study/[guid]', () => {
     supaBehavior.studyByGuid = { data: [], error: null }
     const GET = await loadHandler()
     const req = new NextRequest('http://localhost/api/study/missing')
-    const res = await GET(req, { params: { guid: 'missing' } })
+    const res = await GET(req, { params: Promise.resolve({ guid: 'missing' }) })
     expect(res.status).toBe(404)
   })
 
@@ -293,7 +293,7 @@ describe('GET /api/study/[guid]', () => {
     }
     const GET = await loadHandler()
     const req = new NextRequest('http://localhost/api/study/g1')
-    const res = await GET(req, { params: { guid: 'g1' } })
+    const res = await GET(req, { params: Promise.resolve({ guid: 'g1' }) })
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toMatch(/not active/i)
@@ -306,7 +306,7 @@ describe('GET /api/study/[guid]', () => {
     }
     const GET = await loadHandler()
     const req = new NextRequest('http://localhost/api/study/g1')
-    const res = await GET(req, { params: { guid: 'g1' } })
+    const res = await GET(req, { params: Promise.resolve({ guid: 'g1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.guid).toBe('g1')

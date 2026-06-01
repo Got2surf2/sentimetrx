@@ -6,14 +6,15 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
-type Params = { params: { datasetId: string } }
+type Params = { params: Promise<{ datasetId: string }> }
 
 async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   var supabase = await createClient()
   var auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

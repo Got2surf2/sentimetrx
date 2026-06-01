@@ -12,9 +12,10 @@ import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 
@@ -48,7 +49,8 @@ export async function PATCH(req: Request, { params }: Params) {
 // GET — preview what DELETE would affect. Counts every org-scoped table
 // so the confirmation modal can show "this will delete N users, M datasets,
 // K studies, …" before the user types the org name.
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 
@@ -83,7 +85,8 @@ export async function GET(_req: Request, { params }: Params) {
 //   3) org must be suspended first (plan='suspended' OR status='suspended')
 //   4) caller must POST a `confirm_name` body matching the org's name
 //   5) audit log entry written BEFORE the destructive delete
-export async function DELETE(req: Request, { params }: Params) {
+export async function DELETE(req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 

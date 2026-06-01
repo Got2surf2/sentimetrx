@@ -20,7 +20,7 @@ import { headers } from 'next/headers'
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  searchParams: { ctx?: string; kiosk?: string; bot?: string }
+  searchParams: Promise<{ ctx?: string; kiosk?: string; bot?: string }>
 }
 
 // Bot override (?bot=pilot or ?bot=<uuid>) lets us point the canvas at a
@@ -46,7 +46,8 @@ function detectMode(ctx: string | undefined, kioskFlag: string | undefined, ua: 
   return 'home'
 }
 
-export default async function MCODemoPage({ searchParams }: Props) {
+export default async function MCODemoPage(props: Props) {
+  const searchParams = await props.searchParams;
   const ua = (await headers()).get('user-agent') || ''
   const mode = detectMode(searchParams.ctx, searchParams.kiosk, ua)
   const botOverride = resolveBotOverride(searchParams.bot)

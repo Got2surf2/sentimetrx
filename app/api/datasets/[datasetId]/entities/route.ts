@@ -27,11 +27,12 @@ const CATEGORIES = ['food', 'drink', 'place', 'person', 'brand', 'other']
 const MAX_ALIASES_PER_ENTITY = 25
 const MAX_BULK = 500
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 interface ThemeModelTheme { id: string; keywords?: string[] }
 
-export async function GET(req: Request, { params }: Params) {
+export async function GET(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -96,7 +97,8 @@ function normaliseAliases(input: unknown): string[] {
   return out
 }
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

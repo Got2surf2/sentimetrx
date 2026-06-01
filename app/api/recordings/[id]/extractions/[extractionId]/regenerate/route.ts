@@ -17,9 +17,9 @@ interface Body {
 
 export async function POST(
   req: Request,
-  ctx: { params: { id: string; extractionId: string } },
+  ctx: { params: Promise<{ id: string; extractionId: string }> },
 ) {
-  const { id: recording_id, extractionId: extraction_id } = ctx.params
+  const { id: recording_id, extractionId: extraction_id } = (await ctx.params)
   if (!recording_id || !extraction_id) {
     return NextResponse.json({ error: 'missing ids' }, { status: 400 })
   }

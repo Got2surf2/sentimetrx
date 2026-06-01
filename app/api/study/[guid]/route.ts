@@ -13,10 +13,8 @@ const noCache = {
   'Pragma':            'no-cache',
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { guid: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ guid: string }> }) {
+  const params = await props.params;
   const { guid } = params
 
   if (!guid || typeof guid !== 'string') {

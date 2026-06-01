@@ -20,9 +20,10 @@ import { getOrgAiKeyStatus, invalidateOrgAiKey } from '@/lib/aiKey'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
   const status = await getOrgAiKeyStatus(params.id)
@@ -30,7 +31,8 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json(status)
 }
 
-export async function PUT(req: Request, { params }: Params) {
+export async function PUT(req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
   const supabase = await createClient()
@@ -79,7 +81,8 @@ export async function PUT(req: Request, { params }: Params) {
   return NextResponse.json(status)
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(_req: Request, props: Params) {
+  const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
   const service = createServiceRoleClient()

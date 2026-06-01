@@ -11,9 +11,10 @@ import { projectHallAsSession } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -335,7 +336,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="${(session.name || 'townhall').replace(/[^a-z0-9]/gi, '_')}_conversations.json"`,
       },
-    })
+    });
   }
 
   return NextResponse.json({ error: 'Unsupported format. Use ?format=csv, ?format=xlsx, ?format=themes, or ?format=json' }, { status: 400 })

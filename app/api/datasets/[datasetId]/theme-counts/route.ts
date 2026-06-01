@@ -5,12 +5,13 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST(req: Request, { params }: Props) {
+export async function POST(req: Request, props: Props) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

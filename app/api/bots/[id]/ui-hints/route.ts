@@ -22,7 +22,7 @@ import { extractUiHints, type ExtractorContext, type UiHint } from '@/lib/uiHint
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 // CORS — same wildcard posture as /api/bots/[id]/chat. Tightening would
 // also require tightening the chat route; see SECURITY NOTE there.
@@ -36,7 +36,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: cors })
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   // Same per-IP rate limit budget as the chat route (30/min). The two
   // endpoints share an IP-bucket prefix so a runaway client doesn't get

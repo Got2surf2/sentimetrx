@@ -13,7 +13,8 @@ async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   return { userId: user.id, orgId: data?.org_id as string | null }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = await createClient()
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

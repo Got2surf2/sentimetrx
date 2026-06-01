@@ -2,9 +2,10 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { sendInviteEmail } from '@/lib/email/sendInvite'
 
-interface Ctx { params: { id: string } }
+interface Ctx { params: Promise<{ id: string }> }
 
-export async function POST(_req: NextRequest, { params }: Ctx) {
+export async function POST(_req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

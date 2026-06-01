@@ -13,8 +13,8 @@ export const dynamic = 'force-dynamic'
 const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
 const SIGNED_URL_TTL_SEC = 3600   // 1h — comfortably covers a listening session
 
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
-  const recording_id = ctx.params.id
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
   if (!recording_id) return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
 
   const supabase = await createClient()

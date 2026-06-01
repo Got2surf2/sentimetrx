@@ -2,7 +2,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import type { Study } from '@/lib/types'
 import SurveyWidget from '@/components/survey/SurveyWidget'
 
-interface Props { params: { guid: string } }
+interface Props { params: Promise<{ guid: string }> }
 export const dynamic = 'force-dynamic'
 
 // Look up study by slug first, then by guid
@@ -53,7 +53,8 @@ async function findStudy(supabase: any, identifier: string) {
   return null
 }
 
-export default async function SurveyPage({ params }: Props) {
+export default async function SurveyPage(props: Props) {
+  const params = await props.params;
   const supabase = createServiceRoleClient()
   const study = await findStudy(supabase, params.guid)
 
@@ -89,7 +90,8 @@ export default async function SurveyPage({ params }: Props) {
   )
 }
 
-export async function generateMetadata({ params }: Props) {
+export async function generateMetadata(props: Props) {
+  const params = await props.params;
   const supabase = createServiceRoleClient()
   const study = await findStudy(supabase, params.guid)
   if (!study) return { title: 'Survey' }

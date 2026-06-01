@@ -3,10 +3,11 @@ import { redirect, notFound } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import ResponsesDashboard from '@/components/dashboard/ResponsesDashboard'
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 export const dynamic = 'force-dynamic'
 
-export default async function ResponsesPage({ params }: Props) {
+export default async function ResponsesPage(props: Props) {
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

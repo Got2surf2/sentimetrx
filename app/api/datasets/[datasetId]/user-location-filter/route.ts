@@ -7,9 +7,10 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
   try {
     const supabase = await createClient()
     const user = await getAuthUser(supabase)

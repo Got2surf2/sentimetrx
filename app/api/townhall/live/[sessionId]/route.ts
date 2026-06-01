@@ -161,7 +161,8 @@ async function phase3Live(identifier: string): Promise<NextResponse> {
   })
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
+  const params = await props.params;
   const sid = encodeURIComponent(params.sessionId)
 
   // Phase-3 substrate fast path: if the identifier matches a town_halls

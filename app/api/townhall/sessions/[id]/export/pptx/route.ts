@@ -10,7 +10,7 @@ import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill, logo, trunc } from '@/lib/pptx/shared'
 
@@ -52,7 +52,8 @@ function sentColor(s: string) {
   return DN.slate
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

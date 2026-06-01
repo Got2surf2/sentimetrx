@@ -7,9 +7,10 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 
-export async function GET(_req: Request, { params }: Props) {
+export async function GET(_req: Request, props: Props) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -75,7 +76,8 @@ export async function GET(_req: Request, { params }: Props) {
 
 // DELETE /api/collections/[id]?member=<datasetId> — remove a member from collection
 // If removing the last member, auto-deletes the collection
-export async function DELETE(req: Request, { params }: Props) {
+export async function DELETE(req: Request, props: Props) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

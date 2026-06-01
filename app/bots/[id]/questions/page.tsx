@@ -10,9 +10,10 @@ import QuestionsClient from './QuestionsClient'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
-export default async function BotQuestionsPage({ params }: Params) {
+export default async function BotQuestionsPage(props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

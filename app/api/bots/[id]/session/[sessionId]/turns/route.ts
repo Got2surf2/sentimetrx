@@ -18,7 +18,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { id: string; sessionId: string } }
+interface Params { params: Promise<{ id: string; sessionId: string }> }
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +30,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: cors })
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   const rl = await checkRateLimit('bot_session_turns:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })

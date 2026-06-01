@@ -32,9 +32,10 @@ function snippetFromRow(data: Record<string, unknown>, maxChars: number): string
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

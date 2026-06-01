@@ -22,7 +22,7 @@ import { resolveTownHall } from '@/lib/townHallAdapter'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
@@ -265,7 +265,8 @@ async function runPhase3Analyze(
   return NextResponse.json({ dataset_id: datasetId, synced: rows.length, total: newTotal, created })
 }
 
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(_req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

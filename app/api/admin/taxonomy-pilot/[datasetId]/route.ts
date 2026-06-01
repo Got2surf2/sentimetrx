@@ -11,9 +11,10 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function GET(req: Request, { params }: Params) {
+export async function GET(req: Request, props: Params) {
+  const params = await props.params;
   const guard = await requireAdmin()
   if (guard) return guard
 

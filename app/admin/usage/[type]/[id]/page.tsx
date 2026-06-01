@@ -8,7 +8,8 @@ import UsageDetailClient from './UsageDetailClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function UsageDetailPage({ params }: { params: { type: string; id: string } }) {
+export default async function UsageDetailPage(props: { params: Promise<{ type: string; id: string }> }) {
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

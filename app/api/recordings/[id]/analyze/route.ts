@@ -18,8 +18,8 @@ interface Body {
   instructions?: string
 }
 
-export async function POST(req: Request, ctx: { params: { id: string } }) {
-  const recording_id = ctx.params.id
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
   if (!recording_id) return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
 
   const supabase = await createClient()

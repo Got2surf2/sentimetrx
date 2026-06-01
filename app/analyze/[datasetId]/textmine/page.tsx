@@ -10,9 +10,11 @@ import TextMineModule from '@/components/analyze/TextMineModule'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: { datasetId: string }; searchParams?: { editThemes?: string } }
+interface Props { params: Promise<{ datasetId: string }>; searchParams?: Promise<{ editThemes?: string }> }
 
-export default async function TextMinePage({ params, searchParams }: Props) {
+export default async function TextMinePage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

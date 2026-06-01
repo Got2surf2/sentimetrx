@@ -15,12 +15,13 @@ import { randomUUID } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
 const BUCKET = 'report-exports'
 const EXPIRY_SECONDS = 7 * 24 * 60 * 60  // 7 days
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

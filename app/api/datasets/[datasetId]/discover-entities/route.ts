@@ -13,9 +13,10 @@ import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -24,7 +24,8 @@ async function translateText(text: string, targetLang: string): Promise<string> 
 }
 
 // GET /api/townhall/join/:sessionId — check session status (public, no auth)
-export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
+  const params = await props.params;
   const supabase = createServiceRoleClient()
 
   // Resolve by slug first, then by UUID
@@ -82,7 +83,8 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
 }
 
 // POST /api/townhall/join/:sessionId — participant joins, gets welcome + opening question
-export async function POST(req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
+  const params = await props.params;
   const supabase = createServiceRoleClient()
 
   // Resolve by slug or UUID
@@ -170,7 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
           const translatedQ = qLine ? qLine.replace(/^\[Q\d+\]\s*/, '') : pq.q
           const translatedOpts = (pq.opts || []).map((o: string, j: number) => {
             const oLine = tLines.find(l => l.startsWith('[Q' + (i + 1) + 'O' + (j + 1) + ']'))
-            return oLine ? oLine.replace(/^\[Q\d+O\d+\]\s*/, '') : o
+            return oLine ? oLine.replace(/^\[Q\d+O\d+\]\s*/, '') : o;
           })
           return { ...pq, q: translatedQ, opts: translatedOpts, _origQ: pq.q, _origOpts: pq.opts }
         })
@@ -186,7 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         const tLines = tDemo.split('\n').map(l => l.trim()).filter(Boolean)
         translatedDemoFields = demoFields.map((f: any, i: number) => {
           const dLine = tLines.find(l => l.startsWith('[D' + (i + 1) + ']'))
-          return { ...f, label: dLine ? dLine.replace(/^\[D\d+\]\s*/, '') : f.label, _origLabel: f.label }
+          return { ...f, label: dLine ? dLine.replace(/^\[D\d+\]\s*/, '') : f.label, _origLabel: f.label };
         })
       } catch { translatedDemoFields = demoFields }
     }

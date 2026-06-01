@@ -10,12 +10,13 @@ import type { SearchInterestTier, SearchTrend } from '@/lib/themeUtils'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: Promise<{ datasetId: string }> }
 
 const TIER_RANK: Record<string, number> = { high: 3, moderate: 2, low: 1 }
 const TREND_RANK: Record<string, number> = { up: 2, steady: 1, down: 0 }
 
-export async function POST(request: Request, { params }: Props) {
+export async function POST(request: Request, props: Props) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

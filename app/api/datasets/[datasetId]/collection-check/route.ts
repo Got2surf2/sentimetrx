@@ -8,9 +8,10 @@ import { createClient, getAuthUser } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-interface Params { params: { datasetId: string } }
+interface Params { params: Promise<{ datasetId: string }> }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({})

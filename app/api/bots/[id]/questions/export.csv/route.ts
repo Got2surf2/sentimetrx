@@ -16,7 +16,7 @@ import { isCallerSuperadmin } from '@/lib/auth/superadmin'
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-interface Params { params: { id: string } }
+interface Params { params: Promise<{ id: string }> }
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 const PHONE_RE = /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g
@@ -34,12 +34,13 @@ function csvEscape(v: any): string {
   if (v === null || v === undefined) return ''
   const s = String(v)
   if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
-    return '"' + s.replace(/"/g, '""') + '"'
+    return '"' + s.replace(/"/g, '""') + '"';
   }
   return s
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

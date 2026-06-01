@@ -5,7 +5,8 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-export default async function StudyCampaignsPage({ params }: { params: { id: string } }) {
+export default async function StudyCampaignsPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
