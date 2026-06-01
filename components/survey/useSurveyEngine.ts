@@ -16,8 +16,8 @@ import { pickBrandColor } from '@/components/survey/SurveyWidget'
 interface Props {
   study: Study
   orgName?: string
-  chatRef:    React.RefObject<HTMLDivElement>
-  inputRef:   React.RefObject<HTMLDivElement>
+  chatRef:    React.RefObject<HTMLDivElement | null>
+  inputRef:   React.RefObject<HTMLDivElement | null>
   scrollBottom: () => void
   isLightBg?: boolean
   reducedMotion?: boolean
