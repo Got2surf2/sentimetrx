@@ -283,10 +283,10 @@ export async function POST(req: Request, { params }: Params) {
 
   const buffer = await renderDeck(deck, dataset.name)
 
-  // Write to ~/Downloads
+  // Return the deck as a download. (Previously also wrote to the server's
+  // ~/Downloads via fs.writeFileSync — removed: that crashes on Vercel's
+  // serverless filesystem and an API route shouldn't write to local disk.)
   const fileName = dataset.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Signal_Tiers.pptx'
-  const downloadPath = require('path').join(require('os').homedir(), 'Downloads', fileName)
-  require('fs').writeFileSync(downloadPath, buffer)
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
