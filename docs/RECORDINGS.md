@@ -701,6 +701,10 @@ For when the *structure* is wrong, not just one card — Opus missed a Q/A pair 
 
 Cost: `scope='all'` ≈ ~$1 (Opus + Sonnet on the full transcript, no ASR). `scope='topic'` scales with the scoped span — typically $0.10–$0.40 for a 5–15 minute topic. Quota: not double-counted on either scope (the recording was already counted at first-completion).
 
+### 4.12 `GET /api/recordings/[id]/audio` — signed URL for the stitched audio
+
+**Auth:** session cookie. Same-tenant `(id, org_id)` pair. Mints a short-TTL (1h) signed URL for `<org_id>/<recording_id>/audio/stitched.mp3` in the `recordings` bucket and returns `{ url, expires_in }`. Consumed by the report's `AudioModal` (§ 5.4). The TUS-uploaded source files are never exposed — only the canonical stitched mp3. Returns 404 if the object isn't present yet.
+
 ---
 
 ## 5. UI Surface
@@ -808,7 +812,7 @@ Affordance wiring state:
 - **↻ Regenerate (per-card, § 4.10):** wired (2026-05-31). Click opens an inline composer with a "What should change? (optional)" textarea (≤2000 chars), Regenerate / Cancel, and a "~$0.01 · Sonnet" cost hint. POST to `/api/recordings/[id]/extractions/[extractionId]/regenerate`; success swaps the card in place via React state (no page reload). Used to fix individual mismatches during PM-1 calibration.
 - **Per-topic "⋯" Re-extract (§ 4.11 scope='topic'):** wired (2026-05-31). The "⋯" on each topic header opens a modal: title "Re-extract pairs for «topic»", an instructions textarea (≤4000 chars) with a topic-aware placeholder, a `~$0.10–$0.40 · Opus + Sonnet` cost line, Cancel / Confirm. POST `/api/recordings/[id]/reanalyze` with `{ scope: 'topic', topic, instructions }`. On success: `router.refresh()` re-pulls the server-rendered report; the active tab stays put.
 - **Tab-header "⋯ More" full re-extract (§ 4.11 scope='all'):** wired (2026-05-31). Same modal shell as the per-topic variant with "Deletes every existing pair…" warning and a `~$1` cost line. POST `{ scope: 'all', instructions }`. `completed_at` is bumped on the recording row per spec.
-- **▶ Play this segment:** stub. Pending the audio signed-URL route + the modal player UI.
+- **▶ Play this segment / Play from here:** wired (2026-06-01). Every Q&A / appendix card with a `start_sec`, and every transcript segment, has a Play button that opens a shared `AudioModal`. The modal fetches a short-TTL signed URL via `GET /api/recordings/[id]/audio` (§ 4.12), seeks to the requested start and autoplays, and carries: a ≥48px play/pause, a scrubber with current/total time, ±15s / ±30s skip, playback speed (0.75/1/1.25/1.5/2×), Esc/×-to-close, and a synced transcript list that highlights + auto-scrolls the segment under the playhead (click a segment to seek). The "Open in full audio viewer" full-page route from the design is deferred — the modal covers the meeting-review need.
 - **Export & Share tab:** stub. Pending § 4.5 (PDF + XLSX) + § 4.7 (share).
 
 ### 5.5 Org-admin recordings list — `/recordings`

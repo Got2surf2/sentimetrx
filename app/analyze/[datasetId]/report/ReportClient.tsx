@@ -9,7 +9,7 @@
 // § 4.5 / § 4.6 / § 4.10 / § 4.11 routes — the affordances render but their
 // click handlers show a "not yet wired" tooltip rather than firing.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type {
@@ -21,6 +21,17 @@ import type {
   TranscriptSegment,
   QaSetupInputs,
 } from '@/lib/recordings/types'
+
+// A request to open the audio modal at a given point. `nonce` forces a re-seek
+// even when two Play buttons share the same start_sec.
+export interface AudioRequest {
+  startSec: number
+  endSec: number | null
+  label: string
+  nonce: number
+}
+
+type PlayHandler = (startSec: number | null, endSec: number | null, label: string) => void
 
 export interface ReportData {
   recording: RecordingRow
@@ -64,6 +75,19 @@ export default function ReportClient({ data }: { data: ReportData }) {
     return Array.isArray(setup?.agenda) ? setup.agenda : []
   }, [data.recording.setup_inputs])
 
+  // Audio modal — a single player shared by every "▶ Play" affordance.
+  const [audioReq, setAudioReq] = useState<AudioRequest | null>(null)
+  const nonceRef = useRef(0)
+  const playAt = useCallback((startSec: number | null, endSec: number | null, label: string) => {
+    nonceRef.current += 1
+    setAudioReq({ startSec: startSec ?? 0, endSec, label, nonce: nonceRef.current })
+  }, [])
+
+  const segments = useMemo(
+    () => (data.transcript?.segments ?? []) as TranscriptSegment[],
+    [data.transcript],
+  )
+
   return (
     <div className="space-y-6">
       <ReportHeader recording={data.recording} extractionCount={extractions.length} />
@@ -79,12 +103,21 @@ export default function ReportClient({ data }: { data: ReportData }) {
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} />}
-        {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
+        {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} />}
+        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} onPlay={playAt} />}
         {tab === 'export' && <ExportTab />}
       </div>
+
+      {audioReq && (
+        <AudioModal
+          recordingId={recordingId}
+          segments={segments}
+          req={audioReq}
+          onClose={() => setAudioReq(null)}
+        />
+      )}
     </div>
   )
 }
@@ -161,11 +194,12 @@ function TabBar({
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ recordingId, extractions, agenda, onReplaced }: {
+function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
   onReplaced: (e: RecordingExtractionRow) => void
+  onPlay: PlayHandler
 }) {
   const router = useRouter()
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
@@ -226,6 +260,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
                 expanded={expandedAll || expanded.has(e.id)}
                 onToggle={() => toggleCard(e.id)}
                 onReplaced={onReplaced}
+                onPlay={onPlay}
               />
             ))}
           </ul>
@@ -340,12 +375,13 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
   )
 }
 
-function QACard({ recordingId, extraction, expanded, onToggle, onReplaced }: {
+function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay }: {
   recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
   onToggle: () => void
   onReplaced: (e: RecordingExtractionRow) => void
+  onPlay: PlayHandler
 }) {
   const payload = extraction.payload as QaPairPayload
   const flagged = extraction.flagged_for_review
@@ -421,7 +457,15 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced }: {
             )}
           </div>
           <div className="flex gap-2 pt-2">
-            <StubButton label="▶ Play this segment" tooltip="Audio modal player — wiring pending (needs signed-URL route + tus-uploaded stitched.mp3 available)" />
+            {extraction.start_sec != null && (
+              <button
+                type="button"
+                onClick={() => onPlay(extraction.start_sec, extraction.end_sec, payload.question)}
+                className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
+              >
+                ▶ Play this segment
+              </button>
+            )}
             {!showComposer ? (
               <button
                 type="button"
@@ -476,11 +520,12 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced }: {
 
 // ── Appendix tab ─────────────────────────────────────────────────────────────
 
-function AppendixTab({ recordingId, extractions, agenda, onReplaced }: {
+function AppendixTab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
   onReplaced: (e: RecordingExtractionRow) => void
+  onPlay: PlayHandler
 }) {
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -508,6 +553,7 @@ function AppendixTab({ recordingId, extractions, agenda, onReplaced }: {
                   return next
                 })}
                 onReplaced={onReplaced}
+                onPlay={onPlay}
               />
             ))}
           </ul>
@@ -591,7 +637,7 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript }: { transcript: RecordingTranscriptRow | null }) {
+function TranscriptTab({ transcript, onPlay }: { transcript: RecordingTranscriptRow | null; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
@@ -627,8 +673,15 @@ function TranscriptTab({ transcript }: { transcript: RecordingTranscriptRow | nu
       </p>
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
         {filtered.map((s, i) => (
-          <li key={i} className="py-2 text-sm flex items-start gap-3">
-            <span className="font-mono text-xs text-gray-400 w-14 shrink-0 pt-0.5">{formatTime(s.start)}</span>
+          <li key={i} className="py-2 text-sm flex items-start gap-3 group">
+            <button
+              type="button"
+              onClick={() => onPlay(s.start, s.end, s.text.slice(0, 80))}
+              title="Play from here"
+              className="font-mono text-xs text-gray-400 hover:text-orange-600 w-14 shrink-0 pt-0.5 text-left"
+            >
+              ▶ {formatTime(s.start)}
+            </button>
             {s.speaker && <span className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5">{s.speaker}</span>}
             <span className="text-gray-800">{highlight(s.text, search)}</span>
           </li>
@@ -659,13 +712,201 @@ function ExportTab() {
 
 // ── Stubs ────────────────────────────────────────────────────────────────────
 
-function StubButton({ label, tooltip }: { label: string; tooltip: string }) {
+// ── Audio modal player (§ 5.4) ────────────────────────────────────────────────
+// One shared player. Fetches a short-TTL signed URL for the stitched mp3 on
+// open, seeks to the requested start, and keeps a synced transcript view that
+// highlights + auto-scrolls the segment under the playhead (click to seek).
+
+const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2]
+
+function AudioModal({ recordingId, segments, req, onClose }: {
+  recordingId: string
+  segments: TranscriptSegment[]
+  req: AudioRequest
+  onClose: () => void
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const activeRef = useRef<HTMLLIElement>(null)
+  const [url, setUrl] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState(req.startSec)
+  const [duration, setDuration] = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const [rate, setRate] = useState(1)
+
+  // Fetch the signed URL once per mount.
+  useEffect(() => {
+    let cancelled = false
+    setErr(null)
+    fetch(`/api/recordings/${recordingId}/audio`, { cache: 'no-store' })
+      .then(async res => {
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body?.error || `audio ${res.status}`)
+        if (!cancelled) setUrl(body.url as string)
+      })
+      .catch(e => { if (!cancelled) setErr(e instanceof Error ? e.message : 'failed to load audio') })
+    return () => { cancelled = true }
+  }, [recordingId])
+
+  // Seek to the requested start (and play) whenever a new Play request arrives.
+  useEffect(() => {
+    const a = audioRef.current
+    if (!a || !url) return
+    const seekAndPlay = () => {
+      try { a.currentTime = req.startSec } catch { /* not seekable yet */ }
+      a.playbackRate = rate
+      a.play().catch(() => { /* autoplay may be blocked; user can hit play */ })
+    }
+    if (a.readyState >= 1) seekAndPlay()
+    else a.addEventListener('loadedmetadata', seekAndPlay, { once: true })
+    // rate intentionally omitted from deps — we don't want a rate change to re-seek.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, req.startSec, req.nonce])
+
+  // Esc closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const activeIdx = useMemo(() => {
+    let idx = -1
+    for (let i = 0; i < segments.length; i++) {
+      if (segments[i].start <= currentTime) idx = i
+      else break
+    }
+    return idx
+  }, [segments, currentTime])
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [activeIdx])
+
+  const seekTo = (t: number) => {
+    const a = audioRef.current
+    if (!a) return
+    a.currentTime = Math.max(0, Math.min(t, duration || t))
+  }
+  const skip = (delta: number) => seekTo(currentTime + delta)
+  const togglePlay = () => {
+    const a = audioRef.current
+    if (!a) return
+    if (a.paused) a.play().catch(() => {}); else a.pause()
+  }
+  const changeRate = (r: number) => {
+    setRate(r)
+    if (audioRef.current) audioRef.current.playbackRate = r
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Playing from {formatTime(req.startSec)}</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{req.label}</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none shrink-0">×</button>
+        </div>
+
+        <audio
+          ref={audioRef}
+          src={url ?? undefined}
+          preload="auto"
+          onLoadedMetadata={e => setDuration((e.target as HTMLAudioElement).duration || 0)}
+          onTimeUpdate={e => setCurrentTime((e.target as HTMLAudioElement).currentTime)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+        />
+
+        {err ? (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">{err}</div>
+        ) : !url ? (
+          <div className="text-sm text-gray-500 py-6 text-center">Loading audio…</div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={togglePlay}
+                className="w-12 h-12 rounded-full text-white flex items-center justify-center text-lg shrink-0"
+                style={{ backgroundColor: HERMES }}
+                aria-label={playing ? 'Pause' : 'Play'}
+              >
+                {playing ? '❚❚' : '▶'}
+              </button>
+              <div className="flex-1">
+                <input
+                  type="range"
+                  min={0}
+                  max={duration || 0}
+                  step={0.1}
+                  value={Math.min(currentTime, duration || currentTime)}
+                  onChange={e => seekTo(Number(e.target.value))}
+                  className="w-full accent-orange-600"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-1">
+                <SkipButton label="−30s" onClick={() => skip(-30)} />
+                <SkipButton label="−15s" onClick={() => skip(-15)} />
+                <SkipButton label="+15s" onClick={() => skip(15)} />
+                <SkipButton label="+30s" onClick={() => skip(30)} />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">Speed</span>
+                {PLAYBACK_RATES.map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => changeRate(r)}
+                    className={'text-xs px-2 py-1 rounded ' + (rate === r ? 'bg-orange-100 text-orange-700 font-semibold' : 'text-gray-500 hover:bg-gray-100')}
+                  >
+                    {r}×
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {segments.length > 0 && (
+              <ol className="border-t border-gray-100 pt-3 max-h-64 overflow-y-auto divide-y divide-gray-50">
+                {segments.map((s, i) => {
+                  const active = i === activeIdx
+                  return (
+                    <li
+                      key={i}
+                      ref={active ? activeRef : undefined}
+                      className={'py-1.5 px-2 text-sm flex items-start gap-2 cursor-pointer rounded ' + (active ? 'bg-orange-50' : 'hover:bg-gray-50')}
+                      onClick={() => seekTo(s.start)}
+                    >
+                      <span className="font-mono text-xs text-gray-400 w-12 shrink-0 pt-0.5">{formatTime(s.start)}</span>
+                      {s.speaker && <span className="text-xs font-semibold text-gray-500 w-9 shrink-0 pt-0.5">{s.speaker}</span>}
+                      <span className={active ? 'text-gray-900' : 'text-gray-700'}>{s.text}</span>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SkipButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      title={tooltip}
-      disabled
-      className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-400 cursor-not-allowed"
+      onClick={onClick}
+      className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
     >
       {label}
     </button>
