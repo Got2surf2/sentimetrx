@@ -106,3 +106,19 @@ Driven by a fresh `/audit-codebase` run (7.5/10 on the skill's framework). Did t
 ## 2026-06-01 — Fix: signals-pptx export wrote to server ~/Downloads (prod crash)
 
 CI on PR #11 surfaced a pre-existing bug: `app/api/datasets/[datasetId]/export/signals-pptx/route.ts` called `fs.writeFileSync(os.homedir()/Downloads/...)` server-side after rendering the deck — leftover dev convenience. It ENOENT-crashes on Vercel's serverless filesystem (no `~/Downloads`), and an API route shouldn't write to local disk anyway (it already returns the PPTX as an HTTP attachment). Removed the write; the download response is unchanged. The export-org-gate test's same-org case (which exercises the full route) now passes on CI.
+
+## 2026-06-01 — Next 14 → 15 upgrade (Phase 1 of the 14→16 spike) — branch upgrade/next-15
+
+Executed Phase 1 of the scoped Next upgrade. Branch `upgrade/next-15`, commit-only (not pushed), 3 checkpoint commits. **Bumping to Next 15 clears the last HIGH CVE — `npm audit` now 0 high / 2 moderate.**
+
+**What changed**:
+- `next` ^14.2.35 → ^15.5.18 (eslint-config-next already 15).
+- **Async request APIs** (the bulk): `lib/supabase/server.ts` `createClient()` is now `async` (`await cookies()`); the ~262 server-side call sites became `await createClient()` (browser-client sites untouched). `tsc` was the worklist — making the wrapper return `Promise` flagged every un-awaited site, so none were missed. `ReturnType<typeof createClient>` refs → `Awaited<...>` (incl. the `createBrowserClient` alias in `lib/auth/orgAccess.ts`, which cascaded to ~30 callers via `getCallerOrgContext`).
+- `headers()` async: `lib/requestContext.ts` `getRequestId()` → async; `app/demo/mco/page.tsx` → async.
+- `NextRequest.ip` removed in 15: bot/clara/nora chat routes derive the rate-limit key from `x-forwarded-for`.
+- **`@next/codemod next-async-request-api`** → 153 files: `params`/`searchParams` now `Promise<>` with `await props.params` in pages + route handlers. `entities/[slug]` local helper typed `Awaited<Params['params']>`. Test call sites wrapped `params` in `Promise.resolve(...)` (30 sites).
+- **`next.config.js`**: removed `experimental.instrumentationHook` (stable in 15); moved `outputFileTracingIncludes` out of `experimental` to top-level (keeps the control-reports markdown bundling working).
+
+**Verification**: `tsc --noEmit` clean; `npm test` 388 passed / 54 skipped; `next build` succeeds (only pre-existing ESLint `warn`s — the known 374 — no migration warnings, no invalid-config, no missing-Suspense). fetch-caching default flip (62 server fetches) did not surface in build; app is force-dynamic-heavy so low risk — flagged for the prod canary smoke.
+
+**Not done (Phase 2, separate)**: Next 15 → 16 (Turbopack default vs the Sentry webpack plugin; React 18 → 19). Held for a separate branch + canary. This Phase-1 branch is commit-only pending review.
