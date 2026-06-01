@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
@@ -26,12 +27,18 @@ export async function POST(req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Cross-org gate: the dataset lookup uses the service role (bypasses RLS),
+  // so any authed user could export another org's dataset by id without this.
+  // Admin-org may export any (Phase E). Multi-tenancy invariant.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+
   const service = createServiceRoleClient()
 
   // Load dataset
   const { data: dataset } = await service
-    .from('datasets').select('id, name, source, row_count').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, source, row_count, org_id').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const source = dataset.source as string
   if (source !== 'reddit' && source !== 'substack') {
@@ -276,10 +283,10 @@ export async function POST(req: Request, { params }: Params) {
 
   const buffer = await renderDeck(deck, dataset.name)
 
-  // Write to ~/Downloads
+  // Return the deck as a download. (Previously also wrote to the server's
+  // ~/Downloads via fs.writeFileSync — removed: that crashes on Vercel's
+  // serverless filesystem and an API route shouldn't write to local disk.)
   const fileName = dataset.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Signal_Tiers.pptx'
-  const downloadPath = require('path').join(require('os').homedir(), 'Downloads', fileName)
-  require('fs').writeFileSync(downloadPath, buffer)
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {

@@ -34,12 +34,14 @@ tests/
 ├── setup.ts              # global setup (env stubs, next/headers shim)
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
+│   ├── components/       # BrandTagInput (first component test — render + onChange + datalist fetch)
 │   ├── recordings/       # coverage (per-topic/gap/histogram), analyze (Opus+Sonnet parse + flag-merge, callAI mocked)
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
 │   ├── deflectionRouter.test.ts
 │   ├── engagementSignals.test.ts
+│   ├── entityAnalysis.test.ts    # PPTX entity slides — splitMentions, catalogToAggregate (catalog-first reuse), entitySlideSpecs slide shape
 │   ├── entityMentionDetector.test.ts
 │   ├── guardrails.test.ts
 │   ├── nameExtractor.test.ts  # post-hoc AI name extractor — gating + JSON parsing + defense-in-depth regex
@@ -49,6 +51,7 @@ tests/
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
+│   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug)
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
@@ -60,7 +63,10 @@ tests/
 │   ├── cross-org-egress.test.ts       # env-gated, real Supabase — per-table egress
 │   ├── auth-flows.test.ts             # env-gated, real Supabase — auth round-trips
 │   ├── campaign-routes-egress.test.ts # env-gated — service-role campaign-by-id routes
-│   └── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+│   ├── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+│   ├── recordings-routes.test.ts      # 8 recordings routes — auth/feature/org gates + validation (mocked)
+│   ├── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes (mocked)
+│   └── tenant-routes-gate.test.ts     # campaign-send / social-handle / dataset route — 401 + cross-org 404 (mocked)
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
 └── loadtest/
@@ -92,6 +98,8 @@ makes the suite easy to reason about as a unit.
 | Engagement signals | `engagementSignals` countWords edge cases, isCurtResponse threshold, SUBTLE_DISENGAGE anchor behavior, isSubtleDisengage wrapper | Used by the PulseIQ AI-tone-check fast path. Anchoring is critical — a bad regex matches "ok so what about housing" as disengagement and skips clarifying on real feedback |
 | Phase 3 dual-write | `phase3DualWrite` flag gating (no-op when off), mirror call shape for turns / focus-flags / delete | The dual-write is observation-only with the flag off; the unit tests pin that contract so a future refactor doesn't accidentally make it always-on or break the table/filter shape |
 | Sentry PII scrub | `sentryScrub` redacts `request.{data,body,cookies}` + auth/cookie headers + PII key names, reduces `user` to `{id}` only, scrubs email/phone in breadcrumb messages, drops the Office "Object Not Found" false-positive | The scrub is a `beforeSend` hook — bugs are silent (PII leaks to Sentry) and only caught at the next quarterly audit. Tests pin the contract so the redaction can't regress |
+| Signal-stats cache freshness | `signalStats.computeSignalStats` serves cache only when theme-model hash AND row_count match; recomputes when rows are synced under a stable hash; self-heals legacy caches missing `row_count` | The TextMine toolbar caches off the theme-model hash, which is blind to synced rows — a stale strip read 67 records while the live Themes panel counted 80 (Coalition Donor collection). The row-count key is the only thing preventing the strip + exported decks from silently freezing after every sync |
+| PPTX entity analysis | `entityAnalysis` splitMentions delimiters, `catalogToAggregate` (sort/drop-zero/category rollup/one-quote-per-category), `entitySlideSpecs` slide shape (top-grid + bar + long-tail>24 + quotes) | StoryTime entity slides reuse the stored entity catalog (zero extra AI). The aggregate adapter and slide-spec builder are pure and shared with `/api/entity-analysis-deck`; a regression silently malforms the entity deck or re-introduces per-export AI cost |
 | Post-hoc name extractor | `nameExtractor` input gating (≥10 char corpus), JSON-from-AI parsing (markdown-fenced + raw), name validation regex, source/confidence enum normalisation, AI-throw graceful fallback | Closes the "Anonymous in 88% of admin views" gap; the lib is fire-and-forget so silent regressions don't surface — tests cover the deterministic guardrails |
 | Probe-focus classifier | `probeFocusClassifier` skip-short-message gating, disabled-focus filtering, NONE handling, hallucinated-slug drop, dedup, mixed-case lowercase match, AI-throw fallback | Runs on every user turn ≥3 words when `probe_focus_enabled` is set; a bad slug filter pollutes the analytics with phantom topics, a missing dedup inflates the topic frequencies |
 | Admin usage drill-in | `/api/admin/usage/[type]/[id]` admin-gate, `VALID_TYPES` allowlist, totals + by_event + by_model + daily_trend aggregation, from/to + days range fallback, name/href resolution | The page surfaces per-bot/per-study cost; an aggregation bug shows misleading numbers to admins who use it for billing reconciliation |
@@ -106,6 +114,8 @@ makes the suite easy to reason about as a unit.
 | Agent admin-page org gate | `botPageOrgGate` — the service-role agent lookup pairs `id` with `org_id` for non-admins, redirects on a cross-org miss, and stays unconstrained for admins | The admin pages (`/bots/[id]/{history,entities,questions}`) load by guessable UUID via service role; the test pins the multi-tenancy invariant so a refactor can't reintroduce a bare-id cross-tenant read |
 | Recordings coverage | `computeCoverage` per-topic counting + zero-count flagging, ≥5-min gap detection (leading/mid/tail + rounding), confidence histogram bucketing/clamp | Pure post-analysis report logic driving the reviewer's flags; deterministic, so cheap to pin against regressions |
 | Recordings analyze | `analyzeRecording` Opus-extraction + Sonnet-curator parsing (markdown-fence tolerance, invalid-typology/empty-field drop), flag-merge precedence (curator beats low-confidence), emergent-topic override, two-pass cost (callAI mocked) | The PM-1-critical "audience question vs panel commentary" judgment lives here; the parser must survive garbage model output and the flag-merge must not regress |
+| Recordings routes | All 8 recordings API routes — 401 unauth, 403 feature-off, 404 cross-org (id+org_id pairing asserted), and input validation (instructions length, scope enum, duplicate filenames, status filter); Supabase + WDK mocked | Route handlers carry the org/feature gates and were shipped untested; the gate contract is the load-bearing part and must not regress |
+| Export org gate | The service-role export routes (`datasets/export/{html,pptx,signals-pptx}`, `townhall/sessions/[id]/export/{pptx,route}`) return 404 when a non-admin requests another org's resource; same-org passes | Exports return an entire org's data; a June-2026 sweep found this class unguarded. The test pins the cross-org 404 so the leak can't reappear |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 
 ## What we deliberately skip

@@ -66,6 +66,22 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 4. Compute: percentage, Wilson 95% CI, sentiment classification, avgRating, ratingDelta, per-keyword ratings
 5. Performance: O(rows x themes x keywords), single pass
 
+### Signal-stats toolbar (`lib/signalStats.ts`)
+The TextMine strip ("N records · M signals · theme-fit X% · K themes") and the
+`/analyze` listing cards are powered by `computeSignalStats`. `records` is the
+**max** non-empty count across the saved theme model's fields (summed across
+collection members); `signals` / `inThemes` come from `count_theme_matches`.
+Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
+the theme-model hash **and** the current row count: editing/re-mining the themes
+flips the hash, and syncing rows in/out changes the count — either forces a
+recompute on the next read. The row-count key matters because a sync that adds
+rows leaves the theme model (and its hash) untouched, which previously left the
+strip frozen at a stale snapshot while the live Themes panel counted the new
+rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can
+read **lower** than the Themes panel's "responses": the panel counts the
+**union** of currently-active fields (`.some()` non-empty), while `records`
+takes the single largest field — they intentionally use different denominators.
+
 ### Sentiment Scoring (Lexicon-Based, `lib/sentimentLexicon.ts`)
 - `POSITIVE_WORDS`: good, great, excellent, amazing, friendly, clean, helpful, etc.
 - `NEGATIVE_WORDS`: bad, terrible, slow, rude, dirty, expensive, disappointing, etc.
@@ -428,6 +444,8 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 The ExportModal offers exactly **two formats**: PPTX and HTML. There is no CSV
 analytics export — dataset-row CSV download is not part of this module.
 
+> **Org gate:** every export route (`/api/datasets/[datasetId]/export/{pptx,html,signals-pptx,html/share}`) resolves the dataset with the service role, so it pairs the lookup with the caller's `org_id` via `getCallerOrgContext` (admin-org may export any) and returns 404 cross-org. See `docs/SECURITY.md` § 2; regression in `tests/integration/export-org-gate.test.ts`.
+
 ### PPTX (Consulting-Quality Deck)
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),
@@ -441,6 +459,27 @@ analytics export — dataset-row CSV download is not part of this module.
   (W22 audit lift — customer-export PPTX identifies the platform, not
   the parent company).
 - **Quote selection**: `pickBestComments()` selects 2-3 representative quotes per theme
+- **Comments + signals on text-analytics slides**: every open-ended/theme slide header
+  carries `N comments · M signals`, where *comments* = responses with text in that field
+  and *signals* = total theme mentions (sum of per-theme match counts; one response can
+  hit multiple themes, so signals ≠ comments). Computed live per field via
+  `computeFieldThemes` and passed to `buildOpenEndedSlide` / `buildThemeGridSlides` /
+  `buildThemeSlides` as a `meta` arg (`withCounts()` appends it to the subtitle).
+- **Entity analysis (`body.entityFields`)**: the Custom Builder's Entity Analysis picker
+  selects open-ended fields that name organisations (e.g. "Charities Donated To").
+  Slides are built from the **stored `entity_catalog`** (`getEntitiesWithCounts`) — the
+  same pre-extracted, canonicalised, categorised entities shown on the Entities tab — so
+  it costs **no extra AI**. If the catalog is empty it runs `discoverEntities` once (which
+  stores the result for next time), unless AI is off. Rendered with the shared
+  `entitySlideSpecs` + `renderEntityGrid/renderBarChart/renderQuotes` from
+  `lib/pptx/slideRenderer` (same renderers as `/api/entity-analysis-deck`, which now also
+  shares the extraction core in `lib/entityAnalysis.ts`).
+- **Skip text analytics (`body.skipTextAnalytics`)**: when set (paired with entity fields),
+  the theme/verbatim sections are dropped so the deck is entity-focused; categorical/numeric
+  slides still render. Lets a deck be "just analyse Charities, no theme walls of text."
+- **Theme picker counts**: the ExportModal theme cards fetch live counts from
+  `/api/datasets/[datasetId]/theme-counts` (the saved `theme_model.themes` persist
+  `count`/`percentage` as 0), so the cards show real `n`/`%` instead of zeros.
 - **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
   About slide as `<audience> edition · v<version>`
 

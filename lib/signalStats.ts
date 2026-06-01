@@ -30,6 +30,7 @@ interface ThemeModel {
 
 interface CachedSignalStats extends SignalStats {
   theme_model_hash: string
+  row_count: number
   computed_at: string
 }
 
@@ -64,6 +65,57 @@ function emptyStats(themeCount: number): SignalStats {
 }
 
 /**
+ * Resolve the underlying dataset IDs whose rows feed the stats: the
+ * dataset itself, or — for a collection — its member datasets. Shared
+ * by the compute path and the cache freshness check so both count the
+ * exact same rows.
+ */
+async function resolveDatasetIds(
+  service: SupabaseClient,
+  datasetId: string,
+): Promise<string[]> {
+  const { data: ds } = await service
+    .from('datasets')
+    .select('id, source')
+    .eq('id', datasetId)
+    .single()
+  if (!ds) return []
+  if ((ds as { source?: string }).source !== 'collection') return [datasetId]
+  const { data: coll } = await service
+    .from('collections')
+    .select('id')
+    .eq('dataset_id', datasetId)
+    .single()
+  if (!coll) return []
+  const { data: members } = await service
+    .from('collection_members')
+    .select('dataset_id')
+    .eq('collection_id', (coll as { id: string }).id)
+  return ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
+}
+
+/**
+ * Cheap freshness signal for the cache: total rows feeding the stats.
+ * Changes when rows are synced in or deleted — which the theme-model
+ * hash alone does NOT capture, so a cache keyed only on that hash goes
+ * permanently stale after a sync until the theme model is next edited.
+ * (Edits that fill a previously-empty field without changing the row
+ * count are not detected — a rare case; re-mining the themes forces a
+ * recompute regardless.)
+ */
+async function totalRowCount(
+  service: SupabaseClient,
+  datasetIds: string[],
+): Promise<number> {
+  if (!datasetIds.length) return 0
+  const { count } = await service
+    .from('dataset_rows_flat')
+    .select('id', { count: 'exact', head: true })
+    .in('dataset_id', datasetIds)
+  return count || 0
+}
+
+/**
  * Compute signal stats for a dataset (or collection). Pure DB work, no
  * caching. Use computeSignalStats for the cache-aware version.
  */
@@ -71,14 +123,6 @@ export async function computeSignalStatsRaw(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<SignalStats> {
-  // Resolve source
-  const { data: ds } = await service
-    .from('datasets')
-    .select('id, source')
-    .eq('id', datasetId)
-    .single()
-  if (!ds) return emptyStats(0)
-
   // Load theme model
   const { data: stateRow } = await service
     .from('dataset_state')
@@ -96,24 +140,8 @@ export async function computeSignalStatsRaw(
   if (themeModel?.fieldNames && themeModel.fieldNames.length) fields = themeModel.fieldNames
   else if (themeModel?.fieldName) fields = [themeModel.fieldName]
 
-  // Resolve collection members
-  let datasetIds: string[] = [datasetId]
-  if ((ds as { source?: string }).source === 'collection') {
-    const { data: coll } = await service
-      .from('collections')
-      .select('id')
-      .eq('dataset_id', datasetId)
-      .single()
-    if (coll) {
-      const { data: members } = await service
-        .from('collection_members')
-        .select('dataset_id')
-        .eq('collection_id', (coll as { id: string }).id)
-      datasetIds = ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
-    } else {
-      datasetIds = []
-    }
-  }
+  // Resolve the dataset (or its collection members) that hold the rows
+  const datasetIds = await resolveDatasetIds(service, datasetId)
 
   if (!themes.length || !fields.length || !datasetIds.length) {
     return emptyStats(themes.length)
@@ -185,12 +213,13 @@ export async function computeSignalStatsRaw(
 
 /**
  * Cache-aware variant. Returns the cached SignalStats from
- * dataset_state.analytics.signal_stats when the theme model hash
- * matches the current saved model, otherwise computes + writes.
+ * dataset_state.analytics.signal_stats when BOTH the theme model hash
+ * and the row count match the current state, otherwise computes + writes.
  *
- * The hash auto-invalidates: edit/re-mine themes → next read
- * recomputes. New rows on sync don't bump the hash, but downstream
- * sync routes call invalidateSignalStats() to force refresh.
+ * Two invalidation triggers: editing/re-mining themes flips the hash, and
+ * syncing rows in/out changes the row count. Either one forces a recompute
+ * on the next read. (invalidateSignalStats() below can drop the cache
+ * eagerly, but the row-count check makes that optional for sync paths.)
  */
 export async function computeSignalStats(
   service: SupabaseClient,
@@ -210,8 +239,21 @@ export async function computeSignalStats(
   const currentHash = themeModelHash(row.theme_model)
   const cached = (row.analytics as { signal_stats?: CachedSignalStats } | null)?.signal_stats
 
-  if (cached && cached.theme_model_hash === currentHash && currentHash !== '') {
-    const { theme_model_hash: _h, computed_at: _c, ...stats } = cached
+  // Freshness: the hash only flips on theme-model edits, so it can't see
+  // rows added/removed by a sync. Pair it with the current row count so a
+  // sync invalidates the cache. (Caches written before row_count existed
+  // have it undefined → never matches → recompute, which is the desired
+  // self-heal for already-stale entries.)
+  const datasetIds = await resolveDatasetIds(service, datasetId)
+  const currentRowCount = await totalRowCount(service, datasetIds)
+
+  if (
+    cached &&
+    cached.theme_model_hash === currentHash &&
+    currentHash !== '' &&
+    cached.row_count === currentRowCount
+  ) {
+    const { theme_model_hash: _h, row_count: _r, computed_at: _c, ...stats } = cached
     return stats
   }
 
@@ -222,6 +264,7 @@ export async function computeSignalStats(
     signal_stats: {
       ...stats,
       theme_model_hash: currentHash,
+      row_count: currentRowCount,
       computed_at: new Date().toISOString(),
     } satisfies CachedSignalStats,
   }

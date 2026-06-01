@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import DOMPurify from 'isomorphic-dompurify'
 import DownloadButton from '@/components/ui/DownloadButton'
 import { getFlagStyle, isFixedFlag } from '@/lib/flagStyles'
 
@@ -590,7 +591,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
                         border: isDeflect ? '1.5px solid #c4b5fd' : 'none',
                         opacity: isGreeting ? 0.8 : 1,
                       }}>
-                        <span dangerouslySetInnerHTML={{ __html: linkify(t.content) }} />
+                        <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(linkify(t.content)) }} />
                         <div style={{ fontSize: 10, marginTop: 4, opacity: 0.5 }}>
                           {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                           {t.language !== 'en' ? ' \u00b7 ' + t.language : ''}

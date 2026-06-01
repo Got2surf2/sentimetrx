@@ -43,3 +43,66 @@
 **Verification**: clean `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm ci`, `npm run check:sql-tx`, and `npm test` (342 passed / 54 skipped) all green locally — i.e. every CI step passes before push.
 
 **Scoped, not done — Next 14→16**: the remaining HIGH (`next`: Image-Optimizer remotePatterns DoS + RSC request-deserialization DoS) needs a two-major upgrade. Surface: `next ^14.2.35` (but `eslint-config-next` already `^15.5.18`), no `next/image` usage, middleware uses a matcher, `next.config.js` carries `experimental.{serverActions.bodySizeLimit,instrumentationHook,outputFileTracingIncludes}` (some now stable/relocated in 15) + the Sentry webpack plugin (16 defaults to Turbopack). Realistic as a dedicated 1–2 day spike (codemods → async `cookies()/headers()/params` → caching-default audit → Turbopack/webpack reconciliation → full regression). Deliberately kept off this branch.
+
+## 2026-06-01 — Audit score push 1–3: recordings route tests, cross-org export-leak sweep, secrets verify
+
+**Why**: Continuing the W22 governance score-lift (Tests + Security being the lowest dimensions). Picked the three highest-leverage remaining items.
+
+**1) Recordings API route tests** (`tests/integration/recordings-routes.test.ts`, 22 tests): gate + validation coverage for all 8 recordings route files — auth (401), feature gate (403), org scoping (404 cross-tenant with id+org_id pairing asserted), and input validation (instructions length, scope enum, file dupes, status filter). Supabase boundary + getUserContext/getAuthUser + Workflow DevKit triggers mocked. Closes the "8 routes, 0 tests" gap.
+
+**2) Service-role bare-`id` sweep → found a real cross-tenant leak CLASS in the export routes.** The W22 audit only flagged the bot *pages* (fixed last session). Sweeping `createServiceRoleClient().…eq('id', …)` lookups surfaced that the **dataset + town-hall export routes fetched a tenant resource by bare id with only an existence check** — any authed user could export another org's data by id. Fixed 5 routes to gate via the canonical `getCallerOrgContext` helper (`if (!isAdmin && row.org_id !== orgId) return 404`; admin-org may export any, Phase E):
+- `app/api/datasets/[datasetId]/export/{signals-pptx,html,pptx}/route.ts`
+- `app/api/townhall/sessions/[id]/export/{pptx,route}.ts` (CSV route captures org_id across both substrates)
+- (`datasets/export/html/share` was already correctly gated — the reference pattern.)
+- Regression test `tests/integration/export-org-gate.test.ts` (6 tests): non-admin in orgA → 404 for an orgB resource on every fixed route; same-org caller passes the gate.
+- The other ~30 grep candidates were triaged as safe: admin-cross-org by design, public endpoints, session-client (RLS), id derived from an already-org-verified parent, or org-scoped mutations.
+
+**3) Secrets quick win — already mitigated, verified.** The W22 LOW finding (`lib/meridian.ts` hardcoded JWT) already uses the env-override-with-public-fallback pattern (`process.env.MERIDIAN_TOKEN || PUBLIC_MERIDIAN_TOKEN`) and is documented as a public flymco.com bundle token. `.gitignore` already carries `*.pem`/`*.key`/`*.p12`. A scan of tracked source found **no real hardcoded secrets** (no `sk-ant`/`sk-`/AWS/private keys; the only JWT literal is the documented-public meridian token; `service_role` hits are SQL GRANTs). No code change warranted.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm test` 370 passed / 54 skipped (+28); `check:sql-tx` green.
+
+## 2026-06-01 — Fix: stale signal-stats cache (Coalition Donor count mismatch)
+
+**Why**: User reported the Coalition Donor Survey Collection showed irreconcilable counts on one screen — TextMine toolbar "67 records" vs Themes panel "80 responses/comments" for a single field ("Familiarity Follow-up"), which is impossible (a field can't have more answers than records in scope). Investigated against live prod (read-only): the collection's two member studies (Active 53 + Inactive 55 = 108 rows) had **exactly 67** non-empty `experience_followup` rows as of **2026-05-13** — the timestamp on the cached `signal_stats` blob — then **13 more responses arrived** (newest 2026-05-21) → **80** now. So 80 (live, correct) vs 67 (stale cache); the 108 top-right is correct.
+
+**Root cause**: `lib/signalStats.ts` cached the toolbar stats in `dataset_state.analytics.signal_stats` keyed **only** on the theme-model hash. The hash flips on theme edits but is blind to rows added by a sync, so the strip froze at the 5/13 snapshot while the live Themes panel counted the new rows. The `invalidateSignalStats()` helper meant to cover this was **never called anywhere** (the docstring's "downstream sync routes call it" was false) — dead code.
+
+**Fix**: pair the cache key with the **current row count**. `computeSignalStats` now resolves the underlying dataset IDs (extracted a shared `resolveDatasetIds` helper, reused by the compute path so both count the same rows) + a cheap `totalRowCount` head-count, stores `row_count` in the cache, and serves the cache only when hash AND row_count both match. A sync that changes the count forces a recompute on next read. Legacy caches (no `row_count`) never match → self-heal on next view — including the Coalition collection, which will recompute 67→80 with no manual cache clear. Edits that fill a previously-empty field without changing row count remain undetected (rare; re-mining forces recompute). Fixed the misleading docstring; `invalidateSignalStats` retained as an optional eager-drop but no longer load-bearing.
+
+**Tests**: `tests/unit/signalStats.test.ts` (3) — cache hit when hash+count match (no recompute), recompute when row_count changes under a stable hash (the Coalition case, 67→80), recompute for a legacy cache missing `row_count`.
+
+**Verification**: `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm test` 373 passed / 54 skipped (+3). Diagnosis confirmed by live read-only counts, not asserted. ANALYTICS.md § "Signal-stats toolbar" documents the keying + the intentional records-vs-responses denominator difference.
+
+## 2026-06-01 — Audit push (DOMPurify, .env.example, test batch); Next 14→16 scoped
+
+Driven by a fresh `/audit-codebase` run (7.5/10 on the skill's framework). Did the safe wins; scoped the Next upgrade separately.
+
+**DOMPurify on the 3 `dangerouslySetInnerHTML` surfaces** (Security; closes the long-standing SECURITY.md TBD #14): wrapped the rendered HTML in `DOMPurify.sanitize` (existing `isomorphic-dompurify` dep) on `app/bots/[id]/conversations/ConversationsClient.tsx` (conversation message linkify), `components/ui/ChatBot.tsx` (chat bubble formatHtml), and `app/campaigns/[id]/CampaignDetailClient.tsx` (3 email-preview renders). All strip script/on*/javascript: while keeping the safe markup the helpers emit.
+
+**`.env.example`** committed (Secrets 9→10 + onboarding/DD): enumerated all 56 `process.env.*` refs from the code and grouped them (core Supabase, AI providers, email/SMS, data sources, Meta social, AWS backups, recordings infra, secrets/signing, Sentry, URLs, internal flags) with placeholder values — no real credentials. Notes the GOAA/Meridian public-fallback pattern and the build-time-derived vars.
+
+**Test batch** (Tests): `tests/unit/components/BrandTagInput.test.tsx` — the repo's **first component test** (render contract + onChange + `/api/brands` datalist population via mocked fetch). `tests/integration/tenant-routes-gate.test.ts` — gate coverage for campaign-send / social-comment-handle / dataset-route (401 + cross-org 404). Suite +10.
+
+**Deliberately skipped `.claude/rules`** (the audit's AI-Patterns nudge): Claude Code auto-loads `CLAUDE.md`, not a `.claude/rules/` dir, in this repo — creating files there would be non-functional score-gaming. AI-Patterns is already healthy (rich CLAUDE.md + hooks + 4 commands + spec-drift/devlog/governance automation).
+
+**Next 14→16 scoped (not executed):** 0 direct `cookies()`/`headers()` sites and 0 `next/image` (the scariest 15 migrations barely apply), but **235 route handlers + 36 pages** read `params`/`searchParams` (async in 15, codemod-assisted), 62 server-component `fetch()` sites need a caching-default audit, 8 `useSearchParams` need Suspense boundaries, and the config (instrumentationHook/serverActions relocation + Turbopack-default vs the Sentry webpack plugin) + a React 18→19 bump make it a stacked two-major. Estimate ~3–5 day spike + prod canary. Full write-up handed to the user.
+
+**Verification**: `tsc --noEmit` clean; `npm test` 383 passed / 54 skipped.
+
+## 2026-06-01 — StoryTime PPTX: theme-card counts, comments+signals, native entity analysis (catalog-first)
+
+**Why**: User hit three PPTX-export problems on the Coalition Donor deck. (1) The theme-selection cards in the export builder showed `n=0 / 0%` for every theme. (2) A Custom-Builder instruction to "skip text analytics and run entity analysis on the Charities Donated To field" was silently ignored. (3) Wanted the "signals" count woven into every text-analytics slide alongside the comment count.
+
+**1) Theme-card 0% (ExportModal)** — the cards read `count`/`percentage` straight from the saved `theme_model.themes`, which persist both as **0** (real counts are computed live in TextMine, never written back). Fixed by fetching live counts from the existing `/theme-counts` endpoint after load and merging them into the cards.
+
+**2) Comments + signals on text slides (export/pptx route)** — every open-ended/theme slide header now shows `N comments · M signals` (comments = responses with text in the field; signals = sum of per-theme match counts, so a multi-theme response counts >1). Computed per field from `computeFieldThemes` and threaded into `buildOpenEndedSlide`/`buildThemeGridSlides`/`buildThemeSlides` via a `meta` arg + `withCounts()`. Definitions match the TextMine toolbar's "comments/signals" so the deck and app reconcile.
+
+**3) Native entity analysis + skip-text (the real gap)** — the free-text Custom-Builder instruction only ever shaped AI narrative *wording* (`generateNarratives`); it never drove slide composition, and StoryTime had no entity capability at all (that lived in the separate `/api/entity-analysis-deck`). Added: an **Entity Analysis field picker** + a **"Skip theme/verbatim text-analytics slides"** toggle in ExportModal (`body.entityFields`, `body.skipTextAnalytics`); native entity slides in the export route; and `skipTextAnalytics` gates out the OE theme + verbatim sections (categorical/numeric stay). Extracted the entity core into `lib/entityAnalysis.ts` and refactored `/api/entity-analysis-deck` to share it; exported `renderEntityGrid/renderBarChart/renderQuotes` from `lib/pptx/slideRenderer` so StoryTime renders entity slides into its own pptx (same NUMBERED master).
+
+**Cost — catalog-first (per user)**: entity slides read the **stored `entity_catalog`** via `getEntitiesWithCounts` (pre-extracted, canonicalised, categorised, live counts) → **zero extra AI**. Only when the catalog is empty does it run `discoverEntities` once, which **stores** the entities for next time (skipped when AI is off). The Coalition collection already has 35 catalog entities, so its deck costs $0 for entities.
+
+**Verification**: `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm test` 388 passed / 54 skipped (+5: `tests/unit/entityAnalysis.test.ts`). Diagnosed against live read-only DB (theme_model persists count:0; q3_response="Charities Donated To" has 85 responses; entity_catalog has 35 rows for the collection scope). Entity renderers QC'd standalone — render into a fresh NUMBERED-master deck without throwing (they're the same renderers already shipped in entity-analysis-deck). ANALYTICS.md + TESTING.md updated.
+
+## 2026-06-01 — Fix: signals-pptx export wrote to server ~/Downloads (prod crash)
+
+CI on PR #11 surfaced a pre-existing bug: `app/api/datasets/[datasetId]/export/signals-pptx/route.ts` called `fs.writeFileSync(os.homedir()/Downloads/...)` server-side after rendering the deck — leftover dev convenience. It ENOENT-crashes on Vercel's serverless filesystem (no `~/Downloads`), and an API route shouldn't write to local disk anyway (it already returns the PPTX as an HTTP attachment). Removed the write; the download response is unchanged. The export-org-gate test's same-org case (which exercises the full route) now passes on CI.

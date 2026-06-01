@@ -153,7 +153,7 @@ function pct(v: number, total: number) { return total > 0 ? Math.round(v / total
 
 // ── Slide builders ──────────────────────────────────────────────────────────
 
-function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: string) {
+export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title, spec.subtitle)
@@ -335,7 +335,7 @@ function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) {
+export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title, spec.subtitle)
@@ -408,7 +408,7 @@ function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string) {
+export function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title, spec.subtitle)

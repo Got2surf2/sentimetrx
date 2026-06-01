@@ -5,6 +5,7 @@
 // All branding, colors, and content are passed via config props.
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import DOMPurify from 'isomorphic-dompurify'
 import SanjayModal, { checkVerboseCommand } from './SanjayModal'
 
 function genSessionId() {
@@ -644,7 +645,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
                 boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
                 whiteSpace: 'pre-wrap', overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const,
               }}
-                dangerouslySetInnerHTML={{ __html: formatHtml(msg.content) }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatHtml(msg.content)) }}
               />
             </div>
             {debugMode && msg._debug && msg._debug.length > 0 && (

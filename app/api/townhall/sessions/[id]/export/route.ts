@@ -3,6 +3,7 @@
 // XLSX bundles responses + themes into separate sheets; CSV emits one or the other.
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
@@ -17,6 +18,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Cross-org gate: the session lookups below use the service role (bypasses
+  // RLS) across both substrates. Capture the owning org_id from whichever path
+  // resolves and verify the caller before exporting. Admin-org may export any.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+
   const db = createServiceRoleClient()
   const format = req.nextUrl.searchParams.get('format') || 'csv'
 
@@ -26,13 +32,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   // like NOWOCATS have no townhall_sessions row at all, so without this
   // fallback the magnifying-glass conversation modal silently 404s.
   let session: { name: string; status: string; config: any; started_at: string | null; ended_at: string | null } | null = null
+  let sessionOrgId: string | null = null
   {
     const { data } = await db
       .from('townhall_sessions')
-      .select('name, status, config, started_at, ended_at')
+      .select('name, status, config, started_at, ended_at, org_id')
       .eq('id', params.id)
       .maybeSingle()
-    if (data) session = data as any
+    if (data) { session = data as any; sessionOrgId = (data as any).org_id ?? null }
   }
   let purePhase3 = false
   if (!session) {
@@ -55,11 +62,13 @@ export async function GET(req: NextRequest, { params }: Params) {
         started_at: projected.started_at,
         ended_at: projected.ended_at,
       }
+      sessionOrgId = hall.org_id ?? null
       purePhase3 = true
     }
   }
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  if (!isAdmin && sessionOrgId !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   // Fetch themes
   const { data: themes } = await db
