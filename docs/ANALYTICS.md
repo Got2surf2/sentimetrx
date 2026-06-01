@@ -66,6 +66,22 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 4. Compute: percentage, Wilson 95% CI, sentiment classification, avgRating, ratingDelta, per-keyword ratings
 5. Performance: O(rows x themes x keywords), single pass
 
+### Signal-stats toolbar (`lib/signalStats.ts`)
+The TextMine strip ("N records · M signals · theme-fit X% · K themes") and the
+`/analyze` listing cards are powered by `computeSignalStats`. `records` is the
+**max** non-empty count across the saved theme model's fields (summed across
+collection members); `signals` / `inThemes` come from `count_theme_matches`.
+Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
+the theme-model hash **and** the current row count: editing/re-mining the themes
+flips the hash, and syncing rows in/out changes the count — either forces a
+recompute on the next read. The row-count key matters because a sync that adds
+rows leaves the theme model (and its hash) untouched, which previously left the
+strip frozen at a stale snapshot while the live Themes panel counted the new
+rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can
+read **lower** than the Themes panel's "responses": the panel counts the
+**union** of currently-active fields (`.some()` non-empty), while `records`
+takes the single largest field — they intentionally use different denominators.
+
 ### Sentiment Scoring (Lexicon-Based, `lib/sentimentLexicon.ts`)
 - `POSITIVE_WORDS`: good, great, excellent, amazing, friendly, clean, helpful, etc.
 - `NEGATIVE_WORDS`: bad, terrible, slow, rude, dirty, expensive, disappointing, etc.
