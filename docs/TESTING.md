@@ -33,7 +33,8 @@ The repo also installs a local pre-commit hook (`.githooks/pre-commit`, wired up
 tests/
 ├── setup.ts              # global setup (env stubs, next/headers shim)
 ├── unit/                 # pure functions + mocked-boundary tests
-│   ├── auth/             # requireAdmin, logDeckDownload
+│   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
+│   ├── recordings/       # coverage (per-topic/gap/histogram), analyze (Opus+Sonnet parse + flag-merge, callAI mocked)
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
@@ -102,6 +103,9 @@ makes the suite easy to reason about as a unit.
 | Campaign route egress | Service-role-client campaign-by-id routes (`/export`, `/respondents`) 404 cross-tenant + control 200 owning-org (env-gated) | RLS doesn't apply to service-role queries — this is the safety net for handler-level org_id gates |
 | Dataset / org route egress | `datasets/[id]/sync`, `datasets/[id]/auto-setup`, `regulations-sources/download-comments`, `org/logo` DELETE — 404/403 cross-tenant + control owning-org (env-gated) | Same safety net for service-role mutations on datasets and the organizations table |
 | Auth flows | Real Supabase signInWithPassword + OTP + reset + admin-createUser invite shape + signOut (env-gated) | Mocking the auth client only proves wrapper code; this proves the round-trip |
+| Agent admin-page org gate | `botPageOrgGate` — the service-role agent lookup pairs `id` with `org_id` for non-admins, redirects on a cross-org miss, and stays unconstrained for admins | The admin pages (`/bots/[id]/{history,entities,questions}`) load by guessable UUID via service role; the test pins the multi-tenancy invariant so a refactor can't reintroduce a bare-id cross-tenant read |
+| Recordings coverage | `computeCoverage` per-topic counting + zero-count flagging, ≥5-min gap detection (leading/mid/tail + rounding), confidence histogram bucketing/clamp | Pure post-analysis report logic driving the reviewer's flags; deterministic, so cheap to pin against regressions |
+| Recordings analyze | `analyzeRecording` Opus-extraction + Sonnet-curator parsing (markdown-fence tolerance, invalid-typology/empty-field drop), flag-merge precedence (curator beats low-confidence), emergent-topic override, two-pass cost (callAI mocked) | The PM-1-critical "audience question vs panel commentary" judgment lives here; the parser must survive garbage model output and the flag-merge must not regress |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 
 ## What we deliberately skip

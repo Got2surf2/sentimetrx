@@ -25,7 +25,11 @@ export default async function BotHistoryPage({ params }: Params) {
   const isAdmin = !!orgData?.is_admin_org
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('agents').select('id, name, slug, org_id, created_at, updated_at').eq('id', params.id).single()
+  // Service-role lookup pairs id with org_id for non-admins (multi-tenancy
+  // invariant); admins may load any org's agent.
+  let agentQuery = service.from('agents').select('id, name, slug, org_id, created_at, updated_at').eq('id', params.id)
+  if (!isAdmin && userData?.org_id) agentQuery = agentQuery.eq('org_id', userData.org_id)
+  const { data: bot } = await agentQuery.single()
   if (!bot) redirect('/bots')
   if (!isAdmin && (bot as any).org_id !== userData?.org_id) redirect('/bots')
 

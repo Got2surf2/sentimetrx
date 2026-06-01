@@ -296,6 +296,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 **RLS is enabled** on all bot tables, but the public chat endpoint uses the **service role** to bypass RLS (because end-users are not authenticated). Authorization is enforced at the application layer:
 
 - **Admin endpoints** (`/api/bots/*`, `/api/bots/[id]/*` except `chat`) verify the caller is in the bot's org via `users.org_id = bots.org_id`.
+- **Admin pages** (`/bots/[id]/{history,entities,questions}`) load the agent with the service role; the lookup pairs `id` with `org_id` for non-admins (admin-org users may load any org's agent), so a guessed UUID can't surface another org's agent. A trailing `org_id` re-check before render is kept as defense-in-depth.
 - **Public chat** (`/api/bots/[id]/chat`) verifies the bot exists and `status = 'active'`. Then service role reads/writes everything else. Rate limited per IP.
 - **Cron review** uses `Authorization: Bearer ${CRON_SECRET}`.
 

@@ -13,6 +13,8 @@
 -- role and serves the HTML directly; it does NOT need the public-bucket flag.
 -- PDF downloads are also served via short-TTL signed URLs from the server.
 
+BEGIN;
+
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'recordings',
@@ -76,3 +78,5 @@ CREATE POLICY "recordings bucket org delete" ON storage.objects
       SELECT org_id::text FROM public.users WHERE id = auth.uid()
     )
   );
+
+COMMIT;
