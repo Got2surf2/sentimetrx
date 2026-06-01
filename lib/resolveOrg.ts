@@ -1,8 +1,14 @@
 import type { ModuleFeatures } from './types'
 
 const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
-  'surveys', 'analyze', 'googleReviews', 'reddit', 'substack',
+  'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'recordings',
   'townhall', 'campaigns', 'bots', 'social',
+]
+
+// Features only reachable *through* the Analyze module. When analyze is off,
+// these are forced off too — single source of truth for the dependency.
+const ANALYZE_CHILDREN: (keyof ModuleFeatures)[] = [
+  'googleReviews', 'reddit', 'substack', 'recordings',
 ]
 
 export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: string; name?: string; features?: any } | null {
@@ -14,7 +20,7 @@ export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: s
     org.features = {
       ...org.features,
       surveys: true, analyze: true, googleReviews: true, reddit: true,
-      substack: true, townhall: true, campaigns: true, bots: true, social: true,
+      substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true,
     }
   }
   return org
@@ -43,6 +49,10 @@ export function effectiveFeatures(
     } else {
       out[k] = true
     }
+  }
+  // Analytics is the parent: its sub-features are unreachable without it.
+  if (!out.analyze) {
+    for (const child of ANALYZE_CHILDREN) out[child] = false
   }
   return out
 }

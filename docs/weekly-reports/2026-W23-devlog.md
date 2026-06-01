@@ -1,0 +1,26 @@
+# 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
+
+## 2026-06-01 — Recordings pipeline brought live end-to-end (pilot wiring) + feature/accounting/UX
+
+**Why**: First real run of the productized recordings pipeline against NOWOCATS meeting video surfaced a chain of blockers (the pipeline had never been exercised with a real upload). Fixed each to get upload → extract → transcribe → analyze → report working, and reworked feature gating, extraction quality, accounting, and the list/delete UX per pilot feedback.
+
+**Fixes (sequential pipeline blockers)**:
+- **`getUserContext` selected a non-existent `users.is_admin` column** → PostgREST errored → every recordings page bounced to `/login`. Now derives `isAdmin` from `org.is_admin_org` (matches sibling pages). (`lib/userContext.ts`)
+- **ffmpeg not in the Vercel Sandbox** — `dnf install ffmpeg --skip-broken` exited 0 without installing (not in Amazon Linux repos). Now downloads a static ffmpeg/ffprobe build, installs `xz` (needed to unpack `.tar.xz`), and verifies with `ffmpeg -version` (fails loudly otherwise). (`lib/recordings/extract.ts`)
+- **Analyze timed out** — `callAI` defaults to a 15s timeout (fine for chat); Opus extracting Q&A from a full transcript needs minutes. Added `timeoutMs` (10 min Opus / 5 min Sonnet). (`lib/recordings/analyze.ts`, `regenerate.ts`)
+- **Recordings list showed 0** — the list query embedded `users:created_by`, but `recordings.created_by → auth.users` isn't PostgREST-embeddable. Now looks owner names up from `public.users` separately. (`app/recordings/page.tsx`)
+- **Supabase upload 413** for 175–251 MB files — project-level Storage upload limit (not the 20 GB bucket limit). Raised in the Supabase dashboard (ops, not code).
+
+**Feature gating reworked**: recordings is now a normal **`ModuleFeatures` toggle** (sub-feature of Analytics) instead of the bespoke `org_features`/`user_features` quota system. **Analytics is the parent** — `googleReviews`, `reddit`, `substack`, `recordings` are forced off when `analyze` is off, enforced centrally in `effectiveFeatures` and reflected in the org toggle UI (children indented + disabled when Analytics is off). The generic `org_features`/`user_features` tables + `assertFeatureAllowed` remain as unused infra (sql/089). (`lib/types.ts`, `lib/resolveOrg.ts`, `lib/userContext.ts`, `components/analyze/OrgFeatureToggles.tsx`, recording page/API gates)
+
+**Extraction quality — decouple recall from the agenda**: the old prompt used the agenda as both a recall anchor AND a fixed taxonomy ("use ONLY agenda topics"), so an empty/short agenda tanked recall. Now Opus extracts **every** audience Q&A comprehensively with a free-form topic label, and the Sonnet curator pass **clusters them into emergent topics** (agenda is an optional naming hint). Confirmed against the manual PM-1 baseline: the 7-vs-15 gap was mostly display (7 "ask" in the Q&A tab + 5 in the Appendix = 12) plus 4 genuinely-missed audience questions that the topic-anchoring had dropped. (`lib/recordings/prompts/qa.ts`, `lib/recordings/analyze.ts`)
+
+**Accounting for recordings**: added `usage_logs.cost_cents` (sql/092, applied to prod) for non-token costs; the ASR/transcription vendor charge now logs to `usage_logs` (was invisible there); recording AI calls re-tagged `resource_type: 'recording'` (were hiding under "TextMine"/`dataset`); `/admin/usage` adds a **Recordings** label and folds `cost_cents` into cost totals. (`lib/usageLog.ts`, `lib/ai.ts`, `transcribe.ts`, `analyze.ts`, `regenerate.ts`, `app/api/admin/usage/route.ts`, `app/admin/usage/UsageClient.tsx`)
+
+**UX**: `/recordings` now renders **cards** (matching dataset cards) instead of a table; added a **🎙️ Recordings** entry button in the Analyze header (the list was previously unreachable via UI); each card has a **delete** with a confirmation modal that cascades **storage files + derived dataset/rows + recording (→ files/transcripts/extractions)** via new `DELETE /api/recordings/[id]`; the full re-extract is now a clear **"↻ Re-extract all"** button (was a cryptic "⋯ More"). Status-page active-step loader switched to `LottieLoader`. (`app/recordings/RecordingsListClient.tsx`, `AnalyzeClient.tsx`, `ReportClient.tsx`, `StatusClient.tsx`)
+
+**DD doc fix**: `docs/DATA_FLOW.md` storage drift corrected — uploaded media/PDFs are Supabase Storage; PPTX decks / HTML shares / nightly backups are AWS S3; encryption table no longer mislabels backups as Supabase-managed.
+
+**Verification**: clean `rm -rf .next/types tsconfig.tsbuildinfo && npx tsc --noEmit` throughout. Pipeline validated live to the Analyze stage against NOWOCATS video; full end-to-end + re-extract being validated by the user.
+
+**Production follow-ups (not blockers for local)**: bake a Vercel Sandbox snapshot with ffmpeg pre-installed (`FFMPEG_SANDBOX_SNAPSHOT_ID`) to skip the per-cold-boot download; raise the `runAnalyze` function `maxDuration` (default 300s may be tight for Opus).

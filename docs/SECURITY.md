@@ -1,5 +1,7 @@
 # Sentimetrx — Security Policy & Posture
 
+> **Update (2026-06-01).** `getUserContext` previously selected a non-existent `users.is_admin` column (admin status lives in `users.role` / `organizations.is_admin_org`), which made the query error and bounce authenticated pages to `/login`; it now derives `isAdmin` from `org.is_admin_org`. Feature visibility remains the org∩user intersection in `effectiveFeatures` (`lib/resolveOrg.ts`), now with Analytics as the parent gate for its sub-features (googleReviews / reddit / substack / recordings).
+
 The security disciplines this codebase is held to, the controls that
 enforce them, and the answers we'd give a buyer's technical-DD reviewer
 or a SOC2 auditor. Linked from `CLAUDE.md` (operational) — this doc is

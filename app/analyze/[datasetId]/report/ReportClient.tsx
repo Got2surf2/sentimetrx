@@ -191,10 +191,10 @@ function QATab({ recordingId, extractions, agenda, onReplaced }: {
         <button
           type="button"
           onClick={() => setReanalyzeModal({ scope: 'all' })}
-          className="text-sm px-3 py-1 text-gray-600 hover:text-gray-900"
-          title="Re-extract all pairs from transcript (§ 4.11)"
+          className="text-sm px-3 py-1.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 transition-colors"
+          title="Re-extract all Q&A pairs from the transcript"
         >
-          ⋯ More
+          ↻ Re-extract all
         </button>
       </div>
 

@@ -213,6 +213,11 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
             style={{ background: '#f9fafb', color: '#374151', border: '1.5px solid #e5e7eb' }}>
             📥 Downloads
           </button>
+          <button onClick={function() { router.push('/recordings') }}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-90"
+            style={{ background: '#f9fafb', color: '#374151', border: '1.5px solid #e5e7eb' }}>
+            🎙️ Recordings
+          </button>
           {eligibleForCollection.length >= 2 && (
             <button onClick={function() { setShowCollectionModal(true) }}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"

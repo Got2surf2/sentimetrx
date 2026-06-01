@@ -15,6 +15,7 @@ export default async function RecordingStatusPage({ params }: { params: { id: st
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
   if (!ctx.features.analyze) redirect('/dashboard')
+  if (!ctx.features.recordings) redirect('/analyze')
 
   // Verify the recording exists and the user can see it (RLS does this via the
   // anon client — service-role would bypass).

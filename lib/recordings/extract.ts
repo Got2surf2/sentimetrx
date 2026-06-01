@@ -239,6 +239,33 @@ async function freshUploadUrl(
 
 // ── Sandbox helpers ──────────────────────────────────────────────────────────
 
+// Cold-boot ffmpeg install. The Vercel Sandbox base image (Amazon Linux) has
+// no ffmpeg, and ffmpeg/ffmpeg-free are NOT in its default dnf repos — the old
+// `dnf install ffmpeg --skip-broken` exited 0 without installing anything,
+// which surfaced downstream as "ffmpeg: command not found" (exit 127). Pull a
+// static build instead and verify it actually landed (`set -e` + a version
+// probe), so a failed download fails *this* step loudly rather than the next.
+// `find` makes us agnostic to the tarball's internal layout / version dir.
+const INSTALL_FFMPEG_SCRIPT = `
+set -e
+# The static build ships as .tar.xz; the base image has no xz, so tar -J fails
+# with "xz: Cannot exec". xz IS in the default dnf repos (unlike ffmpeg).
+command -v xz >/dev/null 2>&1 || sudo dnf install -y xz
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64)  FF_URL='https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz' ;;
+  aarch64) FF_URL='https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz' ;;
+  *) echo "unsupported sandbox arch: $ARCH" >&2; exit 1 ;;
+esac
+curl -fsSL "$FF_URL" -o /tmp/ffmpeg.tar.xz
+mkdir -p /tmp/ffbin
+tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffbin
+FF=$(find /tmp/ffbin -name ffmpeg -type f | head -1)
+FP=$(find /tmp/ffbin -name ffprobe -type f | head -1)
+sudo cp "$FF" "$FP" /usr/local/bin/
+ffmpeg -version >/dev/null && ffprobe -version >/dev/null
+`.trim()
+
 async function bootSandbox(): Promise<InstanceType<typeof Sandbox>> {
   const sandbox = SNAPSHOT_ID
     ? await Sandbox.create({
@@ -248,11 +275,9 @@ async function bootSandbox(): Promise<InstanceType<typeof Sandbox>> {
     : await Sandbox.create({ runtime: SANDBOX_RUNTIME, timeout: SANDBOX_TIMEOUT_MS })
 
   if (!SNAPSHOT_ID) {
-    // Cold-boot install. Adds ~30s before the first ffmpeg call — set
-    // FFMPEG_SANDBOX_SNAPSHOT_ID to skip this in production.
-    await runOrThrow(sandbox, ['sh', '-c',
-      `sudo dnf install -y --skip-broken ffmpeg-free 2>&1 || sudo dnf install -y --skip-broken ffmpeg 2>&1`,
-    ], 'install ffmpeg')
+    // Cold-boot install (~20-30s before the first ffmpeg call). Set
+    // FFMPEG_SANDBOX_SNAPSHOT_ID to a snapshot with ffmpeg baked in to skip this.
+    await runOrThrow(sandbox, ['sh', '-c', INSTALL_FFMPEG_SCRIPT], 'install ffmpeg')
   }
   return sandbox
 }

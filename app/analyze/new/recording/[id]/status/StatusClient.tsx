@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -247,7 +248,15 @@ function StepIcon({ state }: { state: StepState }) {
     return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-[10px] font-bold shrink-0">✓</span>
   }
   if (state === 'current') {
-    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-orange-400 text-orange-500 text-[10px] shrink-0 animate-spin">⟳</span>
+    // Keep the 20px slot in flow (so step text stays aligned with the other
+    // rows) but center a larger loader over it.
+    return (
+      <span className="mt-0.5 relative inline-block w-5 h-5 shrink-0">
+        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <LottieLoader size={40} />
+        </span>
+      </span>
+    )
   }
   if (state === 'failed') {
     return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold shrink-0">✗</span>

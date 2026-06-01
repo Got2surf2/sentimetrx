@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   // Fetch all usage logs in range
   let logsQuery = service
     .from('usage_logs')
-    .select('org_id, resource_type, resource_id, event_type, model, tier, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, created_at')
+    .select('org_id, resource_type, resource_id, event_type, model, tier, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_cents, created_at')
     .gte('created_at', since)
   if (until) logsQuery = logsQuery.lt('created_at', until)
   const { data: logs } = await logsQuery
@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
   var totalOutput = 0
 
   for (var r of rows) {
-    var cost = estimateCost(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens)
+    // Token-derived cost, plus any flat cost (e.g. ASR transcription) stored on the row.
+    var cost = estimateCost(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens) + ((r.cost_cents || 0) / 100)
     totalCost += cost
     totalInput += r.input_tokens
     totalOutput += r.output_tokens

@@ -11,6 +11,7 @@
 
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logFlatCost } from '@/lib/usageLog'
 import { resolveAsrVendor } from '@/lib/asr/router'
 import { transcribeWhisper, type WhisperResult } from '@/lib/asr/whisper'
 import { transcribeDeepgram, type DeepgramResult } from '@/lib/asr/deepgram'
@@ -100,6 +101,15 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
   if (updErr) {
     throw new Error(`recordings update after transcribe failed: ${updErr.message}`)
   }
+
+  // Surface the ASR vendor charge in the accounting dashboard. It has no token
+  // count, so it goes in as a flat cost (usage_logs.cost_cents) under the
+  // 'recording' resource type — separate from the Claude extract/curate rows.
+  logFlatCost(
+    { org_id: recording.org_id, resource_type: 'recording', resource_id: recording.id, event_type: 'recording_transcribe' },
+    dispatched.cost_cents,
+    { model: `asr:${vendor}`, provider: vendor },
+  )
 
   return {
     transcript_id: tRow.id as string,

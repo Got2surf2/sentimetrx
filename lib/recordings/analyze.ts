@@ -77,11 +77,14 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
     tier: 'advanced',
     modelOverride: OPUS_MODEL,
     maxTokens: 8000,
+    // callAI defaults to a 15s timeout (fine for chat). Opus extracting Q&A
+    // from a full transcript with up to 8000 output tokens takes minutes.
+    timeoutMs: 600000,   // 10 min
     system: [{ type: 'text', text: extractSystem, cache: true }],
     messages: [{ role: 'user', content: extractUser }],
     usage: {
       org_id: input.org_id,
-      resource_type: 'dataset',
+      resource_type: 'recording',
       resource_id: input.recording_id,
       event_type: 'recording_extract',
     },
@@ -89,8 +92,8 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
 
   const drafts = parseQaExtractions(opusResp.text)
 
-  // ── Pass 2: Sonnet curator ────────────────────────────────────────────────
-  let curatorFlags = new Map<number, string>()
+  // ── Pass 2: Sonnet curator — reviews (flag) AND groups (emergent topic) ────
+  let curatorReviews = new Map<number, CuratorReview>()
   if (drafts.length > 0) {
     const { system: curatorSystem, userPrompt: curatorUser } = buildQaCuratorPrompt({
       setup,
@@ -103,25 +106,26 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
       tier: 'advanced',
       modelOverride: SONNET_MODEL,
       maxTokens: 4000,
+      timeoutMs: 300000,   // 5 min — curator pass over the full draft set
       system: [{ type: 'text', text: curatorSystem, cache: true }],
       messages: [{ role: 'user', content: curatorUser }],
       usage: {
         org_id: input.org_id,
-        resource_type: 'dataset',
+        resource_type: 'recording',
         resource_id: input.recording_id,
         event_type: 'recording_curate',
       },
     })
-    curatorFlags = parseCuratorReviews(sonnetResp.text)
+    curatorReviews = parseCuratorReviews(sonnetResp.text)
   }
 
   // ── Merge + assemble final extractions ────────────────────────────────────
   const extractions: NewExtraction[] = drafts.map((d, i) => {
     const lowConfidence = d.confidence < LOW_CONFIDENCE_THRESHOLD
-    const curatorReason = curatorFlags.get(i)
+    const review = curatorReviews.get(i)
     let flagged_for_review = false
     let flag_reason: FlagReason | null = null
-    if (curatorReason) {
+    if (review?.flag) {
       flagged_for_review = true
       flag_reason = 'curator_questioned'
     } else if (lowConfidence) {
@@ -131,7 +135,9 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
 
     return {
       unit_type: 'qa_pair',
-      topic: d.topic,
+      // Emergent topic from the grouping pass; fall back to the extractor's
+      // free-form label, then 'Other' if the curator didn't run.
+      topic: review?.topic || d.topic || 'Other',
       payload: d.payload,
       start_sec: Math.round(d.start_sec),
       end_sec: Math.round(d.end_sec),
@@ -145,7 +151,7 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
 
   const total_cost_cents =
     centsFromUsage(opusResp.usage) +
-    centsFromUsageMaybe(curatorFlags.size > 0)
+    centsFromUsageMaybe(curatorReviews.size > 0)
 
   return { extractions, total_cost_cents }
 }
@@ -185,20 +191,26 @@ function parseQaExtractions(text: string): ExtractionDraft[] {
   return drafts
 }
 
-function parseCuratorReviews(text: string): Map<number, string> {
-  const flags = new Map<number, string>()
+interface CuratorReview { flag: boolean; reason: string | null; topic: string | null }
+
+// The curator returns one review per draft: a publish/flag decision AND the
+// emergent cluster topic (grouping is done holistically across the batch, not
+// from a pre-supplied agenda). topic may be null if the model omitted it.
+function parseCuratorReviews(text: string): Map<number, CuratorReview> {
+  const out = new Map<number, CuratorReview>()
   const obj = parseJsonObject(text)
   const arr = (obj?.reviews ?? []) as unknown[]
   for (const item of arr) {
     if (!item || typeof item !== 'object') continue
     const it = item as Record<string, unknown>
-    if (it.flag !== true) continue
     const idx = Number(it.draft_index)
     if (!Number.isFinite(idx) || idx < 0) continue
-    const reason = it.reason ? String(it.reason).trim() : 'curator_questioned'
-    flags.set(idx, reason)
+    const flag = it.flag === true
+    const reason = flag ? (it.reason ? String(it.reason).trim() : 'curator_questioned') : null
+    const topicRaw = it.topic ? String(it.topic).trim() : ''
+    out.set(idx, { flag, reason, topic: topicRaw || null })
   }
-  return flags
+  return out
 }
 
 /**

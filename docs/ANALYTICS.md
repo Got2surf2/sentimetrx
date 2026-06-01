@@ -1,5 +1,7 @@
 # Analytics / TextMine Module
 
+> **Update (2026-06-01).** The Analyze surface gained recordings touch-points (full detail in `docs/RECORDINGS.md`): a 🎙️ Recordings entry button in the Analyze header, a Recording upload tile on `/analyze/new` gated by the `recordings` feature, and a "Re-extract all" action on the recordings report. Analytics is now the **parent feature** for googleReviews / reddit / substack / recordings — `effectiveFeatures` forces those off when `analyze` is off.
+
 ## Overview
 
 Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentiment scoring, 13+ chart types, statistical hypothesis testing, and consulting-quality PPTX export. Works with any data source: surveys, CSV uploads, Google Reviews, agent conversations, **PulseIQ town halls (both legacy `townhall_*` and new-substrate `town_halls`)**, Reddit/Substack/Regulations.gov ingests, and **recorded meeting Q&A** (`source='recording'`; see `docs/RECORDINGS.md`). Each new source type gets a `build<Name>Schema()` in `lib/datasetUtils.ts` that declares the schema_config (fields + `primaryTextField`) so TextMine/themes/stats work without per-dataset configuration; `buildRecordingSchema()` is the latest entrant (2026-05-30).

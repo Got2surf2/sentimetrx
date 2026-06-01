@@ -14,6 +14,7 @@ export interface ModuleFeatures {
   googleReviews?: boolean   // Google Reviews downloader
   reddit?:        boolean   // Reddit downloader
   substack?:      boolean   // Substack downloader
+  recordings?:    boolean   // Meeting recordings (audio/video → Q&A). Sub-feature of analyze.
   townhall?:      boolean   // Town Hall live discussions
   campaigns?:     boolean   // Email campaigns
   bots?:          boolean   // Branded chatbots
@@ -26,6 +27,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews',
   reddit:        'Reddit',
   substack:      'Substack',
+  recordings:    'Recordings',
   townhall:      'PulseIQ',
   campaigns:     'Campaigns',
   bots:          'Agents',

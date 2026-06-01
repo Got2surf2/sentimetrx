@@ -11,6 +11,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews downloader — import reviews from any business',
   reddit:        'Reddit downloader — pull threads and comments for analysis',
   substack:      'Substack analyzer — download reader comments from publications',
+  recordings:    'Meeting recordings — upload audio/video, transcribe and extract structured Q&A',
   townhall:      'PulseIQ — intelligent signal extraction from continuous conversation streams',
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
   bots:          'Agents — create branded AI agents trained on custom content',
@@ -87,6 +88,11 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
 
   const moduleKeys = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
 
+  // Sub-features reachable only through Analytics. When analyze is off they
+  // render disabled + forced-off (mirrors effectiveFeatures in lib/resolveOrg).
+  const ANALYZE_CHILDREN = new Set<keyof ModuleFeatures>(['googleReviews', 'reddit', 'substack', 'recordings'])
+  const analyzeOn = !!features.analyze
+
   return (
     <div className="flex flex-col gap-6">
       {status === 'error' && (
@@ -95,19 +101,23 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
 
       {/* Module Feature Toggles */}
       {moduleKeys.map(function(key) {
+        const isChild = ANALYZE_CHILDREN.has(key)
+        const lockedOff = isChild && !analyzeOn
         return (
-          <div key={key} className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
+          <div key={key} className={'flex items-center justify-between py-2 border-b border-gray-200 pb-4' + (isChild ? ' ml-6' : '')}>
             <div>
               <p className="text-sm font-medium text-gray-800">{MODULE_LABELS[key]}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{MODULE_DESCRIPTIONS[key]}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {lockedOff ? 'Requires Analytics — enable Analytics to use this.' : MODULE_DESCRIPTIONS[key]}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {saving && <span className="text-xs text-gray-400">Saving...</span>}
               {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
               <ToggleSwitch
-                enabled={!!features[key]}
+                enabled={lockedOff ? false : !!features[key]}
                 onToggle={() => toggle(key)}
-                disabled={saving}
+                disabled={saving || lockedOff}
               />
             </div>
           </div>

@@ -53,14 +53,14 @@ This is a topic-scoped re-extraction for "${opts.topicScopedTo}". The transcript
 CONTEXT
 - Panel members (these people may answer questions; their speech does NOT count as audience questions):
 ${panel || '  (no panel provided)'}
-- Agenda topics (use these as section headers; do not invent new topics):
-${agenda || '  (no agenda provided)'}
+- Agenda topics — OPTIONAL hints only. The meeting may cover anything; do NOT limit what you extract to these:
+${agenda || '  (none provided — that is fine)'}
 
 RULES
-1. Extract ONLY audience-to-panel questions and their answers. Filter out panel-to-panel exchanges, panel-to-self commentary, and audience side-comments that are not actual questions.
+1. Extract EVERY audience-to-panel question and its answer — comprehensively, regardless of subject. NEVER skip a question because it doesn't match an agenda topic. Filter out only: panel-to-panel exchanges, panel-to-self commentary, and audience side-comments that aren't actual questions.
 2. ONE Q→A pair per distinct question. When the same asker chains multiple questions in a single turn ("My question is X. Also, can you address Y?") OR when an answer is followed by a follow-up question and a separate answer ("Q1 → A1 → Q2 → A2"), emit each pair as its OWN extraction in order. Do NOT merge multiple questions into one extraction. (This is the most common miss in the manual baseline.)
 3. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
-4. Use ONLY the agenda topics above as section headers. If a Q/A genuinely doesn't fit any agenda topic, put it under "Other" — do NOT invent new section names.
+4. For "topic", write a short 2-5 word label for this question's subject in your own words (e.g. "Kelly Park Road timeline", "SunRail extension", "Trail routing"). Reuse an agenda hint if one genuinely fits; otherwise label freely. A later pass clusters these, so don't worry about matching other pairs exactly.
 5. Quote the question and answer verbatim from the transcript. Do not paraphrase.
 6. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
 7. If the panelist who answered is identifiable from the transcript (e.g. "Thanks Maria, this is John responding..."), capture panelist_name.
@@ -73,7 +73,7 @@ Respond with a single JSON object — no prose before or after, no markdown fenc
   "extractions": [
     {
       "unit_type": "qa_pair",
-      "topic": "<one of the agenda topics or 'Other'>",
+      "topic": "<short free-form subject label>",
       "payload": {
         "question": "<verbatim>",
         "asker_name": "<if known, else null>",
@@ -113,36 +113,37 @@ export function buildQaCuratorPrompt(opts: {
     .map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`)
     .join('\n')
 
-  const system = `You are reviewing extracted Q&A pairs from a town hall recording before they go into an official Q&A document.
+  const agenda = opts.setup.agenda.map((t, i) => `  ${i + 1}. ${t}`).join('\n')
+
+  const system = `You are reviewing AND organizing extracted Q&A pairs from a town hall recording before they go into an official Q&A document.
 
 PANEL MEMBERS (their speech is NOT audience questions):
 ${panel || '  (no panel provided)'}
 
-YOUR JOB
-For each draft extraction, decide: would you publish this in an official Q&A doc?
+AGENDA TOPICS (optional naming hints — NOT a fixed list):
+${agenda || '  (none provided)'}
 
-FLAG (set "flag": true) if ANY of these apply:
+YOUR JOB — do BOTH for every draft:
+
+A) REVIEW. Would you publish this in an official Q&A doc? Set "flag": true if ANY apply:
 - The "question" is actually a panel member speaking, not an audience member.
 - The "question" is an audience side-comment / heckling / agreement, not a real question.
 - The "answer" is missing, off-topic, or really another question.
 - The pair is duplicative of an earlier extraction in this batch.
-- The topic assignment is clearly wrong given the question content.
+Do NOT flag for: wording/grammar (verbatim quotes), honest "I don't know" answers, or typology nuance.
 
-DO NOT FLAG:
-- Wording style or grammar — these are verbatim transcript quotes.
-- Honest "I don't know" or non-committal answers — those are still valid Q&A.
-- Imperfect typology classification (ask vs complaint vs commentary) — that's a separate concern.
+B) GROUP. Cluster the WHOLE batch into a small set of coherent topics, then label each draft with its cluster. Merge near-duplicates (e.g. "Kelly Park design %" + "Kelly Park timeline" → "Kelly Park Road"). Where a cluster matches an agenda hint, use that name; otherwise name it yourself. Use Title Case and the EXACT SAME topic string for every draft in one cluster. Aim for a handful of topics — not one per pair.
 
 OUTPUT FORMAT
 Respond with a single JSON object — no prose, no markdown. Schema:
 
 {
   "reviews": [
-    { "draft_index": <int, 0-based>, "flag": <bool>, "reason": "<short string if flag=true, else null>" }
+    { "draft_index": <int, 0-based>, "flag": <bool>, "reason": "<short string if flag=true, else null>", "topic": "<this draft's cluster topic>" }
   ]
 }
 
-You MUST include one review per draft, in order. Drafts you wouldn't flag get "flag": false, "reason": null.`
+Include exactly one review per draft, in order, each with a "topic". Non-flagged drafts get "flag": false, "reason": null.`
 
   const draftBlock = opts.drafts.map((d, i) => {
     return `[${i}] topic="${d.topic}" typology=${d.payload.question_typology}
@@ -214,14 +215,14 @@ export function buildQaRegeneratePrompt(opts: {
 CONTEXT
 - Panel members (their speech does NOT count as audience questions):
 ${panel || '  (no panel provided)'}
-- Agenda topics (use these as the topic value; do not invent new ones — "Other" is the fallback):
-${agenda || '  (no agenda provided)'}
+- Agenda topics (optional naming hints only):
+${agenda || '  (none provided)'}
 
 RULES
 1. Honor the user's instructions explicitly when given.
 2. If no user instructions are given, infer the most likely correction from the transcript context (e.g. the asker self-identified later, the panelist who answered was named after the fact, the typology is clearly wrong).
 3. Question and answer must be verbatim quotes from the transcript window — do not paraphrase or summarize.
-4. Topic must be one of the agenda topics above, or "Other" if it genuinely doesn't fit.
+4. Keep the existing topic unless the content clearly belongs to a different subject; if you change it, use a short free-form label (reuse an agenda hint if one fits).
 5. Typology must be one of: ask | complaint | commentary | clarification. "ask" is the only one that surfaces in the main Q&A summary; the rest go to the appendix.
 6. Confidence is your self-assessment of how sure you are about the revised pair (0.0–1.0).
 
@@ -229,7 +230,7 @@ OUTPUT FORMAT
 Respond with a single JSON object — no prose before or after, no markdown fences:
 
 {
-  "topic": "<one of the agenda topics or 'Other'>",
+  "topic": "<short subject label; keep existing unless clearly wrong>",
   "question_typology": "ask" | "complaint" | "commentary" | "clarification",
   "question": "<verbatim from the transcript window>",
   "asker_name": "<if known, else null>",

@@ -1,5 +1,12 @@
 # Sentimetrx — Recordings Spec
 
+> **Implementation update (2026-06-01, pilot wiring).** Deltas from the original spec, now in code:
+> - **Feature gating:** recordings is a `ModuleFeatures` toggle (a sub-feature of Analytics), NOT the `org_features`/`user_features` quota system described in § 2.5. `effectiveFeatures` forces it (and googleReviews/reddit/substack) off when `analyze` is off. The § 2.5 / § 4.9 `org_features` substrate is built but currently unused.
+> - **Extract (§ 3.3):** ffmpeg runs in the Vercel Sandbox via a downloaded **static binary** (+ `xz` to unpack), not `dnf` — the base image lacks ffmpeg and it isn't in the default repos. Bake a snapshot (`FFMPEG_SANDBOX_SNAPSHOT_ID`) in production to skip the per-cold-boot download.
+> - **Analyze (§ 3.5):** extraction is **topic-agnostic** (pull every audience Q&A with a free-form label); the Sonnet curator pass **clusters them into emergent topics**. The agenda is an optional naming hint, no longer a recall anchor or fixed taxonomy. Claude calls pass a long `timeoutMs` (callAI defaults to 15s).
+> - **Delete:** `DELETE /api/recordings/[id]` hard-deletes storage objects + derived dataset/rows + the recording (cascades files/transcripts/extractions). Owner / org-admin / platform-admin only.
+> - **List UX:** `/recordings` renders cards with per-card delete, reachable via a 🎙️ Recordings button in the Analyze header. The report Q&A tab exposes a clear "Re-extract all" action.
+
 **Module:** `/app/analyze/new/recording/`, `/app/analyze/[datasetId]/report/`, `/app/api/recordings/*`, `/app/recordings/`, `lib/recordings/*`, `lib/asr/*`, `lib/featureFlags.ts`
 **Storage:** Supabase Storage bucket `recordings` (chunked direct upload from browser, signed URLs for ASR vendors). Source audio + transcripts retained permanently by default; per-org retention policy configurable.
 **External APIs:**

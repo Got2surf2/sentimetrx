@@ -34,7 +34,7 @@ flowchart LR
     subgraph Supabase["Supabase (AWS us-east-1)"]
         AuthDB["Supabase Auth<br/>(identity)"]
         PG["Postgres<br/>(RLS-enforced)"]
-        Storage["Object storage<br/>(uploads, decks)"]
+        Storage["Object storage<br/>(uploaded media, report PDFs)"]
     end
 
     %% Third parties
@@ -79,7 +79,8 @@ flowchart LR
 |---|---|---|
 | Identity (email, password hash) | Supabase Auth | `us-east-1` |
 | Tenant data (rows, responses, configs) | Supabase Postgres | `us-east-1` |
-| Uploaded files & generated decks | Supabase Storage / S3 | `us-east-1` |
+| Uploaded media & report PDFs (recordings, dataset uploads, logos) | Supabase Storage | `us-east-1` |
+| Generated exports (PPTX decks, HTML shares) & nightly backups | AWS S3 | `us-east-1` |
 | Audit log (`admin_action_log`) | Supabase Postgres (append-only) | `us-east-1` |
 | Application code | Vercel | US (primarily `iad1`) |
 
@@ -91,7 +92,7 @@ flowchart LR
 | **Resend** | Recipient email + transactional email body | Survey invitations & system email — only if customer enables outbound | Standard Resend retention |
 | **DataForSEO** | Brand / location names + public review queries | Fetch of publicly available reviews | No customer PII sent |
 | **Sentry** | Stack traces, request metadata | Error monitoring | PII fields scrubbed at boundary _(scrubbing handler in progress for the pilot window)_ |
-| **AWS S3** | Uploaded files, generated PPTX decks | Object storage | Encrypted at rest |
+| **AWS S3** | Generated exports (PPTX decks, HTML shares) + nightly org-data backups | Export object storage & disaster-recovery backups | Encrypted at rest |
 
 ## 5. AI inference flow (detail)
 
@@ -124,8 +125,8 @@ The AI flow is the most-asked-about path. Step-by-step:
 | Layer | Algorithm | Key management |
 |---|---|---|
 | Supabase Postgres | AES-256 | Supabase-managed (AWS KMS underneath) |
-| Supabase Storage / S3 | AES-256 (SSE-S3) | AWS-managed |
-| Backups | AES-256 | Supabase-managed |
+| Supabase Storage (uploaded media, PDFs) | AES-256 | AWS-managed (Supabase-operated) |
+| AWS S3 (exports + backups) | AES-256 (SSE-S3; SSE-KMS if `BACKUP_S3_KMS_KEY_ID` set) | AWS-managed |
 
 Application-layer encryption is applied to specific fields where
 customer policy requires it (e.g., guest emails captured by

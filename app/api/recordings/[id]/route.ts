@@ -10,8 +10,11 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getUserContext } from '@/lib/userContext'
 
 export const dynamic = 'force-dynamic'
+
+const BUCKET = 'recordings'
 
 export async function GET(_req: Request, ctx: { params: { id: string } }) {
   const recording_id = ctx.params.id
@@ -102,4 +105,69 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
     extraction_count: extractionCountRes.count ?? 0,
     share,
   })
+}
+
+// DELETE /api/recordings/[id] — hard-delete a recording and EVERYTHING it owns:
+// all source/audio/stitched/report objects in storage, the derived dataset +
+// its mirrored rows, and the recording row (which cascades recording_files,
+// recording_transcripts, recording_extractions). Permitted for the owner, an
+// org admin, or a platform admin. This is irreversible.
+export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+  const recording_id = ctx.params.id
+  if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
+
+  const supabase = createClient()
+  const uc = await getUserContext(supabase)
+  if (!uc) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+
+  // Load the recording, org-scoped (platform admins can reach any org).
+  let recQ = service.from('recordings').select('id, org_id, created_by, dataset_id').eq('id', recording_id)
+  if (!uc.isAdminOrg) recQ = recQ.eq('org_id', uc.orgId)
+  const { data: rec } = await recQ.single()
+  if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
+
+  // Owner, org admin, or platform admin may delete.
+  if (!(uc.isAdminOrg || uc.isAdmin || rec.created_by === uc.userId)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+
+  const org_id = rec.org_id as string
+
+  // 1) Storage — collect every object under <org>/<recording_id>/ and remove it.
+  const { data: files } = await service
+    .from('recording_files')
+    .select('storage_path, audio_storage_path')
+    .eq('recording_id', recording_id)
+  const paths = new Set<string>()
+  for (const f of (files ?? []) as any[]) {
+    if (f.storage_path) paths.add(f.storage_path)
+    if (f.audio_storage_path) paths.add(f.audio_storage_path)
+  }
+  paths.add(`${org_id}/${recording_id}/audio/stitched.mp3`)
+  paths.add(`${org_id}/${recording_id}/report.pdf`)
+  // Catch any strays the DB doesn't track by listing the folders directly.
+  for (const dir of [`${org_id}/${recording_id}`, `${org_id}/${recording_id}/audio`]) {
+    const { data: listed } = await service.storage.from(BUCKET).list(dir, { limit: 1000 })
+    for (const o of (listed ?? []) as any[]) {
+      if (o?.name && o.id !== null) paths.add(`${dir}/${o.name}`)  // id null = subfolder, skip
+    }
+  }
+  if (paths.size > 0) {
+    const { error: rmErr } = await service.storage.from(BUCKET).remove(Array.from(paths))
+    if (rmErr) console.error('[recordings:delete] storage remove failed:', rmErr.message)  // best-effort
+  }
+
+  // 2) Derived dataset (recording → dataset is 1:1) + its mirrored rows.
+  if (rec.dataset_id) {
+    await service.from('dataset_rows_flat').delete().eq('dataset_id', rec.dataset_id)
+    await service.from('datasets').delete().eq('id', rec.dataset_id).eq('org_id', org_id)
+  }
+
+  // 3) The recording row — cascades recording_files / _transcripts / _extractions.
+  const { error: delErr } = await service.from('recordings').delete().eq('id', recording_id).eq('org_id', org_id)
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true, deleted: recording_id })
 }

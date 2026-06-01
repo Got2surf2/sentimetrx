@@ -13,9 +13,8 @@
 // /api/recordings/[id]/process (§ 4.2) once all files are done.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
-import { assertFeatureAllowed } from '@/lib/featureFlags'
 import type {
   AsrStrategy,
   SessionType,
@@ -55,16 +54,12 @@ interface CreateBody {
 
 export async function POST(req: Request) {
   const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('org_id')
-    .eq('id', user.id)
-    .single()
-  const org_id = userRow?.org_id as string | undefined
-  if (!org_id) return NextResponse.json({ error: 'org not found' }, { status: 403 })
+  const ctx = await getUserContext(supabase)
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (!ctx.features.analyze || !ctx.features.recordings) {
+    return NextResponse.json({ error: 'recordings not enabled' }, { status: 403 })
+  }
+  const org_id = ctx.orgId
 
   let body: CreateBody
   try {
@@ -76,14 +71,6 @@ export async function POST(req: Request) {
   const valid = validate(body)
   if (!valid.ok) return NextResponse.json({ error: valid.error }, { status: 400 })
 
-  const gate = await assertFeatureAllowed('recording', org_id, user.id, { unitsConsumed: 1 })
-  if (!gate.allowed) {
-    return NextResponse.json(
-      { error: 'recording feature blocked', reason: gate.reason, quota: gate.quotaPerMonth, used: gate.used },
-      { status: 403 },
-    )
-  }
-
   const service = createServiceRoleClient()
 
   // Create the recording row first — we need its UUID to compute storage paths.
@@ -91,7 +78,7 @@ export async function POST(req: Request) {
     .from('recordings')
     .insert({
       org_id,
-      created_by: user.id,
+      created_by: ctx.userId,
       name: body.name.trim(),
       session_type: body.session_type,
       meeting_date: body.meeting_date ?? null,
@@ -227,6 +214,9 @@ export async function GET(req: Request) {
   const supabase = createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (!ctx.features.analyze || !ctx.features.recordings) {
+    return NextResponse.json({ error: 'recordings not enabled' }, { status: 403 })
+  }
 
   const url = new URL(req.url)
   const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50))

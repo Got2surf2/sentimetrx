@@ -14,6 +14,8 @@ export default async function NewRecordingPage() {
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
   if (!ctx.features.analyze) redirect('/dashboard')
+  // Recordings is a sub-feature of Analytics — see effectiveFeatures (analyze parent).
+  if (!ctx.features.recordings) redirect('/analyze')
 
   return (
     <div className="min-h-screen bg-gray-50">

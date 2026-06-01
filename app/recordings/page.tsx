@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
+import RecordingsListClient from './RecordingsListClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +36,7 @@ export default async function RecordingsListPage() {
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
   if (!ctx.features.analyze) redirect('/dashboard')
+  if (!ctx.features.recordings) redirect('/analyze')
 
   const service = createServiceRoleClient()
 
@@ -43,7 +45,7 @@ export default async function RecordingsListPage() {
     .select(
       'id, org_id, created_by, dataset_id, name, session_type, meeting_date, status, ' +
       'cost_cents, source_duration_sec, created_at, completed_at, ' +
-      'users:created_by(full_name, email), organizations:org_id(name)',
+      'organizations:org_id(name)',
     )
     .order('created_at', { ascending: false })
     .limit(200)
@@ -57,6 +59,18 @@ export default async function RecordingsListPage() {
   }
 
   const { data, error } = await q
+
+  // recordings.created_by → auth.users, which PostgREST can't embed; look the
+  // owner names up from public.users by id and map them in.
+  const ownerIds = Array.from(new Set((data ?? []).map((r: any) => r.created_by).filter(Boolean)))
+  const ownerById = new Map<string, { full_name: string | null; email: string | null }>()
+  if (ownerIds.length > 0) {
+    const { data: owners } = await service.from('users').select('id, full_name, email').in('id', ownerIds)
+    for (const u of (owners ?? []) as any[]) {
+      ownerById.set(u.id as string, { full_name: u.full_name ?? null, email: u.email ?? null })
+    }
+  }
+
   const rows: Row[] = (data ?? []).map((r: any) => ({
     id: r.id,
     org_id: r.org_id,
@@ -70,7 +84,7 @@ export default async function RecordingsListPage() {
     source_duration_sec: r.source_duration_sec,
     created_at: r.created_at,
     completed_at: r.completed_at,
-    owner_name: r.users?.full_name || r.users?.email || null,
+    owner_name: ownerById.get(r.created_by)?.full_name || ownerById.get(r.created_by)?.email || null,
     org_name: r.organizations?.name || null,
   }))
 
@@ -111,122 +125,9 @@ export default async function RecordingsListPage() {
           </div>
         )}
 
-        {rows.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center">
-            <div className="text-4xl mb-3">🎙️</div>
-            <p className="text-sm text-gray-600">No recordings yet.</p>
-            <p className="text-xs text-gray-400 mt-1">Drop a meeting file in the wizard to get started.</p>
-          </div>
-        ) : (
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Type</Th>
-                  <Th>Date</Th>
-                  <Th>Status</Th>
-                  <Th align="right">Cost</Th>
-                  <Th>Owner</Th>
-                  {ctx.isAdminOrg && <Th>Org</Th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map(r => (
-                  <RecordingRow key={r.id} row={r} showOrg={ctx.isAdminOrg} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <RecordingsListClient rows={rows} showOrg={ctx.isAdminOrg} />
       </main>
     </div>
   )
 }
 
-function Th({ children, align }: { children: React.ReactNode; align?: 'left' | 'right' }) {
-  return (
-    <th className={`px-4 py-2 text-xs font-semibold text-gray-500 ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      {children}
-    </th>
-  )
-}
-
-function RecordingRow({ row, showOrg }: { row: Row; showOrg: boolean }) {
-  // Route choice:
-  //   complete + dataset_id → report
-  //   otherwise (in-progress, failed, cancelled) → status surface
-  const targetHref = row.status === 'complete' && row.dataset_id
-    ? `/analyze/${row.dataset_id}/report`
-    : `/analyze/new/recording/${row.id}/status`
-
-  return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3">
-        <Link href={targetHref} className="font-semibold text-gray-900 hover:text-orange-700">
-          {row.name}
-        </Link>
-      </td>
-      <td className="px-4 py-3 text-gray-700 capitalize">
-        {sessionTypeLabel(row.session_type)}
-      </td>
-      <td className="px-4 py-3 text-gray-700">
-        {row.meeting_date ?? '—'}
-      </td>
-      <td className="px-4 py-3">
-        <StatusPill status={row.status} />
-      </td>
-      <td className="px-4 py-3 text-right text-gray-700 tabular-nums">
-        {formatCost(row.cost_cents)}
-      </td>
-      <td className="px-4 py-3 text-gray-700">
-        {row.owner_name ?? '—'}
-      </td>
-      {showOrg && (
-        <td className="px-4 py-3 text-gray-700">
-          {row.org_name ?? '—'}
-        </td>
-      )}
-    </tr>
-  )
-}
-
-function StatusPill({ status }: { status: string }) {
-  const cls: Record<string, string> = {
-    uploading:    'bg-gray-100 text-gray-700',
-    queued:       'bg-blue-100 text-blue-700',
-    extracting:   'bg-blue-100 text-blue-700',
-    transcribing: 'bg-blue-100 text-blue-700',
-    analyzing:    'bg-blue-100 text-blue-700',
-    rendering:    'bg-blue-100 text-blue-700',
-    complete:     'bg-green-100 text-green-700',
-    failed:       'bg-red-100 text-red-700',
-    cancelled:    'bg-gray-100 text-gray-500',
-  }
-  const icon: Record<string, string> = {
-    complete: '✓',
-    failed: '✗',
-    cancelled: '⊘',
-  }
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${cls[status] ?? 'bg-gray-100 text-gray-700'}`}>
-      {icon[status] ? `${icon[status]} ` : ''}
-      {status}
-    </span>
-  )
-}
-
-function sessionTypeLabel(t: string): string {
-  if (t === 'qa') return 'Q&A'
-  if (t === 'focus_group') return 'Focus group'
-  if (t === 'general_meeting') return 'Meeting'
-  if (t === 'interview') return 'Interview'
-  if (t === 'lecture') return 'Lecture'
-  return t
-}
-
-function formatCost(cents: number): string {
-  if (cents === 0) return '—'
-  if (cents < 100) return `${cents}¢`
-  return `$${(cents / 100).toFixed(2)}`
-}

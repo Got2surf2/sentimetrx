@@ -52,7 +52,7 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
 
   const { data: userRow } = await supabase
     .from('users')
-    .select('id, email, full_name, is_admin, org_id, features, disabled')
+    .select('id, email, full_name, org_id, features, disabled')
     .eq('id', user.id)
     .single()
   if (!userRow || !userRow.org_id) return null
@@ -75,7 +75,7 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
   const orgFeatures: ModuleFeatures = orgRow.is_admin_org
     ? {
         surveys: true, analyze: true, googleReviews: true, reddit: true,
-        substack: true, townhall: true, campaigns: true, bots: true, social: true,
+        substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true,
       }
     : (orgRow.features as ModuleFeatures) || {}
 
@@ -86,7 +86,7 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
   const logoUrl  = (orgRow.logo_url as string) || null
   const fullName = (userRow.full_name as string) || null
   const userEmail = (userRow.email as string) || user.email || ''
-  const isAdmin = !!userRow.is_admin || !!orgRow.is_admin_org
+  const isAdmin = !!orgRow.is_admin_org
 
   return {
     userId:       user.id,

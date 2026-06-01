@@ -104,11 +104,12 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
     tier: 'advanced',
     modelOverride: SONNET_MODEL,
     maxTokens: 1500,
+    timeoutMs: 300000,   // 5 min — callAI's 15s default is far too short here
     system: [{ type: 'text', text: system, cache: true }],
     messages: [{ role: 'user', content: userPrompt }],
     usage: {
       org_id: input.org_id,
-      resource_type: 'dataset',
+      resource_type: 'recording',
       resource_id: input.recording_id,
       event_type: 'recording_regenerate',
     },

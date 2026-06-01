@@ -3,7 +3,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import UploadClient from './UploadClient'
 
@@ -16,13 +16,18 @@ export default async function NewDatasetPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
 
-  if (!orgData?.features?.analyze) redirect('/dashboard')
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  if (!features.analyze) redirect('/dashboard')
+
+  // Recordings is a sub-feature of Analytics; effectiveFeatures already forces
+  // it off when analyze is off. Only surface the Recording tile when enabled.
+  const recordingsEnabled = !!features.recordings
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -38,7 +43,7 @@ export default async function NewDatasetPage() {
         currentPage="analyze"
       />
       <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
-        <UploadClient />
+        <UploadClient recordingsEnabled={recordingsEnabled} />
       </main>
     </div>
   )
