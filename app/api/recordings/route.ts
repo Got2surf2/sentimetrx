@@ -206,7 +206,7 @@ function requireSupabaseUrl(): string {
 // Filter ?status= passes through to the recordings.status enum.
 
 const LIST_VALID_STATUSES: ReadonlySet<string> = new Set([
-  'uploading', 'queued', 'extracting', 'transcribing',
+  'uploading', 'queued', 'extracting', 'transcribing', 'transcribed',
   'analyzing', 'rendering', 'complete', 'failed', 'cancelled',
 ])
 

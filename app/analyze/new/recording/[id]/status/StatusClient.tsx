@@ -15,7 +15,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 const POLL_INTERVAL_MS = 3000
 
 type Status =
-  | 'uploading' | 'queued' | 'extracting' | 'transcribing'
+  | 'uploading' | 'queued' | 'extracting' | 'transcribing' | 'transcribed'
   | 'analyzing' | 'rendering' | 'complete' | 'failed' | 'cancelled'
 
 // Step list — vertical, Claude-Code-style. Each step renders with a
@@ -30,6 +30,7 @@ const STEP_LABELS: Record<Status, string> = {
   queued:       'Queued',
   extracting:   'Extracting audio',
   transcribing: 'Transcribing',
+  transcribed:  'Transcribed',
   analyzing:    'Analyzing Q&A',
   rendering:    'Rendering',
   complete:     'Complete',
@@ -62,10 +63,18 @@ interface CoverageReport {
   per_minute_gaps: Array<{ start_sec: number; end_sec: number }>
 }
 
+interface QaSetupInputs {
+  panel?: Array<{ name: string; role?: string }>
+  agenda?: string[]
+  ground_truth_url?: string
+}
+
 interface StatusResponse {
   recording: {
     id: string
     name: string
+    session_type: string
+    setup_inputs: QaSetupInputs | Record<string, unknown> | null
     status: Status
     error_message: string | null
     asr_vendor_chosen: 'whisper' | 'deepgram' | 'hybrid' | null
@@ -95,6 +104,10 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
   const status = (data?.recording.status ?? initialStatus) as Status
   const name = data?.recording.name ?? initialName
   const isTerminal = status === 'complete' || status === 'failed' || status === 'cancelled'
+  // 'transcribed' is a stable pause awaiting the user — polling would just
+  // re-fetch an unchanging row. Pause it; the gate's Generate flips the status
+  // back to 'analyzing', which restarts the poll via the effect deps below.
+  const isPaused = status === 'transcribed'
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -113,15 +126,20 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
 
   useEffect(() => {
     fetchStatus()
-    if (isTerminal) return
+    if (isTerminal || isPaused) return
     const id = setInterval(fetchStatus, POLL_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [fetchStatus, isTerminal])
+  }, [fetchStatus, isTerminal, isPaused])
 
   const handleRetry = async () => {
     setRetrying(true)
     try {
-      const res = await fetch(`/api/recordings/${recordingId}/process`, { method: 'POST' })
+      // If transcription already succeeded, the failure was in analysis — retry
+      // just that pass (cheap, no re-transcribe). Otherwise re-run the pipeline.
+      const endpoint = data?.transcript
+        ? `/api/recordings/${recordingId}/analyze`
+        : `/api/recordings/${recordingId}/process`
+      const res = await fetch(endpoint, { method: 'POST' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body?.error || `Retry failed: ${res.status}`)
@@ -157,6 +175,15 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {error}
         </div>
+      )}
+
+      {status === 'transcribed' && data && (
+        <GeneratePanel
+          recordingId={recordingId}
+          sessionType={data.recording.session_type}
+          setupInputs={data.recording.setup_inputs}
+          onStarted={fetchStatus}
+        />
       )}
 
       {status === 'failed' && data?.recording.error_message && (
@@ -280,6 +307,11 @@ function computeStepState(step: Status, idx: number, status: Status, failedIdx: 
   if (status === 'complete') {
     return 'past'   // every step including 'complete' shows the check
   }
+  if (status === 'transcribed') {
+    // Paused after ASR. Everything through 'transcribing' is done; analysis and
+    // beyond are pending (no spinner — the Generate gate below is the next move).
+    return idx <= STEPS.indexOf('transcribing') ? 'past' : 'future'
+  }
   const currentIdx = STEPS.indexOf(status)
   if (idx < currentIdx) return 'past'
   if (idx === currentIdx) return 'current'
@@ -375,6 +407,145 @@ function inferFailedStepIdx(data: StatusResponse | null): number {
   // very late (mirror / coverage / complete). Pin to 'analyzing' since that's the
   // stage that owns mirror + coverage.
   return STEPS.indexOf('analyzing')
+}
+
+// ── Review & generate gate (Gate 1) ──────────────────────────────────────────
+// Shown when the pipeline pauses at status='transcribed'. Lets the user fix the
+// agenda / panel roster and add a steer before spending the ~$1 Opus + Sonnet
+// pass. Editing here is intentionally lightweight: one topic per line, one
+// "Name — role" per line — full structured editing lives on the report page's
+// re-extract flow once pairs exist.
+function GeneratePanel({
+  recordingId, sessionType, setupInputs, onStarted,
+}: {
+  recordingId: string
+  sessionType: string
+  setupInputs: QaSetupInputs | Record<string, unknown> | null
+  onStarted: () => void | Promise<void>
+}) {
+  const isQa = sessionType === 'qa'
+  const su = (setupInputs ?? {}) as QaSetupInputs
+
+  const [agenda, setAgenda] = useState(() => (su.agenda ?? []).join('\n'))
+  const [panel, setPanel] = useState(() =>
+    (su.panel ?? []).map(p => (p.role ? `${p.name} — ${p.role}` : p.name)).join('\n'),
+  )
+  const [instructions, setInstructions] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const handleGenerate = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const body: { setup_inputs?: Record<string, unknown>; instructions?: string } = {
+        instructions: instructions.trim() || undefined,
+      }
+      if (isQa) {
+        body.setup_inputs = {
+          ...su,
+          agenda: agenda.split('\n').map(s => s.trim()).filter(Boolean),
+          panel: panel.split('\n').map(parsePanelLine).filter(Boolean),
+        }
+      }
+      const res = await fetch(`/api/recordings/${recordingId}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErr(json?.error || `Generate failed: ${res.status}`)
+        return
+      }
+      await onStarted()   // status flips to 'analyzing' → polling resumes
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'network error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="bg-white border-2 border-orange-200 rounded-lg p-5 space-y-4">
+      <div>
+        <h3 className="font-semibold text-gray-900">Transcript ready — review, then generate</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          The Q&amp;A extraction (~$1, Opus + Sonnet) hasn&apos;t run yet. Check the transcript below
+          and refine the agenda or panel roster — both steer extraction quality — then generate.
+        </p>
+      </div>
+
+      {isQa && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className="block text-xs font-semibold text-gray-600 mb-1">Agenda topics (one per line)</span>
+            <textarea
+              value={agenda}
+              onChange={e => setAgenda(e.target.value)}
+              disabled={busy}
+              rows={5}
+              placeholder={'Project Overview\nFunding\nRight-of-Way Acquisition'}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+              style={{ fontSize: '16px' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-semibold text-gray-600 mb-1">Panel roster (Name — role, one per line)</span>
+            <textarea
+              value={panel}
+              onChange={e => setPanel(e.target.value)}
+              disabled={busy}
+              rows={5}
+              placeholder={'Jane Doe — Project Manager\nJohn Smith — City Engineer'}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+              style={{ fontSize: '16px' }}
+            />
+          </label>
+        </div>
+      )}
+
+      <label className="block">
+        <span className="block text-xs font-semibold text-gray-600 mb-1">Extraction instructions (optional)</span>
+        <textarea
+          value={instructions}
+          onChange={e => setInstructions(e.target.value)}
+          disabled={busy}
+          rows={3}
+          maxLength={4000}
+          placeholder='e.g. "Audience members didn&apos;t state names — default asker to &apos;Audience member&apos;." or "Treat panel-to-panel exchanges as commentary, not audience questions."'
+          className="w-full border border-gray-300 rounded px-3 py-2"
+          style={{ fontSize: '16px' }}
+        />
+      </label>
+
+      {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{err}</div>}
+
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-500">Cost: <span className="font-semibold">~$1</span> · Opus 4.7 + Sonnet 4.6 curator</span>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={busy}
+          className="px-4 py-2 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
+          style={{ backgroundColor: '#E8632A' }}
+        >
+          {busy ? 'Starting…' : 'Generate Q&A pairs'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function parsePanelLine(line: string): { name: string; role?: string } | null {
+  const t = line.trim()
+  if (!t) return null
+  // Accept "Name — role", "Name - role", or just "Name".
+  const m = t.split(/\s+[—-]\s+/)
+  const name = m[0]?.trim()
+  if (!name) return null
+  const role = m[1]?.trim()
+  return role ? { name, role } : { name }
 }
 
 function FilesPanel({ files }: { files: FileRow[] }) {

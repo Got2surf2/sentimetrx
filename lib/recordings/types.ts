@@ -21,6 +21,7 @@ export type RecordingStatus =
   | 'queued'
   | 'extracting'
   | 'transcribing'
+  | 'transcribed'        // pipeline paused after ASR; awaiting user-triggered analysis (Gate 1)
   | 'analyzing'
   | 'rendering'
   | 'complete'

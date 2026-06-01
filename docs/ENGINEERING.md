@@ -51,9 +51,13 @@ After multi-file sweeps: `rm tsconfig.tsbuildinfo && npx tsc --noEmit`
 — incremental tsc cache can mask stale-import bugs.
 
 **How we verify:** `npm run typecheck` + `npm test` + `npm run lint`
-on every push (CI). The complexity / file-size heuristics are
-reviewer-enforced; `server-only` placement is reviewer-enforced
-on any PR adding a service-role import.
+on every push (CI). CI runs on **Node 24** (`actions/setup-node`),
+matching the dev environment so `npm ci` resolves the committed
+lockfile identically — a Node-version skew between local (npm 11)
+and CI (npm 10) silently rejected an otherwise-valid lockfile in
+W22. The complexity / file-size heuristics are reviewer-enforced;
+`server-only` placement is reviewer-enforced on any PR adding a
+service-role import.
 
 ---
 
