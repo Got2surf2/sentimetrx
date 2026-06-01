@@ -132,3 +132,15 @@ Pushed `upgrade/next-15` to a Vercel **preview** (one-time, user-authorized) and
 **Fix:** `engines.node` `">=20.0.0"` → `"22.x"` so Vercel runs the functions on Node 22+ (require-of-ESM supported, matching local). One line. **Caveat:** if the Vercel project has an explicit dashboard Node.js Version pin at 20, that must also be set to 22.x for the engines change to take effect. Fallback if Node can't move: npm `overrides` to force jsdom's WHATWG deps back to their CJS majors (riskier).
 
 **Cannot verify locally** (local Node 24 already passes) — needs a re-push to the preview to confirm the survey/agent/PulseIQ widgets render on Node 22. Commit-only on the branch pending that re-canary.
+
+## 2026-06-01 — Next 15 jsdom ESM blocker SOLVED (downgrade to CJS jsdom), verified locally
+
+The `engines:"22.x"` bump did NOT fix the survey/agent/PulseIQ 500 on the preview (still `ERR_REQUIRE_ESM`) — Vercel either ignored engines or ran a 22.x without `require(ESM)` default (only default in Node 22.12+/24). Relying on the Vercel Node version was too fragile, so switched to a **Node-independent** fix.
+
+**Repro without canary pushes:** `node --no-experimental-require-module` on local Node 24 disables `require(ESM)`, reproducing Vercel's Node-20 behavior exactly. `NODE_OPTIONS=--no-experimental-require-module npm run start` + curl `/s/vindman` → reproduced the 500 locally. This gave a fast fix-loop with zero deploys.
+
+**Root cause:** `isomorphic-dompurify@3.12` → modern **jsdom@29 (ESM)** whose WHATWG deps (`html-encoding-sniffer@6`, `whatwg-url@16`, `data-urls@7`, `@exodus/bytes`) are ESM-only. Next 15 externalizes jsdom to a runtime `require()`, which throws on any Node without `require(ESM)`. (jsdom went ESM at v27; v26 is the last CJS.)
+
+**Fix:** `isomorphic-dompurify` ^3.12 → **^2.26.0** (uses jsdom@^26) and the `jsdom` devDep ^29.1.1 → **^26.1.0** → single **jsdom@26 (CJS)**, `@exodus/bytes` gone. SSR sanitization still works (jsdom@26 supplies the server DOM).
+
+**Verified locally under the Node-20 simulation:** `/s/vindman` → **200** (renders the real survey), 0 `ERR_REQUIRE_ESM`; `tsc` clean; `npm test` 388 passed (vitest jsdom env fine on @26); `next build` green. Node-independent, so it holds regardless of Vercel's Node version. (`engines:"22.x"` kept as hygiene — Node 20 is deprecated — but is no longer load-bearing.)
