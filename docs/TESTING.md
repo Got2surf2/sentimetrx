@@ -60,7 +60,9 @@ tests/
 │   ├── cross-org-egress.test.ts       # env-gated, real Supabase — per-table egress
 │   ├── auth-flows.test.ts             # env-gated, real Supabase — auth round-trips
 │   ├── campaign-routes-egress.test.ts # env-gated — service-role campaign-by-id routes
-│   └── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+│   ├── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+│   ├── recordings-routes.test.ts      # 8 recordings routes — auth/feature/org gates + validation (mocked)
+│   └── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes (mocked)
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
 └── loadtest/
@@ -106,6 +108,8 @@ makes the suite easy to reason about as a unit.
 | Agent admin-page org gate | `botPageOrgGate` — the service-role agent lookup pairs `id` with `org_id` for non-admins, redirects on a cross-org miss, and stays unconstrained for admins | The admin pages (`/bots/[id]/{history,entities,questions}`) load by guessable UUID via service role; the test pins the multi-tenancy invariant so a refactor can't reintroduce a bare-id cross-tenant read |
 | Recordings coverage | `computeCoverage` per-topic counting + zero-count flagging, ≥5-min gap detection (leading/mid/tail + rounding), confidence histogram bucketing/clamp | Pure post-analysis report logic driving the reviewer's flags; deterministic, so cheap to pin against regressions |
 | Recordings analyze | `analyzeRecording` Opus-extraction + Sonnet-curator parsing (markdown-fence tolerance, invalid-typology/empty-field drop), flag-merge precedence (curator beats low-confidence), emergent-topic override, two-pass cost (callAI mocked) | The PM-1-critical "audience question vs panel commentary" judgment lives here; the parser must survive garbage model output and the flag-merge must not regress |
+| Recordings routes | All 8 recordings API routes — 401 unauth, 403 feature-off, 404 cross-org (id+org_id pairing asserted), and input validation (instructions length, scope enum, duplicate filenames, status filter); Supabase + WDK mocked | Route handlers carry the org/feature gates and were shipped untested; the gate contract is the load-bearing part and must not regress |
+| Export org gate | The service-role export routes (`datasets/export/{html,pptx,signals-pptx}`, `townhall/sessions/[id]/export/{pptx,route}`) return 404 when a non-admin requests another org's resource; same-org passes | Exports return an entire org's data; a June-2026 sweep found this class unguarded. The test pins the cross-org 404 so the leak can't reappear |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 
 ## What we deliberately skip

@@ -130,6 +130,15 @@ shortlist for Claude; here is the longer policy:
   endpoints) wrap with `requireAdmin` (`lib/auth/requireAdmin.ts`)
   from the first commit.** URL obscurity is not a defense.
 
+- **Export routes are a high-leak surface — gate every one.** A deck/
+  HTML/CSV export fetches a tenant resource by id via the service role
+  and returns its full contents, so a missing `org_id` check leaks an
+  entire org's dataset or town hall. A June-2026 sweep found this class
+  unguarded on `datasets/[datasetId]/export/{html,pptx,signals-pptx}`
+  and `townhall/sessions/[id]/export/{pptx,route}` (all now gated via
+  `getCallerOrgContext`); `datasets/export/html/share` was the correct
+  reference. Covered by `tests/integration/export-org-gate.test.ts`.
+
 - **New surface = new test.** Before merge:
   - `npm run test:rls` must pass for table-level RLS coverage
   - `npm run test:egress` must pass for the cross-org-egress suite

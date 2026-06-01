@@ -428,6 +428,8 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 The ExportModal offers exactly **two formats**: PPTX and HTML. There is no CSV
 analytics export — dataset-row CSV download is not part of this module.
 
+> **Org gate:** every export route (`/api/datasets/[datasetId]/export/{pptx,html,signals-pptx,html/share}`) resolves the dataset with the service role, so it pairs the lookup with the caller's `org_id` via `getCallerOrgContext` (admin-org may export any) and returns 404 cross-org. See `docs/SECURITY.md` § 2; regression in `tests/integration/export-org-gate.test.ts`.
+
 ### PPTX (Consulting-Quality Deck)
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),

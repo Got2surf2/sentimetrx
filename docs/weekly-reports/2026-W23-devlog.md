@@ -43,3 +43,20 @@
 **Verification**: clean `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm ci`, `npm run check:sql-tx`, and `npm test` (342 passed / 54 skipped) all green locally — i.e. every CI step passes before push.
 
 **Scoped, not done — Next 14→16**: the remaining HIGH (`next`: Image-Optimizer remotePatterns DoS + RSC request-deserialization DoS) needs a two-major upgrade. Surface: `next ^14.2.35` (but `eslint-config-next` already `^15.5.18`), no `next/image` usage, middleware uses a matcher, `next.config.js` carries `experimental.{serverActions.bodySizeLimit,instrumentationHook,outputFileTracingIncludes}` (some now stable/relocated in 15) + the Sentry webpack plugin (16 defaults to Turbopack). Realistic as a dedicated 1–2 day spike (codemods → async `cookies()/headers()/params` → caching-default audit → Turbopack/webpack reconciliation → full regression). Deliberately kept off this branch.
+
+## 2026-06-01 — Audit score push 1–3: recordings route tests, cross-org export-leak sweep, secrets verify
+
+**Why**: Continuing the W22 governance score-lift (Tests + Security being the lowest dimensions). Picked the three highest-leverage remaining items.
+
+**1) Recordings API route tests** (`tests/integration/recordings-routes.test.ts`, 22 tests): gate + validation coverage for all 8 recordings route files — auth (401), feature gate (403), org scoping (404 cross-tenant with id+org_id pairing asserted), and input validation (instructions length, scope enum, file dupes, status filter). Supabase boundary + getUserContext/getAuthUser + Workflow DevKit triggers mocked. Closes the "8 routes, 0 tests" gap.
+
+**2) Service-role bare-`id` sweep → found a real cross-tenant leak CLASS in the export routes.** The W22 audit only flagged the bot *pages* (fixed last session). Sweeping `createServiceRoleClient().…eq('id', …)` lookups surfaced that the **dataset + town-hall export routes fetched a tenant resource by bare id with only an existence check** — any authed user could export another org's data by id. Fixed 5 routes to gate via the canonical `getCallerOrgContext` helper (`if (!isAdmin && row.org_id !== orgId) return 404`; admin-org may export any, Phase E):
+- `app/api/datasets/[datasetId]/export/{signals-pptx,html,pptx}/route.ts`
+- `app/api/townhall/sessions/[id]/export/{pptx,route}.ts` (CSV route captures org_id across both substrates)
+- (`datasets/export/html/share` was already correctly gated — the reference pattern.)
+- Regression test `tests/integration/export-org-gate.test.ts` (6 tests): non-admin in orgA → 404 for an orgB resource on every fixed route; same-org caller passes the gate.
+- The other ~30 grep candidates were triaged as safe: admin-cross-org by design, public endpoints, session-client (RLS), id derived from an already-org-verified parent, or org-scoped mutations.
+
+**3) Secrets quick win — already mitigated, verified.** The W22 LOW finding (`lib/meridian.ts` hardcoded JWT) already uses the env-override-with-public-fallback pattern (`process.env.MERIDIAN_TOKEN || PUBLIC_MERIDIAN_TOKEN`) and is documented as a public flymco.com bundle token. `.gitignore` already carries `*.pem`/`*.key`/`*.p12`. A scan of tracked source found **no real hardcoded secrets** (no `sk-ant`/`sk-`/AWS/private keys; the only JWT literal is the documented-public meridian token; `service_role` hits are SQL GRANTs). No code change warranted.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `npm test` 370 passed / 54 skipped (+28); `check:sql-tx` green.

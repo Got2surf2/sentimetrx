@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
@@ -2296,11 +2297,17 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
   }
 
+  // Cross-org gate: the dataset lookup uses the service role (bypasses RLS),
+  // so it must verify caller ownership or any authed user could export another
+  // org's dataset by id. Admin-org may export any (Phase E). Multi-tenancy invariant.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
     .from('datasets').select('id, name, source, row_count, ana_library, study_id, org_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
     .from('dataset_state').select('schema_config, analytics, theme_model').eq('dataset_id', params.datasetId).single()

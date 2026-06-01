@@ -3,6 +3,7 @@
 // Returns the deck as a downloadable binary.
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
 
@@ -56,6 +57,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Cross-org gate: the session lookup uses the service role (bypasses RLS).
+  // Without it any authed user could export another org's town hall by id.
+  // Admin-org may export any (Phase E). Multi-tenancy invariant.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+
   const db = createServiceRoleClient()
 
   // Fetch session
@@ -66,6 +72,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  if (!isAdmin && (session as any).org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   // Fetch themes
   const { data: themes } = await db
