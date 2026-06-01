@@ -122,3 +122,13 @@ Executed Phase 1 of the scoped Next upgrade. Branch `upgrade/next-15`, commit-on
 **Verification**: `tsc --noEmit` clean; `npm test` 388 passed / 54 skipped; `next build` succeeds (only pre-existing ESLint `warn`s — the known 374 — no migration warnings, no invalid-config, no missing-Suspense). fetch-caching default flip (62 server fetches) did not surface in build; app is force-dynamic-heavy so low risk — flagged for the prod canary smoke.
 
 **Not done (Phase 2, separate)**: Next 15 → 16 (Turbopack default vs the Sentry webpack plugin; React 18 → 19). Held for a separate branch + canary. This Phase-1 branch is commit-only pending review.
+
+## 2026-06-01 — Next 15 canary caught a prod-breaker: jsdom ESM require fails on Node 20
+
+Pushed `upgrade/next-15` to a Vercel **preview** (one-time, user-authorized) and smoke-tested. Login ✅, PPTX export ✅, auth redirects ✅, `/demo/mco` (the `await headers()` fix) ✅ — but **`/s/<real-survey>` returned 500** (a fake guid returned 200, so it was the actual-render path).
+
+**Root cause (from Vercel runtime logs):** `ERR_REQUIRE_ESM` — `html-encoding-sniffer/lib/html-encoding-sniffer.js` does `require()` of the ESM `@exodus/bytes/encoding-lite.js`. The chain is `isomorphic-dompurify` (used by Survey/Agent/PulseIQ widgets for SSR sanitization) → `jsdom@29` → its `@exodus/bytes`-based `html-encoding-sniffer@6` / `data-urls@7` / `whatwg-url@16` cluster. These deps are **identical on main** — so it's not a regression from the bump; Next 15 externalizes jsdom to a runtime `require()` (Next 14 bundled it), and the Vercel function runs **Node 20**, where `require()` of ESM is unsupported. It does **not** reproduce locally because local Node is 24 (require-of-ESM is supported in Node 22+).
+
+**Fix:** `engines.node` `">=20.0.0"` → `"22.x"` so Vercel runs the functions on Node 22+ (require-of-ESM supported, matching local). One line. **Caveat:** if the Vercel project has an explicit dashboard Node.js Version pin at 20, that must also be set to 22.x for the engines change to take effect. Fallback if Node can't move: npm `overrides` to force jsdom's WHATWG deps back to their CJS majors (riskier).
+
+**Cannot verify locally** (local Node 24 already passes) — needs a re-push to the preview to confirm the survey/agent/PulseIQ widgets render on Node 22. Commit-only on the branch pending that re-canary.
