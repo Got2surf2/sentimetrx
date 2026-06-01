@@ -592,14 +592,20 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
 function TranscriptTab({ transcript }: { transcript: RecordingTranscriptRow | null }) {
+  // Hooks must run in the same order every render — keep useState + useMemo
+  // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
-  if (!transcript) return <EmptyState label="Transcript not available yet." />
-  const segments = transcript.segments as TranscriptSegment[]
+  const segments = useMemo(
+    () => (transcript?.segments ?? []) as TranscriptSegment[],
+    [transcript],
+  )
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return segments
     return segments.filter(s => s.text.toLowerCase().includes(q))
   }, [segments, search])
+
+  if (!transcript) return <EmptyState label="Transcript not available yet." />
 
   return (
     <div className="space-y-3">
