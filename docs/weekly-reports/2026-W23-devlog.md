@@ -249,3 +249,9 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 **What changed**: `scripts/pilot-rc-coverage.ts` (new) projects every legacy vendor label into our 7-axis model via `mapLegacyLabels` and compares against our Tier-1 keyword classifier across all 43,196 reviews (deterministic, no AI). Reports vendor vs our coverage rate, recall of the vendor's labels (exact axis:sub and axis-level), and reviews the vendor left usably-untagged that we tag.
 
 **Result (first run, keyword tier only)**: vendor tags 90.2% of reviews with a usable label but 20.8% of all rows carry the vendor's `TEST` QA-leak; our keyword tier tags 98.6%; we reproduce **89.6%** of the vendor's labels at axis level (70.4% exact) while averaging 7.3 labels/review vs the vendor's 3.2; we add labels on 3,844 reviews (8.9%) the vendor left usably-untagged. The shipping hybrid (keyword+AI) tier raises recall further. Commit-only, not pushed.
+
+## 2026-06-02 — RC pilot: example-mining + client results deck
+
+**Why**: Client asked for a results deck and concrete example reviews bucketed by how our classifier compares to their vendor's labels.
+
+**What changed**: `scripts/pilot-rc-examples.ts` (buckets reviews: match / vendor-caught-more / we-missed, keyword tier), `scripts/pilot-rc-examples-ai.ts` (keyword-vs-hybrid on curated misses — shows the AI tier recovers e.g. parking-lot → ambiance:safety[alert]), `scripts/pilot-rc-deck.ts` (standalone pptxgenjs builder, Sentimetrx-branded, 9 slides → ~/Downloads one-off). All numbers sourced from the regression/lift/coverage runs. Deck pixel-QC'd (LibreOffice → pdftoppm, all 9 slides; fixed a doubled footer + tight spacing). No repo artifact — deck lives in ~/Downloads. Commit-only, not pushed.
