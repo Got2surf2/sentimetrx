@@ -241,3 +241,11 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 - `docs/DATA_SOURCES.md` § 14 — new "Learned keyword dictionary (Path B)" subsection.
 
 **Verification**: `pilot-rc-regression.ts` **7/7** still pass (product guard holds — food-only anchors emit no `product:steak`; "food poisoning from the steak" correctly keeps it). `pilot-rc-keyword-lift.ts` on 500 held-out reviews: **3.15×** keyword-tier assertions (1,193 → 3,759), coverage 82% → 99% — clears the spec's 2× bar. `tsc --noEmit` clean (cache cleared); `npm test` 388 passed / 54 skipped. Mining spend ~$9 (358-review partial spot-check + 5K run). Commit-only, not pushed. No prod/DB changes — the dictionary is a static artifact.
+
+## 2026-06-02 — RC pilot: coverage comparison vs the vendor's labels
+
+**Why**: To show the client, in their own data, how our classifier compares to the labels their current CX vendor produced (the CSV `Classification` column) — coverage, recall, and added coverage.
+
+**What changed**: `scripts/pilot-rc-coverage.ts` (new) projects every legacy vendor label into our 7-axis model via `mapLegacyLabels` and compares against our Tier-1 keyword classifier across all 43,196 reviews (deterministic, no AI). Reports vendor vs our coverage rate, recall of the vendor's labels (exact axis:sub and axis-level), and reviews the vendor left usably-untagged that we tag.
+
+**Result (first run, keyword tier only)**: vendor tags 90.2% of reviews with a usable label but 20.8% of all rows carry the vendor's `TEST` QA-leak; our keyword tier tags 98.6%; we reproduce **89.6%** of the vendor's labels at axis level (70.4% exact) while averaging 7.3 labels/review vs the vendor's 3.2; we add labels on 3,844 reviews (8.9%) the vendor left usably-untagged. The shipping hybrid (keyword+AI) tier raises recall further. Commit-only, not pushed.
