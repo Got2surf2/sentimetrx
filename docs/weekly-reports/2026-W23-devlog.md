@@ -308,3 +308,16 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 **Why**: Real-deck render caught (1) the KEY FINDINGS fallback (shown when AI writes no bullets) leaking internal columns (Collection Label / Response Status / sentiment), and (2) the OE-overview "THEMES IDENTIFIED" pills rendering solid black (invalid 8-digit hex `tc+20`/`tc+60`).
 
 **What changed** (`export/pptx/route.ts`, `docs/ANALYTICS.md`): snapshot fallback now excludes a SYSTEM_FIELDS set (status/sentiment/collection_label/language/score fields/`_`-prefixed); theme pills use a light neutral fill + theme-color border (valid hex). Also spec-documented the **planned standalone style/personality picker** (palette must go per-request, concurrency-safe — not a module global on Fluid Compute) — see project_deck_style_picker memory. Both fixes verified against real Coalition data (read-only harness): KEY FINDINGS shows only survey content, pills render light/teal. tsc clean. Commit-only, not pushed.
+
+## 2026-06-02 — Apply taxonomy to more restaurant datasets (RC/CG compare + Chuy's casual overlay)
+
+**Why**: Pitch prep this week to Ruth's Chris + Capital Grille (competitors) and a Chuy's demo. Proves the taxonomy generalizes across brands/verticals.
+
+**What changed** (all pilot/demo tooling — inert in the app):
+- `scripts/pilot-rc-cg-compare.ts` — classifies RC (26K) + Capital Grille (15K) on the shared 7 axes, two-level (axis L1, sub L2) roll-up + over/under-index deltas. Finding: CG over-indexes seafood/wine/decor/lunch (seafood sentiment 100% vs RC 75%); RC over-indexes service warmth. NOTE: these google_reviews datasets store text in `data.review_text`, not `description`.
+- `scripts/pull-chuys-reviews.ts` — DataForSEO pull of 30d of Chuy's Google reviews across all 125 locations → 1,872 reviews ingested as a new dataset. Uses the `/reviews/google/` endpoint family (the `/business_data/` path 40401s on this account).
+- `scripts/chuys-mine.ts` + `lib/taxonomyKeywordsChuys.ts` — Path B casual Tex-Mex overlay: shared 6 axes + a casual PRODUCT category set, dictionary mined from Chuy's reviews (204 phrases). Surfaced Chuy's-specific menu vocab (chuychanga, queso compuesto, creamy jalapeño dip, panchos).
+- `scripts/chuys-classify.ts` — classifies Chuy's with core+overlay, prints the L1/L2 roll-up (margarita top drink, to-go/lunch heavy — casual patterns).
+- `docs/TAXONOMY_PRODUCTIZATION_PLAN.md` — productization roadmap (proposal).
+
+Keyword tier only (free). No app/prod behavior change. Commit-only, not pushed.

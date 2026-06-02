@@ -39,3 +39,4 @@ supabase/.temp/
 
 # RC keyword-mining intermediate (Path B) — regenerate via scripts/pilot-rc-keyword-mine.ts
 data/keyword-candidates*.jsonl
+data/chuys-candidates*.jsonl
