@@ -528,7 +528,14 @@ survives session resets. Summary:
 - Claude **never pushes to `main` without an explicit "push" /
   "let's push" from the operator.** Default is commit-only.
 - Every push triggers an automatic production deploy on Vercel
-  (~$3–4 build cost, customer-facing immediately).
+  (**~$8–10 build cost**, grows with the codebase, customer-facing
+  immediately).
+- **Claude only raises a push when the change genuinely can't be
+  verified without a production deploy.** Almost everything is
+  testable locally — `npm run dev` against the linked prod DB
+  (read-only ops like exports cost nothing and mutate nothing),
+  `npm run typecheck`, `npm test`, render/QC harnesses. A push is
+  for *shipping a verified change*, never to *check that it works*.
 - Claude does not ask "should I push?" at the end of every task —
   it surfaces `N commits ahead, not pushed` and waits.
 - After an authorized push, Claude runs `gh run list --limit 1`,
