@@ -678,8 +678,12 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
       slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: bulletH, fontSize: 12, color: DN.white, valign: 'top', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
     })
   } else {
-    // Auto snapshot
-    const snapFields = fields.filter(f => f.type === 'categorical' && f.summary?.counts)
+    // Auto snapshot — only real survey content, never internal/system columns
+    // (status, sentiment, collection label, language, etc.) that would otherwise
+    // leak into KEY FINDINGS when no AI bullets were written.
+    const SYSTEM_FIELDS = new Set(['status', 'sentiment', 'sentiment_score', 'language', 'lang', 'duration_sec', 'nps_score', 'experience_score', 'collection_label', 'id', 'response_id', 'created_at', 'updated_at', 'completed_at', 'started_at'])
+    const isSystemField = (f: SelectedField) => SYSTEM_FIELDS.has(f.field.toLowerCase()) || /^_/.test(f.field) || /\bcollection label\b/i.test(f.label || '')
+    const snapFields = fields.filter(f => f.type === 'categorical' && f.summary?.counts && !isSystemField(f))
     snapFields.slice(0, 5).forEach(function(f, i) {
       const countsRaw = f.summary.counts as Record<string, number>
       const counts = f.valueAliases && Object.keys(f.valueAliases).length > 0
@@ -1250,8 +1254,10 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
     const pillW = (leftW - 0.1 * (relThemes.length - 1)) / relThemes.length
     relThemes.forEach(function(t: any, i: number) {
       const tc = (t.color || DN.teal).replace('#', '')
-      rect(slide, pptx, PAD + i * (pillW + 0.1), pillsTopY, pillW, pillsH, tc + '20', 0.07, tc + '60')
-      slide.addText(trunc(t.name, 16), { x: PAD + i * (pillW + 0.1) + 0.06, y: pillsTopY, w: pillW - 0.12, h: pillsH, fontSize: 8.5, bold: true, color: tc, align: 'center', valign: 'middle' })
+      // Light neutral fill + theme-color border (was tc+'20'/'60' — invalid 8-digit
+      // hex that pptxgenjs rendered as solid black).
+      rect(slide, pptx, PAD + i * (pillW + 0.1), pillsTopY, pillW, pillsH, DN.slateLight, 0.07, tc)
+      slide.addText(trunc(t.name, 16), { x: PAD + i * (pillW + 0.1) + 0.06, y: pillsTopY, w: pillW - 0.12, h: pillsH, fontSize: 10, bold: true, color: tc, align: 'center', valign: 'middle' })
     })
   }
 

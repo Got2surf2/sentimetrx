@@ -302,3 +302,9 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 **Why**: Real-deck render showed "With comments" = 90 but the in-app dashboard shows 81. The dashboard counts comments in the theme/comment fields; the slide counted all open-ended fields.
 
 **What changed** (`export/pptx/route.ts`): `buildSurveyOverviewSlide` now counts "With comments" over the theme fields (fallback all OE), matching `/api/share/analytics` commentCount (→ 81). Verified against real Coalition data via the read-only service-role harness. tsc clean. Commit-only.
+
+## 2026-06-02 — Exec-summary system-field guard + theme-pill color fix; style picker scoped
+
+**Why**: Real-deck render caught (1) the KEY FINDINGS fallback (shown when AI writes no bullets) leaking internal columns (Collection Label / Response Status / sentiment), and (2) the OE-overview "THEMES IDENTIFIED" pills rendering solid black (invalid 8-digit hex `tc+20`/`tc+60`).
+
+**What changed** (`export/pptx/route.ts`, `docs/ANALYTICS.md`): snapshot fallback now excludes a SYSTEM_FIELDS set (status/sentiment/collection_label/language/score fields/`_`-prefixed); theme pills use a light neutral fill + theme-color border (valid hex). Also spec-documented the **planned standalone style/personality picker** (palette must go per-request, concurrency-safe — not a module global on Fluid Compute) — see project_deck_style_picker memory. Both fixes verified against real Coalition data (read-only harness): KEY FINDINGS shows only survey content, pills render light/teal. tsc clean. Commit-only, not pushed.

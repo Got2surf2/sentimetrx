@@ -591,8 +591,23 @@ analytics export — dataset-row CSV download is not part of this module.
   Lets a deck's AI storytelling be retraced. Built by `buildRecapSlide`; renders even
   in quick mode / with no instructions ("None provided."). Suppressible for clean
   client deliverables (decks get emailed, so internal instructions must be hideable).
+- **Exec-summary fallback**: when the AI writes no `executiveSummary` bullets, KEY FINDINGS
+  falls back to a categorical-field snapshot that **excludes system/internal columns**
+  (`status`, `sentiment`, `collection_label`, `language`, rating/score fields, `_`-prefixed)
+  so internal plumbing never leaks into the readout.
 - **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
   About slide as `<audience> edition · v<version>`
+
+> **Planned — deck style/personality picker (not yet built).** A future pass will let the
+> export dialog choose a visual style (palette/personality), with the **Datanautix brand**
+> (Ana orange `#E85A1A` / Sarina teal, `datanautix.com`) as the default and modern/bold
+> variants as alternatives. The blocker is architectural: the generator hard-codes one
+> palette (`DN`) as a module constant referenced in ~200 places across `route.ts`,
+> `lib/pptx/shared.ts`, and `lib/pptx/slideRenderer.ts`. A *selectable* palette must become
+> per-request data, and because the route runs on Vercel Fluid Compute (one instance serves
+> concurrent requests), it must be threaded through the builders/helpers — **not** a mutable
+> module global (that would bleed colors between concurrent exports). Scoped as its own
+> focused refactor + an ExportModal control (`body.style`). See the open-work-queue memory.
 
 ### HTML (Shareable Dashboard)
 - **API**: `POST /api/datasets/[datasetId]/export/html`
