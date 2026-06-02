@@ -88,6 +88,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   // Closer-slide toggles — both default on; user can opt out per export
   const [includeCustomDecks, setIncludeCustomDecks] = useState(true)
   const [includeProvenance,  setIncludeProvenance]  = useState(true)
+  const [includeRecap,       setIncludeRecap]       = useState(true)
   // aiEnabled now flows in from DatasetHeader as a prop (the component that
   // owns the toggle). Was previously a local state polled from localStorage
   // every 2s — wasteful and a memory-leak risk if the modal closed without
@@ -239,7 +240,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap }
       if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
       if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
@@ -593,6 +594,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <CloserSlidesToggles
                     includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
                     includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
+                    includeRecap={includeRecap}             setIncludeRecap={setIncludeRecap}
                   />
                   {error && <ErrorBox message={error} />}
                 </>
@@ -675,6 +677,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <CloserSlidesToggles
                     includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
                     includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
+                    includeRecap={includeRecap}             setIncludeRecap={setIncludeRecap}
                   />
 
                   {error && <ErrorBox message={error} />}
@@ -737,11 +740,14 @@ const SECTION_META: Record<string, { label: string; color: string; desc: string 
 function CloserSlidesToggles({
   includeCustomDecks, setIncludeCustomDecks,
   includeProvenance,  setIncludeProvenance,
+  includeRecap,       setIncludeRecap,
 }: {
   includeCustomDecks: boolean
   setIncludeCustomDecks: (v: boolean) => void
   includeProvenance: boolean
   setIncludeProvenance: (v: boolean) => void
+  includeRecap: boolean
+  setIncludeRecap: (v: boolean) => void
 }) {
   return (
     <div style={{ marginTop: 14, padding: '12px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
@@ -755,11 +761,18 @@ function CloserSlidesToggles({
           <span style={{ color: '#6b7280', fontSize: 12 }}> — upsell slide that highlights what the platform can compose on demand</span>
         </span>
       </label>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer', marginBottom: 8 }}>
         <input type="checkbox" checked={includeProvenance} onChange={function(e) { setIncludeProvenance(e.target.checked) }} style={{ marginTop: 3 }} />
         <span>
           <b style={{ color: '#111827' }}>&quot;How this deck was made.&quot;</b>
-          <span style={{ color: '#6b7280', fontSize: 12 }}> — provenance receipt with wall-clock time, decisions made, and the modelling pipeline</span>
+          <span style={{ color: '#6b7280', fontSize: 12 }}> — factual readout: what was analysed, the modelling pipeline, and an estimated human-analyst equivalent</span>
+        </span>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+        <input type="checkbox" checked={includeRecap} onChange={function(e) { setIncludeRecap(e.target.checked) }} style={{ marginTop: 3 }} />
+        <span>
+          <b style={{ color: '#111827' }}>&quot;Report inputs.&quot;</b>
+          <span style={{ color: '#6b7280', fontSize: 12 }}> — recap of the selections + verbatim custom instructions, for traceability. Uncheck for clean client decks.</span>
         </span>
       </label>
     </div>

@@ -11,7 +11,8 @@ import { NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
+import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { recomputeCollectionAnalytics } from '@/lib/collectionRecompute'
 import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
 
 export const dynamic = 'force-dynamic'
@@ -97,32 +98,13 @@ export async function POST(_req: Request, props: Params) {
     // Non-fatal: if sample fetch fails, proceed with existing schema
   }
 
-  // ── Collection: fetch rows from member datasets and compute in-memory ────
+  // ── Collection: recompute aggregates from member rows (shared with the
+  // member-sync cascade in lib/collectionRecompute). ───────────────────────
   if ((dataset as any).source === 'collection') {
-    const { data: col } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
-    if (!col) return NextResponse.json({ error: 'Collection metadata not found' }, { status: 404 })
-    const { data: colMembers } = await service.from('collection_members').select('dataset_id, label').eq('collection_id', col.id).order('sort_order')
-    if (!colMembers?.length) return NextResponse.json({ error: 'Collection has no members' }, { status: 400 })
-
-    const allRows: Record<string, unknown>[] = []
-    const FLAT_PAGE = 1000
-    for (var cm = 0; cm < colMembers.length; cm++) {
-      var mid = colMembers[cm].dataset_id, mlabel = colMembers[cm].label
-      var off = 0, more = true
-      while (more) {
-        var { data: fRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', mid).order('row_index', { ascending: true }).range(off, off + FLAT_PAGE - 1)
-        if (!fRows || fRows.length === 0) { more = false; break }
-        for (var fri = 0; fri < fRows.length; fri++) allRows.push({ ...fRows[fri].data, _collection_label: mlabel })
-        if (fRows.length < FLAT_PAGE) more = false
-        off += FLAT_PAGE
-      }
-    }
-
     try {
-      var colAnalytics = computeAnalyticsFromRows(allRows, schema)
-      await service.from('dataset_state').update({ analytics: colAnalytics, updated_at: new Date().toISOString(), updated_by: user.id }).eq('dataset_id', params.datasetId)
-      await service.from('datasets').update({ row_count: allRows.length, updated_at: new Date().toISOString() }).eq('id', params.datasetId)
-      return NextResponse.json({ ok: true, totalRows: colAnalytics.totalRows, computedAt: colAnalytics.computedAt, fields: Object.keys(colAnalytics.fieldSummaries).length })
+      const res = await recomputeCollectionAnalytics(service, params.datasetId, user.id)
+      if (!res) return NextResponse.json({ error: 'Collection has no members or schema' }, { status: 400 })
+      return NextResponse.json({ ok: true, totalRows: res.analytics.totalRows, computedAt: res.analytics.computedAt, fields: Object.keys(res.analytics.fieldSummaries).length })
     } catch (err) {
       console.error({ at: 'compute/collection', msg: "error", err: err })
       return NextResponse.json({ error: String(err) }, { status: 500 })

@@ -68,7 +68,7 @@ function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: 
 
 function footer(slide: any, pptx: any, datasetName: string) {
   solidRect(slide, pptx, 0, FY - 0.02, W, 0.015, DN.teal, 62)
-  slide.addText('datanautix.com  ·  ' + datasetName, {
+  slide.addText('sentimetrx.ai  ·  ' + datasetName, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,
   })
   slide.addText('Proprietary and Confidential', {
@@ -413,17 +413,17 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
     x: W - 2.4, y: 1.2, w: 2.6, h: 2.6,
     fill: { color: DN.teal, transparency: 93 }, line: { color: DN.tealLight, transparency: 81, width: 1 }
   })
-  // "d" monogram
-  slide.addText('d', {
+  // "S" monogram
+  slide.addText('S', {
     x: W - 2.1, y: 1.5, w: 2.0, h: 2.0,
     fontSize: 72, bold: true, italic: true, color: DN.orange, align: 'center', valign: 'middle',
   })
 
-  // Logo — "datanautix" as one rich-text word
+  // Logo — "Sentimetrx" as one rich-text word
   slide.addText(
     [
-      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'Senti', options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'metrx', options: { color: DN.tealLight,   bold: true, italic: true } },
     ],
     { x: PAD + 0.18, y: 0.75, w: 4.8, h: 0.9, fontSize: 42, valign: 'middle' }
   )
@@ -552,7 +552,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
     curNoteY += h + noteGap
   }
   {
-    const methText = 'Methodology: ' + collectionMethod + 'Analyzed using Ana AI Text Analytics.'
+    const methText = 'Methodology: ' + collectionMethod + 'Analyzed using Sentimetrx AI Text Analytics.'
     const h = noteHeight(methText)
     notes.push({ y: curNoteY, h, bgColor: DN.slateLight, text: methText, textColor: DN.slateDark })
   }
@@ -574,6 +574,45 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
   footer(slide, pptx, datasetName)
 }
 
+// ── Generation-recap appendix (#10) — recaps the export inputs + verbatim
+// custom instructions so a deck's storytelling can be retraced later. Factual
+// readout tone; renders even in quick mode / with no instructions.
+function buildRecapSlide(pptx: any, datasetName: string, rows: { k: string; v: string }[], instructions: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  bg(slide, pptx)
+  hdr(slide, pptx, 'Report Inputs — ' + datasetName, DN.teal, 'Selections used to generate this deck · for traceability')
+  logo(slide)
+
+  const y0 = CY + 0.12
+  lbl(slide, 'SELECTIONS', PAD, y0, W - PAD * 2)
+  const rowsY = y0 + 0.34
+  const rowH  = 0.32
+  const keyW  = 2.3
+  const valW  = W - PAD * 2 - keyW - 0.2
+  const maxShow = Math.min(rows.length, 11)
+  rows.slice(0, maxShow).forEach(function(r, i) {
+    const ry = rowsY + i * rowH
+    slide.addText(r.k.toUpperCase(), { x: PAD, y: ry, w: keyW, h: rowH, fontSize: 9.5, bold: true, color: DN.slate, valign: 'middle', charSpacing: 1 })
+    slide.addText(r.v || '—', { x: PAD + keyW + 0.2, y: ry, w: valW, h: rowH, fontSize: 10.5, color: DN.navyLight, valign: 'middle', wrap: false, autoFit: true })
+  })
+
+  // Verbatim custom-instructions box — the key artefact for retracing the AI narrative.
+  const hasInstr = !!(instructions && instructions.trim())
+  const boxLabelY = rowsY + maxShow * rowH + 0.22
+  lbl(slide, 'CUSTOM INSTRUCTIONS (VERBATIM)', PAD, boxLabelY, W - PAD * 2)
+  const innerY = boxLabelY + 0.3
+  const innerH = FY - 0.15 - innerY
+  solidRect(slide, pptx, PAD, innerY, W - PAD * 2, innerH, DN.slateLight)
+  solidRect(slide, pptx, PAD, innerY, 0.06, innerH, DN.orange)
+  slide.addText(hasInstr ? instructions.trim() : 'None provided.', {
+    x: PAD + 0.18, y: innerY + 0.08, w: W - PAD * 2 - 0.34, h: innerH - 0.16,
+    fontSize: 10, color: hasInstr ? DN.navyLight : DN.slate, italic: !hasInstr,
+    wrap: true, valign: 'top', autoFit: true, lineSpacingMultiple: 1.15,
+  })
+
+  footer(slide, pptx, datasetName)
+}
+
 function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[], meta?: TextCounts) {
   const slide = pptx.addSlide('NUMBERED')
 
@@ -588,11 +627,11 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18,
     fontSize: 20, bold: true, color: DN.white, valign: 'middle',
   })
-  // logo right side of header — "datanautix" as one rich-text word
+  // logo right side of header — "Sentimetrx" as one rich-text word
   slide.addText(
     [
-      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'Senti', options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'metrx', options: { color: DN.tealLight,   bold: true, italic: true } },
     ],
     { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
   )
@@ -712,7 +751,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
   // Bottom footer
   solidRect(slide, pptx, 0, H - 0.38, W, 0.38, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.38, W, 0.02, DN.gold, 62)
-  slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
+  slide.addText('sentimetrx.ai  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
   slide.addText('Proprietary and Confidential', {
@@ -1969,7 +2008,7 @@ function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCo
   // Bottom footer
   solidRect(slide, pptx, 0, H - 0.44, W, 0.44, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
-  slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
+  slide.addText('sentimetrx.ai', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
   slide.addText('Proprietary and Confidential', { x: W - 3.6, y: H - 0.4, w: 3.2, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle', align: 'right' })
 }
 
@@ -2271,9 +2310,9 @@ function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) 
   solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText(
     [
-      { text: 'data',             options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'nautix',           options: { color: DN.tealLight,   bold: true, italic: true } },
-      { text: '  ·  datanautix.com', options: { color: DN.slate,   bold: false, italic: false } },
+      { text: 'Senti',            options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'metrx',            options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: '  ·  sentimetrx.ai', options: { color: DN.slate,   bold: false, italic: false } },
     ],
     { x: PAD + 0.07, y: H - 0.4, w: 3.5, h: 0.34, fontSize: 13, valign: 'middle' }
   )
@@ -2308,6 +2347,10 @@ export async function POST(req: Request, props: Params) {
   // Closer-slide toggles — default ON; ExportModal lets the user opt out per export
   const includeCustomDecks: boolean    = body.includeCustomDecks !== false
   const includeProvenance:  boolean    = body.includeProvenance  !== false
+  // Generation-recap appendix — recaps the export inputs (+ verbatim custom
+  // instructions) so a deck's storytelling can be retraced. Default ON;
+  // suppressible for clean client deliverables. (#10)
+  const includeRecap:       boolean    = body.includeRecap       !== false
   // Entity analysis: field keys to run org/charity entity analysis on (native
   // slides). skipTextAnalytics drops the theme/verbatim sections entirely so a
   // deck can be entity-only (e.g. "skip text analytics, just analyse Charities").
@@ -3114,7 +3157,7 @@ export async function POST(req: Request, props: Params) {
       }
       // Count slides rendered so far (pptxgenjs exposes the internal slides array)
       const slidesSoFar = ((pptx as any).slides?.length ?? 0)
-      const totalAfter = slidesSoFar + (includeCustomDecks ? 1 : 0) + (includeProvenance ? 1 : 0)
+      const totalAfter = slidesSoFar + (includeCustomDecks ? 1 : 0) + (includeProvenance ? 1 : 0) + (includeRecap ? 1 : 0)
 
       if (includeCustomDecks) renderCustomDecks(pptx, {
         type: 'custom_decks',
@@ -3140,11 +3183,10 @@ export async function POST(req: Request, props: Params) {
       const wallClockSeconds = (Date.now() - ssStartedAt) / 1000
       const isCollection = dataset?.source === 'collection'
 
-      // ── Text-analytics volume ─────────────────────────────────────────────
-      // Sum characters, word tokens, unique vocabulary, and sentence fragments
-      // across every selected open-ended field × every row. Even on small-N
-      // studies this surfaces real depth of textual analysis.
-      let totalChars = 0
+      // ── Text-analytics volume (factual) ───────────────────────────────────
+      // Word tokens, unique vocabulary, and sentence fragments across every
+      // selected open-ended field × every row actually analysed. These are
+      // counts of work performed, not theoretical capacity.
       let totalWords = 0
       let totalSentences = 0
       const vocab = new Set<string>()
@@ -3155,78 +3197,132 @@ export async function POST(req: Request, props: Params) {
         for (const f of selectedFieldNames) {
           const v = rowVal(row, f)
           if (!v) continue
-          totalChars += v.length
           for (const w of v.toLowerCase().match(/[a-z][a-z'-]+/g) || []) { vocab.add(w); totalWords += 1 }
           totalSentences += v.split(/[.!?]+/).filter(s => s.trim().length > 2).length
         }
       }
 
-      // ── Modeling / slicing depth ──────────────────────────────────────────
-      // Theoretical analytical surface: every field × every other field is
-      // a potential cross-tabulation, and every theme × every field is a
-      // potential significance test. These numbers communicate how much
-      // analytical ground the system covered even on small samples.
-      const themesCount     = (themes && themes.length) || 0
-      const nFields         = selectedFieldNames.length
-      const crossTabs       = nFields > 1 ? Math.floor(nFields * (nFields - 1) / 2) : 0
-      const sigTests        = themesCount * Math.max(nFields, 1)
-      const segmentCuts     = themesCount * 3       // approx: per-theme top/middle/bottom of distribution
-      // Quote scoring: every open-ended response × every theme is a candidate
-      // pair that pickBestComments() ranks. Cap the headline at a sane bound.
-      const quoteCandidates = Math.min(allRows.length * Math.max(themesCount, 1), 50_000)
-      const decisionsMade   = themesCount + sigTests + crossTabs + ((narratives.keyTakeaways || []).length)
+      // ── Field inventory — from the DEFINED schema, not the selected subset.
+      // The readout must report what the dataset actually contains, not what
+      // this export happened to chart. (#8a — provenance honesty.)
+      const schemaFields = (schema?.fields || []).filter((f: any) => f.status !== 'ignored')
+      const oeCount   = schemaFields.filter((f: any) => f.type === 'open-ended').length
+      const catCount  = schemaFields.filter((f: any) => f.type === 'categorical').length
+      const numCount  = schemaFields.filter((f: any) => f.type === 'numeric').length
+      const dateCount = schemaFields.filter((f: any) => f.type === 'date').length
+      const fieldsCaptured = oeCount + catCount + numCount + dateCount
+
+      const themesCount    = (themes && themes.length) || 0
+      const takeawaysCount = (narratives.keyTakeaways || []).length
+
+      // ── Human-analyst equivalent — flat ~15 min per content slide, excluding
+      // the title and the closing slides (provenance / custom-decks / recap are
+      // added via totalAfter and never counted in slidesSoFar). Stated
+      // assumption, no inflation. (#8d)
+      const contentSlides = Math.max(1, slidesSoFar - 1)
+      const humanHours    = Math.max(1, Math.round(contentSlides * 0.25))
+
+      // Factual readout — no theoretical-capacity numbers (cross-tabs,
+      // significance tests, "decisions made"); those describe what could be
+      // done, not what was done. (#8b, #8e + overarching readout directive.)
+      const outputs: { value: string; label: string; sub?: string }[] = [
+        { value: `${totalAfter} slides`, label: 'in this report',
+          sub: 'distributions · themes · representative quotes' },
+        { value: themesCount > 0 ? String(themesCount) : audience.charAt(0).toUpperCase() + audience.slice(1),
+          label: themesCount > 0 ? (themesCount === 1 ? 'theme surfaced' : 'themes surfaced') : 'narrative tier',
+          sub: themesCount > 0 ? 'with keywords, sentiment, and sample quotes' : 'depth tuned to the chosen audience' },
+      ]
+      // Hide the key-takeaways row entirely when none were written. (#8c)
+      if (takeawaysCount > 0) {
+        outputs.push({ value: String(takeawaysCount),
+          label: takeawaysCount === 1 ? 'key takeaway written' : 'key takeaways written',
+          sub: 'distilled from the findings' })
+      }
 
       renderProvenance(pptx, {
         type: 'provenance',
         title: 'How this deck was made.',
         wallClockSeconds,
-        decisionsMade,
+        secondStat: {
+          value: `${allRows.length.toLocaleString()}${rowsSampled ? '*' : ''}`,
+          label: rowsSampled ? 'responses (sampled)' : 'responses analysed',
+          sub: isCollection ? `across ${flatDatasetIds.length} datasets` : 'single dataset',
+        },
         columnHeaders: {
           inputs:     'WHAT WE LOOKED AT',
-          processing: 'WHAT WE FIGURED OUT',
+          processing: 'WHAT WE DID',
           outputs:    'WHAT WE PRODUCED',
         },
-        // 3 items per column — renderer caps at 3. Picked for impact, not exhaustiveness.
         inputs: [
-          { value: totalWords.toLocaleString(), label: 'words of verbatim text analysed',
-            sub: `${allRows.length.toLocaleString()}${rowsSampled ? '*' : ''} responses · ${totalSentences.toLocaleString()} sentences · ${vocab.size.toLocaleString()} unique vocabulary` },
-          { value: String(nFields), label: 'open-ended fields examined',
-            sub: nFields > 1 ? `${crossTabs} potential cross-tabulations evaluated` : 'depth over breadth · every clause examined' },
-          { value: isCollection ? `${flatDatasetIds.length} datasets` : '1 dataset', label: isCollection ? 'in the collection' : 'single source',
-            sub: rowsSampled ? '* sampling applied · still statistically representative' : 'every row examined for themes, sentiment, intent' },
+          { value: totalWords.toLocaleString(), label: 'words of open-ended text read',
+            sub: `${totalSentences.toLocaleString()} sentences · ${vocab.size.toLocaleString()} unique words` },
+          { value: String(oeCount), label: oeCount === 1 ? 'open-ended field analysed' : 'open-ended fields analysed',
+            sub: rowsSampled ? '* sampling applied above 50K rows' : 'every response read, not sampled' },
+          { value: String(fieldsCaptured), label: 'fields captured in the schema',
+            sub: `${catCount} categorical · ${numCount} numeric${dateCount ? ` · ${dateCount} date` : ''}` },
         ],
         processing: [
-          { value: `${themesCount || 'pattern'} ${themesCount ? 'themes mined' : 'discovery'}`, label: 'Claude (Anthropic) · audience-tuned',
-            sub: `${themesCount} theme passes · 0 retries · narrative drafted for ${audience}` },
-          { value: sigTests.toLocaleString(), label: 'significance tests run',
-            sub: `${segmentCuts.toLocaleString()} segment cuts evaluated · distributions + impact ranking` },
-          { value: quoteCandidates.toLocaleString(), label: 'response × theme pairings scored',
-            sub: 'AI quote selection picks representative comments per theme' },
+          { value: themesCount > 0 ? String(themesCount) : 'pattern',
+            label: themesCount > 0 ? (themesCount === 1 ? 'theme identified' : 'themes identified') : 'discovery pass',
+            sub: `Claude (Anthropic) · narrative tuned for ${audience}` },
+          { value: 'Sentiment', label: 'scored on every response',
+            sub: 'positive · neutral · negative' },
+          { value: 'Quotes', label: 'selected to evidence each theme',
+            sub: 'AI-ranked for representativeness' },
         ],
-        outputs: [
-          { value: `~${totalAfter} slides`, label: 'rendered for this report',
-            sub: 'distributions · themes · quotes · cross-tabs · key takeaways' },
-          { value: themesCount > 0 ? String(themesCount) : audience.charAt(0).toUpperCase() + audience.slice(1),
-            label: themesCount > 0 ? 'themes surfaced' : 'narrative tier',
-            sub: themesCount > 0 ? 'with keywords, sentiment, and statistical impact' : 'depth tuned to the chosen audience' },
-          { value: String((narratives.keyTakeaways || []).length || 0), label: 'key takeaways written',
-            sub: 'distilled from the analytical findings · ready to brief' },
-        ],
+        outputs,
         pipelineStages: [
           'ingest', 'clean', 'themes (LLM)', 'sentiment',
-          'impact', 'cross-tab', 'significance',
-          'rank quotes', 'narrative (LLM)', 'compose', 'render',
+          'impact', 'rank quotes', 'narrative (LLM)', 'compose', 'render',
         ],
-        // Analytical slides only — exclude the title slide and the two closer slides.
-        // 30-60 min per analytical slide for an end-to-end human equivalent.
-        humanEquivLow:  Math.max(2, Math.round(Math.max(1, totalAfter - 1 - (includeCustomDecks ? 1 : 0) - (includeProvenance ? 1 : 0)) * 0.5)),
-        humanEquivHigh: Math.max(4, Math.round(Math.max(1, totalAfter - 1 - (includeCustomDecks ? 1 : 0) - (includeProvenance ? 1 : 0)) * 1.0)),
-        note: 'Estimated analyst time to produce the equivalent work end-to-end — pulling and cleaning data, defining themes, running cross-tabs and significance tests, interpreting findings, building charts, and writing copy. Small-sample studies still warrant the same modelling depth.',
+        humanEquivLow:  humanHours,
+        humanEquivHigh: humanHours,
+        note: 'Estimated analyst time to produce the equivalent readout by hand — reading every response, identifying themes, selecting quotes, building charts, and writing the narrative. Assumes ~15 minutes per content slide (excluding the title and closing slides).',
       }, datasetName)
     } catch (provErr: any) {
       // __skip_closers__ is a deliberate skip — anything else is a real failure
       if (provErr !== '__skip_closers__') {
         console.error({ at: 'export/pptx', msg: "provenance/custom-decks slide failed", err: provErr?.message || provErr })
+      }
+    }
+
+    // ── Generation-recap appendix (#10) — always last, independent of the
+    // provenance/custom-decks toggles. Recaps the export inputs + verbatim
+    // custom instructions for traceability.
+    if (includeRecap) {
+      try {
+        const labelFor = (key: string): string =>
+          selectedFields.find(f => f.field === key)?.label ||
+          (schema?.fields || []).find((f: any) => f.field === key)?.label || key
+        const cap = (s: string) => (s.length > 160 ? s.slice(0, 157) + '…' : s)
+        const themeNames = (themes || []).map((t: any) => t.name).filter(Boolean)
+
+        const recapRows: { k: string; v: string }[] = []
+        recapRows.push({ k: 'Mode', v: mode === 'quick' ? 'Quick (selected fields)' : 'Builder (full schema)' })
+        recapRows.push({ k: 'Audience', v: audience })
+        if (reportTitle) recapRows.push({ k: 'Report title', v: cap(reportTitle) })
+        recapRows.push({ k: 'Fields', v: selectedFields.length
+          ? cap(`${selectedFields.length}: ` + selectedFields.map(f => f.label || f.field).join(', '))
+          : 'all schema fields' })
+        if (skipTextAnalytics) {
+          recapRows.push({ k: 'Text analytics', v: 'skipped (entity-only deck)' })
+        } else {
+          recapRows.push({ k: 'Themes', v: !includeThemeSlides ? 'theme slides off'
+            : selectedThemeIds.length ? cap(`${themeNames.length} selected: ` + themeNames.join(', '))
+            : `all (${themeNames.length})` })
+        }
+        if (entityFields.length)   recapRows.push({ k: 'Entity fields', v: cap(entityFields.map(labelFor).join(', ')) })
+        if (impactOEFields.length) recapRows.push({ k: 'Impact fields', v: cap(impactOEFields.map(labelFor).join(', ')) })
+        if (filterDescription)     recapRows.push({ k: 'Filters', v: cap(filterDescription) })
+        if (commentColorField)     recapRows.push({ k: 'Comment color-by', v: labelFor(commentColorField) })
+        if (commentAnnotations.length) recapRows.push({ k: 'Comment notes', v: `${commentAnnotations.length} annotation(s)` })
+        recapRows.push({ k: 'Appendices', v:
+          [includeProvenance && 'methodology', includeCustomDecks && 'capabilities', 'this recap']
+            .filter(Boolean).join(', ') })
+
+        buildRecapSlide(pptx, datasetName, recapRows, instructions)
+      } catch (recapErr: any) {
+        console.error({ at: 'export/pptx', msg: "recap slide failed", err: recapErr?.message || recapErr })
       }
     }
 

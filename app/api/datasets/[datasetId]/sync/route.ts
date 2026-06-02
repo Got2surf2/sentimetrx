@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { recomputeParentCollections } from '@/lib/collectionRecompute'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -145,6 +146,16 @@ export async function POST(req: Request, props: Params) {
       } catch (err) {
         console.error({ at: 'sync', msg: "analytics compute failed", err: err })
       }
+    }
+
+    // Cascade to any parent collection: a member gaining rows leaves the
+    // collection's cached aggregates (row_count, totalRows, signal_stats)
+    // stale until the collection is explicitly recomputed. Self-heal them now.
+    try {
+      const n = await recomputeParentCollections(service, dataset.id)
+      if (n > 0) console.log({ at: 'sync', msg: 'recomputed parent collections', count: n, member: dataset.id })
+    } catch (err) {
+      console.error({ at: 'sync', msg: "parent collection recompute failed", err: err })
     }
 
     return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })
