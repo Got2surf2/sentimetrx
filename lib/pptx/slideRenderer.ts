@@ -174,10 +174,10 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
 
   // Column headers
   const headY = CY + 0.05
-  slide.addText('', { x: chartX, y: headY, w: labelW, h: 0.26, fontSize: 9, bold: true, color: DX.slateDark })
-  slide.addText('Distribution', { x: barX, y: headY, w: barMaxW, h: 0.26, fontSize: 9, bold: true, color: DX.slateDark })
-  slide.addText('%', { x: pctX, y: headY, w: 0.6, h: 0.26, fontSize: 9, bold: true, color: DX.slateDark })
-  slide.addText('n', { x: cntX, y: headY, w: 1.0, h: 0.26, fontSize: 9, bold: true, color: DX.slateDark })
+  slide.addText('', { x: chartX, y: headY, w: labelW, h: 0.26, fontSize: 12, bold: true, color: DX.slateDark })
+  slide.addText('Distribution', { x: barX, y: headY, w: barMaxW, h: 0.26, fontSize: 12, bold: true, color: DX.slateDark })
+  slide.addText('%', { x: pctX, y: headY, w: 0.6, h: 0.26, fontSize: 12, bold: true, color: DX.slateDark })
+  slide.addText('n', { x: cntX, y: headY, w: 1.0, h: 0.26, fontSize: 12, bold: true, color: DX.slateDark })
   solidRect(slide, pptx, chartX, headY + 0.28, W - PAD * 2, 0.012, DN.divider)
 
   // Reserve space for insight
@@ -199,7 +199,7 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
 
     slide.addText(trunc(d.label, 40), {
       x: chartX, y: ry, w: labelW, h: rowH,
-      fontSize: i === 0 ? 11 : 10, bold: i === 0, color: i === 0 ? DX.ink : DX.navyLight, valign: 'middle', autoFit: true,
+      fontSize: i === 0 ? 13 : 12, bold: i === 0, color: i === 0 ? DX.ink : DX.navyLight, valign: 'middle', autoFit: true,
     })
 
     const trackH = rowH * 0.50
@@ -207,8 +207,8 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
     solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
     if (barW > 0.04) solidRect(slide, pptx, barX, trackY, barW, trackH, col)
 
-    slide.addText(p + '%', { x: pctX, y: ry, w: 0.6, h: rowH, fontSize: i === 0 ? 12 : 10, bold: true, color: col, valign: 'middle' })
-    slide.addText(d.value.toLocaleString(), { x: cntX, y: ry, w: 1.0, h: rowH, fontSize: 10, color: DX.slateDark, valign: 'middle' })
+    slide.addText(p + '%', { x: pctX, y: ry, w: 0.6, h: rowH, fontSize: i === 0 ? 13 : 12, bold: true, color: col, valign: 'middle' })
+    slide.addText(d.value.toLocaleString(), { x: cntX, y: ry, w: 1.0, h: rowH, fontSize: 12, color: DX.slateDark, valign: 'middle' })
   })
 
   if (spec.insight) {
@@ -244,7 +244,7 @@ function renderKpiGrid(pptx: any, spec: KpiGridSlide, datasetName: string) {
     })
     slide.addText(k.label, {
       x: x + 0.14, y: y + kh * 0.5, w: kw - 0.28, h: 0.24,
-      fontSize: 10, bold: true, color: DX.slateDark, autoFit: true,
+      fontSize: 12, bold: true, color: DX.slateDark, autoFit: true,
     })
     if (k.sub) {
       slide.addText(k.sub, {
@@ -443,21 +443,21 @@ export function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: 
     // column so the two regions never overlap.
     const numW = 0.95
     slide.addText(trunc(ent.name, 35), {
-      x: x + 0.16, y: y + 0.06, w: cardW - numW - 0.20, h: 0.28,
-      fontSize: 10, bold: true, color: DX.ink, wrap: true, autoFit: true,
+      x: x + 0.16, y: y + 0.07, w: cardW - numW - 0.20, h: 0.30,
+      fontSize: 12, bold: true, color: DX.ink, wrap: true, autoFit: true,
     })
     slide.addText(String(ent.mentions), {
-      x: x + cardW - numW - 0.05, y: y + 0.04, w: numW, h: 0.3,
-      fontSize: 16, bold: true, color: accent, align: 'right',
+      x: x + cardW - numW - 0.05, y: y + 0.04, w: numW, h: 0.32,
+      fontSize: 17, bold: true, color: accent, align: 'right',
     })
     slide.addText(ent.mentions === 1 ? 'mention' : 'mentions', {
-      x: x + cardW - numW - 0.05, y: y + 0.3, w: numW, h: 0.16,
-      fontSize: 7, color: DN.slate, align: 'right',
+      x: x + cardW - numW - 0.05, y: y + 0.34, w: numW, h: 0.16,
+      fontSize: 8, color: DN.slate, align: 'right',
     })
-    solidRect(slide, pptx, x + 0.16, y + cardH - 0.18, barW, 0.08, accent)
+    solidRect(slide, pptx, x + 0.16, y + cardH - 0.15, barW, 0.07, accent)
     slide.addText(p + '% of mentions', {
-      x: x + 0.16, y: y + 0.46, w: cardW - 0.3, h: 0.14,
-      fontSize: 7, color: DN.slate,
+      x: x + 0.16, y: y + 0.40, w: cardW - numW - 0.20, h: 0.20,
+      fontSize: 12, color: DX.slateDark,
     })
   })
 

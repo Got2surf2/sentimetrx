@@ -1419,84 +1419,80 @@ function buildCommentsSlide(
 function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
-// Compact grid overview: multiple themes per page (summary before the per-theme detail slides)
+// Theme-cloud slides — mirrors the in-app "Theme Clouds" grouped view. Each theme is a
+// full-width block: a colored % badge + name + sentiment, then its keywords laid out as a
+// frequency-sized word cloud (bigger word = more common, each tagged with its %). Blocks
+// fill the slide height so there's no dead white space. `perSlide` (1/2/4/6) overrides the
+// auto count. Themes are pre-filtered to >3% by the caller.
 function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fieldLabel?: string, meta?: TextCounts, perSlide?: number) {
   if (!themes || themes.length === 0) return
-  function chooseGrid(n: number) {
-    // User-chosen themes-per-slide overrides the auto layout. Fewer per slide =
-    // bigger cards = room for more keywords + fuller detail.
-    if (perSlide && perSlide > 0) {
-      if (perSlide <= 1) return { perPage: 1, cols: 1, rows: 1 }
-      if (perSlide <= 2) return { perPage: 2, cols: 2, rows: 1 }
-      if (perSlide <= 4) return { perPage: 4, cols: 2, rows: 2 }
-      return { perPage: 6, cols: 3, rows: 2 }
-    }
-    if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
-    if (n <= 4) return { perPage: 4, cols: 2, rows: 2 }
-    if (n <= 6) return { perPage: 6, cols: 3, rows: 2 }
-    return { perPage: 8, cols: 4, rows: 2 }
-  }
-  const { perPage, cols, rows } = chooseGrid(themes.length)
-  const gapX  = 0.16, gapY = 0.18
-  const cardW = (W - PAD * 2 - gapX * (cols - 1)) / cols
-  const cardH = (CH - gapY * (rows - 1)) / rows
-  const totalPages = Math.ceil(themes.length / perPage)
+  const per = (perSlide && perSlide > 0)
+    ? Math.min(perSlide, 6)
+    : (themes.length <= 2 ? 2 : themes.length <= 3 ? 3 : 4)
+  const totalPages = Math.ceil(themes.length / per)
+  const gap = 0.16
+
   for (let pg = 0; pg < totalPages; pg++) {
-    const pageThemes = themes.slice(pg * perPage, (pg + 1) * perPage)
+    const pageThemes = themes.slice(pg * per, (pg + 1) * per)
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
     const gridTitle = fieldLabel ? 'Theme Analysis — ' + fieldLabel : 'Theme Analysis'
     const pgTag = totalPages > 1 ? (pg + 1) + ' of ' + totalPages : themes.length + ' themes identified'
     hdr(slide, pptx, gridTitle, DN.tealDark, withCounts(pgTag, meta))
     logo(slide)
+
+    const n = pageThemes.length
+    const blockH = (CH - gap * (n - 1)) / n
     pageThemes.forEach(function(t: any, i: number) {
-      const col = i % cols, row = Math.floor(i / cols)
-      const cx  = PAD + col * (cardW + gapX)
-      const cy  = CY  + row * (cardH + gapY)
+      const by = CY + i * (blockH + gap)
       const themeColor = (t.color || DN.teal).replace('#', '')
-      rect(slide, pptx, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
-      solidRect(slide, pptx, cx, cy, cardW, 0.07, themeColor)
+      // Block surface + left accent
+      rect(slide, pptx, PAD, by, W - PAD * 2, blockH, DN.white, 0.07, DN.divider)
+      solidRect(slide, pptx, PAD, by, 0.09, blockH, themeColor)
+
+      // % badge — colored, big; with n-of-N underneath
+      const badgeW = 1.25
+      const badgeH = Math.min(0.92, blockH - 0.22)
+      const badgeX = PAD + 0.20
+      const badgeY = by + (blockH - badgeH) / 2
+      rect(slide, pptx, badgeX, badgeY, badgeW, badgeH, themeColor, 0.1, themeColor)
+      slide.addText(Math.round(t.percentage || 0) + '%', { x: badgeX, y: badgeY + 0.04, w: badgeW, h: badgeH * 0.6, fontSize: 28, bold: true, color: DN.white, align: 'center', valign: 'middle' })
+      slide.addText((t.count || 0).toLocaleString() + ' of ' + (t.totalResponses || 0).toLocaleString(), { x: badgeX, y: badgeY + badgeH * 0.62, w: badgeW, h: badgeH * 0.32, fontSize: 9, color: DN.white, align: 'center', valign: 'middle' })
+
+      // Name + sentiment badge
+      const txtX = badgeX + badgeW + 0.26
+      const txtW = W - PAD - txtX - 0.12
       const sent = t.sentiment || ''
+      const sentW = sent ? 0.92 : 0
+      slide.addText(t.name || '', { x: txtX, y: by + 0.12, w: txtW - sentW - 0.1, h: 0.40, fontSize: 16, bold: true, color: DN.navy, valign: 'middle', wrap: true, autoFit: true })
       if (sent) {
-        const sw = 0.8
-        rect(slide, pptx, cx + cardW - sw - 0.08, cy + 0.12, sw, 0.22, themeSentBg(sent), 0.5, themeSentFg(sent))
-        slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: cx + cardW - sw - 0.08, y: cy + 0.12, w: sw, h: 0.22, fontSize: 7.5, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
+        rect(slide, pptx, txtX + txtW - sentW, by + 0.16, sentW, 0.30, themeSentBg(sent), 0.5, themeSentFg(sent))
+        slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: txtX + txtW - sentW, y: by + 0.16, w: sentW, h: 0.30, fontSize: 10, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
       }
-      const nameW = cardW - (sent ? 1.0 : 0.28)
-      const nameFontSize = cardH <= 2.0 ? 10 : 12
-      // Estimate title lines: ~7 chars per inch at 12pt, ~8 at 10pt
-      const charsPerLine = Math.floor(nameW * (nameFontSize <= 10 ? 8 : 7))
-      const titleLines = Math.ceil((t.name || '').length / Math.max(charsPerLine, 1))
-      const lineH = nameFontSize <= 10 ? 0.16 : 0.19
-      const nameH = Math.max(cardH <= 2.0 ? 0.30 : 0.40, titleLines * lineH)
-      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: nameW, h: nameH, fontSize: nameFontSize, bold: true, color: DN.navy, valign: 'top', wrap: true, autoFit: true })
-      const descY = cy + 0.14 + nameH + 0.04
-      const descMaxH = cardH <= 2.0 ? 0.40 : 0.58
-      const descH = Math.min(descMaxH, Math.max(0.20, cy + cardH - 1.0 - descY))
-      if (t.description) slide.addText(t.description, { x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH, fontSize: 12, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
-      const barY    = cy + cardH - (cardH <= 2.0 ? 0.44 : 0.50)
-      // Keyword chips — show up to 6, wrapping across as many rows as fit between
-      // the description and the percentage bar. Matches the in-app theme cloud detail.
-      const keywords: string[] = (t.keywords || []).slice(0, 6)
-      const kwRowH = 0.20, kwY0 = descY + descH + 0.05
-      const maxKwRows = Math.max(1, Math.floor((barY - 0.07 - kwY0) / (kwRowH + 0.05)))
-      let kwX = cx + 0.14, kwRow = 0
-      for (const k of keywords) {
-        const kw = k.length * 0.058 + 0.18
-        if (kwX + kw > cx + cardW - 0.06) { kwX = cx + 0.14; kwRow++ }
-        if (kwRow >= maxKwRows) break
-        const ky = kwY0 + kwRow * (kwRowH + 0.05)
-        rect(slide, pptx, kwX, ky, kw, kwRowH, DN.slateLight, 0.5, DN.divider)
-        slide.addText(k, { x: kwX + 0.06, y: ky, w: kw - 0.12, h: kwRowH, fontSize: 9, color: DN.slateDark, valign: 'middle', wrap: false })
-        kwX += kw + 0.06
+
+      // Keyword cloud — frequency-sized runs flowing/wrapping in one box. Falls back to
+      // uniform sizing when per-keyword frequency isn't available.
+      const kwf: { word: string; freq: number; pct: number }[] = (t.kwFreqs && t.kwFreqs.length)
+        ? t.kwFreqs
+        : (t.keywords || []).map(function(k: string) { return { word: k, freq: 1, pct: 0 } })
+      const maxF = Math.max.apply(null, kwf.map(function(k) { return k.freq }).concat([1]))
+      const cloudTop = by + 0.58
+      const cloudH = by + blockH - 0.10 - cloudTop
+      // Word size + count scale with block height so the cloud fills the space without
+      // overflowing into the next block. sizeMin stays >=12 (content floor).
+      const sizeMax = blockH >= 2.2 ? 30 : blockH >= 1.6 ? 25 : 19
+      const sizeMin = Math.max(12, Math.round(sizeMax * 0.62))
+      const wordCap = blockH >= 2.2 ? 14 : blockH >= 1.6 ? 10 : 7
+      const runs: any[] = []
+      kwf.slice(0, wordCap).forEach(function(k) {
+        const size = sizeMin + Math.round((k.freq / maxF) * (sizeMax - sizeMin))
+        runs.push({ text: k.word, options: { fontSize: size, bold: k.freq > maxF * 0.55, color: themeColor } })
+        if (k.pct > 0) runs.push({ text: ' ' + k.pct + '%', options: { fontSize: Math.max(11, size - 8), color: DN.slate } })
+        runs.push({ text: ' ', options: { fontSize: Math.round(sizeMin * 0.8), color: DN.white } })  // word gap
+      })
+      if (cloudH > 0.3 && runs.length) {
+        slide.addText(runs, { x: txtX, y: cloudTop, w: txtW, h: cloudH, valign: 'middle', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
       }
-      const pctVal  = Math.round(t.percentage || 0)
-      solidRect(slide, pptx, cx + 0.10, barY - 0.05, cardW - 0.20, 0.008, DN.divider)
-      if (t.count) slide.addText(t.count.toLocaleString() + ' in ' + (t.totalResponses || 0).toLocaleString(), { x: cx + 0.14, y: barY, w: cardW * 0.55, h: 0.24, fontSize: 12, color: DN.slateDark, valign: 'middle' })
-      if (pctVal)  slide.addText(pctVal + '%', { x: cx + cardW * 0.55, y: barY - 0.02, w: cardW * 0.38, h: 0.28, fontSize: 14, bold: true, color: themeColor, align: 'right', valign: 'middle' })
-      const fill = Math.min(1, pctVal / 100)
-      solidRect(slide, pptx, cx + 0.14, cy + cardH - 0.14, cardW - 0.28, 0.06, DN.slateLight)
-      if (fill > 0) solidRect(slide, pptx, cx + 0.14, cy + cardH - 0.14, (cardW - 0.28) * fill, 0.06, themeColor)
     })
     footer(slide, pptx, datasetName)
   }
@@ -1597,12 +1593,12 @@ async function buildThemeSlides(
     const kwStartY = ly + 2.26
     let kwX = lx; let kwRow = 0
     keywords.forEach(function(k: string) {
-      const kw = k.length * 0.058 + 0.20
+      const kw = k.length * 0.085 + 0.24
       if (kwX + kw > lx + leftW) { kwX = lx; kwRow++ }
       if (kwRow > 1) return
-      rect(slide, pptx, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
-      slide.addText(k, { x: kwX + 0.07, y: kwStartY + kwRow * 0.28, w: kw - 0.14, h: 0.22, fontSize: 7.5, color: DN.slateDark, valign: 'middle', wrap: false })
-      kwX += kw + 0.07
+      rect(slide, pptx, kwX, kwStartY + kwRow * 0.30, kw, 0.26, DN.slateLight, 0.5, DN.divider)
+      slide.addText(k, { x: kwX + 0.08, y: kwStartY + kwRow * 0.30, w: kw - 0.16, h: 0.26, fontSize: 12, color: DN.slateDark, valign: 'middle', wrap: false })
+      kwX += kw + 0.08
     })
 
     // Lemma expansions — show related forms the matcher also catches
@@ -2642,6 +2638,55 @@ export async function POST(req: Request, props: Params) {
       .sort(function(a: any, b: any) { return b.count - a.count })
   }
 
+  // Theme text fields the theme model was built on (canonical theme scope). Mirrors
+  // /api/share/analytics + the in-app Themes page so deck theme numbers match the app.
+  const themeModelAny: any = (stateRow.theme_model as any) || {}
+  const themeFields: string[] = (Array.isArray(themeModelAny.fieldNames) && themeModelAny.fieldNames.length)
+    ? themeModelAny.fieldNames
+    : (themeModelAny.fieldName ? [themeModelAny.fieldName]
+       : selectedFields.filter(f => f.type === 'open-ended').map(f => f.field))
+
+  // Canonical theme set — counted ONCE across all theme fields (not per open-ended
+  // field), so the executive summary, the Theme Analysis slides, and the in-app Themes
+  // page all report the same %. Also computes per-keyword frequency (kwFreqs) so the
+  // theme-cloud slides can size each keyword by how often it appears.
+  function computeCanonicalThemes(themeList: any[]): any[] {
+    if (!themeList.length || !allRows.length || !themeFields.length) return themeList
+    const rowTexts = allRows
+      .map(function(row) { return themeFields.map(function(fk) { return rowVal(row, fk) }).join('  ').toLowerCase() })
+      .filter(function(txt) { return txt.trim().length > 0 })
+    const total = rowTexts.length || 1
+    return themeList
+      .map(function(t: any) {
+        const kws: string[] = t.keywords || []
+        const regexes = kws.map(function(kw: string) { return buildKwRegex(kw) })
+        const kwCounts = kws.map(function() { return 0 })
+        let count = 0
+        for (let ri = 0; ri < rowTexts.length; ri++) {
+          const text = rowTexts[ri]
+          let matched = false
+          for (let ki = 0; ki < regexes.length; ki++) {
+            if (regexes[ki].test(text)) { kwCounts[ki]++; matched = true }
+          }
+          if (matched) count++
+        }
+        const kwFreqs = kws
+          .map(function(kw: string, ki: number) { return { word: kw, freq: kwCounts[ki], pct: Math.round(kwCounts[ki] / total * 100) } })
+          .filter(function(k) { return k.freq > 0 })
+          .sort(function(a, b) { return b.freq - a.freq })
+        return Object.assign({}, t, { count, percentage: Math.round(count / total * 100), totalResponses: total, kwFreqs })
+      })
+      .filter(function(t: any) { return t.count > 0 })
+      .sort(function(a: any, b: any) { return b.count - a.count })
+  }
+
+  // Visibility filter: drop themes at or below 3% (matches the in-app Theme Clouds).
+  // Falls back to the top 5 by count if nothing clears the bar.
+  function visibleThemes(list: any[]): any[] {
+    const vis = list.filter(function(t: any) { return (t.percentage || 0) > 3 })
+    return vis.length > 0 ? vis : list.slice(0, 5)
+  }
+
   // Demo/psycho fields to annotate comments with
   const commentDemoFields = selectedFields.filter(f => f.section === 'demographic' || f.section === 'psychographic').slice(0, 4)
 
@@ -2729,23 +2774,21 @@ export async function POST(req: Request, props: Params) {
     // Sort themes by frequency (count descending)
     const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
 
-    // 2: Executive Summary — recompute themes against the dominant OE field so the
-    // summary shows live counts (persisted theme count/percentage are often 0 on
-    // collections → "Insufficient data"), matching what the theme slides do.
-    const summaryOE = selectedFields
-      .filter(function(f) { return f.type === 'open-ended' })
-      .sort(function(a, b) { return (b.summary?.nonNull || 0) - (a.summary?.nonNull || 0) })[0]
-    const summaryThemes = (summaryOE && allRows.length > 0)
-      ? computeFieldThemes(summaryOE.field, sortedThemes)
-      : sortedThemes
-    const summaryMeta: TextCounts | undefined = (summaryOE && allRows.length > 0)
+    // Canonical theme set — computed ONCE across all theme fields (matches the in-app
+    // Themes page / export picker) and reused by the exec summary AND the Theme Analysis
+    // slides so every surface reports the same %. >3% visibility filter applied.
+    const canonicalThemes = (allRows.length > 0) ? visibleThemes(computeCanonicalThemes(sortedThemes)) : sortedThemes
+    const canonMeta: TextCounts | undefined = (allRows.length > 0 && themeFields.length > 0)
       ? {
-          comments: summaryThemes[0]?.totalResponses
-            ?? allRows.filter(function(r) { return rowVal(r, summaryOE.field).trim().length > 0 }).length,
-          signals: summaryThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
+          comments: canonicalThemes[0]?.totalResponses
+            ?? allRows.filter(function(r) { return themeFields.some(function(fk) { return rowVal(r, fk).trim().length > 0 }) }).length,
+          signals: canonicalThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
         }
       : undefined
-    buildSummarySlide(pptx, datasetName, displayRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], summaryThemes, selectedFields, summaryMeta)
+
+    // 2: Executive Summary — TOP THEMES use the canonical set (same numbers as the
+    // Theme Analysis slides and the in-app Themes page).
+    buildSummarySlide(pptx, datasetName, displayRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], canonicalThemes, selectedFields, canonMeta)
 
     // 2b: Survey Overview — first slide after the executive summary when the
     // source is a survey (study, or a collection of studies). Mirrors the in-app
@@ -2910,40 +2953,29 @@ export async function POST(req: Request, props: Params) {
       }
     }
 
-    // ── 4: Open-ended fields → theme grid → per-theme detail (one per theme) ──
+    // ── 4: Open-ended verbatim overviews (per field) + ONE canonical Theme Analysis ──
+    // Per-field overview slides keep each question's verbatims; the theme grid + detail
+    // are computed ONCE across all theme fields (canonicalThemes) so every theme % in
+    // the deck matches the executive summary and the in-app Themes page (no more
+    // per-question divergence).
     if (!skipTextAnalytics && openEndedSelected.length > 0) {
       for (const f of openEndedSelected) {
-        // Divider slide per OE field with prompt
-        // Subtitle must not repeat the field label (the title already shows it),
-        // otherwise the field name reads three times on one slide.
+        // Subtitle must not repeat the field label (the title already shows it).
         const divSubtitle = (f.prompt && f.prompt !== f.label)
           ? f.prompt
-          : 'Verbatim responses analysed for recurring themes'
+          : 'Verbatim responses in respondents’ own words'
         buildSectionDivider(pptx, f.label, divSubtitle, 1, 'Open-ended')
+        const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        // Overview slide — quotes for THIS field; theme pills use the canonical set.
+        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, canonicalThemes.slice(0, 4), getStripColor, canonMeta)
+      }
 
-        const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        // Always recompute per-field so each OE field gets its own theme counts
-        const fieldThemes = allRows.length > 0
-          ? computeFieldThemes(f.field, sortedThemes)
-          : sortedThemes
-        // comments = responses with text in this field; signals = total theme
-        // mentions (sum of per-theme match counts). Shown on every theme slide.
-        const fieldComments = fieldThemes[0]?.totalResponses
-          ?? allRows.filter(function(r) { return rowVal(r, f.field).trim().length > 0 }).length
-        const fieldMeta: TextCounts = {
-          comments: fieldComments,
-          signals: fieldThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
-        }
-        // a) Overview slide (AI narrative + theme bar chart)
-        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8), getStripColor, fieldMeta)
-        // b) Theme grid overview (multiple themes per page)
-        if (includeThemeSlides && fieldThemes.length > 0) {
-          buildThemeGridSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, fieldMeta, themesPerSlide)
-        }
-        // c) Per-theme detail slides with verbatims on the right
-        if (includeThemeSlides && fieldThemes.length > 0) {
-          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (dataset as any).org_id, getStripColor, fieldMeta)
-        }
+      // ONE Theme Analysis section — canonical themes (cloud grid + per-theme detail),
+      // quotes pulled across all theme fields.
+      if (includeThemeSlides && canonicalThemes.length > 0) {
+        buildSectionDivider(pptx, 'Theme Analysis', 'Themes across all open-ended responses · keywords sized by how often each idea appears', 1, 'Themes')
+        buildThemeGridSlides(pptx, datasetName, canonicalThemes, undefined, canonMeta, themesPerSlide)
+        await buildThemeSlides(pptx, datasetName, canonicalThemes, undefined, allRows, rowKeyMap, themeFields, usedCommentTexts, skipAI ? undefined : (dataset as any).org_id, getStripColor, canonMeta)
       }
     }
 

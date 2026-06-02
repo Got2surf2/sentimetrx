@@ -489,6 +489,18 @@ analytics export — dataset-row CSV download is not part of this module.
   ("Datanautix AI Text Analytics"), and `pptx.author = pptx.company = 'Datanautix'` in file
   metadata. (Reverted 2026-06-02 — a prior session's deck-fix #9 had switched decks to
   Sentimetrx; the owner clarified decks are Datanautix-branded, product is Sentimetrx.)
+- **Canonical themes (one set, matches the app)**: themes are counted ONCE across the
+  theme model's fields (`computeCanonicalThemes`, mirroring `/api/share/analytics` + the
+  in-app Themes page) — not per open-ended field. The executive summary's TOP THEMES and
+  the Theme Analysis slides both read this one set, so every theme % agrees. Per-question
+  theme sections were collapsed into a single **Theme Analysis** (the per-field verbatim
+  overview slides remain). Themes at/below **3% are hidden** (`visibleThemes`, fallback top 5).
+- **Theme Analysis = theme-cloud slides** (`buildThemeGridSlides`): each theme renders as
+  the in-app Theme Cloud — a colored **% badge** (+ `n of N`) + name + sentiment, then its
+  keywords as a **frequency-sized word cloud** (each word 12–30pt by how often it occurs,
+  tagged with its %). Blocks fill the slide height (no dead white space). The ExportModal
+  **Themes per slide** control (`body.themesPerSlide` = Auto/1/2/4/6) sets density; word
+  size + count scale to block height with `autoFit` so a cloud never overflows its block.
 - **Quote selection**: `pickBestComments()` selects 2-3 representative quotes per theme
 - **Comments + signals on text-analytics slides**: every open-ended/theme slide header
   carries `N comments · M signals`, where *comments* = responses with text in that field
