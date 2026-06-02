@@ -32,7 +32,7 @@ const CODE_GLOBS = [
   /^sql\//,
   /^components\//,
   /^scripts\//,
-  /^middleware\.ts$/,
+  /^proxy\.ts$/,
   /^next\.config\.(js|ts|mjs)$/,
   /^vercel\.json$/,
 ]

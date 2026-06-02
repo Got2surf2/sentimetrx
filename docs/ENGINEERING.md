@@ -74,7 +74,7 @@ service-role import.
     via diff-read before merge. **At team-of-two:** 1 reviewer
     required on every PR. **At team-of-four:** 2 reviewers on
     security-sensitive paths, 1 on the rest, with a `CODEOWNERS`
-    file pinning `lib/auth/`, `middleware.ts`, `sql/`, and
+    file pinning `lib/auth/`, `proxy.ts`, `sql/`, and
     `lib/guardrails.ts`.
 - **PR scope:** one logical change per PR. "Refactor + new
   feature" PRs get split.
@@ -94,7 +94,7 @@ service-role import.
 - **Devlog-drift pre-commit hook.** Same hook also runs
   `scripts/check-devlog-drift-staged.ts`. Blocks the commit when any
   staged file under `app/`, `lib/`, `sql/`, `components/`, `scripts/`,
-  `middleware.ts`, `next.config.*`, or `vercel.json` is present and
+  `proxy.ts`, `next.config.*`, or `vercel.json` is present and
   no `docs/weekly-reports/YYYY-WXX-devlog.md` file is also staged.
   Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` for genuinely trivial
   commits (typos, whitespace, package-lock churn, dep bumps with no
@@ -192,10 +192,10 @@ its corresponding entry.
   strings in breadcrumb messages. Also drops the Microsoft Office
   "Object Not Found Matching Id…" content-script false positive.
   SECURITY.md Open `<TBD>` item 1 is closed.
-- **Request IDs:** *target* state — generated in `middleware.ts`
+- **Request IDs:** *target* state — generated in `proxy.ts`
   (or upstream), added to every response header (`x-request-id`),
   included in every log payload's `request_id` field for that
-  request. Today `middleware.ts` only enforces CSRF; no request
+  request. Today `proxy.ts` only enforces CSRF; no request
   ID is generated or propagated. Vercel adds its own `x-vercel-id`
   header upstream, which is the de facto correlation key until
   Open `<TBD>` item 21 lands.
@@ -556,7 +556,7 @@ are in `SECURITY.md`.
     hand-fixed. `lib/log.ts` (item 12) can swap `console.error`
     for a structured emitter without touching call sites.
 21. ~~**Request-ID middleware:**~~ DONE 2026-05-16.
-    `middleware.ts` now stamps every /api/* request with an
+    `proxy.ts` now stamps every /api/* request with an
     `x-request-id` (preserved if the caller supplied one, else a
     fresh `crypto.randomUUID()`). The ID is echoed on the response
     and forwarded into the request scope so handlers can read it

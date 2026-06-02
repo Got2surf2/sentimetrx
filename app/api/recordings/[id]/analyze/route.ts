@@ -4,7 +4,7 @@
 // Called from the review-and-generate gate (§ 5.3) after the pipeline pauses
 // at status='transcribed'. Optionally persists last-minute setup edits (agenda
 // / panel roster) and a free-text steer, then kicks off analyzeRecordingWorkflow
-// (analyzing → complete). CSRF + same-origin are enforced by middleware.ts.
+// (analyzing → complete). CSRF + same-origin are enforced by proxy.ts.
 
 import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'

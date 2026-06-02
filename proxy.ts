@@ -1,4 +1,4 @@
-// middleware.ts
+// proxy.ts
 // CSRF protection for cookie-authed mutating API routes + per-request
 // correlation IDs for structured logging.
 //
@@ -72,7 +72,7 @@ function isBypassed(pathname: string): boolean {
   return false
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Preserve a client-supplied request ID (lets external callers correlate

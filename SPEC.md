@@ -11,7 +11,7 @@ Sentimetrx is a SaaS platform for conversational surveys, AI-moderated live grou
 
 **Repo**: `sentimetrx` — single repo on `main`. Pushes to `main` trigger Vercel production builds. Staging is retired.
 
-**Stack**: Next.js 14 App Router, React 18, TypeScript (strict), Supabase (PostgreSQL + Auth + Storage with RLS), pluggable AI providers (Anthropic Claude default, OpenAI, Azure OpenAI) routed through `lib/ai.ts`, Vercel serverless / Fluid Compute, Resend (default email), SendGrid / AWS SES / SMTP / Twilio SMS, DataForSEO (Google + Tripadvisor reviews), Reddit / Substack / Regulations.gov APIs.
+**Stack**: Next.js 16 App Router, React 19, TypeScript (strict), Supabase (PostgreSQL + Auth + Storage with RLS), pluggable AI providers (Anthropic Claude default, OpenAI, Azure OpenAI) routed through `lib/ai.ts`, Vercel serverless / Fluid Compute, Resend (default email), SendGrid / AWS SES / SMTP / Twilio SMS, DataForSEO (Google + Tripadvisor reviews), Reddit / Substack / Regulations.gov APIs.
 
 ---
 

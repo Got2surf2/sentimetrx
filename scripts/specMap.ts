@@ -28,7 +28,7 @@ export const TOP_LEVEL_SPECS = ['SPEC.md', 'FEATURES.md'] as const
 
 export const SPEC_MAP: Record<SpecKey, string[]> = {
   'docs/SECURITY.md': [
-    'middleware.ts',
+    'proxy.ts',
     'lib/auth/**',
     'lib/rateLimit.ts',
     'lib/oauthState.ts',
@@ -66,7 +66,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sentry.client.config.ts',
     'sentry.server.config.ts',
     'sentry.edge.config.ts',
-    'middleware.ts',
+    'proxy.ts',
     'CLAUDE.md',
     'components/admin/AdminHub.tsx',
     'components/admin/GovernanceTrend.tsx',

@@ -4,9 +4,9 @@ Project-specific guidance for Claude Code working in this repo. Personal/global 
 
 ## Stack
 
-Next.js 14 App Router, TypeScript (strict), React 18, Supabase (Postgres + Auth + Storage with RLS), Anthropic Claude, Vercel (pushes to `main` auto-deploy to production), Resend, DataForSEO.
+Next.js 16 App Router, TypeScript (strict), React 19, Supabase (Postgres + Auth + Storage with RLS), Anthropic Claude, Vercel (pushes to `main` auto-deploy to production), Resend, DataForSEO.
 
-Node ≥ 20. Single repo on `main` — staging is retired.
+Node 22.x. Single repo on `main` — staging is retired.
 
 ## Push policy — NEVER push without explicit user authorization
 
@@ -29,7 +29,7 @@ This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-depl
 - `sql/` — numbered migrations. Apply to prod with `supabase db query --linked --file sql/NNN_name.sql` (CLI is already linked).
 - `tests/` — `unit/`, `integration/`, `e2e/`, `loadtest/`. Strategy in `docs/TESTING.md`.
 - `docs/` — specs (per-module). Top-level: `SPEC.md`, `FEATURES.md`.
-- `middleware.ts` — CSRF protection on cookie-authed mutating routes; webhooks/cron/embeds are explicitly bypassed.
+- `proxy.ts` — CSRF protection on cookie-authed mutating routes; webhooks/cron/embeds are explicitly bypassed. (Next 16 renamed the `middleware` convention to `proxy`; runtime is nodejs.)
 
 ## Product naming (user-facing only)
 
@@ -87,7 +87,7 @@ The repo carries heavy spec docs that must stay in sync with code. When a change
 Both rules are enforced at commit time by `.githooks/pre-commit`:
 
 - **Spec drift** check blocks the commit if staged code maps to a `docs/*.md` spec that isn't also staged. Bypass: `SKIP_SPEC_CHECK=1 git commit ...` — only for legitimate code-only changes (pure refactor, formatting, no behavioral spec impact).
-- **Devlog drift** check blocks the commit if staged code touches `app/`, `lib/`, `sql/`, `components/`, `scripts/`, `middleware.ts`, `next.config.*`, or `vercel.json` and no weekly devlog file is staged. Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` — only for typos, whitespace, package-lock churn, or dependency bumps with no behavior change.
+- **Devlog drift** check blocks the commit if staged code touches `app/`, `lib/`, `sql/`, `components/`, `scripts/`, `proxy.ts`, `next.config.*`, or `vercel.json` and no weekly devlog file is staged. Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` — only for typos, whitespace, package-lock churn, or dependency bumps with no behavior change.
 
 If you bypass either, justify why in the commit message. A buyer's DD review (or your own audit a year from now) needs to be able to reconstruct intent from the git + spec + devlog trail without asking the human.
 

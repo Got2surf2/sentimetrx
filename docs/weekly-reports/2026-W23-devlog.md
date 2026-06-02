@@ -168,3 +168,15 @@ Executed Phase 2, the held Next 15 → 16 jump, on a fresh branch off `main` (wh
 **Not verified**: prod-canary smoke (the React 19 hydration surfaces — survey/agent/PulseIQ widgets, streaming, loaders, images — need a real browser, per the Phase-1 jsdom lesson that local Node masks Vercel behavior). Branch is commit-only pending that canary + user review.
 
 **Next 16 (2/n) — vercel.json buildCommand pin.** `vercel pull` showed the project's `buildCommand` is `null` → Vercel uses the Next.js framework default `next build` (no flag) and **ignores** the `--webpack` in our package.json script. Under Turbopack-default that fails on the Sentry/Workflow webpack key. Pinned `"buildCommand": "next build --webpack"` in vercel.json so cloud builds (preview + prod) match local. Dashboard nodeVersion is 24.x (engines says 22.x) — irrelevant now that the jsdom fix is Node-independent. Needed before the first Next-16 Vercel build can go green.
+
+## 2026-06-01 — Next 16 (3/n): middleware→proxy rename + spec version sync (15→16), then PUSH
+
+Folded the two cheap deferred follow-ups into the upgrade before landing it.
+
+**#1 middleware → proxy** (Next 16 deprecated the `middleware` file convention): `git mv middleware.ts proxy.ts`, `export function middleware` → `export function proxy`. The CSRF + same-origin + request-id logic is byte-for-byte unchanged; only the wrapper name moved. `config.matcher` carries over. proxy runtime is nodejs (was edge by default) — fine, the code uses only NextRequest/NextResponse/crypto.randomUUID/Headers/URL, no edge-only APIs. Updated every reference: tooling (`scripts/specMap.ts` ×2, `scripts/check-devlog-drift-staged.ts` watch regex), code comments (`lib/requestContext.ts`, bots `[id]/chat`, recordings `[id]/analyze` + `[id]/process`), and live docs (CLAUDE.md, SECURITY.md, ENGINEERING.md). Build output now reads `ƒ Proxy (Middleware)` — confirmed wired on /api/*.
+
+**#3 spec version sync**: SPEC.md + CLAUDE.md stack lines `Next.js 14 / React 18` → `Next.js 16 / React 19` (main never carried the Phase-1 15 sync — it lived only on the unmerged docs/next15-spec-sync branch, so 16 subsumes it), CLAUDE.md `Node ≥ 20` → `Node 22.x` (matches engines).
+
+**Environment snag (local only):** this working copy is in Dropbox, which (a) created `" 2"` sync-conflict dupes of `node_modules/@types/react`, `@types/react-dom` and `.next/types/*` that broke `tsc` with phantom duplicate-identifier errors, and (b) *restored* the deleted `middleware.ts` as an untracked file after `git mv`, making the build see both files. Both are local-disk artifacts — the committed git tree has only `proxy.ts` and no dupes, so Vercel (builds from git) is unaffected. Cleared the dupes + ghost; rebuilt clean.
+
+**Verification**: tsc clean; `next build --webpack` green with Proxy wired; `npm test` 388 passed / 54 skipped. Pushing to main (authorized) — first Next 16 production deploy.

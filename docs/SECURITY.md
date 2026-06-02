@@ -205,7 +205,7 @@ test project exists.
     refresh).
   - **Proposed for platform admins:** 30-minute access token,
     24-hour refresh. Tracked as Open `<TBD>` item 8.
-- **CSRF protection:** `middleware.ts` enforces a same-site or
+- **CSRF protection:** `proxy.ts` enforces a same-site or
   CSRF-token check on cookie-authed mutating routes. Webhooks /
   cron / embed widgets are explicitly bypassed (each documented
   inline in the middleware). Embed-route exemptions are limited
@@ -222,7 +222,7 @@ test project exists.
 
 **How we verify:** `npm run test:auth-flows` exercises real
 Supabase auth round-trips; CSRF bypasses are reviewed inline in
-`middleware.ts` PRs. MFA / session-policy enforcement, once
+`proxy.ts` PRs. MFA / session-policy enforcement, once
 ratified, will need its own test.
 
 ---
