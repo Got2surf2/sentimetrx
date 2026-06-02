@@ -68,7 +68,7 @@ function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: 
 
 function footer(slide: any, pptx: any, datasetName: string) {
   solidRect(slide, pptx, 0, FY - 0.02, W, 0.015, DN.teal, 62)
-  slide.addText('sentimetrx.ai  ·  ' + datasetName, {
+  slide.addText('datanautix.com  ·  ' + datasetName, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,
   })
   slide.addText('Proprietary and Confidential', {
@@ -413,17 +413,17 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
     x: W - 2.4, y: 1.2, w: 2.6, h: 2.6,
     fill: { color: DN.teal, transparency: 93 }, line: { color: DN.tealLight, transparency: 81, width: 1 }
   })
-  // "S" monogram
-  slide.addText('S', {
+  // "D" monogram
+  slide.addText('D', {
     x: W - 2.1, y: 1.5, w: 2.0, h: 2.0,
     fontSize: 72, bold: true, italic: true, color: DN.orange, align: 'center', valign: 'middle',
   })
 
-  // Logo — "Sentimetrx" as one rich-text word
+  // Logo — "datanautix" as one rich-text word (data = Sarina teal, nautix = Ana orange)
   slide.addText(
     [
-      { text: 'Senti', options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'metrx', options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'data',   options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.orangeLight, bold: true, italic: true } },
     ],
     { x: PAD + 0.18, y: 0.75, w: 4.8, h: 0.9, fontSize: 42, valign: 'middle' }
   )
@@ -455,7 +455,7 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
   solidRect(slide, pptx, 0, H - 0.48, W, 0.48, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.48, W, 0.03, DN.gold, 50)
   const generatedOn = new Date().toLocaleString()
-  slide.addText('Proprietary and Confidential  ·  Prepared with Sentimetrx  ·  sentimetrx.ai  ·  Report generated ' + generatedOn, {
+  slide.addText('Proprietary and Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
     fontSize: 8.5, color: DN.slate, valign: 'middle',
   })
@@ -552,7 +552,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
     curNoteY += h + noteGap
   }
   {
-    const methText = 'Methodology: ' + collectionMethod + 'Analyzed using Sentimetrx AI Text Analytics.'
+    const methText = 'Methodology: ' + collectionMethod + 'Analyzed using Datanautix AI Text Analytics.'
     const h = noteHeight(methText)
     notes.push({ y: curNoteY, h, bgColor: DN.slateLight, text: methText, textColor: DN.slateDark })
   }
@@ -627,11 +627,11 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18,
     fontSize: 20, bold: true, color: DN.white, valign: 'middle',
   })
-  // logo right side of header — "Sentimetrx" as one rich-text word
+  // logo right side of header — "datanautix" as one rich-text word
   slide.addText(
     [
-      { text: 'Senti', options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'metrx', options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'data',   options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.orangeLight, bold: true, italic: true } },
     ],
     { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
   )
@@ -751,7 +751,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
   // Bottom footer
   solidRect(slide, pptx, 0, H - 0.38, W, 0.38, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.38, W, 0.02, DN.gold, 62)
-  slide.addText('sentimetrx.ai  ·  ' + trunc(datasetName, 50), {
+  slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
   slide.addText('Proprietary and Confidential', {
@@ -1973,7 +1973,7 @@ function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCo
   // Bottom footer
   solidRect(slide, pptx, 0, H - 0.44, W, 0.44, DN.navyMid)
   solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
-  slide.addText('sentimetrx.ai', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
+  slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
   slide.addText('Proprietary and Confidential', { x: W - 3.6, y: H - 0.4, w: 3.2, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle', align: 'right' })
 }
 
@@ -2275,9 +2275,9 @@ function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) 
   solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText(
     [
-      { text: 'Senti',            options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'metrx',            options: { color: DN.tealLight,   bold: true, italic: true } },
-      { text: '  ·  sentimetrx.ai', options: { color: DN.slate,   bold: false, italic: false } },
+      { text: 'data',             options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: 'nautix',           options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: '  ·  datanautix.com', options: { color: DN.slate,   bold: false, italic: false } },
     ],
     { x: PAD + 0.07, y: H - 0.4, w: 3.5, h: 0.34, fontSize: 13, valign: 'middle' }
   )
@@ -2666,8 +2666,8 @@ export async function POST(req: Request, props: Params) {
       title: 'NUMBERED',
       slideNumber: { x: W - PAD - 0.5, y: FY, w: 0.5, h: 0.26, color: DN.slate, fontSize: 7.5, align: 'right' },
     })
-    pptx.author    = 'Sentimetrx'
-    pptx.company   = 'Sentimetrx'
+    pptx.author    = 'Datanautix'
+    pptx.company   = 'Datanautix'
     pptx.subject   = datasetName + ' — Analysis Report'
     pptx.title     = datasetName
 

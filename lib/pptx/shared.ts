@@ -39,12 +39,12 @@ export function bgFill(slide: any, pptx: any, color = DN.slateCard) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
 }
 
-/** Sentimetrx wordmark logo in top-right of header */
+/** Datanautix wordmark logo in top-right of header (data = Sarina teal, nautix = Ana orange) */
 export function logo(slide: any) {
   slide.addText(
     [
-      { text: 'Senti', options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'metrx', options: { color: DN.tealLight, bold: true, italic: true } },
+      { text: 'data',   options: { color: DN.tealLight, bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.orangeLight, bold: true, italic: true } },
     ],
     { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
   )

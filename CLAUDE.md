@@ -34,9 +34,10 @@ This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-depl
 
 ## Product naming (user-facing only)
 
-- **Sentimetrx** (lowercase x, not SentimetRx)
+- **Sentimetrx** (lowercase x, not SentimetRx) — the product/app brand
 - **agents** (not "bots")
 - **PulseIQ** (not "Town Hall")
+- **Exported decks/reports carry the Datanautix company brand, NOT Sentimetrx.** Datanautix is the company/consulting brand that delivers the decks; Sentimetrx is the SaaS product. So PPTX wordmark = "data·nautix" (data = Sarina teal, nautix = Ana orange), footers = `datanautix.com`, file metadata author/company = Datanautix. This is a deliberate exception to the Sentimetrx-everywhere rule, scoped to deck/report exports only (`lib/pptx/*`, `export/pptx`). Do not "fix" Datanautix→Sentimetrx in deck code.
 
 Internal table/code names (`bots`, `townhall_*`) stay as-is. Refer to pages by their UI nav label, not the URL slug — e.g. `/analyze/[id]/settings` is the **Schema** tab.
 
