@@ -450,9 +450,35 @@ analytics export — dataset-row CSV download is not part of this module.
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),
   `full` (full team — most detail, drives theme-impact slide inclusion)
-- **Slides**: Title, executive summary, NPS/rating distributions, theme deep-dives
+- **Slides**: Title, executive summary, **survey overview** (survey sources only — see
+  below), about/methodology, NPS/rating distributions, theme deep-dives
   (keywords + quotes), sentiment breakdown, theme impact on scores, field breakdowns,
   demographic annotations, methodology appendix
+- **Survey Overview slide (survey sources)**: first slide after the executive summary when
+  the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
+  schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.
+  Built by `buildSurveyOverviewSlide`: headline **Responses** + **With comments** KPI cards
+  over a stage-by-stage **completion funnel**, all computed from the same flat rows the deck
+  already loaded — mirroring the in-app shared-analytics dashboard (`/api/share/analytics`):
+  stages are `Started → {rating label} → Conversation → Survey Questions (N) →
+  Psychographics (N) → Demographics (optional) → Completed`, with retention % and per-stage
+  drop-off. Replaces the older response-payload `buildFunnelSlide` (removed), which only ran
+  for single studies and never for collections.
+- **Themes per slide is user-controlled**: the ExportModal Theme Slides picker exposes a
+  *Themes per slide* control (`Auto / 1 / 2 / 4 / 6` → `body.themesPerSlide`, 0 = auto).
+  `buildThemeGridSlides(…, perSlide)` honours the override; fewer per slide = larger cards.
+  Each theme card now matches the in-app theme cloud detail: up to **6 keywords** (wrapping
+  to fit), one-line description, sentiment badge, `n in N` count, and the **% occurrence**.
+- **Readable type floor**: all body/content text renders at **≥12pt** (headings, bullets,
+  KPI labels, table headers, bar-row labels, %/count values, quotes, theme descriptions,
+  implications, recap rows). Chrome stays small by design — footers, page numbers,
+  "Proprietary and Confidential", section-eyebrow chips, keyword/sentiment chips, annotation
+  pills, chart axis ticks, and fine-print methodology notes.
+- **No repeated field name on open-ended sections**: the section divider uses a category
+  eyebrow ("Open-ended" / "Verbatim") rather than echoing the field label, and its subtitle
+  falls back to a generic descriptor (never the label); the OE overview slide suppresses the
+  prompt box and "Headline finding" when they would only repeat the field label (no real
+  prompt / no AI finding). Previously the label could appear three times on one slide.
 - **Branding**: Sentimetrx throughout — the navy/teal/gold palette is unchanged
   (internal `DN` constant name stays), but every respondent-visible string now
   reads Sentimetrx: the header wordmark (`logo()` in `lib/pptx/shared.ts` →

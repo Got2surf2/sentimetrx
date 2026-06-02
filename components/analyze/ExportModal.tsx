@@ -78,6 +78,8 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [commentColorField,  setCommentColorField]  = useState<string>('')
   const [themes,             setThemes]             = useState<any[]>([])
   const [includeThemeSlides, setIncludeThemeSlides] = useState(true)
+  // Themes per slide on the Theme Analysis grid: 0 = auto, else 1/2/4/6.
+  const [themesPerSlide,     setThemesPerSlide]     = useState<number>(0)
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
@@ -240,7 +242,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap }
       if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
       if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
@@ -587,7 +589,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   </div>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
-                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} />
                   <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
@@ -670,7 +672,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
-                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} />
                   <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
@@ -1115,12 +1117,15 @@ const THEME_COLORS = ['#0F7173','#E8B84B','#7C3AED','#059669','#E85A1A','#0891B2
 
 function ThemePicker({
   themes, includeThemeSlides, setIncludeThemeSlides, selectedThemeIds, setSelectedThemeIds,
+  themesPerSlide, setThemesPerSlide,
 }: {
   themes: any[]
   includeThemeSlides: boolean
   setIncludeThemeSlides: (v: boolean) => void
   selectedThemeIds: Set<string>
   setSelectedThemeIds: (fn: (prev: Set<string>) => Set<string>) => void
+  themesPerSlide: number
+  setThemesPerSlide: (v: number) => void
 }) {
   if (themes.length === 0) return null
 
@@ -1151,6 +1156,19 @@ function ThemePicker({
         <>
           <div style={{ fontSize: 10, color: S.textFaint, marginBottom: 8 }}>
             Select which themes to include — {selectedThemeIds.size} of {themes.length} selected
+          </div>
+          {/* Themes per slide on the Theme Analysis grid */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 10, color: S.textMid, fontWeight: 600 }}>Themes per slide:</span>
+            {[{ v: 0, l: 'Auto' }, { v: 1, l: '1' }, { v: 2, l: '2' }, { v: 4, l: '4' }, { v: 6, l: '6' }].map(function(opt) {
+              const active = themesPerSlide === opt.v
+              return (
+                <button key={opt.v} onClick={function() { setThemesPerSlide(opt.v) }}
+                  style={{ minWidth: 28, height: 24, padding: '0 8px', borderRadius: 6, border: '1px solid ' + (active ? HERMES : S.border), background: active ? HERMES : S.white, color: active ? 'white' : S.textMid, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {opt.l}
+                </button>
+              )
+            })}
           </div>
           {/* Select all / none */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
