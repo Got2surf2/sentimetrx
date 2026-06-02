@@ -139,6 +139,28 @@ async function resolveScopeTextFields(
   return out
 }
 
+/** Like resolveScopeTextFields but narrows each dataset's eligible fields to a
+ *  caller-supplied subset (still intersected with eligibility so a non-text or
+ *  extraction-disabled key can't widen the search). Used by the deck export to
+ *  scope entity counts to the *selected* field (e.g. "Charities donated to")
+ *  instead of every open-ended field — so a place named in a different field
+ *  doesn't surface on a charity entity slide. Returns {} when nothing matches
+ *  (caller falls back to the unscoped map). */
+async function scopeTextFieldsToKeys(
+  service: SupabaseClient,
+  datasetIds: string[],
+  keys: string[],
+): Promise<Record<string, string[]>> {
+  const all = await resolveScopeTextFields(service, datasetIds)
+  const keySet = new Set(keys)
+  const out: Record<string, string[]> = {}
+  for (const [dsId, fields] of Object.entries(all)) {
+    const kept = fields.filter(f => keySet.has(f))
+    if (kept.length > 0) out[dsId] = kept
+  }
+  return out
+}
+
 // ── Entity query construction ──────────────────────────────────────────────
 
 /** Build one websearch_to_tsquery string for a catalog entity: the canonical
@@ -207,6 +229,11 @@ export async function getEntitiesWithCounts(opts: {
    *  and returns source/hidden flags so the UI can show curation state.
    *  All other callers (cloud, compare, drill) leave this off. */
   includeHidden?: boolean
+  /** Restrict live counts to these open-ended field keys (intersected with
+   *  each dataset's entity-eligible fields). Default (undefined/empty) counts
+   *  across every eligible field. The deck export passes the selected entity
+   *  field so counts reflect that field only. */
+  textFieldKeys?: string[]
 }): Promise<EntitiesResult | { notFound: true }> {
   const { service, datasetId, includeHidden } = opts
   const limit        = Math.min(Math.max(opts.limit ?? 50, 1), 200)
@@ -287,7 +314,15 @@ export async function getEntitiesWithCounts(opts: {
 
   const countByTerm = new Map<string, number>()
   if (terms.length > 0) {
-    const textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
+    // Scope counts to caller-selected fields when asked, else every eligible field.
+    // Fall back to the unscoped map if the requested keys match nothing (so the
+    // deck still renders entities rather than coming back empty).
+    let textFields = (opts.textFieldKeys && opts.textFieldKeys.length > 0)
+      ? await scopeTextFieldsToKeys(service, scope.memberDatasetIds, opts.textFieldKeys)
+      : await resolveScopeTextFields(service, scope.memberDatasetIds)
+    if (Object.keys(textFields).length === 0) {
+      textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
+    }
     const { data: counts } = await service.rpc('count_entity_terms', {
       p_dataset_ids: scope.memberDatasetIds,
       p_terms:       terms,

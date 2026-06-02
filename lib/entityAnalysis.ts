@@ -80,6 +80,70 @@ ${batch.map(s => `- ${s}`).join('\n')}`
   return result
 }
 
+// The focus-area taxonomy shared by canonicaliseEntities (raw mentions) and
+// categoriseEntityNames (already-canonical catalog names). Keep in sync.
+const FOCUS_AREA_TAXONOMY =
+`- religious        — faith-based, church-affiliated, religious order
+- health           — disease research, hospitals, medical aid
+- humanitarian     — international aid, refugees, disaster relief, hunger
+- education        — schools, universities, scholarships, literacy
+- youth            — children, after-school, mentoring, scouting
+- animal           — animal welfare, wildlife conservation
+- veterans         — military veterans and their families
+- environmental    — climate, conservation, sustainability
+- community        — local food banks, community foundations, shelters
+- arts             — museums, performing arts, public broadcasting
+- other            — anything that does not fit cleanly above`
+
+/**
+ * Re-categorise already-canonical catalog entity NAMES into charity focus areas
+ * (religious / health / humanitarian / …). The stored catalog category is a
+ * general NER type (brand / place / person / other), which is the wrong
+ * dimension for a charity entity slide ("Brand 95%"). This runs one cheap Haiku
+ * pass over the names and returns { canonicalName: focusArea }. Names it can't
+ * place are omitted — the caller should fall back to the existing category.
+ * Returns {} on any failure so the caller degrades gracefully (no thrown error).
+ */
+export async function categoriseEntityNames(names: string[]): Promise<Record<string, string>> {
+  const unique = Array.from(new Set(names.map(n => n.trim()).filter(n => n.length >= 2)))
+  if (unique.length === 0) return {}
+  const result: Record<string, string> = {}
+  const BATCH = 200
+  for (let i = 0; i < unique.length; i += BATCH) {
+    const batch = unique.slice(i, i + BATCH)
+    const prompt =
+`You are categorising charity / nonprofit organisation names by the cause they serve. For each name, output its single best focus area.
+
+Focus areas (pick the single best fit; lower-case):
+${FOCUS_AREA_TAXONOMY}
+
+Return ONLY a JSON object. No prose, no markdown fences. Keys are the names verbatim. Values are the focus-area string.
+
+Names:
+${batch.map(s => `- ${s}`).join('\n')}`
+    try {
+      const res = await callAI({
+        tier: 'fast',
+        system: 'You are a precise data categoriser. Output valid JSON only.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 4000,
+        timeoutMs: 30_000,
+      })
+      const text = res.text?.trim() || ''
+      const jsonStart = text.indexOf('{')
+      const jsonEnd = text.lastIndexOf('}')
+      if (jsonStart < 0 || jsonEnd < 0) continue
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1))
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'string' && v.trim()) result[k] = v.toLowerCase().trim()
+      }
+    } catch {
+      // Degrade gracefully — caller keeps the original NER category for misses.
+    }
+  }
+  return result
+}
+
 // Category → display color for the bar chart slide
 export const CATEGORY_COLORS: Record<string, string> = {
   religious:     'E8B84B', // gold
@@ -200,8 +264,14 @@ export function catalogToAggregate(
  * Build the 4 entity-analysis slide specs (top-24 grid, by-category bar chart,
  * long-tail grid, representative quotes) from an aggregate.
  */
-export function entitySlideSpecs(field: string, agg: EntityAggregate): SlideSpec[] {
+export function entitySlideSpecs(field: string, agg: EntityAggregate, opts?: { includeQuotes?: boolean }): SlideSpec[] {
+  const includeQuotes = opts?.includeQuotes !== false
   const { sorted, catCounts, totalMentions, distinctCount, quoteCandidates } = agg
+  // Percentages are always relative to the GLOBAL total mentions, not the
+  // per-slide subset — otherwise the long-tail slide (24 ones) shows every
+  // entity at the same "1/24 ≈ 4%". Attached here so the renderer uses it
+  // instead of recomputing against the slide's own entities.
+  const pctOf = (n: number) => (totalMentions > 0 ? Math.round((n / totalMentions) * 100) : 0)
   const top24 = sorted.slice(0, 24)
   const longTail = sorted.slice(24, 48)
   const catBars = Object.entries(catCounts)
@@ -214,7 +284,7 @@ export function entitySlideSpecs(field: string, agg: EntityAggregate): SlideSpec
     type: 'entity_grid',
     title: `${field} — Top 24 organisations`,
     subtitle: `${distinctCount.toLocaleString()} distinct organisations · ${totalMentions.toLocaleString()} total mentions`,
-    entities: top24.map(r => ({ name: r.canonical, mentions: r.count, category: titleCaseCategory(r.category) })),
+    entities: top24.map(r => ({ name: r.canonical, mentions: r.count, category: titleCaseCategory(r.category), pct: pctOf(r.count) })),
     accentColor: 'E8B84B',
     insight: totalMentions > 0
       ? `Top ${top24.length} entities account for ${Math.round(top24.reduce((s, r) => s + r.count, 0) / totalMentions * 100)}% of all mentions.`
@@ -236,12 +306,12 @@ export function entitySlideSpecs(field: string, agg: EntityAggregate): SlideSpec
       type: 'entity_grid',
       title: `${field} — the long tail`,
       subtitle: `Organisations ranked ${25}–${24 + longTail.length}`,
-      entities: longTail.map(r => ({ name: r.canonical, mentions: r.count, category: titleCaseCategory(r.category) })),
+      entities: longTail.map(r => ({ name: r.canonical, mentions: r.count, category: titleCaseCategory(r.category), pct: pctOf(r.count) })),
       accentColor: '00B4D8',
     })
   }
 
-  if (quoteCandidates.length > 0) {
+  if (includeQuotes && quoteCandidates.length > 0) {
     slides.push({
       type: 'quotes',
       title: `${field} — representative mentions`,

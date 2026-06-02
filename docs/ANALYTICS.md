@@ -477,12 +477,30 @@ analytics export — dataset-row CSV download is not part of this module.
 - **Entity analysis (`body.entityFields`)**: the Custom Builder's Entity Analysis picker
   selects open-ended fields that name organisations (e.g. "Charities Donated To").
   Slides are built from the **stored `entity_catalog`** (`getEntitiesWithCounts`) — the
-  same pre-extracted, canonicalised, categorised entities shown on the Entities tab — so
-  it costs **no extra AI**. If the catalog is empty it runs `discoverEntities` once (which
-  stores the result for next time), unless AI is off. Rendered with the shared
-  `entitySlideSpecs` + `renderEntityGrid/renderBarChart/renderQuotes` from
-  `lib/pptx/slideRenderer` (same renderers as `/api/entity-analysis-deck`, which now also
-  shares the extraction core in `lib/entityAnalysis.ts`).
+  same pre-extracted, canonicalised entities shown on the Entities tab. If the catalog is
+  empty it runs `discoverEntities` once (which stores the result for next time), unless AI
+  is off. Rendered with the shared `entitySlideSpecs` + `renderEntityGrid/renderBarChart`
+  from `lib/pptx/slideRenderer` (same renderers as `/api/entity-analysis-deck`, which shares
+  the extraction core in `lib/entityAnalysis.ts`). Four deck-specific refinements over the
+  raw catalog read:
+  - **Field-scoped counts**: `getEntitiesWithCounts` is called with `textFieldKeys =
+    entityFields`, so mention counts reflect only the *selected* field. Organisations named
+    in other open-ended fields (a venue in a feedback field, a charity-rating site in a
+    familiarity field) score 0 there and drop out — they no longer bleed onto the charity
+    slide. Falls back to the unscoped field map if the selected keys match nothing.
+  - **Platform self-reference drop**: catalog rows whose canonical is the platform name
+    (`sentimetrx` / `datanautix`) are filtered — never a respondent-named org.
+  - **Focus-area re-categorisation**: the catalog category is a general NER type
+    (brand / place / person), the wrong dimension for a charity slide. One cheap Haiku pass
+    (`categoriseEntityNames`) re-buckets the surviving names into **focus areas**
+    (religious / health / humanitarian / community / youth / …) for the by-category chart;
+    on AI failure it keeps the NER category. *(Per-export; not yet persisted back to the
+    catalog.)*
+  - **Global percentages + no circular quotes**: `entitySlideSpecs` sets each entity's
+    `pct` against the **global** total mentions (so the long-tail slide of singletons shows
+    a true ~2%, not a per-slide "10%"), and the export passes `includeQuotes: false` to drop
+    the "representative mentions" slide, which was circular against the catalog
+    (`"Salvation Army — mentioned as: salvation army"`).
 - **Skip text analytics (`body.skipTextAnalytics`)**: when set (paired with entity fields),
   the theme/verbatim sections are dropped so the deck is entity-focused; categorical/numeric
   slides still render. Lets a deck be "just analyse Charities, no theme walls of text."

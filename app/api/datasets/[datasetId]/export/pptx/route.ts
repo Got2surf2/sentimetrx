@@ -18,7 +18,7 @@ import { buildKwRegex } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill as bg, logo, trunc } from '@/lib/pptx/shared'
 import { renderProvenance, renderCustomDecks, renderEntityGrid, renderBarChart, renderQuotes } from '@/lib/pptx/slideRenderer'
-import { catalogToAggregate, entitySlideSpecs } from '@/lib/entityAnalysis'
+import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/lib/entityAnalysis'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
 
@@ -2939,25 +2939,50 @@ export async function POST(req: Request, props: Params) {
         return sf?.label || k
       })
       const sectionTitle = entLabels.length === 1 ? entLabels[0] + ' — Entity Analysis' : 'Entity Analysis'
+      // Platform self-references the catalog occasionally picks up — never a
+      // respondent-named organisation, so drop them from the deck.
+      const PLATFORM_NAMES = new Set(['sentimetrx', 'datanautix'])
       try {
-        let ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200 })
-        let entityRows = 'notFound' in ents ? [] : ents.entities
-        let entityCats: { category: string; mentions: number }[] = 'notFound' in ents ? [] : ents.categories
+        // Scope counts to the SELECTED entity field(s) so organisations named in
+        // other open-ended fields (e.g. a venue in a feedback field) don't bleed
+        // onto a charity slide.
+        let ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200, textFieldKeys: entityFields })
+        let entityRows = ('notFound' in ents ? [] : ents.entities).filter(e => !PLATFORM_NAMES.has(e.canonical.toLowerCase().trim()))
         // Empty catalog → run discovery once to populate + STORE it (needs AI)
         if (entityRows.length === 0 && !skipAI) {
           try {
             await discoverEntities({ service, datasetId: params.datasetId, mode: 'manual', triggeredByUser: user.id })
-            ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200 })
-            entityRows = 'notFound' in ents ? [] : ents.entities
-            entityCats = 'notFound' in ents ? [] : ents.categories
+            ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200, textFieldKeys: entityFields })
+            entityRows = ('notFound' in ents ? [] : ents.entities).filter(e => !PLATFORM_NAMES.has(e.canonical.toLowerCase().trim()))
           } catch (e) {
             console.error({ at: 'export/pptx', msg: 'entity discovery failed', err: e })
           }
         }
         if (entityRows.length > 0) {
+          // Re-categorise the catalog's NER types (brand/place/person) into charity
+          // FOCUS AREAS (religious/health/humanitarian/…) for the by-category slide.
+          // One cheap Haiku pass; on failure keep the original category.
+          if (!skipAI) {
+            try {
+              const focusMap = await categoriseEntityNames(entityRows.map(e => e.canonical))
+              if (Object.keys(focusMap).length > 0) {
+                entityRows = entityRows.map(e => ({ ...e, category: focusMap[e.canonical] || e.category }))
+              }
+            } catch (e) {
+              console.error({ at: 'export/pptx', msg: 'entity recategorisation failed', err: e })
+            }
+          }
+          // Recompute category totals from the (re-categorised, platform-filtered) rows.
+          const catAgg: Record<string, number> = {}
+          for (const e of entityRows) catAgg[e.category] = (catAgg[e.category] || 0) + e.mentions
+          const entityCats = Object.entries(catAgg)
+            .map(([category, mentions]) => ({ category, mentions }))
+            .sort((a, b) => b.mentions - a.mentions)
           const agg = catalogToAggregate(entityRows, entityCats)
-          buildSectionDivider(pptx, sectionTitle, 'Organisations from your saved entity catalog · canonicalised and categorised', 1)
-          const specs = entitySlideSpecs(entLabels[0] || 'Entities', agg)
+          buildSectionDivider(pptx, sectionTitle, 'Organisations named by respondents · canonicalised and grouped by focus area', 1)
+          // includeQuotes:false — the catalog has no surrounding response text, so
+          // the "representative mentions" slide was circular ("X — mentioned as: x").
+          const specs = entitySlideSpecs(entLabels[0] || 'Entities', agg, { includeQuotes: false })
           for (const spec of specs) {
             if (spec.type === 'entity_grid') renderEntityGrid(pptx, spec, datasetName)
             else if (spec.type === 'bar_chart') renderBarChart(pptx, spec, datasetName)
