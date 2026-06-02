@@ -457,6 +457,8 @@ analytics export — dataset-row CSV download is not part of this module.
 - **Survey Overview slide (survey sources)**: first slide after the executive summary when
   the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
   schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.
+  ("With comments" counts responses with text in the theme/comment fields, matching the
+  dashboard's `commentCount` — not every open-ended field.)
   Built by `buildSurveyOverviewSlide`: headline **Responses** + **With comments** KPI cards
   over a stage-by-stage **completion funnel**, all computed from the same flat rows the deck
   already loaded — mirroring the in-app shared-analytics dashboard (`/api/share/analytics`):

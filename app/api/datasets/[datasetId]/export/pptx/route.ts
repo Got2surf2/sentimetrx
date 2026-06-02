@@ -2834,8 +2834,11 @@ export async function POST(req: Request, props: Params) {
         const completed = allRows.filter((r: any) => rowVal(r, 'status').toLowerCase() === 'complete').length
         stages.push({ label: 'Completed', count: completed })
 
-        const withComments = oeF.length > 0
-          ? allRows.filter((r: any) => oeF.some((f: any) => has(r, f.field))).length
+        // "With comments" counts responses with text in the theme (comment) fields —
+        // matches the in-app shared-analytics dashboard's commentCount, not every OE field.
+        const commentFields: string[] = (themeFields && themeFields.length) ? themeFields : oeF.map((f: any) => f.field)
+        const withComments = commentFields.length > 0
+          ? allRows.filter((r: any) => commentFields.some((fk: string) => has(r, fk))).length
           : 0
         if (stages.length >= 3) {
           buildSurveyOverviewSlide(pptx, datasetName, allRows.length, withComments, stages)

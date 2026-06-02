@@ -296,3 +296,9 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 - **Entity + bar-chart fonts** bumped to the ≥12pt content floor in `slideRenderer.ts` (entity name + "% of mentions", bar labels/%/count/headers, KPI labels). Per-theme detail keyword chips 7.5→12.
 
 **Verified**: render harness (auto 4-per + 2-per theme-cloud, exec summary, survey overview, branding) — clouds frequency-sized, no overflow, Datanautix wordmark. tsc clean. Commit-only, not pushed. Next: style/personality picker (palette refactor).
+
+## 2026-06-02 — Survey overview "With comments" parity
+
+**Why**: Real-deck render showed "With comments" = 90 but the in-app dashboard shows 81. The dashboard counts comments in the theme/comment fields; the slide counted all open-ended fields.
+
+**What changed** (`export/pptx/route.ts`): `buildSurveyOverviewSlide` now counts "With comments" over the theme fields (fallback all OE), matching `/api/share/analytics` commentCount (→ 81). Verified against real Coalition data via the read-only service-role harness. tsc clean. Commit-only.
