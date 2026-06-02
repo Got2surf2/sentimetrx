@@ -574,7 +574,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
   footer(slide, pptx, datasetName)
 }
 
-function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]) {
+function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[], meta?: TextCounts) {
   const slide = pptx.addSlide('NUMBERED')
 
   // Dark navy background — high impact
@@ -672,6 +672,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
 
   if (themes.length > 0) {
     slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
+    if (meta) slide.addText(meta.comments.toLocaleString() + ' comments · ' + meta.signals.toLocaleString() + ' signals', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
     solidRect(slide, pptx, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
       const ty = colY + 0.30 + i * (thH + thGap)
@@ -1166,7 +1167,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   }
 
   // Stats
-  kpiCard(slide, pptx, PAD, leftStartY, leftW * 0.46, 0.8, (s?.nonNull || 0).toLocaleString(), 'Responses', undefined, DN.tealPale, DN.teal)
+  kpiCard(slide, pptx, PAD, leftStartY, leftW * 0.46, 0.8, (s?.nonNull || 0).toLocaleString(), 'Responses', meta ? meta.signals.toLocaleString() + ' signals' : undefined, DN.tealPale, DN.teal)
   kpiCard(slide, pptx, PAD + leftW * 0.49, leftStartY, leftW * 0.46, 0.8, String(s?.avgWordCount || '—'), 'Avg Words', 'per response', DN.slateCard, DN.navyLight)
 
   // Key finding
@@ -1278,13 +1279,14 @@ function buildCommentsSlide(
   fieldSection: string | undefined,
   comments: CommentItem[],
   slideNum: number,
-  totalSlides: number
+  totalSlides: number,
+  meta?: TextCounts
 ) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   const sectionTag = fieldSection ? fieldSection.charAt(0).toUpperCase() + fieldSection.slice(1) + ' · ' : ''
   const slideTag = totalSlides > 1 ? '  ·  Slide ' + slideNum + ' of ' + totalSlides : ''
-  hdr(slide, pptx, fieldLabel, DN.tealDark, sectionTag + 'Verbatim responses' + slideTag)
+  hdr(slide, pptx, fieldLabel, DN.tealDark, withCounts(sectionTag + 'Verbatim responses', meta) + slideTag)
   logo(slide)
 
   const cols    = 2
@@ -2475,7 +2477,9 @@ export async function POST(req: Request, props: Params) {
     }
     if (allRows.length >= MAX_ROWS) rowsSampled = true
   }
-  const knownTotal = analytics?.totalRows || dataset.row_count || (flatCount || 0) || 0
+  // Live flat-table count is authoritative; persisted snapshots (analytics.totalRows,
+  // collection.row_count) go stale when members gain rows (e.g. 62 snapshot vs 108 live).
+  const knownTotal = Math.max(flatCount || 0, analytics?.totalRows || 0, dataset.row_count || 0) || 0
 
   // Build a normalized key map so we can find columns regardless of case/spaces
   // e.g. schema field "general_experience_comments" matches row key "General Experience Comments"
@@ -2671,7 +2675,9 @@ export async function POST(req: Request, props: Params) {
     if (!samplingNote && n > 0 && n < (dataset.row_count || Infinity)) {
       samplingNote = 'Analysis based on ' + n.toLocaleString() + ' of ' + (dataset.row_count || 0).toLocaleString() + ' total responses.'
     }
-    const displayRows = hasFilters || rowsSampled ? allRows.length : (analytics?.totalRows || dataset.row_count || 0)
+    // Headline response count. allRows already reflects filters + sampling, and is the
+    // live count for collections (persisted snapshot can be stale, e.g. 62 vs live 108).
+    const displayRows = allRows.length || analytics?.totalRows || dataset.row_count || 0
 
     // ── Rating-based strip color for quote cards ─────────────────────────
     // Find the primary numeric (rating) field to color-code quote card left strips
@@ -2713,8 +2719,23 @@ export async function POST(req: Request, props: Params) {
     // Sort themes by frequency (count descending)
     const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
 
-    // 2: Executive Summary
-    buildSummarySlide(pptx, datasetName, displayRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
+    // 2: Executive Summary — recompute themes against the dominant OE field so the
+    // summary shows live counts (persisted theme count/percentage are often 0 on
+    // collections → "Insufficient data"), matching what the theme slides do.
+    const summaryOE = selectedFields
+      .filter(function(f) { return f.type === 'open-ended' })
+      .sort(function(a, b) { return (b.summary?.nonNull || 0) - (a.summary?.nonNull || 0) })[0]
+    const summaryThemes = (summaryOE && allRows.length > 0)
+      ? computeFieldThemes(summaryOE.field, sortedThemes)
+      : sortedThemes
+    const summaryMeta: TextCounts | undefined = (summaryOE && allRows.length > 0)
+      ? {
+          comments: summaryThemes[0]?.totalResponses
+            ?? allRows.filter(function(r) { return rowVal(r, summaryOE.field).trim().length > 0 }).length,
+          signals: summaryThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
+        }
+      : undefined
+    buildSummarySlide(pptx, datasetName, displayRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], summaryThemes, selectedFields, summaryMeta)
 
     // 3: About this report — include completion stats for study datasets
     var completionNote: string | undefined
@@ -2860,9 +2881,16 @@ export async function POST(req: Request, props: Params) {
       // Register these comments so nothing else re-uses them
       commentItems.forEach(c => usedCommentTexts.add(c.text.slice(0, 120)))
       if (commentItems.length > 0) {
+        // comments = responses with text in this field; signals = total theme mentions
+        const cFieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : []
+        const cMeta: TextCounts = {
+          comments: cFieldThemes[0]?.totalResponses
+            ?? allRows.filter(function(r) { return rowVal(r, f.field).trim().length > 0 }).length,
+          signals: cFieldThemes.reduce(function(sum: number, t: any) { return sum + (t.count || 0) }, 0),
+        }
         const numSlides = Math.ceil(commentItems.length / perSlide)
         for (let si = 0; si < numSlides; si++) {
-          buildCommentsSlide(pptx, datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
+          buildCommentsSlide(pptx, datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides, cMeta)
         }
       }
     }

@@ -464,7 +464,16 @@ analytics export — dataset-row CSV download is not part of this module.
   and *signals* = total theme mentions (sum of per-theme match counts; one response can
   hit multiple themes, so signals ≠ comments). Computed live per field via
   `computeFieldThemes` and passed to `buildOpenEndedSlide` / `buildThemeGridSlides` /
-  `buildThemeSlides` as a `meta` arg (`withCounts()` appends it to the subtitle).
+  `buildThemeSlides` as a `meta` arg (`withCounts()` appends it to the subtitle). The same
+  meta is also surfaced on the **Executive Summary** (right of the TOP THEMES header), the
+  OE-overview **Responses** KPI card (signals as the sub-line), and the **verbatim comment
+  slides** (`buildCommentsSlide`) so a response/signal count is never shown bare.
+- **Headline response count is live, not snapshotted**: the deck's "Total Responses"
+  figure (`displayRows`) and the sampling denominator (`knownTotal`) source from the live
+  fetched rows / flat-table count, not the persisted `analytics.totalRows` /
+  `collection.row_count` snapshot — which goes stale when collection members gain rows
+  (e.g. a 62 snapshot vs 108 live). Prevents the title/summary showing a different total
+  than the provenance slide.
 - **Entity analysis (`body.entityFields`)**: the Custom Builder's Entity Analysis picker
   selects open-ended fields that name organisations (e.g. "Charities Donated To").
   Slides are built from the **stored `entity_catalog`** (`getEntitiesWithCounts`) — the
@@ -479,7 +488,11 @@ analytics export — dataset-row CSV download is not part of this module.
   slides still render. Lets a deck be "just analyse Charities, no theme walls of text."
 - **Theme picker counts**: the ExportModal theme cards fetch live counts from
   `/api/datasets/[datasetId]/theme-counts` (the saved `theme_model.themes` persist
-  `count`/`percentage` as 0), so the cards show real `n`/`%` instead of zeros.
+  `count`/`percentage` as 0), so the cards show real `n`/`%` instead of zeros. For the
+  **Executive Summary** TOP THEMES panel the deck applies the same fix server-side:
+  themes are recomputed against the dominant open-ended field via `computeFieldThemes`
+  before `buildSummarySlide`, so the panel shows live percentages instead of the persisted
+  zeros that previously rendered as "Insufficient data".
 - **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
   About slide as `<audience> edition · v<version>`
 

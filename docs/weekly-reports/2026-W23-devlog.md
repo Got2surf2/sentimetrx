@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-02 — StoryTime PPTX count consistency (deck-fix backlog #1–#3)
+
+**Why**: The regenerated Coalition Donor deck review surfaced three count problems on the export route. (1) The headline total disagreed across slides — title/summary showed a stale **62** (persisted `analytics.totalRows` / collection `row_count`) while the provenance slide showed the live **108**; collection aggregates never recompute when members gain rows. (2) The Executive Summary's TOP THEMES panel rendered **"Insufficient data" ×4** because it used the raw persisted themes (count/percentage = 0) instead of recomputing like the theme slides do. (3) The `N comments · M signals` meta shipped on theme slides 5–12 but was missing wherever else a response count appears.
+
+**Fixes** (`app/api/datasets/[datasetId]/export/pptx/route.ts`):
+- **#1 live counts**: `displayRows` and `knownTotal` now source from the live fetched rows / flat-table count (`allRows.length` / `flatCount`) instead of the stale snapshot, so title, summary, about, and provenance all agree. (Band-aid for the collection-recompute cascade — backlog #11 is the root fix.)
+- **#2 exec-summary themes**: recompute themes against the dominant open-ended field via `computeFieldThemes` before `buildSummarySlide`, so the panel shows live percentages, not zeros → no more "Insufficient data".
+- **#3 signals everywhere**: threaded the comments·signals `meta` into `buildSummarySlide` (right of TOP THEMES), the OE-overview **Responses** KPI sub-line, and `buildCommentsSlide` (verbatim slide subtitle via `withCounts`). New surfaces reuse already-shipped layout slots (label-left/stat-right row, `kpiCard` sub, `hdr` subtitle).
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit` passes. Pixel-QC not possible in this environment (no headless LibreOffice; the export route needs an auth session) — static layout review only; visual confirmation deferred to a UI deck regeneration on the next deploy against live Coalition data. Spec: `docs/ANALYTICS.md` Export Features updated. Backlog items #4–#11 (entity overhaul, provenance honesty, branding, recap slide, collection-recompute root cause) remain.
+
 ## 2026-06-01 — Recordings pipeline brought live end-to-end (pilot wiring) + feature/accounting/UX
 
 **Why**: First real run of the productized recordings pipeline against NOWOCATS meeting video surfaced a chain of blockers (the pipeline had never been exercised with a real upload). Fixed each to get upload → extract → transcribe → analyze → report working, and reworked feature gating, extraction quality, accounting, and the list/delete UX per pilot feedback.
