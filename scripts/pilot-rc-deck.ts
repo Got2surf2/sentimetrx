@@ -105,7 +105,10 @@ function labelRuns(labels: { t: string; kind?: 'pos' | 'neg' | 'neu' | 'miss' | 
     s.addShape(pptx.ShapeType.rect, { x, y: rowY, w: 0.1, h: 0.5, fill: { color: C.orange }, line: { width: 0 } })
     s.addText(a, { x: x + 0.25, y: rowY, w: 5.6, h: 0.5, fontSize: 12.5, color: C.navy, bold: true, valign: 'middle', fontFace: 'Arial' })
   })
-  s.addText('+ a cross-cutting severity flag: normal / alert / crisis', { x: PAD, y: 4.42, w: 8, h: 0.3, fontSize: 11, italic: true, color: C.slate, fontFace: 'Arial' })
+  s.addText([
+    { text: '+ a cross-cutting severity flag: normal / alert / crisis', options: { italic: true, color: C.slate } },
+    { text: '      Your vendor’s entire cross-brand scheme maps cleanly into these 7 axes.', options: { color: C.teal, bold: true } },
+  ], { x: PAD, y: 4.42, w: 12, h: 0.3, fontSize: 11, fontFace: 'Arial' })
 
   const steps = [
     { n: '1', t: 'MINE', d: 'Claude reads 5,000 random reviews and pulls the exact phrases your customers use.' },
@@ -160,13 +163,13 @@ function labelRuns(labels: { t: string; kind?: 'pos' | 'neg' | 'neu' | 'miss' | 
     })
   }
   mk(PAD, 'Your current vendor', C.slate, [
-    ['Reviews with a usable label', '90.2%'],
+    ['Reviews with a usable label', '95.3%'],
     ['Stamped only “TEST” / internal', '20.8%'],
-    ['Avg labels per review', '3.2'],
+    ['Avg labels per review', '5.0'],
   ])
   mk(PAD + 6.05, 'Sentimetrx', C.teal, [
     ['Reviews with a label', '98.6%'],
-    ['Added labels on untagged reviews', '+8.9%'],
+    ['Same topic captured (axis level)', '90.4%'],
     ['Avg labels per review', '7.3'],
   ])
   // recall band
@@ -174,10 +177,10 @@ function labelRuns(labels: { t: string; kind?: 'pos' | 'neg' | 'neu' | 'miss' | 
   s.addText([
     { text: 'We don’t lose what they caught.  ', options: { bold: true, color: C.gold } },
     { text: 'We reproduce ', options: { color: C.white } },
-    { text: '89.6%', options: { bold: true, color: C.tealLight } },
-    { text: ' of the vendor’s labels at the category level (70.4% on the exact sub-category) — then add far more on top. Matching their labels was never the goal: 1 in 5 of their tags is “TEST”. The goal was to keep the good, drop the junk, and catch what they missed.', options: { color: C.white } },
+    { text: '90.4%', options: { bold: true, color: C.tealLight } },
+    { text: ' of the vendor’s labels at the topic level — then add more on top. Their scheme is finer-grained in places (every holiday, steak cut, and daypart); our free keyword tier rolls those up and the AI tier resolves them. Matching their labels was never the goal anyway: 1 in 5 of their tags is “TEST”.', options: { color: C.white } },
   ], { x: PAD + 0.3, y: 4.95, w: 11.3, h: 1.2, fontSize: 14, fontFace: 'Arial', valign: 'middle', lineSpacingMultiple: 1.15 })
-  s.addText('Figures from the free keyword tier; the AI tier raises recall further.', { x: PAD, y: H - 0.66, w: 11, h: 0.25, fontSize: 9, italic: true, color: C.slate, fontFace: 'Arial' })
+  s.addText('Comparison covers 100% of your vendor’s cross-brand category scheme. Figures from the free keyword tier; the AI tier raises recall further.', { x: PAD, y: H - 0.66, w: 11.5, h: 0.25, fontSize: 9, italic: true, color: C.slate, fontFace: 'Arial' })
   footer(s, 5)
 }
 
@@ -254,7 +257,7 @@ exampleSlide(8, 'Examples · 3 of 3', 'Where the keyword tier missed — and the
   s.addText('A classifier pre-trained on your customers', { x: PAD, y: 0.95, w: 11.8, h: 0.7, fontSize: 28, color: C.white, bold: true, fontFace: 'Arial' })
   const points = [
     ['Built from your words.', 'The 1,017-phrase library was machine-generated from your own reviews — your customers’ actual vocabulary, not a guess.'],
-    ['More coverage, less noise.', '98.6% of reviews tagged vs 90.2%; we reproduce 89.6% of the vendor’s labels and drop the 20.8% “TEST” leak.'],
+    ['More coverage, less noise.', '98.6% of reviews tagged vs 95.3%; we reproduce 90.4% of the vendor’s labels (topic level) and drop the 20.8% “TEST” leak.'],
     ['Two tiers, your choice.', 'A free, instant, fully-auditable keyword pass — plus an AI pass that catches mixed sentiment, severity, and novel phrasings.'],
     ['Auditable end to end.', 'Every phrase carries its sample frequency; every label traces to a verbatim quote from the review.'],
   ]

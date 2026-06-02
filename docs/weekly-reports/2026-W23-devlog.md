@@ -255,3 +255,14 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 **Why**: Client asked for a results deck and concrete example reviews bucketed by how our classifier compares to their vendor's labels.
 
 **What changed**: `scripts/pilot-rc-examples.ts` (buckets reviews: match / vendor-caught-more / we-missed, keyword tier), `scripts/pilot-rc-examples-ai.ts` (keyword-vs-hybrid on curated misses — shows the AI tier recovers e.g. parking-lot → ambiance:safety[alert]), `scripts/pilot-rc-deck.ts` (standalone pptxgenjs builder, Sentimetrx-branded, 9 slides → ~/Downloads one-off). All numbers sourced from the regression/lift/coverage runs. Deck pixel-QC'd (LibreOffice → pdftoppm, all 9 slides; fixed a doubled footer + tight spacing). No repo artifact — deck lives in ~/Downloads. Commit-only, not pushed.
+
+## 2026-06-02 — RC pilot: align taxonomy to the client's authoritative vendor scheme
+
+**Why**: The client sent their CX vendor's full cross-brand "Classification Categories" — the authoritative label set our `taxonomyMapping.ts` had only reverse-engineered from the RC CSV sample. Running it through our mapper showed 44/85 of their canonical labels fell to `_unmapped` (prefix-format mismatches + the context axis was never wired into the mapper).
+
+**What changed**:
+- `taxonomyVocabulary.ts` — +7 attribute subs (quality, prep, menu variety, eighty-sixed, experience, sequence, ziosk), touchpoint `delivery`, +3 beverage (alcohol, assortment, flavor), context `special-occasion` — to fully cover concepts the vendor tracks.
+- `taxonomyMapping.ts` — `Bev-`/`Steak-`/`IOR-`/`Dayparts-` prefix aliases; wired the **context axis** (dayparts, holidays, special-occasion, sporting-event, channels) which previously produced no legacy assertions at all; `normRole()` resolves `Busser Janitor`→busser and `Delivery` as touchpoints instead of collapsing to server; `Generous Pour`→campaign quarantine; split-hyphen variant keys (canonicalizer turns `to-go`→`to - go`).
+- `scripts/pilot-rc-vendor-vocab-check.ts` (new) — runs the vendor's 85 canonical labels through the mapper. **0% unmapped** (was 52%).
+
+**Result**: the coverage comparison is now complete + fairer. Vendor usable coverage 90.2%→95.3% (more of their labels recognized, avg labels/review 3.2→5.0); our axis-level recall 89.6%→90.4%; exact-sub recall 70.4%→58.5% (we now measure against their full granularity — every holiday/steak-cut/daypart — which the keyword tier rolls up and the AI tier resolves). Client deck regenerated with the honest numbers + a "your scheme maps 1:1 into our 7 axes" validation. Regression 7/7; tsc clean; npm test 388. Commit-only, not pushed.

@@ -616,8 +616,8 @@ GIN indexes on each `axis_*` array + `alert_tags`.
 
 ### Closed vocab
 
-- `lib/taxonomyVocabulary.ts` — 7 axes, sub-buckets, product items (filet/ribeye/etc.), severity `{normal, alert, crisis}`, polarity `{pos, neg, neu}`. `isValidAxisSub(axis, sub)` drops out-of-vocab emissions from the LLM.
-- `lib/taxonomyMapping.ts` — projects raw legacy labels to assertions or quarantine buckets (`campaign_tags`, `system_tags`, `competitor_menu`, `_unmapped`). Canonicalizes case duplicates (`Menu - Salads` ≡ `menu - salads`) and `Service-X / SERV-X / Staff-X` parallel parents to `(touchpoint, attribute)` tuples.
+- `lib/taxonomyVocabulary.ts` — 7 axes, sub-buckets, product items (filet/ribeye/etc.), severity `{normal, alert, crisis}`, polarity `{pos, neg, neu}`. `isValidAxisSub(axis, sub)` drops out-of-vocab emissions from the LLM. Aligned 2026-06-02 to the client's authoritative cross-brand vendor scheme (Darden "Classification Categories"): added attribute subs `quality/prep/menu variety/eighty-sixed/experience/sequence/ziosk`, touchpoint `delivery`, beverage `alcohol/assortment/flavor`, context `special-occasion`.
+- `lib/taxonomyMapping.ts` — projects raw legacy labels to assertions or quarantine buckets (`campaign_tags`, `system_tags`, `competitor_menu`, `_unmapped`). Canonicalizes case duplicates (`Menu - Salads` ≡ `menu - salads`) and `Service-X / SERV-X / Staff-X` parallel parents to `(touchpoint, attribute)` tuples. 2026-06-02: extended to cover 100% of the vendor's cross-brand scheme — `Bev-`/`Steak-`/`IOR-`/`Dayparts-` prefix aliases, context-axis wiring (dayparts, holidays, special-occasion, sporting-event, channels), `Busser Janitor`→busser and `Delivery` touchpoints, `Generous Pour`→campaign quarantine. Verify with `scripts/pilot-rc-vendor-vocab-check.ts` (0% unmapped). NOTE: `canonicalizeLegacyLabel` splits internal hyphens (`to-go`→`to - go`), so split-variant keys are included in the lookup dicts.
 
 ### LLM extraction — `lib/taxonomyExtractor.ts`
 

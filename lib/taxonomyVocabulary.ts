@@ -17,6 +17,7 @@ export const TOUCHPOINT_SUBS = [
   'chef',
   'sommelier',
   'cashier',
+  'delivery',   // delivery driver (vendor scheme: SERV - Delivery)
 ] as const
 
 export const ATTRIBUTE_SUBS = [
@@ -35,6 +36,16 @@ export const ATTRIBUTE_SUBS = [
   'food safety',
   'pests',
   'rude',
+  // Added 2026-06-02 to fully cover the client's cross-brand vendor scheme
+  // (Darden "Classification Categories"): Food-Quality/Prep/Menu-Variety/
+  // Eighty-Sixed and Service-Experience/Sequence/Ziosk.
+  'quality',
+  'prep',
+  'menu variety',
+  'eighty-sixed',
+  'experience',
+  'sequence',
+  'ziosk',
 ] as const
 
 export const PRODUCT_SUBS = [
@@ -92,6 +103,10 @@ export const BEVERAGE_SUBS = [
   'tea',
   'sangria',
   'milkshakes',
+  // Vendor scheme: Bev-Alcohol (generic), Bev-Assort. (variety), Bev-Flavor.
+  'alcohol',
+  'assortment',
+  'flavor',
 ] as const
 
 export const AMBIANCE_SUBS = [
@@ -147,6 +162,7 @@ export const CONTEXT_SUBS = [
   'weekend',
   'prime-hour',
   'sporting-event',
+  'special-occasion',   // vendor scheme: generic "Special Occasions"
 ] as const
 
 export const OUTCOME_SUBS = [
