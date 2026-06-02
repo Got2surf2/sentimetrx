@@ -1,7 +1,7 @@
 // lib/requestContext.ts
 // Per-request correlation ID for structured logging.
 //
-// middleware.ts stamps every inbound request with `x-request-id` (generating
+// proxy.ts stamps every inbound request with `x-request-id` (generating
 // one if the client didn't supply it) and echoes it on the response. Route
 // handlers and any server-side code further down the call stack call
 // `getRequestId()` to grab it for log payloads.

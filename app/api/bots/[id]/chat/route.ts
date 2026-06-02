@@ -21,8 +21,8 @@ interface Params { params: Promise<{ id: string }> }
 // replaced with an explicit allowlist (or removed entirely) — sending
 // `Access-Control-Allow-Origin: *` alongside `credentials: 'include'`
 // would let any site trigger requests as the logged-in user. The CSRF
-// middleware also exempts this path; tightening cookie auth means
-// removing the bypass in middleware.ts.
+// proxy also exempts this path; tightening cookie auth means
+// removing the bypass in proxy.ts.
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',

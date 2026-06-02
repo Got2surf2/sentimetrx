@@ -4,7 +4,7 @@
 // Spec § 4.2. Called by the wizard after all source files report
 // upload_status='uploaded'. Transitions uploading → queued and kicks off
 // the Workflow DevKit run that drives extract → transcribe → analyze →
-// complete. CSRF + same-origin are enforced by middleware.ts.
+// complete. CSRF + same-origin are enforced by proxy.ts.
 
 import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'

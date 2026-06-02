@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Props {
   /** The textarea/input ref to watch for text selection */
-  targetRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement>
+  targetRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement | null>
   /** Current value of the field */
   value: string
   /** Callback when the value changes (with link markup inserted) */

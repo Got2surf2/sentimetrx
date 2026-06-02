@@ -144,3 +144,39 @@ The `engines:"22.x"` bump did NOT fix the survey/agent/PulseIQ 500 on the previe
 **Fix:** `isomorphic-dompurify` ^3.12 → **^2.26.0** (uses jsdom@^26) and the `jsdom` devDep ^29.1.1 → **^26.1.0** → single **jsdom@26 (CJS)**, `@exodus/bytes` gone. SSR sanitization still works (jsdom@26 supplies the server DOM).
 
 **Verified locally under the Node-20 simulation:** `/s/vindman` → **200** (renders the real survey), 0 `ERR_REQUIRE_ESM`; `tsc` clean; `npm test` 388 passed (vitest jsdom env fine on @26); `next build` green. Node-independent, so it holds regardless of Vercel's Node version. (`engines:"22.x"` kept as hygiene — Node 20 is deprecated — but is no longer load-bearing.)
+
+## 2026-06-01 — Next 15 → 16 upgrade (Phase 2 of the 14→16 spike) — branch upgrade/next-16
+
+Executed Phase 2, the held Next 15 → 16 jump, on a fresh branch off `main` (which carries the Phase-1 Next 15.5.18 state). Commit-only, not pushed.
+
+**Bumps**: `next` 15.5.18 → **16.2.7**; `react`/`react-dom` 18 → **19.2.7**; `@types/react`/`@types/react-dom` 18 → **19**. `isomorphic-dompurify`@2.26 + `jsdom`@26 (the Phase-1 CJS pin) carried forward untouched — the SSR-sanitization blocker stays solved.
+
+**Turbopack-vs-webpack (the flagged blocker)**: Next 16 makes Turbopack the default for `next build`/`next dev`, which **fails the build** when a `webpack` key is present — and ours is, injected by both `withSentryConfig` (source-map upload + `treeshake.removeDebugLogging`) and `withWorkflow`. Conservative resolution: opted `build` and `dev` out with the documented `--webpack` flag, so Sentry + Workflow DevKit behave **identically to Next 15**. Turbopack adoption is deliberately deferred to its own evaluation — not bundled into a version jump.
+
+**React 19 type breaks**: only 3 sites. React 19's `useRef<T>(null)` now returns `RefObject<T | null>` (was `RefObject<T>`), so two prop/param type decls that required a non-null ref no longer matched their callers — `LinkToolbar.targetRef` and `useSurveyEngine`'s `chatRef`/`inputRef`. Widened all three to `| null`. No runtime/behavioral change.
+
+**Generated-file churn (committed, as in Phase 1)**: `next build` rewrote `tsconfig.json` (`jsx: preserve` → `react-jsx`; added `.next/dev/types/**/*.ts` for the new concurrent dev/build output dir) and `next-env.d.ts` (`/// <reference path>` → `import`).
+
+**Clean by absence**: no `revalidateTag` (would need the new 2nd `cacheLife` arg), no `serverRuntimeConfig`/`publicRuntimeConfig` (removed), no parallel-route `@slots` (now need `default.js`), no `unstable_cache`/PPR/`dynamicIO`, no `next/legacy/image` or AMP, no `images` config block to reconcile against the new `qualities`/`minimumCacheTTL`/`imageSizes` defaults.
+
+**Verification**: `rm tsconfig.tsbuildinfo && tsc --noEmit` clean; `next build --webpack` green (exit 0; only the pre-existing benign `@opentelemetry/instrumentation` "Critical dependency" warning via Sentry — present on Next 15 too, not a regression); `npm test` **388 passed / 54 skipped**. Build output now labels middleware as "Proxy (Middleware)" — Next 16 nomenclature; the file is still `middleware.ts`.
+
+**Deferred (own follow-ups, not bundled into the version jump)**:
+- `middleware.ts` → `proxy.ts` rename. Deprecated, **not removed** in 16 — still works. It's the CSRF-critical path and `proxy` is nodejs-only (no edge runtime), so it gets its own focused change + QA.
+- ESLint toolchain: `next lint` is removed in 16, so the `"lint": "next lint"` script is stale. The real fix is eslint 8 → 9 + flat config + `eslint-config-next`@16 (which peer-requires eslint ≥9). Isolated from the runtime upgrade because it can surface a wall of lint findings; lint is not in CI (CI = typecheck + `npm test`) so nothing is gated meanwhile.
+
+**Not verified**: prod-canary smoke (the React 19 hydration surfaces — survey/agent/PulseIQ widgets, streaming, loaders, images — need a real browser, per the Phase-1 jsdom lesson that local Node masks Vercel behavior). Branch is commit-only pending that canary + user review.
+
+**Next 16 (2/n) — vercel.json buildCommand pin.** `vercel pull` showed the project's `buildCommand` is `null` → Vercel uses the Next.js framework default `next build` (no flag) and **ignores** the `--webpack` in our package.json script. Under Turbopack-default that fails on the Sentry/Workflow webpack key. Pinned `"buildCommand": "next build --webpack"` in vercel.json so cloud builds (preview + prod) match local. Dashboard nodeVersion is 24.x (engines says 22.x) — irrelevant now that the jsdom fix is Node-independent. Needed before the first Next-16 Vercel build can go green.
+
+## 2026-06-01 — Next 16 (3/n): middleware→proxy rename + spec version sync (15→16), then PUSH
+
+Folded the two cheap deferred follow-ups into the upgrade before landing it.
+
+**#1 middleware → proxy** (Next 16 deprecated the `middleware` file convention): `git mv middleware.ts proxy.ts`, `export function middleware` → `export function proxy`. The CSRF + same-origin + request-id logic is byte-for-byte unchanged; only the wrapper name moved. `config.matcher` carries over. proxy runtime is nodejs (was edge by default) — fine, the code uses only NextRequest/NextResponse/crypto.randomUUID/Headers/URL, no edge-only APIs. Updated every reference: tooling (`scripts/specMap.ts` ×2, `scripts/check-devlog-drift-staged.ts` watch regex), code comments (`lib/requestContext.ts`, bots `[id]/chat`, recordings `[id]/analyze` + `[id]/process`), and live docs (CLAUDE.md, SECURITY.md, ENGINEERING.md). Build output now reads `ƒ Proxy (Middleware)` — confirmed wired on /api/*.
+
+**#3 spec version sync**: SPEC.md + CLAUDE.md stack lines `Next.js 14 / React 18` → `Next.js 16 / React 19` (main never carried the Phase-1 15 sync — it lived only on the unmerged docs/next15-spec-sync branch, so 16 subsumes it), CLAUDE.md `Node ≥ 20` → `Node 22.x` (matches engines).
+
+**Environment snag (local only):** this working copy is in Dropbox, which (a) created `" 2"` sync-conflict dupes of `node_modules/@types/react`, `@types/react-dom` and `.next/types/*` that broke `tsc` with phantom duplicate-identifier errors, and (b) *restored* the deleted `middleware.ts` as an untracked file after `git mv`, making the build see both files. Both are local-disk artifacts — the committed git tree has only `proxy.ts` and no dupes, so Vercel (builds from git) is unaffected. Cleared the dupes + ghost; rebuilt clean.
+
+**Verification**: tsc clean; `next build --webpack` green with Proxy wired; `npm test` 388 passed / 54 skipped. Pushing to main (authorized) — first Next 16 production deploy.
