@@ -731,7 +731,7 @@ Plus an "Install this as an app" banner shown only when running in iOS Safari an
 
 ### Architecture notes
 - **Auth**: standard Supabase auth on `/m`; redirects to `/login?next=/m` when unauthenticated. Service-role reads pair `id` with `org_id` (admin orgs bypass).
-- **Manifest**: `app/manifest.ts` uses the Next.js 14 file convention (served as `/manifest.webmanifest`). `start_url=/m`, `display=standalone`, `theme_color=#e8622a` (brand orange).
+- **Manifest**: `app/manifest.ts` uses the Next.js App Router file convention (served as `/manifest.webmanifest`). `start_url=/m`, `display=standalone`, `theme_color=#e8622a` (brand orange).
 - **Service worker**: `public/sw.js` is a minimal install/activate/fetch SW with no offline caching for v1 (the status surface reads live counts; cached counts would lie). Registered with scope `/` from the `/m` route only.
 - **iOS specifics**: root layout sets `appleWebApp.capable=true`, `viewportFit=cover` so the page paints under the iPhone notch in standalone mode. `apple-touch-icon` points at the 180×180 PNG (iOS rejects SVG for this slot).
 - **No native build, no Apple Developer account, no App Store review.** When/if push notifications or richer native integrations matter, the migration path is **Expo + EAS + TestFlight**.

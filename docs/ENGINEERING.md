@@ -24,15 +24,19 @@ Last reviewed: 2026-05-15.
   it.
 - **`npm test` must pass.** Unit + integration; mocks at every
   external boundary (Supabase, Anthropic, Resend, S3).
-- **`npm run lint` clean.** Current config is `next/core-web-vitals`
-  + `@typescript-eslint` with `no-floating-promises`,
-  `no-misused-promises`, `no-explicit-any`, `consistent-type-imports`
-  all at **`warn`** (not `error`). The first two were briefly set to
-  `error` on 2026-05-12 but downgraded to `warn` because `next build`
-  runs ESLint and 374 pre-existing violations broke production
-  deploys. Open `<TBD>` item 10 now tracks **fixing the 374
-  violations** and then promoting the rules back to `error`. Until
-  then, "lint clean" really means "no React/Next core-vitals warnings."
+- **`npm run lint` — toolchain migration pending (Next 16).** Next 16
+  **removed the `next lint` command**, so the `"lint": "next lint"`
+  script is stale and the eslint 8→9 + flat-config migration
+  (`eslint-config-next`@16 peer-requires eslint ≥9) is deferred — Open
+  `<TBD>` item 10, expanded. Lint is **not in CI** (CI = typecheck +
+  `npm test`) and no git hook runs it, so nothing is gated meanwhile.
+  Also note Next 16's `next build` **no longer runs ESLint**, so the
+  2026-05-12 failure mode (374 pre-existing violations breaking deploys
+  when `no-floating-promises` / `no-misused-promises` were briefly
+  `error`) can no longer occur via build. Prior config was
+  `next/core-web-vitals` + `@typescript-eslint` with those rules at
+  `warn`; the flat-config migration should re-establish them, then fix
+  the 374 violations and promote back to `error`.
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.
@@ -477,6 +481,21 @@ deployment; rollback is one CLI command if the post-deploy smoke
 check fails. The "manual gate" check is on the honor system until
 item 19 lands.
 
+### Build command — Turbopack opt-out (Next 16)
+
+Next 16 makes **Turbopack the default** for `next build` / `next dev`,
+and a Turbopack build **fails** when a `webpack` key is present in the
+resolved config. Ours injects one via both `withSentryConfig`
+(source-map upload) and `withWorkflow`, so we opt out with `--webpack`:
+the `build` / `dev` scripts carry the flag, and — critically —
+`vercel.json` pins `"buildCommand": "next build --webpack"`. That pin is
+load-bearing: the Vercel project's build-command setting was `null`, so
+the cloud ran the framework-default `next build` and **ignored** the
+flag in the package.json script (`vercel pull` surfaces the resolved
+setting). Turbopack adoption is deferred to its own evaluation — it
+would require migrating Sentry + Workflow off the webpack plugin. See
+`### next.config.js wrap order`.
+
 ### Runtime file tracing for `docs/weekly-reports/*.md`
 
 Both `lib/governanceReports.ts` and `lib/specDriftReports.ts`
@@ -561,9 +580,11 @@ are in `SECURITY.md`.
     fresh `crypto.randomUUID()`). The ID is echoed on the response
     and forwarded into the request scope so handlers can read it
     via `lib/requestContext.ts:getRequestId()`. Used `headers()`
-    instead of AsyncLocalStorage because Next.js 14 middleware
-    runs in the Edge runtime and `next/headers` is already
+    instead of AsyncLocalStorage because `next/headers` is already
     request-scoped — equivalent ergonomics without a runtime split.
+    (Under Next 16 the `proxy` now runs in the **nodejs** runtime,
+    where AsyncLocalStorage is fully supported; the headers-based
+    approach is retained — it still works and avoids churn.)
     When `lib/log.ts` lands (item 12), it can call `getRequestId()`
     inline. Matcher unchanged (/api/*); expand if/when a server
     component log call site needs it.

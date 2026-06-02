@@ -430,14 +430,16 @@ leak is reviewer-enforced until the wrapper assert lands.
     `.github/workflows/ci.yml`).
 - **Static analysis:**
   - ESLint (`next/core-web-vitals`) + TypeScript strict mode.
-  - `.eslintrc.json` enables `no-floating-promises`,
-    `no-misused-promises`, `no-explicit-any`, and
-    `consistent-type-imports` — all at **`warn`** (not `error`).
-    The first two were set to `error` on 2026-05-12 but downgraded
-    after 374 pre-existing violations broke the Vercel deploy
-    (`next build` runs ESLint). Open `<TBD>` item 10 now tracks
-    fixing the 374 violations and promoting the rules back to
-    `error`.
+  - The promise/any rules (`no-floating-promises`,
+    `no-misused-promises`, `no-explicit-any`,
+    `consistent-type-imports`) ran at **`warn`** (not `error`); the
+    first two were briefly `error` on 2026-05-12 but downgraded
+    after 374 pre-existing violations broke the Vercel deploy (back
+    when `next build` ran ESLint). **Next 16 changes this:**
+    `next build` no longer runs ESLint and the `next lint` command
+    was removed, so the lint toolchain (eslint 8→9 + flat config)
+    must be migrated before any of this re-applies — Open `<TBD>`
+    item 10.
   - Open `<TBD>` item 2 (continued): add CodeQL on push for
     OWASP Top 10 pattern detection.
 - **Penetration testing:** **annual** external pen test (ratified
@@ -581,16 +583,17 @@ plumbing that needs to ship.
 9. **Incident-response plumbing:** post-mortem template,
    on-call rotation policy, public status page. Bundle for the
    first paying customer.
-10. **Tighten ESLint config:** all four rules
-    (`no-floating-promises`, `no-misused-promises`,
-    `no-explicit-any`, `consistent-type-imports`) are currently
-    enabled at `warn`. **Remaining work:** fix the 374
-    `no-floating-promises` / `no-misused-promises` violations
-    (and the 1801 `any` warnings), then promote the two
-    promise rules back to `error` so `next build` enforces them.
-    Initial attempt on 2026-05-12 set them to `error`
-    immediately and broke production — sequence matters: fix
-    first, then enforce.
+10. **Migrate the ESLint toolchain, then tighten config:** Next 16
+    removed `next lint`, so step zero is migrating eslint 8→9 +
+    flat config (`eslint-config-next`@16 peer-requires eslint ≥9);
+    the `"lint": "next lint"` script is stale until then, and lint
+    is not in CI. **Then:** fix the 374 `no-floating-promises` /
+    `no-misused-promises` violations (and the 1801 `any` warnings)
+    and promote the two promise rules from `warn` back to `error`.
+    Because `next build` no longer runs ESLint in 16, enforcement
+    must come from a **CI lint step** (not the build). Initial
+    attempt on 2026-05-12 set them to `error` immediately and broke
+    production — sequence matters: migrate, fix, then enforce.
 11. **Extract a generalized `gate*Access` helper** to
     `lib/auth/gate.ts`. The trigger is met: four parallel
     definitions exist today —
