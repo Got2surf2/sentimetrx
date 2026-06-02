@@ -381,7 +381,19 @@ export async function GET(req: NextRequest) {
   }
 
   funnelStages.push({ label: 'Completed', count: completedCount })
-  const completion = { started: totalFiltered, completed: completedCount, stages: funnelStages }
+
+  // The completion funnel only makes sense for surveys WE conducted (a study, or a
+  // collection of studies) — those carry response `status` + section metadata. For
+  // uploaded CSVs / Google reviews / other ingests there's no funnel data, so the
+  // stages would be a misleading "Started 100% → Completed 0%". Gate it off there.
+  const isSurveySource =
+    dataset.source === 'study'
+    || fields.some(f => f.section === 'custom' || f.section === 'psychographic' || f.section === 'demographic')
+    || fields.some(f => f.field === 'experience_score' || f.field === 'nps_score' || f.field === 'status')
+    || allRows.some(r => r.status != null)
+  const completion = (isSurveySource && funnelStages.length >= 3)
+    ? { started: totalFiltered, completed: completedCount, stages: funnelStages }
+    : null
 
   // Exclude duration_sec from numeric KPIs (replaced by completion funnel)
   const filteredNumeric: typeof numericResults = {}

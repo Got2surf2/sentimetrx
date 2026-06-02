@@ -321,3 +321,9 @@ Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rew
 - `docs/TAXONOMY_PRODUCTIZATION_PLAN.md` — productization roadmap (proposal).
 
 Keyword tier only (free). No app/prod behavior change. Commit-only, not pushed.
+
+## 2026-06-02 — Share analytics: completion funnel only for survey-sourced datasets
+
+**Why**: The shared analytics page (`/shared/[token]`) always rendered a Completion Funnel, but it only makes sense for surveys we conducted (needs response `status` + section metadata). For uploaded CSVs / Google-reviews / other ingests there is no funnel data, so it showed a misleading "Started 100% -> Completed 0%".
+
+**What changed** (`app/api/share/analytics/route.ts`): gate `completion` to survey sources — `dataset.source==="study"` OR schema has custom/psychographic/demographic sections OR an experience_score/nps_score/status field OR rows carry `status`; also require >=3 funnel stages. Otherwise `completion: null`. The page already guards on `data.completion`, so the funnel hides automatically with no UI change. Same survey-source signal as the deck survey-overview slide. tsc clean. Commit-only.
