@@ -26,11 +26,20 @@ import {
   NEGATION_WINDOW,
   type KeywordEntry,
 } from './taxonomyKeywords'
+import { LEARNED_KEYWORD_DICTIONARY } from './taxonomyKeywordsLearned'
 import type {
   Assertion,
   Polarity,
   Severity,
 } from './taxonomyVocabulary'
+
+// Active Tier-1 dictionary: the hand-written baseline MERGED with the learned
+// dictionary mined from 5K real Ruth's Chris reviews (Path B). Merge, not
+// replace — the hand-written entries carry the tuned severity defaults
+// (pests=alert, food-safety=crisis) and the 7 regression-anchor phrases, while
+// the learned set adds ~1k customer-vocabulary phrases. collapseHits() dedups
+// by (axis, sub, item), so phrases present in both dictionaries are harmless.
+const ACTIVE_DICTIONARY: KeywordEntry[] = [...KEYWORD_DICTIONARY, ...LEARNED_KEYWORD_DICTIONARY]
 
 const KEYWORD_CONFIDENCE = 0.85
 
@@ -166,10 +175,13 @@ export interface KeywordMatchResult {
   raw_hit_count: number
 }
 
-export function classifyByKeyword(text: string): KeywordMatchResult {
+export function classifyByKeyword(
+  text: string,
+  dictionary: KeywordEntry[] = ACTIVE_DICTIONARY,
+): KeywordMatchResult {
   if (!text || !text.trim()) return { assertions: [], raw_hit_count: 0 }
   const raw: ScratchHit[] = []
-  for (const entry of KEYWORD_DICTIONARY) {
+  for (const entry of dictionary) {
     raw.push(...scanEntry(entry, text))
   }
   const collapsed = collapseHits(raw)

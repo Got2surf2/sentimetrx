@@ -36,3 +36,6 @@ supabase/.temp/
 # Covered by the `*.tsbuildinfo` glob on line 7, but listed here so the intent
 # is explicit when grepping .gitignore for "tsbuildinfo".
 *.tsbuildinfo
+
+# RC keyword-mining intermediate (Path B) — regenerate via scripts/pilot-rc-keyword-mine.ts
+data/keyword-candidates*.jsonl
