@@ -184,3 +184,12 @@ Folded the two cheap deferred follow-ups into the upgrade before landing it.
 ## 2026-06-01 — Next 16 (4/n): deeper spec sync
 
 Follow-up doc-only sync beyond the (3/n) version-line bumps. ENGINEERING.md: rewrote the lint bullet + Open-TBD item 10 (in SECURITY.md) for the Next 16 reality — `next lint` removed, `next build` no longer runs ESLint, so the eslint 8→9 flat-config migration is the prerequisite and future enforcement needs a CI lint step; new `### Build command — Turbopack opt-out` subsection documenting the `--webpack` + `vercel.json` buildCommand pin (project setting was null → cloud ignored the package.json flag); request-ID note updated (proxy now nodejs runtime, AsyncLocalStorage now viable but headers-based approach retained). SPEC.md + FEATURES.md: manifest "Next.js 14 file convention" → "Next.js App Router". SECURITY.md: two ESLint paragraphs updated for the `next build`-no-longer-lints change. Legacy docs (ana_spec, sentimetrx-spec-v4, dated security-review) left as point-in-time records.
+
+## 2026-06-02 — Admin gating for recordings as a metered add-on
+
+**Why**: We're rolling recordings out as a metered paid add-on that shouldn't be all-or-nothing per org — only certain users within an org should get it. That needs two levels of control (an org default plus per-user overrides) and a monthly quota, which the existing boolean `ModuleFeatures` toggles can't express. These three files give super-admins a single panel to flip recordings on for an org, set its quota, and then allow/block individual members.
+
+**What changed**:
+- `app/api/admin/orgs/[id]/features/route.ts` — super-admin GET/PUT for the org-level `org_features` gate (sql/089). GET returns the org setting plus every member's `user_features` override in one round-trip so the panel renders both levels at once; PUT upserts the org enable + `quota_per_month`. Writable features are whitelisted (`recording`). Distinct from the `ModuleFeatures` JSONB toggles on `/api/admin/orgs/[id]`.
+- `app/api/admin/users/[id]/features/route.ts` — super-admin PUT for the per-user override: `enabled` true = allow, false = block, null = inherit (row deleted); optional per-user `quota_per_month`. Pure-inherit drops the row so resolution falls back to the org level.
+- `components/admin/RecordingsAccessPanel.tsx` — the admin UI: org enable + quota, plus per-member Inherit/Allow/Block. Metered/gated by `org_features`/`user_features`, distinct from `OrgFeatureToggles`.
