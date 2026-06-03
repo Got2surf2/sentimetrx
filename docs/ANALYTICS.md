@@ -348,6 +348,32 @@ PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workf
 
 ---
 
+## Restaurant Taxonomy Classifier (Taxonomy tab)
+
+A restaurant-specific capability that classifies every review against one shared
+**7-axis ABSA taxonomy** (touchpoint · attribute · product · beverage · ambiance ·
+context · outcome) + a cross-cutting **severity flag** (`normal | alert | crisis`).
+Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integration:
+
+- **Tab.** `/analyze/[datasetId]/taxonomy` — a "Taxonomy" tab in `DatasetHeader`'s
+  `TABS`, shown **only for `source==='google_reviews'`** datasets. Renders
+  `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, per-axis mention-rate
+  bars, top sub-topics with sentiment, and a severity-alerts panel.
+- **Data.** Read via `GET /api/datasets/[datasetId]/taxonomy` (org-gated; pairs the
+  dataset's `org_id` on the read) → `computeTaxonomyRollup` in `lib/taxonomyRollup.ts`
+  over the persisted `dataset_row_taxonomy` rows (table from sql/088).
+- **Classification (offline / CLI for now).** `lib/taxonomyClassify.ts`
+  (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
+  idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
+  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay.
+  Driven by `scripts/taxonomy-classify.ts`. Not yet wired into the upload/ingest path.
+- **Vendor benchmark.** For datasets with legacy vendor labels, the classifier reproduces
+  ~90% of the vendor's topics at higher coverage and far higher alert precision (see
+  `docs/TAXONOMY.md` for the critical-category audit). The in-app vendor-vs-us side-by-side
+  is **not built** (the vendor-tagged corpus isn't ingested) — backlog.
+
+---
+
 ## Charts Module (13 Types)
 
 Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are from

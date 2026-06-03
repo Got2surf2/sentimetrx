@@ -36,10 +36,12 @@ interface Props {
 
 var HERMES = '#E8632A'
 
-var TABS = [
+var TABS: { key: string; label: string; icon: string; collapse: number; sources?: string[] }[] = [
   { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD', collapse: 1 },
   { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA', collapse: 2 },
   { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
+  // Restaurant 7-axis taxonomy \u2014 only for review datasets where it applies.
+  { key: 'taxonomy', label: 'Taxonomy', icon: '\uD83C\uDFF7', collapse: 4, sources: ['google_reviews'] },
   { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
@@ -173,7 +175,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           </div>
 
           {/* Module tabs — progressively collapse labels right-to-left */}
-          {TABS.map(function(tab) {
+          {TABS.filter(function(tab) { return !tab.sources || tab.sources.indexOf(dataset.source) >= 0 }).map(function(tab) {
             var isActive = activeTab === tab.key
             var href = '/analyze/' + dataset.id + '/' + tab.key
             return (

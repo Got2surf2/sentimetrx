@@ -23,6 +23,7 @@ export type SpecKey =
   | 'docs/TOWNHALL.md'
   | 'docs/MCO_AGENT.md'
   | 'docs/RECORDINGS.md'
+  | 'docs/TAXONOMY.md'
 
 export const TOP_LEVEL_SPECS = ['SPEC.md', 'FEATURES.md'] as const
 
@@ -184,6 +185,24 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'sql/066_*',
     'sql/069_*',
     'sql/070_*',
+  ],
+
+  'docs/TAXONOMY.md': [
+    'lib/taxonomyVocabulary.ts',
+    'lib/taxonomyKeywords.ts',
+    'lib/taxonomyKeywordsLearned.ts',
+    'lib/taxonomyKeywordsChuys.ts',
+    'lib/taxonomyKeywordMatcher.ts',
+    'lib/taxonomyDictionary.ts',
+    'lib/taxonomyClassify.ts',
+    'lib/taxonomyRollup.ts',
+    'lib/taxonomyMapping.ts',
+    'lib/taxonomyExtractor.ts',
+    'app/analyze/[datasetId]/taxonomy/**',
+    'app/api/datasets/[datasetId]/taxonomy/**',
+    'app/admin/taxonomy-pilot/**',
+    'app/api/admin/taxonomy-pilot/**',
+    'sql/088_*',
   ],
 
   'docs/CAMPAIGNS.md': [

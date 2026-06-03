@@ -122,6 +122,10 @@ const ATTRIBUTE_SUBS: Record<string, string> = {
   'friendliness': 'friendly',
   'food safety': 'food safety',
   'pests': 'pests',
+  // Vendor's pest alerts use the label 'Bug' (e.g. 'Alert - Bug'); canonicalize
+  // to our 'pests' sub so the alert isn't silently dropped as an unknown attr.
+  'bug': 'pests',
+  'bugs': 'pests',
   'rude': 'rude',
   'rudeness': 'rude',
   // Cross-brand vendor scheme additions (2026-06-02).

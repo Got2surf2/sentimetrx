@@ -192,12 +192,39 @@ const ATTRIBUTE: KeywordEntry[] = [
     { phrase: 'foreign object',   polarity: 'neg', severity: 'crisis' },
   ]},
   { axis: 'attribute', sub: 'pests',      phrases: [
+    // The matcher is word-boundary strict (roach ≠ roaches, fly ≠ flies, bug ≠
+    // bugs, mouse ≠ mice), so each surface form is listed. Expanded 2026-06-02
+    // after a vendor-vs-us check showed we were missing ~half of real pest
+    // reports (caterpillar, rat, mice, insect, single-form fly/bug/roach).
+    { phrase: 'gnat',          polarity: 'neg', severity: 'alert' },
     { phrase: 'gnats',         polarity: 'neg', severity: 'alert' },
+    // Bare 'fly' / 'ant' are dropped: they fire on travel idioms ("fly in",
+    // "on the fly") and typos ("ant" for "and"/"sent") — false pest alerts on
+    // otherwise-fine reviews. Use the in-food forms instead.
     { phrase: 'flies',         polarity: 'neg', severity: 'alert' },
+    { phrase: 'flys',          polarity: 'neg', severity: 'alert' },
+    { phrase: 'a fly',         polarity: 'neg', severity: 'alert' },
+    { phrase: 'dead fly',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'fruit fly',     polarity: 'neg', severity: 'alert' },
     { phrase: 'roach',         polarity: 'neg', severity: 'alert' },
+    { phrase: 'roaches',       polarity: 'neg', severity: 'alert' },
     { phrase: 'cockroach',     polarity: 'neg', severity: 'alert' },
+    { phrase: 'cockroaches',   polarity: 'neg', severity: 'alert' },
+    { phrase: 'bug',           polarity: 'neg', severity: 'alert' },
     { phrase: 'bugs',          polarity: 'neg', severity: 'alert' },
+    { phrase: 'insect',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'insects',       polarity: 'neg', severity: 'alert' },
+    { phrase: 'caterpillar',   polarity: 'neg', severity: 'alert' },
+    { phrase: 'centipede',     polarity: 'neg', severity: 'alert' },
+    { phrase: 'maggot',        polarity: 'neg', severity: 'crisis' },
+    { phrase: 'maggots',       polarity: 'neg', severity: 'crisis' },
+    { phrase: 'spider',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'an ant',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'ants',          polarity: 'neg', severity: 'alert' },
     { phrase: 'mouse',         polarity: 'neg', severity: 'alert' },
+    { phrase: 'mice',          polarity: 'neg', severity: 'alert' },
+    { phrase: 'rat',           polarity: 'neg', severity: 'alert' },
+    { phrase: 'rats',          polarity: 'neg', severity: 'alert' },
     { phrase: 'rodent',        polarity: 'neg', severity: 'alert' },
   ]},
   { axis: 'attribute', sub: 'rude',       phrases: [

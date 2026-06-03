@@ -52,6 +52,7 @@ tests/
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug)
+│   ├── taxonomyRollup.test.ts # restaurant taxonomy roll-up — aggregateTaxonomy axis/sub rates + sentiment + alerts; resolveDictionary core⊕overlay layering
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase

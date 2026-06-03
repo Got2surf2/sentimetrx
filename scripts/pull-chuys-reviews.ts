@@ -17,6 +17,7 @@ import { readFileSync } from 'fs'; import path from 'path'
 const env = readFileSync(path.join(process.cwd(), '.env.local'), 'utf-8')
 for (const l of env.split('\n')) { const m = l.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.+?)\s*$/); if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g,'').replace(/\\n$/,'') }
 import { createClient } from '@supabase/supabase-js'
+import { buildGoogleReviewsSchema, mergeSchemaStats, emptyThemeModel } from '../lib/datasetUtils'
 
 const BASE = 'https://api.dataforseo.com/v3'
 const ADMIN_ORG_ID = 'b72e9ee6-0466-459a-8440-988a8bd6d3c5'
@@ -143,6 +144,16 @@ async function main() {
     const { error: e } = await s.from('dataset_rows_flat').insert(rows.slice(i, i + 500)); if (e) throw e
   }
   await s.from('datasets').update({ row_count: kept, updated_at: new Date().toISOString() }).eq('id', datasetId).eq('org_id', ADMIN_ORG_ID)
-  console.log(`\nIngested ${kept} reviews into dataset ${datasetId} ("${datasetName}").`)
+
+  // Create dataset_state so /analyze opens (the app's review-sources flow does
+  // this; a bare insert without it 404s). Canonical Google Reviews schema,
+  // enriched with stats from the rows we just pulled.
+  const schema = mergeSchemaStats(buildGoogleReviewsSchema(), flat.map(r => r.data))
+  await s.from('dataset_state').insert({
+    dataset_id: datasetId, schema_config: schema, theme_model: emptyThemeModel(),
+    saved_charts: [], saved_stats: [], filter_state: {}, updated_by: ADMIN_USER_ID,
+  })
+
+  console.log(`\nIngested ${kept} reviews into dataset ${datasetId} ("${datasetName}"). dataset_state created (${schema.fields.length} fields).`)
 }
 main().catch(e => { console.error(e); process.exit(1) })

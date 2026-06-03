@@ -1,5 +1,23 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-02 — Restaurant taxonomy productized: classifier + in-app Taxonomy tab + critical-category audit + decks
+
+**Why**: The Ruth's Chris pilot was a pile of one-off scripts; the Chuy's analytics-manager demo (Thu) and the Darden pitch both needed it as a reusable, demonstrable capability — classify any review dataset, view it in-app, and back the "we beat your CX vendor" claim with evidence.
+
+**Built (keyword tier; AI tier deferred)**:
+- **Layered classifier** — `lib/taxonomyDictionary.ts` (`resolveDictionary(core|rc|chuys)` = shared core ⊕ per-brand overlay), `lib/taxonomyClassify.ts` (persists tags to `dataset_row_taxonomy`, idempotent on `(dataset_id,row_id)`, pairs `org_id`; strips NUL/C0/**surrogate** chars — emoji-split evidence windows produced lone surrogates that Postgres jsonb rejects), `lib/taxonomyRollup.ts` (`aggregateTaxonomy` pure + unit-tested, `computeTaxonomyRollup` org-scoped). CLI `scripts/taxonomy-classify.ts`. Classified to prod: Chuy's 1,217 + RC 20,695.
+- **In-app Taxonomy tab** — `app/analyze/[datasetId]/taxonomy/{page,…}` + `components/analyze/TaxonomyModule.tsx` (axis bars, top subs + sentiment, severity alerts), org-gated `GET /api/datasets/[datasetId]/taxonomy`, tab added to `DatasetHeader.TABS` (shown only for `google_reviews`).
+- **Back-door fix** — script-ingested review datasets had no `dataset_state` → `/analyze` 404'd. New `scripts/repair-review-dataset-state.ts` (canonical `buildGoogleReviewsSchema` + `mergeSchemaStats`) + patched `pull-chuys-reviews.ts` to create state on future pulls.
+
+**Critical-category audit (Ruth's Chris, 43,196-review CSV)**:
+- Re-verified vendor coverage on the current classifier: 98.6% tagged vs 95.3%, 90.4% topic recall, +4.1% added, 20.8% vendor "TEST" leak.
+- **Food safety** — independent Haiku judge over all 1,140 vendor food-safety alerts (`scripts/pilot-rc-foodsafety-audit.ts`, conservative rubric): **~62% are false alarms** (703/1,140; 437 genuine). Defensible lower bound.
+- **Pests** — fixed a mapping bug (`Alert - Bug` mapped to invalid sub `bug` → silently dropped → `bug`/`bugs`→`pests` alias in `lib/taxonomyMapping.ts`), then expanded + tightened the pests dictionary in `lib/taxonomyKeywords.ts` to **~99% precision** (dropped bare `fly`/`ant` — travel idioms + "and/sent" typos; added real surface forms incl. roaches/mice/rat/insect/caterpillar/centipede/maggot). `scripts/pilot-rc-alert-compare.ts`.
+
+**Decks** — `lib/pptx/reviewIntelligenceDeck.ts` + `app/api/review-intelligence-deck` (`?mode=full|alerts|capability`), 3 entries in `/admin/decks`; Datanautix-branded (deck-export convention), Sentimetrx as the platform in content. Pixel-QC'd via LibreOffice. Also added the standalone RC-vs-CG competitive deck (`scripts/pilot-rc-cg-deck.ts`).
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit`; `vitest tests/unit/taxonomyRollup.test.ts` 4/4; dev-server smoke (tab API 401, page 307; deck route 404 unauth = requireAdmin); pixel-QC of all deck slides. Specs: new `docs/TAXONOMY.md` + `docs/ANALYTICS.md` Taxonomy-tab section + `scripts/specMap.ts` entry.
+
 ## 2026-06-02 — StoryTime PPTX entity overhaul (deck-fix backlog #4–#7)
 
 **Why**: The Coalition deck's entity slides had four problems flagged in review. (#4) The by-category chart showed NER types ("Brand 95%") instead of charity focus areas. (#5) Non-charities bled in — "Datanautix" (our platform), "Camping World Stadium", "Downtown Orlando" — because the catalog read counts every open-ended field, not the selected one. (#6) The long-tail slide showed every singleton at the same "10%" (percentage computed against the per-slide subset, not the global total). (#7) The "representative mentions" slide was circular junk ("Salvation Army — mentioned as: salvation army").
