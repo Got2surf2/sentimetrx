@@ -12,6 +12,8 @@
 
 **Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit` (0 errors). Re-ran getAgentStudy read-only vs Sarina; pixel-QC'd slides 2/10/12 — engagement note correct, open questions now 5 clean restated questions + "4 auto-filtered", knowledge-gaps overflow gone, languages reconcile (en 37/95%, es 2/5%). Backfill dry-run before --apply. Specs: `docs/BOTS.md` Agent Study section. Commit-only.
 
+**Follow-up (owner: "58 initiated but 60 in DB — what dropped?")**: nothing silently dropped. The 2 are Spanish sessions whose ONLY user turns were the leaked greeting prompt → after `isLeakedTurn` filtering they have no real message → `abandonedNoInput`. Added a full reconciliation under the depth chart (report + deck): `useful + initiatedNotEntered + abandonedNoInput = total sessions` (39 + 19 + 2 = 60). `abandonedNoInput` was previously computed but not surfaced.
+
 ## 2026-06-03 — Agent Study: comprehensive agent-analytics report (replaces Deck + Mine Conversations)
 
 **Why**: The agent conversations page had two thin, disconnected analytics buttons — "Deck" (a fixed 8-slide PPTX) and "Mine Conversations" (an AI text blob). Neither let you analyze by focus area, see entities, read the actual exchanges, or know your response rate. The owner wanted one comprehensive "agent study": engagement depth, per-focus analysis with entity cross-tab, intents, languages, open questions, and a quick health view on the agent card — as an HTML report you can drill into, with a PPTX export of the same thing.

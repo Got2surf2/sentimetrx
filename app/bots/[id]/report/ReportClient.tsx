@@ -148,10 +148,13 @@ export default function ReportClient() {
             <span style={{ width: 36, fontSize: 12, fontWeight: 600, color: INK }}>{d.sessions}</span>
           </div>
         ))}
-        {(t.initiatedNotEntered > 0 || (t.openedNotEngaged ?? 0) > 0) && (
+        {(t.initiatedNotEntered > 0 || t.abandonedNoInput > 0 || (t.openedNotEngaged ?? 0) > 0) && (
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #e5e7eb', fontSize: 11, color: MUTE, lineHeight: 1.5 }}>
-            {t.initiatedNotEntered > 0 && <span><strong>{t.initiatedNotEntered}</strong> conversation{t.initiatedNotEntered !== 1 ? 's were' : ' was'} initiated but not entered into — the visitor opened the chat and tapped a suggestion or replied with a single word, but never sent a real message. Excluded from analysis. </span>}
-            {t.openedNotEngaged != null && t.openedNotEngaged > 0 && <span><strong>{t.openedNotEngaged}</strong> widget open{t.openedNotEngaged !== 1 ? 's' : ''} never became a conversation at all.</span>}
+            <strong>{t.conversations + t.initiatedNotEntered + t.abandonedNoInput}</strong> sessions recorded: <strong>{t.conversations}</strong> useful
+            {t.initiatedNotEntered > 0 && <> · <strong>{t.initiatedNotEntered}</strong> initiated but one-word only (tapped a suggestion / replied "yes")</>}
+            {t.abandonedNoInput > 0 && <> · <strong>{t.abandonedNoInput}</strong> with no real message (e.g. opened, switched language, never typed)</>}
+            . The last {t.initiatedNotEntered > 0 && t.abandonedNoInput > 0 ? 'two groups are' : 'group is'} excluded from analysis.
+            {t.openedNotEngaged != null && t.openedNotEngaged > 0 && <> Separately, <strong>{t.openedNotEngaged}</strong> widget open{t.openedNotEngaged !== 1 ? 's' : ''} never became a conversation at all.</>}
           </div>
         )}
       </div>

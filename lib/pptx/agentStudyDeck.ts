@@ -26,8 +26,10 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     xAxisLabel: 'Q&A pairs per conversation',
     data: depthData,
     insight: [
-      `${t.conversations} useful conversations (of ${t.initiated} initiated) · median ${t.medianPairs} pair${t.medianPairs === 1 ? '' : 's'} deep.`,
-      t.initiatedNotEntered > 0 ? `${t.initiatedNotEntered} initiated but never entered a real message (one-word tap / ack) — excluded from analysis.` : '',
+      `${t.conversations} useful conversations · median ${t.medianPairs} pair${t.medianPairs === 1 ? '' : 's'} deep.`,
+      `Of ${t.conversations + t.initiatedNotEntered + t.abandonedNoInput} sessions recorded: ${t.conversations} useful` +
+        (t.initiatedNotEntered > 0 ? `, ${t.initiatedNotEntered} one-word taps only` : '') +
+        (t.abandonedNoInput > 0 ? `, ${t.abandonedNoInput} with no real message` : '') + ' (last two excluded).',
       rr != null ? `Response rate ${rr}% (engaged of widget opens).` : '',
     ].filter(Boolean).join(' '),
   })
