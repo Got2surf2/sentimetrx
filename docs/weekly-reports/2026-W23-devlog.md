@@ -1,5 +1,13 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — ChatBot: render mailto:/tel: markdown links (broken contact blocks)
+
+**Why**: Mason's contact bubble rendered `[Leon.Kirkpatrick@cflhomeless.org](mailto:…)` as raw text — visible `[ ]` and `(mailto:…)`. The agent emits a valid markdown email link; the renderer just didn't parse it.
+
+**Root cause**: `formatHtml` in `components/ui/ChatBot.tsx` only matched `http(s)://` in its markdown-link regex (`\[…\]\((https?://…)\)`). `mailto:`/`tel:` links fell through to the bare-email autolinker, which wrapped the address inside the brackets and inside `(mailto:…)` separately, leaving the literal brackets/parens.
+
+**Fix**: extended the regex to `(?:https?://|mailto:|tel:)` and skip `target=_blank` for mailto/tel (no blank tab). Affects every agent, not just Mason. DOMPurify already allows mailto/tel hrefs. Verified the exact bubble text now yields one clean `<a href="mailto:…">` with no leftover `(mailto:`. tsc clean.
+
 ## 2026-06-03 — Agent Study: exclude language-routing intents from analytics
 
 **Why**: Owner — "Spanish should not be an intent." On Sarina, "Spanish" is configured as an intent but it's a routing handler (switch to Spanish + refer other languages to Natalia Garcia), and it's redundant with the Conversations-by-Language panel. Showing it in "Intents Detected" reads as a language masquerading as a top intent.

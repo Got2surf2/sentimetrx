@@ -423,6 +423,8 @@ The assistant bubble runs every reply through `ChatBot.formatHtml` before settin
 
 ### Mandatory "Powered by DATANAUTIX" badge
 
+`formatHtml` in `components/ui/ChatBot.tsx` renders a safe markdown subset (bold, bullets, links). Markdown links accept `http(s)://`, `mailto:`, and `tel:` schemes (the `mailto:`/`tel:` support was added 2026-06-03 — without it, `[email](mailto:email)` fell through to the bare-email autolinker and rendered with visible `[ ]`/`(mailto:…)`); mailto/tel anchors omit `target=_blank`. Output is DOMPurify-sanitized before `dangerouslySetInnerHTML`.
+
 Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a hardcoded "powered by DATANAUTIX" wordmark stacked in the chat header (linking to `https://www.datanautix.com`), plus a "Powered by Datanautix" line in the footer area. It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the parent platform. The customer's own `websiteLabel` link (when configured) sits to its left. (Reverted to Datanautix on 2026-05-26 — the W22 swap to "Sentimetrx" read less credible on B2B/enterprise agent demos; parent-company attribution is the platform standard for agents.)
 
 ---

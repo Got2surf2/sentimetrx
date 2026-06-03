@@ -551,8 +551,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     // We escape both the visible text and the URL so neither can break out
     // of the surrounding markup.
     const mdLinks: string[] = []
-    let out = escapeHtml(normalized).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
-      mdLinks.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">' + text + '</a>')
+    let out = escapeHtml(normalized).replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)[^\s)]+)\)/g, (_m, text, url) => {
+      // mailto:/tel: open in the same context (mail client / dialer), so no
+      // target=_blank for those — it just leaves a blank tab behind.
+      const newTab = /^https?:\/\//i.test(url) ? ' target="_blank" rel="noopener noreferrer"' : ''
+      mdLinks.push('<a href="' + url + '"' + newTab + ' style="color:#00b4d8;text-decoration:underline">' + text + '</a>')
       return '\x00ML' + (mdLinks.length - 1) + '\x00'
     })
     // Step 2: Format the rest
