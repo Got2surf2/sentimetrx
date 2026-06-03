@@ -27,9 +27,10 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     data: depthData,
     insight: [
       `${t.conversations} useful conversations · median ${t.medianPairs} pair${t.medianPairs === 1 ? '' : 's'} deep.`,
-      `Of ${t.conversations + t.initiatedNotEntered + t.abandonedNoInput} sessions recorded: ${t.conversations} useful` +
+      `Of ${t.conversations + t.initiatedNotEntered + t.abandonedNoInput + t.flaggedExcluded} sessions recorded: ${t.conversations} useful` +
         (t.initiatedNotEntered > 0 ? `, ${t.initiatedNotEntered} one-word taps only` : '') +
-        (t.abandonedNoInput > 0 ? `, ${t.abandonedNoInput} with no real message` : '') + ' (last two excluded).',
+        (t.abandonedNoInput > 0 ? `, ${t.abandonedNoInput} no real message` : '') +
+        (t.flaggedExcluded > 0 ? `, ${t.flaggedExcluded} flagged for review (troll/bot/off-topic)` : '') + ' (non-useful excluded).',
       rr != null ? `Response rate ${rr}% (engaged of widget opens).` : '',
     ].filter(Boolean).join(' '),
   })

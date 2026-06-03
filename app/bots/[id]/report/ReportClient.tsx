@@ -148,12 +148,13 @@ export default function ReportClient() {
             <span style={{ width: 36, fontSize: 12, fontWeight: 600, color: INK }}>{d.sessions}</span>
           </div>
         ))}
-        {(t.initiatedNotEntered > 0 || t.abandonedNoInput > 0 || (t.openedNotEngaged ?? 0) > 0) && (
+        {(t.initiatedNotEntered > 0 || t.abandonedNoInput > 0 || t.flaggedExcluded > 0 || (t.openedNotEngaged ?? 0) > 0) && (
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #e5e7eb', fontSize: 11, color: MUTE, lineHeight: 1.5 }}>
-            <strong>{t.conversations + t.initiatedNotEntered + t.abandonedNoInput}</strong> sessions recorded: <strong>{t.conversations}</strong> useful
+            <strong>{t.conversations + t.initiatedNotEntered + t.abandonedNoInput + t.flaggedExcluded}</strong> sessions recorded: <strong>{t.conversations}</strong> useful
             {t.initiatedNotEntered > 0 && <> · <strong>{t.initiatedNotEntered}</strong> initiated but one-word only (tapped a suggestion / replied "yes")</>}
             {t.abandonedNoInput > 0 && <> · <strong>{t.abandonedNoInput}</strong> with no real message (e.g. opened, switched language, never typed)</>}
-            . The last {t.initiatedNotEntered > 0 && t.abandonedNoInput > 0 ? 'two groups are' : 'group is'} excluded from analysis.
+            {t.flaggedExcluded > 0 && <> · <strong>{t.flaggedExcluded}</strong> flagged for review (troll / bot / off-topic) — kept in the database, out of the report</>}
+            . The non-useful groups are excluded from analysis.
             {t.openedNotEngaged != null && t.openedNotEngaged > 0 && <> Separately, <strong>{t.openedNotEngaged}</strong> widget open{t.openedNotEngaged !== 1 ? 's' : ''} never became a conversation at all.</>}
           </div>
         )}

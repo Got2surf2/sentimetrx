@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { autoFlagReasons, resolveReviewStatus, duplicateFingerprintSet, type TurnLike } from '@/lib/conversationReview'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -98,6 +99,7 @@ export async function GET(req: NextRequest, props: Params) {
     session_id: string; first_message: string; turn_count: number
     started_at: string; last_at: string; user_name: string
     flags: string[]; has_deflection: boolean; persona: any | null
+    review_status: string; review_reasons: string[]
   }
   const sessions: Record<string, SessionSummary> = {}
   for (const t of (turns || [])) {
@@ -111,6 +113,7 @@ export async function GET(req: NextRequest, props: Params) {
         // Both are suppressed when the agent doesn't ask for a name.
         user_name: askNameOn ? (nameMap[t.session_id] || '') : '',
         flags: [], has_deflection: false, persona: personaMap[t.session_id] || null,
+        review_status: 'clean', review_reasons: [],
       }
     }
     const s = sessions[t.session_id]
@@ -140,6 +143,24 @@ export async function GET(req: NextRequest, props: Params) {
       for (var f of t.content_flags) { if (!s.flags.includes(f)) s.flags.push(f) }
     }
     if (t.source === 'deflect') s.has_deflection = true
+  }
+
+  // Conversation review status — live auto-flag (troll/bot/off-topic) merged
+  // with any human decision (conversation_reviews). Powers the Transcripts
+  // review badges + "Needs review" filter; the report honors the same logic.
+  const turnsBySession: Record<string, TurnLike[]> = {}
+  for (const t of (turns || [])) { (turnsBySession[t.session_id] ||= []).push(t as TurnLike) }
+  const humanReviews = new Map<string, { status: 'approved' | 'excluded'; reasons: string[] }>()
+  try {
+    const { data: revs } = await service.from('conversation_reviews').select('session_id, status, reasons').eq('bot_id', params.id)
+    for (const r of (revs || [])) humanReviews.set((r as any).session_id, { status: (r as any).status, reasons: Array.isArray((r as any).reasons) ? (r as any).reasons : [] })
+  } catch { /* table absent in prod yet → all clean */ }
+  const dupFps = duplicateFingerprintSet(new Map(Object.entries(turnsBySession)))
+  for (const s of Object.values(sessions)) {
+    const hr = humanReviews.get(s.session_id)
+    const auto = autoFlagReasons(turnsBySession[s.session_id] || [], { duplicateFingerprints: dupFps })
+    s.review_status = resolveReviewStatus(hr?.status ?? null, auto)
+    s.review_reasons = (hr?.reasons && hr.reasons.length) ? hr.reasons : auto
   }
 
   // Sort by most recent first

@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Conversation review gate (trolls/bots/off-topic out of reports, human-in-the-loop)
+
+**Why**: Most agent data is public-record, so the issue with reports/shares isn't exposure — it's signal quality. A report that silently includes a troll rant or a bot flood isn't defensible. Owner asked for robust guardrails: auto-exclude trolls/bots/off-topic from reports but keep them in the DB, with a mechanism to flag conversations for human review and never include flagged ones unless a human pushes them to the record.
+
+**Built** (`lib/conversationReview.ts` + `sql/096 conversation_reviews`, RLS + org SELECT):
+- **Live auto-flag** (not persisted): safety flags (profanity/slur/threat/sexual/insult/spam) on any turn; bot-like (repeated identical messages, a substantive-message-set fingerprint shared across sessions, or ≥4 substantive turns in <20s); or **every** substantive exchange deflected as outside_scope (whole-conversation off-topic only — a tangent doesn't trip it). `resolveReviewStatus(human, auto)` → clean|auto_flagged|approved|excluded.
+- **Reports honor it**: `getAgentStudy` + `getAgentHealth` call `partitionByReview` first — only `clean`+`approved` are counted/classified; `totals.flaggedExcluded` added to the reconciliation. Flagged stays in DB.
+- **Human review on the Transcripts page**: conversations list returns `review_status`+`review_reasons` (live auto-flag merged with the human row); UI gains a "Needs review (N)" filter + per-card **Approve / Exclude / Reset** → `POST /api/bots/[id]/conversations/[sessionId]/review` (service-role, org-paired). `isSubstantive` moved into `conversationReview` (shared with agentStudy, one-way dep, no drift).
+
+**Verification**: tsc clean (0). Ran the auto-flag against real Sarina data (no AI) — **4 sessions auto-flagged `duplicate`** (identical message sets = test/QA runs), 1 shared fingerprint; reconciles (those 4 move from useful→flaggedExcluded, still sums to 60). Specs: `docs/BOTS.md` review-gate bullet + specMap. `sql/096` NOT applied to prod (gate degrades to all-clean without the table). Commit-only.
+
 ## 2026-06-03 — Agent Study refinements (owner review pass)
 
 **Why**: Reviewing the first Sarina sample, the owner caught three real problems. (1) The headline "60 conversations" was wrong — 18 of those 60 were one-word chip taps ("Learn"/"Yes"), opened-but-not-entered, not real conversations. (2) The Open Questions slide was noise — fragments and even mis-captured agent text flagged as "questions." (3) Two Spanish chats opened with garbage; the openings were AI leakage. Plus a slide-12 overflow + a request for larger deck fonts (older audience at the client).

@@ -25,6 +25,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { isSubstantive, autoFlagReasons, resolveReviewStatus, includedInReports, duplicateFingerprintSet } from '@/lib/conversationReview'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 export interface DailyPoint { date: string; opens: number; conversations: number }
@@ -65,6 +66,7 @@ export interface AgentStudy {
     conversations: number        // USEFUL: sessions with >=1 substantive user turn (the main count)
     initiatedNotEntered: number  // initiated but trivial-only (chip tap / one-word ack, no real message)
     abandonedNoInput: number     // sessions with no user turn at all (silence-probe only; rare)
+    flaggedExcluded: number      // troll/bot/off-topic or human-excluded — kept in DB, out of the report
     openedNotEngaged: number | null  // beacon opens - initiated (beacon required)
     totalPairs: number
     medianPairs: number
@@ -169,19 +171,29 @@ function groupSessions(turns: Turn[]): Map<string, Turn[]> {
   return m
 }
 
-// A user turn is "substantive" when the visitor actually entered a real
-// message — not a one-word chip tap / ack ("Learn", "Yes", "Details"). A
-// conversation with only trivial turns was *initiated* but never *entered*.
-// (The greeting/askName preamble carries source='greeting' and is excluded
-// regardless.) Threshold: >=3 words, or any message containing a question
-// mark (catches terse real questions like "Why US 441?").
-const SUBSTANTIVE_WORDS = 3
-function isSubstantive(t: Turn): boolean {
-  if (t.role !== 'user' || !(t.source === 'normal' || t.source === null)) return false
-  const c = (t.content_en || t.content || '').trim()
-  if (c.includes('?')) return c.length > 1
-  return c.split(/\s+/).filter(Boolean).length >= SUBSTANTIVE_WORDS
+// Apply the human-in-the-loop review gate: drop sessions a human excluded, or
+// that auto-flag as troll/bot/wholly-off-topic and a human hasn't approved.
+// Returns the included sessions + how many were excluded for review. One query.
+async function partitionByReview(service: any, botId: string, sessions: Map<string, Turn[]>): Promise<{ included: Map<string, Turn[]>; flaggedExcluded: number }> {
+  let human = new Map<string, 'approved' | 'excluded'>()
+  try {
+    const { data } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', botId)
+    for (const r of (data || [])) human.set(r.session_id, r.status)
+  } catch { /* table absent in prod yet → treat all as clean */ }
+  const dup = duplicateFingerprintSet(sessions)
+  const included = new Map<string, Turn[]>()
+  let flaggedExcluded = 0
+  for (const [sid, ts] of sessions) {
+    const status = resolveReviewStatus(human.get(sid) ?? null, autoFlagReasons(ts, { duplicateFingerprints: dup }))
+    if (includedInReports(status)) included.set(sid, ts)
+    else flaggedExcluded++
+  }
+  return { included, flaggedExcluded }
 }
+
+// `isSubstantive` lives in lib/conversationReview.ts (shared with the auto-flag
+// gate so the two never drift): a user turn counts only when it's a real
+// message (>=3 words or contains '?') — one-word chip taps / acks don't.
 
 // A normalized "pair" = a substantive user turn matched to the next assistant
 // turn as its answer. Trivial turns are excluded so "Learn"/"Yes" never count
@@ -262,7 +274,10 @@ export async function getAgentHealth(botId: string): Promise<AgentHealth> {
     service.from('agent_impressions').select('created_at').eq('bot_id', botId).gte('created_at', new Date(Date.now() - 31 * 86400000).toISOString()),
     service.from('logged_questions').select('id', { count: 'exact', head: true }).eq('bot_id', botId).eq('status', 'open'),
   ])
-  return computeHealth(groupSessions(turns), impRes.data || [], oqRes.count || 0)
+  // Apply the same review gate as the full study so the card health and the
+  // report agree (flagged troll/bot/off-topic sessions don't inflate the card).
+  const { included } = await partitionByReview(service, botId, groupSessions(turns))
+  return computeHealth(included, impRes.data || [], oqRes.count || 0)
 }
 
 // ── Tier 2: focus + entity classification (AI, batched) ──────────────────────
@@ -412,8 +427,13 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     intents: Array.isArray(botData.intents) ? botData.intents : [],
   }
 
-  const turns = await loadTurns(service, botId)
-  const sessions = groupSessions(turns)
+  const allTurns = await loadTurns(service, botId)
+  // Human-in-the-loop review gate: drop troll/bot/off-topic + human-excluded
+  // sessions BEFORE any counting or classification. They stay in the DB; the
+  // report just never sees them. Everything downstream works on `sessions`
+  // (= included only) + `turns` (= their flattened turns).
+  const { included: sessions, flaggedExcluded } = await partitionByReview(service, botId, groupSessions(allTurns))
+  const turns = [...sessions.values()].flat()
 
   // Classify each session: useful (>=1 substantive exchange) vs initiated-but-
   // not-entered (has a user turn but only trivial ones) vs no-input.
@@ -575,6 +595,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
       conversations: useful,
       initiatedNotEntered,
       abandonedNoInput,
+      flaggedExcluded,
       openedNotEngaged: (totalImpressions != null && totalImpressions > 0) ? Math.max(0, totalImpressions - initiated) : null,
       totalPairs,
       medianPairs,

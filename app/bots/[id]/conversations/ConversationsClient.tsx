@@ -24,6 +24,7 @@ interface Session {
   session_id: string; first_message: string; turn_count: number
   started_at: string; last_at: string; user_name: string
   flags: string[]; has_deflection: boolean; persona: any | null
+  review_status: string; review_reasons: string[]
 }
 
 interface Turn {
@@ -91,6 +92,8 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       var cutoff = Date.now() - filterTime * 3600000
       if (new Date(s.started_at).getTime() < cutoff) return false
     }
+    // Review filter — conversations auto-flagged (troll/bot/off-topic) awaiting a human decision
+    if (filterFlag === 'needs_review') return s.review_status === 'auto_flagged'
     // Flag filter
     if (filterFlag === 'flagged' && s.flags.length === 0 && !s.has_deflection) return false
     if (filterFlag === 'clean' && (s.flags.length > 0 || s.has_deflection)) return false
@@ -122,6 +125,21 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       setSessions(function(prev) { return prev.filter(function(s) { return s.session_id !== sid }) })
       if (selectedSession === sid) { setSelectedSession(null); setTurns([]) }
     } catch { alert('Failed to delete') }
+  }
+
+  // Human review decision — approve (include in reports), exclude (never), or
+  // reset (back to clean / live auto-flag). The conversation is never deleted;
+  // only its visibility to reports changes.
+  async function reviewSession(sid: string, action: 'approve' | 'exclude' | 'reset') {
+    var next = action === 'approve' ? 'approved' : action === 'exclude' ? 'excluded' : 'clean'
+    try {
+      var s = sessions.find(function(x) { return x.session_id === sid })
+      await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(sid) + '/review', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action, reasons: s ? s.review_reasons : [] }),
+      })
+      setSessions(function(prev) { return prev.map(function(x) { return x.session_id === sid ? { ...x, review_status: next } : x }) })
+    } catch { alert('Failed to update review') }
   }
 
   async function refreshSession() {
@@ -266,6 +284,11 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
         <button onClick={function() { setFilterFlag('all') }} style={pill(filterFlag === 'all', '#6b7280')}>All</button>
         <button onClick={function() { setFilterFlag('flagged') }} style={pill(filterFlag === 'flagged', '#dc2626')}>Flagged</button>
         <button onClick={function() { setFilterFlag('clean') }} style={pill(filterFlag === 'clean', '#059669')}>Clean</button>
+        {(function() {
+          var n = sessions.filter(function(s) { return s.review_status === 'auto_flagged' }).length
+          if (n === 0) return null
+          return <button onClick={function() { setFilterFlag('needs_review') }} style={pill(filterFlag === 'needs_review', '#d97706')}>Needs review ({n})</button>
+        })()}
         {allFlags.filter(isFixedFlag).map(function(f) {
           var fc = getFlagStyle(f)
           return <button key={f} onClick={function() { setFilterFlag(f) }} style={pill(filterFlag === f, fc.color)}>{fc.label}</button>
@@ -318,14 +341,35 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
                     <span style={{ fontSize: 11, color: '#9ca3af' }}>{s.turn_count} turns</span>
                     {personaLabel && <span style={{ fontSize: 10, color: '#0F7173', background: '#E0F7F7', padding: '1px 6px', borderRadius: 8 }}>{personaLabel}</span>}
                     {s.has_deflection && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>}
+                    {s.review_status === 'auto_flagged' && <span title={'Auto-flagged: ' + (s.review_reasons || []).join(', ') + ' — excluded from reports until reviewed'} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#FEF3C7', color: '#B45309' }}>⚑ Review{s.review_reasons && s.review_reasons.length ? ': ' + s.review_reasons.join(', ') : ''}</span>}
+                    {s.review_status === 'excluded' && <span title="Excluded from reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#F3F4F6', color: '#6b7280' }}>Excluded</span>}
+                    {s.review_status === 'approved' && <span title="Approved for reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#D1FAE5', color: '#059669' }}>✓ Approved</span>}
                     {s.flags.map(function(f) {
                       var c = getFlagStyle(f)
                       return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
                     })}
                   </div>
-                  <button onClick={function() { deleteSession(s.session_id) }}
-                    style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }}
-                    title="Delete conversation">&times;</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    {s.review_status === 'auto_flagged' && (
+                      <>
+                        <button onClick={function() { reviewSession(s.session_id, 'approve') }} title="Include this conversation in reports"
+                          style={{ background: '#D1FAE5', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Approve</button>
+                        <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Confirm junk — keep out of reports"
+                          style={{ background: '#FEE2E2', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
+                      </>
+                    )}
+                    {s.review_status === 'clean' && (
+                      <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Exclude this conversation from reports"
+                        style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
+                    )}
+                    {(s.review_status === 'excluded' || s.review_status === 'approved') && (
+                      <button onClick={function() { reviewSession(s.session_id, 'reset') }} title="Undo the review decision"
+                        style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Reset</button>
+                    )}
+                    <button onClick={function() { deleteSession(s.session_id) }}
+                      style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}
+                      title="Delete conversation">&times;</button>
+                  </div>
                 </div>
               </div>
             )
