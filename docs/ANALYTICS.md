@@ -1,6 +1,6 @@
 # Analytics / TextMine Module
 
-> **Update (2026-06-01).** The Analyze surface gained recordings touch-points (full detail in `docs/RECORDINGS.md`): a 🎙️ Recordings entry button in the Analyze header, a Recording upload tile on `/analyze/new` gated by the `recordings` feature, and a "Re-extract all" action on the recordings report. Analytics is now the **parent feature** for googleReviews / reddit / substack / recordings — `effectiveFeatures` forces those off when `analyze` is off.
+> **Update (2026-06-01).** The Analyze surface gained recordings touch-points (full detail in `docs/RECORDINGS.md`): a 🎙️ Recordings entry button in the Analyze header, a Recording upload tile on `/analyze/new` gated by the `recordings` feature, and a "Re-extract all" action on the recordings report. The recordings report's **Export tab now produces a Datanautix-branded PowerPoint** (`POST /api/recordings/[id]/export/pptx`, see `docs/RECORDINGS.md`), and `buildRecordingSchema()` gained a **Sentiment** facet (per-Q&A tone) that flows into TextMine/Charts/Stats like any other categorical field. Analytics is now the **parent feature** for googleReviews / reddit / substack / recordings — `effectiveFeatures` forces those off when `analyze` is off.
 
 ## Overview
 

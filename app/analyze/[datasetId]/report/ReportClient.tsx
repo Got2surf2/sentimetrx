@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import LottieLoader from '@/components/ui/LottieLoader'
 import type {
   RecordingRow,
   RecordingFileRow,
@@ -63,6 +64,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
     const ask: RecordingExtractionRow[] = []
     const nonAsk: RecordingExtractionRow[] = []
     for (const e of extractions) {
+      // action_item rows have no question/answer — they belong to the deck, not
+      // the Q&A / Appendix tabs. Skip them here.
+      if (e.unit_type !== 'qa_pair') continue
       const payload = e.payload as QaPairPayload
       if (payload?.question_typology === 'ask') ask.push(e)
       else nonAsk.push(e)
@@ -107,7 +111,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} onPlay={playAt} />}
-        {tab === 'export' && <ExportTab />}
+        {tab === 'export' && <ExportTab recordingId={recordingId} recordingName={data.recording.name} status={data.recording.status} />}
       </div>
 
       {audioReq && (
@@ -691,17 +695,75 @@ function TranscriptTab({ transcript, onPlay }: { transcript: RecordingTranscript
   )
 }
 
-// ── Export & Share tab (stub) ────────────────────────────────────────────────
+// ── Export & Share tab ───────────────────────────────────────────────────────
 
-function ExportTab() {
+function ExportTab({ recordingId, recordingName, status }: { recordingId: string; recordingName: string; status: string }) {
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const ready = status === 'complete'
+
+  const handleExport = async () => {
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/export/pptx`, { method: 'POST' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d?.error || `Export failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${recordingName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-qa-report.pptx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError((e as Error)?.message || 'Export failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (generating) {
+    return (
+      <div className="py-12 flex flex-col items-center">
+        <LottieLoader size={120} message="Building your PowerPoint…" />
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h2 className="text-base font-bold text-gray-900">Export &amp; Share</h2>
-      <p className="text-sm text-gray-500">
-        PDF export (Playwright), XLSX export of structured pairs, and the public-link toggle land in a follow-up commit — they need § 4.5 (exports) and § 4.7 (share) routes which aren't built yet.
-      </p>
+
+      <div className="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm font-semibold text-gray-900">PowerPoint deck</div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Datanautix-branded Q&amp;A session report — executive summary, conversation themes, sentiment, action items, and an appendix slide for every Q&amp;A pair.
+          </p>
+          {!ready && (
+            <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete (status: {status}).</p>
+          )}
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={!ready}
+          className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
+          style={{ background: HERMES }}
+        >
+          Export to PowerPoint
+        </button>
+      </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <p className="text-sm text-gray-500">More formats land in a follow-up:</p>
       <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
-        <li>PDF — Q&A summary + transcript appendix (default for principal handoff)</li>
+        <li>PDF — Q&amp;A summary + transcript appendix (default for principal handoff)</li>
         <li>XLSX — structured pairs only (analyst format)</li>
         <li>Public share link — short-TTL token-gated read-only report</li>
         <li>Send to principals — Resend email with the share link</li>

@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const ctx = {
   caller: { userId: 'u1', orgId: 'orgA', isAdmin: false } as any,
   rowOrg: 'orgB',          // the resource's owning org (cross-tenant by default)
+  recStatus: 'complete',   // recordings.status for the export-route happy path
 }
 
 vi.mock('@/lib/auth/orgAccess', () => ({ getCallerOrgContext: async () => ctx.caller }))
@@ -25,7 +26,9 @@ vi.mock('@/lib/supabase/server', () => {
         ? { id: 'ds_1', name: 'X', source: 'reddit', row_count: 1, org_id: ctx.rowOrg, studies: null }
         : table === 'townhall_sessions' || table === 'town_halls'
           ? { id: 's_1', name: 'X', status: 'complete', config: {}, started_at: null, ended_at: null, org_id: ctx.rowOrg }
-          : { id: 'x', org_id: ctx.rowOrg }
+          : table === 'recordings'
+            ? { id: 'rec_1', name: 'X', meeting_date: null, location: null, status: ctx.recStatus, analysis_summary: null, org_id: ctx.rowOrg }
+            : { id: 'x', org_id: ctx.rowOrg }
     const b: any = {}
     for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit']) b[m] = () => b
     b.single = async () => ({ data: row, error: null })
@@ -42,16 +45,20 @@ vi.mock('@/lib/supabase/server', () => {
 
 // Heavy export deps — never actually render.
 vi.mock('@/lib/ai', () => ({ callAI: vi.fn(async () => ({ text: '{}', usage: {} })) }))
+vi.mock('@/lib/pptx/recordingDeck', () => ({ buildRecordingDeck: vi.fn(async () => new Uint8Array([1, 2, 3])) }))
+vi.mock('@/lib/auth/logDeckDownload', () => ({ logDeckDownload: vi.fn(async () => {}) }))
 
 import * as signals from '@/app/api/datasets/[datasetId]/export/signals-pptx/route'
 import * as htmlExport from '@/app/api/datasets/[datasetId]/export/html/route'
 import * as pptxExport from '@/app/api/datasets/[datasetId]/export/pptx/route'
 import * as thPptx from '@/app/api/townhall/sessions/[id]/export/pptx/route'
 import * as thCsv from '@/app/api/townhall/sessions/[id]/export/route'
+import * as recPptx from '@/app/api/recordings/[id]/export/pptx/route'
 
 beforeEach(() => {
   ctx.caller = { userId: 'u1', orgId: 'orgA', isAdmin: false }
   ctx.rowOrg = 'orgB'
+  ctx.recStatus = 'complete'
 })
 
 function post(body: unknown, url = 'http://t/x') {
@@ -84,6 +91,11 @@ describe('export routes — cross-org gate (non-admin in orgA, resource in orgB 
     expect(res.status).toBe(404)
   })
 
+  it('recording pptx export', async () => {
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(404)
+  })
+
   it('same-org caller is NOT blocked by the gate (orgA owns it)', async () => {
     ctx.rowOrg = 'orgA'
     // signals-pptx proceeds past the gate; next branch is the reddit/substack
@@ -91,5 +103,28 @@ describe('export routes — cross-org gate (non-admin in orgA, resource in orgB 
     // on the org gate. We only assert it's not the gate's 404.
     const res = await signals.POST(post({}), { params: { datasetId: 'ds_1' } } as any)
     expect(res.status).not.toBe(404)
+  })
+})
+
+describe('recording pptx export — status + content-type', () => {
+  it('same-org owner of a complete recording → 200 + pptx content-type', async () => {
+    ctx.rowOrg = 'orgA'
+    ctx.recStatus = 'complete'
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toContain('presentationml.presentation')
+  })
+
+  it('409 when analysis is not finished (status != complete)', async () => {
+    ctx.rowOrg = 'orgA'
+    ctx.recStatus = 'transcribed'
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(409)
+  })
+
+  it('401 when unauthenticated', async () => {
+    ctx.caller = { userId: null, orgId: null, isAdmin: false }
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(401)
   })
 })

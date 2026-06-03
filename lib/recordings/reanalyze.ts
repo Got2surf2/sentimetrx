@@ -162,11 +162,16 @@ export async function reanalyzeRecording(input: ReanalyzeInput): Promise<Reanaly
   })
 
   // 6. Bump cost + write coverage. For 'all', also bump completed_at (spec § 4.11).
+  // analysis_summary is whole-meeting, so only refresh it on a full re-extract;
+  // a topic-scoped re-run leaves the existing summary intact.
   const patch: Record<string, unknown> = {
     coverage_report: coverage,
     cost_cents: (recording.cost_cents ?? 0) + analysis.total_cost_cents,
   }
-  if (input.scope === 'all') patch.completed_at = new Date().toISOString()
+  if (input.scope === 'all') {
+    patch.completed_at = new Date().toISOString()
+    patch.analysis_summary = analysis.analysis_summary
+  }
   await service
     .from('recordings')
     .update(patch)

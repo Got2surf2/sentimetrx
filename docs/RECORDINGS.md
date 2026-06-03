@@ -216,6 +216,7 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
   answer: string,
   panelist_name?: string,
   question_typology: 'ask' | 'complaint' | 'commentary' | 'clarification',  // only 'ask' surfaces in main report
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed',  // tone of the exchange (added 2026-06; optional → old rows default 'neutral')
 }
 
 // quote (session_type='focus_group')  -- v2
@@ -226,7 +227,8 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
   themes: string[],
 }
 
-// action_item (session_type='general_meeting')  -- v2
+// action_item — now ALSO emitted for session_type='qa' by the synthesis pass
+// (§3.5), one row per follow-up/next-step the panel committed to.
 {
   description: string,
   owner?: string,
@@ -234,6 +236,21 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
   related_agenda_item?: string,
 }
 ```
+
+**`recordings.analysis_summary` (jsonb, sql/094)** — meeting-level synthesis written by the analyze pass third step (§3.5). One object per recording (NOT extraction rows):
+
+```ts
+{
+  executive_summary: string,                 // 3-5 sentence narrative
+  headline: string,                          // one-line takeaway
+  sentiment_overall: 'positive'|'neutral'|'negative'|'mixed',
+  sentiment_breakdown: { positive, neutral, negative, mixed },  // counts, computed in code
+  topic_summaries: Array<{ topic, qa_count, summary, sentiment, representative_exchanges: Array<{ question, answer, asker?, panelist? }> }>,
+  decisions: Array<{ decision, topic? }>,
+  generated_at: string, model: string,
+}
+```
+Null for recordings analyzed before 2026-06, or when the synthesis pass fails (graceful degrade — the deck/report still render from the Q&A pairs). Action items live as `action_item` extraction rows, not here; `decisions` live here because they're narrative, not owned units.
 
 ### 2.5 `org_features` + `user_features` — generic feature gating
 
@@ -457,8 +474,11 @@ Confidence below `<TBD: threshold>` flags `flagged_for_review=true, flag_reason=
 
 1. **Primary extraction — Claude Opus 4.7** (`claude-opus-4-7`). Best structured-reasoning available; specifically picked for the "is this an audience question vs panel commentary" judgment that bit the PM-1 pilot.
 2. **Curator second pass — Claude Sonnet 4.6** (`claude-sonnet-4-6`). Receives the Opus extractions + the transcript and answers: "Review these extractions — would you publish this in an official Q&A document? Flag any that should be reconsidered." Output: `flagged_for_review=true` with `flag_reason='curator_questioned'` on borderline pairs. This is our quality net in the absence of ground truth.
+3. **Synthesis third pass — Claude Sonnet 4.6** (added 2026-06, `buildQaSynthesisPrompt`). Runs over the **published** (non-flagged) pairs only, after the curator settles topics. Produces the deck/report narrative layer → `recordings.analysis_summary`: `executive_summary`, `headline`, per-topic `topic_summaries`, `decisions`, and `action_items` (appended as `action_item` extraction rows). **Counts are computed in code, not by the model** — `sentiment_breakdown` and `qa_count` are derived deterministically from the pairs so deck numbers always reconcile. Skipped on topic-scoped re-extracts and when no pairs are publishable. Failure is non-fatal: `analysis_summary` is left null and the pipeline still completes with the Q&A pairs.
 
-**Cost per 60-min meeting:** Opus extraction ≈ $0.75 (35K input + 3K output) + Sonnet curator ≈ $0.20 → **~$1 total Claude cost**. Negligible vs target $5K customer pricing.
+Also: the Opus extraction now classifies a `payload.sentiment` per pair (`positive|neutral|negative|mixed`) — no extra call.
+
+**Cost per 60-min meeting:** Opus extraction ≈ $0.75 (35K input + 3K output) + Sonnet curator ≈ $0.20 + Sonnet synthesis ≈ $0.25 → **~$1.20 total Claude cost**. Negligible vs target $5K customer pricing.
 
 **Post-pilot:** A/B Sonnet-only vs Opus+Sonnet curator on a 10-meeting corpus to see if the curator pass alone with a cheaper extractor is sufficient at the production volume. For the June 16 pilot — use Opus.
 
@@ -470,7 +490,7 @@ After the analytical pass, compute:
 - **Per-minute extraction density** — extractions per minute of source audio. Stretches of 5+ minutes with 0 extractions flagged (potential miss).
 - **Confidence histogram** — distribution of `confidence` values. Bottom decile auto-marked `flagged_for_review=true`.
 
-Coverage report is stored as JSONB on `recordings.coverage_report` (`<TBD: add column>`) and rendered in the HTML report's "Coverage" tab.
+Coverage report is stored as JSONB on `recordings.coverage_report` and rendered in the HTML report's "Coverage" tab.
 
 ### 3.7 Mirror
 
@@ -479,6 +499,7 @@ For each `recording_extractions` row, insert a corresponding `dataset_rows_flat`
 ### 3.8 Render
 
 - HTML report at `app/analyze/[datasetId]/report/page.tsx` — server-rendered from the `recordings` + `recording_transcripts` + `recording_extractions` rows. Auth-gated (`requireOrgAccess`).
+- **PowerPoint export (built 2026-06):** `POST /api/recordings/[id]/export/pptx` (§4.13) → Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts`. Wired to the report's **Export** tab.
 - PDF export: `POST /api/analyze/[datasetId]/report/pdf` — Playwright headless prints the HTML page. Stored in Supabase Storage at `<org_id>/<recording_id>/report.pdf` and returned as signed URL.
 - XLSX export: `POST /api/analyze/[datasetId]/report/xlsx` — server-side XLSX generation from `recording_extractions` payloads. Columns per `unit_type` per § 2.6 mapping plus.
 
@@ -705,6 +726,12 @@ Cost: `scope='all'` ≈ ~$1 (Opus + Sonnet on the full transcript, no ASR). `sco
 
 **Auth:** session cookie. Same-tenant `(id, org_id)` pair. Mints a short-TTL (1h) signed URL for `<org_id>/<recording_id>/audio/stitched.mp3` in the `recordings` bucket and returns `{ url, expires_in }`. Consumed by the report's `AudioModal` (§ 5.4). The TUS-uploaded source files are never exposed — only the canonical stitched mp3. Returns 404 if the object isn't present yet.
 
+### 4.13 `POST /api/recordings/[id]/export/pptx` — PowerPoint deck (built 2026-06)
+
+**Auth:** session cookie via `getCallerOrgContext` + the cross-org gate (`!isAdmin && rec.org_id !== orgId → 404`; admin-org may export any). Service-role reads, so the `(id, org_id)` pairing is the multi-tenancy guard — covered by `tests/integration/export-org-gate.test.ts`. Requires `status='complete'` else **409**.
+
+Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the recording's `analysis_summary` + `recording_extractions`: Title → Executive Summary (+ KPI strip) → Sentiment Overview → Conversation Themes (2 topic cards/slide) → Action Items & Decisions → **Appendix, one Q&A pair per slide**. Slides 2–5 are skipped individually when their data is null/empty; the appendix always renders. Returns the binary with `Content-Disposition: attachment`. Logs to `deck_download_log` (`logDeckDownload`). No AI runs in the route — synthesis happened at analyze time.
+
 ---
 
 ## 5. UI Surface
@@ -813,7 +840,7 @@ Affordance wiring state:
 - **Per-topic "⋯" Re-extract (§ 4.11 scope='topic'):** wired (2026-05-31). The "⋯" on each topic header opens a modal: title "Re-extract pairs for «topic»", an instructions textarea (≤4000 chars) with a topic-aware placeholder, a `~$0.10–$0.40 · Opus + Sonnet` cost line, Cancel / Confirm. POST `/api/recordings/[id]/reanalyze` with `{ scope: 'topic', topic, instructions }`. On success: `router.refresh()` re-pulls the server-rendered report; the active tab stays put.
 - **Tab-header "⋯ More" full re-extract (§ 4.11 scope='all'):** wired (2026-05-31). Same modal shell as the per-topic variant with "Deletes every existing pair…" warning and a `~$1` cost line. POST `{ scope: 'all', instructions }`. `completed_at` is bumped on the recording row per spec.
 - **▶ Play this segment / Play from here:** wired (2026-06-01). Every Q&A / appendix card with a `start_sec`, and every transcript segment, has a Play button that opens a shared `AudioModal`. The modal fetches a short-TTL signed URL via `GET /api/recordings/[id]/audio` (§ 4.12), seeks to the requested start and autoplays, and carries: a ≥48px play/pause, a scrubber with current/total time, ±15s / ±30s skip, playback speed (0.75/1/1.25/1.5/2×), Esc/×-to-close, and a synced transcript list that highlights + auto-scrolls the segment under the playhead (click a segment to seek). The "Open in full audio viewer" full-page route from the design is deferred — the modal covers the meeting-review need.
-- **Export & Share tab:** stub. Pending § 4.5 (PDF + XLSX) + § 4.7 (share).
+- **Export & Share tab:** **PowerPoint export wired (2026-06).** An "Export to PowerPoint" button POSTs to `/api/recordings/[id]/export/pptx` (§ 4.13), downloads the returned `.pptx` blob, and shows the `LottieLoader` while generating; disabled with a hint until `status='complete'`. PDF (§ 4.5) + XLSX + public share (§ 4.7) remain listed as coming-soon below the button.
 
 ### 5.5 Org-admin recordings list — `/recordings`
 

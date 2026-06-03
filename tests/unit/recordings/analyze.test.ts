@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/ai', () => ({ callAI: vi.fn() }))
 
-import { analyzeRecording, type AnalyzeInput } from '@/lib/recordings/analyze'
+import { analyzeRecording, overallSentiment, type AnalyzeInput } from '@/lib/recordings/analyze'
 import { callAI } from '@/lib/ai'
 import type { QaSetupInputs, QaPairPayload } from '@/lib/recordings/types'
 
@@ -54,6 +54,11 @@ function opusDraft(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mockCallAI.mockReset()
+  // Default for any unmocked call (notably the third synthesis pass, which
+  // fires whenever there's ≥1 published pair). '{}' parses to an empty summary
+  // with no action items, so tests that don't care about synthesis are
+  // unaffected in their extraction assertions.
+  mockCallAI.mockResolvedValue(aiResponse('{}'))
 })
 
 describe('analyzeRecording — session_type guard', () => {
@@ -133,20 +138,106 @@ describe('analyzeRecording — pass orchestration + cost', () => {
     expect(total_cost_cents).toBe(17)             // Opus tokens only, no curator budget
   })
 
-  it('runs both passes and adds the curator budget once reviews come back', async () => {
+  it('runs all three passes and adds curator + synthesis budget once reviews come back', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft()] })
     const sonnet = JSON.stringify({ reviews: [{ draft_index: 0, flag: false, topic: 'Parking' }] })
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse(sonnet))
     const { total_cost_cents } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(2)
-    expect(total_cost_cents).toBe(37)             // 17 Opus + 20 curator budget (reviews parsed)
+    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis (1 published pair)
+    expect(total_cost_cents).toBe(62)             // 17 Opus + 20 curator + 25 synthesis
   })
 
   it('omits the curator budget when the pass runs but returns no parseable reviews', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft()] })
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse('{"reviews":[]}'))
     const { total_cost_cents } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(2)
-    expect(total_cost_cents).toBe(17)             // budget is keyed on reviews parsed, not pass run
+    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis
+    expect(total_cost_cents).toBe(42)             // 17 Opus + 0 curator (no reviews) + 25 synthesis
+  })
+
+  it('skips synthesis when every pair is flagged (nothing publishable)', async () => {
+    const opus = JSON.stringify({ extractions: [opusDraft({ confidence: 0.4 })] }) // low-confidence → flagged
+    mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse('{"reviews":[]}'))
+    const { analysis_summary } = await analyzeRecording(baseInput())
+    expect(mockCallAI).toHaveBeenCalledTimes(2)   // no synthesis call
+    expect(analysis_summary).toBeNull()
+  })
+})
+
+describe('analyzeRecording — synthesis pass', () => {
+  const publishedOpus = JSON.stringify({
+    extractions: [
+      opusDraft({ topic: 'Parking', payload: { ...opusDraft().payload, sentiment: 'positive' } }),
+      opusDraft({ topic: 'Budget', payload: { ...opusDraft().payload, question: 'Why so costly?', answer: 'Inflation.', sentiment: 'negative' } }),
+    ],
+  })
+  const cleanSonnet = JSON.stringify({ reviews: [
+    { draft_index: 0, flag: false, topic: 'Parking' },
+    { draft_index: 1, flag: false, topic: 'Budget' },
+  ] })
+
+  it('populates analysis_summary, appends action_item rows, and counts sentiment deterministically', async () => {
+    const synthesis = JSON.stringify({
+      executive_summary: 'A meeting about parking and budget.',
+      headline: 'Parking up, budget down',
+      topic_summaries: [
+        { topic: 'Parking', summary: 'Parking went well.', sentiment: 'positive', representative_pair_indexes: [0] },
+        // Budget omitted by the model on purpose — code must still emit it (with a fallback exchange).
+      ],
+      decisions: [{ decision: 'Add a level', topic: 'Parking' }],
+      action_items: [{ description: 'Publish the budget', owner: 'Jane', due_date: null, related_agenda_item: 'Budget' }],
+    })
+    mockCallAI.mockResolvedValueOnce(aiResponse(publishedOpus))
+                .mockResolvedValueOnce(aiResponse(cleanSonnet))
+                .mockResolvedValueOnce(aiResponse(synthesis))
+
+    const { extractions, analysis_summary } = await analyzeRecording(baseInput())
+
+    // 2 qa_pair + 1 appended action_item
+    expect(extractions.filter(e => e.unit_type === 'qa_pair')).toHaveLength(2)
+    const actions = extractions.filter(e => e.unit_type === 'action_item')
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toMatchObject({ topic: 'Budget' })
+
+    expect(analysis_summary).not.toBeNull()
+    expect(analysis_summary!.headline).toBe('Parking up, budget down')
+    // Counts come from code, not the model: 1 positive + 1 negative.
+    expect(analysis_summary!.sentiment_breakdown).toEqual({ positive: 1, neutral: 0, negative: 1, mixed: 0 })
+    // Both topics represented even though the model dropped Budget; qa_count is deterministic.
+    expect(analysis_summary!.topic_summaries.map(t => t.topic).sort()).toEqual(['Budget', 'Parking'])
+    const parking = analysis_summary!.topic_summaries.find(t => t.topic === 'Parking')!
+    const budget = analysis_summary!.topic_summaries.find(t => t.topic === 'Budget')!
+    expect(budget.qa_count).toBe(1)
+    // Representative exchange is resolved from the real pair (index 0), parties identified.
+    expect(parking.representative_exchanges[0]).toMatchObject({ question: 'How much parking?', asker: 'Bob', panelist: 'Jane' })
+    // Budget had no model index → code falls back to its first real pair.
+    expect(budget.representative_exchanges[0]).toMatchObject({ question: 'Why so costly?' })
+    expect(analysis_summary!.decisions).toHaveLength(1)
+  })
+
+  it('degrades gracefully to a null summary on unparseable synthesis JSON', async () => {
+    mockCallAI.mockResolvedValueOnce(aiResponse(publishedOpus))
+                .mockResolvedValueOnce(aiResponse(cleanSonnet))
+                .mockResolvedValueOnce(aiResponse('not json at all'))
+    const { extractions, analysis_summary } = await analyzeRecording(baseInput())
+    expect(analysis_summary).toBeNull()
+    expect(extractions.filter(e => e.unit_type === 'action_item')).toHaveLength(0)  // no items on failure
+    expect(extractions.filter(e => e.unit_type === 'qa_pair')).toHaveLength(2)      // pairs survive
+  })
+})
+
+describe('overallSentiment — deterministic majority/mix rule', () => {
+  it('empty → neutral', () => {
+    expect(overallSentiment({ positive: 0, neutral: 0, negative: 0, mixed: 0 })).toBe('neutral')
+  })
+  it('clear majority wins', () => {
+    expect(overallSentiment({ positive: 5, neutral: 1, negative: 0, mixed: 0 })).toBe('positive')
+    expect(overallSentiment({ positive: 0, neutral: 1, negative: 5, mixed: 0 })).toBe('negative')
+  })
+  it('balanced positive + negative → mixed', () => {
+    expect(overallSentiment({ positive: 4, neutral: 2, negative: 4, mixed: 0 })).toBe('mixed')
+  })
+  it('mostly mixed → mixed', () => {
+    expect(overallSentiment({ positive: 1, neutral: 1, negative: 0, mixed: 5 })).toBe('mixed')
   })
 })

@@ -451,6 +451,12 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Key insights summary
 - Methodology notes
 
+### Recording Q&A Report PPTX
+- Datanautix-branded deck export from a processed meeting recording
+- Executive summary, conversation themes (per-topic), sentiment overview, action items & decisions
+- Appendix slide for every Q&A pair (verbatim question + response)
+- One-click "Export to PowerPoint" from the recording report page
+
 ### Interactive HTML Reports
 - Embedded Plotly.js charts
 - Responsive design

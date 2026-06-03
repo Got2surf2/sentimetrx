@@ -39,7 +39,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .select(
       'id, org_id, created_by, dataset_id, name, session_type, meeting_date, location, language, ' +
       'setup_inputs, asr_strategy, asr_vendor_chosen, status, error_message, ' +
-      'source_duration_sec, source_size_bytes, cost_cents, coverage_report, ' +
+      'source_duration_sec, source_size_bytes, cost_cents, coverage_report, analysis_summary, ' +
       'share_token, share_enabled, share_expires_at, ' +
       'created_at, started_at, completed_at',
     )

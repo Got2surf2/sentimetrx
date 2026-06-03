@@ -94,6 +94,7 @@ export interface RecordingRow {
   cost_cents: number
 
   coverage_report: CoverageReport | null
+  analysis_summary: RecordingAnalysisSummary | null
 
   share_token: string | null
   share_enabled: boolean
@@ -149,12 +150,17 @@ export interface RecordingTranscriptRow {
 
 export type QuestionTypology = 'ask' | 'complaint' | 'commentary' | 'clarification'
 
+export type QaSentiment = 'positive' | 'neutral' | 'negative' | 'mixed'
+
 export interface QaPairPayload {
   question: string
   asker_name?: string | null
   answer: string
   panelist_name?: string | null
   question_typology: QuestionTypology
+  // Tone of the panel's answer toward the asker's concern. Optional so old
+  // extractions (pre-2026-06) parse without it; defaults to 'neutral' downstream.
+  sentiment?: QaSentiment
 }
 
 export interface QuotePayload {
@@ -213,4 +219,41 @@ export interface CoverageReport {
   flagged_count: number
   total_extractions: number
   computed_at: string                                              // ISO timestamp
+}
+
+// ── Analysis summary (meeting-level synthesis) ───────────────────────────────
+//
+// Produced by the third synthesis pass (lib/recordings/analyze.ts) after the
+// curator settles topics. One object per recording, stored on
+// recordings.analysis_summary (sql/094). Powers the deck's exec/theme/sentiment
+// slides. Action items are NOT here — they live as action_item extraction rows;
+// `decisions` live here because they're narrative, not owned units.
+
+// A representative Q&A exchange for a topic — resolved in code from the actual
+// extraction pairs (the model picks which pairs; the verbatim text + party
+// names come from the data, never hallucinated).
+export interface RecordingTopicExchange {
+  question: string
+  answer: string
+  asker?: string | null
+  panelist?: string | null
+}
+
+export interface RecordingTopicSummary {
+  topic: string                  // must match a curated extraction `topic` string
+  qa_count: number               // computed deterministically in code, not by the model
+  summary: string                // synthesizing paragraph for this cluster
+  sentiment: QaSentiment
+  representative_exchanges: RecordingTopicExchange[] // 1-2 illustrative Q&A pairs, parties identified
+}
+
+export interface RecordingAnalysisSummary {
+  executive_summary: string                          // 3-5 sentence overall narrative
+  headline: string                                   // one-line takeaway for the title/exec slide
+  sentiment_overall: QaSentiment
+  sentiment_breakdown: { positive: number; neutral: number; negative: number; mixed: number } // counts across qa_pairs
+  topic_summaries: RecordingTopicSummary[]
+  decisions: Array<{ decision: string; topic?: string | null }>
+  generated_at: string                               // ISO
+  model: string                                      // e.g. 'claude-sonnet-4-6'
 }

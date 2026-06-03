@@ -427,3 +427,14 @@ Commit-only, not pushed.
 - `docs/BOTS.md`: documented the feature under the opener section.
 
 **Verified** (`npm run dev` vs linked DB): model emits the trailer reliably; parser strips it (no marker leak); pills render under the reply and match the offered options (screenshot QC via preview tool); click path is the proven `sendMessage` handler. tsc clean. Datanautix branding untouched. Commit-only, not pushed.
+
+## 2026-06-03 — Recordings deck: polish round (tone, sizing, Q&A exchanges)
+
+**Why**: Owner review of the generated NOWOCATS deck. Three fixes before it's prospect-ready. (Code for the recordings analysis-enrichment + PPTX export feature lands in this same commit; the original WHY entry was captured by a parallel commit while this work was still local.)
+
+**What changed** (`lib/pptx/recordingDeck.ts`, `lib/recordings/{analyze,prompts/qa,types}.ts`):
+- **No opining**: synthesis prompt rewritten to a strictly neutral minutes-taker voice — the headline is now a factual subject/scope line (was an editorial "Funding Threats Cloud Broader Plans"), exec/topic summaries are descriptive only. The deck may be shared with the client/county.
+- **Representative exchanges**: theme cards now show a real Q&A pair with asker/panelist identified (resolved from the actual extraction pairs via model-chosen indexes), not two lookalike quotes.
+- **Legibility**: 12pt floor on all body text; boundary-aware truncation (`truncBoundary`) so quotes/summaries run longer and end on a sentence/word boundary instead of mid-word; card layouts retuned so nothing overflows.
+
+Verified via the read-only QC harness against the real recording (in-memory analyze, no prod writes), QC'd in LibreOffice/pdftoppm. tsc + npm test green. Commit-only, not pushed.

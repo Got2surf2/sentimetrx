@@ -15,6 +15,7 @@ import type {
   NewExtraction,
   RecordingExtractionRow,
   QaPairPayload,
+  ActionItemPayload,
 } from '@/lib/recordings/types'
 
 export interface MirrorInput {
@@ -62,7 +63,7 @@ export async function mirrorExtractionsToDataset(input: MirrorInput): Promise<Mi
   const { data: insertedExtractions, error: extractionErr } = await service
     .from('recording_extractions')
     .insert(extractionInserts)
-    .select('id, payload, topic, start_sec, source_file, confidence, flagged_for_review, flag_reason')
+    .select('id, unit_type, payload, topic, start_sec, source_file, confidence, flagged_for_review, flag_reason')
 
   if (extractionErr) {
     throw new Error(`Failed to insert recording_extractions: ${extractionErr.message}`)
@@ -81,7 +82,7 @@ export async function mirrorExtractionsToDataset(input: MirrorInput): Promise<Mi
   const flatRows = (insertedExtractions || []).map((ex, i) => ({
     dataset_id: datasetId,
     row_index: startIndex + i,
-    data: flatRowDataFromExtraction(ex as Pick<RecordingExtractionRow, 'id' | 'payload' | 'topic' | 'start_sec' | 'source_file' | 'confidence' | 'flagged_for_review' | 'flag_reason'>),
+    data: flatRowDataFromExtraction(ex as Pick<RecordingExtractionRow, 'id' | 'unit_type' | 'payload' | 'topic' | 'start_sec' | 'source_file' | 'confidence' | 'flagged_for_review' | 'flag_reason'>),
   }))
 
   if (flatRows.length > 0) {
@@ -152,8 +153,30 @@ async function ensureRecordingDataset(
   return newDataset.id as string
 }
 
-function flatRowDataFromExtraction(ex: Pick<RecordingExtractionRow, 'id' | 'payload' | 'topic' | 'start_sec' | 'source_file' | 'confidence' | 'flagged_for_review' | 'flag_reason'>): Record<string, unknown> {
-  const qa = ex.payload as QaPairPayload   // v1 = qa_pair only
+function flatRowDataFromExtraction(ex: Pick<RecordingExtractionRow, 'id' | 'unit_type' | 'payload' | 'topic' | 'start_sec' | 'source_file' | 'confidence' | 'flagged_for_review' | 'flag_reason'>): Record<string, unknown> {
+  // Action items carry a different payload shape; mirror them with their own
+  // text so TextMine doesn't choke on a missing question/answer.
+  if (ex.unit_type === 'action_item') {
+    const ai = ex.payload as ActionItemPayload
+    return {
+      extraction_id: ex.id,
+      response_text: ai.description,
+      question: null,
+      answer: null,
+      topic: ex.topic ?? 'Action Items',
+      typology: 'action_item',
+      asker: null,
+      panelist: ai.owner ?? null,
+      sentiment: 'neutral',
+      confidence: ex.confidence,
+      flagged: ex.flagged_for_review ? 'yes' : 'no',
+      flag_reason: ex.flag_reason ?? null,
+      start_sec: ex.start_sec,
+      source_file: ex.source_file ?? null,
+    }
+  }
+
+  const qa = ex.payload as QaPairPayload
   const combined = `${qa.question} → ${qa.answer}`
   return {
     extraction_id: ex.id,
@@ -164,6 +187,7 @@ function flatRowDataFromExtraction(ex: Pick<RecordingExtractionRow, 'id' | 'payl
     typology: qa.question_typology,
     asker: qa.asker_name ?? null,
     panelist: qa.panelist_name ?? null,
+    sentiment: qa.sentiment ?? 'neutral',
     confidence: ex.confidence,
     flagged: ex.flagged_for_review ? 'yes' : 'no',
     flag_reason: ex.flag_reason ?? null,

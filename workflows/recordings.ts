@@ -122,6 +122,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     .from('recordings')
     .update({
       coverage_report: coverage,
+      analysis_summary: analysis.analysis_summary,
       cost_cents: (rec.cost_cents ?? 0) + analysis.total_cost_cents,
     })
     .eq('id', recording_id)

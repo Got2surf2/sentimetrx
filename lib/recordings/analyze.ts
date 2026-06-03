@@ -16,8 +16,11 @@ import { callAI } from '@/lib/ai'
 import {
   buildQaExtractionPrompt,
   buildQaCuratorPrompt,
+  buildQaSynthesisPrompt,
   VALID_TYPOLOGIES,
+  VALID_SENTIMENTS,
   type ExtractionDraft,
+  type SynthesisInputPair,
 } from '@/lib/recordings/prompts/qa'
 import type {
   NewExtraction,
@@ -27,7 +30,12 @@ import type {
   QaSetupInputs,
   QaPairPayload,
   QuestionTypology,
+  QaSentiment,
   FlagReason,
+  ActionItemPayload,
+  RecordingAnalysisSummary,
+  RecordingTopicSummary,
+  RecordingTopicExchange,
 } from '@/lib/recordings/types'
 
 const OPUS_MODEL = 'claude-opus-4-7'
@@ -53,6 +61,11 @@ export interface AnalyzeInput {
 export interface AnalyzeResult {
   extractions: NewExtraction[]
   total_cost_cents: number   // Opus + Sonnet token cost; recorded onto recordings.cost_cents alongside ASR
+  // Meeting-level synthesis (exec summary + per-topic + decisions). null when
+  // the synthesis pass fails or there are no publishable pairs — the pipeline
+  // still completes with the Q&A pairs (graceful degrade). Persisted onto
+  // recordings.analysis_summary by the caller.
+  analysis_summary: RecordingAnalysisSummary | null
 }
 
 export async function analyzeRecording(input: AnalyzeInput): Promise<AnalyzeResult> {
@@ -149,11 +162,198 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
     }
   })
 
+  // ── Pass 3: synthesis — exec summary, per-topic, decisions, action items ───
+  // Runs over the PUBLISHED (non-flagged) pairs only, after topics are settled.
+  // Failure is non-fatal: the recording still completes with its Q&A pairs.
+  // Skip synthesis on a topic-scoped re-extract — analysis_summary + action
+  // items are whole-meeting artifacts and reanalyze(scope='topic') discards
+  // them anyway; running it here would only burn a call and append topic-only
+  // action items.
+  const published = extractions.filter(e => e.unit_type === 'qa_pair' && !e.flagged_for_review)
+  let analysis_summary: RecordingAnalysisSummary | null = null
+  let synthesisCents = 0
+  if (published.length > 0 && !input.topicScopedTo) {
+    const syn = await synthesizeQa(input, setup, published)
+    analysis_summary = syn.summary
+    synthesisCents = syn.cents
+    // Append model-proposed action items as their own extraction rows so they
+    // stay queryable + mirror into the dataset like everything else.
+    let order = extractions.length
+    for (const ai of syn.actionItems) {
+      extractions.push({
+        unit_type: 'action_item',
+        topic: ai.related_agenda_item || 'Action Items',
+        payload: ai,
+        start_sec: null,
+        end_sec: null,
+        source_file: null,
+        confidence: null,
+        flagged_for_review: false,
+        flag_reason: null,
+        sort_order: order++,
+      })
+    }
+  }
+
   const total_cost_cents =
     centsFromUsage(opusResp.usage) +
-    centsFromUsageMaybe(curatorReviews.size > 0)
+    centsFromUsageMaybe(curatorReviews.size > 0) +
+    synthesisCents
 
-  return { extractions, total_cost_cents }
+  return { extractions, total_cost_cents, analysis_summary }
+}
+
+// ── Pass 3 synthesis ──────────────────────────────────────────────────────────
+//
+// One Sonnet call. The model writes narrative (exec summary, per-topic prose,
+// decisions, action items); COUNTS are computed here deterministically so the
+// deck's numbers always reconcile to the pairs. Returns null summary on any
+// parse/call failure — the caller treats that as graceful degrade.
+async function synthesizeQa(
+  input: AnalyzeInput,
+  setup: QaSetupInputs,
+  published: NewExtraction[],
+): Promise<{ summary: RecordingAnalysisSummary | null; actionItems: ActionItemPayload[]; cents: number }> {
+  const pairs: SynthesisInputPair[] = published.map(e => {
+    const qa = e.payload as QaPairPayload
+    return {
+      topic: e.topic || 'Other',
+      typology: qa.question_typology,
+      sentiment: qa.sentiment ?? 'neutral',
+      question: qa.question,
+      answer: qa.answer,
+    }
+  })
+  // Distinct topics, in first-seen order, for exact-match labels.
+  const topics: string[] = []
+  for (const p of pairs) if (!topics.includes(p.topic)) topics.push(p.topic)
+
+  // Deterministic aggregates — never trust the model to count.
+  const sentiment_breakdown = { positive: 0, neutral: 0, negative: 0, mixed: 0 }
+  for (const p of pairs) sentiment_breakdown[p.sentiment]++
+  const qaCountByTopic = new Map<string, number>()
+  for (const p of pairs) qaCountByTopic.set(p.topic, (qaCountByTopic.get(p.topic) ?? 0) + 1)
+
+  let resp
+  try {
+    const { system, userPrompt } = buildQaSynthesisPrompt({ setup, pairs, topics, instructions: input.instructions })
+    resp = await callAI({
+      tier: 'advanced',
+      modelOverride: SONNET_MODEL,
+      maxTokens: 4000,
+      timeoutMs: 300000,
+      system: [{ type: 'text', text: system, cache: true }],
+      messages: [{ role: 'user', content: userPrompt }],
+      usage: {
+        org_id: input.org_id,
+        resource_type: 'recording',
+        resource_id: input.recording_id,
+        event_type: 'recording_synthesize',
+      },
+    })
+  } catch (e) {
+    console.error({ at: 'recordings.synthesize', msg: 'synthesis call failed', err: (e as Error)?.message })
+    return { summary: null, actionItems: [], cents: 0 }
+  }
+
+  const obj = parseJsonObject(resp.text)
+  if (!obj) {
+    console.error({ at: 'recordings.synthesize', msg: 'synthesis JSON unparseable' })
+    return { summary: null, actionItems: [], cents: 20 }
+  }
+
+  const execSummary = String(obj.executive_summary ?? '').trim()
+  const headline = String(obj.headline ?? '').trim()
+  // Code owns counts + sentiment; model owns prose. Build topic_summaries off
+  // the deterministic topic list so every topic is represented even if the
+  // model dropped one, and counts always match the pairs.
+  const modelTopics = new Map<string, Record<string, unknown>>()
+  for (const t of (obj.topic_summaries as unknown[] ?? [])) {
+    if (t && typeof t === 'object') {
+      const tt = t as Record<string, unknown>
+      const key = String(tt.topic ?? '').trim()
+      if (key) modelTopics.set(key, tt)
+    }
+  }
+  // The model picks WHICH pairs illustrate a topic (by index); the verbatim
+  // text + party names come from the actual pairs — never hallucinated.
+  const exchangeFrom = (i: number): RecordingTopicExchange => {
+    const qa = published[i].payload as QaPairPayload
+    return { question: qa.question, answer: qa.answer, asker: qa.asker_name ?? null, panelist: qa.panelist_name ?? null }
+  }
+  const topic_summaries: RecordingTopicSummary[] = topics.map(topic => {
+    const m = modelTopics.get(topic)
+    const sRaw = (m?.sentiment as QaSentiment)
+    const rawIdx = Array.isArray(m?.representative_pair_indexes) ? (m!.representative_pair_indexes as unknown[]) : []
+    const exchanges: RecordingTopicExchange[] = []
+    const seen = new Set<number>()
+    for (const raw of rawIdx) {
+      const i = Number(raw)
+      if (!Number.isInteger(i) || i < 0 || i >= published.length || seen.has(i)) continue
+      if ((published[i].topic || 'Other') !== topic) continue   // index must belong to this topic
+      exchanges.push(exchangeFrom(i)); seen.add(i)
+      if (exchanges.length >= 2) break
+    }
+    // Fallback: show the first real pair of the topic if the model gave none usable.
+    if (exchanges.length === 0) {
+      const firstIdx = published.findIndex(e => (e.topic || 'Other') === topic)
+      if (firstIdx >= 0) exchanges.push(exchangeFrom(firstIdx))
+    }
+    return {
+      topic,
+      qa_count: qaCountByTopic.get(topic) ?? 0,
+      summary: m ? String(m.summary ?? '').trim() : '',
+      sentiment: VALID_SENTIMENTS.has(sRaw) ? sRaw : 'neutral',
+      representative_exchanges: exchanges,
+    }
+  })
+
+  const decisions: Array<{ decision: string; topic: string | null }> = []
+  for (const d of (Array.isArray(obj.decisions) ? obj.decisions : [])) {
+    const dd = (d ?? {}) as Record<string, unknown>
+    const decision = String(dd.decision ?? '').trim()
+    if (!decision) continue
+    decisions.push({ decision, topic: dd.topic ? String(dd.topic).trim() : null })
+  }
+
+  const actionItems: ActionItemPayload[] = []
+  for (const a of (Array.isArray(obj.action_items) ? obj.action_items : [])) {
+    const aa = (a ?? {}) as Record<string, unknown>
+    const description = String(aa.description ?? '').trim()
+    if (!description) continue
+    actionItems.push({
+      description,
+      owner: aa.owner ? String(aa.owner).trim() : null,
+      due_date: aa.due_date ? String(aa.due_date).trim() : null,
+      related_agenda_item: aa.related_agenda_item ? String(aa.related_agenda_item).trim() : null,
+    })
+  }
+
+  const summary: RecordingAnalysisSummary = {
+    executive_summary: execSummary,
+    headline,
+    sentiment_overall: overallSentiment(sentiment_breakdown),
+    sentiment_breakdown,
+    topic_summaries,
+    decisions,
+    generated_at: new Date().toISOString(),
+    model: SONNET_MODEL,
+  }
+  return { summary, actionItems, cents: 25 }
+}
+
+// Majority tone across pairs. Ties or a meaningful pos+neg split → 'mixed'.
+// Exported for unit testing — deterministic, no I/O.
+export function overallSentiment(b: { positive: number; neutral: number; negative: number; mixed: number }): QaSentiment {
+  const total = b.positive + b.neutral + b.negative + b.mixed
+  if (total === 0) return 'neutral'
+  if (b.mixed > total / 2) return 'mixed'
+  // Both clear positive and clear negative presence → mixed read.
+  if (b.positive > 0 && b.negative > 0 && Math.abs(b.positive - b.negative) <= total * 0.2) return 'mixed'
+  const max = Math.max(b.positive, b.neutral, b.negative)
+  if (max === b.negative) return 'negative'
+  if (max === b.positive) return 'positive'
+  return 'neutral'
 }
 
 // ── Parsers ──────────────────────────────────────────────────────────────────
@@ -172,12 +372,15 @@ function parseQaExtractions(text: string): ExtractionDraft[] {
     const question = String(payload.question ?? '').trim()
     const answer = String(payload.answer ?? '').trim()
     if (!question || !answer) continue
+    const sentimentRaw = payload.sentiment as QaSentiment
+    const sentiment = VALID_SENTIMENTS.has(sentimentRaw) ? sentimentRaw : 'neutral'
     const qaPayload: QaPairPayload = {
       question,
       asker_name: payload.asker_name ? String(payload.asker_name) : null,
       answer,
       panelist_name: payload.panelist_name ? String(payload.panelist_name) : null,
       question_typology: typology,
+      sentiment,
     }
     drafts.push({
       unit_type: 'qa_pair',

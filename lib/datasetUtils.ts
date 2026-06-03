@@ -503,6 +503,7 @@ export function buildRecordingSchema(): SchemaConfig {
     { field: 'answer',          type: 'open-ended',  sqt: 'open-text', label: 'Answer' },
     { field: 'topic',           type: 'categorical', label: 'Topic' },
     { field: 'typology',        type: 'categorical', label: 'Question Type' },
+    { field: 'sentiment',       type: 'categorical', label: 'Sentiment' },
     { field: 'asker',           type: 'categorical', label: 'Asker' },
     { field: 'panelist',        type: 'categorical', label: 'Panelist' },
     { field: 'confidence',      type: 'numeric',     label: 'Confidence', min: 0, max: 1 },
