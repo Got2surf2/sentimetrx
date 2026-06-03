@@ -351,3 +351,14 @@ Keyword tier only (free). No app/prod behavior change. Commit-only, not pushed.
 **Why**: Platform admin couldn't find how to add users to a newly-created org — the invite controls existed on `/admin/clients/[id]` but the "+ New Invite" / "+ Bulk Invite" buttons used `text-slate-300` (near-white) on a light card, so they were effectively invisible. User management is invite-only today (no direct password-create path).
 
 **What changed** (`app/admin/clients/[id]/AdminClientDetail.tsx`): "+ New Invite" → solid cyan CTA (dark text, matches app primary buttons); "+ Bulk Invite" → dark text on medium gray; both bump xs→sm and switch to a muted "Cancel" style when their form is open. Helper line darkened (gray-400→500). CSS-only, no behavior change. tsc clean. Commit-only, not pushed.
+
+## 2026-06-03 — Agents: respondent stays Anonymous when agent doesn't ask for a name
+
+**Why**: Conversations list was labelling respondents with their first chat message when it was short/capitalized (≤3 words) — even for agents configured NOT to ask for a name. A reply like "Great" or "Not really" became the person's "name". Rule: if the agent isn't programmed to ask, the respondent is Anonymous.
+
+**What changed**:
+- `app/api/bots/[id]/conversations/route.ts` — load `config`, compute `askNameOn = config.askName !== 'false'`; when off, skip the persona-name lookup AND the regex heuristics (`my name is` / short-capitalized-first-message / bot-greeting extract) → `user_name` empty → client shows "Anonymous". Applies to historical rows too.
+- `lib/chatCore.ts` — gate the post-response AI name extractor (`captureName`) on `askNameOn`, so no name is mined/persisted (and no Haiku call spent) when the agent doesn't ask. Widget `user_name` path already only fires when askName is on.
+- `docs/BOTS.md` — documented both gates.
+
+Swept the class: single-session route returns only turns (no derivation); insights-deck `split` is word-count, not a name. tsc clean. Commit-only, not pushed.

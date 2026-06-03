@@ -1144,8 +1144,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }
         }
 
+        // Only mine a name from chat content when the agent is configured
+        // to ask for one. Otherwise the respondent stays Anonymous — we
+        // must not infer a name they were never asked to give.
+        const askNameOn = (bot.config as any)?.askName !== 'false'
         const userTurnCountForName = lastUserMsg ? (turnBase / 2) + 1 : 0
-        if (session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
+        if (askNameOn && session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
           const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
           ;(async function captureName() {
             try {

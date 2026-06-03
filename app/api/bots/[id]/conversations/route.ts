@@ -31,9 +31,16 @@ export async function GET(req: NextRequest, props: Params) {
   const userOrgId = (userData as any)?.org_id as string | null
 
   // Verify bot exists + access check
-  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, config').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Whether this agent is configured to ask for the respondent's name.
+  // When it isn't, respondents stay Anonymous — we must NOT derive a name
+  // from their message content (e.g. a short first reply that happens to
+  // look like a name). Mirrors components/ui/ChatBot.tsx: off only when
+  // the string is explicitly 'false'.
+  const askNameOn = (bot.config as any)?.askName !== 'false'
 
   // Use service role for reads — RLS would otherwise block admin cross-org.
   // READ_PHASE3 selects the new substrate (conversations + conversation_turns)
@@ -101,7 +108,8 @@ export async function GET(req: NextRequest, props: Params) {
         // Primary source: agent_session_personas.name (from extractor).
         // Heuristic regex below populates as fallback if name was never
         // captured (older sessions, or extractor couldn't find a name).
-        user_name: nameMap[t.session_id] || '',
+        // Both are suppressed when the agent doesn't ask for a name.
+        user_name: askNameOn ? (nameMap[t.session_id] || '') : '',
         flags: [], has_deflection: false, persona: personaMap[t.session_id] || null,
       }
     }
@@ -111,8 +119,8 @@ export async function GET(req: NextRequest, props: Params) {
     if (t.created_at > s.last_at) s.last_at = t.created_at
     // Capture first user message
     if (t.role === 'user' && !s.first_message) s.first_message = t.content.slice(0, 120)
-    // Detect name from multiple sources
-    if (!s.user_name) {
+    // Detect name from multiple sources — only when the agent asks for one.
+    if (askNameOn && !s.user_name) {
       // "My name is X" pattern
       if (t.role === 'user' && /^my name is /i.test(t.content)) {
         s.user_name = t.content.replace(/^my name is /i, '').replace(/[.!].*/, '').trim()
