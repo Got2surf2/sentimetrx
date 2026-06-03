@@ -37,6 +37,15 @@ function fmtRel(iso: string | null): string {
 const CARD = 'background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:16px'
 const H2 = 'font-size:15px;font-weight:700;color:' + INK + ';margin:0 0 12px'
 
+// Conversation-depth chip for open questions — deeper chats get a stronger teal.
+function depthChip(pairs: number): { bg: string; fg: string; label: string } {
+  const label = '💬 ' + pairs + ' exchange' + (pairs === 1 ? '' : 's')
+  if (pairs >= 7) return { bg: '#0F7173', fg: '#ffffff', label }
+  if (pairs >= 4) return { bg: '#99E2DD', fg: '#0B5450', label }
+  if (pairs >= 2) return { bg: '#CCFBF1', fg: '#0F766E', label }
+  return { bg: '#F3F4F6', fg: '#9CA3AF', label }
+}
+
 // A flex-1 progress bar matching ReportClient's <Bar>.
 function bar(value: number, max: number, color: string = TEAL): string {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
@@ -227,7 +236,9 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
       let det = '<details style="border-bottom:1px solid #f3f4f6;padding:8px 0">'
         + '<summary style="cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none">'
         + '<span style="font-size:9px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 6px;border-radius:6px;flex-shrink:0">' + esc(q.classification.replace(/_/g, ' ')) + '</span>'
-        + '<span style="font-size:13px;color:' + INK + '">' + esc(q.restated || q.question) + '</span></summary>'
+      const dc = depthChip(q.sessionPairs)
+      det += '<span title="How deep the conversation was — deeper chats that still hit a wall are higher-value gaps" style="font-size:9px;font-weight:700;color:' + dc.fg + ';background:' + dc.bg + ';padding:1px 6px;border-radius:6px;flex-shrink:0;white-space:nowrap">' + esc(dc.label) + '</span>'
+      det += '<span style="font-size:13px;color:' + INK + '">' + esc(q.restated || q.question) + '</span></summary>'
         + '<div style="padding-left:12px;margin-top:6px;font-size:12px;color:' + MUTE + ';line-height:1.5">'
       if (q.context) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' BEFORE</span> <span style="color:#374151">' + esc(q.context.slice(0, 240)) + '</span></div>'
       det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#0369A1;background:#E0F2FE;padding:1px 6px;border-radius:6px">USER' + (q.language && q.language !== 'en' ? ' · ' + esc(q.language) : '') + '</span> <span style="color:#374151">' + esc(q.question) + '</span></div>'
@@ -257,7 +268,12 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     let row = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'
     row += insightBlocks.map(b =>
       '<div style="' + CARD + '"><div style="' + H2 + '">' + esc(b.title) + '</div>'
-      + '<ul style="margin:0;padding-left:18px">' + b.items.map(it => '<li style="font-size:12px;color:#374151;margin-bottom:6px;line-height:1.5">' + esc(it) + '</li>').join('') + '</ul></div>'
+      + b.items.map((it, i) =>
+          '<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0' + (i > 0 ? ';border-top:1px solid #f3f4f6' : '') + '">'
+          + '<span style="width:6px;height:6px;border-radius:50%;background:' + TEAL + ';margin-top:6px;flex-shrink:0"></span>'
+          + '<span style="font-size:12px;color:#374151;line-height:1.5">' + esc(it) + '</span></div>'
+        ).join('')
+      + '</div>'
     ).join('')
     row += '</div>'
     parts.push(row)

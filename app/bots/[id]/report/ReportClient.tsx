@@ -30,6 +30,16 @@ function fmtRel(iso: string | null): string {
   return fmtDate(iso)
 }
 
+// Conversation-depth chip styling for open questions — deeper (more engaged)
+// conversations get a stronger teal so the high-value gaps stand out.
+function depthChip(pairs: number): { bg: string; fg: string; label: string } {
+  const label = '💬 ' + pairs + ' exchange' + (pairs === 1 ? '' : 's')
+  if (pairs >= 7) return { bg: '#0F7173', fg: '#ffffff', label }
+  if (pairs >= 4) return { bg: '#99E2DD', fg: '#0B5450', label }
+  if (pairs >= 2) return { bg: '#CCFBF1', fg: '#0F766E', label }
+  return { bg: '#F3F4F6', fg: '#9CA3AF', label }
+}
+
 const card: React.CSSProperties = { background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, padding: '18px 20px', marginBottom: 16 }
 const h2: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: INK, marginBottom: 12 }
 
@@ -317,6 +327,7 @@ export default function ReportClient() {
             <details key={i} style={{ borderBottom: '1px solid #f3f4f6', padding: '8px 0' }}>
               <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, listStyle: 'none' }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{q.classification.replace(/_/g, ' ')}</span>
+                {(() => { const d = depthChip(q.sessionPairs); return <span title="How deep the conversation was — deeper chats that still hit a wall are higher-value gaps" style={{ fontSize: 9, fontWeight: 700, color: d.fg, background: d.bg, padding: '1px 6px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>{d.label}</span> })()}
                 <span style={{ fontSize: 13, color: INK }}>{q.restated || q.question}</span>
               </summary>
               <div style={{ paddingLeft: 12, marginTop: 6, fontSize: 12, color: MUTE, lineHeight: 1.5 }}>
@@ -346,9 +357,14 @@ export default function ReportClient() {
           ].filter(b => b.items.length > 0).map(b => (
             <div key={b.title} style={card}>
               <div style={h2}>{b.title}</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {b.items.map((it, i) => <li key={i} style={{ fontSize: 12, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>{it}</li>)}
-              </ul>
+              <div>
+                {b.items.map((it, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: TEAL, marginTop: 6, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>{it}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>

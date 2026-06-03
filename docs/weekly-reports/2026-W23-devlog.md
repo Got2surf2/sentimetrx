@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: open-question depth chips + bulleted insight lists
+
+**Why**: Owner — make Open Questions richer, and the insight lists (Most Common Topics / Knowledge Gaps / Recommendations) had no clear separation between multi-line entries.
+
+**What changed**:
+- **Conversation-depth metadata** on each open question: `open[].sessionPairs` = the Q&A-pair count of the session that raised it (`buildExchanges(session).length`). Rendered as a color-coded chip (`depthChip`) next to the classification badge — gray (1 exchange / drive-by) → light teal → deep teal (7+ / engaged). Surfaces that an unanswered question from a long, engaged chat is a higher-value gap. Cache `STUDY_SCHEMA_VERSION` bumped to v3.
+- **Bulleted insight lists**: replaced the plain `<ul>` with rows that carry a teal bullet dot + a 1px top-border divider between entries, so multi-line items read as distinct. (`ReportClient.tsx` + `lib/agentStudyHtml.ts`.)
+
+tsc clean; Playwright screenshot confirms depth chips scale by engagement and the insight entries are clearly separated.
+
 ## 2026-06-03 — Agent Study: version the cache key so shape changes self-heal
 
 **Why**: `agent_study_cache` keys on pair-count + focuses + intents, not the object shape. The day's changes added fields (`totalSessions`, `answerRatePct`/`answeredPairs`, `open[].after`) and dropped language intents — but a study cached before the change kept the same key, so the report would serve an old-shape object and render `undefined` (e.g. "Conversations: undefined", no Answer Rate tile) until a manual force-refresh.

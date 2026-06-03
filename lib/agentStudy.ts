@@ -82,7 +82,7 @@ export interface AgentStudy {
   openQuestions: {
     byClassification: { classification: string; count: number }[]
     byStatus: { status: string; count: number }[]
-    open: { question: string; restated: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string }[]
+    open: { question: string; restated: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string; sessionPairs: number }[]
     autoFiltered: number   // flagged but validated as not-a-real-question
     filteredExamples: { question: string; reason: string }[]
   }
@@ -437,7 +437,8 @@ Return ONLY a JSON array, no markdown:
 // old-shape object that renders with missing/undefined fields.
 //   v2 (2026-06-03): totalSessions, answerRatePct/answeredPairs, open[].after,
 //   language-routing intents excluded.
-const STUDY_SCHEMA_VERSION = 'v2'
+//   v3 (2026-06-03): open[].sessionPairs (conversation depth per open question).
+const STUDY_SCHEMA_VERSION = 'v3'
 function cacheKeyFor(pairTotal: number, bot: BotRow): string {
   const h = crypto.createHash('sha1')
   h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
@@ -594,7 +595,11 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   rawOpen.forEach((q: any, i: number) => {
     const v = verdicts[i] || { valid: true, restated: '', reason: '' }
     if (v.valid) {
-      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), after: findFollowingAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at })
+      // How deep was the conversation this question came from? An unanswered
+      // question from a long, engaged chat is a higher-value gap than one from a
+      // one-and-done — the report color-codes by this.
+      const sessionPairs = buildExchanges(sessions.get(q.session_id) || []).length
+      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), after: findFollowingAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at, sessionPairs })
     } else {
       filtered.push({ question: q.user_message, reason: v.reason })
     }
