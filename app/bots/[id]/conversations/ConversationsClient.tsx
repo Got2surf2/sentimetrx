@@ -62,6 +62,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   var [filterFlag, setFilterFlag] = useState<string>('all')
   var [filterTime, setFilterTime] = useState<number>(0) // hours, 0 = all
   var [filterSearch, setFilterSearch] = useState('')
+  var [showExcluded, setShowExcluded] = useState(false) // collapse the excluded/low-signal group by default
 
   useEffect(function() {
     fetch('/api/bots/' + botId).then(function(r) { return r.json() }).then(function(d) {
@@ -110,7 +111,15 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   // shouldn't crowd the real conversations at the top. Stable sort preserves the
   // server's recency order within each group.
   var isIgnored = function(s: Session) { return s.review_status === 'auto_flagged' || s.review_status === 'excluded' }
-  filtered = filtered.slice().sort(function(a, b) { return (isIgnored(a) ? 1 : 0) - (isIgnored(b) ? 1 : 0) })
+  // "Set aside" = excluded/flagged conversations PLUS low-signal drive-bys
+  // (<=2 turns: a chip tap or one-liner that never became a real exchange).
+  // These collapse into a toggleable box so the main grid shows only the
+  // conversations worth reading. Only split on the default "All" view — when a
+  // specific flag filter is active, show exactly what was asked for.
+  var isSetAside = function(s: Session) { return isIgnored(s) || s.turn_count <= 2 }
+  var splitView = filterFlag === 'all'
+  var includedList = splitView ? filtered.filter(function(s) { return !isSetAside(s) }) : filtered
+  var setAsideList = splitView ? filtered.filter(isSetAside) : []
 
   async function loadSession(sid: string) {
     setSelectedSession(sid)
@@ -195,18 +204,6 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
   }
 
-  var fmtRelative = function(iso: string) {
-    var diff = Date.now() - new Date(iso).getTime()
-    var mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return mins + 'm ago'
-    var hrs = Math.floor(mins / 60)
-    if (hrs < 24) return hrs + 'h ago'
-    var days = Math.floor(hrs / 24)
-    if (days < 7) return days + 'd ago'
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  }
-
   var avatar = botConfig.avatarLetter || (botName ? botName.charAt(0).toUpperCase() : 'A')
   var headerGrad = botConfig.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
   var avatarGrad = botConfig.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
@@ -223,6 +220,74 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       color: active ? 'white' : '#6b7280',
       transition: 'all 0.15s',
     }
+  }
+
+  var renderCard = function(s: Session) {
+    var persona = s.persona
+    var personaLabel = ''
+    if (persona) {
+      var parts: string[] = []
+      if (persona.life_stage?.value) parts.push(persona.life_stage.value)
+      if (persona.occupation?.value) parts.push(persona.occupation.value)
+      if (persona.location_type?.value) parts.push(persona.location_type.value)
+      personaLabel = parts.join(' · ')
+    }
+    return (
+      <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s', opacity: isIgnored(s) ? 0.55 : 1 }}>
+        {/* Card header — clickable */}
+        <button onClick={function() { loadSession(s.session_id) }}
+          style={{ display: 'block', width: '100%', padding: '14px 16px 10px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.user_name ? '#E0F2FE' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: s.user_name ? '#0369A1' : '#9CA3AF' }}>
+                {s.user_name ? s.user_name.charAt(0).toUpperCase() : '?'}
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{s.user_name || 'Anonymous'}</span>
+            </div>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>{fmtDate(s.started_at)}</span>
+          </div>
+          <p style={{ fontSize: 12, color: '#6b7280', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {s.first_message || '(no message)'}
+          </p>
+        </button>
+        {/* Card footer — metadata + delete */}
+        <div style={{ padding: '8px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>{s.turn_count} turns</span>
+            {personaLabel && <span style={{ fontSize: 10, color: '#0F7173', background: '#E0F7F7', padding: '1px 6px', borderRadius: 8 }}>{personaLabel}</span>}
+            {s.has_deflection && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>}
+            {s.review_status === 'auto_flagged' && <span title={'Auto-flagged: ' + (s.review_reasons || []).join(', ') + ' — excluded from reports until reviewed'} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#FEF3C7', color: '#B45309' }}>⚑ Review{s.review_reasons && s.review_reasons.length ? ': ' + s.review_reasons.join(', ') : ''}</span>}
+            {s.review_status === 'excluded' && <span title="Excluded from reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#F3F4F6', color: '#6b7280' }}>Excluded</span>}
+            {s.review_status === 'approved' && <span title="Approved for reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#D1FAE5', color: '#059669' }}>✓ Approved</span>}
+            {s.flags.map(function(f) {
+              var c = getFlagStyle(f)
+              return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
+            })}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {s.review_status === 'auto_flagged' && (
+              <>
+                <button onClick={function() { reviewSession(s.session_id, 'approve') }} title="Include this conversation in reports"
+                  style={{ background: '#D1FAE5', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Approve</button>
+                <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Confirm junk — keep out of reports"
+                  style={{ background: '#FEE2E2', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
+              </>
+            )}
+            {s.review_status === 'clean' && (
+              <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Exclude this conversation from reports"
+                style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
+            )}
+            {(s.review_status === 'excluded' || s.review_status === 'approved') && (
+              <button onClick={function() { reviewSession(s.session_id, 'reset') }} title="Undo the review decision"
+                style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Reset</button>
+            )}
+            <button onClick={function() { deleteSession(s.session_id) }}
+              style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}
+              title="Delete conversation">&times;</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -311,76 +376,29 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>{sessions.length === 0 ? 'Conversations will appear here once users start chatting.' : 'Try adjusting your filters.'}</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
-          {filtered.map(function(s) {
-            var persona = s.persona
-            var personaLabel = ''
-            if (persona) {
-              var parts: string[] = []
-              if (persona.life_stage?.value) parts.push(persona.life_stage.value)
-              if (persona.occupation?.value) parts.push(persona.occupation.value)
-              if (persona.location_type?.value) parts.push(persona.location_type.value)
-              personaLabel = parts.join(' · ')
-            }
-
-            return (
-              <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s', opacity: isIgnored(s) ? 0.55 : 1 }}>
-                {/* Card header — clickable */}
-                <button onClick={function() { loadSession(s.session_id) }}
-                  style={{ display: 'block', width: '100%', padding: '14px 16px 10px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f3f4f6' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.user_name ? '#E0F2FE' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: s.user_name ? '#0369A1' : '#9CA3AF' }}>
-                        {s.user_name ? s.user_name.charAt(0).toUpperCase() : '?'}
-                      </div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{s.user_name || 'Anonymous'}</span>
-                    </div>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{fmtRelative(s.started_at)}</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: '#6b7280', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.first_message || '(no message)'}
-                  </p>
-                </button>
-                {/* Card footer — metadata + delete */}
-                <div style={{ padding: '8px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{s.turn_count} turns</span>
-                    {personaLabel && <span style={{ fontSize: 10, color: '#0F7173', background: '#E0F7F7', padding: '1px 6px', borderRadius: 8 }}>{personaLabel}</span>}
-                    {s.has_deflection && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>}
-                    {s.review_status === 'auto_flagged' && <span title={'Auto-flagged: ' + (s.review_reasons || []).join(', ') + ' — excluded from reports until reviewed'} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#FEF3C7', color: '#B45309' }}>⚑ Review{s.review_reasons && s.review_reasons.length ? ': ' + s.review_reasons.join(', ') : ''}</span>}
-                    {s.review_status === 'excluded' && <span title="Excluded from reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#F3F4F6', color: '#6b7280' }}>Excluded</span>}
-                    {s.review_status === 'approved' && <span title="Approved for reports by a reviewer" style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#D1FAE5', color: '#059669' }}>✓ Approved</span>}
-                    {s.flags.map(function(f) {
-                      var c = getFlagStyle(f)
-                      return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                    {s.review_status === 'auto_flagged' && (
-                      <>
-                        <button onClick={function() { reviewSession(s.session_id, 'approve') }} title="Include this conversation in reports"
-                          style={{ background: '#D1FAE5', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Approve</button>
-                        <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Confirm junk — keep out of reports"
-                          style={{ background: '#FEE2E2', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
-                      </>
-                    )}
-                    {s.review_status === 'clean' && (
-                      <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Exclude this conversation from reports"
-                        style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
-                    )}
-                    {(s.review_status === 'excluded' || s.review_status === 'approved') && (
-                      <button onClick={function() { reviewSession(s.session_id, 'reset') }} title="Undo the review decision"
-                        style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Reset</button>
-                    )}
-                    <button onClick={function() { deleteSession(s.session_id) }}
-                      style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}
-                      title="Delete conversation">&times;</button>
-                  </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+            {includedList.map(renderCard)}
+          </div>
+          {includedList.length === 0 && setAsideList.length > 0 && (
+            <div style={{ textAlign: 'center', padding: 24, color: '#9ca3af', fontSize: 13 }}>No primary conversations — everything here is excluded or low-signal (toggle below).</div>
+          )}
+          {setAsideList.length > 0 && (
+            <div style={{ marginTop: 28 }}>
+              <button onClick={function() { setShowExcluded(!showExcluded) }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: '#F9FAFB', border: '1px dashed #d1d5db', borderRadius: 12, padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 12, color: '#6b7280', display: 'inline-block', transform: showExcluded ? 'rotate(90deg)' : 'none' }}>&#9654;</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Excluded &amp; low-signal ({setAsideList.length})</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{setAsideList.filter(function(s) { return !isIgnored(s) }).length} low-signal (&le;2 turns) &middot; {setAsideList.filter(isIgnored).length} flagged/excluded &middot; not counted in reports</span>
+              </button>
+              {showExcluded && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12, marginTop: 12 }}>
+                  {setAsideList.map(renderCard)}
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* ═══ CONVERSATION MODAL ═══ */}

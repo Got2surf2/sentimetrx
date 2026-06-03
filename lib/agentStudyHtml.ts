@@ -243,7 +243,7 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
       if (q.context) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' BEFORE</span> <span style="color:#374151">' + esc(q.context.slice(0, 240)) + '</span></div>'
       det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#0369A1;background:#E0F2FE;padding:1px 6px;border-radius:6px">USER' + (q.language && q.language !== 'en' ? ' · ' + esc(q.language) : '') + '</span> <span style="color:#374151">' + esc(q.question) + '</span></div>'
       if (q.after) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' AFTER</span> <span style="color:#374151">' + esc(q.after.slice(0, 280)) + '</span></div>'
-      det += 'Logged ' + fmtRel(q.createdAt)
+      det += 'Logged ' + fmtDate(q.createdAt)
       if (q.suggestedKb) det += '<div style="margin-top:4px;color:#374151"><strong>Suggested KB addition:</strong> ' + esc(q.suggestedKb) + '</div>'
       det += '</div></details>'
       return det

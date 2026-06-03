@@ -354,7 +354,7 @@ export default function ReportClient() {
                 {q.context && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} BEFORE</span> <span style={{ color: '#374151' }}>{q.context.slice(0, 240)}</span></div>}
                 <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '1px 6px', borderRadius: 6 }}>USER{q.language && q.language !== 'en' ? ' · ' + q.language : ''}</span> <span style={{ color: '#374151' }}>{q.question}</span></div>
                 {q.after && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} AFTER</span> <span style={{ color: '#374151' }}>{q.after.slice(0, 280)}</span></div>}
-                Logged {fmtRel(q.createdAt)}
+                Logged {fmtDate(q.createdAt)}
                 {q.suggestedKb && <div style={{ marginTop: 4, color: '#374151' }}><strong>Suggested KB addition:</strong> {q.suggestedKb}</div>}
               </div>
             </details>

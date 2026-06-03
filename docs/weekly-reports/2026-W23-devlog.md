@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Transcripts: included vs set-aside split + absolute timestamps
+
+**Why**: Owner — the Transcripts grid was cluttered with low-signal drive-bys (≤2-turn "Learn" chip taps) and excluded/flagged conversations mixed in; relative "1d ago / 3d ago" times read as odd.
+
+**What changed** (`ConversationsClient.tsx`):
+- Extracted the card into `renderCard` and split the default ("All") view into **Included** (the conversations worth reading) and a **Set-aside** group = excluded/auto-flagged **plus** low-signal drive-bys (`turn_count <= 2`). Set-aside collapses into a toggleable, dashed-border box (collapsed by default) with a count breakdown ("N low-signal · M flagged/excluded · not counted in reports"). Specific flag filters (Flagged/Clean/Needs review) still show their exact set, unsplit.
+- Card timestamps now use the existing `fmtDate` (absolute date + time) instead of relative "Xd ago". Open Questions "Logged" (report + baked HTML) likewise switched to a date. Removed the now-unused `fmtRelative` helper.
+
+tsc clean.
+
 ## 2026-06-03 — Agent Study: PDF export (flat summary, no drill-downs)
 
 **Why**: Owner wants to hand out the report as a PDF without giving recipients the interactive drill-downs (real conversation snippets, before/after, suggested-KB).
