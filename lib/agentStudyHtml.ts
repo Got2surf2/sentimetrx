@@ -20,7 +20,7 @@ const DOT_COLOR: Record<string, string> = { green: '#059669', amber: '#D97706', 
 // Datanautix wordmark (data = teal, nautix = orange) — the company brand on
 // exported/shared reports, per the deck-export branding rule in CLAUDE.md.
 const DN_WORDMARK = '<span style="font-weight:800;font-size:17px;letter-spacing:-0.3px;white-space:nowrap;flex-shrink:0">'
-  + '<span style="color:#0F7173">data</span><span style="color:#9CA3AF">·</span><span style="color:#E8632A">nautix</span></span>'
+  + '<span style="color:#0F7173">data</span><span style="color:#E8632A">nautix</span></span>'
 
 function esc(s: string): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

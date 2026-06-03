@@ -49,7 +49,12 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
   const html = renderAgentStudyHtml(study)
 
   const puppeteer = (await import('puppeteer-core')).default
-  const onServerless = !!process.env.VERCEL || !!process.env.AWS_REGION
+  // @sparticuz/chromium ships a LINUX chromium binary and only runs on the
+  // Linux serverless runtime. Key off the OS, NOT process.env.VERCEL — .env.local
+  // sets VERCEL=1 to mimic prod, which would otherwise make local dev try to
+  // exec the Linux binary on macOS (spawn ENOEXEC). On Linux (Vercel) use
+  // @sparticuz; on macOS/Windows dev use an installed Chrome.
+  const onServerless = process.platform === 'linux'
 
   let browser
   try {

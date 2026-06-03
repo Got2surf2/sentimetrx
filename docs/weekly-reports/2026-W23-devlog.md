@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study PDF: fix local launch + wordmark spelling
+
+**Why**: The PDF button threw "PDF engine failed to start" locally (`spawn ENOEXEC`) — `.env.local` sets `VERCEL=1`, so the route tried to exec the Linux `@sparticuz/chromium` binary on macOS. Also: owner says the brand is "datanautix", not "data·nautix".
+
+**What changed**:
+- `app/api/bots/[id]/study/pdf/route.ts`: detect the serverless runtime by `process.platform === 'linux'` instead of `process.env.VERCEL`, so macOS/Windows dev uses an installed local Chrome and only the actual Linux Vercel runtime uses `@sparticuz/chromium`.
+- Wordmark dropped the middle dot → "datanautix" (data=teal, nautix=orange) in `ReportClient.tsx` + `lib/agentStudyHtml.ts`. (The PPTX deck still uses the dotted form per CLAUDE.md — flagged to owner.)
+
+tsc clean.
+
 ## 2026-06-03 — Agent Study: server-rendered PDF (replaces browser print)
 
 **Why**: The first PDF button used `window.print()` — a browser print dialog whose output varies by browser/OS (Safari ≠ Chrome) and loses formatting. Owner wanted a proper, consistent PDF.

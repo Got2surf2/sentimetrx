@@ -176,7 +176,7 @@ export default function ReportClient() {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-          <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}><span style={{ color: '#0F7173' }}>data</span><span style={{ color: '#9CA3AF' }}>·</span><span style={{ color: '#E8632A' }}>nautix</span></span>
+          <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}><span style={{ color: '#0F7173' }}>data</span><span style={{ color: '#E8632A' }}>nautix</span></span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
           <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
