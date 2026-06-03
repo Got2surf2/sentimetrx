@@ -117,15 +117,18 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
   const dailyActive = s.health.dailyActivity.filter(d => d.conversations > 0 || d.opens > 0).slice(-21)
   if (dailyActive.length > 1) {
     const dailyMax = Math.max(...dailyActive.map(d => Math.max(d.conversations, d.opens)), 1)
+    // Bar width scales to the number of days (fat when few, capped when many).
+    const barW = Math.max(12, Math.min(40, Math.round(560 / dailyActive.length)))
+    const opensW = Math.max(6, Math.round(barW * 0.5))
     let chart = '<div style="' + CARD + '"><div style="' + H2 + '">Activity Over Time</div>'
       + '<div style="display:flex;align-items:flex-end;gap:6px;height:120px;padding:8px 0">'
     chart += dailyActive.map(d => {
       const opensBar = showOpens
-        ? '<div style="width:5px;height:' + Math.round((d.opens / dailyMax) * 90) + 'px;background:#D7E3E3;border-radius:2px"></div>'
+        ? '<div style="width:' + opensW + 'px;height:' + Math.round((d.opens / dailyMax) * 90) + 'px;background:#D7E3E3;border-radius:3px"></div>'
         : ''
-      const convBar = '<div style="width:7px;height:' + Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px;background:' + TEAL + ';border-radius:2px"></div>'
+      const convBar = '<div style="width:' + barW + 'px;height:' + Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px;background:' + TEAL + ';border-radius:3px"></div>'
       return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="' + esc(d.date) + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '') + '">'
-        + '<div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:90px">' + opensBar + convBar + '</div>'
+        + '<div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px;height:90px">' + opensBar + convBar + '</div>'
         + '<span style="font-size:9px;color:' + MUTE + '">' + esc(d.date.slice(5)) + '</span></div>'
     }).join('')
     chart += '</div><div style="font-size:10px;color:' + MUTE + '">' + (showOpens ? 'Teal = conversations · light = widget opens' : 'Conversations started per day') + '</div></div>'

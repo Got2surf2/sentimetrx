@@ -127,6 +127,9 @@ export default function ReportClient() {
   const entMax = Math.max(...s.entities.map(e => e.mentions), 1)
   const dailyActive = s.health.dailyActivity.filter(d => d.conversations > 0 || d.opens > 0).slice(-21)
   const dailyMax = Math.max(...dailyActive.map(d => Math.max(d.conversations, d.opens)), 1)
+  // Bar width scales to the number of days: fat bars when there are only a few,
+  // capped so a 3-week span stays readable. (Was a fixed thin 7px.)
+  const barW = Math.max(12, Math.min(40, Math.round(560 / dailyActive.length)))
   // The widget-open beacon starts logging at deploy, so until it has recorded
   // at least as many opens as we have conversations, its data is incomplete —
   // hide Widget Opens + Response Rate (and the opens overlay) rather than show a
@@ -208,9 +211,9 @@ export default function ReportClient() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120, padding: '8px 0' }}>
             {dailyActive.map(d => (
               <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={d.date + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '')}>
-                <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 90 }}>
-                  {showOpens && <div style={{ width: 5, height: Math.round((d.opens / dailyMax) * 90) + 'px', background: '#D7E3E3', borderRadius: 2 }} />}
-                  <div style={{ width: 7, height: Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px', background: TEAL, borderRadius: 2 }} />
+                <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 90 }}>
+                  {showOpens && <div style={{ width: Math.max(6, Math.round(barW * 0.5)), height: Math.round((d.opens / dailyMax) * 90) + 'px', background: '#D7E3E3', borderRadius: 3 }} />}
+                  <div style={{ width: barW, height: Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px', background: TEAL, borderRadius: 3 }} />
                 </div>
                 <span style={{ fontSize: 9, color: MUTE }}>{d.date.slice(5)}</span>
               </div>

@@ -9,6 +9,7 @@
 - **Beacon-hide**: Widget Opens + Response Rate (+ activity-chart opens overlay + methodology line) only render when `impressions >= totalSessions` (`showOpens`). Until the beacon has real coverage they're omitted instead of showing 1/3600%. (`ReportClient.tsx`, `lib/agentStudyHtml.ts`, `lib/pptx/agentStudyDeck.ts`.)
 - **Open questions before + after**: added `findFollowingAgentLine` + `open[].after` so the report shows AGENT BEFORE → USER → AGENT AFTER (the uncertain reply that got logged). Caption "validated" → "unanswered".
 - **Transcripts reorder** (`ConversationsClient.tsx`): auto-flagged + excluded sessions stable-sort to the bottom and dim to 0.55 opacity — still reachable for review, out of the way.
+- **Wider activity bars**: the Activity Over Time bar width now scales to the day count (`barW = clamp(12..40, 560/days)`) instead of a fixed thin 7px — fat bars on short spans, capped for a 3-week view. (report + baked HTML.)
 
 **Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean; re-rendered the bake fixture + Playwright screenshot confirms Answer Rate present, Widget Opens/Response Rate hidden on an immature beacon, and before/after in open questions. Commit-only; staged my files only by explicit path.
 
