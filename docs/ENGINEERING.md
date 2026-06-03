@@ -203,6 +203,11 @@ its corresponding entry.
   ID is generated or propagated. Vercel adds its own `x-vercel-id`
   header upstream, which is the de facto correlation key until
   Open `<TBD>` item 21 lands.
+- **CSRF bypass allowlist (`proxy.ts`):** grew by one public,
+  no-cookie route on 2026-06-03 — the agent widget-open beacon
+  `/api/bots/[id]/impression` (pattern-matched, wildcard CORS,
+  rate-limited). Every addition stays documented inline in
+  `proxy.ts` and in SECURITY.md's CSRF section.
 - **Performance traces:** Sentry performance — **ratified default:
   10% prod sample, 100% on errors.** Revisit if cost > $X/month
   or if signal is too sparse.

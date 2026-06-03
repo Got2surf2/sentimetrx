@@ -1,5 +1,20 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: comprehensive agent-analytics report (replaces Deck + Mine Conversations)
+
+**Why**: The agent conversations page had two thin, disconnected analytics buttons — "Deck" (a fixed 8-slide PPTX) and "Mine Conversations" (an AI text blob). Neither let you analyze by focus area, see entities, read the actual exchanges, or know your response rate. The owner wanted one comprehensive "agent study": engagement depth, per-focus analysis with entity cross-tab, intents, languages, open questions, and a quick health view on the agent card — as an HTML report you can drill into, with a PPTX export of the same thing.
+
+**Key data-model finding** (`lib/chatCore.ts:1002`): turn rows are written only on the user's first message — the greeting/name preamble is persisted retroactively with that first turn. So every stored session already has ≥1 user turn, and pure widget-opens leave **no trace**. Confirmed against Sarina (NOWOCATS): 60 sessions, 0 with zero pairs. True invocation/response-rate is therefore unmeasurable from turn tables → built a beacon.
+
+**Built (one unit)**:
+- **Beacon** — `agent_impressions` table (sql/095, RLS + org SELECT) + public `POST /api/bots/[id]/impression` (CSRF-bypassed in `proxy.ts`, wildcard CORS, rate-limited 30/min, 204-always, no PII), fired once on mount in `components/ui/ChatBot.tsx`. The only source of true opens → `responseRate = conversations ÷ opens`.
+- **Two-tier compute** (`lib/agentStudy.ts`): Tier-1 health (no AI — conversations 7/30d + trend, opens, response rate, median normalized depth, open-question count, daily series, green/amber/red/idle dot); Tier-2 study (AI, memoized in `agent_study_cache` keyed on a pair-count+config hash, self-healing). Normalize = strip `source='greeting'` preamble, count `source='normal'` user turns as Q&A pairs, **exclude 0-pair sessions** from classification. Each question is batch-classified (Haiku) to one focus and **its paired answer inherits the same focus**; user-named entities extracted per exchange (URLs + agent-name filtered out for credibility) → focus×entity cross-tab. Intents from `intent:` flags; languages reported by source `language` but analyzed on `content_en`; open questions from `logged_questions`; narrative insights fold in the old report prompt.
+- **Surfaces**: HTML report `/bots/[id]/report` (expand/collapse into real Q&A snippets, open-question context, entities, intents) + `GET /study` (compute-if-stale, `?force=1`); `POST /study/pptx` flattens the same object via new `lib/pptx/agentStudyDeck.ts` → `slideRenderer` with a **net-new `column_chart`** vertical-bar slide type. Agent-card health strip in `BotsClient` (dot + `N open questions` badge + Report link; open-question counts via one grouped read in `GET /api/bots`). Removed the Deck + Mine Conversations buttons from `ConversationsClient` (+ orphaned handlers/state).
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit` (my files 0 errors; the 3 remaining are a parallel session's recordings WIP); `npm test` green except 2 in that same parallel `recordings/analyze.test.ts`. Ran the full pipeline read-only against real Sarina data — numbers reconcile exactly to a SQL probe (60 convos, 189 pairs, depth 27/15/4/4/5/5, 55en/5es, 9 open questions; focuses mapped to real NW Orange County roads). Pixel-QC'd both net-new column-chart slides + the focus table + entity grid via LibreOffice → no overflow. Specs: `docs/BOTS.md` (new Agent Study section + UI/card updates), `docs/SECURITY.md` + `docs/ENGINEERING.md` (beacon in the CSRF bypass allowlist), `scripts/specMap.ts`.
+
+**Not done**: sql/095 not applied to prod (getAgentStudy degrades gracefully without the tables — cache/impression reads error silently). Commit-only, not pushed.
+
 ## 2026-06-02 — Restaurant taxonomy productized: classifier + in-app Taxonomy tab + critical-category audit + decks
 
 **Why**: The Ruth's Chris pilot was a pile of one-off scripts; the Chuy's analytics-manager demo (Thu) and the Darden pitch both needed it as a reusable, demonstrable capability — classify any review dataset, view it in-app, and back the "we beat your CX vendor" claim with evidence.
@@ -362,3 +377,15 @@ Keyword tier only (free). No app/prod behavior change. Commit-only, not pushed.
 - `docs/BOTS.md` — documented both gates.
 
 Swept the class: single-session route returns only turns (no derivation); insights-deck `split` is word-count, not a name. tsc clean. Commit-only, not pushed.
+
+## 2026-06-03 — Recordings: analysis enrichment + PowerPoint export
+
+**Why**: Walking into a prospect's next vendor meeting, we want to record it, run the existing batch pipeline, and hand them a polished deck that both faithfully represents the meeting and "wows". The Q&A extraction was too thin for a deck (no exec summary, no per-topic synthesis, no sentiment, no action items) and there was no PPTX export (the report Export tab was a stub). "Real-time" was clarified to mean fast post-meeting turnaround, not live in-meeting analysis — so this stays entirely on the batch path.
+
+**What changed**:
+- **Data model** (`sql/094`, `lib/recordings/types.ts`): new nullable `recordings.analysis_summary` jsonb (meeting-level synthesis); `QaPairPayload.sentiment` added (optional, defaults 'neutral'). Migration applied to linked prod. `mirror.ts` now branches on `unit_type` (action_item rows mirror their own shape) + carries `sentiment`; `buildRecordingSchema` gained a Sentiment facet.
+- **Analysis** (`lib/recordings/analyze.ts`, `prompts/qa.ts`): Opus extraction now classifies per-pair sentiment (no extra call). Added a third **synthesis** Sonnet pass over the published pairs → exec summary, headline, per-topic summaries, decisions, and action_item rows. Counts (`sentiment_breakdown`, `qa_count`) computed in code, not by the model. Skipped on topic-scoped re-extracts; graceful-degrades to null on failure. Persisted in `workflows/recordings.ts` + `reanalyze.ts` (scope='all'). Cost ~$1.20/meeting (+$0.25 synthesis).
+- **Deck** (`lib/pptx/recordingDeck.ts` new): `buildRecordingDeck` — Datanautix-branded, modeled on the townhall export. Title → exec summary → sentiment → themes (2/slide) → action items & decisions → appendix (1 Q&A/slide). `POST /api/recordings/[id]/export/pptx` (new) — `getCallerOrgContext` + 404 cross-org gate, 409 until status=complete, `deck_download_log`. Report **Export tab** wired with a real "Export to PowerPoint" button (`ReportClient.tsx`); action_item rows excluded from the Q&A/Appendix tab split.
+- **Verified**: read-only QC harness (`scripts/_recording_deck_qc.ts`) rendered the prospect's "NOWOCATS Meeting 2" deck against real data (in-memory analyze, nothing written to prod) — QC'd via LibreOffice/pdftoppm, 21 slides, brand + layout clean. Org-scope integration test (`export-org-gate.test.ts`, +4 cases) + synthesis unit tests (`analyze.test.ts`, now 17) green. Full `tsc` clean.
+
+Commit-only, not pushed.

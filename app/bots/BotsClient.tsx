@@ -19,6 +19,7 @@ interface Bot {
   system_prompt: string
   knowledge_base: string
   conversation_count: number
+  open_questions?: number
   last_session_at: string | null
   created_at: string
   updated_at: string
@@ -237,6 +238,15 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           var subtitle = cfg.subtitle || ''
           var created = new Date(bot.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
           var updatedRel = relativeTime(bot.updated_at)
+          // Agent-health dot (no fetch): derived from status + recency of the
+          // last conversation. Rich health (response rate, depth) lives in the
+          // per-agent Report. Gray = paused/idle, green = active this week.
+          var lastChatMs = bot.last_session_at ? Date.now() - new Date(bot.last_session_at).getTime() : Infinity
+          var healthDot = bot.status !== 'active' ? '#9CA3AF'
+            : lastChatMs < 7 * 86400000 ? '#059669'
+            : lastChatMs < 14 * 86400000 ? '#D97706'
+            : '#9CA3AF'
+          var openQ = bot.open_questions || 0
 
           return (
             <React.Fragment key={bot.id}>
@@ -267,6 +277,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span title="Agent health" style={{ width: 9, height: 9, borderRadius: '50%', background: healthDot, flexShrink: 0 }} />
                       <span style={{ fontSize: 15, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bot.name}</span>
                       <span style={{
                         fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
@@ -294,11 +305,18 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 )}
 
                 {/* Stats row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, flexWrap: 'wrap' }}>
                   <div>
                     <span style={{ fontWeight: 700, fontSize: 18, color: accentColor }}>{bot.conversation_count}</span>
                     <span style={{ color: '#9ca3af', marginLeft: 4 }}>conversation{bot.conversation_count !== 1 ? 's' : ''}</span>
                   </div>
+                  {openQ > 0 && (
+                    <a href={'/bots/' + bot.id + '/questions'}
+                      style={{ fontSize: 11, fontWeight: 600, color: '#92400E', background: '#FEF3C7', padding: '2px 8px', borderRadius: 10, textDecoration: 'none' }}
+                      title="Unanswered logged questions">
+                      {openQ} open question{openQ !== 1 ? 's' : ''}
+                    </a>
+                  )}
                 </div>
 
                 {/* Dates */}
@@ -391,6 +409,13 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                 {/* History + Export + Delete — small footer row */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10 }}>
                   <div style={{ display: 'flex', gap: 12 }}>
+                    <a
+                      href={'/bots/' + bot.id + '/report'}
+                      style={{ color: '#0F7173', fontWeight: 600, textDecoration: 'none', transition: 'color 0.15s' }}
+                      onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#0a4f50' }}
+                      onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = '#0F7173' }}>
+                      Report
+                    </a>
                     <a
                       href={'/bots/' + bot.id + '/questions'}
                       style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}

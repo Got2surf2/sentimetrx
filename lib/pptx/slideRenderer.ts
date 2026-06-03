@@ -23,6 +23,19 @@ export interface BarChartSlide {
   insight?: string
 }
 
+// Vertical column chart — x-axis category labels along the bottom, value on
+// top of each bar. `muted` columns (e.g. "opened, never engaged") render gray
+// with a divider before them so they read as a distinct, excluded segment.
+export interface ColumnChartSlide {
+  type: 'column_chart'
+  title: string
+  subtitle?: string
+  xAxisLabel?: string
+  yAxisLabel?: string
+  data: { label: string; value: number; color?: string; muted?: boolean }[]
+  insight?: string
+}
+
 export interface KpiGridSlide {
   type: 'kpi_grid'
   title: string
@@ -97,7 +110,7 @@ export interface CustomDecksSlide {
   hook?: string
 }
 
-export type SlideSpec = BarChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide
+export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide
 
 export interface DeckSpec {
   title: string
@@ -214,6 +227,65 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
   if (spec.insight) {
     const insY = rowStart + n * (rowH + rowGap) + 0.08
     insightBox(slide, pptx, PAD, insY, W - PAD * 2, insightH, spec.insight)
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
+export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  bgFill(slide, pptx)
+  hdr(slide, pptx, spec.title, spec.subtitle)
+
+  const data = spec.data.slice(0, 14)
+  const n = data.length
+  const maxVal = Math.max(...data.map(d => d.value), 1)
+
+  const insightH = spec.insight ? 0.62 : 0
+  const chartX = PAD + 0.1
+  const chartTop = CY + 0.25
+  const axisY = FY - insightH - 0.5            // baseline (x-axis) y
+  const labelY = axisY + 0.06                  // category labels under axis
+  const chartW = W - chartX - PAD - 0.1
+  const chartH = axisY - chartTop
+
+  // y baseline
+  solidRect(slide, pptx, chartX, axisY, chartW, 0.014, DN.divider)
+
+  const slotW = chartW / n
+  const barW = Math.min(1.1, slotW * 0.62)
+  const BAR_COLORS = ['0F7173', '1DA39A', 'E8B84B', '0D2B45', '8FA3AE', '4A6572', 'E85A1A', '059669']
+
+  data.forEach((d, i) => {
+    const cx = chartX + i * slotW + (slotW - barW) / 2
+    const barH = Math.max(0.03, (d.value / maxVal) * (chartH - 0.3))
+    const by = axisY - barH
+    const col = d.muted ? 'B8C0C7' : (d.color || BAR_COLORS[i % BAR_COLORS.length])
+
+    // divider before the first muted column to set it apart visually
+    if (d.muted && (i === 0 || !data[i - 1].muted)) {
+      solidRect(slide, pptx, chartX + i * slotW - 0.01, chartTop, 0.012, chartH, DN.divider)
+    }
+
+    solidRect(slide, pptx, cx, by, barW, barH, col)
+    // value label on top
+    slide.addText(d.value.toLocaleString(), {
+      x: cx - 0.2, y: by - 0.26, w: barW + 0.4, h: 0.24,
+      fontSize: 12, bold: true, color: d.muted ? DX.slateDark : DX.ink, align: 'center',
+    })
+    // category label under axis
+    slide.addText(d.label, {
+      x: chartX + i * slotW, y: labelY, w: slotW, h: 0.46,
+      fontSize: 10.5, bold: !d.muted, color: d.muted ? DN.slate : DX.navyLight, align: 'center', valign: 'top', wrap: true, autoFit: true,
+    })
+  })
+
+  if (spec.xAxisLabel) {
+    slide.addText(spec.xAxisLabel, { x: chartX, y: labelY + 0.5, w: chartW, h: 0.24, fontSize: 9, italic: true, color: DN.slate, align: 'center' })
+  }
+
+  if (spec.insight) {
+    insightBox(slide, pptx, PAD, FY - insightH - 0.05, W - PAD * 2, insightH, spec.insight)
   }
 
   footer(slide, pptx, datasetName)
@@ -758,6 +830,7 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
   for (const spec of deck.slides) {
     switch (spec.type) {
       case 'bar_chart':   renderBarChart(pptx, spec, datasetName); break
+      case 'column_chart': renderColumnChart(pptx, spec, datasetName); break
       case 'kpi_grid':    renderKpiGrid(pptx, spec, datasetName); break
       case 'table':       renderTable(pptx, spec, datasetName); break
       case 'bullets':     renderBullets(pptx, spec, datasetName); break

@@ -193,6 +193,26 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   // and on resetChat.
   const [lastFailedInput, setLastFailedInput] = useState<string | null>(null)
 
+  // Widget-open beacon — fire once on mount so the Agent Study can count true
+  // invocations (opens that never become conversations leave no turn rows).
+  // Only fires for real bot endpoints (/api/bots/<id>/chat); clara/nora skip.
+  const impressionFired = useRef(false)
+  useEffect(() => {
+    if (impressionFired.current) return
+    const m = config.apiEndpoint.match(/^(\/api\/bots\/[^/]+)\/chat$/)
+    if (!m) return
+    impressionFired.current = true
+    const eb = config.extraBody || {}
+    try {
+      fetch(m[1] + '/impression', {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitor_id: sessionId, source: eb.site || eb.source, medium: eb.medium, campaign: eb.campaign }),
+      }).catch(() => {})
+    } catch { /* beacon is best-effort */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // When a non-English language is selected, fetch the greeting from the API in that language
   useEffect(() => {
     if (!isNonEnglish) return

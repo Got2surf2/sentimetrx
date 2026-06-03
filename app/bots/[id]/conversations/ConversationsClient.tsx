@@ -51,12 +51,8 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   var [selectedSession, setSelectedSession] = useState<string | null>(null)
   var [turns, setTurns] = useState<Turn[]>([])
   var [turnsLoading, setTurnsLoading] = useState(false)
-  var [report, setReport] = useState('')
-  var [reportLoading, setReportLoading] = useState(false)
-  var [reportStats, setReportStats] = useState<{ session_count: number; total_turns: number; since: string } | null>(null)
   var [botName, setBotName] = useState('')
   var [botConfig, setBotConfig] = useState<BotConfig>({})
-  var [pptxLoading, setPptxLoading] = useState(false)
   var [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
   var [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
   var [shareIncludeLabels, setShareIncludeLabels] = useState(false)
@@ -65,11 +61,6 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   var [filterFlag, setFilterFlag] = useState<string>('all')
   var [filterTime, setFilterTime] = useState<number>(0) // hours, 0 = all
   var [filterSearch, setFilterSearch] = useState('')
-  var [reportRange, setReportRange] = useState<string>('168') // default last 7 days
-  var [customFrom, setCustomFrom] = useState('')
-  var [customTo, setCustomTo] = useState('')
-  var [actions, setActions] = useState<{ type: string; title: string; content: string; applied: boolean }[]>([])
-  var [extracting, setExtracting] = useState(false)
 
   useEffect(function() {
     fetch('/api/bots/' + botId).then(function(r) { return r.json() }).then(function(d) {
@@ -131,93 +122,6 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       setSessions(function(prev) { return prev.filter(function(s) { return s.session_id !== sid }) })
       if (selectedSession === sid) { setSelectedSession(null); setTurns([]) }
     } catch { alert('Failed to delete') }
-  }
-
-  async function generatePptx() {
-    setPptxLoading(true)
-    try {
-      var r = await fetch('/api/bots/' + botId + '/conversations/insights-deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      if (!r.ok) { var d = await r.json().catch(function() { return {} }); alert(d.error || 'Failed'); return }
-      var blob = await r.blob()
-      var url = URL.createObjectURL(blob)
-      var a = document.createElement('a'); a.href = url; a.download = (botName || 'Agent') + '_Insights.pptx'; a.click(); URL.revokeObjectURL(url)
-    } catch { alert('Failed') }
-    finally { setPptxLoading(false) }
-  }
-
-  async function generateReport() {
-    setReportLoading(true)
-    setReport('')
-    var since: string
-    if (reportRange === 'custom' && customFrom) {
-      since = new Date(customFrom).toISOString()
-    } else {
-      var hours = parseInt(reportRange) || 168
-      since = hours > 0 ? new Date(Date.now() - hours * 3600000).toISOString() : new Date('2020-01-01').toISOString()
-    }
-    try {
-      var r = await fetch('/api/bots/' + botId + '/conversations/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: since }) })
-      var d = await r.json()
-      setReport(d.report || 'No report generated.')
-      setReportStats(d.stats || null)
-    } catch { setReport('Failed to generate report.') }
-    setReportLoading(false)
-  }
-
-  async function extractActions() {
-    if (!report || extracting) return
-    setExtracting(true)
-    try {
-      var r = await fetch('/api/bots/' + botId + '/conversations/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          since: new Date('2020-01-01').toISOString(),
-          extract_actions: true,
-          report_text: report,
-        }),
-      })
-      var d = await r.json()
-      if (d.actions && d.actions.length > 0) {
-        setActions(d.actions.map(function(a: any) { return { ...a, applied: false } }))
-      } else {
-        setActions([])
-      }
-    } catch { setActions([]) }
-    setExtracting(false)
-  }
-
-  async function applyAction(idx: number) {
-    var action = actions[idx]
-    if (!action || action.applied) return
-    try {
-      if (action.type === 'guardrail') {
-        // Add as guardrail to bot config
-        var botRes = await fetch('/api/bots/' + botId)
-        var bot = await botRes.json()
-        var existing = Array.isArray(bot.guardrails) ? bot.guardrails : []
-        await fetch('/api/bots/' + botId, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ guardrails: [...existing, action.content] }),
-        })
-      } else {
-        // Add as knowledge chunk (fact or faq)
-        var text = action.type === 'faq'
-          ? '### ' + action.title + '\n' + action.content
-          : '### ' + action.title + '\n' + action.content
-        await fetch('/api/bots/' + botId + '/knowledge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: text }),
-        })
-      }
-      setActions(function(prev) {
-        var next = [...prev]
-        next[idx] = { ...next[idx], applied: true }
-        return next
-      })
-    } catch { alert('Failed to apply') }
   }
 
   async function refreshSession() {
@@ -321,91 +225,12 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
             hrefFor={fmt => '/api/bots/' + botId + '/conversations/export?format=' + fmt}
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50"
           />
-          <button onClick={generatePptx} disabled={pptxLoading || sessions.length === 0}
-            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pptxLoading ? 0.6 : 1 }}>
-            {pptxLoading ? '...' : 'Deck'}
+          <button onClick={function() { router.push('/bots/' + botId + '/report') }}
+            style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: '#0F7173', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Report
           </button>
         </div>
       </div>
-
-      {/* Report generator */}
-      <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Report:</span>
-        {[{ label: 'Yesterday', val: '24' }, { label: 'Last 7 days', val: '168' }, { label: 'Last 30 days', val: '720' }, { label: 'All time', val: '0' }, { label: 'Custom', val: 'custom' }].map(function(opt) {
-          return <button key={opt.val} onClick={function() { setReportRange(opt.val) }} style={pill(reportRange === opt.val)}>{opt.label}</button>
-        })}
-        {reportRange === 'custom' && (
-          <>
-            <input type="date" value={customFrom} onChange={function(e) { setCustomFrom(e.target.value) }}
-              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11 }} />
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>to</span>
-            <input type="date" value={customTo} onChange={function(e) { setCustomTo(e.target.value) }}
-              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11 }} />
-          </>
-        )}
-        <button onClick={generateReport} disabled={reportLoading}
-          style={{ padding: '6px 18px', borderRadius: 16, border: 'none', background: reportLoading ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: reportLoading ? 'not-allowed' : 'pointer', marginLeft: 'auto' }}>
-          {reportLoading ? 'Analyzing...' : 'Mine Conversations'}
-        </button>
-      </div>
-
-      {/* Report panel */}
-      {report && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: 20, marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: '#78350f', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Conversation Report</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {reportStats && <span style={{ fontSize: 11, color: '#92400e' }}>{reportStats.session_count} sessions, {reportStats.total_turns} turns</span>}
-              <button onClick={function() { setReport('') }} style={{ background: 'none', border: 'none', color: '#92400e', cursor: 'pointer', fontSize: 16 }}>&times;</button>
-            </div>
-          </div>
-          <div style={{ whiteSpace: 'pre-wrap' }}>{report}</div>
-          {/* Extract actions button */}
-          <div style={{ borderTop: '1px solid #fcd34d', marginTop: 16, paddingTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={extractActions} disabled={extracting}
-              style={{ padding: '6px 16px', borderRadius: 14, border: 'none', background: extracting ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: extracting ? 'not-allowed' : 'pointer' }}>
-              {extracting ? 'Extracting...' : 'Extract Actions'}
-            </button>
-            <span style={{ fontSize: 11, color: '#92400e' }}>Parse recommendations into quick-add items for your knowledge base</span>
-          </div>
-          {/* Action items */}
-          {actions.length > 0 && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {actions.some(function(a) { return !a.applied }) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <button onClick={async function() {
-                    var pending = actions.filter(function(a) { return !a.applied })
-                    if (!confirm('Apply all ' + pending.length + ' recommendations to your agent? This will add them to your knowledge base and guardrails.')) return
-                    for (var i = 0; i < actions.length; i++) { if (!actions[i].applied) await applyAction(i) }
-                  }}
-                    style={{ padding: '6px 16px', borderRadius: 14, border: 'none', background: '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                    Apply All ({actions.filter(function(a) { return !a.applied }).length})
-                  </button>
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>Add all recommendations to your agent at once</span>
-                </div>
-              )}
-              {actions.map(function(a, i) {
-                var typeLabel = a.type === 'guardrail' ? 'Rule' : a.type === 'faq' ? 'FAQ' : 'Fact'
-                var typeBg = a.type === 'guardrail' ? '#EDE9FE' : a.type === 'faq' ? '#DBEAFE' : '#D1FAE5'
-                var typeColor = a.type === 'guardrail' ? '#7c3aed' : a.type === 'faq' ? '#1D4ED8' : '#059669'
-                return (
-                  <div key={i} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, opacity: a.applied ? 0.5 : 1 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: typeBg, color: typeColor, textTransform: 'uppercase', flexShrink: 0 }}>{typeLabel}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{a.title}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.content}</div>
-                    </div>
-                    <button onClick={function() { applyAction(i) }} disabled={a.applied}
-                      style={{ padding: '4px 12px', borderRadius: 12, border: 'none', background: a.applied ? '#D1FAE5' : HERMES, color: a.applied ? '#059669' : 'white', fontSize: 10, fontWeight: 600, cursor: a.applied ? 'default' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      {a.applied ? 'Added' : 'Apply'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Scheduled reviews */}
       {reviews.length > 0 && (

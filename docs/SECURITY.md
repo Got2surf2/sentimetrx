@@ -211,9 +211,16 @@ test project exists.
   inline in the middleware). Embed-route exemptions are limited
   to public, no-cookie, wildcard-CORS endpoints:
   `/api/bots/[id]/chat`, the sibling intent extractor
-  `/api/bots/[id]/ui-hints`, and the canvas-demo data routes
-  under `/api/mco/*` (parking + places). All of these are
-  cookie-free public read paths; CSRF doesn't apply.
+  `/api/bots/[id]/ui-hints`, the widget-open beacon
+  `/api/bots/[id]/impression` (2026-06-03), and the canvas-demo
+  data routes under `/api/mco/*` (parking + places). All are
+  cookie-free public paths; CSRF doesn't apply. The impression
+  beacon is the only write among them — it is rate-limited
+  (30/min per bot+IP), stores no PII (bot_id, org_id, an opaque
+  visitor_id, optional source/medium/campaign), writes
+  service-role into `agent_impressions` (RLS-enabled,
+  org-scoped SELECT), and always returns 204 so it never leaks
+  whether a bot exists.
 - **API auth for embeddable widgets** — survey at `/s/[guid]`,
   agent at `/b/[slug]`, PulseIQ at `/th/[sessionId]`. The route
   param name varies but each one is an opaque, high-entropy

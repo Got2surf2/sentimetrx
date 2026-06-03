@@ -1148,16 +1148,23 @@ Returns `{ sessions: [...] }`. Each session: `session_id, first_message, turn_co
 ### `GET /api/bots/[id]/conversations/[sessionId]`
 Returns turns in chronological order.
 
-### `POST /api/bots/[id]/conversations/report`
+### `POST /api/bots/[id]/conversations/report` _(legacy — superseded by the Agent Study)_
 **Body:** `{ since?: ISO, extract_actions?: bool, report_text?: string }` (default `since` = 7 days ago).
 - AI report (tier=fast, 800 tokens, 30s) using the report prompt.
 - If `extract_actions`, additional AI call (tier=fast, 500 tokens) returns a JSON array of suggested `facts/faq/guardrails` updates.
+- The "Mine Conversations" button that drove this was **removed from the conversations page (2026-06-03)** when the Agent Study replaced it; the narrative output now lives inside the study's `insights`. Endpoint retained for back-compat / scheduled reviews.
 
-### `POST /api/bots/[id]/conversations/insights-deck`
-Generates a PPTX. `maxDuration: 60s`. Fetches up to 2000 turns. Computes session counts, avg turn length, distribution buckets, language breakdown. AI plans 5+ slides → renders via `pptxgenjs` → returns the PPTX as a download.
+### `POST /api/bots/[id]/conversations/insights-deck` _(legacy — superseded by the Agent Study PPTX)_
+Generates a PPTX. `maxDuration: 60s`. Fetches up to 2000 turns. Computes session counts, avg turn length, distribution buckets, language breakdown. AI plans 5+ slides → renders via `pptxgenjs` → returns the PPTX as a download. The "Deck" button that drove this was **removed (2026-06-03)**; PPTX export now lives inside the Agent Study report (`/study/pptx`).
 
 ### `GET /api/bots/[id]/conversations/export`
 Returns CSV: `session_id, turn_number, role, content, language, created_at`.
+
+### Agent Study — `GET /study`, `POST /study/pptx`, `GET /health`, `POST /impression` (2026-06-03)
+The Agent Study is the comprehensive replacement for the old Deck + Mine Conversations buttons: one HTML report (`/bots/[id]/report`) with expand/collapse drill-down into real conversation snippets, plus a PPTX export of the same analysis object. Core compute lives in `lib/agentStudy.ts`, two tiers:
+- **Tier 1 — health** (`GET /api/bots/[id]/health`, no AI): conversations 7d/30d + trend, widget opens (beacon), `responseRatePct = conversations ÷ opens`, median normalized depth, unanswered-question count, last active, 30-day daily series, a green/amber/red/idle dot. Powers the agent-card health strip + the report's status act.
+- **Tier 2 — study** (`GET /api/bots/[id]/study`, AI, memoized in `agent_study_cache`): normalize turns (strip `source='greeting'` preamble) → count Q&A pairs (`source='normal'` user turns) → **exclude 0-pair sessions** from classification → batch-classify each question to one focus and **propagate the same focus to its paired answer** (Haiku) + extract user-named entities (focus×entity cross-tab) → intents (from `intent:` flags) → languages (analyze `content_en`, report by source `language`) → open questions (`logged_questions`) → narrative insights (folds in the old report prompt). `cache_key` hashes pair-count + focus/intent config so the cache self-heals; `?force=1` recomputes. `POST /study/pptx` flattens the same object via `lib/pptx/agentStudyDeck.ts` → `slideRenderer` (Datanautix-branded leave-behind; adds the net-new `column_chart` slide type).
+- **`POST /api/bots/[id]/impression`** — public widget-open beacon (CSRF-bypassed in `proxy.ts`, wildcard CORS, rate-limited 30/min per bot+IP, service-role insert into `agent_impressions`). Fired once on mount from `components/ui/ChatBot.tsx`. **Why it exists:** turn rows are only written on the first user message (§ chatCore turn-insertion), so opens that never become conversations leave no trace — this is the only source of true invocation counts + an honest open→engaged response rate. New tables: `agent_impressions`, `agent_study_cache` (sql/095, RLS + org-scoped SELECT, service-role writes).
 
 ### `GET /api/bots/[id]/intents-stats`
 Per-intent rollup: `detection_count, last_detected, recent_sessions[]`. Computed by scanning user-turn `content_flags` for `intent:LABEL` markers.
@@ -1193,6 +1200,7 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns` (legacy) or 
 - `useState<Bot[]>(bots)` + `loading`, `error`, `gridCols` (2|3|4 columns).
 - On mount: `GET /api/bots`.
 - Cards display: name, status badge, conversation count, last activity, theme colors from `config`.
+- **Health strip (2026-06-03):** a health dot next to the name (green = active this week / amber = active 7–14d / gray = paused or idle, derived from `status` + `last_session_at`, no fetch), an `N open questions` badge linking to the Questions page (count comes from a single grouped `logged_questions` read in `GET /api/bots`, `open_questions` field), and a **Report** link to `/bots/[id]/report`. Rich health (response rate, depth) lives in the per-agent Report, not the card.
 - Actions: toggle status (draft↔active↔paused), delete bot, copy public link `/b/{slug}`.
 
 ### `/bots/[id]/knowledge` — `KnowledgeClient.tsx`
@@ -1220,7 +1228,7 @@ Creates or syncs a dataset from this bot's `bot_conversation_turns` (legacy) or 
 ### `/bots/[id]/conversations` — `ConversationsClient.tsx`
 - Lists sessions with first message, turn count, user name, flag pills, deflection indicator, persona summary.
 - Click a session → fetches turns, replays them.
-- Buttons: Generate report (POST report endpoint), Generate deck (POST insights-deck → PPTX download), Export CSV, **Share** (POSTs a baked HTML snapshot to `/api/share`).
+- Buttons: **Report** (→ `/bots/[id]/report`, the Agent Study), Export CSV, **Share** (POSTs a baked HTML snapshot to `/api/share`). The old **Deck** (insights-deck PPTX) and **Mine Conversations** (report-generator card + extract-actions) buttons were **removed 2026-06-03** — both are subsumed by the Agent Study (PPTX export lives inside it; narrative insights are part of its analysis object). Scheduled Reviews list retained.
 - **Reply rendering — `linkify()`** uses the same pipeline as the widget's `formatHtml` (§ 5): raw-anchor → markdown normalize → HTML-escape → markdown-link placeholders → bare-URL/domain auto-link → placeholder restore. The placeholder pass is what prevents the bare-URL regex from re-wrapping URLs inside a just-created `href="…"` (the "attribute soup" regression). Share-link HTML is baked with the same `linkify`, so old share links from before the fix retain the broken snapshot — re-share to refresh.
 - **Labeled share variant (superadmin only)** — when a user with `users.role = 'platform_admin'` opens the Share UI, a small "AI labels" checkbox appears next to the Share button. If ticked, `ConversationsClient` builds the snapshot HTML twice — once plain and once with sentiment / matched-intent / action annotations + `focus:<slug>` + `topic:<slug>` pills under each turn — and `/api/share` stores both as `metadata.html` and `metadata.html_labeled`. On the shared page (`/shared/conversation/[token]`), `SharedConversationView` renders a `Plain | Labeled` pill iff `html_labeled` exists, **defaulting to Labeled** (the platform_admin who ticked the checkbox at share time was explicitly opting into the annotated view, so there's no reason to hide it behind a click). `?labels=0` in the URL deep-links to Plain; `?labels=1` is also accepted for back-compat so a labeled URL is directly shareable. Labels surfaced: sentiment + score (user turns), matched intent slug (user turns), action triggered via known intent URL pattern (assistant turns), `focus:<slug>` pills (assistant turns), `topic:<slug>` pills (user turns). Footer reads "Sentimetrx · AI processing visible" in labeled mode; timestamps switch to full date + time. The data-layer gate (no `html_labeled` in metadata for non-superadmin shares) means `?labels=1` cannot conjure annotations on any share that wasn't deliberately created with them — see `app/api/share/route.ts` for the server-side superadmin check at write time.
 

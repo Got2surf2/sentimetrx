@@ -58,6 +58,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Open (unanswered) logged-question counts per bot — one grouped read for
+  // the whole list (powers the agent-card health badge). logged_questions is
+  // small; tally in JS rather than an RPC.
+  const openQ: Record<string, number> = {}
+  if (botIds.length > 0) {
+    const { data: oq } = await service.from('logged_questions').select('bot_id').in('bot_id', botIds).eq('status', 'open')
+    for (const r of (oq || [])) openQ[r.bot_id] = (openQ[r.bot_id] || 0) + 1
+  }
+
   // Resolve org names for admin per-card display.
   let orgNameMap: Record<string, string> = {}
   if (ctx.isAdmin) {
@@ -72,6 +81,7 @@ export async function GET(req: NextRequest) {
     return {
       ...b,
       conversation_count: sessionCounts[b.id] || 0,
+      open_questions: openQ[b.id] || 0,
       org_name: ctx.isAdmin ? (orgNameMap[b.org_id] || null) : null,
     }
   })

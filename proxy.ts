@@ -61,8 +61,9 @@ const PREFIX_BYPASS: string[] = [
 
 // Path patterns (regex) for routes that match a dynamic segment.
 const PATTERN_BYPASS: RegExp[] = [
-  /^\/api\/bots\/[^/]+\/chat$/,      // public embeddable bot chat with wildcard CORS
-  /^\/api\/bots\/[^/]+\/ui-hints$/,  // sibling extractor — same wildcard-CORS posture as chat
+  /^\/api\/bots\/[^/]+\/chat$/,        // public embeddable bot chat with wildcard CORS
+  /^\/api\/bots\/[^/]+\/ui-hints$/,    // sibling extractor — same wildcard-CORS posture as chat
+  /^\/api\/bots\/[^/]+\/impression$/,  // widget-open beacon — public, wildcard CORS, no cookies
 ]
 
 function isBypassed(pathname: string): boolean {
