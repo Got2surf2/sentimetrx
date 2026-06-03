@@ -15,39 +15,41 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
   const slides: SlideSpec[] = []
   const t = study.totals
 
-  // 1. Engagement & Depth — vertical column chart (the headline)
-  const depthData = study.depth.map(d => ({ label: d.bucket + (d.bucket === '10+' ? '' : '') + ' pair' + (d.bucket === '1' ? '' : 's'), value: d.sessions }))
-  if (t.abandonedNoInput > 0) depthData.push({ label: 'No input', value: t.abandonedNoInput, muted: true } as any)
-  if (t.openedNotEngaged != null && t.openedNotEngaged > 0) depthData.push({ label: 'Opened, left', value: t.openedNotEngaged, muted: true } as any)
+  // 1. Engagement & Depth — vertical column chart (the headline). Chart shows
+  // USEFUL conversations only; the initiated-but-not-entered count is a note.
+  const depthData = study.depth.map(d => ({ label: d.bucket + ' pair' + (d.bucket === '1' ? '' : 's'), value: d.sessions }))
   const rr = study.health.responseRatePct
   slides.push({
     type: 'column_chart',
     title: 'Engagement & Depth',
-    subtitle: 'Conversations by exchange count (greeting preamble excluded)',
+    subtitle: 'Useful conversations by exchange count (greeting + one-word taps excluded)',
     xAxisLabel: 'Q&A pairs per conversation',
     data: depthData,
     insight: [
-      `${t.conversations} analyzable conversations · median ${t.medianPairs} pair${t.medianPairs === 1 ? '' : 's'} deep.`,
-      rr != null ? `Response rate ${rr}% (engaged of widget opens).` : 'Open→engage response rate available once the widget beacon collects data.',
-      t.abandonedNoInput > 0 ? `${t.abandonedNoInput} opened but never engaged (excluded from analysis).` : '',
+      `${t.conversations} useful conversations (of ${t.initiated} initiated) · median ${t.medianPairs} pair${t.medianPairs === 1 ? '' : 's'} deep.`,
+      t.initiatedNotEntered > 0 ? `${t.initiatedNotEntered} initiated but never entered a real message (one-word tap / ack) — excluded from analysis.` : '',
+      rr != null ? `Response rate ${rr}% (engaged of widget opens).` : '',
     ].filter(Boolean).join(' '),
   })
 
   // 2. Overview KPIs
   const kpis: { value: string; label: string; sub?: string; color?: string }[] = [
-    { value: String(t.conversations), label: 'Conversations', color: '0D2B45' },
+    { value: String(t.conversations), label: 'Useful Conversations', sub: 'of ' + t.initiated + ' initiated', color: '0D2B45' },
     { value: String(t.totalPairs), label: 'Q&A Pairs', color: '0F7173' },
     { value: String(study.health.medianPairs), label: 'Median Depth', sub: 'pairs / conversation', color: 'E85A1A' },
     { value: String(study.focuses.length), label: 'Focus Areas Touched', color: '0F7173' },
     { value: String(study.entities.length), label: 'Distinct Entities', color: 'E8B84B' },
-    { value: String(study.health.openQuestions), label: 'Open Questions', sub: 'awaiting follow-up', color: 'DC2626' },
+    { value: String(study.openQuestions.open.length), label: 'Open Questions', sub: 'validated, awaiting follow-up', color: 'DC2626' },
   ]
   slides.push({
     type: 'kpi_grid',
     title: 'Agent Study Overview',
     subtitle: fmtDate(study.range.first) + ' — ' + fmtDate(study.range.last) + ' · ' + study.range.activeDays + ' active days',
     kpis,
-    insight: t.impressions != null ? `${t.impressions} total widget opens tracked.` : undefined,
+    insight: [
+      t.initiatedNotEntered > 0 ? `${t.initiatedNotEntered} conversations were initiated but not entered into (visitor tapped a suggestion or replied with one word).` : '',
+      t.impressions != null ? `${t.impressions} total widget opens tracked.` : '',
+    ].filter(Boolean).join(' ') || undefined,
   })
 
   // 3. Activity over time — daily conversations (days with activity, last 14)
@@ -120,15 +122,15 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     })
   }
 
-  // 9. Open questions
+  // 9. Open questions — validated + restated (false positives filtered out)
   if (study.openQuestions.open.length > 0) {
-    const classBreak = study.openQuestions.byClassification.map(c => `${c.count} ${c.classification.replace(/_/g, ' ')}`).join(' · ')
+    const af = study.openQuestions.autoFiltered
     slides.push({
       type: 'bullets',
       title: 'Open Questions',
-      subtitle: 'Questions the agent could not answer — awaiting follow-up',
-      bullets: study.openQuestions.open.slice(0, 8).map(q => q.question.slice(0, 160)),
-      insight: classBreak || undefined,
+      subtitle: 'Genuine questions the agent could not answer — validated, awaiting follow-up',
+      bullets: study.openQuestions.open.slice(0, 8).map(q => (q.restated || q.question).slice(0, 170)),
+      insight: af > 0 ? `${af} flagged item${af === 1 ? '' : 's'} were auto-filtered as not a real question (acks, one-word replies, shared context).` : undefined,
     })
   }
 
@@ -154,9 +156,10 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     title: 'Methodology & Provenance',
     subtitle: 'How this study was produced',
     bullets: [
-      `${study.meta.classifiedExchanges} Q&A pairs classified; ${study.meta.excludedZeroPair} input-less session(s) excluded.`,
-      'Total turns are normalized — the greeting/name-capture preamble is stripped so depth reflects real exchanges.',
+      `${study.meta.classifiedExchanges} Q&A pairs classified across ${t.conversations} useful conversations. Excluded: ${t.initiatedNotEntered} initiated-but-not-entered (one-word taps) + ${t.abandonedNoInput} no-input.`,
+      'A conversation counts as useful only when the visitor sent a real message (≥3 words or a question); greeting/name preamble and chip taps are stripped.',
       'Each question is tagged to one focus area; its paired answer inherits the same focus.',
+      'Open questions are AI-validated — false positives (statements, acks, shared context) are filtered, the rest restated.',
       'Non-English conversations analyzed on translated text; counts reported by source language.',
       study.totals.impressions != null
         ? 'Widget opens tracked via on-mount beacon → true invocation + response-rate.'

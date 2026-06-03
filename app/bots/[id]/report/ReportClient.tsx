@@ -121,11 +121,11 @@ export default function ReportClient() {
         <div style={h2}>Overview</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
           {[
-            { v: t.conversations, l: 'Conversations' },
+            { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.initiated + ' initiated' },
             { v: t.totalPairs, l: 'Q&A Pairs' },
             { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
             { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.opens7d != null ? 'engaged of opens (7d)' : 'needs beacon data' },
-            { v: s.health.openQuestions, l: 'Open Questions', color: s.health.openQuestions > 0 ? '#DC2626' : INK },
+            { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'validated', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
             { v: t.impressions != null ? t.impressions : '—', l: 'Widget Opens' },
           ].map((k, i) => (
             <div key={i} style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
@@ -140,7 +140,7 @@ export default function ReportClient() {
       {/* Engagement & Depth */}
       <div style={card}>
         <div style={h2}>Engagement & Depth</div>
-        <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Conversations by Q&A-pair count (greeting/name preamble excluded). Gray rows are excluded from analysis.</p>
+        <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Useful conversations by Q&A-pair count (greeting preamble + one-word taps excluded).</p>
         {s.depth.map(d => (
           <div key={d.bucket} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <span style={{ width: 80, fontSize: 12, color: '#374151', textAlign: 'right' }}>{d.bucket} pair{d.bucket === '1' ? '' : 's'}</span>
@@ -148,18 +148,10 @@ export default function ReportClient() {
             <span style={{ width: 36, fontSize: 12, fontWeight: 600, color: INK }}>{d.sessions}</span>
           </div>
         ))}
-        {t.abandonedNoInput > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e5e7eb' }}>
-            <span style={{ width: 80, fontSize: 12, color: MUTE, textAlign: 'right' }}>No input</span>
-            <Bar value={t.abandonedNoInput} max={depthMax} color="#B8C0C7" />
-            <span style={{ width: 36, fontSize: 12, fontWeight: 600, color: MUTE }}>{t.abandonedNoInput}</span>
-          </div>
-        )}
-        {t.openedNotEngaged != null && t.openedNotEngaged > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-            <span style={{ width: 80, fontSize: 12, color: MUTE, textAlign: 'right' }}>Opened, left</span>
-            <Bar value={t.openedNotEngaged} max={depthMax} color="#B8C0C7" />
-            <span style={{ width: 36, fontSize: 12, fontWeight: 600, color: MUTE }}>{t.openedNotEngaged}</span>
+        {(t.initiatedNotEntered > 0 || (t.openedNotEngaged ?? 0) > 0) && (
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #e5e7eb', fontSize: 11, color: MUTE, lineHeight: 1.5 }}>
+            {t.initiatedNotEntered > 0 && <span><strong>{t.initiatedNotEntered}</strong> conversation{t.initiatedNotEntered !== 1 ? 's were' : ' was'} initiated but not entered into — the visitor opened the chat and tapped a suggestion or replied with a single word, but never sent a real message. Excluded from analysis. </span>}
+            {t.openedNotEngaged != null && t.openedNotEngaged > 0 && <span><strong>{t.openedNotEngaged}</strong> widget open{t.openedNotEngaged !== 1 ? 's' : ''} never became a conversation at all.</span>}
           </div>
         )}
       </div>
@@ -269,23 +261,29 @@ export default function ReportClient() {
       </div>
 
       {/* ── Act 3: Gaps ── */}
-      {s.openQuestions.open.length > 0 && (
+      {(s.openQuestions.open.length > 0 || s.openQuestions.autoFiltered > 0) && (
         <div style={card}>
-          <div style={h2}>Open Questions <span style={{ fontSize: 12, fontWeight: 400, color: MUTE }}>({s.openQuestions.byClassification.map(c => c.count + ' ' + c.classification.replace(/_/g, ' ')).join(' · ')})</span></div>
-          <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Questions the agent could not answer, captured live. Expand for context.</p>
+          <div style={h2}>Open Questions <span style={{ fontSize: 12, fontWeight: 400, color: MUTE }}>({s.openQuestions.open.length} validated)</span></div>
+          <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Genuine questions the agent couldn&rsquo;t answer — AI-validated, restated, with the conversation context. Expand each for the full exchange.</p>
           {s.openQuestions.open.map((q, i) => (
             <details key={i} style={{ borderBottom: '1px solid #f3f4f6', padding: '8px 0' }}>
               <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, listStyle: 'none' }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{q.classification.replace(/_/g, ' ')}</span>
-                <span style={{ fontSize: 13, color: INK }}>{q.question}</span>
+                <span style={{ fontSize: 13, color: INK }}>{q.restated || q.question}</span>
               </summary>
-              <div style={{ paddingLeft: 12, marginTop: 6, fontSize: 12, color: MUTE }}>
-                {q.language && q.language !== 'en' && <span>Language: {q.language} · </span>}
+              <div style={{ paddingLeft: 12, marginTop: 6, fontSize: 12, color: MUTE, lineHeight: 1.5 }}>
+                {q.context && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} BEFORE</span> <span style={{ color: '#374151' }}>{q.context.slice(0, 240)}</span></div>}
+                <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '1px 6px', borderRadius: 6 }}>USER{q.language && q.language !== 'en' ? ' · ' + q.language : ''}</span> <span style={{ color: '#374151' }}>{q.question}</span></div>
                 Logged {fmtRel(q.createdAt)}
                 {q.suggestedKb && <div style={{ marginTop: 4, color: '#374151' }}><strong>Suggested KB addition:</strong> {q.suggestedKb}</div>}
               </div>
             </details>
           ))}
+          {s.openQuestions.autoFiltered > 0 && (
+            <div style={{ marginTop: 10, fontSize: 11, color: MUTE }}>
+              <strong>{s.openQuestions.autoFiltered}</strong> flagged item{s.openQuestions.autoFiltered !== 1 ? 's were' : ' was'} auto-filtered as not a real question (acks, one-word replies, shared context){s.openQuestions.filteredExamples.length > 0 ? ' — e.g. ' + s.openQuestions.filteredExamples.map(f => '“' + f.question.slice(0, 40) + '”').join(', ') : ''}.
+            </div>
+          )}
         </div>
       )}
 

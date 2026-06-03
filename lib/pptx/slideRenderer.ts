@@ -159,7 +159,7 @@ function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: n
   solidRect(slide, pptx, x, y, 0.06, h, DN.teal)
   slide.addText(text, {
     x: x + 0.16, y: y + 0.06, w: w - 0.24, h: h - 0.12,
-    fontSize: 11, color: DX.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true,
+    fontSize: 12, color: DX.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true,
   })
 }
 
@@ -354,7 +354,7 @@ function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
     solidRect(slide, pptx, x, CY + 0.05, colW, rowH, DX.ink)
     slide.addText(col, {
       x: x + 0.08, y: CY + 0.05, w: colW - 0.16, h: rowH,
-      fontSize: 10, bold: true, color: DN.white, valign: 'middle', autoFit: true,
+      fontSize: 11, bold: true, color: DN.white, valign: 'middle', autoFit: true,
     })
   })
 
@@ -366,7 +366,7 @@ function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
       const x = PAD + ci * colW
       slide.addText(trunc(cell, 50), {
         x: x + 0.08, y: ry, w: colW - 0.16, h: rowH,
-        fontSize: 9.5, color: ci === 0 ? DX.ink : DX.navyLight, bold: ci === 0, valign: 'middle', autoFit: true,
+        fontSize: 11, color: ci === 0 ? DX.ink : DX.navyLight, bold: ci === 0, valign: 'middle', autoFit: true,
       })
     })
   })
@@ -402,7 +402,11 @@ function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
 
   if (spec.insight) {
     const insY = CY + 0.1 + bullets.length * (bulletH + gap) + 0.06
-    insightBox(slide, pptx, PAD, insY, W - PAD * 2, insightH, spec.insight)
+    // Give the insight box ALL remaining vertical space (down to the footer)
+    // instead of a fixed 0.52 that crammed 2-3 sentences into one line and
+    // bled below the box. Bullets slides usually have empty space below.
+    const insAvail = FY - insY - 0.12
+    insightBox(slide, pptx, PAD, insY, W - PAD * 2, Math.max(0.52, Math.min(1.5, insAvail)), spec.insight)
   }
 
   footer(slide, pptx, datasetName)
@@ -429,10 +433,10 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
     rect(slide, pptx, x, y, colW, qh, DN.white)
     solidRect(slide, pptx, x, y, 0.05, qh, DN.teal)
 
-    const trimmed = q.text.length > 280 ? q.text.slice(0, 277) + '...' : q.text
+    const trimmed = q.text.length > 230 ? q.text.slice(0, 227) + '...' : q.text
     slide.addText([
       { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
-      { text: trimmed, options: { fontSize: 10, color: DX.navyLight, italic: true } },
+      { text: trimmed, options: { fontSize: 12, color: DX.navyLight, italic: true } },
       { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
     ], { x: x + 0.12, y: y + 0.06, w: colW - 0.22, h: qh - (q.attribution ? 0.3 : 0.12), valign: 'top', wrap: true, lineSpacingMultiple: 1.4, autoFit: true })
 

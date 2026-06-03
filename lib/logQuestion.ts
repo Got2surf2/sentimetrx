@@ -50,8 +50,25 @@ function isLoggableMessage(text: string): boolean {
   return true
 }
 
+/**
+ * Robustness gate (2026-06-03): only treat a message as a logged QUESTION when
+ * it actually reads like a question or request. The kb_miss / ai_uncertain
+ * signals fire on the agent's REPLY, so they were flagging statements, acks,
+ * and context the user shared ("I'm here to learn", "From McCormick rd…") as
+ * "questions the agent couldn't answer" — heavy false positives. A question
+ * mark or an interrogative/request opener is required for those two
+ * classifications. `deflect` is exempt: it's a scope signal, not a question,
+ * worth recording regardless of phrasing.
+ */
+function looksLikeQuestionOrRequest(text: string): boolean {
+  const t = text.trim().toLowerCase()
+  if (t.includes('?')) return true
+  return /^(what|why|how|when|where|who|whom|whose|which|can|could|would|will|do|does|did|is|are|am|should|may|might|tell me|explain|show me|give me|list|find|help me|i want|i'?d like|i would like|i need|do you|are there|is there)\b/.test(t)
+}
+
 export async function logQuestion(args: LogQuestionArgs): Promise<void> {
   if (!isLoggableMessage(args.userMessage)) return
+  if (args.classification !== 'deflect' && !looksLikeQuestionOrRequest(args.userMessage)) return
 
   try {
     const { error } = await args.service.from('logged_questions').insert({

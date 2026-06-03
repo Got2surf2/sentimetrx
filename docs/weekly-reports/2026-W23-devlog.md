@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study refinements (owner review pass)
+
+**Why**: Reviewing the first Sarina sample, the owner caught three real problems. (1) The headline "60 conversations" was wrong — 18 of those 60 were one-word chip taps ("Learn"/"Yes"), opened-but-not-entered, not real conversations. (2) The Open Questions slide was noise — fragments and even mis-captured agent text flagged as "questions." (3) Two Spanish chats opened with garbage; the openings were AI leakage. Plus a slide-12 overflow + a request for larger deck fonts (older audience at the client).
+
+**Fixed**:
+- **Useful vs initiated counts** (`lib/agentStudy.ts`): a turn is *substantive* only if ≥3 words or contains `?`. Headline = useful conversations (≥1 substantive); `initiated` (any user turn) shown secondary; `initiatedNotEntered` = the difference, surfaced as a bottom note and excluded from the depth chart + classification. Verified on Sarina: 39 useful / 58 initiated / 19 not-entered / 2 no-input.
+- **Open-question validation**: pull the agent's preceding line for context, AI-validate + restate each open question, filter false positives (`autoFiltered`). Hardened live capture in `lib/logQuestion.ts` (`looksLikeQuestionOrRequest`; deflect exempt). One-time backfill `scripts/agent-question-revalidate.ts` marks existing false positives `status='n_a'` + notes (no migration). **Ran --apply on Sarina: 9 open → 5 kept, 4 marked n_a** (the exact fragments the owner flagged). Questions admin page now self-clean.
+- **Non-English greeting leak**: root cause in `ChatBot.tsx` — the localized-greeting call POSTed "Greet the user warmly…" WITH a session_id, so chatCore persisted the prompt as a user turn for every non-English chat. Fixed by dropping session_id on that internal call; `agentStudy` also filters historical leaks (`isLeakedTurn`). (The fix landed in commit 0252c056 — a parallel session swept my uncommitted ChatBot edit into its dynamicChips commit.)
+- **slideRenderer**: insight-box height is now adaptive (no more 2-line bleed below the box on bullets slides); body-font floor raised toward 12 (insight 11→12, quotes 10→12 + shorter trim, table 9.5→11) for the older client audience. Shared by 6 decks — re-QC'd the agent study; bigger fonts + autoFit, low regression risk.
+
+**Verification**: clean `rm tsconfig.tsbuildinfo && npx tsc --noEmit` (0 errors). Re-ran getAgentStudy read-only vs Sarina; pixel-QC'd slides 2/10/12 — engagement note correct, open questions now 5 clean restated questions + "4 auto-filtered", knowledge-gaps overflow gone, languages reconcile (en 37/95%, es 2/5%). Backfill dry-run before --apply. Specs: `docs/BOTS.md` Agent Study section. Commit-only.
+
 ## 2026-06-03 — Agent Study: comprehensive agent-analytics report (replaces Deck + Mine Conversations)
 
 **Why**: The agent conversations page had two thin, disconnected analytics buttons — "Deck" (a fixed 8-slide PPTX) and "Mine Conversations" (an AI text blob). Neither let you analyze by focus area, see entities, read the actual exchanges, or know your response rate. The owner wanted one comprehensive "agent study": engagement depth, per-focus analysis with entity cross-tab, intents, languages, open questions, and a quick health view on the agent card — as an HTML report you can drill into, with a PPTX export of the same thing.

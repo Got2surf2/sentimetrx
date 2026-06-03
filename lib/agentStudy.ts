@@ -61,9 +61,11 @@ export interface AgentStudy {
   range: { first: string | null; last: string | null; activeDays: number }
   totals: {
     impressions: number | null
-    conversations: number       // analyzable sessions (>=1 pair)
-    abandonedNoInput: number     // persisted sessions with 0 pairs (silence-probe only)
-    openedNotEngaged: number | null  // opens - conversations (beacon required)
+    initiated: number            // sessions with >=1 user turn (any)
+    conversations: number        // USEFUL: sessions with >=1 substantive user turn (the main count)
+    initiatedNotEntered: number  // initiated but trivial-only (chip tap / one-word ack, no real message)
+    abandonedNoInput: number     // sessions with no user turn at all (silence-probe only; rare)
+    openedNotEngaged: number | null  // beacon opens - initiated (beacon required)
     totalPairs: number
     medianPairs: number
   }
@@ -75,7 +77,9 @@ export interface AgentStudy {
   openQuestions: {
     byClassification: { classification: string; count: number }[]
     byStatus: { status: string; count: number }[]
-    open: { question: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string }[]
+    open: { question: string; restated: string; context: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string }[]
+    autoFiltered: number   // flagged but validated as not-a-real-question
+    filteredExamples: { question: string; reason: string }[]
   }
   insights: {
     commonQuestions: string[]
@@ -113,8 +117,20 @@ interface BotRow {
   intents: { label: string; enabled?: boolean }[]
 }
 
+// Internal-prompt leak: before 2026-06-03, the non-English greeting flow
+// (ChatBot.tsx) POSTed the literal instruction "Greet the user warmly…" WITH a
+// session_id, so chatCore persisted it as a user turn. The root cause is fixed
+// (no session_id on that call), but historical rows still carry the leak — drop
+// it so it never counts as user input, gets classified, or pollutes the
+// transcript.
+const INTERNAL_PROMPT_LEAK = /^greet the user warmly\b/i
+function isLeakedTurn(t: Turn): boolean {
+  return t.role === 'user' && INTERNAL_PROMPT_LEAK.test((t.content || '').trim())
+}
+
 // ── Turn loading (substrate-aware, mirrors insights-deck route) ──────────────
 async function loadTurns(service: any, botId: string): Promise<Turn[]> {
+  let rows: Turn[]
   if (isPhase3ReadSafe()) {
     const { data } = await service
       .from('conversation_turns')
@@ -122,21 +138,23 @@ async function loadTurns(service: any, botId: string): Promise<Turn[]> {
       .eq('conversations.bot_id', botId)
       .order('turn_number', { ascending: true })
       .limit(5000)
-    return (data || []).map((r: any) => ({
+    rows = (data || []).map((r: any) => ({
       session_id: r.conversations?.session_id || '',
       turn_number: r.turn_number, role: r.role, content: r.content || '',
       content_en: r.content_en, language: r.language || 'en', source: r.source,
       sentiment: r.sentiment, content_flags: r.content_flags, created_at: r.created_at,
     }))
+  } else {
+    const { data } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, content_en, language, source, sentiment, content_flags, created_at')
+      .eq('bot_id', botId)
+      .order('session_id')
+      .order('turn_number', { ascending: true })
+      .limit(5000)
+    rows = (data || []) as Turn[]
   }
-  const { data } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, content_en, language, source, sentiment, content_flags, created_at')
-    .eq('bot_id', botId)
-    .order('session_id')
-    .order('turn_number', { ascending: true })
-    .limit(5000)
-  return (data || []) as Turn[]
+  return rows.filter(t => !isLeakedTurn(t))
 }
 
 // ── Session / exchange shaping ───────────────────────────────────────────────
@@ -151,14 +169,28 @@ function groupSessions(turns: Turn[]): Map<string, Turn[]> {
   return m
 }
 
-// A normalized "pair" = a source='normal' user turn (the askName/greeting
-// preamble carries source='greeting' and is excluded). Each pair is matched to
-// the next assistant turn in the session as its answer.
+// A user turn is "substantive" when the visitor actually entered a real
+// message — not a one-word chip tap / ack ("Learn", "Yes", "Details"). A
+// conversation with only trivial turns was *initiated* but never *entered*.
+// (The greeting/askName preamble carries source='greeting' and is excluded
+// regardless.) Threshold: >=3 words, or any message containing a question
+// mark (catches terse real questions like "Why US 441?").
+const SUBSTANTIVE_WORDS = 3
+function isSubstantive(t: Turn): boolean {
+  if (t.role !== 'user' || !(t.source === 'normal' || t.source === null)) return false
+  const c = (t.content_en || t.content || '').trim()
+  if (c.includes('?')) return c.length > 1
+  return c.split(/\s+/).filter(Boolean).length >= SUBSTANTIVE_WORDS
+}
+
+// A normalized "pair" = a substantive user turn matched to the next assistant
+// turn as its answer. Trivial turns are excluded so "Learn"/"Yes" never count
+// as engagement depth or get classified into a focus.
 function buildExchanges(sessionTurns: Turn[]): Exchange[] {
   const out: Exchange[] = []
   for (let i = 0; i < sessionTurns.length; i++) {
     const t = sessionTurns[i]
-    if (t.role === 'user' && (t.source === 'normal' || t.source === null)) {
+    if (isSubstantive(t)) {
       const answer = sessionTurns.slice(i + 1).find(x => x.role === 'assistant') || null
       out.push({ sessionId: t.session_id, question: t, answer })
     }
@@ -174,7 +206,7 @@ function computeHealth(sessions: Map<string, Turn[]>, impressions: { created_at:
   const DAY = 86400000
   // pairs per session + last-activity per session
   const sessionMeta = [...sessions.entries()].map(([sid, ts]) => {
-    const pairs = ts.filter(t => t.role === 'user' && (t.source === 'normal' || t.source === null)).length
+    const pairs = ts.filter(isSubstantive).length
     const last = Math.max(...ts.map(t => new Date(t.created_at).getTime()))
     return { sid, pairs, last }
   }).filter(s => s.pairs > 0)
@@ -311,6 +343,43 @@ Return ONLY JSON, no markdown:
   } catch { return empty }
 }
 
+// ── Open-question validation (filters false positives, adds context) ─────────
+// logged_questions captures liberally (any uncertain reply), so the raw log is
+// full of non-questions: acks ("yes"), context the user shared, fragments,
+// chip taps. We pull the agent's preceding line for context and AI-validate
+// each as a genuine unanswered question, restating it cleanly.
+interface QVerdict { valid: boolean; restated: string; reason: string }
+
+function findPriorAgentLine(sessions: Map<string, Turn[]>, sessionId: string, userMessage: string): string {
+  const ts = sessions.get(sessionId)
+  if (!ts) return ''
+  const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const nq = norm(userMessage)
+  const idx = ts.findIndex(t => t.role === 'user' && (norm(t.content) === nq || norm(t.content_en || '') === nq))
+  if (idx < 0) return ''
+  for (let j = idx - 1; j >= 0; j--) if (ts[j].role === 'assistant') return ts[j].content_en || ts[j].content || ''
+  return ''
+}
+
+async function validateOpenQuestions(botId: string, botName: string, items: { question: string; context: string }[]): Promise<QVerdict[]> {
+  if (items.length === 0) return []
+  const lines = items.map((it, i) => `[${i}] AGENT SAID BEFORE: ${(it.context || '(nothing)').slice(0, 220)}\n    USER MESSAGE: ${it.question.slice(0, 300)}`).join('\n')
+  const res = await callAI({
+    tier: 'fast', maxTokens: 1300, timeoutMs: 35000,
+    system: `These USER messages were each flagged as "a question ${botName} could not answer." Many are FALSE POSITIVES — acknowledgements ("yes", "ok"), statements like "I'm here to learn", context the user shared about themselves, location fragments, or the agent's own text. Using the agent's preceding line as context, decide for each whether it is genuinely a question or request the agent failed to answer.
+Return ONLY a JSON array, no markdown:
+[{"i":0,"valid":true|false,"restated":"one-sentence clean restatement of the real question (empty string if not valid)","reason":"short why"}]`,
+    messages: [{ role: 'user', content: lines }],
+  })
+  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_validate_q' }, res.usage)
+  let parsed: any[] = []
+  try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
+  return items.map((_it, i) => {
+    const p = parsed.find((x: any) => x && x.i === i) || {}
+    return { valid: !!p.valid, restated: typeof p.restated === 'string' ? p.restated : '', reason: typeof p.reason === 'string' ? p.reason : '' }
+  })
+}
+
 // ── Cache key ────────────────────────────────────────────────────────────────
 function cacheKeyFor(pairTotal: number, bot: BotRow): string {
   const h = crypto.createHash('sha1')
@@ -346,15 +415,17 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const turns = await loadTurns(service, botId)
   const sessions = groupSessions(turns)
 
-  // analyzable sessions (>=1 pair) vs abandoned (0 pairs)
-  let analyzable = 0, abandoned = 0, totalPairs = 0
+  // Classify each session: useful (>=1 substantive exchange) vs initiated-but-
+  // not-entered (has a user turn but only trivial ones) vs no-input.
+  let useful = 0, initiated = 0, initiatedNotEntered = 0, abandonedNoInput = 0, totalPairs = 0
   const allExchanges: Exchange[] = []
   for (const [, ts] of sessions) {
+    const hasUser = ts.some(t => t.role === 'user')
     const ex = buildExchanges(ts)
-    if (ex.length === 0) { abandoned++; continue }
-    analyzable++
-    totalPairs += ex.length
-    allExchanges.push(...ex)
+    if (hasUser) initiated++
+    if (ex.length > 0) { useful++; totalPairs += ex.length; allExchanges.push(...ex) }
+    else if (hasUser) initiatedNotEntered++
+    else abandonedNoInput++
   }
   const pairTotal = totalPairs
   const cacheKey = cacheKeyFor(pairTotal, bot)
@@ -370,7 +441,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   // ── impressions + open questions (no AI) ──
   const [impRes, oqRes] = await Promise.all([
     service.from('agent_impressions').select('created_at').eq('bot_id', botId).gte('created_at', new Date(Date.now() - 31 * 86400000).toISOString()),
-    service.from('logged_questions').select('user_message, classification, status, language, suggested_kb_addition, created_at').eq('bot_id', botId).order('created_at', { ascending: false }).limit(500),
+    service.from('logged_questions').select('session_id, user_message, classification, status, language, suggested_kb_addition, created_at').eq('bot_id', botId).order('created_at', { ascending: false }).limit(500),
   ])
   const impressions = impRes.data || []
   const allImpRes = await service.from('agent_impressions').select('id', { count: 'exact', head: true }).eq('bot_id', botId)
@@ -433,21 +504,38 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   }).sort((a, b) => b.detections - a.detections)
 
   // ── languages (report by language; analysis ran on translated text) ──
+  // Language breakdown over USEFUL conversations only (substantive turns), so
+  // the percentages reconcile to the useful-conversation total.
   const langSessions = new Map<string, Set<string>>()
   for (const t of userTurns) {
+    if (!isSubstantive(t)) continue
     if (!langSessions.has(t.language)) langSessions.set(t.language, new Set())
     langSessions.get(t.language)!.add(t.session_id)
   }
-  const langTotal = analyzable || 1
+  const langTotal = useful || 1
   const languagesArr = [...langSessions.entries()].map(([language, s]) => ({ language, sessions: s.size, pct: Math.round((s.size / langTotal) * 100) })).sort((a, b) => b.sessions - a.sessions)
 
   // ── open questions summary ──
   const byClass = new Map<string, number>(), byStatus = new Map<string, number>()
   for (const q of loggedQ) { byClass.set(q.classification, (byClass.get(q.classification) || 0) + 1); byStatus.set(q.status, (byStatus.get(q.status) || 0) + 1) }
+  const rawOpen = loggedQ.filter((q: any) => q.status === 'open').slice(0, 40)
+  const verdicts = await validateOpenQuestions(botId, bot.name, rawOpen.map((q: any) => ({ question: q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message) })))
+  const validOpen: AgentStudy['openQuestions']['open'] = []
+  const filtered: { question: string; reason: string }[] = []
+  rawOpen.forEach((q: any, i: number) => {
+    const v = verdicts[i] || { valid: true, restated: '', reason: '' }
+    if (v.valid) {
+      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at })
+    } else {
+      filtered.push({ question: q.user_message, reason: v.reason })
+    }
+  })
   const openQuestions = {
     byClassification: [...byClass.entries()].map(([classification, count]) => ({ classification, count })).sort((a, b) => b.count - a.count),
     byStatus: [...byStatus.entries()].map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
-    open: loggedQ.filter((q: any) => q.status === 'open').slice(0, 40).map((q: any) => ({ question: q.user_message, classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at })),
+    open: validOpen,
+    autoFiltered: filtered.length,
+    filteredExamples: filtered.slice(0, 5),
   }
 
   // ── narrative insights (AI) ──
@@ -483,9 +571,11 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     },
     totals: {
       impressions: totalImpressions ?? null,
-      conversations: analyzable,
-      abandonedNoInput: abandoned,
-      openedNotEngaged: (totalImpressions != null && totalImpressions > 0) ? Math.max(0, totalImpressions - analyzable) : null,
+      initiated,
+      conversations: useful,
+      initiatedNotEntered,
+      abandonedNoInput,
+      openedNotEngaged: (totalImpressions != null && totalImpressions > 0) ? Math.max(0, totalImpressions - initiated) : null,
       totalPairs,
       medianPairs,
     },
@@ -498,8 +588,8 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     insights,
     meta: {
       classifiedExchanges: allExchanges.length,
-      excludedZeroPair: abandoned,
-      method: 'Deck-time batch classification (Haiku); existing live tags reused where present. Non-English analyzed on translated text, reported by source language.',
+      excludedZeroPair: initiatedNotEntered,
+      method: 'Useful conversations = a real user message (≥3 words or a question); one-word taps, greeting preamble, and internal-prompt leaks excluded. Deck-time batch classification (Haiku); open questions AI-validated to drop false positives. Non-English analyzed on translated text, reported by source language.',
     },
   }
 
@@ -509,4 +599,33 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   }, { onConflict: 'bot_id' })
 
   return study
+}
+
+// ── Backfill: re-validate a bot's OPEN logged_questions, mark false positives ─
+// "Corrects internally" so the Questions admin page also self-cleans. False
+// positives get status='n_a' + a notes trail (no migration — existing columns).
+// `apply:false` is a dry-run. Service-role; pairs bot_id + org_id on the write.
+export async function revalidateOpenQuestions(botId: string, opts: { apply: boolean }): Promise<{ total: number; kept: number; filtered: { question: string; reason: string }[] }> {
+  const service = createServiceRoleClient()
+  const { data: bot } = await service.from('agents').select('id, name, org_id').eq('id', botId).single()
+  if (!bot) return { total: 0, kept: 0, filtered: [] }
+  const turns = await loadTurns(service, botId)
+  const sessions = groupSessions(turns)
+  const { data: open } = await service.from('logged_questions')
+    .select('id, session_id, user_message').eq('bot_id', botId).eq('status', 'open').limit(500)
+  const rows = open || []
+  if (rows.length === 0) return { total: 0, kept: 0, filtered: [] }
+  const verdicts = await validateOpenQuestions(botId, bot.name, rows.map((q: any) => ({ question: q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message) })))
+  const filtered: { question: string; reason: string }[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const v = verdicts[i] || { valid: true, restated: '', reason: '' }
+    if (v.valid) continue
+    filtered.push({ question: rows[i].user_message, reason: v.reason })
+    if (opts.apply) {
+      await service.from('logged_questions')
+        .update({ status: 'n_a', notes: 'Auto-filtered by agent study: not a real question — ' + (v.reason || 'no reason').slice(0, 200), resolved_at: new Date().toISOString() })
+        .eq('id', rows[i].id).eq('org_id', bot.org_id)
+    }
+  }
+  return { total: rows.length, kept: rows.length - filtered.length, filtered }
 }
