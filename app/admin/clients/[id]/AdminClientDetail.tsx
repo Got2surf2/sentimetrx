@@ -661,18 +661,22 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
 
         {/* Invite Links */}
         <Section title="Invite Links">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-gray-400">Generate links to invite new members to this organization.</p>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <p className="text-xs text-gray-500">Add new members to this organization — generate a link or send an invite email.</p>
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowBulkForm(f => !f); if (!showBulkForm) setShowInvForm(false) }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
+                className={'text-sm font-semibold px-4 py-2 rounded-lg transition-colors ' + (showBulkForm
+                  ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-800')}
               >
                 {showBulkForm ? 'Cancel bulk' : '+ Bulk Invite'}
               </button>
               <button
                 onClick={() => { setShowInvForm(f => !f); if (!showInvForm) setShowBulkForm(false) }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
+                className={'text-sm font-semibold px-4 py-2 rounded-lg transition-colors ' + (showInvForm
+                  ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                  : 'bg-cyan-500 hover:bg-cyan-400 text-slate-900')}
               >
                 {showInvForm ? 'Cancel' : '+ New Invite'}
               </button>

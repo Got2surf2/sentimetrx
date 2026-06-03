@@ -345,3 +345,9 @@ Keyword tier only (free). No app/prod behavior change. Commit-only, not pushed.
 **Why**: The shared analytics page (`/shared/[token]`) always rendered a Completion Funnel, but it only makes sense for surveys we conducted (needs response `status` + section metadata). For uploaded CSVs / Google-reviews / other ingests there is no funnel data, so it showed a misleading "Started 100% -> Completed 0%".
 
 **What changed** (`app/api/share/analytics/route.ts`): gate `completion` to survey sources — `dataset.source==="study"` OR schema has custom/psychographic/demographic sections OR an experience_score/nps_score/status field OR rows carry `status`; also require >=3 funnel stages. Otherwise `completion: null`. The page already guards on `data.completion`, so the funnel hides automatically with no UI change. Same survey-source signal as the deck survey-overview slide. tsc clean. Commit-only.
+
+## 2026-06-03 — Admin: make org invite buttons prominent (contrast fix)
+
+**Why**: Platform admin couldn't find how to add users to a newly-created org — the invite controls existed on `/admin/clients/[id]` but the "+ New Invite" / "+ Bulk Invite" buttons used `text-slate-300` (near-white) on a light card, so they were effectively invisible. User management is invite-only today (no direct password-create path).
+
+**What changed** (`app/admin/clients/[id]/AdminClientDetail.tsx`): "+ New Invite" → solid cyan CTA (dark text, matches app primary buttons); "+ Bulk Invite" → dark text on medium gray; both bump xs→sm and switch to a muted "Cancel" style when their form is open. Helper line darkened (gray-400→500). CSS-only, no behavior change. tsc clean. Commit-only, not pushed.
