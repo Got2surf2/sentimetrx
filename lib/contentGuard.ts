@@ -144,7 +144,7 @@ export function scoreSentimentFull(text: string): { label: 'positive' | 'negativ
 // 'severe' = triggers strikes + escalation (slurs, threats, sexual content)
 
 type Severity = 'mild' | 'rude' | 'severe'
-type Category = 'slur' | 'threat' | 'sexual' | 'profanity' | 'insult' | 'spam'
+type Category = 'slur' | 'threat' | 'sexual' | 'profanity' | 'insult' | 'spam' | 'self_harm'
 interface PatternDef { pattern: RegExp; severity: Severity; category: Category }
 
 // ── Bleep patterns: simpler regexes for word replacement in display ───────────
@@ -172,10 +172,25 @@ const PATTERNS: PatternDef[] = [
   { pattern: /\b(f+[a4@]+g+[o0]?t?[s]?|f[\s.*]*a[\s.*]*g[\s.*]*g[\s.*]*o[\s.*]*t)\b/i, severity: 'severe', category: 'slur' },
   { pattern: /\b(r[e3]t[a4@]rd(ed)?)\b/i, severity: 'severe', category: 'slur' },
 
-  // Severe: threats & violence
-  { pattern: /\b(kill\s+(you|your|them|myself|yourself|himself|herself|themselves|him|her)|murder|bomb\s+threat|shoot(ing)?|stab(bing)?)\b/i, severity: 'severe', category: 'threat' },
+  // Self-harm / suicidal ideation — checked BEFORE threats so first-person
+  // distress routes to a compassionate crisis response (988/911), NOT the
+  // hostile "keep it respectful" block. checkMessage special-cases this
+  // category. First-person phrasings only, to avoid topical false positives.
+  { pattern: /\b(kill|hurt|harm|cut)\s+(myself|my\s*self)\b/i, severity: 'severe', category: 'self_harm' },
+  { pattern: /\b(don'?t|do\s+not)\s+want\s+to\s+(live|be\s+alive|be\s+here|exist|go\s+on)\b/i, severity: 'severe', category: 'self_harm' },
+  { pattern: /\b(want|wanna|going|gonna|plan(ning)?|thinking\s+(about|of))\s+to\s+(die|end\s+(it|it\s+all|my\s+life)|kill\s+my\s*self)\b/i, severity: 'severe', category: 'self_harm' },
+  { pattern: /\b(end\s+(it\s+all|my\s+life)|take\s+my\s+(own\s+)?life)\b/i, severity: 'severe', category: 'self_harm' },
+  { pattern: /\bsuicidal\b/i, severity: 'severe', category: 'self_harm' },
+
+  // Severe: threats & violence toward others
+  { pattern: /\b(kill\s+(you|your|them|him|her|us)|murder|bomb\s+threat|shoot(ing)?|stab(bing)?)\b/i, severity: 'severe', category: 'threat' },
   { pattern: /\bi['']?ll\s+(kill|hurt|destroy|end)\s+(you|them|him|her)/i, severity: 'severe', category: 'threat' },
   { pattern: /\b(rape|molest|assault)\b/i, severity: 'severe', category: 'threat' },
+  // Indirect/displaced threats: "kill all of you", "shoot everyone", "hurt the staff",
+  // "going to hurt the kids". Anchored to a violent verb + an at-risk target so
+  // benign idioms ("kill time", "I'd kill for a coffee") don't match.
+  { pattern: /\b(kill|shoot|stab|murder|hurt|harm|attack)\s+(all\s+of\s+|every\s*one\s+of\s+|each\s+of\s+)?(you|them|everyone|everybody|the\s+staff|the\s+people|the\s+kids|the\s+children|the\s+residents?|the\s+guests?|the\s+women|those\s+\w+)\b/i, severity: 'severe', category: 'threat' },
+  { pattern: /\b(going\s+to|gonna|will|i['']?ll|i['']?m\s+going\s+to|want\s+to|wanna)\s+(kill|hurt|harm|shoot|stab|attack|beat|murder|destroy|end)\b[\w\s''.,-]{0,20}\b(you|them|him|her|us|staff|everyone|everybody|anyone|y['']?all|people|kids|children|families|family|residents?|guests?|women|woman|workers?|employees?|this\s+place)\b/i, severity: 'severe', category: 'threat' },
 
   // Severe: explicit sexual content
   { pattern: /\b(porn|hentai|xxx|nude[s]?|naked|d[i1!]ck\s*pic|c[o0]ck\s*suck)/i, severity: 'severe', category: 'sexual' },
@@ -320,6 +335,17 @@ export function checkMessage(
   for (const def of PATTERNS) {
     if (!isCategoryEnabled(def.category, cfg)) continue
     if (!def.pattern.test(text)) continue
+
+    // Self-harm / suicidal ideation: respond with care and crisis resources,
+    // not a hostile "be respectful" block, and never count a strike. This is a
+    // deterministic safety net so the right resources surface for EVERY agent,
+    // regardless of its own prompt.
+    if (def.category === 'self_harm') {
+      return {
+        safe: false, severity: 'severe', category: 'self_harm', bleeped,
+        warning: "I'm really glad you reached out, and I'm sorry you're carrying something this heavy — you deserve support right now. Please talk to someone who can help: call or text 988 (the Suicide & Crisis Lifeline — free, confidential, available 24/7), or call 911 if you're in immediate danger. You don't have to face this alone.",
+      }
+    }
 
     // Rude: message goes through but bot should acknowledge the tone
     if (def.severity === 'rude') {

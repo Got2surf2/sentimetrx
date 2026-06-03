@@ -309,11 +309,6 @@ HOW TO ANSWER:
 - When you reference a way to give, a PDF, or a contact, surface the actual link or email/phone inline as a markdown link — don't just say "visit our website."
 - If you don't know something, say so honestly and offer to connect the person to Brad Butterstein or Dr. Leon Kirkpatrick. Never invent facts, dollar figures, dates, partner names, or quotes.
 
-FOLLOW-UP PILLS (important):
-- Whenever you END a reply by offering the person a choice between a few directions (e.g. "Want to hear about the impact, the buildings, or how to get involved?"), append a trailer on its own line in EXACTLY this format:
-  [[chips: The impact | The new buildings | How to give]]
-- Rules for the trailer: 2–4 options, each 2–5 words, phrased as something the VISITOR would tap (their voice, not yours). Use it only when there are discrete next-step options. Do NOT add it after open-ended questions (like asking their name) or when there's nothing concrete to choose. The options should mirror the choices you just named in the sentence above it. The widget turns the trailer into clickable buttons and hides the raw text, so never mention "[[chips]]" in your prose.
-
 DO NOT:
 - Use "the homeless" as a noun. Say "people experiencing homelessness," "women and families," "neighbors."
 - Pressure or guilt-trip anyone about giving.
@@ -411,9 +406,15 @@ const CONFIG = {
   // follows with the topical opener below. BotClient resolves askName via
   // `config.askName !== 'false'`, so any non-'false' value enables it.
   askName: 'true',
-  // Render the agent's offered options as clickable follow-up pills (parses a
-  // [[chips: …]] trailer Mason appends to choice-style questions — see prompt).
+  // Render the agent's offered options as clickable follow-up pills. The
+  // [[chips: …]] trailer instruction is injected by lib/chatCore.ts when this
+  // flag is on (no longer hand-written in the system prompt).
   dynamicChips: true,
+  // Embed allowlist (app/api/bots/[id]/chat enforces): only the Foundations
+  // site (and its subdomains), plus the Sentimetrx app itself, may embed Mason
+  // — other sites get a 403 so they can't burn the campaign's API budget.
+  // Empty/unset would mean wildcard; we scope it because Mason is for one site.
+  allowedOrigins: ['https://foundationsproject.org'],
   language: 'en',
 }
 

@@ -402,6 +402,23 @@ quarterly):
 - `lib/guardrails.ts` runs an input pre-check on free-text fed
   into Claude (length, profanity, URL injection, role-prompt
   patterns).
+- `lib/contentGuard.ts` is the pre-AI safety filter on public agent
+  chat. Severe content (slurs, threats, sexual) escalates per-IP
+  (strike → final warning → conversation shutdown). Two safety
+  refinements (2026-06): **self-harm / suicidal ideation** is
+  detected first (`category: 'self_harm'`) and returns a
+  compassionate crisis response (988 Suicide & Crisis Lifeline /
+  911) rather than the hostile block, and never counts a strike —
+  a deterministic safety net independent of any agent's own prompt;
+  and **threats toward others** are matched beyond direct adjacency
+  ("kill all of you," "hurt the staff") while benign idioms still
+  pass. The deterministic regex is the floor; the model's own
+  guardrails are the backstop for novel phrasings.
+- **Embed allowlist:** public agents may set `config.allowedOrigins`
+  so the chat route (`app/api/bots/[id]/chat`) 403s browser requests
+  from non-allowed `Origin`s (cost/abuse control for embeds). It is
+  not headless-bot detection — no-Origin requests pass to the rate
+  limiter. CORS stays wildcard; the 403 is the enforcement.
 - Tool definitions are narrow — Claude cannot make arbitrary DB
   queries or arbitrary HTTP calls.
 - **Prompt budget:** no single Claude prompt may include rows

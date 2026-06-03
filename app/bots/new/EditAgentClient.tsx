@@ -37,6 +37,7 @@ interface BotConfig {
   language: string
   languages: string[]
   askName: string
+  dynamicChips?: boolean
   content_safety?: import('@/components/agent/ContentSafetyEditor').ContentSafetyConfigValue
 }
 
@@ -59,6 +60,7 @@ const DEFAULT_CONFIG: BotConfig = {
   language: 'en',
   languages: ['en'],
   askName: 'true',
+  dynamicChips: false,
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -263,7 +265,7 @@ function BotCreatorInner() {
     return n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
   }
 
-  function updateConfig(key: keyof BotConfig, value: string) {
+  function updateConfig(key: keyof BotConfig, value: string | boolean) {
     setConfig(function(prev) { return { ...prev, [key]: value } })
   }
 
@@ -623,6 +625,13 @@ function BotCreatorInner() {
                   <div>
                     <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Ask user's name</span>
                     <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Prompts "What should I call you?"</p>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={config.dynamicChips === true} onChange={function(e) { updateConfig('dynamicChips', e.target.checked) }} style={{ width: 16, height: 16, accentColor: HERMES }} />
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Show follow-up pills</span>
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Turns the agent's choice-style questions into clickable buttons</p>
                   </div>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>

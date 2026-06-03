@@ -524,6 +524,16 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (rules) systemParts.push('\n\nRULES YOU MUST FOLLOW:\n' + rules)
   }
 
+  // Follow-up pills: when the agent opts in (config.dynamicChips), teach it to
+  // append a machine-readable [[chips: …]] trailer to choice-style questions.
+  // The widget (components/ui/ChatBot.tsx) parses it into clickable pills and
+  // strips the marker from the visible text. Injected here — gated on the
+  // config flag — so the feature works for ANY agent with the flag on, without
+  // hand-editing each agent's prompt.
+  if ((bot.config as any)?.dynamicChips === true || (bot.config as any)?.dynamicChips === 'true') {
+    systemParts.push('\n\nFOLLOW-UP PILLS: When you END a reply by offering the person a choice between a few next steps (e.g. "Want to hear about the impact, the buildings, or how to get involved?"), append a trailer on its own final line in EXACTLY this format:\n[[chips: First option | Second option | Third option]]\nRules: 2–4 options, each 2–5 words, phrased in the visitor\'s voice as something they would tap, mirroring the choices you just named. Use it ONLY when there are discrete next-step options — never after an open-ended question (like asking their name) or when there is nothing concrete to choose. The widget renders the trailer as clickable buttons and hides the raw text, so never mention "chips" or the brackets in your prose.')
+  }
+
 
   // RAG: semantic search with embeddings + full-text + trigram
   // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge

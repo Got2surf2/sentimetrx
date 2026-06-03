@@ -33,6 +33,27 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: cors })
 }
 
+// Per-agent embed allowlist (opt-in via config.allowedOrigins). When an agent
+// sets a non-empty list, browser requests carrying an Origin that isn't the
+// app itself, an allowed domain, or a subdomain of one are rejected — this
+// stops other sites from embedding the widget and burning the customer's API
+// budget. Requests with no Origin (same-origin page loads, server-to-server,
+// curl) are allowed through and left to the rate limiter; this is an
+// embedding control, not headless-bot detection. Empty/unset list = wildcard
+// (unchanged behavior for every other agent).
+const SELF_HOSTS = new Set(['sentimetrx.ai', 'www.sentimetrx.ai', 'localhost', '127.0.0.1'])
+function hostOf(originOrDomain: string): string {
+  try { return new URL(originOrDomain).hostname.toLowerCase() } catch { return originOrDomain.toLowerCase().replace(/^.*:\/\//, '').replace(/\/.*$/, '') }
+}
+function originAllowed(origin: string, allowedOrigins: string[]): boolean {
+  if (!origin) return true
+  if (!allowedOrigins || allowedOrigins.length === 0) return true
+  const h = hostOf(origin)
+  if (!h) return false
+  if (SELF_HOSTS.has(h)) return true
+  return allowedOrigins.some(a => { const ah = hostOf(a); return !!ah && (h === ah || h.endsWith('.' + ah)) })
+}
+
 export async function POST(req: NextRequest, props: Params) {
   const params = await props.params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
@@ -59,6 +80,11 @@ export async function POST(req: NextRequest, props: Params) {
   }
   if (agent.status !== 'active') {
     return NextResponse.json({ error: 'This bot is not currently active' }, { status: 403, headers: cors })
+  }
+
+  const allowedOrigins: string[] = Array.isArray(agent.config?.allowedOrigins) ? agent.config.allowedOrigins : []
+  if (!originAllowed(req.headers.get('origin') || '', allowedOrigins)) {
+    return NextResponse.json({ error: 'This agent is not authorized for this site.' }, { status: 403, headers: cors })
   }
 
   const result = await handleChatTurn({ agent, service, ip }, body)
