@@ -159,6 +159,7 @@ async function loadFilesWithUrls(
     .select('id, original_filename, storage_path, is_video, sort_order')
     .eq('recording_id', input.recording_id)
     .eq('org_id', input.org_id)
+    .eq('file_role', 'media')          // slide decks (file_role='slides') skip ffmpeg entirely
     .order('sort_order', { ascending: true })
 
   if (error) throw new Error(`recording_files load failed: ${error.message}`)

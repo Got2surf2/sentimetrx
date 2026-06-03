@@ -10,12 +10,14 @@ import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { analyzeRecordingWorkflow } from '@/workflows/recordings'
+import type { PhaseMap } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
 
 interface Body {
   setup_inputs?: Record<string, unknown>
   instructions?: string
+  phase_map?: PhaseMap          // user-adjusted phase boundaries from the review gate
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -67,10 +69,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // Persist last-minute setup edits (agenda / panel roster) before analysis so
   // the extraction prompt sees them. Replaces setup_inputs wholesale — the gate
   // sends the full edited object.
+  const setupPatch: Record<string, unknown> = {}
   if (body.setup_inputs && typeof body.setup_inputs === 'object' && !Array.isArray(body.setup_inputs)) {
+    setupPatch.setup_inputs = body.setup_inputs
+  }
+  // User-adjusted phase boundaries from the gate — mark edited so detection
+  // won't be assumed authoritative, and analysis scopes to these spans.
+  if (body.phase_map && Array.isArray(body.phase_map.phases) && body.phase_map.phases.length > 0) {
+    setupPatch.phase_map = { ...body.phase_map, edited_by_user: true }
+  }
+  if (Object.keys(setupPatch).length > 0) {
     const { error: updErr } = await service
       .from('recordings')
-      .update({ setup_inputs: body.setup_inputs })
+      .update(setupPatch)
       .eq('id', recording_id)
       .eq('org_id', org_id)
     if (updErr) return NextResponse.json({ error: `setup update failed: ${updErr.message}` }, { status: 500 })

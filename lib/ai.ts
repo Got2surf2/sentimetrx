@@ -32,10 +32,23 @@ export interface AIUsageContext {
 // a single string (no caching there).
 export type SystemBlock = { type: 'text'; text: string; cache?: boolean }
 
+// Multimodal message content. Plain strings keep working everywhere; the block
+// array form carries images for Claude vision (Anthropic only — the OpenAI/Azure
+// builders pass it through but their image schema differs, so vision callers must
+// use the Anthropic provider). Anthropic accepts these blocks in messages[].content.
+export type TextContentBlock = { type: 'text'; text: string }
+export type ImageContentBlock = {
+  type: 'image'
+  source:
+    | { type: 'base64'; media_type: string; data: string }
+    | { type: 'url'; url: string }     // Anthropic fetches the (time-limited signed) URL
+}
+export type MessageContent = string | Array<TextContentBlock | ImageContentBlock>
+
 export interface AIRequestOptions {
   tier: ModelTier
   system?: string | SystemBlock[]
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  messages: Array<{ role: 'user' | 'assistant'; content: MessageContent }>
   maxTokens?: number
   timeoutMs?: number
   providerConfig?: AIProviderConfig   // explicit override
@@ -171,7 +184,7 @@ function buildAnthropicRequest(resolved: ResolvedProvider, opts: AIRequestOption
 
 function buildOpenAIRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
   const sys = flattenSystem(opts.system)
-  const messages: Array<{ role: string; content: string }> = []
+  const messages: Array<{ role: string; content: MessageContent }> = []
   if (sys) messages.push({ role: 'system', content: sys })
   messages.push(...opts.messages)
 
@@ -194,7 +207,7 @@ function buildAzureRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
   if (!endpoint) throw new Error('AZURE_OPENAI_ENDPOINT is required for azure-openai provider')
 
   const sys = flattenSystem(opts.system)
-  const messages: Array<{ role: string; content: string }> = []
+  const messages: Array<{ role: string; content: MessageContent }> = []
   if (sys) messages.push({ role: 'system', content: sys })
   messages.push(...opts.messages)
 

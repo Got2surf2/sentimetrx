@@ -22,6 +22,8 @@ import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill, trunc } from '@/lib/ppt
 import type {
   RecordingExtractionRow,
   RecordingAnalysisSummary,
+  ProceedingsSummary,
+  MeetingProfile,
   QaPairPayload,
   ActionItemPayload,
   QaSentiment,
@@ -39,6 +41,8 @@ export interface RecordingDeckInput {
   meeting_date: string | null
   location: string | null
   analysis_summary: RecordingAnalysisSummary | null
+  proceedings_summary?: ProceedingsSummary | null   // presentation overview (meeting tool)
+  meeting_profile?: MeetingProfile | null
   extractions: RecordingExtractionRow[]   // qa_pair + action_item, any order
 }
 
@@ -129,6 +133,9 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
   const name = input.name || 'Q&A Session'
   const summary = input.analysis_summary
+  const proceedings = input.proceedings_summary || null
+  const hasPresentation = !!proceedings && (!!proceedings.overview || (proceedings.items?.length ?? 0) > 0)
+  const reportKind = hasPresentation ? 'Meeting Report' : 'Q&A Session Report'
 
   // Published Q&A pairs only (drop flagged/low-confidence junk), in sort order.
   const qaPairs = input.extractions
@@ -143,7 +150,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   bgFill(s1, pptx, DN.navy)
   s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.08, fill: { color: DN.gold }, line: { width: 0 } })
   s1.addText(name, { x: PAD, y: 1.7, w: W - PAD * 2, h: 1.2, fontSize: 34, bold: true, color: DN.white, valign: 'middle' })
-  s1.addText('Q&A Session Report', { x: PAD, y: 2.95, w: W - PAD * 2, h: 0.6, fontSize: 18, color: DN.tealLight })
+  s1.addText(reportKind, { x: PAD, y: 2.95, w: W - PAD * 2, h: 0.6, fontSize: 18, color: DN.tealLight })
   const metaBits = [
     input.meeting_date ? new Date(input.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null,
     input.location || null,
@@ -159,6 +166,64 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     ],
     { x: W - 2.8, y: H - 0.8, w: 2.4, h: 0.5, fontSize: 18, align: 'right' }
   )
+
+  // ── Meeting Overview (presentation phase) ──
+  if (hasPresentation && proceedings) {
+    const items = proceedings.items || []
+
+    // Overview slide: the narrative + a scannable agenda list.
+    const ov = pptx.addSlide()
+    bgFill(ov, pptx); hdr(ov, pptx, 'Meeting Overview'); logoRight(ov)
+    if (proceedings.overview) {
+      ov.addText(proceedings.overview, { x: PAD, y: CY + 0.2, w: W - PAD * 2, h: 1.7, fontSize: 13, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.15 })
+    }
+    if (items.length > 0) {
+      ov.addText('PRESENTED', { x: PAD, y: CY + 2.1, w: W - PAD * 2, h: 0.26, fontSize: 12, bold: true, color: DN.slate, charSpacing: 1.0 })
+      let ly = CY + 2.45
+      for (const it of items.slice(0, 8)) {
+        ov.addShape(pptx.ShapeType.rect, { x: PAD, y: ly + 0.05, w: 0.05, h: 0.3, fill: { color: DN.teal }, line: { width: 0 } })
+        ov.addText(
+          [
+            { text: trunc(it.title, 70), options: { bold: true, color: DN.ink } },
+            ...(it.presenter ? [{ text: '   ·   ' + it.presenter, options: { color: DN.slateDark } }] : []),
+          ],
+          { x: PAD + 0.18, y: ly, w: W - PAD * 2 - 0.3, h: 0.36, fontSize: 12, valign: 'middle' }
+        )
+        ly += 0.42
+      }
+    }
+    footer(ov, pptx, name)
+
+    // Detail slides: 2 item cards per slide.
+    for (let i = 0; i < items.length; i += 2) {
+      const s = pptx.addSlide()
+      bgFill(s, pptx); hdr(s, pptx, 'What Was Presented'); logoRight(s)
+      for (let j = 0; j < 2 && i + j < items.length; j++) {
+        const it = items[i + j]
+        const cw = (W - PAD * 2 - 0.3) / 2
+        const cx = PAD + j * (cw + 0.3)
+        const cardY = CY + 0.1
+        const cardH = 5.45
+        s.addShape(pptx.ShapeType.rect, { x: cx, y: cardY, w: cw, h: cardH, fill: { color: DN.white }, line: { color: DN.divider, width: 1 }, rectRadius: 0.08 })
+        s.addShape(pptx.ShapeType.rect, { x: cx, y: cardY, w: cw, h: 0.06, fill: { color: DN.teal }, line: { width: 0 } })
+        s.addText(trunc(it.title, 64), { x: cx + 0.2, y: cardY + 0.22, w: cw - 0.4, h: 0.5, fontSize: 16, bold: true, color: DN.ink, valign: 'middle' })
+        if (it.presenter) s.addText(it.presenter, { x: cx + 0.2, y: cardY + 0.78, w: cw - 0.4, h: 0.28, fontSize: 12, italic: true, color: DN.slateDark })
+        s.addText(truncBoundary(it.what_was_presented, 460), { x: cx + 0.2, y: cardY + 1.15, w: cw - 0.4, h: 3.0, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.05 })
+        if (it.key_figures.length > 0) {
+          s.addText('KEY FIGURES', { x: cx + 0.2, y: cardY + 4.25, w: cw - 0.4, h: 0.24, fontSize: 12, bold: true, color: DN.slate, charSpacing: 1.0 })
+          let fy = cardY + 4.55
+          for (const f of it.key_figures.slice(0, 3)) {
+            s.addText(
+              [ { text: f.value + '  ', options: { bold: true, color: DN.teal } }, { text: f.label, options: { color: DN.slateDark } } ],
+              { x: cx + 0.2, y: fy, w: cw - 0.4, h: 0.26, fontSize: 12, valign: 'middle' }
+            )
+            fy += 0.28
+          }
+        }
+      }
+      footer(s, pptx, name)
+    }
+  }
 
   // ── Slide 2: Executive summary ──
   if (summary && summary.executive_summary) {

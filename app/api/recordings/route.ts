@@ -19,6 +19,7 @@ import type {
   AsrStrategy,
   SessionType,
   SetupInputs,
+  MeetingProfile,
 } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,7 @@ interface CreateFileSpec {
   size_bytes: number
   mime_type: string
   is_video: boolean
+  file_role?: 'media' | 'slides'      // default 'media'; 'slides' = presentation deck (PDF, vision-read)
 }
 
 interface CreateBody {
@@ -49,6 +51,7 @@ interface CreateBody {
   language?: string
   setup_inputs: SetupInputs | Record<string, unknown>
   asr_strategy: AsrStrategy
+  meeting_profile?: MeetingProfile | null   // meeting-tool preset + phases; null = legacy Q&A
   files: CreateFileSpec[]
 }
 
@@ -86,8 +89,10 @@ export async function POST(req: Request) {
       language: (body.language || 'en').trim(),
       setup_inputs: body.setup_inputs,
       asr_strategy: body.asr_strategy,
+      meeting_profile: body.meeting_profile ?? null,
       status: 'uploading',
-      source_size_bytes: body.files.reduce((sum, f) => sum + f.size_bytes, 0),
+      // Only media files count toward the source byte total; slides are tiny.
+      source_size_bytes: body.files.filter(f => (f.file_role ?? 'media') === 'media').reduce((sum, f) => sum + f.size_bytes, 0),
     })
     .select('id')
     .single()
@@ -106,6 +111,7 @@ export async function POST(req: Request) {
     mime_type: f.mime_type,
     size_bytes: f.size_bytes,
     is_video: f.is_video,
+    file_role: (f.file_role ?? 'media') as 'media' | 'slides',
     sort_order: i,
     upload_status: 'pending' as const,
   }))
@@ -165,6 +171,8 @@ function validate(body: Partial<CreateBody>): { ok: true } | { ok: false; error:
     return { ok: false, error: `at most ${MAX_FILES_PER_RECORDING} files per recording` }
   }
   const filenames = new Set<string>()
+  let slidesCount = 0
+  let mediaCount = 0
   for (const f of body.files) {
     if (!f || typeof f !== 'object') return { ok: false, error: 'each files[] entry must be an object' }
     if (!f.original_filename || typeof f.original_filename !== 'string') {
@@ -186,7 +194,20 @@ function validate(body: Partial<CreateBody>): { ok: true } | { ok: false; error:
     if (typeof f.is_video !== 'boolean') {
       return { ok: false, error: `each files[] entry needs is_video (boolean)` }
     }
+    const role = f.file_role ?? 'media'
+    if (role !== 'media' && role !== 'slides') {
+      return { ok: false, error: `file_role must be 'media' or 'slides' (got ${role})` }
+    }
+    if (role === 'slides') {
+      slidesCount++
+      const isPdf = f.mime_type.includes('pdf') || f.original_filename.toLowerCase().endsWith('.pdf')
+      if (!isPdf) return { ok: false, error: 'slide decks must be PDF in this version' }
+    } else {
+      mediaCount++
+    }
   }
+  if (slidesCount > 1) return { ok: false, error: 'at most one slide deck (file_role=slides) per recording' }
+  if (mediaCount === 0) return { ok: false, error: 'at least one media (audio/video) file is required' }
   return { ok: true }
 }
 

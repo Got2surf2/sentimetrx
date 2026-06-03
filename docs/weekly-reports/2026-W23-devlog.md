@@ -463,3 +463,19 @@ Verified via the read-only QC harness against the real recording (in-memory anal
 - `scripts/_project_insight_qc.ts`: read-only render harness (no prod I/O).
 
 **Verified**: rendered via the QC harness, converted to PNG (LibreOffice + pdftoppm), visually inspected all 10 slides — caught + fixed a slide-10 overlap (5th strategic-buyer card under the objective box). `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Datanautix branding correct. Commit-only, not pushed.
+
+## 2026-06-03 — Recordings → general meeting tool (presentation + Q&A) — backend + deck
+
+**Why**: Walking into a prospect's community meeting (~1wk out) we want to record the WHOLE meeting, summarize the presentation portion (seeded by the presenter's actual slides), then the Q&A — and have it be a generically useful, tunable meeting tool, not a one-off. "Real-time" was clarified as fast post-meeting turnaround through the batch pipeline.
+
+**De-risk gates (both passed before building)**: (1) extended `lib/ai.ts` with image content blocks → Claude vision reads a slide accurately (~$0.01/slide Sonnet); (2) `poppler-utils`/`pdftoppm` installs + renders PDF→PNG in a Vercel Sandbox. So the full vision + slide-grounding scope is viable — no fallback needed.
+
+**What changed** (all backend + deck; UI wizard/gate forms still to come):
+- **Data model** (`sql/097`, applied to prod): `recordings.meeting_profile/phase_map/presentation_outline/proceedings_summary` (jsonb) + `recording_files.file_role` ('media'|'slides'). Nullable adds → no new RLS; `meeting_profile IS NULL` = legacy Q&A behavior.
+- **Profiles** (`lib/recordings/profiles.ts`): presets `town_hall_qa` (current) + `community_meeting` (presentation→Q&A); `resolveProfile` coerces null→qa as the single chokepoint.
+- **Phases** (`lib/recordings/phases.ts`): Sonnet detection seeded by profile + slide titles; `clampPhases`/`slicePhaseSegments` pure helpers; never throws, whole-transcript fallback.
+- **Vision** (`lib/vision/renderDoc.ts` + `readDocument.ts`): shared Sandbox PDF→PNG render + generic vision page reader (reusable by bot-KB later). Slides→`presentation_outline` (`lib/recordings/slides.ts`), neutral presentation summary→`proceedings_summary` (`lib/recordings/presentation.ts`, reuses the exact no-opining directive).
+- **Pipeline** (`workflows/recordings.ts`): `runSlidesAndPhases` after transcription (before the gate); `runAnalyze` scopes Q&A to the qa phase + runs the presentation summary; persists the new columns. `extract.ts` skips `file_role='slides'`. Routes: create accepts file_role + meeting_profile (≤1 PDF slide, ≥1 media); analyze persists the user-edited phase_map; GET + export return the new fields.
+- **Deck** (`lib/pptx/recordingDeck.ts`): new Meeting Overview (overview + agenda list) + per-item "What Was Presented" cards (presenter + neutral summary + key-figures strip) ahead of the Q&A sections; title adapts to "Meeting Report"; all sections null-guarded so a pure Q&A recording is unchanged. QC'd via render harness.
+
+Tests: meetingTool unit (13) + recordings-route file_role validation. tsc clean. NOTE: a parallel session is building conversation-reviews/project-insight-deck in the same tree — migration collided at 096, so this one is **097**; only recordings-tool files staged here. Commit-only, not pushed.

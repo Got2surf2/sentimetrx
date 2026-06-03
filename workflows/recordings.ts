@@ -26,10 +26,16 @@ import { transcribeRecording } from '@/lib/recordings/transcribe'
 import { analyzeRecording } from '@/lib/recordings/analyze'
 import { mirrorExtractionsToDataset } from '@/lib/recordings/mirror'
 import { computeCoverage } from '@/lib/recordings/coverage'
+import { resolveProfile, hasPresentationPhase } from '@/lib/recordings/profiles'
+import { detectPhases, slicePhaseSegments } from '@/lib/recordings/phases'
+import { ingestSlides } from '@/lib/recordings/slides'
+import { summarizePresentation } from '@/lib/recordings/presentation'
 import type {
   RecordingRow,
   RecordingTranscriptRow,
   RecordingStatus,
+  QaSetupInputs,
+  TranscriptSegment,
 } from '@/lib/recordings/types'
 
 // Phase 1 — ingest through transcription, then PAUSE at 'transcribed'. The
@@ -44,6 +50,12 @@ export async function processRecordingWorkflow(recording_id: string, org_id: str
 
     await setStatus(recording_id, org_id, 'transcribing')
     await runTranscribe(recording_id, org_id)
+
+    // Meeting-tool prep: read slides (vision) + detect phases, so the phase map
+    // is ready for the user to review at the 'transcribed' gate. No-op for the
+    // single-phase Q&A preset (legacy behavior). Best-effort — never blocks the
+    // pause, so a slide/phase failure still lets the user run analysis.
+    await runSlidesAndPhases(recording_id, org_id)
 
     await setStatus(recording_id, org_id, 'transcribed')
   } catch (err) {
@@ -86,6 +98,39 @@ async function runTranscribe(recording_id: string, org_id: string) {
   await transcribeRecording({ recording: rec })
 }
 
+// Slides + phase detection — runs at the end of ingestion so the phase map is
+// ready at the review gate. No-op for the single-phase Q&A preset.
+async function runSlidesAndPhases(recording_id: string, org_id: string) {
+  "use step"
+  const rec = await loadRecording(recording_id, org_id)
+  if (!rec) throw new FatalError(`recording ${recording_id} disappeared before slides/phases`)
+
+  const profile = resolveProfile(rec)
+  if (profile.phases.length <= 1 && !profile.has_slides) return   // legacy Q&A: nothing to do
+
+  const transcript = await loadTranscript(recording_id, org_id)
+  if (!transcript) return
+  const service = createServiceRoleClient()
+
+  // 1. Slides → presentation_outline (best-effort).
+  let outline = null
+  if (profile.has_slides) {
+    outline = await ingestSlides({ recording_id, org_id })
+    if (outline) {
+      await service.from('recordings').update({ presentation_outline: outline })
+        .eq('id', recording_id).eq('org_id', org_id)
+    }
+  }
+
+  // 2. Phase detection → phase_map (never throws; whole-transcript fallback).
+  const dur = rec.source_duration_sec ?? lastSegmentEnd(transcript.segments)
+  const phaseMap = await detectPhases({
+    recording_id, org_id, profile, transcript: transcript.segments, durationSec: dur, slideOutline: outline,
+  })
+  await service.from('recordings').update({ phase_map: phaseMap })
+    .eq('id', recording_id).eq('org_id', org_id)
+}
+
 async function runAnalyze(recording_id: string, org_id: string, instructions?: string) {
   "use step"
   const rec = await loadRecording(recording_id, org_id)
@@ -94,12 +139,17 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
   const transcript = await loadTranscript(recording_id, org_id)
   if (!transcript) throw new FatalError(`transcript for ${recording_id} not found — transcribe stage didn't write?`)
 
+  const profile = resolveProfile(rec)
+
+  // Scope Q&A extraction to the qa phase(s); fall back to the whole transcript
+  // when there's no phase map (legacy / single-phase).
+  const qaSegments = slicePhaseSegments(transcript.segments, rec.phase_map, ['qa'])
   const analysis = await analyzeRecording({
     recording_id,
     org_id,
     session_type: rec.session_type,
     setup_inputs: rec.setup_inputs,
-    transcript: transcript.segments,
+    transcript: qaSegments.length > 0 ? qaSegments : transcript.segments,
     instructions,
   })
 
@@ -117,17 +167,39 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     source_duration_sec: rec.source_duration_sec,
   })
 
+  // Presentation summary (only when the profile has a presentation phase with content).
+  let proceedings = null
+  let presCents = 0
+  if (hasPresentationPhase(profile)) {
+    const presSegments = slicePhaseSegments(transcript.segments, rec.phase_map, ['presentation'])
+    if (presSegments.length > 0) {
+      const r = await summarizePresentation({
+        recording_id, org_id,
+        setup: rec.setup_inputs as QaSetupInputs,
+        transcript: presSegments,
+        outline: rec.presentation_outline,
+      })
+      proceedings = r.summary
+      presCents = r.cents
+    }
+  }
+
   const service = createServiceRoleClient()
   const { error } = await service
     .from('recordings')
     .update({
       coverage_report: coverage,
       analysis_summary: analysis.analysis_summary,
-      cost_cents: (rec.cost_cents ?? 0) + analysis.total_cost_cents,
+      proceedings_summary: proceedings,
+      cost_cents: (rec.cost_cents ?? 0) + analysis.total_cost_cents + presCents,
     })
     .eq('id', recording_id)
     .eq('org_id', org_id)
   if (error) throw new FatalError(`recordings post-analyze write failed: ${error.message}`)
+}
+
+function lastSegmentEnd(segments: TranscriptSegment[]): number {
+  return segments.reduce((mx, s) => Math.max(mx, s.end || 0), 0)
 }
 
 // ── Status / lifecycle steps ─────────────────────────────────────────────────

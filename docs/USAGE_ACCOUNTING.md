@@ -1,6 +1,8 @@
 # Sentimetrx — AI Usage Accounting & Cost Estimation Spec
 
 > **Update (2026-06-01) — recordings accounting.** `usage_logs` gained a nullable `cost_cents` column (migration `092`) for non-token costs. The recordings ASR/transcription vendor charge now logs a flat-cost `usage_logs` row (`resource_type: 'recording'`, `event_type: 'recording_transcribe'`) via `logFlatCost`. The Opus/Sonnet recording passes are tagged `resource_type: 'recording'` (were `'dataset'`, hiding under "TextMine"). `/admin/usage` adds a "Recordings" type label and folds `cost_cents/100` into token-derived cost.
+>
+> **Update (2026-06-03) — meeting-tool + vision.** `lib/ai.ts` now accepts image content blocks (Claude vision, Anthropic). New `resource_type:'recording'` event types: `recording_synthesize` (Q&A synthesis pass), `recording_slide_vision` (slide-deck vision read), `recording_phase_detect` (presentation→Q&A segmentation), `recording_presentation_summary`. Vision image tokens (~1.6K/page) are counted in the normal Anthropic `input_tokens` from the API response, so cost flows through the standard token-derived path with no special handling (~$0.01/slide on Sonnet).
 
 **Module:** `lib/ai.ts`, `lib/usageLog.ts`, `lib/usageRates.ts`, `/app/api/admin/usage/`, `/app/admin/usage/`, `/app/admin/estimator/`
 **Storage:** `usage_logs` (migration `030_usage_logs.sql`; service-write policy dropped in `032_enable_rls_everywhere.sql`)

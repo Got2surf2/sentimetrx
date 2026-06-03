@@ -125,6 +125,29 @@ describe('POST /api/recordings (create)', () => {
     const json = await res.json()
     expect(json.recording_id).toBe('rec_1')
   })
+
+  it('400 on slide-file validation (non-PDF slides, >1 slides, no media file)', async () => {
+    ctx.userCtx = userCtx()
+    const pdfSlide = { original_filename: 'deck.pdf', size_bytes: 100, mime_type: 'application/pdf', is_video: false, file_role: 'slides' }
+    // slides must be PDF
+    expect(await status(await collection.POST(req({ ...validBody, files: [validBody.files[0], { ...pdfSlide, original_filename: 'deck.pptx', mime_type: 'application/vnd.ms-powerpoint' }] })))).toBe(400)
+    // at most one slides file
+    expect(await status(await collection.POST(req({ ...validBody, files: [validBody.files[0], pdfSlide, { ...pdfSlide, original_filename: 'deck2.pdf' }] })))).toBe(400)
+    // at least one media file
+    expect(await status(await collection.POST(req({ ...validBody, files: [pdfSlide] })))).toBe(400)
+  })
+
+  it('201 with one media + one slide PDF (meeting-tool upload)', async () => {
+    ctx.userCtx = userCtx()
+    ctx.results['recordings'] = { single: { data: { id: 'rec_2' }, error: null } }
+    ctx.results['recording_files'] = { list: { data: [{ id: 'f1', original_filename: 'a.mp3', storage_path: 'orgA/rec_2/a.mp3', sort_order: 0 }], error: null } }
+    const res = await collection.POST(req({
+      ...validBody,
+      meeting_profile: { preset_id: 'community_meeting', has_slides: true, phases: [{ kind: 'presentation', label: 'P', analysis: 'presentation_summary', expected: true }, { kind: 'qa', label: 'Q', analysis: 'qa_extraction', expected: true }] },
+      files: [validBody.files[0], { original_filename: 'deck.pdf', size_bytes: 5000, mime_type: 'application/pdf', is_video: false, file_role: 'slides' }],
+    }))
+    expect(res.status).toBe(201)
+  })
 })
 
 // ── GET /api/recordings (list) ────────────────────────────────────────────────

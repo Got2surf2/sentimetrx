@@ -96,6 +96,12 @@ export interface RecordingRow {
   coverage_report: CoverageReport | null
   analysis_summary: RecordingAnalysisSummary | null
 
+  // Meeting-tool layer (sql/097). NULL meeting_profile = legacy Q&A behavior.
+  meeting_profile: MeetingProfile | null
+  phase_map: PhaseMap | null
+  presentation_outline: PresentationOutline | null
+  proceedings_summary: ProceedingsSummary | null
+
   share_token: string | null
   share_enabled: boolean
   share_expires_at: string | null
@@ -119,7 +125,78 @@ export interface RecordingFileRow {
   audio_storage_path: string | null
   sort_order: number
   upload_status: 'pending' | 'uploaded' | 'extracted' | 'failed'
+  file_role: 'media' | 'slides'      // sql/097 — 'slides' skips the ffmpeg pipeline
   created_at: string
+}
+
+// ── Meeting tool: profiles, phases, presentation (sql/097) ───────────────────
+
+export type PhaseKind = 'presentation' | 'qa' | 'discussion' | 'public_comment' | 'decision'
+
+// What analysis to run on a phase. v1 implements presentation_summary + qa_extraction;
+// other kinds resolve to 'noop' (persisted, not analyzed).
+export type PhaseAnalysis = 'presentation_summary' | 'qa_extraction' | 'noop'
+
+export interface MeetingPhaseSpec {
+  kind: PhaseKind
+  label: string                       // user-facing, e.g. "Presentation", "Audience Q&A"
+  analysis: PhaseAnalysis
+  expected: boolean                   // steers phase detection
+}
+
+export type MeetingPresetId = 'town_hall_qa' | 'community_meeting'
+
+export interface MeetingProfile {
+  preset_id: MeetingPresetId
+  phases: MeetingPhaseSpec[]          // ordered
+  has_slides: boolean                 // user attached a deck for vision ingestion
+}
+
+export interface MeetingPhase {
+  kind: PhaseKind
+  label: string
+  start_sec: number
+  end_sec: number
+  confidence?: number
+}
+
+export interface PhaseMap {
+  phases: MeetingPhase[]              // contiguous, sorted, covering [0, duration]
+  detected_at: string
+  model: string
+  edited_by_user: boolean
+}
+
+export interface SlideOutline {
+  slide_number: number
+  title: string | null
+  key_points: string[]
+  figures: Array<{ label: string; value: string }>   // stats/data read off the slide — verbatim
+  presenter: string | null
+  notes: string | null
+}
+
+export interface PresentationOutline {
+  slides: SlideOutline[]
+  source_filename: string
+  page_count: number
+  generated_at: string
+  model: string
+}
+
+export interface ProceedingsAgendaItem {
+  title: string
+  presenter: string | null
+  what_was_presented: string          // neutral, factual
+  key_figures: Array<{ label: string; value: string }>
+  slide_refs: number[]                // slide_number(s) this maps to
+}
+
+export interface ProceedingsSummary {
+  overview: string                    // 2-4 neutral sentences
+  items: ProceedingsAgendaItem[]
+  generated_at: string
+  model: string
 }
 
 export interface TranscriptSegment {

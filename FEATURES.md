@@ -457,6 +457,13 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Appendix slide for every Q&A pair (verbatim question + response)
 - One-click "Export to PowerPoint" from the recording report page
 
+### Meeting tool (presentation + Q&A)
+- Configurable meeting-type presets ("Town hall Q&A", "Community meeting: presentation + Q&A")
+- Upload the presenter's slide deck (PDF) — read by AI vision to seed factual meeting notes
+- Auto-detects the presentation→Q&A transition; boundary is user-reviewable before analysis
+- Deck adds a neutral "Meeting Overview" (what was presented, by whom, key figures) ahead of the Q&A summary
+- Strictly neutral/no-opining voice throughout (shareable with the client/organizer)
+
 ### Interactive HTML Reports
 - Embedded Plotly.js charts
 - Responsive design

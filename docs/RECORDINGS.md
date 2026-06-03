@@ -252,6 +252,18 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
 ```
 Null for recordings analyzed before 2026-06, or when the synthesis pass fails (graceful degrade — the deck/report still render from the Q&A pairs). Action items live as `action_item` extraction rows, not here; `decisions` live here because they're narrative, not owned units.
 
+### 2.4b Meeting-tool layer (sql/097, 2026-06)
+
+Generalizes recordings from a Q&A recorder into a configurable **meeting tool** (record a whole meeting → split presentation from Q&A → summarize each). Five additions, all backward-compatible: a recording with `meeting_profile IS NULL` behaves exactly as the legacy Q&A flow.
+
+- **`recordings.meeting_profile` (jsonb)** — `{ preset_id: 'town_hall_qa'|'community_meeting', phases: [{kind,label,analysis,expected}], has_slides }`. Presets live in `lib/recordings/profiles.ts`; `resolveProfile()` coerces NULL/unknown → `town_hall_qa` (single chokepoint, so nothing else branches on null). `phase.kind` ∈ presentation|qa|discussion|public_comment|decision; v1 runs `presentation_summary` + `qa_extraction`, others are `noop` (persisted, not analyzed).
+- **`recordings.phase_map` (jsonb)** — `{ phases: [{kind,label,start_sec,end_sec,confidence?}], detected_at, model, edited_by_user }`. Detected post-transcription (`lib/recordings/phases.ts detectPhases`, Sonnet, seeded by the profile + slide titles), clamped/snapped in code, **user-adjustable at the transcribed gate**. Hard fallback = a single qa phase over the whole transcript, so a bad split can only under-segment, never break the pipeline.
+- **`recordings.presentation_outline` (jsonb)** — AI-vision read of the uploaded slide deck: `{ slides: [{slide_number,title,key_points,figures,presenter,notes}], source_filename, page_count, … }`. The ground-truth seed for the presentation summary (figures/names/dates transcribed verbatim). Built by `lib/recordings/slides.ts` via the shared `lib/vision/` primitive (Sandbox `pdftoppm` render → Claude vision). **PDF only in v1** (PPTX is a fast-follow). Null when no slides or vision fails.
+- **`recordings.proceedings_summary` (jsonb)** — neutral presentation summary: `{ overview, items: [{title,presenter,what_was_presented,key_figures,slide_refs}], … }`. `lib/recordings/presentation.ts`, Sonnet, **reuses the exact no-opining voice directive** from the Q&A synthesis pass (the deck is shareable with the client). Runs only when a presentation phase has content; null otherwise (graceful degrade).
+- **`recording_files.file_role` (text, default `'media'`, CHECK in (`media`,`slides`))** — `slides` files (the presentation deck) ride the same TUS upload path but **skip the ffmpeg extract pipeline** (`extract.ts` filters to `file_role='media'`); they're read by vision instead. At most one `slides` file per recording; ≥1 `media` file required.
+
+Migration `sql/097` is nullable adds on RLS-enabled tables → no new policy; slide PNGs live under the existing `recordings` bucket path. Shared AI-vision support was added to `lib/ai.ts` (image content blocks, Anthropic) — reusable by bot-KB document ingestion later (text-extract-first, vision-fallback). Vision cost ≈ $0.01/slide on Sonnet.
+
 ### 2.5 `org_features` + `user_features` — generic feature gating
 
 The recording module is the first consumer; the gating substrate is generic and reused for any future expensive feature.
@@ -730,7 +742,9 @@ Cost: `scope='all'` ≈ ~$1 (Opus + Sonnet on the full transcript, no ASR). `sco
 
 **Auth:** session cookie via `getCallerOrgContext` + the cross-org gate (`!isAdmin && rec.org_id !== orgId → 404`; admin-org may export any). Service-role reads, so the `(id, org_id)` pairing is the multi-tenancy guard — covered by `tests/integration/export-org-gate.test.ts`. Requires `status='complete'` else **409**.
 
-Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the recording's `analysis_summary` + `recording_extractions`: Title → Executive Summary (+ KPI strip) → Sentiment Overview → Conversation Themes (2 topic cards/slide) → Action Items & Decisions → **Appendix, one Q&A pair per slide**. Slides 2–5 are skipped individually when their data is null/empty; the appendix always renders. Returns the binary with `Content-Disposition: attachment`. Logs to `deck_download_log` (`logDeckDownload`). No AI runs in the route — synthesis happened at analyze time.
+Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the recording's `analysis_summary` + `proceedings_summary` + `recording_extractions`: Title → **Meeting Overview + per-item "What Was Presented" cards** (when a presentation phase exists) → Executive Summary (+ KPI strip) → Sentiment Overview → Conversation Themes (2 topic cards/slide) → Action Items & Decisions → **Appendix, one Q&A pair per slide**. Every section is skipped individually when its data is null/empty; a pure Q&A recording renders exactly as before (title reverts to "Q&A Session Report"). Returns the binary with `Content-Disposition: attachment`. Logs to `deck_download_log` (`logDeckDownload`). No AI runs in the route — all synthesis happened at analyze time.
+
+**Meeting-tool pipeline (sql/097):** `processRecordingWorkflow` runs a `runSlidesAndPhases` step after transcription (before the `transcribed` pause): vision-read the slide deck → `presentation_outline`, then `detectPhases` → `phase_map` (no-op for the single-phase Q&A preset). `runAnalyze` scopes Q&A extraction to the `qa` phase span (`slicePhaseSegments`, whole-transcript fallback) and, when the profile has a presentation phase, runs `summarizePresentation` → `proceedings_summary`. The user adjusts phase boundaries at the gate; the analyze route persists the edited `phase_map` before the workflow runs.
 
 ---
 
