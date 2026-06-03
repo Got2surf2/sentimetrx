@@ -55,6 +55,17 @@ const DECKS: Deck[] = [
     logKey: 'rollup-deck:long',
   },
   {
+    href: '/api/project-insight-deck',
+    filename: 'Project-Insight-Teaser.pptx',
+    title: 'Project Insight — Teaser',
+    subtitle: 'Tight 10-slide first-conversation teaser scoped to survey/feedback software. AI-as-interpretation framing, named illustrative pipeline, qualitative figures only. Overlaps the Datanautix Roll-up decks.',
+    audience: 'PE partners · independent sponsors — first meeting',
+    slides: '10 slides',
+    accent: '#0F7173',
+    badge: 'TEASER',
+    logKey: 'project-insight-deck',
+  },
+  {
     href: '/api/architecture-deck',
     filename: 'Datanautix-Platform-Architecture.pptx',
     title: 'Platform Architecture',

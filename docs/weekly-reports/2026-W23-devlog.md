@@ -449,3 +449,17 @@ Commit-only, not pushed.
 - **Legibility**: 12pt floor on all body text; boundary-aware truncation (`truncBoundary`) so quotes/summaries run longer and end on a sentence/word boundary instead of mid-word; card layouts retuned so nothing overflows.
 
 Verified via the read-only QC harness against the real recording (in-memory analyze, no prod writes), QC'd in LibreOffice/pdftoppm. tsc + npm test green. Commit-only, not pushed.
+
+## 2026-06-03 — New deck: "Project Insight" PE teaser (/admin/decks)
+
+**Why**: Owner workshopped an acquisition-roll-up thesis with ChatGPT (consolidate fragmented survey/feedback software vendors) and wanted it as a real, regeneratable deck. Built as a 10-slide first-conversation teaser. Note: it overlaps the existing Datanautix Roll-up decks (`/api/rollup-deck`) — flagged to owner; may converge later.
+
+**What changed** (new deck route + builder, registry wiring):
+- `lib/pptx/projectInsightDeck.ts`: `buildProjectInsightDeck(pptx)` — cover + 9 content slides. Datanautix-branded (navy header, sarinaBlue accent, datanautix wordmark, `datanautix.com · Confidential` footer). Style mirrors `reviewIntelligenceDeck.ts` / `rollup-deck`.
+- **Framing = Option B** (owner's call): survey software is the *acquisition vehicle*, the AI insight layer is the product. Core slide reframes "Survey → Report" → "Survey → Analyze → Recommend → Act."
+- **Numbers stripped to qualitative** (owner's call): no fabricated TAM, vendor counts, deal multiples, or EBITDA-uplift figures (the ChatGPT draft had all of these). The economics slide is the re-rating *logic*, not a `10×$5M=$50M, 3–5× in / 8–12× out` spreadsheet. Buy-box retention/margin thresholds held for the criteria memo; per-slide footnotes say specific figures get cited in diligence. Pipeline/exit names labeled illustrative.
+- `app/api/project-insight-deck/route.ts`: thin `requireAdmin`-gated GET; `logDeckDownload('project-insight-deck')`; returns `Project-Insight-Teaser.pptx`.
+- `app/admin/decks/DecksClient.tsx` + `page.tsx`: registered the deck card (badge `TEASER`) + `deckLastModified` lookup.
+- `scripts/_project_insight_qc.ts`: read-only render harness (no prod I/O).
+
+**Verified**: rendered via the QC harness, converted to PNG (LibreOffice + pdftoppm), visually inspected all 10 slides — caught + fixed a slide-10 overlap (5th strategic-buyer card under the objective box). `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Datanautix branding correct. Commit-only, not pushed.
