@@ -17,6 +17,11 @@ const INK = '#111827'
 const MUTE = '#6b7280'
 const DOT_COLOR: Record<string, string> = { green: '#059669', amber: '#D97706', red: '#DC2626', idle: '#9CA3AF' }
 
+// Datanautix wordmark (data = teal, nautix = orange) — the company brand on
+// exported/shared reports, per the deck-export branding rule in CLAUDE.md.
+const DN_WORDMARK = '<span style="font-weight:800;font-size:17px;letter-spacing:-0.3px;white-space:nowrap;flex-shrink:0">'
+  + '<span style="color:#0F7173">data</span><span style="color:#9CA3AF">·</span><span style="color:#E8632A">nautix</span></span>'
+
 function esc(s: string): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -60,13 +65,16 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
 
   const parts: string[] = []
 
-  // ── Header ──
+  // ── Header ──  (Datanautix wordmark top-right per the deck/report-export brand rule)
   parts.push(
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">'
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px">'
+    + '<div style="display:flex;align-items:center;gap:10px;min-width:0">'
     + '<span style="width:12px;height:12px;border-radius:50%;background:' + (DOT_COLOR[s.health.dot] || DOT_COLOR.idle) + ';flex-shrink:0"></span>'
     + '<div><h1 style="font-size:22px;font-weight:700;color:' + INK + ';margin:0">' + esc(s.bot.name) + ' — Agent Study</h1>'
     + '<p style="font-size:12px;color:' + MUTE + ';margin:2px 0 0">' + fmtDate(s.range.first) + ' – ' + fmtDate(s.range.last)
     + ' · ' + s.range.activeDays + ' active days · last active ' + fmtRel(s.health.lastActiveAt) + '</p></div></div>'
+    + DN_WORDMARK
+    + '</div>'
   )
 
   // ── Overview KPIs ──
@@ -135,7 +143,9 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
       const opensBar = showOpens
         ? '<div style="width:' + opensW + 'px;height:' + Math.round((d.opens / dailyMax) * 90) + 'px;background:#D7E3E3;border-radius:3px"></div>'
         : ''
-      const convBar = '<div style="width:' + barW + 'px;height:' + Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px;background:' + TEAL + ';border-radius:3px"></div>'
+      const convBar = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end">'
+        + (d.conversations > 0 ? '<span style="font-size:9px;font-weight:700;color:' + INK + ';line-height:1;margin-bottom:2px">' + d.conversations + '</span>' : '')
+        + '<div style="width:' + barW + 'px;height:' + Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px;background:' + TEAL + ';border-radius:3px"></div></div>'
       return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="' + esc(d.date) + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '') + '">'
         + '<div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px;height:90px">' + opensBar + convBar + '</div>'
         + '<span style="font-size:9px;color:' + MUTE + '">' + esc(d.date.slice(5)) + '</span></div>'

@@ -177,12 +177,15 @@ export default function ReportClient() {
             <p style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>{fmtDate(s.range.first)} – {fmtDate(s.range.last)} · {s.range.activeDays} active days · last active {fmtRel(s.health.lastActiveAt)}</p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}><span style={{ color: '#0F7173' }}>data</span><span style={{ color: '#9CA3AF' }}>·</span><span style={{ color: '#E8632A' }}>nautix</span></span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
           <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
           <button onClick={shareReport} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
           <button onClick={downloadPdf} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>PDF</button>
           <button onClick={exportPptx} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
+          </div>
         </div>
       </div>
 
@@ -243,7 +246,10 @@ export default function ReportClient() {
               <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={d.date + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '')}>
                 <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 90 }}>
                   {showOpens && <div style={{ width: Math.max(6, Math.round(barW * 0.5)), height: Math.round((d.opens / dailyMax) * 90) + 'px', background: '#D7E3E3', borderRadius: 3 }} />}
-                  <div style={{ width: barW, height: Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px', background: TEAL, borderRadius: 3 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                    {d.conversations > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: INK, lineHeight: 1, marginBottom: 2 }}>{d.conversations}</span>}
+                    <div style={{ width: barW, height: Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px', background: TEAL, borderRadius: 3 }} />
+                  </div>
                 </div>
                 <span style={{ fontSize: 9, color: MUTE }}>{d.date.slice(5)}</span>
               </div>

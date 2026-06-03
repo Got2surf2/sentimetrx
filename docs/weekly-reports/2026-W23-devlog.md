@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: activity-bar counts + Datanautix wordmark
+
+**Why**: Owner — show the per-day count on the activity bars, and brand the report/export with the Datanautix wordmark (top-right).
+
+**What changed** (`ReportClient.tsx` + `lib/agentStudyHtml.ts`):
+- Activity Over Time: each day's conversation count now renders on top of its bar.
+- Datanautix wordmark ("data" teal · "nautix" orange) top-right of the report header (live + baked HTML) — per the deck/report-export branding rule. `DN_WORDMARK` const in the bake.
+
+tsc clean; screenshot confirms counts-on-bars + wordmark.
+
 ## 2026-06-03 — Transcripts: included vs set-aside split + absolute timestamps
 
 **Why**: Owner — the Transcripts grid was cluttered with low-signal drive-bys (≤2-turn "Learn" chip taps) and excluded/flagged conversations mixed in; relative "1d ago / 3d ago" times read as odd.
