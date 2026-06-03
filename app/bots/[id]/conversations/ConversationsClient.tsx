@@ -105,6 +105,12 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
     }
     return true
   })
+  // Sink ignored conversations (auto-flagged troll/bot/off-topic + reviewer-
+  // excluded) to the bottom — they're kept reachable for the review workflow but
+  // shouldn't crowd the real conversations at the top. Stable sort preserves the
+  // server's recency order within each group.
+  var isIgnored = function(s: Session) { return s.review_status === 'auto_flagged' || s.review_status === 'excluded' }
+  filtered = filtered.slice().sort(function(a, b) { return (isIgnored(a) ? 1 : 0) - (isIgnored(b) ? 1 : 0) })
 
   async function loadSession(sid: string) {
     setSelectedSession(sid)
@@ -318,7 +324,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
             }
 
             return (
-              <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s' }}>
+              <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s', opacity: isIgnored(s) ? 0.55 : 1 }}>
                 {/* Card header — clickable */}
                 <button onClick={function() { loadSession(s.session_id) }}
                   style={{ display: 'block', width: '100%', padding: '14px 16px 10px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f3f4f6' }}>

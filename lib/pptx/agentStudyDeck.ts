@@ -36,14 +36,15 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
   })
 
   // 2. Overview KPIs
+  const showOpens = t.impressions != null && t.impressions >= t.totalSessions
   const kpis: { value: string; label: string; sub?: string; color?: string }[] = [
     { value: String(t.totalSessions), label: 'Conversations', sub: 'all sessions', color: '0D2B45' },
     { value: String(t.conversations), label: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total', color: '0D2B45' },
+    ...(t.answerRatePct != null ? [{ value: t.answerRatePct + '%', label: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '059669' }] : []),
     { value: String(t.totalPairs), label: 'Q&A Pairs', color: '0F7173' },
     { value: String(study.health.medianPairs), label: 'Median Depth', sub: 'pairs / conversation', color: 'E85A1A' },
-    { value: String(study.focuses.length), label: 'Focus Areas Touched', color: '0F7173' },
     { value: String(study.entities.length), label: 'Distinct Entities', color: 'E8B84B' },
-    { value: String(study.openQuestions.open.length), label: 'Open Questions', sub: 'validated, awaiting follow-up', color: 'DC2626' },
+    { value: String(study.openQuestions.open.length), label: 'Open Questions', sub: 'unanswered, awaiting follow-up', color: 'DC2626' },
   ]
   slides.push({
     type: 'kpi_grid',
@@ -52,7 +53,7 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     kpis,
     insight: [
       t.initiatedNotEntered > 0 ? `${t.initiatedNotEntered} conversations were initiated but not entered into (visitor tapped a suggestion or replied with one word).` : '',
-      t.impressions != null ? `${t.impressions} total widget opens tracked.` : '',
+      showOpens ? `${t.impressions} total widget opens tracked.` : '',
     ].filter(Boolean).join(' ') || undefined,
   })
 

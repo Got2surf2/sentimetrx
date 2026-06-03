@@ -71,6 +71,8 @@ export interface AgentStudy {
     openedNotEngaged: number | null  // beacon opens - initiated (beacon required)
     totalPairs: number
     medianPairs: number
+    answeredPairs: number              // totalPairs minus validated unanswered (open) questions
+    answerRatePct: number | null       // answeredPairs / totalPairs — the agent's "strength" number
   }
   depth: { bucket: string; sessions: number }[]   // normalized pair-count buckets
   focuses: FocusSummary[]
@@ -80,7 +82,7 @@ export interface AgentStudy {
   openQuestions: {
     byClassification: { classification: string; count: number }[]
     byStatus: { status: string; count: number }[]
-    open: { question: string; restated: string; context: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string }[]
+    open: { question: string; restated: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string }[]
     autoFiltered: number   // flagged but validated as not-a-real-question
     filteredExamples: { question: string; reason: string }[]
   }
@@ -396,6 +398,20 @@ function findPriorAgentLine(sessions: Map<string, Turn[]>, sessionId: string, us
   return ''
 }
 
+// The agent's reply that immediately FOLLOWED the user's question — i.e. the
+// answer that was uncertain / a non-answer. Pairs with findPriorAgentLine so the
+// report can show before (what teed it up) AND after (how the agent flubbed it).
+function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string, userMessage: string): string {
+  const ts = sessions.get(sessionId)
+  if (!ts) return ''
+  const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const nq = norm(userMessage)
+  const idx = ts.findIndex(t => t.role === 'user' && (norm(t.content) === nq || norm(t.content_en || '') === nq))
+  if (idx < 0) return ''
+  for (let j = idx + 1; j < ts.length; j++) if (ts[j].role === 'assistant') return ts[j].content_en || ts[j].content || ''
+  return ''
+}
+
 async function validateOpenQuestions(botId: string, botName: string, items: { question: string; context: string }[]): Promise<QVerdict[]> {
   if (items.length === 0) return []
   const lines = items.map((it, i) => `[${i}] AGENT SAID BEFORE: ${(it.context || '(nothing)').slice(0, 220)}\n    USER MESSAGE: ${it.question.slice(0, 300)}`).join('\n')
@@ -565,7 +581,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   rawOpen.forEach((q: any, i: number) => {
     const v = verdicts[i] || { valid: true, restated: '', reason: '' }
     if (v.valid) {
-      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at })
+      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), after: findFollowingAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at })
     } else {
       filtered.push({ question: q.user_message, reason: v.reason })
     }
@@ -577,6 +593,14 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     autoFiltered: filtered.length,
     filteredExamples: filtered.slice(0, 5),
   }
+
+  // ── answer rate (the "strength" number) ──
+  // Of every Q&A pair the agent fielded, what share did it actually answer?
+  // "Unanswered" = the validated open questions (genuine knowledge gaps); each
+  // maps to roughly one pair where the agent hit a wall. Deflections (off-topic)
+  // are intentional and NOT counted as failures.
+  const answeredPairs = Math.max(0, totalPairs - validOpen.length)
+  const answerRatePct = totalPairs > 0 ? Math.min(100, Math.round((answeredPairs / totalPairs) * 100)) : null
 
   // ── narrative insights (AI) ──
   const insights = await computeInsights(botId, bot.name, sessions)
@@ -622,6 +646,8 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
       openedNotEngaged: (totalImpressions != null && totalImpressions > 0) ? Math.max(0, totalImpressions - initiated) : null,
       totalPairs,
       medianPairs,
+      answeredPairs,
+      answerRatePct,
     },
     depth,
     focuses: focusesArr,

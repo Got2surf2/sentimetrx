@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: Answer Rate metric, beacon-hide, open-Q before/after, Transcripts reorder
+
+**Why**: Owner feedback on the live report — (1) wanted a positive "strength" number, (2) the freshly-deployed beacon showed "Widget Opens 1 / Response Rate 3600%", (3) open questions needed the agent's *answer* shown for context, not just the lead-in, (4) ignored conversations cluttered the top of the Transcripts page.
+
+**What changed**:
+- **Answer Rate** (`lib/agentStudy.ts`): `totals.answerRatePct = answeredPairs / totalPairs`, `answeredPairs = totalPairs − validated open questions` (deflections excluded — they're intentional). Green KPI on the report, baked HTML, and deck ("Answer Rate 95% · 102 of 107 answered").
+- **Beacon-hide**: Widget Opens + Response Rate (+ activity-chart opens overlay + methodology line) only render when `impressions >= totalSessions` (`showOpens`). Until the beacon has real coverage they're omitted instead of showing 1/3600%. (`ReportClient.tsx`, `lib/agentStudyHtml.ts`, `lib/pptx/agentStudyDeck.ts`.)
+- **Open questions before + after**: added `findFollowingAgentLine` + `open[].after` so the report shows AGENT BEFORE → USER → AGENT AFTER (the uncertain reply that got logged). Caption "validated" → "unanswered".
+- **Transcripts reorder** (`ConversationsClient.tsx`): auto-flagged + excluded sessions stable-sort to the bottom and dim to 0.55 opacity — still reachable for review, out of the way.
+
+**Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean; re-rendered the bake fixture + Playwright screenshot confirms Answer Rate present, Widget Opens/Response Rate hidden on an immature beacon, and before/after in open questions. Commit-only; staged my files only by explicit path.
+
 ## 2026-06-03 — Agent Study: fix 3600% response rate + anchor headline to the official session count
 
 **Why**: Owner caught two issues on a live shared report (Sarina): (1) a **3600% response rate**, and (2) the report's lead count disagreed with the agent card — "the agent card is the official record."

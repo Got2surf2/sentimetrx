@@ -127,6 +127,11 @@ export default function ReportClient() {
   const entMax = Math.max(...s.entities.map(e => e.mentions), 1)
   const dailyActive = s.health.dailyActivity.filter(d => d.conversations > 0 || d.opens > 0).slice(-21)
   const dailyMax = Math.max(...dailyActive.map(d => Math.max(d.conversations, d.opens)), 1)
+  // The widget-open beacon starts logging at deploy, so until it has recorded
+  // at least as many opens as we have conversations, its data is incomplete —
+  // hide Widget Opens + Response Rate (and the opens overlay) rather than show a
+  // misleading "1 open / 3600%". They reappear automatically once real opens accrue.
+  const showOpens = t.impressions != null && t.impressions >= t.totalSessions
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 64px' }}>
@@ -155,11 +160,14 @@ export default function ReportClient() {
           {[
             { v: t.totalSessions, l: 'Conversations', sub: 'all sessions' },
             { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total' },
+            ...(t.answerRatePct != null ? [{ v: t.answerRatePct + '%', l: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '#059669' }] : []),
             { v: t.totalPairs, l: 'Q&A Pairs' },
             { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
-            { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
-            { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'validated', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
-            { v: t.impressions != null ? t.impressions : '—', l: 'Widget Opens' },
+            { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
+            ...(showOpens ? [
+              { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
+              { v: t.impressions as number, l: 'Widget Opens' },
+            ] : []),
           ].map((k, i) => (
             <div key={i} style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 24, fontWeight: 700, color: (k as any).color || INK }}>{k.v}</div>
@@ -199,16 +207,16 @@ export default function ReportClient() {
           <div style={h2}>Activity Over Time</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120, padding: '8px 0' }}>
             {dailyActive.map(d => (
-              <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={d.date + ': ' + d.conversations + ' conversations' + (t.impressions != null ? ', ' + d.opens + ' opens' : '')}>
+              <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={d.date + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '')}>
                 <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 90 }}>
-                  {t.impressions != null && <div style={{ width: 5, height: Math.round((d.opens / dailyMax) * 90) + 'px', background: '#D7E3E3', borderRadius: 2 }} />}
+                  {showOpens && <div style={{ width: 5, height: Math.round((d.opens / dailyMax) * 90) + 'px', background: '#D7E3E3', borderRadius: 2 }} />}
                   <div style={{ width: 7, height: Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px', background: TEAL, borderRadius: 2 }} />
                 </div>
                 <span style={{ fontSize: 9, color: MUTE }}>{d.date.slice(5)}</span>
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: MUTE }}>{t.impressions != null ? 'Teal = conversations · light = widget opens' : 'Conversations started per day'}</div>
+          <div style={{ fontSize: 10, color: MUTE }}>{showOpens ? 'Teal = conversations · light = widget opens' : 'Conversations started per day'}</div>
         </div>
       )}
 
@@ -311,6 +319,7 @@ export default function ReportClient() {
               <div style={{ paddingLeft: 12, marginTop: 6, fontSize: 12, color: MUTE, lineHeight: 1.5 }}>
                 {q.context && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} BEFORE</span> <span style={{ color: '#374151' }}>{q.context.slice(0, 240)}</span></div>}
                 <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '1px 6px', borderRadius: 6 }}>USER{q.language && q.language !== 'en' ? ' · ' + q.language : ''}</span> <span style={{ color: '#374151' }}>{q.question}</span></div>
+                {q.after && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} AFTER</span> <span style={{ color: '#374151' }}>{q.after.slice(0, 280)}</span></div>}
                 Logged {fmtRel(q.createdAt)}
                 {q.suggestedKb && <div style={{ marginTop: 4, color: '#374151' }}><strong>Suggested KB addition:</strong> {q.suggestedKb}</div>}
               </div>
@@ -360,7 +369,7 @@ export default function ReportClient() {
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: MUTE }}>
           <li style={{ marginBottom: 4 }}>{s.meta.classifiedExchanges} Q&A pairs classified; {s.meta.excludedZeroPair} input-less session(s) excluded.</li>
           <li style={{ marginBottom: 4 }}>{s.meta.method}</li>
-          <li style={{ marginBottom: 4 }}>{t.impressions != null ? 'Widget opens tracked via on-mount beacon → true invocation + response rate.' : 'Widget-open beacon active going forward; response rate populates as opens accrue.'}</li>
+          <li style={{ marginBottom: 4 }}>{showOpens ? 'Widget opens tracked via on-mount beacon → true invocation + response rate.' : 'Widget-open beacon active going forward; response rate populates as opens accrue.'}</li>
           <li>Generated {fmtRel(s.generatedAt)}. Refresh recomputes against the latest conversations.</li>
         </ul>
       </div>

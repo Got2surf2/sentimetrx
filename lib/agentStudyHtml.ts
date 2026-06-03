@@ -61,14 +61,19 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
   )
 
   // ── Overview KPIs ──
+  // Hide opens/response-rate until the beacon has real coverage (see ReportClient).
+  const showOpens = t.impressions != null && t.impressions >= t.totalSessions
   const kpis: { v: string | number; l: string; sub?: string; color?: string }[] = [
     { v: t.totalSessions, l: 'Conversations', sub: 'all sessions' },
     { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total' },
+    ...(t.answerRatePct != null ? [{ v: t.answerRatePct + '%', l: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '#059669' }] : []),
     { v: t.totalPairs, l: 'Q&A Pairs' },
     { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
-    { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
-    { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'validated', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
-    { v: t.impressions != null ? t.impressions : '—', l: 'Widget Opens' },
+    { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
+    ...(showOpens ? [
+      { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
+      { v: t.impressions as number, l: 'Widget Opens' },
+    ] : []),
   ]
   parts.push(
     '<div style="' + CARD + '"><div style="' + H2 + '">Overview</div>'
@@ -115,15 +120,15 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     let chart = '<div style="' + CARD + '"><div style="' + H2 + '">Activity Over Time</div>'
       + '<div style="display:flex;align-items:flex-end;gap:6px;height:120px;padding:8px 0">'
     chart += dailyActive.map(d => {
-      const opensBar = t.impressions != null
+      const opensBar = showOpens
         ? '<div style="width:5px;height:' + Math.round((d.opens / dailyMax) * 90) + 'px;background:#D7E3E3;border-radius:2px"></div>'
         : ''
       const convBar = '<div style="width:7px;height:' + Math.max(2, Math.round((d.conversations / dailyMax) * 90)) + 'px;background:' + TEAL + ';border-radius:2px"></div>'
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="' + esc(d.date) + ': ' + d.conversations + ' conversations' + (t.impressions != null ? ', ' + d.opens + ' opens' : '') + '">'
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="' + esc(d.date) + ': ' + d.conversations + ' conversations' + (showOpens ? ', ' + d.opens + ' opens' : '') + '">'
         + '<div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:90px">' + opensBar + convBar + '</div>'
         + '<span style="font-size:9px;color:' + MUTE + '">' + esc(d.date.slice(5)) + '</span></div>'
     }).join('')
-    chart += '</div><div style="font-size:10px;color:' + MUTE + '">' + (t.impressions != null ? 'Teal = conversations · light = widget opens' : 'Conversations started per day') + '</div></div>'
+    chart += '</div><div style="font-size:10px;color:' + MUTE + '">' + (showOpens ? 'Teal = conversations · light = widget opens' : 'Conversations started per day') + '</div></div>'
     parts.push(chart)
   }
 
@@ -223,6 +228,7 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
         + '<div style="padding-left:12px;margin-top:6px;font-size:12px;color:' + MUTE + ';line-height:1.5">'
       if (q.context) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' BEFORE</span> <span style="color:#374151">' + esc(q.context.slice(0, 240)) + '</span></div>'
       det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#0369A1;background:#E0F2FE;padding:1px 6px;border-radius:6px">USER' + (q.language && q.language !== 'en' ? ' · ' + esc(q.language) : '') + '</span> <span style="color:#374151">' + esc(q.question) + '</span></div>'
+      if (q.after) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' AFTER</span> <span style="color:#374151">' + esc(q.after.slice(0, 280)) + '</span></div>'
       det += 'Logged ' + fmtRel(q.createdAt)
       if (q.suggestedKb) det += '<div style="margin-top:4px;color:#374151"><strong>Suggested KB addition:</strong> ' + esc(q.suggestedKb) + '</div>'
       det += '</div></details>'
@@ -271,7 +277,7 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     + '<ul style="margin:0;padding-left:18px;font-size:11px;color:' + MUTE + '">'
     + '<li style="margin-bottom:4px">' + s.meta.classifiedExchanges + ' Q&amp;A pairs classified; ' + s.meta.excludedZeroPair + ' input-less session(s) excluded.</li>'
     + '<li style="margin-bottom:4px">' + esc(s.meta.method) + '</li>'
-    + '<li style="margin-bottom:4px">' + (t.impressions != null ? 'Widget opens tracked via on-mount beacon → true invocation + response rate.' : 'Widget-open beacon active going forward; response rate populates as opens accrue.') + '</li>'
+    + '<li style="margin-bottom:4px">' + (showOpens ? 'Widget opens tracked via on-mount beacon → true invocation + response rate.' : 'Widget-open beacon active going forward; response rate populates as opens accrue.') + '</li>'
     + '<li>Snapshot generated ' + fmtDate(s.generatedAt) + '.</li>'
     + '</ul></div>'
   )
