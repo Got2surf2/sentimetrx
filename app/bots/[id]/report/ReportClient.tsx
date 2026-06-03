@@ -116,6 +116,25 @@ export default function ReportClient() {
     }
   }
 
+  // Download PDF = print the clean baked HTML (no nav, no buttons) in a hidden
+  // iframe. The bake collapses every drill-down and a print rule force-hides the
+  // bodies, so the PDF is a flat summary with NO conversation snippets — safe to
+  // hand out without exposing transcripts. User picks "Save as PDF" in the dialog.
+  function downloadPdf() {
+    if (!study) return
+    const html = renderAgentStudyHtml(study)
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+    document.body.appendChild(iframe)
+    const cw = iframe.contentWindow
+    if (!cw) { document.body.removeChild(iframe); return }
+    cw.document.open(); cw.document.write(html); cw.document.close()
+    const cleanup = () => { try { document.body.removeChild(iframe) } catch { /* already gone */ } }
+    cw.onafterprint = cleanup
+    setTimeout(() => { cw.focus(); cw.print() }, 400)
+    setTimeout(cleanup, 60000) // fallback if onafterprint never fires
+  }
+
   if (loading) {
     return <div style={{ maxWidth: 1100, margin: '0 auto', padding: '64px 24px', textAlign: 'center' }}>
       <LottieLoader message="Building the agent study…" />
@@ -162,6 +181,7 @@ export default function ReportClient() {
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
           <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
           <button onClick={shareReport} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
+          <button onClick={downloadPdf} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>PDF</button>
           <button onClick={exportPptx} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
         </div>
       </div>

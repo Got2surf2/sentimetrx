@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: PDF export (flat summary, no drill-downs)
+
+**Why**: Owner wants to hand out the report as a PDF without giving recipients the interactive drill-downs (real conversation snippets, before/after, suggested-KB).
+
+**What changed**:
+- New **PDF** button on the report (`ReportClient.tsx`, next to Share/Export PPTX). `downloadPdf()` renders the clean baked HTML (`renderAgentStudyHtml`, no nav/buttons) into a hidden iframe and calls `print()` → user saves as PDF. Client-side, zero server cost (no headless-chromium dependency).
+- `lib/agentStudyHtml.ts` `@media print` rule: `details>:not(summary){display:none!important}` + `print-color-adjust:exact`. Guarantees drill-down bodies are stripped from the PDF **even in browsers that auto-expand `<details>` when printing**, so transcripts never leak into the handout. Card colors preserved.
+
+**Verification**: Playwright `page.pdf()` on a fixture with every `<details>` force-opened + sentinel "SENSITIVE" text in all drill-downs → `pdftotext` finds **0** occurrences (no leak); `pdftoppm` PNG confirms a clean flat layout (KPIs, depth bars, focus labels only, open-question lines with depth chips, bulleted insights). tsc clean.
+
 ## 2026-06-03 — Agent Study: open-question depth chips + bulleted insight lists
 
 **Why**: Owner — make Open Questions richer, and the insight lists (Most Common Topics / Knowledge Gaps / Recommendations) had no clear separation between multi-line entries.

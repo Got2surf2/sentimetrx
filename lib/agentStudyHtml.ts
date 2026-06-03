@@ -311,7 +311,13 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
     + '<title>' + esc(s.bot.name) + ' — Agent Study</title>'
     + '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f3f4f6;margin:0}'
-    + 'details summary::-webkit-details-marker{display:none}</style></head>'
+    + 'details summary::-webkit-details-marker{display:none}'
+    // Print / PDF: keep card colors, and force every drill-down body hidden so a
+    // PDF export NEVER includes conversation snippets — even in browsers that
+    // auto-expand <details> when printing. Only the summary lines (labels, bars,
+    // chips) survive into the PDF.
+    + '@media print{body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}details>:not(summary){display:none!important}details summary{cursor:default}}'
+    + '</style></head>'
     + '<body><div style="max-width:1000px;margin:0 auto;padding:28px 24px 64px">'
     + parts.join('')
     + '</div></body></html>'
