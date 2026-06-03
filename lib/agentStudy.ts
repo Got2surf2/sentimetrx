@@ -551,8 +551,15 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     .map(([k, v]) => ({ name: canonical.get(k) || k, mentions: v.mentions, focuses: [...v.focuses] }))
 
   // ── intents (no AI — content_flags on user turns) ──
+  // Language-routing intents (e.g. "Spanish" → switch language + referral) are
+  // configured as intents so they trigger a handler, but they're not analytical
+  // intents — and they're already covered by the Conversations-by-Language
+  // panel. Exclude them from Intents Detected so a language doesn't masquerade
+  // as a top intent. The handler/behavior is unaffected (this only filters the
+  // analytics readout). Per owner 2026-06-03.
+  const LANGUAGE_INTENT_LABELS = new Set(['spanish', 'english', 'french', 'german', 'portuguese', 'italian', 'chinese', 'mandarin', 'cantonese', 'japanese', 'korean', 'vietnamese', 'tagalog', 'arabic', 'russian', 'hindi', 'creole', 'haitian creole', 'polish', 'farsi', 'urdu', 'bengali'])
   const userTurns = turns.filter(t => t.role === 'user')
-  const intentsArr = bot.intents.filter(i => i.enabled !== false).map(intent => {
+  const intentsArr = bot.intents.filter(i => i.enabled !== false && !LANGUAGE_INTENT_LABELS.has((i.label || '').toLowerCase().trim())).map(intent => {
     const flag = 'intent:' + (intent.label || '').toLowerCase().replace(/\s+/g, '_')
     const hits = userTurns.filter(t => Array.isArray(t.content_flags) && t.content_flags.includes(flag))
     const lastAt = hits.length ? hits.map(h => h.created_at).sort().slice(-1)[0] : null

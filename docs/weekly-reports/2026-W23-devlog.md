@@ -1,5 +1,11 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: exclude language-routing intents from analytics
+
+**Why**: Owner — "Spanish should not be an intent." On Sarina, "Spanish" is configured as an intent but it's a routing handler (switch to Spanish + refer other languages to Natalia Garcia), and it's redundant with the Conversations-by-Language panel. Showing it in "Intents Detected" reads as a language masquerading as a top intent.
+
+**What changed**: `lib/agentStudy.ts` — `getAgentStudy` filters intents whose label matches a `LANGUAGE_INTENT_LABELS` denylist out of `intentsArr`, so language-routing intents are dropped from Intents Detected on the report, baked HTML, and deck. Decision was "hide from report only" — the chat-time handler/behavior is untouched, no agent-config change. tsc clean. Commit-only.
+
 ## 2026-06-03 — Agent Study: Answer Rate metric, beacon-hide, open-Q before/after, Transcripts reorder
 
 **Why**: Owner feedback on the live report — (1) wanted a positive "strength" number, (2) the freshly-deployed beacon showed "Widget Opens 1 / Response Rate 3600%", (3) open questions needed the agent's *answer* shown for context, not just the lead-in, (4) ignored conversations cluttered the top of the Transcripts page.
