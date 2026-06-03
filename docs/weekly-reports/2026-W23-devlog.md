@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Transcripts: Q&A-pairs export
+
+**Why**: Owner needs to be able to produce a clean list of every question/answer pair on demand. The existing export was one-row-per-turn (Session/Turn/Role/Content) — usable but not paired.
+
+**What changed**:
+- `app/api/bots/[id]/conversations/export/route.ts`: added `?shape=pairs`. Pairs each user question with the agent's next reply (skipping greeting preamble + the historical prompt-leak), emitting one row per pair: `#, Session ID, Timestamp, Question (user), Answer (agent), Language`. Default `shape=turns` unchanged. Added `source` to the turn selects to drive the skip.
+- `ConversationsClient.tsx`: a second **Q&A pairs** download button (CSV/XLSX) next to the existing Download.
+
+**Verification**: replicated the pairing on live Sarina read-only → 189 pairs, 100% with a non-empty answer, sample Q→A correct. tsc clean.
+
 ## 2026-06-03 — Agent Study PDF: fix local launch + wordmark spelling
 
 **Why**: The PDF button threw "PDF engine failed to start" locally (`spawn ENOEXEC`) — `.env.local` sets `VERCEL=1`, so the route tried to exec the Linux `@sparticuz/chromium` binary on macOS. Also: owner says the brand is "datanautix", not "data·nautix".

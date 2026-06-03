@@ -314,6 +314,12 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
             hrefFor={fmt => '/api/bots/' + botId + '/conversations/export?format=' + fmt}
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50"
           />
+          <DownloadButton
+            label="Q&A pairs"
+            disabled={sessions.length === 0}
+            hrefFor={fmt => '/api/bots/' + botId + '/conversations/export?shape=pairs&format=' + fmt}
+            className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50"
+          />
           <button onClick={function() { router.push('/bots/' + botId + '/report') }}
             style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: '#0F7173', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Report
