@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import type { AgentStudy } from '@/lib/agentStudy'
+import { renderAgentStudyHtml } from '@/lib/agentStudyHtml'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 const TEAL = '#0F7173'
@@ -49,6 +50,7 @@ export default function ReportClient() {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied' | 'error'>('idle')
 
   async function load(force = false) {
     if (force) setRefreshing(true); else setLoading(true)
@@ -73,6 +75,35 @@ export default function ReportClient() {
       const a = document.createElement('a'); a.href = url; a.download = (study?.bot.name || 'Agent') + '_Agent_Study.pptx'; a.click(); URL.revokeObjectURL(url)
     } catch { alert('Export failed') }
     finally { setExporting(false) }
+  }
+
+  // Share = bake the current study into a self-contained HTML snapshot and POST
+  // it to /api/share as an agent_study link. The recipient sees a frozen copy
+  // of this report (drill-downs and all) at /shared/agent-study/[token] — no
+  // login, no live recompute. URL is copied to the clipboard.
+  async function shareReport() {
+    if (!study) return
+    setShareState('sharing')
+    try {
+      const html = renderAgentStudyHtml(study)
+      const r = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'agent_study', target_id: botId, html, expires_in: '30d' }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (d.url) {
+        try { await navigator.clipboard.writeText(d.url) } catch { /* clipboard may be blocked; link still created */ }
+        setShareState('copied')
+        setTimeout(() => setShareState('idle'), 3000)
+      } else {
+        setShareState('error')
+        setTimeout(() => setShareState('idle'), 3000)
+      }
+    } catch {
+      setShareState('error')
+      setTimeout(() => setShareState('idle'), 3000)
+    }
   }
 
   if (loading) {
@@ -112,6 +143,7 @@ export default function ReportClient() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
           <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+          <button onClick={shareReport} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
           <button onClick={exportPptx} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
         </div>
       </div>

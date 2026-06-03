@@ -10,7 +10,7 @@ import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 
 export const dynamic = 'force-dynamic'
 
-type ShareType = 'study' | 'campaign' | 'townhall' | 'conversation' | 'analytics'
+type ShareType = 'study' | 'campaign' | 'townhall' | 'conversation' | 'analytics' | 'agent_study'
 
 async function getUserOrg(service: ReturnType<typeof createServiceRoleClient>, userId: string) {
   const { data: userData } = await service
@@ -42,6 +42,10 @@ async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleCl
   }
   if (type === 'analytics') {
     const { data } = await service.from('datasets').select('org_id').eq('id', targetId).single()
+    return (data as any)?.org_id ?? null
+  }
+  if (type === 'agent_study') {
+    const { data } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
     return (data as any)?.org_id ?? null
   }
   if (type === 'conversation') {
@@ -93,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   const { type, target_id, expires_in } = body
   if (!type || !target_id) return NextResponse.json({ error: 'type and target_id required' }, { status: 400 })
-  if (!['study', 'campaign', 'townhall', 'conversation', 'analytics'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, conversation, or analytics' }, { status: 400 })
+  if (!['study', 'campaign', 'townhall', 'conversation', 'analytics', 'agent_study'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, conversation, analytics, or agent_study' }, { status: 400 })
 
   const service = createServiceRoleClient()
 
@@ -127,6 +131,27 @@ export async function POST(req: NextRequest) {
       await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'conversation', target_id }, ip, userAgent })
     }
     return NextResponse.json({ url: `${baseUrl2}/shared/conversation/${convData.token}`, token: convData.token, expires_at: convData.expires_at }, { status: 201 })
+  }
+
+  // For agent_study shares, store the rendered report HTML in metadata —
+  // a point-in-time bake of the rich /bots/[id]/report page, served inside a
+  // sandboxed iframe by /shared/agent-study/[token]. Same shape as the
+  // conversation branch above, minus the labeled variant.
+  if (type === 'agent_study' && body.html) {
+    const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
+    const hours2 = expiryHours2[expires_in] || 720
+    const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
+    const { data: asData, error: asErr } = await service
+      .from('shared_links')
+      .insert({ type: 'agent_study', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: { html: String(body.html) } })
+      .select('token, expires_at')
+      .single()
+    if (asErr) return NextResponse.json({ error: asErr.message }, { status: 500 })
+    {
+      const { ip, userAgent } = eventContextFromRequest(req)
+      await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'agent_study', target_id }, ip, userAgent })
+    }
+    return NextResponse.json({ url: `${baseUrl}/shared/agent-study/${asData.token}`, token: asData.token, expires_at: asData.expires_at }, { status: 201 })
   }
 
   // For analytics shares, store filter criteria in metadata
@@ -190,7 +215,7 @@ export async function GET(req: NextRequest) {
 
     const service = createServiceRoleClient()
 
-    if (!['study', 'campaign', 'townhall', 'conversation', 'analytics'].includes(listType)) {
+    if (!['study', 'campaign', 'townhall', 'conversation', 'analytics', 'agent_study'].includes(listType)) {
       return NextResponse.json({ error: 'invalid list_type' }, { status: 400 })
     }
     const gate = await gateShareTarget(service, user.id, listType as ShareType, listTargetId)

@@ -510,3 +510,16 @@ Commit-only, not pushed.
 - `app/analyze/new/recording/[id]/status/StatusClient.tsx`: the transcribed review gate shows a **"Presentation ends at [mm:ss]"** control (seeded by the detected `phase_map` boundary) when the profile has a presentation phase. Generate sends an edited two-phase `phase_map` (presentation 0→split, Q&A split→end) so analysis scopes correctly.
 
 tsc clean; recordings unit+route tests green (64). UI is forms-only (no automated render test) — eyeball via `npm run dev`. Commit-only, not pushed; staged my files only (parallel session still active in-tree).
+
+## 2026-06-03 — Agent Study: shareable read-only report link
+
+**Why**: The Agent Study report (`/bots/[id]/report`) had Export PPTX and Transcripts, but no way to hand a stakeholder the *rich* HTML report (with its drill-downs) without giving them a login. Decision: keep the rich HTML and share it as a **point-in-time bake** through the existing `/api/share` mechanism — same pattern as the conversation share — rather than building a live public report endpoint.
+
+**What changed**:
+- `lib/agentStudyHtml.ts` (new): pure `renderAgentStudyHtml(study: AgentStudy): string`. Self-contained, inline-styled static mirror of `ReportClient.tsx`, section for section. Every user/agent-derived string is escaped; drill-downs use native `<details>`/`<summary>` so they work with JS disabled (the shared viewer's iframe is script-sandboxed). No server deps — type-only import of `AgentStudy`.
+- `app/api/share/route.ts`: added `agent_study` to `ShareType` + both allowlists, resolved its target org via `agents.org_id`, and a POST branch that stores the baked HTML in `shared_links.metadata.html` and returns `/shared/agent-study/{token}` (30-day default expiry). Mirrors the `conversation` branch, no labeled variant.
+- `app/bots/[id]/report/ReportClient.tsx`: **Share** button next to Export PPTX — bakes the current study, POSTs it, copies the returned URL, shows a "✓ Link copied" state (mirrors the conversations-page share UX).
+- `app/shared/agent-study/[token]/{page.tsx,SharedReportView.tsx}` (new): public viewer mirroring `/shared/conversation/[token]` — service-role token lookup, type + expiry guards, fire-and-forget access stamp, HTML rendered in a sandboxed iframe (`allow-popups allow-popups-to-escape-sandbox`).
+- `sql/098_shared_links_agent_study.sql` (new): widens the `shared_links_type_check` CHECK to include `agent_study` (additive; no rows affected). **Not yet applied to prod** — the share insert will be rejected by the live constraint until it (and the still-pending sql/095, sql/096) are applied.
+
+**Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Rendered a full-coverage `AgentStudy` fixture (all sections + non-English samples + `<`/`&`/`"` in entity names) through `renderAgentStudyHtml` and screenshotted via Playwright/chromium at desktop (collapsed + all-`<details>`-expanded) and mobile (390px) — faithful to the live report, responsive, no overflow, escaping confirmed (raw `<bus>` does not leak; `&lt;bus&gt;` present). Commit-only, not pushed; staged my files only by explicit path (parallel recordings session active in-tree).
