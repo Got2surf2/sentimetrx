@@ -432,9 +432,15 @@ Return ONLY a JSON array, no markdown:
 }
 
 // ── Cache key ────────────────────────────────────────────────────────────────
+// Bump when the AgentStudy object SHAPE changes (new fields, reworked
+// computation) so stale cached studies recompute instead of serving an
+// old-shape object that renders with missing/undefined fields.
+//   v2 (2026-06-03): totalSessions, answerRatePct/answeredPairs, open[].after,
+//   language-routing intents excluded.
+const STUDY_SCHEMA_VERSION = 'v2'
 function cacheKeyFor(pairTotal: number, bot: BotRow): string {
   const h = crypto.createHash('sha1')
-  h.update(`${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
+  h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
   return h.digest('hex').slice(0, 16)
 }
 

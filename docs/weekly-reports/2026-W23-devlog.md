@@ -1,5 +1,11 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: version the cache key so shape changes self-heal
+
+**Why**: `agent_study_cache` keys on pair-count + focuses + intents, not the object shape. The day's changes added fields (`totalSessions`, `answerRatePct`/`answeredPairs`, `open[].after`) and dropped language intents — but a study cached before the change kept the same key, so the report would serve an old-shape object and render `undefined` (e.g. "Conversations: undefined", no Answer Rate tile) until a manual force-refresh.
+
+**Fix**: added `STUDY_SCHEMA_VERSION` ('v2') into `cacheKeyFor`. Any shape change → bump the version → all caches miss and recompute fresh on next view. No manual refresh, no migration. `lib/agentStudy.ts`. tsc clean.
+
 ## 2026-06-03 — ChatBot: render mailto:/tel: markdown links (broken contact blocks)
 
 **Why**: Mason's contact bubble rendered `[Leon.Kirkpatrick@cflhomeless.org](mailto:…)` as raw text — visible `[ ]` and `(mailto:…)`. The agent emits a valid markdown email link; the renderer just didn't parse it.
