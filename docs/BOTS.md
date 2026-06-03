@@ -383,6 +383,16 @@ When `user_name` is absent (askName=false), only T0 (topical opener) is synthesi
 
 This fixes the long-standing gap where admin modal views of name-collecting bots (Hope, Sarina, etc.) showed the greeting prefixed with the name but no record of how the name was elicited — confusing for reviewers reading transcripts.
 
+### Dynamic follow-up pills (`config.dynamicChips`)
+
+Opt-in per agent. When `config.dynamicChips` is true (`BotClient` accepts boolean `true` or string `'true'`), the widget turns a choice-style question into clickable follow-up pills, so a guided Q&A agent isn't dead-ended on plain text.
+
+- **Agent side (prompt):** the agent is instructed to append a machine-readable trailer on its own line whenever it ends a reply by offering a few next-step options — `[[chips: The new buildings | The impact | How to give]]` (2–4 options, each phrased in the visitor's voice). This is per-agent prompt content, not platform code.
+- **Widget side (`ChatBot.tsx`):** `extractChips()` parses the trailer off each reply, **strips it from the visible text** (so `[[chips:…]]` can never leak), and stores up to 4 options on the message. The pills render under the **newest** assistant turn only, reuse the opener-suggestion styling/`accentColor`, and a click calls `sendMessage(option)` — identical to the static `config.suggestions` chips. Hydration also strips the trailer from persisted turns.
+- **Fallback:** no trailer → no pills, text unchanged (the model follows the instruction reliably but not 100%, and a missed trailer just shows the question as text). Disabled agents are completely unaffected (additive, gated on the flag).
+
+First enabled on the **Mason** agent (`scripts/_mason_create_agent.ts`).
+
 When `askName === false`, the topical opener (`config.initialMessage`) is the very first message and the name capture step is skipped (`userName` is initialised to `'_skip'`).
 
 ### Connectivity resilience — session resumption + retry (2026-05-25)

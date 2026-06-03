@@ -401,3 +401,15 @@ Commit-only, not pushed.
 - No platform-code or feature changes — uses existing agent/RAG/intent machinery, so no spec (BOTS.md) delta. (`SKIP_SPEC_CHECK` — operational customer-data script only.)
 
 **Verified locally** (`npm run dev` vs linked prod DB): RAG retrieves the right chunks at 100% top confidence; all 3 intents fire correctly; overview/donate/more-info/crisis-handoff replies are accurate, dignity-correct, and surface the real contacts + links. (The AI-generation step needs `ANTHROPIC_API_KEY` in the dev process — the live Hope agent fails identically without it, confirming it's a local-env gap, not a Mason issue.) Agent is `active` in prod → reachable at `/b/mason`. Commit-only, not pushed.
+
+## 2026-06-03 — Agents: dynamic follow-up pills (opt-in `dynamicChips`)
+
+**Why**: When an agent ends a reply with a choice-style question ("Want to hear about the impact, the buildings, or how to get involved?"), the visitor had to type it out. Surfacing those options as clickable pills makes guided Q&A feel responsive. Requested for the Mason agent; built as a reusable, opt-in widget capability.
+
+**What changed** (platform code — shared widget):
+- `components/ui/ChatBot.tsx`: new `extractChips()` parses a `[[chips: A | B | C]]` trailer off each agent reply, strips it from the visible text (never leaks), stores ≤4 options on the message (`Message._chips`), and renders them as pills under the **newest** assistant turn — reusing the opener-suggestion styling + `accentColor`; click → `sendMessage(option)`. Hydration strips the trailer from persisted turns too. New `ChatBotConfig.dynamicChips?: boolean`. Purely additive — no trailer / flag off → current behavior unchanged.
+- `app/b/[slug]/BotClient.tsx`: resolves `dynamicChips` from the agent config (accepts boolean `true` or string `'true'`).
+- `scripts/_mason_create_agent.ts`: Mason's prompt now instructs the `[[chips:…]]` trailer for choice questions (visitor-voice, 2–4 opts, not for open questions); `config.dynamicChips: true`. Only Mason is enabled.
+- `docs/BOTS.md`: documented the feature under the opener section.
+
+**Verified** (`npm run dev` vs linked DB): model emits the trailer reliably; parser strips it (no marker leak); pills render under the reply and match the offered options (screenshot QC via preview tool); click path is the proven `sendMessage` handler. tsc clean. Datanautix branding untouched. Commit-only, not pushed.

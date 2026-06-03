@@ -73,6 +73,9 @@ interface Message {
   content: string
   _debug?: string[]
   _signals?: Array<{ label: string; type: string; color: string }>
+  // Follow-up pills parsed from a `[[chips: A | B | C]]` trailer the agent
+  // appends to a question-reply (only when config.dynamicChips is on).
+  _chips?: string[]
 }
 
 export interface ChatBotConfig {
@@ -93,6 +96,9 @@ export interface ChatBotConfig {
   suggestions: string[]
   initialMessage: string
   askName?: boolean
+  // When true, parse a `[[chips: A | B | C]]` trailer off each agent reply
+  // and render the options as clickable follow-up pills under that reply.
+  dynamicChips?: boolean
   languages?: string[]
   language?: string
   // Extra fields merged into every POST body sent to apiEndpoint. Used by
@@ -151,6 +157,22 @@ function isCleanName(name: string): boolean {
   const trimmed = name.trim()
   if (trimmed.length < 1 || trimmed.length > 40) return false
   return !BAD_NAME_PATTERNS.some(p => p.test(trimmed))
+}
+
+// Pull a `[[chips: A | B | C]]` trailer off an agent reply: returns the
+// visible text with the marker stripped, plus up to 4 pill options. Tolerant
+// of casing/spacing and a missing/empty marker (→ no chips, text unchanged).
+// Always strips the marker so it can never leak into the rendered message.
+function extractChips(content: string): { text: string; chips: string[] } {
+  const m = content.match(/\[\[\s*chips\s*:\s*([^\]]*?)\s*\]\]/i)
+  if (!m) return { text: content, chips: [] }
+  const text = content.replace(m[0], '').trim()
+  const chips = m[1]
+    .split('|')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+  return { text, chips }
 }
 
 export default function ChatBot({ config }: { config: ChatBotConfig }) {
@@ -224,7 +246,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     fetch(config.apiEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: greetPrompt }], session_id: sessionId, language: selectedLang, ...(config.extraBody || {}) }),
+      // NO session_id: this is an internal greeting-generation call, not a real
+      // user message. Persisting it (storage is gated on session_id in
+      // chatCore) leaked the literal prompt "Greet the user warmly…" into the
+      // transcript as a user turn for every non-English chat. The localized
+      // greeting is rendered client-side; the normal first-message flow
+      // backfills it as a source='greeting' turn.
+      body: JSON.stringify({ messages: [{ role: 'user', content: greetPrompt }], language: selectedLang, ...(config.extraBody || {}) }),
     })
       .then(r => r.json())
       .then(data => {
@@ -269,7 +297,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         if (!data || !Array.isArray(data.turns) || data.turns.length === 0) return
         const hydrated: Message[] = data.turns.map((t: { role: string; content: string }) => ({
           role: t.role === 'user' ? 'user' : 'assistant',
-          content: t.content,
+          // Strip any chips trailer from persisted assistant turns so it never
+          // shows as raw text on reload (live chips only matter for the newest reply).
+          content: t.role === 'user' || !config.dynamicChips ? t.content : extractChips(t.content).text,
         }))
         setMessages(hydrated)
         setHasFirstMessage(true)
@@ -472,7 +502,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       })
       const data = await res.json()
       setLastFailedInput(null)
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.', _debug: data._debug, _signals: data._signals }])
+      const raw = data.reply || 'Sorry, something went wrong.'
+      const { text, chips } = config.dynamicChips ? extractChips(raw) : { text: raw, chips: [] }
+      setMessages(prev => [...prev, { role: 'assistant', content: text, _debug: data._debug, _signals: data._signals, _chips: chips.length ? chips : undefined }])
     } catch {
       // All retries exhausted. Save the user's message so they can hit
       // Retry instead of having to retype it; show a friendlier error.
@@ -753,6 +785,35 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             ))}
           </div>
         )}
+
+        {/* Dynamic follow-up pills (config.dynamicChips) — render the options
+           the agent offered in its most recent reply via a `[[chips:…]]`
+           trailer. Same styling/behavior as the opener suggestions; a click
+           sends that option as the next message. Shows only on the newest
+           assistant turn, and never while the next reply is loading. */}
+        {config.dynamicChips && !loading && (() => {
+          const last = messages[messages.length - 1]
+          if (!last || last.role !== 'assistant' || !last._chips || last._chips.length === 0) return null
+          return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              {last._chips.map((c, i) => (
+                <button key={i} onClick={() => sendMessage(c)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 20,
+                    background: 'white', border: '1.5px solid #e5e7eb',
+                    color: '#4b5563', fontSize: '0.8125rem', fontWeight: 500,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = config.accentColor; (e.target as HTMLElement).style.color = config.accentColor }}
+                  onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = '#e5e7eb'; (e.target as HTMLElement).style.color = '#4b5563' }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
       </div>}
 
       {/* Input area — hidden during language selection */}
