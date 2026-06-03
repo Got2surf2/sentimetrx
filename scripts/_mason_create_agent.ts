@@ -380,15 +380,20 @@ const CONFIG = {
   name: 'Mason',
   subtitle: 'Foundations Project · Capital Campaign',
   avatarLetter: 'M',
-  // Palette matched to foundationsproject.org: brand navy #1b3a5e + warm gold
-  // #f7b200 on near-white, with the theme's brick-red #9e2a2f as the CTA accent
-  // (gold fails contrast as hover text, so it's reserved for the avatar badge).
-  headerGradient: 'linear-gradient(135deg, #1b3a5e, #29527d)',
+  // Palette verified 2026-06-03 against the live theme stylesheet
+  // (themes/foundations/assets/css/style.css): primary navy #103c5d (the most-
+  // used brand color, 37×), darker navy #0a3557 for depth, warm gold #f7b200,
+  // and brick-red #9e2a2f as the CTA accent. (The earlier #1b3a5e was a
+  // Gutenberg hero-block color on the homepage, not the theme brand navy.)
+  // The site's moss-green #566c39 is its secondary, left out here to keep the
+  // widget to a clean navy/gold/red. Gold is reserved for the avatar badge —
+  // it fails contrast as hover/link text.
+  headerGradient: 'linear-gradient(135deg, #103c5d, #0a3557)',
   avatarGradient: 'linear-gradient(135deg, #f7b200, #d99500)',
-  avatarTextColor: '#1b3a5e',
+  avatarTextColor: '#103c5d',
   accentColor: '#9e2a2f',
   pageBg: '#f5f7fa',
-  userBubbleBg: '#1b3a5e',
+  userBubbleBg: '#103c5d',
   websiteUrl: 'https://foundationsproject.org',
   websiteLabel: 'foundationsproject.org',
   placeholder: 'Ask about the Foundations Project, the new Center, naming gifts, or how to give…',

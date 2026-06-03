@@ -523,3 +523,9 @@ tsc clean; recordings unit+route tests green (64). UI is forms-only (no automate
 - `sql/098_shared_links_agent_study.sql` (new): widens the `shared_links_type_check` CHECK to include `agent_study` (additive; no rows affected). **Not yet applied to prod** — the share insert will be rejected by the live constraint until it (and the still-pending sql/095, sql/096) are applied.
 
 **Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Rendered a full-coverage `AgentStudy` fixture (all sections + non-English samples + `<`/`&`/`"` in entity names) through `renderAgentStudyHtml` and screenshotted via Playwright/chromium at desktop (collapsed + all-`<details>`-expanded) and mobile (390px) — faithful to the live report, responsive, no overflow, escaping confirmed (raw `<bus>` does not leak; `&lt;bus&gt;` present). Commit-only, not pushed; staged my files only by explicit path (parallel recordings session active in-tree).
+
+## 2026-06-03 — Mason agent: corrected brand navy to the real FP theme color
+
+**Why**: Owner asked to match Mason's widget chrome to foundationsproject.org. The config navy `#1b3a5e` turned out to be a Gutenberg hero-block color from the homepage, not the brand navy. Verified the real palette against the live theme stylesheet (`themes/foundations/assets/css/style.css`): primary navy **`#103c5d`** (37× — the dominant brand color), darker `#0a3557`, gold `#f7b200` (2×), brick-red `#9e2a2f` (3×). Gold + red in the config were already correct; only the navy was off.
+
+**What changed** (`scripts/_mason_create_agent.ts` CONFIG): `headerGradient` → `#103c5d→#0a3557`, `avatarTextColor`/`userBubbleBg` → `#103c5d`. Re-seeded the live `mason` agent (idempotent upsert, 14 chunks re-embedded). Verified the stored config via read-only query. Live at `/b/mason` (DB-driven, no deploy). Commit-only, not pushed.
