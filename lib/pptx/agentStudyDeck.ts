@@ -37,7 +37,8 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
 
   // 2. Overview KPIs
   const kpis: { value: string; label: string; sub?: string; color?: string }[] = [
-    { value: String(t.conversations), label: 'Useful Conversations', sub: 'of ' + t.initiated + ' initiated', color: '0D2B45' },
+    { value: String(t.totalSessions), label: 'Conversations', sub: 'all sessions', color: '0D2B45' },
+    { value: String(t.conversations), label: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total', color: '0D2B45' },
     { value: String(t.totalPairs), label: 'Q&A Pairs', color: '0F7173' },
     { value: String(study.health.medianPairs), label: 'Median Depth', sub: 'pairs / conversation', color: 'E85A1A' },
     { value: String(study.focuses.length), label: 'Focus Areas Touched', color: '0F7173' },

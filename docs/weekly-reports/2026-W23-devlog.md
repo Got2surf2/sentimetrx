@@ -1,5 +1,19 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: fix 3600% response rate + anchor headline to the official session count
+
+**Why**: Owner caught two issues on a live shared report (Sarina): (1) a **3600% response rate**, and (2) the report's lead count disagreed with the agent card — "the agent card is the official record."
+
+**Root causes**:
+- *3600%*: `responseRatePct = conversations7d ÷ opens7d`. The widget-open beacon only started logging at today's deploy, so `opens7d = 1` while `conversations7d = 36` (counted from turn rows that predate the beacon) → 36 ÷ 1 = 3600%. No window alignment, no clamp.
+- *Count mismatch*: report led with "Useful Conversations 36 (of 55 initiated)"; the card shows **61** (distinct sessions, `bot_session_counts_for_ids` RPC). The report *did* reconcile to 61 (36 useful + 19 one-word + 2 no-input + 4 flagged) — but only in the depth-chart fine print, so the headline read as a contradiction.
+
+**What changed** (`lib/agentStudy.ts` + both renderers):
+- `computeHealth`: response rate now aligns the conversation window to the beacon's first record (`max(now−7d, firstBeaconAt)`), requires `MIN_OPENS_FOR_RATE = 10` opens before showing any rate (else `null` → "— / gathering open data"), and clamps at 100%. Verified read-only against live Sarina: `responseRatePct` went 3600 → `null` (opens7d=1 < 10).
+- Added `totals.totalSessions` (= sum of the four session buckets = the card's distinct-session count) and led the Overview KPIs (`ReportClient.tsx`, `lib/agentStudyHtml.ts`) **and** the PPTX deck (`lib/pptx/agentStudyDeck.ts`) with it: "Conversations 61 / all sessions", then "Useful Conversations 36 / of 61 total". Headline now matches the agent card.
+
+**Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean; read-only `getAgentHealth` on live Sarina confirms the null rate; re-rendered the bake fixture + Playwright screenshot confirms the new headline (Conversations 61, Useful 36 of 61, Response Rate "—"). Commit-only; staged my files only by explicit path.
+
 ## 2026-06-03 — Conversation review gate (trolls/bots/off-topic out of reports, human-in-the-loop)
 
 **Why**: Most agent data is public-record, so the issue with reports/shares isn't exposure — it's signal quality. A report that silently includes a troll rant or a bot flood isn't defensible. Owner asked for robust guardrails: auto-exclude trolls/bots/off-topic from reports but keep them in the DB, with a mechanism to flag conversations for human review and never include flagged ones unless a human pushes them to the record.

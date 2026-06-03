@@ -62,6 +62,7 @@ export interface AgentStudy {
   range: { first: string | null; last: string | null; activeDays: number }
   totals: {
     impressions: number | null
+    totalSessions: number        // ALL distinct sessions — the official count shown on the agent card (= conversations + initiatedNotEntered + abandonedNoInput + flaggedExcluded)
     initiated: number            // sessions with >=1 user turn (any)
     conversations: number        // USEFUL: sessions with >=1 substantive user turn (the main count)
     initiatedNotEntered: number  // initiated but trivial-only (chip tap / one-word ack, no real message)
@@ -230,8 +231,27 @@ function computeHealth(sessions: Map<string, Turn[]>, impressions: { created_at:
   const trend = prior7d > 0 ? Math.round(((conversations7d - prior7d) / prior7d) * 100) : null
 
   const haveBeacon = impressions.length > 0
-  const opens7d = haveBeacon ? impressions.filter(i => new Date(i.created_at).getTime() >= now - 7 * DAY).length : null
-  const responseRatePct = (opens7d && opens7d > 0) ? Math.round((conversations7d / opens7d) * 100) : null
+  const impTimes = impressions.map(i => new Date(i.created_at).getTime())
+  const firstBeaconAt = haveBeacon ? Math.min(...impTimes) : null
+  const opens7d = haveBeacon ? impTimes.filter(t => t >= now - 7 * DAY).length : null
+  // Response rate = conversations ÷ opens, but ONLY over the period the beacon
+  // has actually been collecting (capped at 7d). The beacon starts logging at
+  // deploy, so dividing 7 days of pre-beacon conversation history by a day-old
+  // open count printed nonsense (e.g. 36 ÷ 1 = 3600%). We therefore (a) align
+  // the conversation window to the beacon's first record, (b) require a minimum
+  // open sample so a handful of opens can't produce a noisy headline rate, and
+  // (c) clamp at 100% — a conversation can persist even when its impression
+  // insert was rate-limited or failed, which would otherwise exceed 100%.
+  const MIN_OPENS_FOR_RATE = 10
+  let responseRatePct: number | null = null
+  if (haveBeacon && firstBeaconAt != null) {
+    const rateStart = Math.max(now - 7 * DAY, firstBeaconAt)
+    const opensInWindow = impTimes.filter(t => t >= rateStart).length
+    if (opensInWindow >= MIN_OPENS_FOR_RATE) {
+      const convInWindow = inWindow(rateStart, now + DAY)
+      responseRatePct = Math.min(100, Math.round((convInWindow / opensInWindow) * 100))
+    }
+  }
 
   const pairCounts = sessionMeta.map(s => s.pairs).sort((a, b) => a - b)
   const medianPairs = pairCounts.length ? pairCounts[Math.floor(pairCounts.length / 2)] : 0
@@ -591,6 +611,9 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     },
     totals: {
       impressions: totalImpressions ?? null,
+      // Every loaded session lands in exactly one bucket, so this equals the
+      // distinct-session count the agent card shows (the official record).
+      totalSessions: useful + initiatedNotEntered + abandonedNoInput + flaggedExcluded,
       initiated,
       conversations: useful,
       initiatedNotEntered,

@@ -62,10 +62,11 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
 
   // ── Overview KPIs ──
   const kpis: { v: string | number; l: string; sub?: string; color?: string }[] = [
-    { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.initiated + ' initiated' },
+    { v: t.totalSessions, l: 'Conversations', sub: 'all sessions' },
+    { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total' },
     { v: t.totalPairs, l: 'Q&A Pairs' },
     { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
-    { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.opens7d != null ? 'engaged of opens (7d)' : 'needs beacon data' },
+    { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
     { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'validated', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
     { v: t.impressions != null ? t.impressions : '—', l: 'Widget Opens' },
   ]
