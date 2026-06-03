@@ -500,3 +500,13 @@ Tests: meetingTool unit (13) + recordings-route file_role validation. tsc clean.
 **Residual (not blocking, would need code+deploy)**: bot/automation defense is still per-IP rate limit (30/min) + in-memory strike map (resets across Fluid-Compute instances); origin allowlist / Vercel BotID would harden further.
 
 Commit-only, not pushed.
+
+## 2026-06-03 — Meeting tool D5: wizard preset + slide upload + gate phase-split (UI)
+
+**Why**: Make the meeting tool user-reachable — the backend + deck landed (commit 2a1a3000) but there was no way to create a community-meeting recording or confirm the presentation→Q&A split from the UI.
+
+**What changed**:
+- `app/analyze/new/recording/RecordingWizardClient.tsx`: Setup pane gains a **Meeting type** selector (Town hall Q&A | Community meeting). Community meeting reveals a **Presentation slides (PDF)** uploader — rides the existing TUS flow tagged `file_role='slides'`, rendered separately from the audio/video list. POST sends `meeting_profile` (has_slides = deck attached); town_hall_qa sends null = legacy. Slides optional.
+- `app/analyze/new/recording/[id]/status/StatusClient.tsx`: the transcribed review gate shows a **"Presentation ends at [mm:ss]"** control (seeded by the detected `phase_map` boundary) when the profile has a presentation phase. Generate sends an edited two-phase `phase_map` (presentation 0→split, Q&A split→end) so analysis scopes correctly.
+
+tsc clean; recordings unit+route tests green (64). UI is forms-only (no automated render test) — eyeball via `npm run dev`. Commit-only, not pushed; staged my files only (parallel session still active in-tree).

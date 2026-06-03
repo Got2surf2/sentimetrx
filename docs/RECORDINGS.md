@@ -593,7 +593,7 @@ Called from the review-and-generate gate (§ 5.3) once the pipeline is paused at
 }
 ```
 
-If `setup_inputs` is present it replaces `recordings.setup_inputs` before analysis (last-minute agenda / panel-roster fixes that steer extraction quality). `instructions` ≤ 4000 chars. Accepts `status='transcribed'` (first generation) or `'failed'` (retry the analysis pass without re-transcribing); other statuses return `{ already_running }`.
+If `setup_inputs` is present it replaces `recordings.setup_inputs` before analysis (last-minute agenda / panel-roster fixes that steer extraction quality). `instructions` ≤ 4000 chars. **`phase_map` (meeting tool):** for a community meeting, the gate's "Presentation ends at [mm:ss]" control sends an edited two-phase map; the route persists it (`edited_by_user:true`) before the workflow runs, so analysis scopes Q&A to the confirmed Q&A span and summarizes the presentation span. Accepts `status='transcribed'` (first generation) or `'failed'` (retry the analysis pass without re-transcribing); other statuses return `{ already_running }`.
 
 ### 4.3 `GET /api/recordings/[id]` — status + details
 
@@ -755,6 +755,8 @@ Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the rec
 Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit / etc. Selecting it routes to `/analyze/new/recording`.
 
 ### 5.2 Recording creation wizard — `/analyze/new/recording`
+
+**Meeting-tool additions (2026-06):** the Setup pane has a **Meeting type** selector (`town_hall_qa` | `community_meeting`, from `lib/recordings/profiles.ts`). Choosing **Community meeting** reveals a **Presentation slides (PDF)** upload in the Files pane — it rides the same TUS flow tagged `file_role='slides'` (rendered separately from the audio/video list) and is read by AI vision to seed the meeting notes. The POST sends `meeting_profile` (with `has_slides` reflecting whether a deck was attached); `town_hall_qa` sends `meeting_profile: null` = legacy behavior. Slides are optional even for a community meeting (phase detection still runs from the transcript).
 
 Three-pane layout:
 

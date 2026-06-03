@@ -16,11 +16,14 @@ import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import * as tus from 'tus-js-client'
 import { createClient } from '@/lib/supabase/client'
+import { defaultProfile, PRESET_LABELS } from '@/lib/recordings/profiles'
+import type { MeetingPresetId } from '@/lib/recordings/types'
 import Link from 'next/link'
 
 const HERMES = '#E8632A'
 
-// v1 = qa only (per lib/recordings/analyze.ts). Other types are deferred.
+// session_type stays 'qa' under the hood; the meeting TYPE (preset) drives the
+// presentation/Q&A phasing. Other session types are deferred.
 type SessionType = 'qa'
 type AsrStrategy = 'auto' | 'whisper' | 'deepgram' | 'hybrid'
 type Phase = 'idle' | 'creating' | 'uploading' | 'starting' | 'done'
@@ -28,6 +31,7 @@ type Phase = 'idle' | 'creating' | 'uploading' | 'starting' | 'done'
 interface PendingFile {
   localId: string                  // browser-side id while pre-upload
   file: File
+  role: 'media' | 'slides'         // slides = the presentation deck (PDF)
   serverId?: string                // recording_files.id after § 4.1
   storagePath?: string             // after § 4.1
   progress: number                 // 0..1
@@ -59,6 +63,7 @@ export default function RecordingWizardClient() {
   const [language, setLanguage] = useState('en')
   const [asrStrategy, setAsrStrategy] = useState<AsrStrategy>('auto')
   const sessionType: SessionType = 'qa'
+  const [preset, setPreset] = useState<MeetingPresetId>('town_hall_qa')
 
   // Q&A-specific
   const [panel, setPanel] = useState<Array<{ name: string; role: string }>>([{ name: '', role: '' }])
@@ -74,7 +79,9 @@ export default function RecordingWizardClient() {
     [panel],
   )
   const cleanedAgenda = useMemo(() => agenda.map(a => a.trim()).filter(Boolean), [agenda])
-  const canSubmit = phase === 'idle' && files.length > 0 && name.trim().length > 0 && cleanedAgenda.length > 0
+  const mediaFiles = useMemo(() => files.filter(f => f.role === 'media'), [files])
+  const slide = useMemo(() => files.find(f => f.role === 'slides') || null, [files])
+  const canSubmit = phase === 'idle' && mediaFiles.length > 0 && name.trim().length > 0 && cleanedAgenda.length > 0
 
   // ── File handlers ─────────────────────────────────────────────────────────
   const addFiles = useCallback((incoming: FileList | File[]) => {
@@ -87,11 +94,27 @@ export default function RecordingWizardClient() {
         additions.push({
           localId: `${file.name}-${file.size}-${crypto.randomUUID().slice(0, 8)}`,
           file,
+          role: 'media',
           progress: 0,
           status: 'pending',
         })
       }
       return [...prev, ...additions]
+    })
+  }, [])
+
+  // Attach (or replace) the single presentation-slide PDF.
+  const setSlide = useCallback((file: File | null) => {
+    setFiles(prev => {
+      const withoutSlide = prev.filter(f => f.role !== 'slides')
+      if (!file) return withoutSlide
+      return [...withoutSlide, {
+        localId: `slide-${file.name}-${crypto.randomUUID().slice(0, 8)}`,
+        file,
+        role: 'slides',
+        progress: 0,
+        status: 'pending',
+      }]
     })
   }, [])
 
@@ -123,6 +146,12 @@ export default function RecordingWizardClient() {
     setSubmitError(null)
     setPhase('creating')
 
+    // community_meeting → a real profile (has_slides reflects whether a deck
+    // was attached); town_hall_qa → null profile = legacy Q&A behavior.
+    const meeting_profile = preset === 'community_meeting'
+      ? { ...defaultProfile('community_meeting'), has_slides: !!slide }
+      : null
+
     // Build the § 4.1 body.
     const body = {
       name: name.trim(),
@@ -132,11 +161,13 @@ export default function RecordingWizardClient() {
       language,
       setup_inputs: { panel: cleanedPanel, agenda: cleanedAgenda },
       asr_strategy: asrStrategy,
+      meeting_profile,
       files: files.map(f => ({
         original_filename: f.file.name,
         size_bytes: f.file.size,
         mime_type: f.file.type || guessMime(f.file.name),
-        is_video: isVideoByExt(f.file.name),
+        is_video: f.role === 'slides' ? false : isVideoByExt(f.file.name),
+        file_role: f.role,
       })),
     }
 
@@ -250,9 +281,9 @@ export default function RecordingWizardClient() {
             />
           </label>
 
-          {files.length > 0 && (
+          {mediaFiles.length > 0 && (
             <ul className="mt-4 space-y-2">
-              {files.map((f, i) => (
+              {mediaFiles.map((f, i) => (
                 <li key={f.localId} className="border border-gray-200 rounded-lg p-3 text-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -263,7 +294,7 @@ export default function RecordingWizardClient() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button type="button" disabled={phase !== 'idle' || i === 0} onClick={() => moveFile(f.localId, -1)} className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30 px-1">↑</button>
-                      <button type="button" disabled={phase !== 'idle' || i === files.length - 1} onClick={() => moveFile(f.localId, 1)} className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30 px-1">↓</button>
+                      <button type="button" disabled={phase !== 'idle' || i === mediaFiles.length - 1} onClick={() => moveFile(f.localId, 1)} className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30 px-1">↓</button>
                       <button type="button" disabled={phase !== 'idle'} onClick={() => removeFile(f.localId)} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-30 px-1">✕</button>
                     </div>
                   </div>
@@ -278,6 +309,43 @@ export default function RecordingWizardClient() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* Presentation slides (community meeting) — seeds the meeting notes. */}
+          {preset === 'community_meeting' && (
+            <div className="mt-5 pt-4 border-t border-gray-200">
+              <h3 className="font-semibold text-gray-900 text-sm mb-1">Presentation slides <span className="font-normal text-gray-400">(optional)</span></h3>
+              <p className="text-xs text-gray-500 mb-3">Upload the deck shown at the meeting (PDF). We read it to ground the meeting notes in the exact figures and names presented.</p>
+              {!slide ? (
+                <label className="block border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 rounded-xl p-4 text-center cursor-pointer transition-colors">
+                  <div className="text-2xl mb-1">📄</div>
+                  <div className="text-sm text-gray-700">Add slide deck (PDF)</div>
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    disabled={phase !== 'idle'}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) setSlide(f); e.target.value = '' }}
+                  />
+                </label>
+              ) : (
+                <div className="border border-gray-200 rounded-lg p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-gray-800 truncate">📄 {slide.file.name}</div>
+                      <div className="text-xs text-gray-500">{(slide.file.size / (1024 * 1024)).toFixed(1)} MB · slides</div>
+                    </div>
+                    <button type="button" disabled={phase !== 'idle'} onClick={() => setSlide(null)} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-30 px-1">✕</button>
+                  </div>
+                  {(slide.status === 'uploading' || slide.status === 'uploaded') && (
+                    <div className="mt-2 h-1.5 bg-gray-100 rounded overflow-hidden">
+                      <div className="h-full bg-orange-400 transition-all" style={{ width: `${Math.round(slide.progress * 100)}%` }} />
+                    </div>
+                  )}
+                  {slide.status === 'failed' && <div className="mt-2 text-xs text-red-600">{slide.error || 'Upload failed'}</div>}
+                </div>
+              )}
+            </div>
           )}
         </section>
 
@@ -298,14 +366,16 @@ export default function RecordingWizardClient() {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Session type">
+            <Field label="Meeting type">
               <select
-                value={sessionType}
-                disabled
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base bg-gray-50"
+                value={preset}
+                onChange={e => setPreset(e.target.value as MeetingPresetId)}
+                disabled={phase !== 'idle'}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
                 style={{ fontSize: '16px' }}
               >
-                <option value="qa">Q&amp;A</option>
+                <option value="town_hall_qa">{PRESET_LABELS.town_hall_qa}</option>
+                <option value="community_meeting">{PRESET_LABELS.community_meeting}</option>
               </select>
             </Field>
             <Field label="Meeting date">

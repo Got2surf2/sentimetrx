@@ -11,6 +11,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
+import type { MeetingProfile, PhaseMap, MeetingPhase } from '@/lib/recordings/types'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -79,6 +80,8 @@ interface StatusResponse {
     error_message: string | null
     asr_vendor_chosen: 'whisper' | 'deepgram' | 'hybrid' | null
     source_duration_sec: number | null
+    meeting_profile: MeetingProfile | null
+    phase_map: PhaseMap | null
     cost_cents: number
     dataset_id: string | null
     started_at: string | null
@@ -182,6 +185,9 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
           recordingId={recordingId}
           sessionType={data.recording.session_type}
           setupInputs={data.recording.setup_inputs}
+          meetingProfile={data.recording.meeting_profile}
+          phaseMap={data.recording.phase_map}
+          durationSec={data.recording.source_duration_sec}
           onStarted={fetchStatus}
         />
       )}
@@ -416,15 +422,26 @@ function inferFailedStepIdx(data: StatusResponse | null): number {
 // "Name — role" per line — full structured editing lives on the report page's
 // re-extract flow once pairs exist.
 function GeneratePanel({
-  recordingId, sessionType, setupInputs, onStarted,
+  recordingId, sessionType, setupInputs, meetingProfile, phaseMap, durationSec, onStarted,
 }: {
   recordingId: string
   sessionType: string
   setupInputs: QaSetupInputs | Record<string, unknown> | null
+  meetingProfile: MeetingProfile | null
+  phaseMap: PhaseMap | null
+  durationSec: number | null
   onStarted: () => void | Promise<void>
 }) {
   const isQa = sessionType === 'qa'
   const su = (setupInputs ?? {}) as QaSetupInputs
+
+  // Presentation→Q&A split control (community meeting). The detected boundary
+  // seeds it; the user can nudge it before the (paid) analysis runs.
+  const hasPresentation = !!meetingProfile?.phases?.some(p => p.kind === 'presentation')
+  const duration = durationSec ?? (phaseMap?.phases?.reduce((mx, p) => Math.max(mx, p.end_sec), 0) ?? 0)
+  const detectedSplit = phaseMap?.phases?.find(p => p.kind === 'presentation')?.end_sec
+    ?? (phaseMap?.phases?.find(p => p.kind === 'qa')?.start_sec ?? 0)
+  const [splitText, setSplitText] = useState(() => formatMmss(detectedSplit || 0))
 
   const [agenda, setAgenda] = useState(() => (su.agenda ?? []).join('\n'))
   const [panel, setPanel] = useState(() =>
@@ -438,7 +455,7 @@ function GeneratePanel({
     setBusy(true)
     setErr(null)
     try {
-      const body: { setup_inputs?: Record<string, unknown>; instructions?: string } = {
+      const body: { setup_inputs?: Record<string, unknown>; instructions?: string; phase_map?: PhaseMap } = {
         instructions: instructions.trim() || undefined,
       }
       if (isQa) {
@@ -446,6 +463,20 @@ function GeneratePanel({
           ...su,
           agenda: agenda.split('\n').map(s => s.trim()).filter(Boolean),
           panel: panel.split('\n').map(parsePanelLine).filter(Boolean),
+        }
+      }
+      // Rebuild a two-phase map from the user-confirmed split.
+      if (hasPresentation && duration > 0) {
+        const split = Math.min(Math.max(0, parseMmss(splitText)), duration)
+        const phases: MeetingPhase[] = ([
+          { kind: 'presentation' as const, label: 'Presentation', start_sec: 0, end_sec: split },
+          { kind: 'qa' as const, label: 'Audience Q&A', start_sec: split, end_sec: duration },
+        ] as MeetingPhase[]).filter(p => p.end_sec > p.start_sec)
+        body.phase_map = {
+          phases,
+          detected_at: phaseMap?.detected_at ?? new Date().toISOString(),
+          model: phaseMap?.model ?? 'user',
+          edited_by_user: true,
         }
       }
       const res = await fetch(`/api/recordings/${recordingId}/analyze`, {
@@ -505,6 +536,28 @@ function GeneratePanel({
         </div>
       )}
 
+      {hasPresentation && duration > 0 && (
+        <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+          <span className="block text-xs font-semibold text-gray-700 mb-1">Presentation → Q&amp;A split</span>
+          <p className="text-xs text-gray-500 mb-2">
+            We detected the presentation ending at <strong>{formatMmss(detectedSplit || 0)}</strong> of {formatMmss(duration)}.
+            Adjust if needed — everything before is summarized as the meeting overview; everything after is read as audience Q&amp;A.
+          </p>
+          <label className="inline-flex items-center gap-2">
+            <span className="text-xs text-gray-600">Presentation ends at</span>
+            <input
+              type="text"
+              value={splitText}
+              onChange={e => setSplitText(e.target.value)}
+              disabled={busy}
+              placeholder="mm:ss"
+              className="w-24 border border-gray-300 rounded px-3 py-2 text-center"
+              style={{ fontSize: '16px' }}
+            />
+          </label>
+        </div>
+      )}
+
       <label className="block">
         <span className="block text-xs font-semibold text-gray-600 mb-1">Extraction instructions (optional)</span>
         <textarea
@@ -535,6 +588,22 @@ function GeneratePanel({
       </div>
     </section>
   )
+}
+
+function formatMmss(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const m = Math.floor(s / 60)
+  return `${m}:${(s % 60).toString().padStart(2, '0')}`
+}
+
+function parseMmss(text: string): number {
+  const t = text.trim()
+  if (/^\d+:\d{1,2}$/.test(t)) {
+    const [m, s] = t.split(':').map(Number)
+    return m * 60 + s
+  }
+  const n = Number(t)               // bare number = seconds
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0
 }
 
 function parsePanelLine(line: string): { name: string; role?: string } | null {
