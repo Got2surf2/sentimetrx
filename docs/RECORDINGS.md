@@ -262,7 +262,7 @@ Generalizes recordings from a Q&A recorder into a configurable **meeting tool** 
 - **`recordings.proceedings_summary` (jsonb)** — neutral presentation summary: `{ overview, items: [{title,presenter,what_was_presented,key_figures,slide_refs}], … }`. `lib/recordings/presentation.ts`, Sonnet, **reuses the exact no-opining voice directive** from the Q&A synthesis pass (the deck is shareable with the client). Runs only when a presentation phase has content; null otherwise (graceful degrade).
 - **`recording_files.file_role` (text, default `'media'`, CHECK in (`media`,`slides`))** — `slides` files (the presentation deck) ride the same TUS upload path but **skip the ffmpeg extract pipeline** (`extract.ts` filters to `file_role='media'`); they're read by vision instead. At most one `slides` file per recording; ≥1 `media` file required.
 
-Migration `sql/097` is nullable adds on RLS-enabled tables → no new policy; slide PNGs live under the existing `recordings` bucket path. Shared AI-vision support was added to `lib/ai.ts` (image content blocks, Anthropic) — reusable by bot-KB document ingestion later (text-extract-first, vision-fallback). Vision cost ≈ $0.01/slide on Sonnet.
+Migration `sql/097` is nullable adds on RLS-enabled tables → no new policy; slide PNGs live under the existing `recordings` bucket path (its MIME allowlist was extended to `image/png`/`image/jpeg` in `sql/099` so the rendered pages can be stored). Shared AI-vision support was added to `lib/ai.ts` (image content blocks, Anthropic) — reusable by bot-KB document ingestion later (text-extract-first, vision-fallback). Vision cost ≈ $0.01/slide on Sonnet.
 
 ### 2.5 `org_features` + `user_features` — generic feature gating
 

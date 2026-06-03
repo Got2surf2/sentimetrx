@@ -529,3 +529,9 @@ tsc clean; recordings unit+route tests green (64). UI is forms-only (no automate
 **Why**: Owner asked to match Mason's widget chrome to foundationsproject.org. The config navy `#1b3a5e` turned out to be a Gutenberg hero-block color from the homepage, not the brand navy. Verified the real palette against the live theme stylesheet (`themes/foundations/assets/css/style.css`): primary navy **`#103c5d`** (37× — the dominant brand color), darker `#0a3557`, gold `#f7b200` (2×), brick-red `#9e2a2f` (3×). Gold + red in the config were already correct; only the navy was off.
 
 **What changed** (`scripts/_mason_create_agent.ts` CONFIG): `headerGradient` → `#103c5d→#0a3557`, `avatarTextColor`/`userBubbleBg` → `#103c5d`. Re-seeded the live `mason` agent (idempotent upsert, 14 chunks re-embedded). Verified the stored config via read-only query. Live at `/b/mason` (DB-driven, no deploy). Commit-only, not pushed.
+
+## 2026-06-03 — Meeting tool: live e2e verification + bucket image/png fix
+
+**Why**: Verified the new meeting-tool path end-to-end on real infra (read-only, no DB writes): generated a test presentation PDF → Vercel Sandbox poppler render → Claude vision slide read → phase detection over the real NOWOCATS transcript → slide-grounded presentation summary → deck. All stages produced valid output; the deck's "What Was Presented" carried vision-read figures (~90% design, within 2 years) through to the slide.
+
+**What changed** (`sql/099`): the e2e surfaced a real bug — the `recordings` bucket MIME allowlist (sql/091) didn't include `image/png`, so the rendered slide pages 415'd on upload. Added `image/png` + `image/jpeg`. Applied to prod. Without this, slide ingestion would have failed silently in production (graceful-degrade → null outline). Commit-only, not pushed.
