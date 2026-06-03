@@ -1,5 +1,19 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Agent Study: server-rendered PDF (replaces browser print)
+
+**Why**: The first PDF button used `window.print()` — a browser print dialog whose output varies by browser/OS (Safari ≠ Chrome) and loses formatting. Owner wanted a proper, consistent PDF.
+
+**What changed**:
+- New `POST /api/bots/[id]/study/pdf` (`maxDuration: 120`, org-gated like `/study`): renders the baked `renderAgentStudyHtml(study)` with headless Chrome's `page.pdf()` (A4, `printBackground`) and returns it as a file download. The bake's print rule still strips every drill-down, so the PDF is a flat summary.
+- Chrome resolution: `@sparticuz/chromium` on Vercel/Lambda; a local Chrome (`/Applications/Google Chrome.app/...`, with a candidate list + `PUPPETEER_EXECUTABLE_PATH` override) in dev.
+- `ReportClient.tsx`: the **PDF** button now POSTs to the route and downloads the blob (no more iframe/print), with a "Generating…" state.
+- Deps: `puppeteer-core` + `@sparticuz/chromium`. `next.config.js`: added `serverExternalPackages` for both so webpack doesn't bundle the chromium binary. (npm reports 2 moderate transitive vulns from puppeteer's deps — noted, not blocking.)
+
+**Why it's better cross-browser**: generation happens server-side, so every recipient downloads the identical file regardless of browser/OS — no client-side print engine involved.
+
+**Verification**: local path verified end-to-end — puppeteer-core + system Chrome renders the baked HTML to a 2-page A4 PDF (`pdfinfo` confirms A4); pdftoppm PNG confirms a faithful layout (wordmark, bar counts, depth chip). tsc clean. **Prod path (`@sparticuz/chromium` on Vercel) NOT yet verified — needs a deploy; may require a function memory bump.**
+
 ## 2026-06-03 — Agent Study: activity-bar counts + Datanautix wordmark
 
 **Why**: Owner — show the per-day count on the activity bars, and brand the report/export with the Datanautix wordmark (top-right).

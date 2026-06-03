@@ -48,6 +48,10 @@ const AUTHED_PATH_PREFIXES = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Keep the headless-Chrome packages out of the webpack bundle — @sparticuz/
+  // chromium ships a binary and puppeteer-core resolves native bits at runtime;
+  // bundling them breaks the Agent Study PDF route (app/api/bots/[id]/study/pdf).
+  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
   // Raise the body size limit for API routes from the default 4 MB.
   // Dataset row batches can be large; this allows up to 10 MB per request.
   // instrumentation.ts is stable in Next 15 (the experimental.instrumentationHook

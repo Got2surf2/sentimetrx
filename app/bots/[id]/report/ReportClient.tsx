@@ -61,6 +61,7 @@ export default function ReportClient() {
   const [refreshing, setRefreshing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied' | 'error'>('idle')
+  const [pdfState, setPdfState] = useState<'idle' | 'working'>('idle')
 
   async function load(force = false) {
     if (force) setRefreshing(true); else setLoading(true)
@@ -116,23 +117,20 @@ export default function ReportClient() {
     }
   }
 
-  // Download PDF = print the clean baked HTML (no nav, no buttons) in a hidden
-  // iframe. The bake collapses every drill-down and a print rule force-hides the
-  // bodies, so the PDF is a flat summary with NO conversation snippets — safe to
-  // hand out without exposing transcripts. User picks "Save as PDF" in the dialog.
-  function downloadPdf() {
-    if (!study) return
-    const html = renderAgentStudyHtml(study)
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
-    document.body.appendChild(iframe)
-    const cw = iframe.contentWindow
-    if (!cw) { document.body.removeChild(iframe); return }
-    cw.document.open(); cw.document.write(html); cw.document.close()
-    const cleanup = () => { try { document.body.removeChild(iframe) } catch { /* already gone */ } }
-    cw.onafterprint = cleanup
-    setTimeout(() => { cw.focus(); cw.print() }, 400)
-    setTimeout(cleanup, 60000) // fallback if onafterprint never fires
+  // Download PDF = server-rendered, pixel-faithful PDF of the report (headless
+  // Chrome page.pdf() on the baked HTML), delivered as a real file download — no
+  // browser print dialog. The baked HTML's print rule strips every drill-down,
+  // so the PDF is a flat summary with NO conversation snippets.
+  async function downloadPdf() {
+    setPdfState('working')
+    try {
+      const r = await fetch('/api/bots/' + botId + '/study/pdf', { method: 'POST' })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'PDF generation failed'); return }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = (study?.bot.name || 'Agent') + '_Agent_Study.pdf'; a.click(); URL.revokeObjectURL(url)
+    } catch { alert('PDF generation failed') }
+    finally { setPdfState('idle') }
   }
 
   if (loading) {
@@ -183,7 +181,7 @@ export default function ReportClient() {
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
           <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
           <button onClick={shareReport} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
-          <button onClick={downloadPdf} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>PDF</button>
+          <button onClick={downloadPdf} disabled={pdfState === 'working'} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pdfState === 'working' ? 0.6 : 1 }}>{pdfState === 'working' ? 'Generating…' : 'PDF'}</button>
           <button onClick={exportPptx} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
           </div>
         </div>
