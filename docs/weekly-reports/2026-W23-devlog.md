@@ -668,3 +668,9 @@ Four items off the post-Mason to-do, all verified locally (`npm run dev` vs link
 4. **Mason KB naming-menu URL**: already on the June-1 `260601-…` file (was fixed when Mason was built from the fresh crawl); no change needed.
 
 Docs: BOTS.md (dynamicChips section rewritten for the toggle/injection model, new embed-allowlist section, self-harm/threat note in the safety-filter step). tsc clean. Commit-only, not pushed.
+
+## 2026-06-03 — Google review download: dedupe locations by place_id before insert
+
+**Why**: A Cheddar's Scratch Kitchen download (176/180 locations) failed with `duplicate key value violates unique constraint "idx_rsl_source_place"`. Root cause: location discovery can return the same physical place twice (legacy + current Google listing sharing a `place_id`); the create route inserts all selected locations into a freshly-created `review_source` in one batch, and the `UNIQUE(review_source_id, place_id)` index (sql/phase7) rejects the whole batch on the first collision — so nothing downloads.
+
+**What changed** (`app/api/review-sources/route.ts`, step 4): replaced the `locations.map(...)` with a `reduce` that keeps the first occurrence of each `place_id` and drops rows with empty/duplicate `place_id`. Behavior otherwise unchanged. Verified the dedupe logic in isolation against a Cheddar's-style sample (two listings sharing one place_id + a missing-place_id row → collapses to distinct rows, no dupes/empties). tsc clean. Note: upstream discovery still surfaces the dupes in the picker count; deduping there is a follow-up. Commit-only, not pushed.

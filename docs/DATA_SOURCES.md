@@ -339,7 +339,7 @@ The most complex source — operates async via DataforSEO's task-submit/task-get
 #### `POST /api/review-sources`
 **Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, source?: 'google'|'tripadvisor', sync_frequency_hours?, start_date?, end_date?, brand_tag? }` — `source` defaults to `'google'`; `brand_tag` defaults to `brand_name` when omitted (a reviews dataset always has a brand).
 **Response:** `{ source_id, dataset_id, locations, status: 'active' }` (201).
-Creates dataset, review_source (status='active', `source` = the chosen platform), one location row per selection (`selected=true`). Sets `next_sync_at = now()`. Optional date range stored in `datasets.description`.
+Creates dataset, review_source (status='active', `source` = the chosen platform), one location row per selection (`selected=true`). Selections are **deduped by `place_id`** before insert (keep first; drop empty/duplicate) — discovery can surface the same physical place twice (e.g. a legacy + current Google listing sharing a `place_id`), which would otherwise violate the `UNIQUE(review_source_id, place_id)` index and fail the whole batch. Sets `next_sync_at = now()`. Optional date range stored in `datasets.description`.
 
 #### `GET /api/review-sources/[sourceId]`
 **Response:** `{ source, locations, datasetRowCount }`. Locations ordered by state, city.

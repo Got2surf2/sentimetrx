@@ -129,9 +129,15 @@ export async function POST(req: Request) {
 
     if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 })
 
-    // 4. Insert all locations
-    const locationRows = locations.map(function(loc: any) {
-      return {
+    // 4. Insert all locations — dedupe by place_id first. Location discovery can
+    // return the same physical place twice (e.g. a legacy + current Google listing
+    // sharing a place_id), which would violate the UNIQUE(review_source_id, place_id)
+    // constraint and fail the whole insert. Keep the first occurrence of each place_id.
+    const seenPlaceIds = new Set<string>()
+    const locationRows = locations.reduce(function(rows: any[], loc: any) {
+      if (!loc.place_id || seenPlaceIds.has(loc.place_id)) return rows
+      seenPlaceIds.add(loc.place_id)
+      rows.push({
         review_source_id: source.id,
         place_id:         loc.place_id,
         name:             loc.name || '',
@@ -142,8 +148,9 @@ export async function POST(req: Request) {
         rating:           loc.rating ?? null,
         review_count:     loc.review_count || 0,
         selected:         true,
-      }
-    })
+      })
+      return rows
+    }, [])
 
     const { error: locErr } = await service
       .from('review_source_locations')
