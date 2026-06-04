@@ -2,7 +2,7 @@
 // New Town Hall wizard (§ 5.2). Server-renders the auth/nav shell.
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
 import RecordingWizardClient from './RecordingWizardClient'
@@ -15,6 +15,15 @@ export default async function NewRecordingPage() {
   if (!ctx) redirect('/login')
   // Town Hall (recordings) is a standalone top-level product (not under Analyze).
   if (!ctx.features.recordings) redirect('/dashboard')
+
+  // §3.5c — the org's agents, for the optional "link an agent" entity-catalog seed.
+  const service = createServiceRoleClient()
+  const { data: agentRows } = await service
+    .from('agents')
+    .select('id, name')
+    .eq('org_id', ctx.orgId)
+    .order('name')
+  const agents = (agentRows ?? []).map((a: any) => ({ id: a.id as string, name: (a.name as string) || 'Untitled' }))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -29,7 +38,7 @@ export default async function NewRecordingPage() {
         currentPage="recordings"
       />
       <main className="pt-20 px-4 pb-12 max-w-5xl mx-auto">
-        <RecordingWizardClient />
+        <RecordingWizardClient agents={agents} />
       </main>
     </div>
   )

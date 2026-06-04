@@ -31,6 +31,7 @@ import { detectPhases, slicePhaseSegments } from '@/lib/recordings/phases'
 import { ingestSlides } from '@/lib/recordings/slides'
 import { summarizePresentation } from '@/lib/recordings/presentation'
 import { extractEntities } from '@/lib/recordings/entities'
+import { fetchBrandEntities, mergeBrandEntities } from '@/lib/recordings/brandGlossary'
 import type {
   RecordingRow,
   RecordingTranscriptRow,
@@ -147,18 +148,38 @@ async function runEntityExtraction(recording_id: string, org_id: string) {
   const transcript = await loadTranscript(recording_id, org_id)
   if (!transcript || transcript.segments.length === 0) return
 
+  const service = createServiceRoleClient()
+
+  // §3.5c brand-entity convergence — the brand's curated entity catalog (brand
+  // collection ∪ linked agent) seeds the correction: its canonicals steer the
+  // extraction (so phonetic ASR variants cluster to the right spelling) and are
+  // merged into the saved map (so brand names not mentioned are still seeded).
+  // Best-effort — returns [] if there's no brand_tag/agent or the lookup fails.
+  const brandEntities = await fetchBrandEntities(service, {
+    orgId: org_id,
+    brandTag: rec.brand_tag,
+    agentId: rec.underlying_agent_id,
+  })
+
   const { entityMap, cents } = await extractEntities({
     transcript: transcript.segments,
     setup: rec.setup_inputs as QaSetupInputs,
     org_id,
     recording_id,
     now: new Date().toISOString(),
+    knownEntities: brandEntities.map(e => ({ canonical: e.canonical, variants: e.variants })),
   })
-  if (!entityMap) return
 
-  const service = createServiceRoleClient()
+  // Merge the brand catalog in even when the meeting extraction is empty, so the
+  // review gate is pre-filled with the brand's known names.
+  const merged = mergeBrandEntities(entityMap?.entities ?? [], brandEntities)
+  if (merged.length === 0) return
+
   await service.from('recordings')
-    .update({ entity_map: entityMap, cost_cents: (rec.cost_cents ?? 0) + cents })
+    .update({
+      entity_map: { entities: merged, extracted_at: new Date().toISOString(), reviewed_at: null },
+      cost_cents: (rec.cost_cents ?? 0) + cents,
+    })
     .eq('id', recording_id).eq('org_id', org_id)
 }
 
@@ -191,6 +212,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     recording_name: rec.name,
     created_by: rec.created_by,
     extractions: analysis.extractions,
+    brand_tag: rec.brand_tag,
   })
 
   const coverage = computeCoverage({

@@ -31,6 +31,8 @@ export async function extractEntities(input: {
   org_id: string
   recording_id: string
   now: string
+  // §3.5c — authoritative canonical spellings from the brand/agent catalog.
+  knownEntities?: Array<{ canonical: string; variants?: string[] }>
 }): Promise<{ entityMap: EntityMap | null; cents: number }> {
   if (input.transcript.length === 0) return { entityMap: null, cents: 0 }
 
@@ -39,6 +41,7 @@ export async function extractEntities(input: {
     const { system, userPrompt } = buildEntityExtractionPrompt({
       transcript: input.transcript,
       setup: { panel: input.setup.panel, agenda: input.setup.agenda },
+      knownEntities: input.knownEntities,
     })
     const resp = await callAI({
       tier: 'advanced',

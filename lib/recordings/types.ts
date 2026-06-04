@@ -109,6 +109,12 @@ export interface RecordingRow {
   // user-corrected. Feeds the polish glossary + the "Corrected" transcript view.
   entity_map: EntityMap | null
 
+  // Brand-entity convergence (sql/103). A brand tag (mirrors datasets.brand_tag —
+  // the derived dataset inherits it) and/or a linked agent whose curated entity
+  // catalog seeds this meeting's spelling correction. Both nullable.
+  brand_tag: string | null
+  underlying_agent_id: string | null
+
   share_token: string | null
   share_enabled: boolean
   share_expires_at: string | null

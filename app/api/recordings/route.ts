@@ -52,6 +52,8 @@ interface CreateBody {
   setup_inputs: SetupInputs | Record<string, unknown>
   asr_strategy: AsrStrategy
   meeting_profile?: MeetingProfile | null   // meeting-tool preset + phases; null = legacy Q&A
+  brand_tag?: string | null                 // §3.5c brand-entity convergence
+  underlying_agent_id?: string | null       // §3.5c linked agent (entity catalog seed)
   files: CreateFileSpec[]
 }
 
@@ -90,6 +92,10 @@ export async function POST(req: Request) {
       setup_inputs: body.setup_inputs,
       asr_strategy: body.asr_strategy,
       meeting_profile: body.meeting_profile ?? null,
+      // §3.5c — only set when provided so creation still works before sql/103
+      // adds these columns (omitting the keys avoids "column does not exist").
+      ...((body.brand_tag ?? '').trim() ? { brand_tag: (body.brand_tag as string).trim() } : {}),
+      ...(body.underlying_agent_id ? { underlying_agent_id: body.underlying_agent_id } : {}),
       status: 'uploading',
       // Only media files count toward the source byte total; slides are tiny.
       source_size_bytes: body.files.filter(f => (f.file_role ?? 'media') === 'media').reduce((sum, f) => sum + f.size_bytes, 0),

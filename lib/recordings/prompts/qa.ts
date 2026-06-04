@@ -284,9 +284,19 @@ ${pairBlock}`
 export function buildEntityExtractionPrompt(opts: {
   transcript: TranscriptSegment[]
   setup?: { panel?: Array<{ name: string; role?: string }>; agenda?: string[] }
+  // §3.5c brand-entity convergence: canonical spellings from the brand's curated
+  // entity catalog (collection + linked agent). Authoritative — when the
+  // transcript mentions one of these (even mis-heard), use the given spelling.
+  knownEntities?: Array<{ canonical: string; variants?: string[] }>
 }): { system: string; userPrompt: string } {
   const panel = (opts.setup?.panel ?? []).map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`).join('\n')
   const agenda = (opts.setup?.agenda ?? []).map((t, i) => `  ${i + 1}. ${t}`).join('\n')
+  const known = (opts.knownEntities ?? [])
+    .map(e => {
+      const heard = (e.variants ?? []).filter(v => v.toLowerCase() !== e.canonical.toLowerCase())
+      return `  - ${e.canonical}${heard.length ? ` (sometimes heard as: ${heard.join(', ')})` : ''}`
+    })
+    .join('\n')
 
   const system = `You are reviewing an automatic speech-recognition (ASR) transcript of a recorded meeting. ASR frequently mis-hears proper names PHONETICALLY (e.g. "Babuji" → "Babu G", "NOWOCATS" → "no what cats", "Kelly Park Road" → "Kelly Parke Road"). Your job: list the proper nouns mentioned and, for each, cluster the different spellings that appear in the transcript under one best-guess CANONICAL spelling, so they can be corrected.
 
@@ -309,6 +319,8 @@ Panel:
 ${panel || '  (none provided)'}
 Agenda:
 ${agenda || '  (none provided)'}
+Known entities for this organization (use these exact canonical spellings whenever the transcript refers to them, even if phonetically mis-heard):
+${known || '  (none provided)'}
 
 OUTPUT FORMAT — a single JSON object, no prose, no markdown fences:
 

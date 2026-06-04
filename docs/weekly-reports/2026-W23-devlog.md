@@ -1,5 +1,19 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall: brand-entity convergence (§3.5c)
+
+**Why**: Owner — a brand's agent (e.g. Sarina/NOWOCATS) already has a curated entity catalog; a Town Hall meeting of that brand should reuse it to correct ASR spellings, not start from a blank slate, and the meeting should feed brand-level analysis back. The brand infra already exists for *datasets* (brand_tag → collection → entity_catalog); bots were the island (no collection membership). Approach chosen: brand_tag + agent link with a read-time union (no membership surgery); auto-seed at extraction, still reviewable at the gate.
+
+**What changed**:
+- **`sql/103`** — `recordings.brand_tag TEXT` + `underlying_agent_id UUID` (FK bots, nullable). Both null = unchanged behavior.
+- `lib/recordings/brandGlossary.ts` (new) — `fetchBrandEntities()` unions the brand collection's `entity_catalog` (collection scope, resolved from brand_tag via the sql/062 `slugify`) + the linked agent's bot-scope catalog (the bot→brand bridge, read-time). `mergeBrandEntities()` folds them into the meeting's extracted map (brand canonical/type win on slug match; meeting variants unioned; unmentioned brand entities still seeded). Category→EntityType mapping.
+- `runEntityExtraction` (`workflows/recordings.ts`) — fetches brand entities, passes their canonicals into the extraction prompt (new "Known entities for this organization" block in `buildEntityExtractionPrompt`) so ASR phonetic variants cluster under the right spelling, then merges + persists. `extractEntities` gains an optional `knownEntities` param.
+- `lib/recordings/mirror.ts` — stamps `brand_tag` on the derived dataset (reverse direction: meeting → brand collection via the existing trigger).
+- New Town Hall wizard — "Brand & known entities" block: brand-tag input + optional agent picker (`/recordings/new/page.tsx` fetches the org's agents). Create route stores both; insert omits the keys when unset so creation still works pre-sql/103.
+- `tests/unit/recordings/brandGlossary.test.ts` — 4 cases on the deterministic merge.
+
+Verified: 441 tests pass (4 new); typecheck clean. **`sql/103` NOT applied** — the auto-mode classifier (correctly) declined a prod apply without explicit per-migration authorization; brand/agent tagging is inert until it lands (creation + untagged meetings unaffected by design). Spec §3.5c added. Discovered along the way: the §3.5b claim was right — `extractEntities` *does* run in `runEntityExtraction` (it lives in `workflows/`, outside lib/app, which earlier greps missed). **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall: cross-org recording transfer (#3c)
 
 **Why**: Final part of the card overhaul (#3) — a platform admin needs to move a recording to the right tenant (e.g. built in the Datanautix sandbox, hand to the client org). Unlike the shallow dataset transfer (top-row org_id only), a recording is a graph: report/PDF/export all pair recording_id WITH org_id, so a shallow move would orphan the children and read empty in the new org. And storage paths embed `<org_id>/`, reconstructed from the *current* org in the audio/transcribe paths — so the objects must physically move too.

@@ -501,6 +501,16 @@ ASR mis-hears proper names **phonetically** ("Babuji"→"Babu G", "NOWOCATS"→"
 
 Future sources for the map: auto-extract from uploaded slides/agenda via vision, or the dataset entity catalog (same `entity_map` shape).
 
+### 3.5c Brand-entity convergence (sql/103)
+
+A recording can name a **brand** and/or an **underlying agent** (set in the New Town Hall wizard, persisted as `recordings.brand_tag` + `recordings.underlying_agent_id`) so the meeting's spelling correction draws on that brand's already-curated entity catalog instead of starting from scratch. At the entity-extraction step (`runEntityExtraction`, before the gate), `fetchBrandEntities` (`lib/recordings/brandGlossary.ts`) reads two sources and unions them by slug:
+- the **brand collection's** `entity_catalog` (collection scope) — resolved from `brand_tag` via the same `slugify` the sql/062 trigger uses (`collections` where `kind='brand'`); and
+- the **linked agent's** `entity_catalog` (bot scope, `scope_id = underlying_agent_id`) — bots aren't collection members, so their entities are unioned in at read time (the "bridge").
+
+Those known canonicals do double duty: they're injected into the extraction prompt (`buildEntityExtractionPrompt` "Known entities for this organization" block) so ASR phonetic variants cluster under the **right** spelling, and they're merged into the saved `entity_map` (`mergeBrandEntities` — brand canonical + type win on a slug match, meeting variants unioned, brand entities not mentioned still seeded) so the review gate is pre-filled and the corrected-transcript view has every alias. The reviewer still edits at the gate.
+
+**Reverse direction:** when `brand_tag` is set, the meeting's derived dataset inherits it (`lib/recordings/mirror.ts`) → the sql/062 trigger folds the dataset into the brand collection, so the meeting's own Q&A feeds brand-level entity analysis. Category mapping `entity_catalog.category → EntityType`: person→person, place→place, organization/brand→org, product/program/policy/event→project, else→term. Both columns nullable — a recording with neither behaves exactly as before. `shapes reconcile: entity_catalog.aliases ≈ entity_map.variants`.
+
 Also: the Opus extraction now classifies a `payload.sentiment` per pair (`positive|neutral|negative|mixed`) — no extra call.
 
 **Cost per 60-min meeting:** Opus extraction ≈ $0.75 (35K input + 3K output) + Sonnet curator ≈ $0.20 + Sonnet synthesis ≈ $0.25 + Sonnet polish ≈ $0.25 → **~$1.45 total Claude cost**. Negligible vs target $5K customer pricing.

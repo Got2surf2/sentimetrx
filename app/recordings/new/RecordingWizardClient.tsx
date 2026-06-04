@@ -48,7 +48,9 @@ interface CreateResponse {
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v'])
 const AUDIO_EXTS = new Set(['mp3', 'm4a', 'wav', 'flac', 'aac', 'ogg', 'opus', 'wma'])
 
-export default function RecordingWizardClient() {
+export interface AgentOption { id: string; name: string }
+
+export default function RecordingWizardClient({ agents = [] }: { agents?: AgentOption[] }) {
   const router = useRouter()
 
   // ── Files ─────────────────────────────────────────────────────────────────
@@ -69,6 +71,8 @@ export default function RecordingWizardClient() {
   const [panel, setPanel] = useState<Array<{ name: string; role: string }>>([{ name: '', role: '' }])
   const [agenda, setAgenda] = useState<string[]>([''])
   const [glossary, setGlossary] = useState('')   // canonical entity spellings, one per line
+  const [brandTag, setBrandTag] = useState('')              // §3.5c brand-entity convergence
+  const [underlyingAgentId, setUnderlyingAgentId] = useState('')  // §3.5c linked agent
 
   // ── Submit state ──────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('idle')
@@ -168,6 +172,8 @@ export default function RecordingWizardClient() {
       },
       asr_strategy: asrStrategy,
       meeting_profile,
+      brand_tag: brandTag.trim() || null,
+      underlying_agent_id: underlyingAgentId || null,
       files: files.map(f => ({
         original_filename: f.file.name,
         size_bytes: f.file.size,
@@ -491,6 +497,37 @@ export default function RecordingWizardClient() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
               style={{ fontSize: '16px' }}
             />
+          </Field>
+
+          <Field label="Brand & known entities (optional)">
+            <p className="text-xs text-gray-500 mb-1.5">
+              Tag this meeting with a brand and/or link its agent — the meeting then draws on that brand&apos;s
+              curated entity catalog to correct spellings automatically, and its data feeds brand-level analysis.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={brandTag}
+                onChange={e => setBrandTag(e.target.value)}
+                placeholder="Brand tag (e.g. NOWOCATS)"
+                disabled={phase !== 'idle'}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                style={{ fontSize: '16px' }}
+              />
+              {agents.length > 0 ? (
+                <select
+                  value={underlyingAgentId}
+                  onChange={e => setUnderlyingAgentId(e.target.value)}
+                  disabled={phase !== 'idle'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white"
+                  style={{ fontSize: '16px' }}
+                >
+                  <option value="">— Link an agent (optional) —</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              ) : (
+                <div className="text-xs text-gray-400 self-center">No agents in this org yet.</div>
+              )}
+            </div>
           </Field>
 
           <div className="grid grid-cols-2 gap-3">

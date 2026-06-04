@@ -24,6 +24,9 @@ export interface MirrorInput {
   recording_name: string
   created_by: string
   extractions: NewExtraction[]
+  // §3.5c — when set, stamped on the derived dataset so the sql/062 trigger folds
+  // it into the brand collection (the meeting feeds brand-level entity analysis).
+  brand_tag?: string | null
 }
 
 export interface MirrorResult {
@@ -130,6 +133,8 @@ async function ensureRecordingDataset(
       source: 'recording',
       row_count: 0,
       description: JSON.stringify({ recording_id: input.recording_id }),
+      // §3.5c — brand tag (if any) → sql/062 trigger joins the brand collection.
+      ...(input.brand_tag ? { brand_tag: input.brand_tag } : {}),
     })
     .select('id')
     .single()

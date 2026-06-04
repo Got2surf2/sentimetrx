@@ -35,7 +35,7 @@ tests/
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
 │   ├── components/       # BrandTagInput (first component test — render + onChange + datalist fetch)
-│   ├── recordings/       # coverage; analyze (Opus+Sonnet+synthesis parse, flag-merge, sentiment, deterministic counts, overallSentiment, graceful-degrade; callAI mocked); meetingTool (resolveProfile NULL→qa coercion, clampPhases snap/clip, slicePhaseSegments, fallback)
+│   ├── recordings/       # coverage; analyze (Opus+Sonnet+synthesis parse, flag-merge, sentiment, deterministic counts, overallSentiment, graceful-degrade; callAI mocked); meetingTool (resolveProfile NULL→qa coercion, clampPhases snap/clip, slicePhaseSegments, fallback); brandGlossary (mergeBrandEntities — brand-catalog seeding §3.5c)
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
