@@ -883,3 +883,7 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: The standalone "Severity alerts" section (food safety / pests chips) ate vertical space. Owner asked to move them into the top filter card as two pills.
 
 **What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): removed the separate severity-alerts block; the alerts now render as red **Severity** pills at the bottom of the filter card (active state + count, clicking loads the flagged comments inline — same drill mechanism). Saves a full section of vertical real estate.
+
+## 2026-06-04 — Town Hall session wrap (handoff marker)
+
+Nine Town Hall commits this session (interleaved on `main` with a parallel session's 6 Taxonomy/TextMine commits — 15 ahead of origin total, NOT pushed; owner pushes, one push ships both sets). Arc: list cards → 18→19 deck reconciliation → landing/card polish → Appendix divider → public-shareable **polish pass** (deck + report, polished/verbatim) → manual entity glossary field → **entity-spelling normalization** (auto-extract variants→canonical at the gate, sql/100 applied, polish glossary + Corrected/Raw transcript toggle) → **public share link** `/th/[token]` (owner-gated, fails-closed, security-tested). Suite 434 pass, tsc clean. `sql/100` applied to prod. Next: PDF report (reuses /th template), card overhaul (favorite/kebab/org-transfer), brand-entity convergence. Full state: memory `townhall-product`.
