@@ -46,6 +46,8 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   columns, upserts idempotently. Pairs `(dataset_id, org_id)` on every write
   (multi-tenancy invariant). **Strips NUL/C0/surrogate chars** from text — Postgres
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
+  Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
+  UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
   per-sub mention rates, sentiment per sub, alert tag counts.
@@ -54,7 +56,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 - **In-app Taxonomy tab** — `/analyze/[datasetId]/taxonomy` (gated to
   `source==='google_reviews'` in `DatasetHeader.TABS`) → `TaxonomyModule.tsx`, fed by
-  `GET /api/datasets/[datasetId]/taxonomy` (org-gated).
+  `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
+  the empty state offers a **"Classify this dataset"** button (and the populated view a
+  **"Re-classify"** control); both loop `POST /api/datasets/[datasetId]/taxonomy`
+  (`{ cursor }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row
+  chunks, `core` overlay, org-gated like the GET) with a live progress bar until `done`.
+  Keyword-tier → no AI cost; idempotent so an interrupted run resumes.
 - **Admin pilot viewer** — `/admin/taxonomy-pilot/[datasetId]` (requireAdmin),
   per-row legacy-vs-new side-by-side.
 - **Decks** — `lib/pptx/reviewIntelligenceDeck.ts` + `app/api/review-intelligence-deck`

@@ -362,11 +362,13 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Data.** Read via `GET /api/datasets/[datasetId]/taxonomy` (org-gated; pairs the
   dataset's `org_id` on the read) → `computeTaxonomyRollup` in `lib/taxonomyRollup.ts`
   over the persisted `dataset_row_taxonomy` rows (table from sql/088).
-- **Classification (offline / CLI for now).** `lib/taxonomyClassify.ts`
+- **Classification (self-serve from the tab).** `lib/taxonomyClassify.ts`
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
-  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay.
-  Driven by `scripts/taxonomy-classify.ts`. Not yet wired into the upload/ingest path.
+  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
+  **"Classify this dataset"** / **"Re-classify"** buttons loop `POST /api/datasets/[datasetId]/taxonomy`
+  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost.
+  `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Still not wired into the upload/ingest path (auto-classify-on-sync is roadmap).
 - **Vendor benchmark.** For datasets with legacy vendor labels, the classifier reproduces
   ~90% of the vendor's topics at higher coverage and far higher alert precision (see
   `docs/TAXONOMY.md` for the critical-category audit). The in-app vendor-vs-us side-by-side

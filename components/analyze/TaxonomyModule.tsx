@@ -3,10 +3,11 @@
 // components/analyze/TaxonomyModule.tsx
 // In-app tag-analytics view. Fetches the roll-up from
 // /api/datasets/[id]/taxonomy and renders: KPIs, per-axis mention rates,
-// top sub-buckets with sentiment, and severity alerts. Read-only; the tags
-// are produced by the keyword-tier classifier (lib/taxonomyClassify).
+// top sub-buckets with sentiment, and severity alerts. The tags are produced
+// by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
+// here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null }
@@ -44,31 +45,88 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let alive = true
+  // Self-serve classifier state.
+  const [classifying, setClassifying] = useState(false)
+  const [progress, setProgress] = useState<{ scanned: number; total: number | null }>({ scanned: 0, total: null })
+  const [classifyErr, setClassifyErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
     setLoading(true)
-    fetch(`/api/datasets/${datasetId}/taxonomy`)
-      .then(async r => {
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
-        return r.json()
-      })
-      .then(d => { if (alive) { setData(d); setLoading(false) } })
-      .catch(e => { if (alive) { setErr(String(e.message || e)); setLoading(false) } })
-    return () => { alive = false }
+    try {
+      const r = await fetch(`/api/datasets/${datasetId}/taxonomy`)
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
+      setData(await r.json())
+      setErr(null)
+    } catch (e: any) {
+      setErr(String(e.message || e))
+    } finally {
+      setLoading(false)
+    }
   }, [datasetId])
+
+  useEffect(() => { void load() }, [load])
+
+  // Loop POST chunks until the dataset is fully classified, then refresh the
+  // roll-up. Idempotent server-side, so an interrupted run resumes safely.
+  const runClassifier = useCallback(async () => {
+    setClassifying(true)
+    setClassifyErr(null)
+    setProgress({ scanned: 0, total: null })
+    try {
+      let cursor = 0
+      for (;;) {
+        const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cursor }),
+        })
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
+        const j = await r.json()
+        setProgress({ scanned: j.nextCursor, total: j.totalRows ?? null })
+        if (j.done || j.nextCursor <= cursor) break  // done, or no forward progress (safety)
+        cursor = j.nextCursor
+      }
+      await load()
+    } catch (e: any) {
+      setClassifyErr(String(e.message || e))
+    } finally {
+      setClassifying(false)
+    }
+  }, [datasetId, load])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading taxonomy…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load taxonomy: {err}</div>
+
+  if (classifying) {
+    const pct = progress.total ? Math.min(100, Math.round(100 * progress.scanned / progress.total)) : null
+    return (
+      <div style={{ padding: 40, maxWidth: 560 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Classifying reviews…</h2>
+        <p style={{ fontSize: 14, color: '#475569', marginBottom: 16 }}>
+          {progress.scanned.toLocaleString()}{progress.total ? ` of ${progress.total.toLocaleString()}` : ''} reviews scanned. Keep this tab open — you can leave it running.
+        </p>
+        <div style={{ background: '#eef2f4', borderRadius: 6, height: 16, overflow: 'hidden' }}>
+          <div style={{ width: pct === null ? '100%' : `${pct}%`, height: 16, background: TEAL, borderRadius: 6, transition: 'width .3s', opacity: pct === null ? 0.5 : 1 }} />
+        </div>
+        {pct !== null && <p style={{ fontSize: 12, color: SLATE, marginTop: 8 }}>{pct}%</p>}
+      </div>
+    )
+  }
+
   if (!data || data.classifiedRows === 0) {
     return (
-      <div style={{ padding: 40, maxWidth: 640 }}>
+      <div style={{ padding: 40, maxWidth: 560 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No taxonomy yet</h2>
-        <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
-          This dataset hasn’t been classified against the 7-axis taxonomy. Run the keyword classifier to populate it:
+        <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
+          This dataset hasn’t been classified against the 7-axis taxonomy yet. Run the classifier to tag every review by touchpoint, attribute, product, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
         </p>
-        <pre style={{ background: '#f1f5f9', padding: 12, borderRadius: 8, fontSize: 12, marginTop: 12, overflowX: 'auto' }}>
-          node_modules/.bin/tsx scripts/taxonomy-classify.ts --dataset-id {datasetId} --brand core
-        </pre>
+        <button
+          onClick={runClassifier}
+          style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Classify this dataset
+        </button>
+        {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: 14 }}>Classification failed: {classifyErr}</p>}
       </div>
     )
   }
@@ -84,11 +142,19 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       {/* KPIs */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 24 }}>
         {kpi('reviews classified', data.classifiedRows.toLocaleString(), TEAL)}
         {kpi('with a signal', `${Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}%`, NAVY)}
         {kpi('severity alerts', data.alertRows, data.alertRows ? RED : SLATE)}
+        <button
+          onClick={runClassifier}
+          title="Re-run the classifier to pick up newly synced reviews"
+          style={{ marginLeft: 'auto', alignSelf: 'stretch', background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Re-classify
+        </button>
       </div>
+      {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* Axes */}

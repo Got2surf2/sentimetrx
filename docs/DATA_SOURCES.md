@@ -666,9 +666,17 @@ The chip legend is rendered above the row list so first-time viewers learn the e
 - `scripts/pilot-rc-classify.ts` — concurrent driver (default `--limit 50 --concurrency 4`), idempotent on `(dataset_id, row_id)`.
 - `/admin/taxonomy-pilot/[datasetId]` — side-by-side viewer (admin-only). API route at `/api/admin/taxonomy-pilot/[datasetId]` returns paged rows + their taxonomy.
 
+### In-app classification (self-serve) — `components/analyze/TaxonomyModule.tsx` + `POST /api/datasets/[datasetId]/taxonomy`
+
+The **Taxonomy** tab (Analyze nav, Google-review datasets only) is no longer view-only. When a dataset is unclassified it shows a **"Classify this dataset"** button; a populated view shows a **"Re-classify"** control (datasets sync daily, so tags drift). Both call `runClassifier`, which loops `POST /api/datasets/[datasetId]/taxonomy` with a `{ cursor }` body until the response returns `done`, showing a live progress bar.
+
+- **Endpoint** (`POST`): org-gated identically to the `GET` (pairs the dataset's `org_id`; non-admins must own it). Each call runs `classifyDatasetKeyword({ offset: cursor, limit: CHUNK })` over one `CHUNK` (10K rows) using the **`core`** brand overlay, then returns `{ classifiedThisCall, scanned, nextCursor, done, totalRows }`. `maxDuration = 120`. Keyword-tier only — **no AI cost**.
+- **Chunking** (`lib/taxonomyClassify.ts`): `classifyDatasetKeyword` takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so a large dataset (a Cheddar's-scale 600K-review pull would otherwise blow the function timeout) is processed in resumable chunks driven by the client. Writes are idempotent on `(dataset_id, row_id)`, so an interrupted run resumes safely from the last cursor.
+- The brand-tuned `rc` / `chuys` overlays stay **script-only** (`scripts/taxonomy-classify.ts --brand …`) — they're internal pilot tuning; the self-serve button always uses the generic `core` vertical.
+
 ### Production scope
 
 Pilot-only. If the prospect signs, productionizing means:
-- Replace the script driver with an analyze-route trigger (or a per-dataset "classify" button) so this works for any Google Reviews dataset, not just the pilot.
+- ~~Replace the script driver with an analyze-route trigger (or a per-dataset "classify" button)~~ **DONE 2026-06-03** — self-serve "Classify this dataset" button + `POST` route (see above); works for any Google Reviews dataset, `core` vocab.
 - Lift the closed vocab into a per-dataset / per-vertical config (the Ruth's Chris vocab is steakhouse-specific).
 - Add filter-by-axis-sub queries to the TextMine UI so the GIN indexes earn their keep.

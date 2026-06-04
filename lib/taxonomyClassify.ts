@@ -43,7 +43,13 @@ function projectAxes(assertions: Assertion[]) {
 
 const PAGE = 1000
 
-export interface ClassifyResult { classified: number; skippedEmpty: number; total: number }
+export interface ClassifyResult {
+  classified:  number
+  skippedEmpty: number
+  total:       number  // rows scanned this run
+  nextOffset:  number  // row offset to resume from (for chunked / resumable runs)
+  reachedEnd:  boolean // true when the dataset's last row was scanned this run
+}
 
 export async function classifyDatasetKeyword(opts: {
   service:    SupabaseClient
@@ -51,23 +57,26 @@ export async function classifyDatasetKeyword(opts: {
   orgId:      string
   brand?:     BrandOverlay
   textField?: string
-  limit?:     number
+  limit?:     number   // max rows to scan this run (relative to offset)
+  offset?:    number   // row offset to start from (default 0)
   onProgress?: (done: number) => void
 }): Promise<ClassifyResult> {
-  const { service, datasetId, orgId, brand = 'core', textField = 'review_text', limit, onProgress } = opts
+  const { service, datasetId, orgId, brand = 'core', textField = 'review_text', limit, offset = 0, onProgress } = opts
   const dict = resolveDictionary(brand)
 
-  let from = 0, classified = 0, skippedEmpty = 0, total = 0
+  let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
-    const hardEnd = limit ? Math.min(from + PAGE, limit) : from + PAGE
+    const remaining = limit !== undefined ? limit - total : Infinity
+    if (remaining <= 0) break
+    const pageSize = Math.min(PAGE, remaining)
     const { data, error } = await service
       .from('dataset_rows_flat')
       .select('id, data')
       .eq('dataset_id', datasetId)
       .order('row_index', { ascending: true })
-      .range(from, hardEnd - 1)
+      .range(from, from + pageSize - 1)
     if (error) throw new Error(error.message)
-    if (!data || data.length === 0) break
+    if (!data || data.length === 0) { reachedEnd = true; break }
 
     const upserts: Record<string, unknown>[] = []
     for (const row of data as { id: number; data: Record<string, unknown> }[]) {
@@ -94,11 +103,10 @@ export async function classifyDatasetKeyword(opts: {
       if (e) throw new Error(`dataset_row_taxonomy upsert failed: ${e.message}`)
     }
     classified += upserts.length
+    from += data.length
     onProgress?.(classified)
 
-    from += data.length
-    if (data.length < PAGE) break
-    if (limit && from >= limit) break
+    if (data.length < pageSize) { reachedEnd = true; break }
   }
-  return { classified, skippedEmpty, total }
+  return { classified, skippedEmpty, total, nextOffset: from, reachedEnd }
 }
