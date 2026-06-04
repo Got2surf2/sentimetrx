@@ -75,7 +75,7 @@ function highlight(text: string, phrases: string[]): Array<string | ReactElement
     while (e < text.length && isWord(text[e])) e++
     if (s < last) s = last                              // don't backtrack into already-emitted text
     if (s > last) out.push(text.slice(last, s))
-    if (e > s) out.push(<mark key={s} style={{ background: '#fff3cd', padding: '0 2px', borderRadius: 3 }}>{text.slice(s, e)}</mark>)
+    if (e > s) out.push(<mark key={s} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 3px', borderRadius: 3, borderBottom: '2px solid #f59e0b', fontWeight: 600 }}>{text.slice(s, e)}</mark>)
     last = e
     if (re.lastIndex < e) re.lastIndex = e              // skip past the expanded word so the next match can't overlap it
     if (m.index === re.lastIndex) re.lastIndex++
@@ -242,7 +242,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
 
   const maxAxis = Math.max(1, ...data.axes.map(a => a.rate))
   const kpi = (label: string, value: string | number, color: string) => (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150 }}>
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150, textAlign: 'center' }}>
       <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
       <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 2 }}>{label}</div>
     </div>
@@ -363,12 +363,12 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             )}
             {!drillLoading && drillData && drillData.comments.map((c, i) => (
               <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                  {c.rating != null && <span style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>★ {c.rating}</span>}
-                  {c.date && <span style={{ fontSize: 12, color: SLATE }}>{c.date}</span>}
-                  <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
+                <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>{highlight(c.text, c.evidence)}</p>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {c.rating != null && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>★ {c.rating}</span>}
+                  {c.date && <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>{String(c.date).slice(0, 10)}</span>}
+                  <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
                 </div>
-                <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
               </div>
             ))}
           </div>

@@ -891,3 +891,7 @@ Nine Town Hall commits this session (interleaved on `main` with a parallel sessi
 ## 2026-06-03 — Taxonomy pills: shrink to fit on one line
 
 Cosmetic: reduced topic/sub-topic/severity pill size (fontSize 13→11, padding 6×14→2×9, weight 700→600, nowrap) so the topic and sub-topic groups pack onto a single line on a full-width screen. No behavior change.
+
+## 2026-06-03 — Taxonomy: center KPI numbers + align comment cards to TextMine style
+
+Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy comment cards restyled to mirror TextMine's `CommentCard` look — comment text on top, meta as bottom rounded chips (rating colored amber, date as YYYY-MM-DD), and the evidence highlight switched to the TextMine underline-mark style (light amber bg + bottom border). Still a lightweight render, not the theme-coupled `CommentsPanel` component.
