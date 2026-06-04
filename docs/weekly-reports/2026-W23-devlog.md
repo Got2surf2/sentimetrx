@@ -747,4 +747,4 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 
 **Why**: Owner feedback. Campaigns used a plain `✉` text dingbat that renders thin/small next to the full-color emoji. And now that PulseIQ + Town Hall are distinct products they need distinct icons — the people-gathering icon fits the in-person Town Hall better.
 
-**What changed** (`components/nav/TopNav.tsx`): Campaigns `✉`→`📨` (full-size envelope); Town Hall `🏛️`→`👥` (gathering of people); PulseIQ `👥`→`💓` (the "pulse" of a group). Drives both the desktop bar + mobile drawer. Commit-only, not pushed.
+**What changed** (`components/nav/TopNav.tsx`): Campaigns `✉`→`📨` (full-size envelope); Town Hall `🏛️`→`👥` (gathering of people); PulseIQ `👥`→ an inline **EKG/pulse-line SVG** (`EkgIcon`, `currentColor` so it matches the nav text color — there's no heartbeat-waveform emoji). `navItems.icon` widened to `React.ReactNode` to allow the SVG. Drives both the desktop bar + mobile drawer. Commit-only, not pushed.

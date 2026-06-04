@@ -20,6 +20,20 @@ interface Props {
 
 const HERMES = '#E8632A'
 
+// EKG / pulse-line icon for PulseIQ. There's no heartbeat-waveform emoji, so we
+// render the classic "activity" line as inline SVG. `currentColor` makes it
+// inherit the nav link's text color (orange-100 / white-on-active), and the em
+// sizing matches the emoji icons next to it.
+function EkgIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.15em" height="1.15em" fill="none"
+      stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+      <path d="M2 12h4l2.5-7 4 14 2.5-7H22" />
+    </svg>
+  )
+}
+
 function CogMenu({ currentPage }: { currentPage?: string }) {
   // Active when on any hub-linked page so the gear stays visually anchored.
   var isActive = currentPage === 'team' || currentPage === 'admin' || currentPage === 'questions' || currentPage === 'downloads'
@@ -60,7 +74,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
   // navLink renders icon + label. The label hides at narrower widths via
   // `hidden xl:inline` so the bar shrinks to icons only between md and xl.
   // The same function is reused vertically inside the mobile drawer.
-  const navLink = (page: string, href: string, label: string, icon: string, mode: 'bar' | 'drawer' = 'bar') => {
+  const navLink = (page: string, href: string, label: string, icon: React.ReactNode, mode: 'bar' | 'drawer' = 'bar') => {
     const active = page === 'dashboard' ? surveyPages.has(currentPage || '') : currentPage === page
     if (mode === 'drawer') {
       return (
@@ -86,12 +100,12 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
   }
 
   // Items array drives both the desktop bar and the mobile drawer.
-  const navItems: Array<{ page: string; href: string; label: string; icon: string; show: boolean }> = [
+  const navItems: Array<{ page: string; href: string; label: string; icon: React.ReactNode; show: boolean }> = [
     { page: 'favorites', href: '/favorites', label: 'Favorites', icon: '★',  show: true },        // ★ — always visible; empty state on the page itself
     { page: 'analyze',   href: '/analyze',   label: 'Analytics', icon: '📊', show: f.analyze },   // 📊
     { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
     { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '📨', show: f.campaigns }, // 📨 — full-size envelope (plain ✉ rendered thin/small)
-    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '💓', show: f.townhall },  // 💓 — the "pulse" of a group (live/digital)
+    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: <EkgIcon />, show: f.townhall },  // EKG line — the "pulse" of a group (live/digital)
     { page: 'recordings',href: '/recordings',label: 'Town Hall', icon: '👥', show: f.recordings }, // 👥 — gathering of people (recorded in-person meeting)
     { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '💬', show: f.bots },     // 💬 — conversational AI
     { page: 'social',    href: '/social',    label: 'Social',    icon: '📱', show: f.social },   // 📱
