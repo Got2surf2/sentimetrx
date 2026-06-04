@@ -65,7 +65,7 @@ function Pill({ posPct }: { posPct: number | null }) {
   )
 }
 
-interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[]; tags: { axis: string; sub: string }[] }
+interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[]; tags: { axis: string; sub: string; evidence: string[] }[] }
 
 function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
@@ -114,6 +114,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())  // long comments shown in full
   const [gridCols, setGridCols] = useState(2)  // comment grid column count
+  const [hoverTag, setHoverTag] = useState<{ i: number; key: string } | null>(null)  // hovered dimension chip → highlight its span
   const [filterAxis, setFilterAxis] = useState('')  // topic filter
   const [filterSub, setFilterSub] = useState('')    // sub-topic filter
   const toggleExpand = (i: number) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
@@ -395,19 +396,28 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 const shownText = isLong && !isOpen ? c.text.slice(0, LIMIT).trimEnd() + '… ' : c.text
                 const accent = ratingColor(c.rating)
                 const cardBg = accent ? accent.replace('rgb(', 'rgba(').replace(')', ', 0.07)') : '#fff'
+                // Default: highlight the filtered tag's evidence. On hovering another
+                // dimension chip, switch the highlight to that dimension's span.
+                const hoverEv = hoverTag && hoverTag.i === i ? c.tags.find(t => `${t.axis}:${t.sub}` === hoverTag.key)?.evidence : null
+                const activeEvidence = hoverEv && hoverEv.length ? hoverEv : c.evidence
                 return (
                   <div key={i} style={{ background: cardBg, border: '1px solid #e2e8f0', borderLeft: '4px solid ' + (accent || '#e2e8f0'), borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column' }}>
                     <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>
-                      {highlight(shownText, c.evidence)}
+                      {highlight(shownText, activeEvidence)}
                       {isLong && <button onClick={() => toggleExpand(i)} style={{ background: 'transparent', border: 'none', color: TEAL, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{isOpen ? 'Show less' : 'Show more'}</button>}
                     </p>
                     {c.tags.length > 0 && (
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
                         {c.tags.map(t => {
+                          const key = `${t.axis}:${t.sub}`
                           const isActive = t.axis === filterAxis && t.sub === filterSub
+                          const isHover = hoverTag?.i === i && hoverTag.key === key
                           return (
-                            <span key={t.axis + ':' + t.sub} title={isActive ? 'The tag you filtered on' : `Also tagged ${t.axis} · ${t.sub}`}
-                              style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: isActive ? '#ccfbf1' : '#f1f5f9', color: isActive ? '#0f766e' : '#64748b', border: '1px solid ' + (isActive ? '#5eead4' : '#e2e8f0') }}>
+                            <span key={key}
+                              onMouseEnter={() => setHoverTag({ i, key })}
+                              onMouseLeave={() => setHoverTag(null)}
+                              title={`Hover to highlight the words that triggered ${t.axis} · ${t.sub}`}
+                              style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', background: isHover ? '#fef3c7' : (isActive ? '#ccfbf1' : '#f1f5f9'), color: isHover ? '#92400e' : (isActive ? '#0f766e' : '#64748b'), border: '1px solid ' + (isHover ? '#f59e0b' : (isActive ? '#5eead4' : '#e2e8f0')) }}>
                               {t.axis} · {t.sub}
                             </span>
                           )

@@ -369,7 +369,8 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
   (topic pills first; pick one to reveal its sub-topic pills) → an **inline comments panel**
   (cards mirror TextMine's: text + meta chips + Show-more + a rating-coloured left bar + a 1–4
-  column grid selector; each comment also shows its other axis·sub tag chips) (breadcrumb header + scrollable list + Export CSV + per-comment
+  column grid selector; each comment also shows its other axis·sub tag chips — hovering a chip
+  highlights the span of the comment that triggered that dimension) (breadcrumb header + scrollable list + Export CSV + per-comment
   Copy) via `GET …/taxonomy/rows` (`?axis=&sub=` or `?alert=`), matched-evidence quotes
   highlighted. (Inline panel reuses the same UX as TextMine comments but not the
   theme-coupled `CommentsPanel`; it's driven by the tag-filtered endpoint.) The evidence

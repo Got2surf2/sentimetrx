@@ -977,3 +977,9 @@ Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy
 ## 2026-06-03 — Renamed user-facing label "Categories" → "Dimensions"
 
 Owner's preference. "Dimensions" reads as analytical structure you can pivot/trend on and aligns with the future chart-integration plan (the axes become the dimensions you break charts down by). Swapped all user-facing strings in `DatasetHeader` + `TaxonomyModule` (tab label, Dimension/Sub-dimension pill labels, breadcrumb root, copy, CSV filename). Internal `taxonomy` code/routes/keys unchanged. tsc clean.
+
+## 2026-06-03 — Dimensions comments: hover a chip to highlight its span
+
+**Why**: Owner wanted to see exactly which words of a comment tie to a given dimension. Hovering a dimension/sub-dimension chip now lights up that dimension's evidence span in the comment text.
+
+**What changed**: `GET …/taxonomy/rows` `collectTags` now returns evidence **per** (axis,sub) tag (was tag-only). `TaxonomyModule.tsx`: new `hoverTag` state; the comment text highlight defaults to the filtered tag's evidence but switches to the hovered chip's evidence on mouse-over (the chip turns amber to match the `<mark>`). Verified per-tag evidence populates (e.g., a comment's `attribute·flavor` → "...has always been delicious...", `product·seafood` → "Salmon was not very good"). tsc clean; page compiles.

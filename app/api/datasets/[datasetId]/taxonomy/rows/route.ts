@@ -49,16 +49,16 @@ function collectEvidence(assertions: unknown, axis: string, sub: string, alert: 
 }
 
 /** Every distinct (axis, sub) tag on a row — so the UI can show what else the comment hit. */
-function collectTags(assertions: unknown): { axis: string; sub: string }[] {
+function collectTags(assertions: unknown): { axis: string; sub: string; evidence: string[] }[] {
   if (!Array.isArray(assertions)) return []
-  const seen = new Set<string>()
-  const out: { axis: string; sub: string }[] = []
-  for (const a of assertions as { axis?: string; sub?: string }[]) {
+  const map = new Map<string, { axis: string; sub: string; evidence: Set<string> }>()
+  for (const a of assertions as { axis?: string; sub?: string; evidence?: string }[]) {
     if (!a?.axis || !a?.sub) continue
     const k = a.axis + '' + a.sub
-    if (!seen.has(k)) { seen.add(k); out.push({ axis: a.axis, sub: a.sub }) }
+    if (!map.has(k)) map.set(k, { axis: a.axis, sub: a.sub, evidence: new Set() })
+    if (typeof a.evidence === 'string' && a.evidence.trim()) map.get(k)!.evidence.add(a.evidence.trim())
   }
-  return out
+  return [...map.values()].map(t => ({ axis: t.axis, sub: t.sub, evidence: [...t.evidence] }))
 }
 
 export async function GET(req: Request, props: Params) {
