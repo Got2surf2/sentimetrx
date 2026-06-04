@@ -28,11 +28,11 @@ const GREEN = '#059669', AMBER = '#D97706', RED = '#DC2626', SLATE = '#8FA3AE'
 
 function pillStyle(active: boolean, color: string): CSSProperties {
   return {
-    fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 999,
+    fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999,
     border: '1px solid ' + (active ? color : '#cbd5e1'),
     background: active ? color : '#fff',
     color: active ? '#fff' : NAVY,
-    cursor: 'pointer',
+    cursor: 'pointer', whiteSpace: 'nowrap',
   }
 }
 
@@ -320,7 +320,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 return (
                   <button key={a.tag}
                     onClick={() => { if (active) { setDrill(null) } else { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] }) } }}
-                    style={{ fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 999, cursor: 'pointer', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
+                    style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
                     {a.tag} <span style={{ opacity: 0.6, fontWeight: 600 }}>{a.count}</span>
                   </button>
                 )

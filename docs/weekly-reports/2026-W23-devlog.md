@@ -887,3 +887,7 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 ## 2026-06-04 — Town Hall session wrap (handoff marker)
 
 Nine Town Hall commits this session (interleaved on `main` with a parallel session's 6 Taxonomy/TextMine commits — 15 ahead of origin total, NOT pushed; owner pushes, one push ships both sets). Arc: list cards → 18→19 deck reconciliation → landing/card polish → Appendix divider → public-shareable **polish pass** (deck + report, polished/verbatim) → manual entity glossary field → **entity-spelling normalization** (auto-extract variants→canonical at the gate, sql/100 applied, polish glossary + Corrected/Raw transcript toggle) → **public share link** `/th/[token]` (owner-gated, fails-closed, security-tested). Suite 434 pass, tsc clean. `sql/100` applied to prod. Next: PDF report (reuses /th template), card overhaul (favorite/kebab/org-transfer), brand-entity convergence. Full state: memory `townhall-product`.
+
+## 2026-06-03 — Taxonomy pills: shrink to fit on one line
+
+Cosmetic: reduced topic/sub-topic/severity pill size (fontSize 13→11, padding 6×14→2×9, weight 700→600, nowrap) so the topic and sub-topic groups pack onto a single line on a full-width screen. No behavior change.
