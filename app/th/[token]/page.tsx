@@ -17,7 +17,9 @@ export const dynamic = 'force-dynamic'
 
 function fmtDate(s: string | null): string {
   if (!s) return ''
-  try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) } catch { return '' }
+  // meeting_date is a date-only column — format in UTC so a value like
+  // '2026-05-21' doesn't shift to the 20th in negative-UTC timezones.
+  try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) } catch { return '' }
 }
 
 export default async function PublicTownHallReport({ params }: { params: Promise<{ token: string }> }) {

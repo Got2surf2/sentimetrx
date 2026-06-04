@@ -1,5 +1,19 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall: PDF report export (Q&A + selectable transcript)
+
+**Why**: Open-item #2 from the Town Hall pickup queue — principals want a PDF handoff, not just the web share link. Owner: "Q&A + transcript but user-selectable."
+
+**What changed**:
+- `lib/recordings/reportHtml.ts` (new) — `renderTownHallReportHtml`, a pure function that bakes a self-contained inline-styled HTML doc mirroring `app/th/[token]/page.tsx` (meeting meta + exec summary + polished Q&A by topic, polished→verbatim fallback, Datanautix footer). Optional **Full Transcript** appendix on its own page using the spelling-corrected view (`normalizeSegments` applies the reviewed `entity_map`; raw ASR never mutated), consecutive same-speaker segments merged into paragraphs.
+- `app/api/recordings/[id]/report/pdf/route.ts` (new, POST) — renders that HTML via puppeteer-core + `@sparticuz/chromium` (`page.setContent` → `page.pdf`, mirrors the Agent Study PDF route; Chrome resolved off `process.platform`, not `VERCEL`). Body `{ includeTranscript }`. Cross-org gate mirrors `export/pptx` (`getCallerOrgContext` + service-role read pairing id+org_id → 404 cross-org, 409 until complete). Streams the PDF (no Storage round-trip); fire-and-forget `logDeckDownload`.
+- `app/recordings/[id]/report/ReportClient.tsx` — Export & Share tab: new "PDF report" card + "Include full transcript appendix" checkbox (default on) + Download button; dropped the now-built "PDF" bullet from the follow-ups list.
+- Bug fix (both surfaces): `fmtDate` now formats `meeting_date` in **UTC** — a date-only value like `2026-05-21` was rendering as the 20th in negative-UTC zones. Applied to `reportHtml.ts` and `app/th/[token]/page.tsx` so the PDF and web report stay consistent and correct.
+
+Also fixed the stale `scripts/specMap.ts` mapping: `app/th/**` moved from TOWNHALL.md (PulseIQ) → RECORDINGS.md, since `/th` is the Town Hall public-share prefix — so `/th` edits no longer need a SKIP_SPEC_CHECK bypass.
+
+QC'd via a throwaway render harness (fake data → HTML → local Chrome PDF → pdftoppm → visual inspect): layout faithful to `/th`, transcript breaks to its own page, entity normalization + Datanautix wordmark correct, date fixed. Spec §4.5 + §3.8 export list updated. tsc clean. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Taxonomy tab: Severity Alerts moved to the top
 
 **Why**: Owner — the Severity Alerts buttons (food safety / pests) sat below the axes + sub-topics, requiring a scroll. They're the most urgent thing on the page.

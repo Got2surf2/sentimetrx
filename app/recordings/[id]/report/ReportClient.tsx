@@ -773,6 +773,8 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   initialShareToken: string | null
 }) {
   const [generating, setGenerating] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [includeTranscript, setIncludeTranscript] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const ready = status === 'complete'
 
@@ -833,10 +835,47 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
     }
   }
 
+  const handlePdf = async () => {
+    setPdfBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/report/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeTranscript }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d?.error || `PDF failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${recordingName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-report.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError((e as Error)?.message || 'PDF failed')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   if (generating) {
     return (
       <div className="py-12 flex flex-col items-center">
         <LottieLoader size={120} message="Building your PowerPoint…" />
+      </div>
+    )
+  }
+
+  if (pdfBusy) {
+    return (
+      <div className="py-12 flex flex-col items-center">
+        <LottieLoader size={120} message="Building your PDF…" />
       </div>
     )
   }
@@ -863,6 +902,35 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
         >
           Export to PowerPoint
         </button>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">PDF report</div>
+            <p className="text-sm text-gray-500 mt-0.5">
+              The same Datanautix-branded Q&amp;A summary as the public link, as a PDF for principal handoff — meeting overview and polished Q&amp;A by topic.
+            </p>
+            {!ready && <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete (status: {status}).</p>}
+          </div>
+          <button
+            onClick={handlePdf}
+            disabled={!ready}
+            className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
+            style={{ background: HERMES }}
+          >
+            Download PDF
+          </button>
+        </div>
+        <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 select-none cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeTranscript}
+            onChange={e => setIncludeTranscript(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          Include full transcript appendix (spelling-corrected)
+        </label>
       </div>
 
       {isOwner && (
@@ -908,7 +976,6 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
       <p className="text-sm text-gray-500">More formats land in a follow-up:</p>
       <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
-        <li>PDF — Q&amp;A summary + transcript appendix (default for principal handoff)</li>
         <li>XLSX — structured pairs only (analyst format)</li>
         <li>Send to principals — Resend email with the share link</li>
       </ul>

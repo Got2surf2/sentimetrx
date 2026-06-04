@@ -280,7 +280,6 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
 
   'docs/TOWNHALL.md': [
     'app/townhall/**',
-    'app/th/**',
     'app/api/townhall/**',
     'app/api/cron/townhall-theme-detection/**',
     'components/townhall/**',
@@ -331,6 +330,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'app/api/collections/[id]/members/**',
     'app/recordings/**',
     'app/r/**',
+    'app/th/**',                 // /th is the Town Hall public-share prefix (reassigned from PulseIQ)
     'components/recordings/**',
     'lib/recordings/**',
     'lib/asr/**',

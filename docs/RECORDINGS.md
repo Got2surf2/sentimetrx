@@ -523,7 +523,7 @@ For each `recording_extractions` row, insert a corresponding `dataset_rows_flat`
 
 - HTML report at `app/recordings/[id]/report/page.tsx` — server-rendered from the `recordings` + `recording_transcripts` + `recording_extractions` rows. Auth-gated (`requireOrgAccess`).
 - **PowerPoint export (built 2026-06):** `POST /api/recordings/[id]/export/pptx` (§4.13) → Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts`. Wired to the report's **Export** tab.
-- PDF export: `POST /api/recordings/[id]/report/pdf` — Playwright headless prints the HTML page. Stored in Supabase Storage at `<org_id>/<recording_id>/report.pdf` and returned as signed URL.
+- **PDF export (built 2026-06-04):** `POST /api/recordings/[id]/report/pdf` (§4.5) → puppeteer-core + `@sparticuz/chromium` renders the baked HTML (`renderTownHallReportHtml`, mirrors the `/th` share page) and **streams** the PDF (no Storage round-trip). Body `{ includeTranscript }` appends the spelling-corrected transcript. Wired to the report's **Export & Share** tab.
 - XLSX export: `POST /api/recordings/[id]/report/xlsx` — server-side XLSX generation from `recording_extractions` payloads. Columns per `unit_type` per § 2.6 mapping plus.
 
 ### 3.9 Notify
@@ -635,9 +635,13 @@ Deliberately omits `recording_transcripts.segments` and `recording_extractions.p
 
 Also: fix existing `DELETE /api/collections/[id]?member=X` to re-run schema rebuild after a member is removed (and remaining > 0).
 
-### 4.5 `POST /api/recordings/[id]/report/pdf` and `/xlsx` — exports
+### 4.5 `POST /api/recordings/[id]/report/pdf` — PDF report (built 2026-06-04)
 
-See § 3.8.
+Server-rendered PDF of the **same report the public `/th` link shows** (§4.6). `lib/recordings/reportHtml.ts` (`renderTownHallReportHtml`, a pure function) bakes a self-contained inline-styled HTML doc mirroring `app/th/[token]/page.tsx` — meeting meta + exec summary + polished Q&A by topic (`polished_*`, fallback verbatim), Datanautix footer — then headless Chrome's `page.pdf()` renders it (`page.setContent`, **not** `goto`, so Tailwind isn't needed). Chrome resolution mirrors the Agent Study PDF route: `@sparticuz/chromium` on the Linux serverless runtime, an installed Chrome locally (key off `process.platform`, **not** `process.env.VERCEL`).
+
+Body `{ includeTranscript?: boolean }`. When true, a **Full Transcript** appendix is appended on its own page — the **spelling-corrected** view (`normalizeSegments` applies the reviewed `entity_map` variants→canonical; raw ASR is never mutated), consecutive same-speaker segments merged into paragraphs. This is the one thing the public `/th` page never shows, so it's owner-gated by the same org check as the PPTX export.
+
+**Cross-org gate** mirrors `export/pptx`: `getCallerOrgContext` + service-role read pairing `id` with the caller's `org_id` (admin-org may export any) → 404 on cross-org, 409 until `status='complete'`. Streams `application/pdf` (no Storage round-trip); fire-and-forget `logDeckDownload('recording-pdf-report', name)`. Wired to the report's **Export & Share** tab ("PDF report" card + "Include full transcript appendix" checkbox, default on). XLSX export remains a fast-follow.
 
 ### 4.6 Public report — `GET /th/[token]` (built 2026-06-04)
 
