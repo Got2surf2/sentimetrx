@@ -361,8 +361,8 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, a **severity-alerts panel
   surfaced directly under the KPIs** (top of page — the most urgent items need no scroll),
   per-axis mention-rate bars, and top sub-topics with sentiment. Sub-topics and alert
-  chips are **clickable**, and a **Topic + Sub-topic filter** pair narrows the view → an
-  **inline comments panel** (breadcrumb header + scrollable list + Export CSV + per-comment
+  chips are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
+  (topic pills first; pick one to reveal its sub-topic pills) → an **inline comments panel** (breadcrumb header + scrollable list + Export CSV + per-comment
   Copy) via `GET …/taxonomy/rows` (`?axis=&sub=` or `?alert=`), matched-evidence quotes
   highlighted. (Inline panel reuses the same UX as TextMine comments but not the
   theme-coupled `CommentsPanel`; it's driven by the tag-filtered endpoint.) The evidence

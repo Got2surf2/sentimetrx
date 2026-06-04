@@ -7,7 +7,7 @@
 // by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
 // here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useState, type ReactElement, type CSSProperties } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null }
@@ -25,6 +25,16 @@ interface Rollup {
 
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
 const GREEN = '#059669', AMBER = '#D97706', RED = '#DC2626', SLATE = '#8FA3AE'
+
+function pillStyle(active: boolean, color: string): CSSProperties {
+  return {
+    fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 999,
+    border: '1px solid ' + (active ? color : '#cbd5e1'),
+    background: active ? color : '#fff',
+    color: active ? '#fff' : NAVY,
+    cursor: 'pointer',
+  }
+}
 
 function sentimentColor(posPct: number | null): string {
   if (posPct === null) return SLATE
@@ -258,38 +268,46 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
       {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
-      {/* Filter by topic / sub-topic */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 20, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-        <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Topic</label>
-          <select
-            value={filterAxis}
-            onChange={e => { setFilterAxis(e.target.value); setFilterSub(''); setDrill(null) }}
-            style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, minWidth: 200 }}
-          >
-            <option value="">All topics</option>
-            {data.axes.map(a => <option key={a.axis} value={a.axis}>{a.label}</option>)}
-          </select>
+      {/* Filter by topic / sub-topic — pills. Topics show first; pick one to reveal its sub-topics. */}
+      <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Topic</span>
+          {(filterAxis || drill) && (
+            <button onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill(null) }}
+              style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: SLATE, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Clear ✕</button>
+          )}
         </div>
-        <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Sub-topic</label>
-          <select
-            value={filterSub}
-            disabled={!filterAxis}
-            onChange={e => { const v = e.target.value; setFilterSub(v); if (v) setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(v)}`, crumbs: ['Taxonomy', filterAxis, v] }); else setDrill(null) }}
-            style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: filterAxis ? '#fff' : '#f1f5f9', color: NAVY, minWidth: 220 }}
-          >
-            <option value="">{filterAxis ? 'All sub-topics' : 'Pick a topic first'}</option>
-            {data.subs.filter(s => s.axis === filterAxis).map(s => <option key={s.sub} value={s.sub}>{s.sub} ({s.count})</option>)}
-          </select>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {data.axes.map(a => {
+            const active = filterAxis === a.axis
+            return (
+              <button key={a.axis}
+                onClick={() => { if (active) { setFilterAxis(''); setFilterSub(''); setDrill(null) } else { setFilterAxis(a.axis); setFilterSub(''); setDrill(null) } }}
+                style={pillStyle(active, NAVY)}>
+                {a.label} <span style={{ opacity: 0.55, fontWeight: 600 }}>{a.rate}%</span>
+              </button>
+            )
+          })}
         </div>
-        {(filterAxis || drill) && (
-          <button
-            onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill(null) }}
-            style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, color: SLATE, cursor: 'pointer' }}
-          >
-            Clear
-          </button>
+        {filterAxis && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>Sub-topic</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {data.subs.filter(s => s.axis === filterAxis).length === 0 && (
+                <span style={{ fontSize: 13, color: SLATE }}>No sub-topics surfaced for this topic.</span>
+              )}
+              {data.subs.filter(s => s.axis === filterAxis).map(s => {
+                const active = filterSub === s.sub
+                return (
+                  <button key={s.sub}
+                    onClick={() => { if (active) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', filterAxis, s.sub] }) } }}
+                    style={pillStyle(active, TEAL)}>
+                    {s.sub} <span style={{ opacity: 0.55, fontWeight: 600 }}>{s.count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
 

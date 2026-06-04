@@ -859,3 +859,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): added **Topic** (axis) + **Sub-topic** (sub) filter dropdowns (sub options derive from `data.subs` for the chosen axis). Converted the drill-down **modal into an inline panel** (same breadcrumb header + scrollable list + Export CSV + per-comment Copy), driven by the filter or by clicking a sub-topic/alert (clicks now sync the dropdowns). Reuses the existing `/taxonomy/rows` endpoint + comment-card rendering — no new search/fetch logic, and explicitly NOT the theme-coupled `CommentsPanel`.
 
 **Verification**: tsc clean; taxonomy page compiles (dev 307). Data path unchanged (already verified vs Cheddar's: axis_attribute·speed→388, pests alert→40). Commit-only, not pushed.
+
+## 2026-06-03 — Taxonomy filter: dropdowns → pills (progressive topic→sub-topic)
+
+**Why**: Owner asked for pill-based topic/sub-topic filtering — show topic pills first; once a topic is picked, reveal that topic's sub-topic pills.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): replaced the two `<select>` dropdowns with pill rows. Topic pills (axes, with %) always show; selecting one reveals its sub-topic pills (with counts); selecting a sub-topic loads the inline comments (same drill mechanism). Toggling a pill off / "Clear ✕" resets. Rollup sub-topic & alert clicks still sync the active pills. New module-level `pillStyle()` helper. tsc clean; page compiles.

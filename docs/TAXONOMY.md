@@ -69,9 +69,10 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
   instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
   `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
-  **Filter + comment drill-down**: a **Topic** (axis) + **Sub-topic** (sub) dropdown pair
-  filters the view; picking a sub-topic — or clicking a sub-topic row / alert chip (which
-  syncs the dropdowns) — opens an **inline comments panel** (breadcrumb header
+  **Filter + comment drill-down**: a **pill-based Topic** (axis) + **Sub-topic** (sub)
+  filter — topic pills show first; picking a topic reveals that axis's sub-topic pills;
+  picking a sub-topic — or clicking a sub-topic row / alert chip (which syncs the pills) —
+  opens an **inline comments panel** (breadcrumb header
   `Taxonomy › axis › sub` / `Taxonomy › Severity alert › tag`, count, a scrollable list)
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=&sub=` or `?alert=`,
   org-gated; `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
