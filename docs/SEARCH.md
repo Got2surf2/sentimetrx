@@ -346,7 +346,7 @@ return NextResponse.json({
 
 ## 4. SearchPanel — `components/analyze/textmine/SearchPanel.tsx`
 
-The result UI. Lives inside the dataset-header modal. Single component, no internal routing.
+The result UI. Single self-contained component (input + AI-mode toggle + results), no internal routing. Surfaced in **two places**, both passing only `datasetId` (+ optional `openEndedField`): (1) the dataset-header search modal (`DatasetHeader.tsx`, available from every tab), and (2) **inline at the top of the TextMine → Comments sub-tab** (`TextMineModule.tsx`) so you can search the comment text in place. Same component, same `/search` endpoint — no duplicated search logic.
 
 ### Props
 

@@ -2403,6 +2403,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                {/* Search the comments — reuses the dataset-wide full-text SearchPanel (same /search endpoint as the header search). */}
+                <div style={{ padding: '12px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0 }}>
+                  <SearchPanel datasetId={datasetId} openEndedField={effectiveFields[0] || (openFields[0] && openFields[0].field) || undefined} />
+                </div>
                 {drillEntity ? (
                   <EntityCommentsPanel
                     entity={drillEntity}

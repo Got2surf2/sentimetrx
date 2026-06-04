@@ -837,3 +837,11 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Phase 3 — Corrected transcript view**: extracted the pure normalize helpers into client-safe `lib/recordings/normalize.ts` (entities.ts re-exports them). The report Transcript tab gained a **Corrected / Raw toggle** (defaults to Corrected when a reviewed map exists): Corrected applies the deterministic variant→canonical fix client-side; Raw is the untouched record of truth. The raw transcript is never mutated — two transcripts, one record.
 
 430 tests pass, tsc clean. Migration `sql/100` still NOT applied to prod (needed before the column-selecting paths work).
+
+## 2026-06-03 — TextMine Comments: inline search (reuses SearchPanel)
+
+**Why**: Owner expected search in the Comments view. Search already existed but was relocated to the dataset-header modal (commit 4076d646), leaving a dead `SearchPanel` import + unused `showSearch` in `TextMineModule.tsx`. Owner asked to add comment-level search reusing the exact same search code.
+
+**What changed** (`components/analyze/TextMineModule.tsx`, UI-only): rendered the already-imported `<SearchPanel datasetId openEndedField>` at the top of the Comments sub-tab (the import was previously dead). Same component + same `GET /api/datasets/[datasetId]/search` endpoint (FTS + optional AI synonym/re-rank) the header modal uses — zero new search logic. `openEndedField` = the active open-ended field so results display the right text.
+
+**Verification**: tsc clean; TextMine page compiles (dev 307). NB: the header's separate `showSearch`/SearchPanel modal is unaffected; this is an additional inline surface. Commit-only, not pushed.

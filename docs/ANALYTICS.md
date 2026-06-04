@@ -39,6 +39,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 - (Crosstab is a chart type in the Charts module, not a TextMine sub-tab.)
 
 **4. Comments**
+- Inline full-text **search** at the top of the tab — the same `SearchPanel` + `/search` endpoint (FTS + optional AI re-rank) as the dataset-header search modal, embedded here for in-place comment search
 - Paginated comment browser with keyword highlighting
 - Filter by theme, sentiment, or custom criteria
 - Clause-boundary highlight expansion (not just the keyword, but surrounding context)
