@@ -788,3 +788,11 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 - Cost +$0.25/meeting (~$1.45 total). Tests: polish populate + verbatim fallback; updated pass-count/cost assertions (now 4 passes). QC'd deck render (polished pair clean, no-polish pair falls back).
 
 **Deferred (queued)**: PDF report + public share link `/r/[token]` reading the same saved polished field; entity-spelling-normalization glossary sources.
+
+## 2026-06-03 — Taxonomy dict v2: hair + foreign-object cadre in food-safety
+
+**Why**: Demo prep. Owner tested "I proceed to pull a VERY LONG piece of hair from the bread!" — the keyword classifier produced NO tags (the `food safety` bucket only had `foreign object`, not `hair`). Checked the competitor's rules engine in the RC vendor CSV: it flags **72 of 234** hair-mentioning reviews as `Alert - Food Safety` but ≥16 are clear FPs on a *person's* hair ("blonde hair" ×6, "dark hair" ×3, "no hair"/bald, "golden hair"). So the vendor over-flags (noise), we under-flagged (miss) — the fix is the precise middle.
+
+**What changed** (`lib/taxonomyKeywords.ts`, `food safety` sub): added hair phrases (`piece of hair`, `strand of hair`, `found a hair`, `a hair in`, `hair in my/our/it`, `hair in the food`, `hair baked`) + a foreign-object cadre (glass/shard/broken glass → crisis; metal/shaving/staple/nail/band-aid → crisis; plastic/rubber band/twist tie/fingernail/rock/pebble/wood chip/splinter/paper/wrapper → alert). **Multi-word in-food phrasings only** so bare "hair"/"blonde hair"/"hairnet" don't false-fire. Bumped `TAXONOMY_VERSION` v1→v2 (`lib/taxonomyClassify.ts`; stored-only provenance, no filtering side-effects).
+
+**Verification**: tsc clean. Probe: 7/7 real complaints flag (hair=alert; glass/staple/band-aid=crisis), 5/5 competitor FPs ("no hair","dark hair","golden hair","blonde hair","hairnet") stay clean. Re-classified Cheddar's (`86737f9b…`, 19,708 rows) on prod → food-safety alerts 45 → 79, real hair-in-food complaints now surface in the drill-down with evidence. Commit-only, not pushed.

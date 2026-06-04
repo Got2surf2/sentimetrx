@@ -190,6 +190,45 @@ const ATTRIBUTE: KeywordEntry[] = [
     { phrase: 'undercooked meat', polarity: 'neg', severity: 'alert' },
     { phrase: 'raw chicken',      polarity: 'neg', severity: 'crisis' },
     { phrase: 'foreign object',   polarity: 'neg', severity: 'crisis' },
+    // --- Hair in food. Multi-word, in-food phrasings ONLY: the vendor's rules
+    // engine keyword-matches bare "hair" and false-flags "blonde hair", "no
+    // hair" (bald server), "golden hair", etc. as food safety (16+ obvious FPs
+    // of 72 hair alerts in the RC corpus). These catch the real complaint
+    // without the people-describing-hair noise.
+    { phrase: 'piece of hair',    polarity: 'neg', severity: 'alert' },
+    { phrase: 'strand of hair',   polarity: 'neg', severity: 'alert' },
+    { phrase: 'found a hair',     polarity: 'neg', severity: 'alert' },
+    { phrase: 'a hair in',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair in my',       polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair in our',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair in the food', polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair in it',       polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair baked',       polarity: 'neg', severity: 'alert' },
+    // --- Foreign-object cadre. crisis = can injure / biohazard; alert = gross
+    // but not dangerous. In-food / in-my phrasings to avoid false alarms.
+    { phrase: 'piece of glass',   polarity: 'neg', severity: 'crisis' },
+    { phrase: 'shard of glass',   polarity: 'neg', severity: 'crisis' },
+    { phrase: 'broken glass',     polarity: 'neg', severity: 'crisis' },
+    { phrase: 'glass in my',      polarity: 'neg', severity: 'crisis' },
+    { phrase: 'piece of metal',   polarity: 'neg', severity: 'crisis' },
+    { phrase: 'metal shaving',    polarity: 'neg', severity: 'crisis' },
+    { phrase: 'metal in my food', polarity: 'neg', severity: 'crisis' },
+    { phrase: 'staple in',        polarity: 'neg', severity: 'crisis' },
+    { phrase: 'nail in my food',  polarity: 'neg', severity: 'crisis' },
+    { phrase: 'band aid',         polarity: 'neg', severity: 'crisis' },
+    { phrase: 'band-aid',         polarity: 'neg', severity: 'crisis' },
+    { phrase: 'bandaid',          polarity: 'neg', severity: 'crisis' },
+    { phrase: 'piece of plastic', polarity: 'neg', severity: 'alert' },
+    { phrase: 'plastic in my',    polarity: 'neg', severity: 'alert' },
+    { phrase: 'rubber band',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'twist tie',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'fingernail in',    polarity: 'neg', severity: 'alert' },
+    { phrase: 'rock in my',       polarity: 'neg', severity: 'alert' },
+    { phrase: 'pebble in',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'wood chip',        polarity: 'neg', severity: 'alert' },
+    { phrase: 'splinter in',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'paper in my food', polarity: 'neg', severity: 'alert' },
+    { phrase: 'wrapper in my food',polarity: 'neg', severity: 'alert' },
   ]},
   { axis: 'attribute', sub: 'pests',      phrases: [
     // The matcher is word-boundary strict (roach ≠ roaches, fly ≠ flies, bug ≠

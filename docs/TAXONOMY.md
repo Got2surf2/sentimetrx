@@ -93,6 +93,14 @@ the DB has a 50-row smoke sample). Against the current classifier:
 - **Food safety** — an independent Haiku judge over all 1,140 vendor food-safety alerts
   (`scripts/pilot-rc-foodsafety-audit.ts`, conservative rubric) found **~62% are false
   alarms** (703/1,140; 437 genuine). Defensible lower bound.
+  - **Hair example (concrete FP pattern):** the vendor tags **72 of 234** hair-mentioning
+    RC reviews `Alert - Food Safety`, including ≥16 obvious FPs describing a *person's*
+    hair ("blonde hair" ×6, "dark hair" ×3, "no hair"/bald, "golden hair", "lighter
+    hair"). Our keyword tier (2026-06-03, dict v2) adds hair + a foreign-object cadre
+    (glass/metal/staple/band-aid/plastic/…) as **multi-word in-food phrases only**
+    (`piece of hair`, `a hair in`, `hair in my`, …) — catches the real complaint, stays
+    clean on the people-describing-hair noise. Verified: 7/7 real complaints flag, 5/5
+    competitor FPs clean. On Cheddar's this lifted food-safety alerts 45 → 79.
 - **Pests** — fixed a mapping gap (`Alert - Bug` → `pests` in `lib/taxonomyMapping.ts`)
   and expanded/tightened the pests dictionary to **~99% precision**; the vendor's bug
   alert is itself noisy (fires on "fly in", "bar fly", typos). `scripts/pilot-rc-alert-compare.ts`.

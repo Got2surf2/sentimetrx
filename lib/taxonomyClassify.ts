@@ -13,7 +13,7 @@ import type { Assertion } from './taxonomyVocabulary'
 
 // Bump when the closed vocabulary / dictionary changes so stale rows are
 // detectable (mirrors the productization plan's taxonomy_version).
-export const TAXONOMY_VERSION = 'v1'
+export const TAXONOMY_VERSION = 'v2'  // v2: hair + foreign-object cadre in food-safety dict
 
 const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 const ALERT_SEVERITIES = new Set(['alert', 'crisis'])
