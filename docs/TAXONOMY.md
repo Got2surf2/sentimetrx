@@ -54,7 +54,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 4. Surfaces
 
-- **In-app Categories tab** (user-facing label is **"Categories"**; internal code/routes/keys stay `taxonomy` — the competitor calls it "categories", and it's friendlier than "taxonomy") — `/analyze/[datasetId]/taxonomy` (gated to
+- **In-app Dimensions tab** (user-facing label is **"Dimensions"**; internal code/routes/keys stay `taxonomy` — "Dimensions" is friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, and aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions") — `/analyze/[datasetId]/taxonomy` (gated to
   `source==='google_reviews'` in `DatasetHeader.TABS`) → `TaxonomyModule.tsx`, fed by
   `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
   the empty state offers a **"Classify this dataset"** button (and the populated view a

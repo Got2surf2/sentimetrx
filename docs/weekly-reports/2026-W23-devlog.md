@@ -959,3 +959,7 @@ Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy
 **Why**: "Taxonomy" is jargon and sits oddly next to Themes/Entities; the competitor calls it "categories", which helps in a head-to-head pitch. Owner picked "Categories" for now (personally prefers "Aspects"/"Dimensions" — parked).
 
 **What changed** (user-facing strings only; all internal `taxonomy` code/routes/keys unchanged): `DatasetHeader` tab label `Taxonomy`→`Categories`; `TaxonomyModule` copy (loader, error, "No categories yet", empty-state, footer, filter labels Topic/Sub-topic → Category/Sub-category, breadcrumb root `Categories`, CSV filename fallback `categories.csv`). tsc clean; page compiles.
+
+## 2026-06-03 — Renamed user-facing label "Categories" → "Dimensions"
+
+Owner's preference. "Dimensions" reads as analytical structure you can pivot/trend on and aligns with the future chart-integration plan (the axes become the dimensions you break charts down by). Swapped all user-facing strings in `DatasetHeader` + `TaxonomyModule` (tab label, Dimension/Sub-dimension pill labels, breadcrumb root, copy, CSV filename). Internal `taxonomy` code/routes/keys unchanged. tsc clean.
