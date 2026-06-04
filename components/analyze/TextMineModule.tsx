@@ -2117,11 +2117,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                         border: '1px solid ' + (t.searchInterest === 'high' ? '#93c5fd' : t.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
                                       }}>{'\uD83D\uDD0D'} {t.searchInterest === 'high' ? 'Widely Searched' : t.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}{t.searchTrend === 'up' ? ' \u2191' : t.searchTrend === 'down' ? ' \u2193' : ''}</span>
                                     )}
-                                    {useRatingColor ? (
-                                      <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating!)) + '18', color: ratingColor(normRating(t.avgRating!)), fontWeight: 700 }}>{'\u2605'} {t.avgRating!.toFixed(1)}</span>
-                                    ) : (
-                                      <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
+                                    {t.avgRating != null && (
+                                      <span title={'Average rating for this theme: ' + t.avgRating.toFixed(2)} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating)) + '18', color: ratingColor(normRating(t.avgRating)), fontWeight: 700 }}>{'\u2605'} {t.avgRating.toFixed(1)}</span>
                                     )}
+                                    <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
                                   </div>
                                 </div>
                                 {/* Theme name + origin badge */}

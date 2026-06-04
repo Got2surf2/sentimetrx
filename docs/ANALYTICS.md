@@ -21,6 +21,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 **1. Themes**
 - AI-mined or library-selected themes with keyword matching
 - Each theme: name, description, keywords[], sentiment, count, percentage, confidence interval
+- Each theme card shows **both a ★ avg-rating badge (colour-ramped) AND the sentiment badge** (was either/or behind the colorMode toggle — `theme.avgRating`/`ratingDelta` come from `recountThemes(..., ratingField)`)
 - Per-keyword rating breakdowns (which keywords drive higher/lower scores)
 - Dual color mode: sentiment gradient vs rating gradient
 - Sampling control with 95% confidence margin-of-error display
@@ -29,6 +30,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 
 **2. Theme Clouds**
 - One word cloud per theme — the words that appear most often inside that theme's matched comments
+- Each theme's header carries a **★ avg-rating badge** (green/red vs the dataset overall, via `ratingDelta`)
 - Useful for spotting the exact language people use within a theme
 
 **3. Compare**

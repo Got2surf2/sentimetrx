@@ -474,6 +474,12 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                     ) : (
                       <span style={{ fontSize: 11, fontWeight: 700, color: pal.text }}>{t.name}</span>
                     )}
+                    {t.avgRating != null && (
+                      <span title={'Average rating for this theme: ' + t.avgRating.toFixed(2) + (t.ratingDelta != null ? ' (' + (t.ratingDelta >= 0 ? '+' : '') + t.ratingDelta.toFixed(2) + ' vs overall)' : '')}
+                        style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: '#fffbeb', border: '1px solid #fde68a', color: t.ratingDelta != null && t.ratingDelta > 0.1 ? '#059669' : t.ratingDelta != null && t.ratingDelta < -0.1 ? '#dc2626' : '#92400e' }}>
+                        {'★'} {t.avgRating.toFixed(1)}
+                      </span>
+                    )}
                     {onWordClick && (
                       <button
                         onClick={function() { onWordClick(null, idx, 'theme') }}

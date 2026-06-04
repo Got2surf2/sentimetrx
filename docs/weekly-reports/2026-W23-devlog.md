@@ -1051,3 +1051,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Why**: From the client session — they wanted avg rating shown alongside the existing sentiment, so a low-scored dimension pops. Did Dimensions first because it's collision-free (my code, not TextMine).
 
 **What changed**: `lib/taxonomyRollup.ts` — the paged read now also pulls `data->>rating` from `dataset_rows_flat` by `row_id`; `aggregateTaxonomy` averages it into `avgRating` per axis + per sub + `overallAvgRating` (red→green ramp). `TaxonomyModule.tsx` — new `StarBadge`; shows ★ on the avg-rating KPI, each axis bar, and each sub-topic row. Verified on Cheddar's: overall ★3.9, and the spread is meaningful — `touchpoint·manager` ★2.4 (named when things go wrong) vs `attribute·flavor` ★4.1. tsc clean; 346 unit tests pass.
+
+## 2026-06-04 — Themes + Theme Clouds: show avg rating per theme (client request 1a)
+
+**Why**: Client wanted avg rating shown per theme so you can tell at a glance whether a theme is loved or hated — not just its sentiment. The data was already computed (`recountThemes(..., ratingField)` populates `theme.avgRating`/`ratingDelta`); the Themes card only showed it *instead of* sentiment behind the colorMode toggle, and Theme Clouds didn't show it at all.
+
+**What changed** (UI-only): `TextMineModule.tsx` theme card now shows **both** the ★ avg-rating badge AND the sentiment badge (was either/or). `WordCloud.tsx` per-theme header gets a ★ avg-rating badge colored green/red vs the dataset overall (via `ratingDelta`). tsc clean; page compiles.
+
+**Re: the "parallel session in TextMine" caution I'd been repeating** — verified it was wrong: nothing uncommitted in TextMine, latest commits to those files are all mine (today), the next are weeks old (05-18/05-14). The active parallel session is in Town Hall/recordings, NOT TextMine. Proceeded cleanly, staged only my files.
