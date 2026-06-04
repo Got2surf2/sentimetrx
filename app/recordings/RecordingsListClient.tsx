@@ -89,27 +89,28 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
             : `/recordings/${r.id}/status`
           const st = STATUS_STYLE[r.status] || { bg: '#f3f4f6', fg: '#6b7280', label: r.status }
           return (
-            <div key={r.id} className="relative bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-md hover:border-orange-200 transition-all">
+            <div key={r.id} className="group relative bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden min-h-[176px]">
+              {/* top accent strip — status color (matches the family's colored card header) */}
+              <div className="h-1.5 w-full" style={{ background: st.fg }} />
               <button
                 onClick={() => setTarget(r)}
-                title="Delete recording"
-                className="absolute top-3 right-3 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors">
+                title="Delete Town Hall"
+                className="absolute top-3.5 right-2.5 z-10 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors">
                 🗑
               </button>
-              <Link href={href} className="block pr-8">
-                <div className="text-2xl mb-3">🎙️</div>
-                <h3 className="font-bold text-gray-900 hover:text-orange-700 leading-snug line-clamp-2">{r.name}</h3>
-                <div className="mt-2">
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.fg }}>
-                    {st.label}
-                  </span>
+              <Link href={href} className="flex flex-col flex-1 p-4 pr-9">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg leading-none mt-0.5">🏛️</span>
+                  <h3 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 group-hover:text-orange-700 transition-colors">{r.name}</h3>
                 </div>
-                <dl className="mt-4 space-y-1 text-xs text-gray-500">
-                  <div className="flex justify-between"><dt>Date</dt><dd className="text-gray-700">{fmtDate(r.meeting_date) || fmtDate(r.created_at)}</dd></div>
-                  <div className="flex justify-between"><dt>Cost</dt><dd className="text-gray-700">{fmtCost(r.cost_cents)}</dd></div>
-                  <div className="flex justify-between"><dt>Owner</dt><dd className="text-gray-700 truncate max-w-[60%]">{r.owner_name || '—'}</dd></div>
-                  {showOrg && <div className="flex justify-between"><dt>Org</dt><dd className="text-gray-700 truncate max-w-[60%]">{r.org_name || '—'}</dd></div>}
-                </dl>
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
+                  <span className="text-xs text-gray-400">{fmtDate(r.meeting_date) || fmtDate(r.created_at)}</span>
+                </div>
+                <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                  <span className="truncate max-w-[62%]">{showOrg && r.org_name ? r.org_name : (r.owner_name || '—')}</span>
+                  <span>{fmtCost(r.cost_cents)}</span>
+                </div>
               </Link>
             </div>
           )

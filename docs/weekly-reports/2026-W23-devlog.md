@@ -748,3 +748,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner feedback. Campaigns used a plain `✉` text dingbat that renders thin/small next to the full-color emoji. And now that PulseIQ + Town Hall are distinct products they need distinct icons — the people-gathering icon fits the in-person Town Hall better.
 
 **What changed** (`components/nav/TopNav.tsx`): Campaigns `✉`→`📨` (full-size envelope); Town Hall `🏛️`→`👥` (gathering of people); PulseIQ `👥`→ an inline **EKG/pulse-line SVG** (`EkgIcon`, `currentColor` so it matches the nav text color — there's no heartbeat-waveform emoji). `navItems.icon` widened to `React.ReactNode` to allow the SVG. Drives both the desktop bar + mobile drawer. Commit-only, not pushed.
+
+## 2026-06-04 — Town Hall list cards match the Analyze/Surveys card family
+
+**Why**: Owner — the Town Hall (recordings) cards didn't follow the visual conventions of the Analyze/Surveys lists. Restyled to the shared family idiom.
+
+**What changed** (`app/recordings/RecordingsListClient.tsx`): card shell now mirrors the Dashboard StudyCard — `flex flex-col overflow-hidden` with a **colored top accent strip** (status color, like the family's card header), emoji + bold `text-sm` title, a pill status badge + date row, and a divided footer (`mt-auto pt-3 border-t`) showing owner/org + cost. Uniform `min-h`. Replaces the old flat `p-5` card with a definition-list meta block. QC'd via a side-by-side render vs a Dashboard card — consistent family.
