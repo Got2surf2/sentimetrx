@@ -86,9 +86,10 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [field, setField] = useState('')  // which column to classify (user pick)
 
   // Drill-down: clicking a sub-topic / alert opens the comments behind it.
-  const [drill, setDrill] = useState<{ qs: string; label: string } | null>(null)
+  const [drill, setDrill] = useState<{ qs: string; crumbs: string[] } | null>(null)
   const [drillData, setDrillData] = useState<{ count: number; comments: DrillComment[] } | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
 
   useEffect(() => {
     if (!drill) { setDrillData(null); return }
@@ -100,6 +101,28 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       .catch(() => { if (alive) { setDrillData({ count: 0, comments: [] }); setDrillLoading(false) } })
     return () => { alive = false }
   }, [drill, datasetId])
+
+  // Download the open modal's comments as a CSV (rating, date, comment, evidence).
+  const exportCsv = useCallback(() => {
+    if (!drill || !drillData) return
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const rows = [
+      ['rating', 'date', 'comment', 'matched_evidence'].join(','),
+      ...drillData.comments.map(c => [c.rating ?? '', c.date ?? '', c.text, (c.evidence || []).join(' | ')].map(esc).join(',')),
+    ].join('\n')
+    const slug = drill.crumbs.join('-').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const url = URL.createObjectURL(new Blob([rows], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = `${slug || 'taxonomy'}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }, [drill, drillData])
+
+  const copyComment = useCallback((text: string, i: number) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedIdx(i)
+      setTimeout(() => setCopiedIdx(prev => (prev === i ? null : prev)), 1400)
+    }).catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -243,7 +266,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {data.alerts.map(a => (
               <div
                 key={a.tag}
-                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, label: a.tag })}
+                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] })}
                 title="View the flagged comments"
                 style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
               >
@@ -284,7 +307,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {data.subs.slice(0, 18).map((s, i) => (
               <div
                 key={s.axis + ':' + s.sub}
-                onClick={() => setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, label: `${s.axis} · ${s.sub}` })}
+                onClick={() => setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', s.axis, s.sub] })}
                 title="View the comments tagged with this"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
@@ -307,36 +330,59 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Click any sub-topic or alert to read the comments behind it.
       </p>
 
-      {/* Comment drill-down drawer */}
+      {/* Comment drill-down modal */}
       {drill && (
-        <>
-          <div onClick={() => setDrill(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 40 }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, height: '100%', width: 'min(520px, 92vw)', background: '#fff', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)', zIndex: 41, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Comments</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: NAVY }}>{drill.label}</div>
-                {drillData && <div style={{ fontSize: 12, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} tagged{drillData.count > drillData.comments.length ? ` · showing ${drillData.comments.length}` : ''}</div>}
+        <div
+          onClick={() => setDrill(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, width: 'min(760px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}
+          >
+            {/* Header */}
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                  {drill.crumbs.map((c, i) => {
+                    const isLast = i === drill.crumbs.length - 1
+                    return (
+                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {i > 0 && <span style={{ color: '#cbd5e1' }}>›</span>}
+                        <span style={{ fontSize: 12, fontWeight: isLast ? 700 : 600, color: isLast ? NAVY : SLATE, textTransform: i === 0 ? 'uppercase' : 'none', letterSpacing: i === 0 ? 1 : 0 }}>{c}</span>
+                      </span>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: NAVY }}>{drill.crumbs[drill.crumbs.length - 1]}</div>
+                {drillData && <div style={{ fontSize: 13, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} comment{drillData.count === 1 ? '' : 's'} tagged{drillData.count > drillData.comments.length ? ` · showing first ${drillData.comments.length}` : ''}</div>}
               </div>
-              <button onClick={() => setDrill(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: NAVY }}>×</button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                {drillData && drillData.comments.length > 0 && (
+                  <button onClick={exportCsv} title="Download these comments as CSV" style={{ background: TEAL, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>⤓ Export CSV</button>
+                )}
+                <button onClick={() => setDrill(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 36, height: 36, fontSize: 20, cursor: 'pointer', color: NAVY }}>×</button>
+              </div>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+            {/* Scrollable body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: 18, background: '#f8fafc' }}>
               {drillLoading && <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 60 }}><LottieLoader size={90} message="Loading comments…" /></div>}
               {!drillLoading && drillData && drillData.comments.length === 0 && (
                 <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
               )}
               {!drillLoading && drillData && drillData.comments.map((c, i) => (
-                <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                     {c.rating != null && <span style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>★ {c.rating}</span>}
                     {c.date && <span style={{ fontSize: 12, color: SLATE }}>{c.date}</span>}
+                    <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
                   </div>
                   <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
                 </div>
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

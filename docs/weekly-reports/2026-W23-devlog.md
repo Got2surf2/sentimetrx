@@ -808,3 +808,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 - The polish prompt already injects the glossary block (canonical spellings, phonetic-aware). Tests for `cleanGlossary`.
 
 **Deferred**: auto-fill the glossary from uploaded slides/agenda (vision) or the dataset entity catalog; make it editable at the "Review & generate" gate.
+
+## 2026-06-03 — Taxonomy drill-down: drawer → modal + Export CSV + per-comment Copy
+
+**Why**: Demo polish. Owner wanted the comment drill-down as a centered modal (not a side drawer) with breadcrumb context, a scrollable list, a whole-modal export, and a copy button per comment.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): replaced the right-side drawer with a centered modal — breadcrumb header (`Taxonomy › axis › sub` or `Taxonomy › Severity alert › tag`) + count + scrollable comment body. Added **Export CSV** (client-side Blob download: rating/date/comment/matched_evidence of the shown comments) and a per-comment **Copy** button (clipboard + ✓ feedback). `drill` state now carries `crumbs[]` instead of a flat label. tsc clean; page compiles (dev 307). Commit-only, not pushed.

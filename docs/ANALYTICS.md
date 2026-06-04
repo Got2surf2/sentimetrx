@@ -360,7 +360,8 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, a **severity-alerts panel
   surfaced directly under the KPIs** (top of page — the most urgent items need no scroll),
   per-axis mention-rate bars, and top sub-topics with sentiment. Sub-topics and alert
-  chips are **clickable** → a comment drill-down drawer via `GET …/taxonomy/rows`
+  chips are **clickable** → a comment drill-down **modal** (breadcrumb header + scrollable
+  list + Export CSV + per-comment Copy) via `GET …/taxonomy/rows`
   (`?axis=&sub=` or `?alert=`), with matched-evidence quotes highlighted. The evidence
   highlight **expands to whole-word boundaries** (stored evidence is a fixed-width char
   window, so the `<mark>` snaps out to full words rather than cutting mid-word).
