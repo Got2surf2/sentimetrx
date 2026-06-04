@@ -90,9 +90,9 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     { page: 'favorites', href: '/favorites', label: 'Favorites', icon: '★',  show: true },        // ★ — always visible; empty state on the page itself
     { page: 'analyze',   href: '/analyze',   label: 'Analytics', icon: '📊', show: f.analyze },   // 📊
     { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
-    { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '✉',       show: f.campaigns }, // ✉
-    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '👥', show: f.townhall },  // 👥 — gathering of people (live cohort discussion)
-    { page: 'recordings',href: '/recordings',label: 'Town Hall', icon: '🏛️', show: f.recordings }, // 🏛️ — recorded in-person meeting
+    { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '📨', show: f.campaigns }, // 📨 — full-size envelope (plain ✉ rendered thin/small)
+    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '💓', show: f.townhall },  // 💓 — the "pulse" of a group (live/digital)
+    { page: 'recordings',href: '/recordings',label: 'Town Hall', icon: '👥', show: f.recordings }, // 👥 — gathering of people (recorded in-person meeting)
     { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '💬', show: f.bots },     // 💬 — conversational AI
     { page: 'social',    href: '/social',    label: 'Social',    icon: '📱', show: f.social },   // 📱
   ]

@@ -742,3 +742,9 @@ Docs: BOTS.md (dynamicChips section rewritten for the toggle/injection model, ne
 - **Specs**: RECORDINGS.md, ANALYTICS.md, FEATURES.md, SPEC.md, CLAUDE.md updated (PulseIQ vs Town Hall disambiguated; PulseIQ public link corrected to /pi).
 
 tsc clean; full suite green; verified routes on the dev server. No SQL/data changes. Commit-only, not pushed.
+
+## 2026-06-04 — Nav icons: distinct icons for PulseIQ vs Town Hall + fix small Campaigns envelope
+
+**Why**: Owner feedback. Campaigns used a plain `✉` text dingbat that renders thin/small next to the full-color emoji. And now that PulseIQ + Town Hall are distinct products they need distinct icons — the people-gathering icon fits the in-person Town Hall better.
+
+**What changed** (`components/nav/TopNav.tsx`): Campaigns `✉`→`📨` (full-size envelope); Town Hall `🏛️`→`👥` (gathering of people); PulseIQ `👥`→`💓` (the "pulse" of a group). Drives both the desktop bar + mobile drawer. Commit-only, not pushed.
