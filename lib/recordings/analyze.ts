@@ -214,7 +214,7 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
   if (qaPairs.length > 0) {
     const { polished, cents } = await polishQaPairs(
       qaPairs.map(e => { const qa = e.payload as QaPairPayload; return { question: qa.question, answer: qa.answer } }),
-      { org_id: input.org_id, recording_id: input.recording_id },
+      { org_id: input.org_id, recording_id: input.recording_id, glossary: cleanGlossary(setup.glossary) },
     )
     polishCents = cents
     qaPairs.forEach((e, i) => {
@@ -521,6 +521,22 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(1, n))
+}
+
+// Normalize a free-form glossary (canonical entity spellings) into a clean,
+// de-duped string list — or undefined when empty. Shared by the analyze + the
+// single-pair regenerate polish calls so both apply the same spellings.
+export function cleanGlossary(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of raw) {
+    const s = String(item ?? '').trim()
+    if (!s || seen.has(s.toLowerCase())) continue
+    seen.add(s.toLowerCase())
+    out.push(s)
+  }
+  return out.length > 0 ? out : undefined
 }
 
 // Token-cost helpers. Whisper/Deepgram costs live with the transcript row;

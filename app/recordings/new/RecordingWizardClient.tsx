@@ -68,6 +68,7 @@ export default function RecordingWizardClient() {
   // Q&A-specific
   const [panel, setPanel] = useState<Array<{ name: string; role: string }>>([{ name: '', role: '' }])
   const [agenda, setAgenda] = useState<string[]>([''])
+  const [glossary, setGlossary] = useState('')   // canonical entity spellings, one per line
 
   // ── Submit state ──────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('idle')
@@ -79,6 +80,7 @@ export default function RecordingWizardClient() {
     [panel],
   )
   const cleanedAgenda = useMemo(() => agenda.map(a => a.trim()).filter(Boolean), [agenda])
+  const cleanedGlossary = useMemo(() => glossary.split('\n').map(s => s.trim()).filter(Boolean), [glossary])
   const mediaFiles = useMemo(() => files.filter(f => f.role === 'media'), [files])
   const slide = useMemo(() => files.find(f => f.role === 'slides') || null, [files])
   const canSubmit = phase === 'idle' && mediaFiles.length > 0 && name.trim().length > 0 && cleanedAgenda.length > 0
@@ -159,7 +161,11 @@ export default function RecordingWizardClient() {
       meeting_date: meetingDate || null,
       location: location.trim() || null,
       language,
-      setup_inputs: { panel: cleanedPanel, agenda: cleanedAgenda },
+      setup_inputs: {
+        panel: cleanedPanel,
+        agenda: cleanedAgenda,
+        ...(cleanedGlossary.length > 0 ? { glossary: cleanedGlossary } : {}),
+      },
       asr_strategy: asrStrategy,
       meeting_profile,
       files: files.map(f => ({
@@ -469,6 +475,22 @@ export default function RecordingWizardClient() {
                 className="text-xs text-gray-600 hover:text-orange-600 disabled:opacity-30"
               >+ Add topic</button>
             </div>
+          </Field>
+
+          <Field label="Names & terms (optional)">
+            <p className="text-xs text-gray-500 mb-1.5">
+              Correct spellings of names, places, and terms in this meeting — one per line. The transcriber
+              often mis-hears proper names; we normalize the report to these spellings.
+            </p>
+            <textarea
+              value={glossary}
+              onChange={e => setGlossary(e.target.value)}
+              placeholder={'NOWOCATS\nKelly Park Road\nHatem Abou-Sayed'}
+              disabled={phase !== 'idle'}
+              rows={4}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
+              style={{ fontSize: '16px' }}
+            />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">

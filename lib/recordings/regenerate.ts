@@ -14,7 +14,7 @@ import 'server-only'
 import { callAI } from '@/lib/ai'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildQaRegeneratePrompt, VALID_TYPOLOGIES } from '@/lib/recordings/prompts/qa'
-import { polishQaPairs } from '@/lib/recordings/analyze'
+import { polishQaPairs, cleanGlossary } from '@/lib/recordings/analyze'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import type {
   CoverageReport,
@@ -134,7 +134,11 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
   // polished text). Non-fatal — falls back to verbatim.
   const polish = await polishQaPairs(
     [{ question: newPayload.question, answer: newPayload.answer }],
-    { org_id: input.org_id, recording_id: input.recording_id },
+    {
+      org_id: input.org_id,
+      recording_id: input.recording_id,
+      glossary: cleanGlossary((recording.setup_inputs as QaSetupInputs).glossary),
+    },
   )
   if (polish.polished[0]) {
     newPayload.polished_question = polish.polished[0].question

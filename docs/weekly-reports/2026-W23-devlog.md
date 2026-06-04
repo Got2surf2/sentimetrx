@@ -796,3 +796,15 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **What changed** (`lib/taxonomyKeywords.ts`, `food safety` sub): added hair phrases (`piece of hair`, `strand of hair`, `found a hair`, `a hair in`, `hair in my/our/it`, `hair in the food`, `hair baked`) + a foreign-object cadre (glass/shard/broken glass → crisis; metal/shaving/staple/nail/band-aid → crisis; plastic/rubber band/twist tie/fingernail/rock/pebble/wood chip/splinter/paper/wrapper → alert). **Multi-word in-food phrasings only** so bare "hair"/"blonde hair"/"hairnet" don't false-fire. Bumped `TAXONOMY_VERSION` v1→v2 (`lib/taxonomyClassify.ts`; stored-only provenance, no filtering side-effects).
 
 **Verification**: tsc clean. Probe: 7/7 real complaints flag (hair=alert; glass/staple/band-aid=crisis), 5/5 competitor FPs ("no hair","dark hair","golden hair","blonde hair","hairnet") stay clean. Re-classified Cheddar's (`86737f9b…`, 19,708 rows) on prod → food-safety alerts 45 → 79, real hair-in-food complaints now surface in the drill-down with evidence. Commit-only, not pushed.
+
+## 2026-06-04 — Town Hall: entity glossary field in setup → polish pass
+
+**Why**: Owner wants to drop in a list of correct entity spellings when setting up a meeting, so the report normalizes ASR mis-hearings of proper names. First concrete piece of the entity-spelling-normalization feature.
+
+**What changed** (end-to-end manual entry):
+- New Town Hall wizard (`RecordingWizardClient.tsx`): "Names & terms (optional)" textarea (one per line) after Agenda topics → `setup_inputs.glossary: string[]`.
+- `QaSetupInputs.glossary?: string[]` (jsonb, persists as-is via the create route, no migration).
+- `cleanGlossary` helper (trim/dedupe-ci/empty→undefined) in `analyze.ts`; threaded into the polish pass (`polishQaPairs`) from both `analyzeRecording` and the single-pair `regenerate`.
+- The polish prompt already injects the glossary block (canonical spellings, phonetic-aware). Tests for `cleanGlossary`.
+
+**Deferred**: auto-fill the glossary from uploaded slides/agenda (vision) or the dataset entity catalog; make it editable at the "Review & generate" gate.

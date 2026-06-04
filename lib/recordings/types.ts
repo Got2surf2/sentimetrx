@@ -36,6 +36,9 @@ export interface QaSetupInputs {
   panel: PanelMember[]
   agenda: string[]
   ground_truth_url?: string
+  // Canonical spellings of names/places/terms in this meeting. Fed to the polish
+  // pass (§3.5 pass 4) to normalize phonetic ASR mis-hearings to the right name.
+  glossary?: string[]
 }
 
 export interface FocusGroupSetupInputs {
