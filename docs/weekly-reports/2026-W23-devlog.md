@@ -845,3 +845,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **What changed** (`components/analyze/TextMineModule.tsx`, UI-only): rendered the already-imported `<SearchPanel datasetId openEndedField>` at the top of the Comments sub-tab (the import was previously dead). Same component + same `GET /api/datasets/[datasetId]/search` endpoint (FTS + optional AI synonym/re-rank) the header modal uses — zero new search logic. `openEndedField` = the active open-ended field so results display the right text.
 
 **Verification**: tsc clean; TextMine page compiles (dev 307). NB: the header's separate `showSearch`/SearchPanel modal is unaffected; this is an additional inline surface. Commit-only, not pushed.
+
+## 2026-06-03 — TextMine Comments search: make it collapsible
+
+**Why**: Owner asked for the inline Comments-tab search to be closeable/collapsible (don't permanently occupy the top of the comments view).
+
+**What changed** (`components/analyze/TextMineModule.tsx`, UI-only): new `showCommentSearch` state (default collapsed). Collapsed → a compact "🔍 Search comments" toggle; expanded → the `SearchPanel` with a "Close search ✕" control. No change to search behavior/endpoint. tsc clean; page compiles.

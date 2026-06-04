@@ -984,6 +984,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [activeField, setActiveField] = useState<string | null>(null)
   const [activeFields, setActiveFields] = useState<string[]>([])
   const [subTab, setSubTab] = useState<SubTab>('themes')
+  const [showCommentSearch, setShowCommentSearch] = useState(false)  // collapsible search in the Comments tab
   // Theme | Entity view toggle. Themes (default) emphasises the AI-mined
   // theme model on Themes / Clouds subtabs; Entity flips both to the
   // catalog-driven views. Compare and Signals subtabs are theme-only —
@@ -2403,9 +2404,24 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                {/* Search the comments — reuses the dataset-wide full-text SearchPanel (same /search endpoint as the header search). */}
-                <div style={{ padding: '12px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0 }}>
-                  <SearchPanel datasetId={datasetId} openEndedField={effectiveFields[0] || (openFields[0] && openFields[0].field) || undefined} />
+                {/* Search the comments — collapsible; reuses the dataset-wide full-text SearchPanel (same /search endpoint as the header search). */}
+                <div style={{ borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0 }}>
+                  {!showCommentSearch ? (
+                    <button onClick={function() { setShowCommentSearch(true) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'transparent', border: 'none', color: T.textFaint, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      <span>{'🔍'}</span> Search comments
+                    </button>
+                  ) : (
+                    <div style={{ padding: '12px 20px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                        <button onClick={function() { setShowCommentSearch(false) }}
+                          style={{ background: 'transparent', border: 'none', color: T.textFaint, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                          Close search {'✕'}
+                        </button>
+                      </div>
+                      <SearchPanel datasetId={datasetId} openEndedField={effectiveFields[0] || (openFields[0] && openFields[0].field) || undefined} />
+                    </div>
+                  )}
                 </div>
                 {drillEntity ? (
                   <EntityCommentsPanel
