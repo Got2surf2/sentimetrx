@@ -155,11 +155,18 @@ describe('analyzeRecording — pass orchestration + cost', () => {
     expect(total_cost_cents).toBe(42)             // 17 Opus + 0 curator (no reviews) + 25 synthesis
   })
 
-  it('skips synthesis when every pair is flagged (nothing publishable)', async () => {
+  it('still runs synthesis when pairs are flagged (deck must reconcile with the page, which counts flagged pairs)', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft({ confidence: 0.4 })] }) // low-confidence → flagged
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse('{"reviews":[]}'))
     const { analysis_summary } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(2)   // no synthesis call
+    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis — flagged pairs are NOT excluded
+    expect(analysis_summary).not.toBeNull()
+  })
+
+  it('skips synthesis only when there are no Q&A pairs at all', async () => {
+    mockCallAI.mockResolvedValueOnce(aiResponse('{"extractions":[]}'))
+    const { analysis_summary } = await analyzeRecording(baseInput())
+    expect(mockCallAI).toHaveBeenCalledTimes(1)   // Opus only — no drafts → no curator, no synthesis
     expect(analysis_summary).toBeNull()
   })
 })

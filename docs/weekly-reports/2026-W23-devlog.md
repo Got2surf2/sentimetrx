@@ -754,3 +754,18 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner — the Town Hall (recordings) cards didn't follow the visual conventions of the Analyze/Surveys lists. Restyled to the shared family idiom.
 
 **What changed** (`app/recordings/RecordingsListClient.tsx`): card shell now mirrors the Dashboard StudyCard — `flex flex-col overflow-hidden` with a **colored top accent strip** (status color, like the family's card header), emoji + bold `text-sm` title, a pill status badge + date row, and a divided footer (`mt-auto pt-3 border-t`) showing owner/org + cost. Uniform `min-h`. Replaces the old flat `p-5` card with a definition-list meta block. QC'd via a side-by-side render vs a Dashboard card — consistent family.
+
+## 2026-06-04 — Town Hall deck reconciles to the report page (18→19 Q&A mismatch fix)
+
+**Why**: Owner exported a recording PPTX that showed 18 Q&A pairs while the report page showed 19 — "this type of mismatch makes me look foolish." Root cause: the report page shows + counts `flagged_for_review` pairs (just marks them ⚠), but the synthesis pass *and* the deck appendix silently dropped flagged pairs → two denominators (18 vs 19).
+
+**What changed**:
+- `lib/recordings/analyze.ts` — synthesis now runs over **all** `qa_pair` rows (was non-flagged only), so `sentiment_breakdown` + per-topic `qa_count` reconcile to the same set the page shows. Skips synthesis only when there are zero pairs.
+- `lib/pptx/recordingDeck.ts` — appendix renders all pairs; and every printed count (KPI Questions, sentiment breakdown, per-topic question badges) is now re-derived from the pairs the deck actually renders, never trusted from a possibly-stale stored `analysis_summary`. One denominator across the whole deck (deck-credibility rule).
+- Tests updated: flagged-pair recordings now DO run synthesis; synthesis skips only on zero pairs.
+
+## 2026-06-04 — Town Hall landing/card polish
+
+**Why**: Owner — the top materials panel on /recordings was "oddly placed and ugly"; the card showed an internal $$ AI-processing cost that doesn't belong on a user-facing card.
+
+**What changed**: removed the orange materials-guidance panel from the `/recordings` landing (`app/recordings/page.tsx`); removed the per-card cost (`fmtCost`) from `RecordingsListClient.tsx` — cost is an accounting metric that lives in /admin/usage. Footer now shows owner (+ org name for the admin org), matching the Analyze/Surveys card family.

@@ -137,13 +137,28 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   const hasPresentation = !!proceedings && (!!proceedings.overview || (proceedings.items?.length ?? 0) > 0)
   const reportKind = hasPresentation ? 'Meeting Report' : 'Q&A Session Report'
 
-  // Published Q&A pairs only (drop flagged/low-confidence junk), in sort order.
+  // Every Q&A pair, in sort order — must match the report page 1:1 (the page
+  // shows flagged pairs too, just marked). Filtering flagged ones here silently
+  // dropped a pair, so the deck showed 18 where the page showed 19.
   const qaPairs = input.extractions
-    .filter(e => e.unit_type === 'qa_pair' && !e.flagged_for_review)
+    .filter(e => e.unit_type === 'qa_pair')
     .sort((a, b) => a.sort_order - b.sort_order)
   const actionItems = input.extractions
     .filter(e => e.unit_type === 'action_item')
     .sort((a, b) => a.sort_order - b.sort_order)
+
+  // Every count the deck prints is derived HERE from the pairs it actually
+  // renders — never trusted from the stored summary, whose counts can lag a
+  // re-extract (a stale summary computed over fewer pairs is what let the deck
+  // disagree with itself / with the report page). One denominator: qaPairs.
+  const sentimentBreakdown = { positive: 0, neutral: 0, negative: 0, mixed: 0 }
+  const qaCountByTopic = new Map<string, number>()
+  for (const e of qaPairs) {
+    const sent = (e.payload as QaPairPayload).sentiment ?? 'neutral'
+    sentimentBreakdown[sent]++
+    const topic = e.topic || 'Other'
+    qaCountByTopic.set(topic, (qaCountByTopic.get(topic) ?? 0) + 1)
+  }
 
   // ── Slide 1: Title ──
   const s1 = pptx.addSlide()
@@ -252,7 +267,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
   // ── Slide 3: Sentiment overview ──
   if (summary) {
-    const b = summary.sentiment_breakdown
+    const b = sentimentBreakdown
     const total = b.positive + b.neutral + b.negative + b.mixed
     if (total > 0) {
       const s = pptx.addSlide()
@@ -317,8 +332,9 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
       s.addText(trunc(t.topic, 60), { x: cx + 0.2, y: cardY + 0.22, w: cw - 0.4, h: 0.5, fontSize: 16, bold: true, color: DN.ink, valign: 'middle' })
 
+      const tQaCount = qaCountByTopic.get(t.topic) ?? t.qa_count
       badge(s, pptx, cx + 0.2, cardY + 0.82, 1.25, cap(t.sentiment), sentColor(t.sentiment), sentBg(t.sentiment))
-      badge(s, pptx, cx + 1.55, cardY + 0.82, 1.6, `${t.qa_count} question${t.qa_count === 1 ? '' : 's'}`, DN.slateDark, DN.slateLight)
+      badge(s, pptx, cx + 1.55, cardY + 0.82, 1.6, `${tQaCount} question${tQaCount === 1 ? '' : 's'}`, DN.slateDark, DN.slateLight)
 
       // Cap the summary so a long one can't collide with the exchange below;
       // truncBoundary ends it on a sentence so it never reads as cut off.

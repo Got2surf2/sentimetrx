@@ -163,17 +163,20 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
   })
 
   // ── Pass 3: synthesis — exec summary, per-topic, decisions, action items ───
-  // Runs over the PUBLISHED (non-flagged) pairs only, after topics are settled.
+  // Runs over ALL Q&A pairs (including flagged-for-review ones) so the deck's
+  // headline numbers reconcile 1:1 with the report page, which shows + counts
+  // flagged pairs too (just marked). Counting only non-flagged here was the
+  // source of the "deck shows 18, page shows 19" mismatch.
   // Failure is non-fatal: the recording still completes with its Q&A pairs.
   // Skip synthesis on a topic-scoped re-extract — analysis_summary + action
   // items are whole-meeting artifacts and reanalyze(scope='topic') discards
   // them anyway; running it here would only burn a call and append topic-only
   // action items.
-  const published = extractions.filter(e => e.unit_type === 'qa_pair' && !e.flagged_for_review)
+  const qaPairs = extractions.filter(e => e.unit_type === 'qa_pair')
   let analysis_summary: RecordingAnalysisSummary | null = null
   let synthesisCents = 0
-  if (published.length > 0 && !input.topicScopedTo) {
-    const syn = await synthesizeQa(input, setup, published)
+  if (qaPairs.length > 0 && !input.topicScopedTo) {
+    const syn = await synthesizeQa(input, setup, qaPairs)
     analysis_summary = syn.summary
     synthesisCents = syn.cents
     // Append model-proposed action items as their own extraction rows so they
@@ -212,9 +215,9 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
 async function synthesizeQa(
   input: AnalyzeInput,
   setup: QaSetupInputs,
-  published: NewExtraction[],
+  qaPairs: NewExtraction[],
 ): Promise<{ summary: RecordingAnalysisSummary | null; actionItems: ActionItemPayload[]; cents: number }> {
-  const pairs: SynthesisInputPair[] = published.map(e => {
+  const pairs: SynthesisInputPair[] = qaPairs.map(e => {
     const qa = e.payload as QaPairPayload
     return {
       topic: e.topic || 'Other',
@@ -278,7 +281,7 @@ async function synthesizeQa(
   // The model picks WHICH pairs illustrate a topic (by index); the verbatim
   // text + party names come from the actual pairs — never hallucinated.
   const exchangeFrom = (i: number): RecordingTopicExchange => {
-    const qa = published[i].payload as QaPairPayload
+    const qa = qaPairs[i].payload as QaPairPayload
     return { question: qa.question, answer: qa.answer, asker: qa.asker_name ?? null, panelist: qa.panelist_name ?? null }
   }
   const topic_summaries: RecordingTopicSummary[] = topics.map(topic => {
@@ -289,14 +292,14 @@ async function synthesizeQa(
     const seen = new Set<number>()
     for (const raw of rawIdx) {
       const i = Number(raw)
-      if (!Number.isInteger(i) || i < 0 || i >= published.length || seen.has(i)) continue
-      if ((published[i].topic || 'Other') !== topic) continue   // index must belong to this topic
+      if (!Number.isInteger(i) || i < 0 || i >= qaPairs.length || seen.has(i)) continue
+      if ((qaPairs[i].topic || 'Other') !== topic) continue   // index must belong to this topic
       exchanges.push(exchangeFrom(i)); seen.add(i)
       if (exchanges.length >= 2) break
     }
     // Fallback: show the first real pair of the topic if the model gave none usable.
     if (exchanges.length === 0) {
-      const firstIdx = published.findIndex(e => (e.topic || 'Other') === topic)
+      const firstIdx = qaPairs.findIndex(e => (e.topic || 'Other') === topic)
       if (firstIdx >= 0) exchanges.push(exchangeFrom(firstIdx))
     }
     return {
