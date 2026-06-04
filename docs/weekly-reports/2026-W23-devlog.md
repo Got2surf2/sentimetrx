@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall polish: 3 consistency fixes (road format, redundant parenthetical, theme slides)
+
+**Why**: Reviewing the upgraded deck against the vendor PDF surfaced three small inconsistencies.
+
+**What changed**:
+- `buildQaPolishPrompt` — road designations now use **one consistent abbreviated form per answer** (no more "State Road 441 and SR 436" mixing → "SR 441 and SR 436"); the `(specifically …)` parenthetical is appended **only when it adds info not already in the question** (kills the redundant "(specifically Kelly Park Road…)" on questions that already name the place).
+- `lib/pptx/recordingDeck.ts` — the **Conversation Themes** slides' representative exchanges were verbatim while the appendix was polished. Now a `polishExchange` lookup maps each exchange back to its pair's polished text (matched by normalized question, prefix-overlap fallback), so theme slides read consistently (incl. FDOT-style acronym expansion). Shares the `usePolished` flag with the appendix.
+
+Verified: cheap targeted polish run (~$0.02) confirmed "SR 441 and SR 436" + no redundant parenthetical; cache-rebuilt deck shows the theme slides now polished (SunRail question synthesized, FDOT expanded). tsc clean. Spec §3.5/§4.13 updated. Prompt + deck-render only — the prompt refinements apply on the next analyze; the theme-slide fix applies on the next deck export. **Local-only.**
+
 ## 2026-06-04 — Town Hall report: "In order" Q&A view
 
 **Why**: Owner — the Q&A tab only grouped by topic; there was no way to see all questions in the sequence they were actually asked. Added a chronological view.

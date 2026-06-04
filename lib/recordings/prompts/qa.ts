@@ -368,7 +368,7 @@ export function buildQaPolishPrompt(opts: {
 
 THE QUESTION — synthesize into a clear, well-formed question:
 - Rewrite the spoken question as ONE crisp, grammatical question a reader understands on its own. Strip preamble, rambling, and references to other speakers ("my main question is", "like the other lady said").
-- PRESERVE the specific concern: keep the exact road, intersection, neighborhood, park, or development the resident named. When the question targets a specific place or issue, append it as "(specifically <place/concern>)" at the end — e.g. "How will access and circulation be improved? (specifically Bear Island Lake access)".
+- PRESERVE the specific concern: keep the exact road, intersection, neighborhood, park, or development the resident named. Append "(specifically <place/concern>)" at the end ONLY when it adds a place or detail NOT already stated in the question itself — e.g. "How will access and circulation be improved? (specifically Bear Island Lake access)". If the question already names the place, do NOT repeat it in a parenthetical.
 - Do NOT invent a concern, location, or detail that was not asked. If the question is already crisp, keep it.
 
 THE ANSWER — faithful cleanup, NOT a rewrite:
@@ -376,7 +376,7 @@ THE ANSWER — faithful cleanup, NOT a rewrite:
 - Keep ALL substance: every figure, dollar amount, date, name, commitment, qualifier, and the speaker's stance stay intact and unchanged — do not soften, strengthen, or shorten by dropping content. Write in complete, neutral, professional sentences. If an answer is already clean, return it essentially unchanged.
 
 TERMINOLOGY — apply to BOTH question and answer:
-- Render road and route designations as NUMERALS with their prefix: "State Road 436" or "SR 436", "US 441", "County Road 435", "Interstate 4" or "I-4". Convert spoken number-words in a road context — "four thirty six State Road" → "State Road 436", "four twenty nine" → "SR 429". Do NOT numeralize ordinary spoken counts that are not road designations.
+- Render road and route designations as NUMERALS with their prefix, using ONE consistent abbreviated format throughout each answer: "SR 436" (State Road), "US 441" (U.S. Highway), "CR 435" (County Road), "I-4" (Interstate). Convert spoken number-words in a road context — "four thirty six State Road" → "SR 436", "four twenty nine" → "SR 429". Do not mix "State Road 441" and "SR 436" in the same response — pick the abbreviated form. Do NOT numeralize ordinary spoken counts that are not road designations.
 - Expand an agency / program / technical acronym on FIRST use within a pair, then use the acronym — "Florida Department of Transportation (FDOT)", "Intelligent Transportation Systems (ITS)" — but ONLY when the full name is standard or evident; never invent an expansion.
 - Stay strictly NEUTRAL and FACTUAL — no spin, no editorializing.
 

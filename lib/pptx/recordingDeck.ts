@@ -151,6 +151,31 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     .filter(e => e.unit_type === 'action_item')
     .sort((a, b) => a.sort_order - b.sort_order)
 
+  // The theme slides' representative exchanges are verbatim quotes the synthesis
+  // picked; map each back to its pair's polished text so they match the appendix
+  // (unless polished is off). Keyed by a normalized question prefix.
+  const usePolished = input.polished !== false
+  const normQ = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60)
+  const polishByQ = new Map<string, { q: string; a: string }>()
+  if (usePolished) {
+    for (const e of qaPairs) {
+      const qa = e.payload as QaPairPayload
+      if (!qa.polished_question && !qa.polished_answer) continue
+      polishByQ.set(normQ(qa.question), { q: qa.polished_question || qa.question, a: qa.polished_answer || qa.answer })
+    }
+  }
+  // Resolve a representative exchange to polished text when its verbatim question
+  // matches a pair (exact, then prefix-overlap); falls back to the verbatim quote.
+  const polishExchange = (ex: { question: string; answer: string }): { question: string; answer: string } => {
+    if (!usePolished) return ex
+    const k = normQ(ex.question)
+    const hit = polishByQ.get(k)
+    if (hit) return { question: hit.q, answer: hit.a }
+    const short = k.slice(0, 40)
+    for (const [pk, v] of polishByQ) if (pk.startsWith(short) || short.startsWith(pk.slice(0, 40))) return { question: v.q, answer: v.a }
+    return ex
+  }
+
   // Every count the deck prints is derived HERE from the pairs it actually
   // renders — never trusted from the stored summary, whose counts can lag a
   // re-extract (a stale summary computed over fewer pairs is what let the deck
@@ -347,17 +372,18 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
       // One representative Q&A exchange, parties identified.
       const ex = t.representative_exchanges[0]
       if (ex) {
+        const px = polishExchange(ex)   // polished text to match the appendix
         s.addText('REPRESENTATIVE EXCHANGE', { x: cx + 0.2, y: cardY + 2.4, w: cw - 0.4, h: 0.26, fontSize: 12, bold: true, color: DN.slate, charSpacing: 1.0 })
         // Q
         const qy = cardY + 2.74
         s.addShape(pptx.ShapeType.rect, { x: cx + 0.2, y: qy, w: 0.04, h: 1.0, fill: { color: DN.teal }, line: { width: 0 } })
         s.addText('Q' + (ex.asker ? ' · ' + ex.asker : ''), { x: cx + 0.34, y: qy, w: cw - 0.55, h: 0.24, fontSize: 12, bold: true, color: DN.teal })
-        s.addText('“' + truncBoundary(ex.question, 210) + '”', { x: cx + 0.34, y: qy + 0.26, w: cw - 0.55, h: 0.78, fontSize: 12, italic: true, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
+        s.addText('“' + truncBoundary(px.question, 210) + '”', { x: cx + 0.34, y: qy + 0.26, w: cw - 0.55, h: 0.78, fontSize: 12, italic: true, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
         // A
         const ay = qy + 1.14
         s.addShape(pptx.ShapeType.rect, { x: cx + 0.2, y: ay, w: 0.04, h: 1.05, fill: { color: DN.orange }, line: { width: 0 } })
         s.addText('A' + (ex.panelist ? ' · ' + ex.panelist : ''), { x: cx + 0.34, y: ay, w: cw - 0.55, h: 0.24, fontSize: 12, bold: true, color: DN.orange })
-        s.addText(truncBoundary(ex.answer, 230), { x: cx + 0.34, y: ay + 0.26, w: cw - 0.55, h: 0.82, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
+        s.addText(truncBoundary(px.answer, 230), { x: cx + 0.34, y: ay + 0.26, w: cw - 0.55, h: 0.82, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
       }
     }
 
@@ -440,8 +466,8 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
   // ── Appendix: one Q&A pair per slide ──
   // Prefer the polished (public-shareable) text when present; fall back to the
-  // verbatim quote per pair. `polished: false` forces verbatim throughout.
-  const usePolished = input.polished !== false
+  // verbatim quote per pair. `polished: false` forces verbatim throughout
+  // (`usePolished` computed above, shared with the theme-slide exchanges).
   qaPairs.forEach((ex, idx) => {
     const qa = ex.payload as QaPairPayload
     const qQuestion = usePolished ? (qa.polished_question || qa.question) : qa.question
