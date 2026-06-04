@@ -2,7 +2,7 @@
 
 **Last reviewed:** 2026-05-15 (spec audit pass 13 of 14 — see `[[project-spec-audit-queue]]`)
 
-> User-facing product names: **Sentimetrx** (not SentimetRx), **agents** (not bots), **PulseIQ** (not Town Hall). Internal table/code names (`bots`, `townhall_*`) stay as-is. See `[[feedback-product-naming]]`.
+> User-facing product names: **Sentimetrx** (not SentimetRx), **agents** (not bots). Two distinct products both relate to "town hall" meetings: **PulseIQ** = the live/digital pulse product (internal `townhall_*`); **Town Hall** = the recorded-in-person-meeting product (internal `recordings`, promoted to top-level 2026-06-04). Internal table/code names (`bots`, `townhall_*`, `recordings`) stay as-is. See `[[feedback-product-naming]]`.
 
 ## 1. Survey Creation Wizard
 
@@ -158,7 +158,7 @@ Order from `components/creator/CreatorNav.tsx::CREATOR_STEP_LABELS`: Basics → 
 ### 16 Supported Languages (`lib/types.ts::SUPPORTED_LANGUAGES`)
 English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean, Arabic, Hindi, Vietnamese, Filipino, Russian, Polish, Haitian Creole
 
-> PulseIQ (Town Hall) chat currently mirrors a 15-language subset (no Haitian Creole) — see `[[project-townhall-audit-2026-05-15]]`.
+> PulseIQ chat currently mirrors a 15-language subset (no Haitian Creole) — see `[[project-townhall-audit-2026-05-15]]`.
 
 ### Translation Coverage
 - **Study content**: Greeting, all question prompts, rating/NPS prompts, closing messages
@@ -406,7 +406,8 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
   - `googleReviews` — DataforSEO Google + Tripadvisor reviews
   - `reddit` — Reddit thread + comments downloader
   - `substack` — Substack post comments downloader
-  - `townhall` — PulseIQ live discussions
+  - `townhall` — PulseIQ live/digital pulse sessions
+  - `recordings` — **Town Hall** (recorded in-person meetings → Q&A + presentation report); top-level product as of 2026-06-04
   - `campaigns` — email + SMS campaigns
   - `bots` — branded agents
   - `social` — Meta (Facebook + Instagram) monitoring
@@ -540,7 +541,7 @@ Major AI features by module:
 - Sentiment scoring (`lib/scoreSentimentFull`)
 - AI deck generation (entity analysis, brand rollups, restaurant expansion)
 
-**PulseIQ (Town Hall)**
+**PulseIQ**
 - Discussion-guide generation (4–8 topics from event description)
 - Sensitive-topic suggestions with staged keyword expansion
 - Description grading (1–5)
@@ -569,7 +570,7 @@ See `docs/USAGE_ACCOUNTING.md § Estimator` for the 23 forward-looking usage pro
 
 ---
 
-## 14. PulseIQ (Town Hall)
+## 14. PulseIQ
 
 *Gated by `organizations.features.townhall`. UI label: **PulseIQ**. Internal name: `townhall` (legacy substrate) + `town_halls` (phase-3 substrate, post-convergence). See `docs/TOWNHALL.md` and `docs/CONVERGENCE.md`.*
 

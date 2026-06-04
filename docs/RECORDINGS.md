@@ -1,13 +1,15 @@
 # Sentimetrx — Recordings Spec
 
+> **Promotion update (2026-06-04) — Recordings is now the top-level "Town Hall" product.** User-facing label is **Town Hall** (internal slug/tables/feature-key stay `recordings`, per the bots=Agents convention). It is **no longer a sub-feature of Analyze** — `recordings` was removed from `ANALYZE_CHILDREN` (`lib/resolveOrg.ts`), gates on `features.recordings` alone, and has its own top-level nav item (`TopNav`, peer of PulseIQ). Routes consolidated under `/recordings/*`: landing `/recordings`, wizard `/recordings/new`, status `/recordings/[id]/status`, **report `/recordings/[id]/report` (re-keyed from datasetId → recording_id)**. The derived dataset remains the analytics view, reachable via an "Open in Analytics" cross-link; the old `/analyze/[datasetId]/report` is a thin back-compat redirect. The `/analyze` header button + `/analyze/new` source tile were removed. NB: this "Town Hall" is the recorded-meeting product and is **distinct from PulseIQ** (the live/digital pulse product, internal `townhall_*`).
+
 > **Implementation update (2026-06-01, pilot wiring).** Deltas from the original spec, now in code:
-> - **Feature gating:** recordings is a `ModuleFeatures` toggle (a sub-feature of Analytics), NOT the `org_features`/`user_features` quota system described in § 2.5. `effectiveFeatures` forces it (and googleReviews/reddit/substack) off when `analyze` is off. The § 2.5 / § 4.9 `org_features` substrate is built but currently unused.
+> - **Feature gating:** recordings is a `ModuleFeatures` toggle, NOT the `org_features`/`user_features` quota system described in § 2.5. (As of 2026-06-04 it is a **top-level** feature, no longer forced off when `analyze` is off — see the promotion note above.) The § 2.5 / § 4.9 `org_features` substrate is built but currently unused.
 > - **Extract (§ 3.3):** ffmpeg runs in the Vercel Sandbox via a downloaded **static binary** (+ `xz` to unpack), not `dnf` — the base image lacks ffmpeg and it isn't in the default repos. Bake a snapshot (`FFMPEG_SANDBOX_SNAPSHOT_ID`) in production to skip the per-cold-boot download.
 > - **Analyze (§ 3.5):** extraction is **topic-agnostic** (pull every audience Q&A with a free-form label); the Sonnet curator pass **clusters them into emergent topics**. The agenda is an optional naming hint, no longer a recall anchor or fixed taxonomy. Claude calls pass a long `timeoutMs` (callAI defaults to 15s).
 > - **Delete:** `DELETE /api/recordings/[id]` hard-deletes storage objects + derived dataset/rows + the recording (cascades files/transcripts/extractions). Owner / org-admin / platform-admin only.
-> - **List UX:** `/recordings` renders cards with per-card delete, reachable via a 🎙️ Recordings button in the Analyze header. The report Q&A tab exposes a clear "Re-extract all" action.
+> - **List UX:** `/recordings` is the top-level Town Hall home — cards with per-card delete + a materials-guidance panel, reachable from the Town Hall nav item. The report Q&A tab exposes a clear "Re-extract all" action.
 
-**Module:** `/app/analyze/new/recording/`, `/app/analyze/[datasetId]/report/`, `/app/api/recordings/*`, `/app/recordings/`, `lib/recordings/*`, `lib/asr/*`, `lib/featureFlags.ts`
+**Module:** `/app/recordings/new/`, `/app/recordings/[id]/report/`, `/app/api/recordings/*`, `/app/recordings/`, `lib/recordings/*`, `lib/asr/*`, `lib/featureFlags.ts`
 **Storage:** Supabase Storage bucket `recordings` (chunked direct upload from browser, signed URLs for ASR vendors). Source audio + transcripts retained permanently by default; per-org retention policy configurable.
 **External APIs:**
 - **OpenAI Whisper** (`POST /v1/audio/transcriptions`, model `whisper-1`) — transcription, multilingual-strong, no diarization
@@ -40,7 +42,7 @@ The Recordings module lets an analyst drop one or more audio/video files of a me
 
 **Output:**
 1. A standard `datasets` row (`source='recording'`) — the extracted Q&A pairs (or future-type structured units) become rows in `dataset_rows_flat` and are queryable via the existing `/analyze` surfaces (themes, entities, search, stats, TextMine).
-2. A type-specific HTML report at `/analyze/[datasetId]/report` — exportable to PDF (Playwright print) and XLSX (structured pairs).
+2. A type-specific HTML report at `/recordings/[id]/report` — exportable to PDF (Playwright print) and XLSX (structured pairs).
 3. Optional: addable to a `collections` row for cross-channel rollups (in-person + agent + survey themes for the same engagement).
 
 ---
@@ -510,10 +512,10 @@ For each `recording_extractions` row, insert a corresponding `dataset_rows_flat`
 
 ### 3.8 Render
 
-- HTML report at `app/analyze/[datasetId]/report/page.tsx` — server-rendered from the `recordings` + `recording_transcripts` + `recording_extractions` rows. Auth-gated (`requireOrgAccess`).
+- HTML report at `app/recordings/[id]/report/page.tsx` — server-rendered from the `recordings` + `recording_transcripts` + `recording_extractions` rows. Auth-gated (`requireOrgAccess`).
 - **PowerPoint export (built 2026-06):** `POST /api/recordings/[id]/export/pptx` (§4.13) → Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts`. Wired to the report's **Export** tab.
-- PDF export: `POST /api/analyze/[datasetId]/report/pdf` — Playwright headless prints the HTML page. Stored in Supabase Storage at `<org_id>/<recording_id>/report.pdf` and returned as signed URL.
-- XLSX export: `POST /api/analyze/[datasetId]/report/xlsx` — server-side XLSX generation from `recording_extractions` payloads. Columns per `unit_type` per § 2.6 mapping plus.
+- PDF export: `POST /api/recordings/[id]/report/pdf` — Playwright headless prints the HTML page. Stored in Supabase Storage at `<org_id>/<recording_id>/report.pdf` and returned as signed URL.
+- XLSX export: `POST /api/recordings/[id]/report/xlsx` — server-side XLSX generation from `recording_extractions` payloads. Columns per `unit_type` per § 2.6 mapping plus.
 
 ### 3.9 Notify
 
@@ -624,7 +626,7 @@ Deliberately omits `recording_transcripts.segments` and `recording_extractions.p
 
 Also: fix existing `DELETE /api/collections/[id]?member=X` to re-run schema rebuild after a member is removed (and remaining > 0).
 
-### 4.5 `POST /api/analyze/[datasetId]/report/pdf` and `/xlsx` — exports
+### 4.5 `POST /api/recordings/[id]/report/pdf` and `/xlsx` — exports
 
 See § 3.8.
 
@@ -632,7 +634,7 @@ See § 3.8.
 
 **No auth.** Validates `share_enabled=true` AND (`share_expires_at` IS NULL OR `share_expires_at > now()`). If `share_password_hash` is set, requires a `?p=<password>` query param (compared via bcrypt) or returns a password-entry form.
 
-Renders the same HTML report as `/analyze/[datasetId]/report` but with:
+Renders the same HTML report as `/recordings/[id]/report` but with:
 - Sentimetrx branding header + "Powered by Sentimetrx" footer
 - No "Edit" / admin controls
 - `<meta name="robots" content="noindex, nofollow">` so search engines don't index principals' meeting Q&A
@@ -752,9 +754,9 @@ Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the rec
 
 ### 5.1 Dataset wizard — `/analyze/new`
 
-Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit / etc. Selecting it routes to `/analyze/new/recording`.
+Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit / etc. Selecting it routes to `/recordings/new`.
 
-### 5.2 Recording creation wizard — `/analyze/new/recording`
+### 5.2 Recording creation wizard — `/recordings/new`
 
 **Meeting-tool additions (2026-06):** the Setup pane has a **Meeting type** selector (`town_hall_qa` | `community_meeting`, from `lib/recordings/profiles.ts`). Choosing **Community meeting** reveals a **Presentation slides (PDF)** upload in the Files pane — it rides the same TUS flow tagged `file_role='slides'` (rendered separately from the audio/video list) and is read by AI vision to seed the meeting notes. The POST sends `meeting_profile` (with `has_slides` reflecting whether a deck was attached); `town_hall_qa` sends `meeting_profile: null` = legacy behavior. Slides are optional even for a community meeting (phase detection still runs from the transcript).
 
@@ -792,13 +794,13 @@ Upload runs in background; user fills setup in parallel. Process button disabled
 2. `tus-js-client` uploads every file in parallel against the Supabase Storage TUS endpoint, authenticating with the user's session JWT in the `Authorization` header. 6MB chunks; auto-retry on transient failure.
 3. On each TUS `onSuccess`, the wizard calls `POST /api/recordings/[id]/files/[fileId]/uploaded` (§ 4.1a). The server verifies the object exists before flipping `upload_status` to `'uploaded'`.
 4. Once `Promise.all` over the per-file uploads resolves, `POST /api/recordings/[id]/process` (§ 4.2) starts the Workflow DevKit run.
-5. `router.push('/analyze/new/recording/[id]/status')` hands off to the status surface (§ 5.3).
+5. `router.push('/recordings/[id]/status')` hands off to the status surface (§ 5.3).
 
 **v1 scope:** session_type is locked to `qa` in the UI (the field is rendered but disabled) because `analyzeRecording` throws for other types today. The other types are kept in the schema so adding them later is a UI-only change.
 
 **Mixed audio + video drops:** the wizard accepts both `video/*` and `audio/*` in the file picker. The drop-zone caption explicitly tells the user "Audio or video — drop a mix and we'll stitch them in order" because the extract path always re-encodes everything to canonical 16kHz mono 32kbps mp3 before the concat-demuxer stitch. Mixed drops are first-class; the analyst can stage GoPro clips alongside a phone backup recording without any pre-processing.
 
-### 5.3 Status surface — `/analyze/new/recording/[id]/status`
+### 5.3 Status surface — `/recordings/[id]/status`
 
 Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll.
 
@@ -820,7 +822,7 @@ Server page hands an initial recording snapshot to `StatusClient.tsx`, which pol
 
 Closes-tab-friendly: user can come back to this URL anytime; on revisit the page server-renders the current name + status, then the client picks up polling from there.
 
-### 5.4 Report — `/analyze/[datasetId]/report`
+### 5.4 Report — `/recordings/[id]/report`
 
 **Records of truth** (added 2026-05-30 from user review of the PM-1 pilot output):
 - **The stitched audio is the legal record** of the meeting. Always retrievable; never delete on default-retention orgs.
@@ -849,7 +851,7 @@ Closes-tab-friendly: user can come back to this URL anytime; on revisit the page
 
 Export → PDF prints the chosen tabs via Playwright. XLSX exports the structured extractions only. The Share panel calls `POST /api/recordings/[id]/share`.
 
-**Phase 2 shipped state (2026-05-31):** route at `app/analyze/[datasetId]/report/{page,ReportClient}.tsx`. Server resolves dataset → recording (reverse lookup via `recordings.dataset_id`), redirects non-recording datasets back to `/analyze/[id]`. Tabs 1–4 are live; tab 5 (Export & Share) is a stub listing what's coming. Flagged cards render with a yellow background + their `flag_reason`. Topic ordering follows the agenda from `setup_inputs.agenda`; non-agenda topics ("Other", anything the model invented despite the prompt) trail at the end of the tab.
+**Phase 2 shipped state (2026-05-31):** route at `app/recordings/[id]/report/{page,ReportClient}.tsx`. Server resolves dataset → recording (reverse lookup via `recordings.dataset_id`), redirects non-recording datasets back to `/analyze/[id]`. Tabs 1–4 are live; tab 5 (Export & Share) is a stub listing what's coming. Flagged cards render with a yellow background + their `flag_reason`. Topic ordering follows the agenda from `setup_inputs.agenda`; non-agenda topics ("Other", anything the model invented despite the prompt) trail at the end of the tab.
 
 Affordance wiring state:
 - **↻ Regenerate (per-card, § 4.10):** wired (2026-05-31). Click opens an inline composer with a "What should change? (optional)" textarea (≤2000 chars), Regenerate / Cancel, and a "~$0.01 · Sonnet" cost hint. POST to `/api/recordings/[id]/extractions/[extractionId]/regenerate`; success swaps the card in place via React state (no page reload). Used to fix individual mismatches during PM-1 calibration.
@@ -868,10 +870,10 @@ Server-rendered table at `app/recordings/page.tsx`. Scoping uses `getUserContext
 Columns: Name, Type (Q&A / Focus group / …), Date (meeting_date), Status (pill), Cost (USD, `—` when zero), Owner (full_name fallback email), and Org when scope is cross-org.
 
 Row click routes to:
-- `/analyze/[datasetId]/report` when `status='complete' && dataset_id != null` (jump straight to the report)
-- `/analyze/new/recording/[id]/status` otherwise (still processing, failed, or cancelled — land on the status surface where the retry button lives)
+- `/recordings/[id]/report` when `status='complete' && dataset_id != null` (jump straight to the report)
+- `/recordings/[id]/status` otherwise (still processing, failed, or cancelled — land on the status surface where the retry button lives)
 
-Empty state shows the mic glyph + a one-line nudge toward the wizard. `+ New recording` button in the header routes to `/analyze/new/recording`. Status filter / pagination — out of scope for v1; the page caps at the 200 most recent rows, which covers the foreseeable pilot scale. Add ?status= + ?limit when a real customer hits the ceiling.
+Empty state shows the mic glyph + a one-line nudge toward the wizard. `+ New recording` button in the header routes to `/recordings/new`. Status filter / pagination — out of scope for v1; the page caps at the 200 most recent rows, which covers the foreseeable pilot scale. Add ?status= + ?limit when a real customer hits the ceiling.
 
 ### 5.6 Admin-org monitor — `/admin/downloads` adds a Recordings section
 
@@ -900,7 +902,7 @@ Add ~$0.02 for ffmpeg + Resend + Storage per meeting. Negligible.
 
 | Surface | Audience | Path |
 |---|---|---|
-| Per-recording status | Owner + org admins | `/analyze/new/recording/[id]/status` |
+| Per-recording status | Owner + org admins | `/recordings/[id]/status` |
 | Org recording list | Org admins | `/recordings` |
 | All-org admin monitor | Admin-org only | `/admin/downloads` (new Recordings section) |
 | Per-org usage / cost | Org admins | `/admin/usage` (existing — `recording` feature appears as a new line) |
@@ -1050,9 +1052,9 @@ Defined in `vercel.json` / `vercel.ts`.
 ### Phase 2 — UX (2026-06-07 → 2026-06-10)
 
 12. `/analyze/new` wizard adds Recording tile.
-13. `/analyze/new/recording` wizard with chunked upload + parallel setup form.
-14. `/analyze/new/recording/[id]/status` status surface.
-15. `/analyze/[datasetId]/report` HTML + PDF + XLSX exports.
+13. `/recordings/new` wizard with chunked upload + parallel setup form.
+14. `/recordings/[id]/status` status surface.
+15. `/recordings/[id]/report` HTML + PDF + XLSX exports.
 16. `/recordings` org-admin list.
 17. `/admin/downloads` new Recordings section.
 

@@ -1,10 +1,10 @@
 'use client'
 
-// app/analyze/new/recording/[id]/status/StatusClient.tsx
+// app/recordings/[id]/status/StatusClient.tsx
 //
 // Polls GET /api/recordings/[id] (§ 4.3) and renders the pipeline ladder.
 // Poll cadence: 3s while active, paused (no more requests) once terminal.
-// Routes to the report (/analyze/[dataset_id]/report) when status=complete
+// Routes to the report (/recordings/[id]/report) when status=complete
 // + dataset_id is set. Renders error_message + a Retry button on failed.
 
 import { useEffect, useState, useCallback } from 'react'
@@ -154,20 +154,21 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
     }
   }
 
-  // Auto-route to report when complete + dataset wired up.
+  // Auto-route to the report when complete. The report is keyed by recording_id
+  // (not dataset_id) now that Town Hall is its own product.
   useEffect(() => {
-    if (status === 'complete' && data?.recording.dataset_id) {
+    if (status === 'complete') {
       const t = setTimeout(() => {
-        router.push(`/analyze/${data.recording.dataset_id}/report`)
+        router.push(`/recordings/${recordingId}/report`)
       }, 1200)
       return () => clearTimeout(t)
     }
-  }, [status, data?.recording.dataset_id, router])
+  }, [status, recordingId, router])
 
   return (
     <div className="space-y-6">
       <header>
-        <Link href="/analyze" className="text-xs text-gray-500 hover:text-gray-700">← Recordings</Link>
+        <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-2">{name}</h1>
         <p className="text-sm text-gray-500 mt-1">Recording {recordingId.slice(0, 8)}…</p>
       </header>
@@ -207,7 +208,7 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         </div>
       )}
 
-      {status === 'complete' && data?.recording.dataset_id && (
+      {status === 'complete' && data && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
           <div>
             <div className="font-semibold text-green-900">Complete — opening report…</div>
@@ -217,7 +218,7 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
             </div>
           </div>
           <Link
-            href={`/analyze/${data.recording.dataset_id}/report`}
+            href={`/recordings/${recordingId}/report`}
             className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded hover:bg-green-700"
           >
             Open report

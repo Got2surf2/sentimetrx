@@ -7,8 +7,10 @@ const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
 
 // Features only reachable *through* the Analyze module. When analyze is off,
 // these are forced off too — single source of truth for the dependency.
+// NOTE: `recordings` was promoted out of here (2026-06) — it's the standalone
+// top-level "Town Hall" product now, independent of Analyze.
 const ANALYZE_CHILDREN: (keyof ModuleFeatures)[] = [
-  'googleReviews', 'reddit', 'substack', 'recordings',
+  'googleReviews', 'reddit', 'substack',
 ]
 
 export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: string; name?: string; features?: any } | null {

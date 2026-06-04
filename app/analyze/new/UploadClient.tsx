@@ -179,7 +179,7 @@ function splitChunks(rows: Record<string, unknown>[]): Record<string, unknown>[]
   return chunks
 }
 
-export default function UploadClient({ recordingsEnabled = false }: { recordingsEnabled?: boolean }) {
+export default function UploadClient() {
   const router = useRouter()
   const [sourceMode,  setSourceMode]  = useState<SourceMode>('select')
   const [step,        setStep]        = useState<Step>(1)
@@ -381,14 +381,6 @@ export default function UploadClient({ recordingsEnabled = false }: { recordings
               <h3 className="font-bold text-gray-800 mb-1 group-hover:text-blue-700">Download Regulations.gov Comments</h3>
               <p className="text-xs text-gray-400">Search federal dockets, download public comments on proposed rules</p>
             </button>
-            {recordingsEnabled && (
-              <button onClick={function() { router.push('/analyze/new/recording') }}
-                className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-orange-400 hover:bg-orange-50 transition-all group">
-                <div className="text-3xl mb-3">🎙️</div>
-                <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Recording</h3>
-                <p className="text-xs text-gray-400">Upload audio or video of a meeting; transcribe and extract structured Q&amp;A</p>
-              </button>
-            )}
           </div>
         </div>
       )}

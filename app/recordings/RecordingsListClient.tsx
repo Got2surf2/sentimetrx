@@ -73,9 +73,9 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
   if (rows.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center">
-        <div className="text-4xl mb-3">🎙️</div>
-        <p className="text-sm text-gray-600">No recordings yet.</p>
-        <p className="text-xs text-gray-400 mt-1">Drop a meeting file in the wizard to get started.</p>
+        <div className="text-4xl mb-3">🏛️</div>
+        <p className="text-sm text-gray-600">No Town Halls yet.</p>
+        <p className="text-xs text-gray-400 mt-1">Start a new Town Hall and upload your meeting recording to get started.</p>
       </div>
     )
   }
@@ -84,9 +84,9 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {rows.map(r => {
-          const href = r.status === 'complete' && r.dataset_id
-            ? `/analyze/${r.dataset_id}/report`
-            : `/analyze/new/recording/${r.id}/status`
+          const href = r.status === 'complete'
+            ? `/recordings/${r.id}/report`
+            : `/recordings/${r.id}/status`
           const st = STATUS_STYLE[r.status] || { bg: '#f3f4f6', fg: '#6b7280', label: r.status }
           return (
             <div key={r.id} className="relative bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-md hover:border-orange-200 transition-all">

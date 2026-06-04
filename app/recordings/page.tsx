@@ -1,9 +1,10 @@
 // app/recordings/page.tsx
 //
-// Org-admin recordings list (§ 5.5). Single per-org list rendered server-side.
-// Scoping mirrors § 4.8: isAdminOrg → all orgs, isAdmin (org admin) → own org,
-// regular user → only created_by=self. Click into any row routes to the
-// status surface (for in-progress / failed) or the report (for complete).
+// Town Hall home (§ 5.5) — the top-level product landing. Lists past Town Halls
+// (per-org, server-side; scoping mirrors § 4.8: isAdminOrg → all orgs, isAdmin →
+// own org, regular user → created_by=self), a prominent "New Town Hall" CTA, and
+// a materials-guidance panel. Click a row → status (in-progress/failed) or
+// report (complete). Internal slug stays `recordings`; UI label is "Town Hall".
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -35,8 +36,7 @@ export default async function RecordingsListPage() {
   const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
-  if (!ctx.features.analyze) redirect('/dashboard')
-  if (!ctx.features.recordings) redirect('/analyze')
+  if (!ctx.features.recordings) redirect('/dashboard')
 
   const service = createServiceRoleClient()
 
@@ -97,25 +97,24 @@ export default async function RecordingsListPage() {
         userEmail={ctx.navProps.userEmail}
         fullName={ctx.navProps.fullName || ''}
         features={ctx.navProps.features}
-        analyzeEnabled={true}
         campaignsEnabled={!!ctx.features.campaigns}
-        currentPage="analyze"
+        currentPage="recordings"
       />
       <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
         <header className="flex items-baseline justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Recordings</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Town Hall</h1>
             <p className="text-sm text-gray-500 mt-1">
-              {rows.length === 1 ? '1 recording' : `${rows.length} recordings`}
+              {rows.length === 1 ? '1 Town Hall' : `${rows.length} Town Halls`}
               {ctx.isAdminOrg ? ' across all orgs' : ctx.isAdmin ? ' in your org' : ' you own'}
             </p>
           </div>
           <Link
-            href="/analyze/new/recording"
+            href="/recordings/new"
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
             style={{ backgroundColor: '#E8632A' }}
           >
-            + New recording
+            + New Town Hall
           </Link>
         </header>
 
@@ -124,6 +123,18 @@ export default async function RecordingsListPage() {
             {error.message}
           </div>
         )}
+
+        {/* Materials guidance — what to bring for a great Town Hall report. */}
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+          <p className="text-sm font-semibold text-gray-900 mb-1">Record a meeting → get a board-ready report</p>
+          <p className="text-sm text-gray-600 mb-2">For the richest report, bring as much as you have:</p>
+          <ul className="text-sm text-gray-700 grid sm:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li><strong>Room recording</strong> — audio or video of the meeting (required)</li>
+            <li><strong>Presentation slides</strong> — the deck shown, as a PDF (grounds the meeting notes)</li>
+            <li><strong>Agenda</strong> — the topics covered</li>
+            <li><strong>Panel / speaker roster</strong> — who presented and who answered questions</li>
+          </ul>
+        </div>
 
         <RecordingsListClient rows={rows} showOrg={ctx.isAdminOrg} />
       </main>

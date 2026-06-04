@@ -1,6 +1,6 @@
 'use client'
 
-// app/analyze/new/recording/RecordingWizardClient.tsx
+// app/recordings/new/RecordingWizardClient.tsx
 //
 // Three-pane wizard (§ 5.2): file drop + per-file progress on the left,
 // setup form on the right, Process button at the bottom.
@@ -244,7 +244,7 @@ export default function RecordingWizardClient() {
     }
 
     setPhase('done')
-    router.push(`/analyze/new/recording/${createRes.recording_id}/status`)
+    router.push(`/recordings/${createRes.recording_id}/status`)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -252,9 +252,9 @@ export default function RecordingWizardClient() {
     <div className="space-y-6">
       <header className="flex items-baseline justify-between">
         <div>
-          <Link href="/analyze/new" className="text-xs text-gray-500 hover:text-gray-700">← Source selector</Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-2">New recording</h1>
-          <p className="text-sm text-gray-500 mt-1">Drop audio or video files of the meeting; we'll transcribe and pull structured Q&amp;A.</p>
+          <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
+          <h1 className="text-2xl font-bold text-gray-900 mt-2">New Town Hall</h1>
+          <p className="text-sm text-gray-500 mt-1">Drop audio or video of the meeting (and the presenter's slides); we'll transcribe and pull the presentation summary + structured Q&amp;A.</p>
         </div>
       </header>
 

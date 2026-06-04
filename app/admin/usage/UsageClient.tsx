@@ -8,7 +8,7 @@ import Link from 'next/link'
 
 var HERMES = '#E8632A'
 var TYPE_COLORS: Record<string, string> = { bot: '#0891B2', townhall: '#7C3AED', social: '#E85A1A', dataset: '#059669', study: '#D97706', system: '#6b7280' }
-var TYPE_LABELS: Record<string, string> = { bot: 'Agents', townhall: 'PulseIQ', social: 'Social', dataset: 'TextMine', study: 'Studies', recording: 'Recordings', system: 'System' }
+var TYPE_LABELS: Record<string, string> = { bot: 'Agents', townhall: 'PulseIQ', social: 'Social', dataset: 'TextMine', study: 'Studies', recording: 'Town Hall', system: 'System' }
 
 interface Totals { calls: number; input_tokens: number; output_tokens: number; cost: number }
 interface TypeStat { calls: number; input: number; output: number; cache_read: number; cost: number }

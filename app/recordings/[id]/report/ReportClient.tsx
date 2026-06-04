@@ -1,6 +1,6 @@
 'use client'
 
-// app/analyze/[datasetId]/report/ReportClient.tsx
+// app/recordings/[id]/report/ReportClient.tsx
 //
 // Recording report tabs (§ 5.4). Server fetches the full data tree once; this
 // component owns the tab navigation, card expand/collapse, and transcript
@@ -40,6 +40,7 @@ export interface ReportData {
   transcript: RecordingTranscriptRow | null
   extractions: RecordingExtractionRow[]
   isOwner: boolean
+  analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
 type Tab = 'qa' | 'appendix' | 'coverage' | 'transcript' | 'export'
@@ -94,7 +95,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      <ReportHeader recording={data.recording} extractionCount={extractions.length} />
+      <ReportHeader recording={data.recording} extractionCount={extractions.length} analyticsDatasetId={data.analyticsDatasetId} />
 
       <TabBar
         tab={tab}
@@ -128,11 +129,11 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
-function ReportHeader({ recording, extractionCount }: { recording: RecordingRow; extractionCount: number }) {
+function ReportHeader({ recording, extractionCount, analyticsDatasetId }: { recording: RecordingRow; extractionCount: number; analyticsDatasetId: string | null }) {
   return (
     <header className="flex items-baseline justify-between">
       <div>
-        <Link href="/analyze" className="text-xs text-gray-500 hover:text-gray-700">← Recordings</Link>
+        <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-2">{recording.name}</h1>
         <p className="text-sm text-gray-500 mt-1">
           {recording.meeting_date ?? 'No date'}
@@ -143,7 +144,14 @@ function ReportHeader({ recording, extractionCount }: { recording: RecordingRow;
           {recording.asr_vendor_chosen ? ` · transcribed by ${recording.asr_vendor_chosen}` : ''}
         </p>
       </div>
-      <StatusBadge status={recording.status} />
+      <div className="flex items-center gap-3">
+        {analyticsDatasetId && (
+          <Link href={`/analyze/${analyticsDatasetId}`} className="text-xs text-gray-500 hover:text-orange-600 underline">
+            Open in Analytics ↗
+          </Link>
+        )}
+        <StatusBadge status={recording.status} />
+      </div>
     </header>
   )
 }

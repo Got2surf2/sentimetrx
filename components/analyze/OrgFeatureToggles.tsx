@@ -11,7 +11,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews downloader — import reviews from any business',
   reddit:        'Reddit downloader — pull threads and comments for analysis',
   substack:      'Substack analyzer — download reader comments from publications',
-  recordings:    'Meeting recordings — upload audio/video, transcribe and extract structured Q&A',
+  recordings:    'Town Hall — record an in-person meeting (audio/video + slides), get a Q&A + presentation report',
   townhall:      'PulseIQ — intelligent signal extraction from continuous conversation streams',
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
   bots:          'Agents — create branded AI agents trained on custom content',
@@ -90,7 +90,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
 
   // Sub-features reachable only through Analytics. When analyze is off they
   // render disabled + forced-off (mirrors effectiveFeatures in lib/resolveOrg).
-  const ANALYZE_CHILDREN = new Set<keyof ModuleFeatures>(['googleReviews', 'reddit', 'substack', 'recordings'])
+  const ANALYZE_CHILDREN = new Set<keyof ModuleFeatures>(['googleReviews', 'reddit', 'substack'])
   const analyzeOn = !!features.analyze
 
   return (

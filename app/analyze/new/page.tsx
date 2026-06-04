@@ -25,10 +25,6 @@ export default async function NewDatasetPage() {
   const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
   if (!features.analyze) redirect('/dashboard')
 
-  // Recordings is a sub-feature of Analytics; effectiveFeatures already forces
-  // it off when analyze is off. Only surface the Recording tile when enabled.
-  const recordingsEnabled = !!features.recordings
-
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav
@@ -43,7 +39,7 @@ export default async function NewDatasetPage() {
         currentPage="analyze"
       />
       <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
-        <UploadClient recordingsEnabled={recordingsEnabled} />
+        <UploadClient />
       </main>
     </div>
   )

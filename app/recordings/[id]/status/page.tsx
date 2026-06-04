@@ -1,6 +1,6 @@
-// app/analyze/new/recording/[id]/status/page.tsx
-// Status surface (§ 5.3). Server-renders the auth/nav shell + the initial
-// recording snapshot; client polls /api/recordings/[id] for live updates.
+// app/recordings/[id]/status/page.tsx
+// Town Hall status surface (§ 5.3). Server-renders the auth/nav shell + the
+// initial recording snapshot; client polls /api/recordings/[id] for live updates.
 
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -15,8 +15,7 @@ export default async function RecordingStatusPage(props: { params: Promise<{ id:
   const supabase = await createClient()
   const ctx = await getUserContext(supabase)
   if (!ctx) redirect('/login')
-  if (!ctx.features.analyze) redirect('/dashboard')
-  if (!ctx.features.recordings) redirect('/analyze')
+  if (!ctx.features.recordings) redirect('/dashboard')
 
   // Verify the recording exists and the user can see it (RLS does this via the
   // anon client — service-role would bypass).
@@ -36,9 +35,8 @@ export default async function RecordingStatusPage(props: { params: Promise<{ id:
         userEmail={ctx.navProps.userEmail}
         fullName={ctx.navProps.fullName || ''}
         features={ctx.navProps.features}
-        analyzeEnabled={true}
         campaignsEnabled={!!ctx.features.campaigns}
-        currentPage="analyze"
+        currentPage="recordings"
       />
       <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
         <StatusClient

@@ -24,7 +24,7 @@ This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-depl
 
 ## Where things live
 
-- `app/` — Next.js routes (UI + API). Public widgets: `/s/[guid]` (surveys), `/b/[guid]` (agents), `/th/[guid]` (PulseIQ). Admin under `/admin/*`.
+- `app/` — Next.js routes (UI + API). Public widgets: `/s/[guid]` (surveys), `/b/[guid]` (agents), `/pi/[guid]` (PulseIQ; `/th` is reserved for the Town Hall product). Admin under `/admin/*`.
 - `lib/` — shared logic. Auth helpers in `lib/auth/`, org resolution in `lib/resolveOrg.ts`, rate limiting in `lib/rateLimit.ts`, AI guardrails in `lib/guardrails.ts`, AI client in `lib/ai.ts`.
 - `components/ui/LottieLoader.tsx` — the only loader. Don't write CSS spinners.
 - `sql/` — numbered migrations. Apply to prod with `supabase db query --linked --file sql/NNN_name.sql` (CLI is already linked).
@@ -36,10 +36,11 @@ This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-depl
 
 - **Sentimetrx** (lowercase x, not SentimetRx) — the product/app brand
 - **agents** (not "bots")
-- **PulseIQ** (not "Town Hall")
+- **PulseIQ** — the live/digital pulse product (internal `townhall_*`, `/townhall`, `/pi/[guid]`). Do NOT call PulseIQ "Town Hall."
+- **Town Hall** — the recorded-in-person-meeting product (internal `recordings`, `/recordings/*`), promoted to top-level 2026-06-04. Distinct from PulseIQ. Internal slug stays `recordings`; the `/th` public prefix is reserved for it.
 - **Exported decks/reports carry the Datanautix company brand, NOT Sentimetrx.** Datanautix is the company/consulting brand that delivers the decks; Sentimetrx is the SaaS product. So the wordmark = "datanautix" (ONE word, NO separator — "data" in Sarina teal, "nautix" in Ana orange; never "data·nautix" or "data nautix"), footers = `datanautix.com`, file metadata author/company = Datanautix. This is a deliberate exception to the Sentimetrx-everywhere rule, scoped to deck/report exports only (`lib/pptx/*`, `export/pptx`, the Agent Study report/PDF). Do not "fix" Datanautix→Sentimetrx in deck code.
 
-Internal table/code names (`bots`, `townhall_*`) stay as-is. Refer to pages by their UI nav label, not the URL slug — e.g. `/analyze/[id]/settings` is the **Schema** tab.
+Internal table/code names (`bots`, `townhall_*`, `recordings`) stay as-is. Refer to pages by their UI nav label, not the URL slug — e.g. `/analyze/[id]/settings` is the **Schema** tab, and `/recordings/*` is the **Town Hall** product.
 
 ## Multi-tenancy invariants
 

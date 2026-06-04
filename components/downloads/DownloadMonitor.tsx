@@ -189,7 +189,7 @@ export default function DownloadMonitor({
     { key: 'substack',    label: 'Substack',        count: substackDatasets.length },
     { key: 'regulations', label: 'Regulations.gov', count: regDatasets.length },
     { key: 'uploads',     label: 'Uploads',         count: uploadDatasets.length },
-    { key: 'recordings',  label: 'Recordings',      count: recordings.length },
+    { key: 'recordings',  label: 'Town Hall',       count: recordings.length },
   ]
 
   return (
@@ -440,7 +440,7 @@ export default function DownloadMonitor({
               {recordings.map((r: any) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>
-                    <a href={r.status === 'complete' && r.dataset_id ? `/analyze/${r.dataset_id}/report` : `/analyze/new/recording/${r.id}/status`}
+                    <a href={r.status === 'complete' ? `/recordings/${r.id}/report` : `/recordings/${r.id}/status`}
                        style={{ color: '#111827', textDecoration: 'none' }}>
                       {r.name}
                     </a>

@@ -14,8 +14,8 @@ export interface ModuleFeatures {
   googleReviews?: boolean   // Google Reviews downloader
   reddit?:        boolean   // Reddit downloader
   substack?:      boolean   // Substack downloader
-  recordings?:    boolean   // Meeting recordings (audio/video → Q&A). Sub-feature of analyze.
-  townhall?:      boolean   // Town Hall live discussions
+  recordings?:    boolean   // Town Hall — recorded meetings (audio/video → Q&A + presentation). Top-level product (internal key stays 'recordings').
+  townhall?:      boolean   // PulseIQ — live/digital pulse sessions (internal key stays 'townhall')
   campaigns?:     boolean   // Email campaigns
   bots?:          boolean   // Branded chatbots
   social?:        boolean   // Social monitoring (Facebook/Instagram)
@@ -27,7 +27,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews',
   reddit:        'Reddit',
   substack:      'Substack',
-  recordings:    'Recordings',
+  recordings:    'Town Hall',
   townhall:      'PulseIQ',
   campaigns:     'Campaigns',
   bots:          'Agents',

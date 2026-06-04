@@ -13,8 +13,8 @@ interface Props {
   crumbs?:         any
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
-  features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'favorites' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks' | 'downloads'
+  features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; recordings?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'recordings' | 'bots' | 'social' | 'favorites' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks' | 'downloads'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -46,6 +46,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     surveys:   (features?.surveys   !== undefined ? features.surveys   : true)                              || !!isAdmin,
     analyze:   (features?.analyze   !== undefined ? features.analyze   : (analyzeEnabled   ?? true))        || !!isAdmin,
     townhall:  (features?.townhall  !== undefined ? features.townhall  : true)                              || !!isAdmin,
+    recordings:(features?.recordings!== undefined ? features.recordings: true)                              || !!isAdmin,
     campaigns: (features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? true))        || !!isAdmin,
     bots:      (features?.bots      !== undefined ? features.bots      : true)                              || !!isAdmin,
     social:    (features?.social    !== undefined ? features.social    : true)                              || !!isAdmin,
@@ -91,6 +92,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
     { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '✉',       show: f.campaigns }, // ✉
     { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '👥', show: f.townhall },  // 👥 — gathering of people (live cohort discussion)
+    { page: 'recordings',href: '/recordings',label: 'Town Hall', icon: '🏛️', show: f.recordings }, // 🏛️ — recorded in-person meeting
     { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '💬', show: f.bots },     // 💬 — conversational AI
     { page: 'social',    href: '/social',    label: 'Social',    icon: '📱', show: f.social },   // 📱
   ]

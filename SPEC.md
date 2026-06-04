@@ -32,7 +32,7 @@ Browser ─── Next.js (Vercel Fluid) ─── Supabase (PostgreSQL + Auth +
 
 ### Data Flow
 - **Surveys**: Public widget (`/s/[guid]`) → `/api/respond` → `responses` table → analytics
-- **PulseIQ**: Participant link (`/th/[sessionId]`) → `/api/townhall/chat` → `townhall_turns` → live theme detection (auto/manual)
+- **PulseIQ**: Participant link (`/pi/[sessionId]`) → `/api/townhall/chat` → `townhall_turns` → live theme detection (auto/manual)
 - **Agents** (internal: `bots`): Embeddable widget (`/b/[slug]`) → `/api/bots/[id]/chat` → `bot_conversation_turns` → conversation review cron
 - **Datasets**: CSV / Google + Tripadvisor reviews / Reddit threads / Substack comments / Regulations.gov comments / Social media exports → `dataset_rows_flat` → analytics compute → Charts/TextMine/Stats/Entities/Search
 - **Campaigns**: Template + recipient list → Resend / SendGrid / SES / SMTP / Twilio SMS → webhook tracking → respondent status
@@ -299,7 +299,7 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 
 ### 5. PulseIQ (internal: `townhall` legacy + `town_halls` phase-3 substrate)
 
-**Routes**: `/townhall/*` (admin), `/th/[sessionId]` (public participant), `/api/townhall/*`
+**Routes**: `/townhall/*` (admin), `/pi/[sessionId]` (public participant), `/api/townhall/*`
 
 AI-moderated live group discussions. Participants join via link/QR and chat with a named AI agent. Facilitator pre-loads a discussion guide of topics. (User-facing name is **PulseIQ**; tables and routes remain `townhall_*` internally.)
 
