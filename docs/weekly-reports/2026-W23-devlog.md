@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall polish pass: vendor-grade Q&A (synthesis + road numbers)
+
+**Why**: Owner shared the competitor's NOWOCATS "Q&A Forum" PDF as the bar to beat, and flagged that road numbers came out as words ("forty one State Road" instead of SR 441) and inconsistently. The polish pass was a faithful cleanup of both Q and A; it needed to match the vendor's *synthesized* question style + correct domain terminology.
+
+**What changed** (`lib/recordings/prompts/qa.ts`, `buildQaPolishPrompt`):
+- **Question → synthesized** into one crisp standalone question (strip preamble/cross-speaker references) that keeps the resident's specific concern in `(specifically …)` — the vendor's technique.
+- **Answer → faithful cleanup** (unchanged intent: no invented facts, keep every figure/commitment) but explicitly in complete, neutral, professional sentences.
+- **Terminology rules (both sides):** road/route designations as numerals with prefix (`SR 436` / `US 441` / `I-4`), converting spoken number-words in road context ("four thirty six State Road" → State Road 436); agency/program acronyms expanded on first use (FDOT, ITS).
+
+Verified on real Meeting 2 verbatim pairs via a throwaway harness (read-only on the recording; ~$0.02): the exact failure case now polishes "four forty one State Road and four thirty six" → "**SR 441 and SR 436**"; questions gain the `(specifically …)` treatment; FDOT/US 441 render correctly. tsc clean. Prompt-only — takes effect on the next extract/polish (re-extract Meeting 2 to apply to the existing deck). Spec §3.5 pass-4 updated. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall share link: polished vs verbatim Q&A (owner setting)
 
 **Why**: Owner — the public share link should let the owner choose polished (default) vs verbatim Q&A for what recipients see; some meetings read better as the exact words. (The page already preferred polished with per-pair fallback — this adds explicit control.)

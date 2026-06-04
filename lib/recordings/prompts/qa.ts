@@ -338,11 +338,16 @@ OUTPUT FORMAT — a single JSON object, no prose, no markdown fences:
 
 // ── Polish prompt (Sonnet 4.6) — fourth pass, § 3.5 ─────────────────────────
 //
-// Faithful editorial cleanup of the verbatim transcript quotes into readable,
-// publication-ready Question/Response text for public sharing (the vendor-
-// sample format). The verbatim question/answer stay the record of truth; this
-// is ADDITIVE (payload.polished_question / polished_answer). One Sonnet call
-// over all pairs.
+// Turns the verbatim transcript quotes into readable, publication-ready
+// Question/Response text matching a professional agency "Q&A Forum" document
+// (the NOWOCATS vendor sample is the bar). Two different jobs per pair: the
+// QUESTION is synthesized into a crisp standalone question that keeps the
+// resident's specific concern in "(specifically …)"; the ANSWER is a faithful
+// cleanup (no invented facts). Both apply domain terminology rules — road
+// designations as numerals with prefix (SR 436 / US 441 / I-4, incl. spoken
+// number-words), agency/program acronyms expanded on first use. The verbatim
+// question/answer stay the record of truth; this is ADDITIVE
+// (payload.polished_question / polished_answer). One Sonnet call over all pairs.
 //
 // `glossary` (optional) = canonical entity spellings to normalize against. ASR
 // mangles proper names PHONETICALLY ("no what cats" → NOWOCATS), which classic
@@ -359,22 +364,29 @@ export function buildQaPolishPrompt(opts: {
     ? `\n\nCANONICAL SPELLINGS — when any name/place/term below appears in the text (including phonetic mis-hearings or alternate spellings from the audio transcription), use this EXACT spelling. Do not change anything else about the meaning:\n${opts.glossary.map(g => `  - ${g}`).join('\n')}`
     : ''
 
-  const system = `You are an editor preparing an official, public-shareable Q&A record from a recorded town hall / public forum. Each pair below is a VERBATIM question and answer transcribed from audio. For each, produce a CLEANED, readable version suitable for public distribution.
+  const system = `You are an editor preparing an official, public-shareable Q&A record from a recorded town hall / public forum, to the standard of a professional agency "Questions & Answers Forum" document. Each pair below is a VERBATIM question and answer transcribed from audio. Produce a clean, publication-ready version of each.
 
-RULES — CRITICAL:
-- Preserve meaning EXACTLY. Do NOT add, infer, or invent any fact, number, name, date, commitment, caveat, or opinion not present in the original. This is a faithful cleanup, NOT a rewrite or a summary.
-- Remove ONLY: filler ("um", "uh", "you know", "like", "sort of"), false starts, self-corrections, repeated words, and transcription crosstalk. Fix obvious grammar, punctuation, and run-on sentences for readability.
-- Keep ALL substance: every figure, dollar amount, date, name, commitment, qualifier, and the speaker's stance stay intact and unchanged. Do not soften or strengthen what was said.
+THE QUESTION — synthesize into a clear, well-formed question:
+- Rewrite the spoken question as ONE crisp, grammatical question a reader understands on its own. Strip preamble, rambling, and references to other speakers ("my main question is", "like the other lady said").
+- PRESERVE the specific concern: keep the exact road, intersection, neighborhood, park, or development the resident named. When the question targets a specific place or issue, append it as "(specifically <place/concern>)" at the end — e.g. "How will access and circulation be improved? (specifically Bear Island Lake access)".
+- Do NOT invent a concern, location, or detail that was not asked. If the question is already crisp, keep it.
+
+THE ANSWER — faithful cleanup, NOT a rewrite:
+- Preserve meaning EXACTLY. Do NOT add, infer, or invent any fact, number, name, date, commitment, caveat, or opinion not present in the original. Remove ONLY filler ("um", "uh", "you know", "like", "sort of"), false starts, self-corrections, repeated words, and crosstalk. Fix grammar, punctuation, and run-ons for readability.
+- Keep ALL substance: every figure, dollar amount, date, name, commitment, qualifier, and the speaker's stance stay intact and unchanged — do not soften, strengthen, or shorten by dropping content. Write in complete, neutral, professional sentences. If an answer is already clean, return it essentially unchanged.
+
+TERMINOLOGY — apply to BOTH question and answer:
+- Render road and route designations as NUMERALS with their prefix: "State Road 436" or "SR 436", "US 441", "County Road 435", "Interstate 4" or "I-4". Convert spoken number-words in a road context — "four thirty six State Road" → "State Road 436", "four twenty nine" → "SR 429". Do NOT numeralize ordinary spoken counts that are not road designations.
+- Expand an agency / program / technical acronym on FIRST use within a pair, then use the acronym — "Florida Department of Transportation (FDOT)", "Intelligent Transportation Systems (ITS)" — but ONLY when the full name is standard or evident; never invent an expansion.
 - Stay strictly NEUTRAL and FACTUAL — no spin, no editorializing.
-- Do NOT drop content to shorten. A long answer stays long if it carries substance; only the verbal noise goes.
-- If a pair is already clean, return it essentially unchanged.
-- Output exactly one cleaned pair per input index. Do NOT merge, split, reorder, or drop pairs.${glossaryBlock}
+
+Output exactly one cleaned pair per input index. Do NOT merge, split, reorder, or drop pairs.${glossaryBlock}
 
 OUTPUT FORMAT — a single JSON object, no prose, no markdown fences:
 
 {
   "polished": [
-    { "index": <int>, "question": "<cleaned question>", "answer": "<cleaned answer>" }
+    { "index": <int>, "question": "<synthesized question>", "answer": "<cleaned answer>" }
   ]
 }`
 
