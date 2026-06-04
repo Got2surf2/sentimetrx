@@ -90,6 +90,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [drillData, setDrillData] = useState<{ count: number; comments: DrillComment[] } | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const [filterAxis, setFilterAxis] = useState('')  // topic filter
+  const [filterSub, setFilterSub] = useState('')    // sub-topic filter
 
   useEffect(() => {
     if (!drill) { setDrillData(null); return }
@@ -256,6 +258,86 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
       {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
+      {/* Filter by topic / sub-topic */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 20, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Topic</label>
+          <select
+            value={filterAxis}
+            onChange={e => { setFilterAxis(e.target.value); setFilterSub(''); setDrill(null) }}
+            style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, minWidth: 200 }}
+          >
+            <option value="">All topics</option>
+            {data.axes.map(a => <option key={a.axis} value={a.axis}>{a.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Sub-topic</label>
+          <select
+            value={filterSub}
+            disabled={!filterAxis}
+            onChange={e => { const v = e.target.value; setFilterSub(v); if (v) setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(v)}`, crumbs: ['Taxonomy', filterAxis, v] }); else setDrill(null) }}
+            style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: filterAxis ? '#fff' : '#f1f5f9', color: NAVY, minWidth: 220 }}
+          >
+            <option value="">{filterAxis ? 'All sub-topics' : 'Pick a topic first'}</option>
+            {data.subs.filter(s => s.axis === filterAxis).map(s => <option key={s.sub} value={s.sub}>{s.sub} ({s.count})</option>)}
+          </select>
+        </div>
+        {(filterAxis || drill) && (
+          <button
+            onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill(null) }}
+            style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, color: SLATE, cursor: 'pointer' }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Inline comments panel — driven by the filter above or by clicking a sub-topic / alert. */}
+      {drill && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: 24, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                {drill.crumbs.map((c, i) => {
+                  const isLast = i === drill.crumbs.length - 1
+                  return (
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {i > 0 && <span style={{ color: '#cbd5e1' }}>›</span>}
+                      <span style={{ fontSize: 12, fontWeight: isLast ? 700 : 600, color: isLast ? NAVY : SLATE, textTransform: i === 0 ? 'uppercase' : 'none', letterSpacing: i === 0 ? 1 : 0 }}>{c}</span>
+                    </span>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>{drill.crumbs[drill.crumbs.length - 1]}</div>
+              {drillData && <div style={{ fontSize: 13, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} comment{drillData.count === 1 ? '' : 's'} tagged{drillData.count > drillData.comments.length ? ` · showing first ${drillData.comments.length}` : ''}</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              {drillData && drillData.comments.length > 0 && (
+                <button onClick={exportCsv} title="Download these comments as CSV" style={{ background: TEAL, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>⤓ Export CSV</button>
+              )}
+              <button onClick={() => { setDrill(null); setFilterSub('') }} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 36, height: 36, fontSize: 20, cursor: 'pointer', color: NAVY }}>×</button>
+            </div>
+          </div>
+          <div style={{ maxHeight: 460, overflowY: 'auto', padding: 16, background: '#f8fafc' }}>
+            {drillLoading && <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}><LottieLoader size={80} message="Loading comments…" /></div>}
+            {!drillLoading && drillData && drillData.comments.length === 0 && (
+              <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
+            )}
+            {!drillLoading && drillData && drillData.comments.map((c, i) => (
+              <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  {c.rating != null && <span style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>★ {c.rating}</span>}
+                  {c.date && <span style={{ fontSize: 12, color: SLATE }}>{c.date}</span>}
+                  <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
+                </div>
+                <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Severity alerts — surfaced at the top so they're visible without scrolling */}
       {data.alerts.length > 0 && (
         <div style={{ marginBottom: 24 }}>
@@ -266,7 +348,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {data.alerts.map(a => (
               <div
                 key={a.tag}
-                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] })}
+                onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] }) }}
                 title="View the flagged comments"
                 style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
               >
@@ -307,7 +389,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {data.subs.slice(0, 18).map((s, i) => (
               <div
                 key={s.axis + ':' + s.sub}
-                onClick={() => setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', s.axis, s.sub] })}
+                onClick={() => { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', s.axis, s.sub] }) }}
                 title="View the comments tagged with this"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
@@ -327,63 +409,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Click any sub-topic or alert to read the comments behind it.
+        Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Filter by topic / sub-topic above, or click any sub-topic or alert, to read the comments behind it.
       </p>
-
-      {/* Comment drill-down modal */}
-      {drill && (
-        <div
-          onClick={() => setDrill(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 14, width: 'min(760px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}
-          >
-            {/* Header */}
-            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                  {drill.crumbs.map((c, i) => {
-                    const isLast = i === drill.crumbs.length - 1
-                    return (
-                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {i > 0 && <span style={{ color: '#cbd5e1' }}>›</span>}
-                        <span style={{ fontSize: 12, fontWeight: isLast ? 700 : 600, color: isLast ? NAVY : SLATE, textTransform: i === 0 ? 'uppercase' : 'none', letterSpacing: i === 0 ? 1 : 0 }}>{c}</span>
-                      </span>
-                    )
-                  })}
-                </div>
-                <div style={{ fontSize: 19, fontWeight: 800, color: NAVY }}>{drill.crumbs[drill.crumbs.length - 1]}</div>
-                {drillData && <div style={{ fontSize: 13, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} comment{drillData.count === 1 ? '' : 's'} tagged{drillData.count > drillData.comments.length ? ` · showing first ${drillData.comments.length}` : ''}</div>}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {drillData && drillData.comments.length > 0 && (
-                  <button onClick={exportCsv} title="Download these comments as CSV" style={{ background: TEAL, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>⤓ Export CSV</button>
-                )}
-                <button onClick={() => setDrill(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 36, height: 36, fontSize: 20, cursor: 'pointer', color: NAVY }}>×</button>
-              </div>
-            </div>
-            {/* Scrollable body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 18, background: '#f8fafc' }}>
-              {drillLoading && <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 60 }}><LottieLoader size={90} message="Loading comments…" /></div>}
-              {!drillLoading && drillData && drillData.comments.length === 0 && (
-                <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
-              )}
-              {!drillLoading && drillData && drillData.comments.map((c, i) => (
-                <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                    {c.rating != null && <span style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>★ {c.rating}</span>}
-                    {c.date && <span style={{ fontSize: 12, color: SLATE }}>{c.date}</span>}
-                    <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
-                  </div>
-                  <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

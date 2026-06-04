@@ -851,3 +851,11 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner asked for the inline Comments-tab search to be closeable/collapsible (don't permanently occupy the top of the comments view).
 
 **What changed** (`components/analyze/TextMineModule.tsx`, UI-only): new `showCommentSearch` state (default collapsed). Collapsed → a compact "🔍 Search comments" toggle; expanded → the `SearchPanel` with a "Close search ✕" control. No change to search behavior/endpoint. tsc clean; page compiles.
+
+## 2026-06-03 — Taxonomy: topic/sub-topic filter + inline comments (modal → inline)
+
+**Why**: Owner wanted (1) filtering the taxonomy view by topic + sub-topic, and (2) comments shown inline like TextMine's Comments tab. Asked whether TextMine's `CommentsPanel` could be reused — it can't cleanly (944 lines, coupled to the theme model + in-memory `parsedData` + `commentMatchesTheme`/`highlightKeywords`; taxonomy filters server-side by tag, a different model).
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): added **Topic** (axis) + **Sub-topic** (sub) filter dropdowns (sub options derive from `data.subs` for the chosen axis). Converted the drill-down **modal into an inline panel** (same breadcrumb header + scrollable list + Export CSV + per-comment Copy), driven by the filter or by clicking a sub-topic/alert (clicks now sync the dropdowns). Reuses the existing `/taxonomy/rows` endpoint + comment-card rendering — no new search/fetch logic, and explicitly NOT the theme-coupled `CommentsPanel`.
+
+**Verification**: tsc clean; taxonomy page compiles (dev 307). Data path unchanged (already verified vs Cheddar's: axis_attribute·speed→388, pests alert→40). Commit-only, not pushed.

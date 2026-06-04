@@ -69,13 +69,17 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
   instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
   `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
-  **Comment drill-down**: clicking a sub-topic row or an alert chip opens a centered modal
-  (breadcrumb header `Taxonomy › axis › sub` / `Taxonomy › Severity alert › tag`, count, a
-  scrollable comment list) fed by `GET /api/datasets/[datasetId]/taxonomy/rows`
-  (`?axis=&sub=` or `?alert=`, org-gated; `.contains()` on the GIN-indexed axis array →
-  joins `dataset_rows_flat` for text; returns matched-evidence quotes the UI bolds). The
-  modal has an **Export CSV** (rating/date/comment/evidence of the shown comments) and a
-  per-comment **Copy** button.
+  **Filter + comment drill-down**: a **Topic** (axis) + **Sub-topic** (sub) dropdown pair
+  filters the view; picking a sub-topic — or clicking a sub-topic row / alert chip (which
+  syncs the dropdowns) — opens an **inline comments panel** (breadcrumb header
+  `Taxonomy › axis › sub` / `Taxonomy › Severity alert › tag`, count, a scrollable list)
+  fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=&sub=` or `?alert=`,
+  org-gated; `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
+  text; returns matched-evidence quotes the UI bolds). The panel has an **Export CSV**
+  (rating/date/comment/evidence of the shown comments) and a per-comment **Copy** button.
+  (Inline, not the theme-coupled TextMine `CommentsPanel` — that's 944 lines bound to the
+  theme model + in-memory rows; the taxonomy panel reuses the same UX pattern + the
+  tag-filtered `/taxonomy/rows` endpoint instead.)
   (Minimal first cut shipped for a demo — the longer-term home is a TextMine lens reusing
   the shared `CommentsPanel`.)
 - **Admin pilot viewer** — `/admin/taxonomy-pilot/[datasetId]` (requireAdmin),
