@@ -12,6 +12,7 @@
 import { notFound } from 'next/navigation'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import type { RecordingAnalysisSummary, QaPairPayload, RecordingExtractionRow } from '@/lib/recordings/types'
+import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,10 +83,10 @@ export default async function PublicTownHallReport({ params }: { params: Promise
                 <div className="space-y-5">
                   {tPairs.map((p, i) => {
                     const qa = p.payload as QaPairPayload
-                    // Owner setting: verbatim shows the words spoken; polished
-                    // (default) shows the editorial version, verbatim fallback.
-                    const q = rec.share_verbatim ? qa.question : (qa.polished_question || qa.question)
-                    const a = rec.share_verbatim ? qa.answer : (qa.polished_answer || qa.answer)
+                    // Owner setting: verbatim shows the words spoken; otherwise the
+                    // display-of-record (human edit → AI polish → verbatim).
+                    const q = displayQuestion(qa, { verbatim: rec.share_verbatim })
+                    const a = displayAnswer(qa, { verbatim: rec.share_verbatim })
                     return (
                       <div key={i} className="rounded-xl bg-white border border-slate-200 overflow-hidden">
                         <div className="px-4 py-3 border-b border-slate-100">

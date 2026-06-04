@@ -20,6 +20,7 @@ import type {
   EntityMap,
 } from '@/lib/recordings/types'
 import { normalizeSegments } from '@/lib/recordings/normalize'
+import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 
 const TEAL = '#0f766e'
 const ORANGE = '#c2410c'
@@ -68,8 +69,8 @@ export interface TownHallReportInput {
 
 // One Q&A card — mirrors the /th page's question/response block.
 function qaCard(qa: QaPairPayload): string {
-  const q = qa.polished_question || qa.question
-  const a = qa.polished_answer || qa.answer
+  const q = displayQuestion(qa)
+  const a = displayAnswer(qa)
   return (
     `<div class="qa">` +
     `<div class="q-head">` +

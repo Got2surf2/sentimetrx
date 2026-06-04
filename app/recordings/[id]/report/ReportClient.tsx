@@ -24,6 +24,7 @@ import type {
   EntityMap,
 } from '@/lib/recordings/types'
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
+import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
 
 // A request to open the audio modal at a given point. `nonce` forces a re-seek
 // even when two Play buttons share the same start_sec.
@@ -448,13 +449,14 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   const [instructions, setInstructions] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  // Polished = public-shareable cleanup of the verbatim quote (what exports use).
-  // Show it by default so the page matches the deck; toggle reveals the verbatim.
+  const [editing, setEditing] = useState(false)
+  // Display-of-record = human edit → AI polish → verbatim (qaDisplay). The toggle
+  // reveals the raw spoken text. "Edit" opens the 3-layer editor (modal).
+  const edited = isEdited(payload)
   const hasPolished = !!(payload.polished_answer || payload.polished_question)
   const [showVerbatim, setShowVerbatim] = useState(false)
-  const usePolished = hasPolished && !showVerbatim
-  const shownQuestion = usePolished ? (payload.polished_question || payload.question) : payload.question
-  const shownAnswer = usePolished ? (payload.polished_answer || payload.answer) : payload.answer
+  const shownQuestion = displayQuestion(payload, { verbatim: showVerbatim })
+  const shownAnswer = displayAnswer(payload, { verbatim: showVerbatim })
 
   const handleRegenerate = async () => {
     setBusy(true)
@@ -513,19 +515,19 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
       {expanded && (
         <div className="px-4 pb-4 space-y-2 text-sm">
           <div className="border-l-2 border-gray-200 pl-3">
-            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2 flex-wrap">
               <span>Answer{payload.panelist_name ? ` — ${payload.panelist_name}` : ''}</span>
-              {hasPolished && (
+              {(hasPolished || edited) && (
                 <>
-                  <span className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 text-[10px] font-medium">
-                    {showVerbatim ? 'Verbatim' : 'Polished for sharing'}
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${showVerbatim ? 'bg-gray-100 text-gray-600' : edited ? 'bg-orange-50 text-orange-700' : 'bg-teal-50 text-teal-700'}`}>
+                    {showVerbatim ? 'Verbatim' : edited ? 'Human-edited' : 'Polished for sharing'}
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowVerbatim(v => !v)}
                     className="text-[11px] text-gray-500 underline hover:text-gray-700"
                   >
-                    {showVerbatim ? 'Show polished' : 'Show verbatim'}
+                    {showVerbatim ? 'Show display version' : 'Show verbatim'}
                   </button>
                 </>
               )}
@@ -549,6 +551,16 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
                 className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
               >
                 ▶ Play this segment
+              </button>
+            )}
+            {hasPolished && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
+                title="Hand-edit the display text (keeps the AI + verbatim versions)"
+              >
+                ✎ Edit
               </button>
             )}
             {!showComposer ? (
@@ -599,7 +611,120 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
           )}
         </div>
       )}
+      {editing && (
+        <EditPairModal
+          recordingId={recordingId}
+          extraction={extraction}
+          onClose={() => setEditing(false)}
+          onSaved={e => { onReplaced(e); setEditing(false) }}
+        />
+      )}
     </li>
+  )
+}
+
+// One field's three layers: verbatim (collapsible reference) + AI (read-only) +
+// the editable box. Module-level so it isn't re-created each keystroke (which
+// would drop textarea focus).
+function EditLayer({ label, verbatim, ai, value, onChange, rows }: {
+  label: string; verbatim: string; ai: string; value: string; onChange: (v: string) => void; rows: number
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</div>
+      {/* Verbatim (as spoken) — the reference for catching AI errors. Read-only. */}
+      <div>
+        <div className="text-[11px] text-gray-400 mb-0.5">Verbatim — as spoken (reference)</div>
+        <div className="text-[13px] italic text-gray-500 whitespace-pre-wrap border-l-2 border-gray-200 pl-2.5 py-0.5">{verbatim}</div>
+      </div>
+      <div>
+        <div className="text-[11px] text-gray-400 mb-0.5">AI version</div>
+        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{ai}</div>
+      </div>
+      <div>
+        <div className="text-[11px] font-medium text-gray-700 mb-0.5">{label} — edit for display</div>
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          rows={rows}
+          className="w-full border border-orange-300 rounded-lg px-3 py-2"
+          style={{ fontSize: '16px' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ── Edit modal: the 3-layer Q&A editor (§3.5d) ───────────────────────────────
+// Verbatim (locked, the record of truth) and the AI polished version are shown
+// read-only; the editable box is what becomes "of record for display". Saving
+// writes payload.edited_*; the AI + verbatim are never destroyed, so "Revert to
+// AI" always restores the machine version. Distinct from Regenerate (re-runs AI).
+function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
+  recordingId: string
+  extraction: RecordingExtractionRow
+  onClose: () => void
+  onSaved: (e: RecordingExtractionRow) => void
+}) {
+  const payload = extraction.payload as QaPairPayload
+  const aiQ = payload.polished_question || payload.question
+  const aiA = payload.polished_answer || payload.answer
+  const [editQ, setEditQ] = useState(payload.edited_question || aiQ)
+  const [editA, setEditA] = useState(payload.edited_answer || aiA)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const patch = async (bodyObj: { edited_question: string | null; edited_answer: string | null }) => {
+    setBusy(true); setErr(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extraction.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
+      onSaved(d.extraction as RecordingExtractionRow)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Only persist a side as "edited" when it actually differs from the AI version.
+  const save = () => patch({
+    edited_question: editQ.trim() && editQ.trim() !== aiQ ? editQ.trim() : null,
+    edited_answer: editA.trim() && editA.trim() !== aiA ? editA.trim() : null,
+  })
+  const revert = () => patch({ edited_question: null, edited_answer: null })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && onClose()}>
+      <div className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-gray-900 mb-1">Edit this Q&amp;A for display</h2>
+        <p className="text-xs text-gray-500 mb-4">Your edit becomes the version shown in the report, link, PDF, and deck. The verbatim and AI versions are kept — use “Revert to AI” to undo.</p>
+        <div className="space-y-5">
+          <EditLayer label="Question" verbatim={payload.question} ai={aiQ} value={editQ} onChange={setEditQ} rows={2} />
+          <EditLayer label="Response" verbatim={payload.answer} ai={aiA} value={editA} onChange={setEditA} rows={5} />
+        </div>
+        {err && <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
+        <div className="flex items-center gap-3 mt-5">
+          <button onClick={save} disabled={busy}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>
+            {busy ? 'Saving…' : 'Save edit'}
+          </button>
+          {isEdited(payload) && (
+            <button onClick={revert} disabled={busy}
+              className="px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+              Revert to AI
+            </button>
+          )}
+          <button onClick={onClose} disabled={busy}
+            className="ml-auto px-3 py-2 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

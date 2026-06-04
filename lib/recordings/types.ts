@@ -259,6 +259,13 @@ export interface QaPairPayload {
   // surfaces fall back to the verbatim text in that case.
   polished_question?: string | null
   polished_answer?: string | null
+  // Human-edited versions (§3.5d). A reviewer's hand-correction of the AI text;
+  // when present these are the version "of record for display" (the third layer,
+  // precedence edited → polished → verbatim). The AI polished + verbatim are
+  // ALWAYS retained so an edit can be reverted — nothing is destroyed.
+  edited_question?: string | null
+  edited_answer?: string | null
+  edited_at?: string | null
 }
 
 export interface QuotePayload {

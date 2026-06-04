@@ -517,6 +517,12 @@ Also: the Opus extraction now classifies a `payload.sentiment` per pair (`positi
 
 **Post-pilot:** A/B Sonnet-only vs Opus+Sonnet curator on a 10-meeting corpus to see if the curator pass alone with a cheaper extractor is sufficient at the production volume. For the June 16 pilot — use Opus.
 
+### 3.5d Human edit layer — three versions per pair
+
+A Q&A pair carries three text layers, none destroying the one before it: **verbatim** (the spoken words, record of truth, locked) → **AI polished** (`polished_*`) → **human-edited** (`edited_*`, new). `lib/recordings/qaDisplay.ts` (`displayQuestion`/`displayAnswer`, pure + client-safe) is the **one** place precedence is resolved — `edited → polished → verbatim` (with a `verbatim: true` override for the share-link verbatim setting and the per-card toggle). Every display surface imports it (report card, `/th`, PDF, PPTX) so they never drift.
+
+A reviewer hand-edits via the report's Q&A card **✎ Edit** pill → a modal showing, per side, **Verbatim (reference) · AI version (read-only) · editable box**. Saving `PATCH /api/recordings/[id]/extractions/[extractionId]` with `{ edited_question?, edited_answer? }` writes only the `edited_*` fields (a side is stored only when it differs from the AI version; null/empty clears it → "Revert to AI"). The AI + verbatim are never touched, so an edit is always undoable — distinct from **Regenerate** (which re-runs the AI). The `dataset_rows_flat` mirror keys on verbatim text (for analytics) and is intentionally not changed by an edit. No migration — `edited_*` live in the existing JSONB payload.
+
 ### 3.6 Coverage report
 
 After the analytical pass, compute:

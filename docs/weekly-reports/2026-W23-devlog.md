@@ -1,5 +1,18 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall: human edit layer for Q&A pairs (§3.5d)
+
+**Why**: Owner wants the AI polish to be hand-correctable — and explicitly to **retain** the AI version when a human edits, so a botched edit can't destroy it ("stops people from fucking up royally"). A third text layer.
+
+**What changed**:
+- `QaPairPayload` gains `edited_question`/`edited_answer`/`edited_at` (JSONB — **no migration**). Three layers: verbatim → AI polished → human-edited, none overwriting the prior.
+- `lib/recordings/qaDisplay.ts` (new) — `displayQuestion`/`displayAnswer` resolve precedence `edited → polished → verbatim` (with a `verbatim` override). The single source of truth; **all four display surfaces** (report card, `/th`, PDF `reportHtml`, PPTX deck) now import it instead of inlining `polished || verbatim`.
+- `PATCH /api/recordings/[id]/extractions/[extractionId]` (new) — writes `edited_*` only (a side stored only when it differs from AI; null clears → revert). Same-tenant gate, qa_pair-only. The verbatim-keyed `dataset_rows_flat` mirror is left untouched.
+- Report Q&A card — **✎ Edit** pill → a modal showing, per side, **Verbatim (reference) · AI (read-only) · editable box**, with Save / Revert to AI / Cancel. The `EditLayer` is module-level (hoisted out of the modal so the textareas don't lose focus per keystroke). Card badge now distinguishes Human-edited / Polished / Verbatim.
+- `tests/integration/recording-edit-pair-gate.test.ts` (5 cases): edited write + stamp, null-reverts-to-AI, cross-org 404, non-qa_pair 400, empty-body 400.
+
+Verified: edit modal QC'd via a throwaway route + Playwright (3 layers per side render, verbatim shown as reference per the owner's ask); 446 tests pass (5 new); tsc clean. Spec §3.5d + §4 added. **Local-only.**
+
 ## 2026-06-04 — Town Hall polish: 3 consistency fixes (road format, redundant parenthetical, theme slides)
 
 **Why**: Reviewing the upgraded deck against the vendor PDF surfaced three small inconsistencies.

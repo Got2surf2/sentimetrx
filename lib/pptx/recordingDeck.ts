@@ -28,6 +28,7 @@ import type {
   ActionItemPayload,
   QaSentiment,
 } from '@/lib/recordings/types'
+import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 
 const DN = {
   ...DN_SHARED,
@@ -160,8 +161,8 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   if (usePolished) {
     for (const e of qaPairs) {
       const qa = e.payload as QaPairPayload
-      if (!qa.polished_question && !qa.polished_answer) continue
-      polishByQ.set(normQ(qa.question), { q: qa.polished_question || qa.question, a: qa.polished_answer || qa.answer })
+      if (!qa.edited_question && !qa.edited_answer && !qa.polished_question && !qa.polished_answer) continue
+      polishByQ.set(normQ(qa.question), { q: displayQuestion(qa), a: displayAnswer(qa) })
     }
   }
   // Resolve a representative exchange to polished text when its verbatim question
@@ -470,8 +471,8 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   // (`usePolished` computed above, shared with the theme-slide exchanges).
   qaPairs.forEach((ex, idx) => {
     const qa = ex.payload as QaPairPayload
-    const qQuestion = usePolished ? (qa.polished_question || qa.question) : qa.question
-    const qAnswer = usePolished ? (qa.polished_answer || qa.answer) : qa.answer
+    const qQuestion = displayQuestion(qa, { verbatim: !usePolished })
+    const qAnswer = displayAnswer(qa, { verbatim: !usePolished })
     const s = pptx.addSlide()
     bgFill(s, pptx)
     hdr(s, pptx, `Appendix — Q&A ${idx + 1} of ${qaPairs.length}`)
