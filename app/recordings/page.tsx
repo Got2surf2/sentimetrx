@@ -83,6 +83,17 @@ export default async function RecordingsListPage() {
     for (const f of (favs ?? []) as any[]) favIds.add(f.resource_id as string)
   }
 
+  // Platform-admin only: the active orgs a recording can be transferred to.
+  let allOrgs: { id: string; name: string }[] = []
+  if (ctx.isAdminOrg) {
+    const { data: orgs } = await service
+      .from('organizations')
+      .select('id, name, status')
+      .neq('status', 'suspended')
+      .order('name')
+    allOrgs = (orgs ?? []).filter((o: any) => o.id !== ctx.orgId).map((o: any) => ({ id: o.id, name: o.name }))
+  }
+
   const rows: Row[] = (data ?? []).map((r: any) => ({
     id: r.id,
     org_id: r.org_id,
@@ -137,7 +148,7 @@ export default async function RecordingsListPage() {
           </div>
         )}
 
-        <RecordingsListClient rows={rows} showOrg={ctx.isAdminOrg} />
+        <RecordingsListClient rows={rows} showOrg={ctx.isAdminOrg} isAdmin={ctx.isAdminOrg} allOrgs={allOrgs} />
       </main>
     </div>
   )

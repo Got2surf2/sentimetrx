@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall: cross-org recording transfer (#3c)
+
+**Why**: Final part of the card overhaul (#3) — a platform admin needs to move a recording to the right tenant (e.g. built in the Datanautix sandbox, hand to the client org). Unlike the shallow dataset transfer (top-row org_id only), a recording is a graph: report/PDF/export all pair recording_id WITH org_id, so a shallow move would orphan the children and read empty in the new org. And storage paths embed `<org_id>/`, reconstructed from the *current* org in the audio/transcribe paths — so the objects must physically move too.
+
+**What changed**:
+- **`sql/102_recording_org_transfer.sql`** — `transfer_recording_org(p_recording_id, p_from_org, p_to_org)` RPC: one transaction re-org_id'ing `recordings` + `recording_files` + `recording_transcripts` + `recording_extractions` + the derived `datasets` row (each paired on `p_from_org` as the cross-tenant guard) and rewriting the `<org>/` prefix in the file storage-path columns. `dataset_rows_flat` follows via `dataset_id` (no org_id). `SECURITY DEFINER` + `SET search_path`; **exec revoked from anon/authenticated, granted only to service_role** so a tenant can't call it via PostgREST to bypass the route gate. Also extends the `org_transfers` resource_type CHECK to `'recording'`.
+- `app/api/recordings/[id]/route.ts` — PATCH now branches: `{ org_id }` → transfer (platform-admin only, 403 else), `{ name }` → rename. `transferRecordingOrg()` helper moves storage objects first (rollback on failure), then runs the RPC (rollback storage on RPC failure), then `recordOrgTransfer` audit. `lib/orgTransfer.ts` `TransferableResource` gains `'recording'`.
+- `RecordingsListClient.tsx` — admin-only "Move to org" ⋯-menu item + a transfer modal (org picker, "everything it owns" copy, disabled until an org is chosen). `app/recordings/page.tsx` fetches active `allOrgs` + passes `isAdmin` when the caller is platform-admin.
+- `tests/integration/recording-transfer-gate.test.ts` — 3 cases: non-admin transfer → 403 (no RPC), admin transfer → RPC fires with (id, from, to) + audit-logged, plain rename never enters the transfer path.
+
+Verified: card QC'd (menu + modal) via throwaway route + Playwright; 437 tests pass (3 new); typecheck clean. **`sql/102` NOT yet applied** — transfer 500s until it lands on prod (owner-authorized; the RPC is the security-sensitive bit, worth a look before applying). Spec §4.3b + intro added. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall cards: favorite star + ⋯ menu (rename/delete)
 
 **Why**: Open-item #3 (card overhaul), parts a+b. The Town Hall list cards only had a bare delete 🗑; the Analyze/Surveys card family has a favorite star + a ⋯ menu. Bring the cards up to parity.

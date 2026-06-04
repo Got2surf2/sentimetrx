@@ -8,6 +8,7 @@
 > - **Analyze (§ 3.5):** extraction is **topic-agnostic** (pull every audience Q&A with a free-form label); the Sonnet curator pass **clusters them into emergent topics**. The agenda is an optional naming hint, no longer a recall anchor or fixed taxonomy. Claude calls pass a long `timeoutMs` (callAI defaults to 15s).
 > - **Delete:** `DELETE /api/recordings/[id]` hard-deletes storage objects + derived dataset/rows + the recording (cascades files/transcripts/extractions). Owner / org-admin / platform-admin only.
 > - **Rename:** `PATCH /api/recordings/[id]` updates `name` only (same owner/org-admin/platform-admin gate, pairs id+org_id). Inline-edit from the card ⋯ menu.
+> - **Transfer:** `PATCH /api/recordings/[id]` with `{ org_id }` moves the recording's whole graph to another org — **platform-admin org only**. Relocates storage objects (`<org>/<id>/…`), then atomically re-org_id's recordings + files + transcript + extractions + derived dataset via the `transfer_recording_org` RPC (sql/102), and writes an `org_transfers` audit row. Admin-only "Move to org" item on the card ⋯ menu.
 > - **List UX:** `/recordings` is the top-level Town Hall home — cards carry a **favorite star** (per-user, `user_favorites` resource_type `'recording'`, extended in `sql/101`) + a **⋯ menu (Rename / Delete)**, matching the Analyze/Surveys card family, plus a materials-guidance panel, reachable from the Town Hall nav item. The report Q&A tab exposes a clear "Re-extract all" action.
 
 **Module:** `/app/recordings/new/`, `/app/recordings/[id]/report/`, `/app/api/recordings/*`, `/app/recordings/`, `lib/recordings/*`, `lib/asr/*`, `lib/featureFlags.ts`
@@ -623,6 +624,13 @@ Drives the status surface (§ 5.3) and the report page header.
 ```
 
 Deliberately omits `recording_transcripts.segments` and `recording_extractions.payload` — those are large and only the report page (server-rendered) needs them. `share.token` is only returned to the recording owner; org members see `share.enabled` but not the raw token.
+
+### 4.3b `PATCH /api/recordings/[id]` — rename / transfer (built 2026-06-04)
+
+One handler, two modes, both reading the recording by id paired with the caller's org (admin-org may reach any org → 404 on cross-org):
+
+- **Rename** — body `{ name }`. Updates `name` only (trim, ≤200 chars). Owner / org-admin / platform-admin.
+- **Transfer** — body `{ org_id }`. **Platform-admin org only** (403 otherwise) — a cross-tenant move. `checkTransferTarget` validates the destination is an active org and not the current one. Then `transferRecordingOrg()`: (1) relocates every storage object under `<fromOrg>/<id>/…` to `<toOrg>/<id>/…` via `storage.move`, rolling the moves back if any non-"not found" failure occurs; (2) calls the `transfer_recording_org(p_recording_id, p_from_org, p_to_org)` RPC (sql/102) — one transaction that re-org_id's `recordings` + `recording_files` + `recording_transcripts` + `recording_extractions` + the derived `datasets` row (paired on `p_from_org` as the cross-tenant guard) and rewrites the embedded `<org>/` prefix in `recording_files.storage_path`/`audio_storage_path`; on RPC failure the storage moves are rolled back. `dataset_rows_flat` has no `org_id` (keyed by `dataset_id`) so it follows the dataset. Finally `recordOrgTransfer` writes an `org_transfers` audit row. The RPC is `SECURITY DEFINER` with `SET search_path`, exec **revoked from `anon`/`authenticated`** and granted only to `service_role`, so a tenant can't call it directly via PostgREST to bypass the route gate. Gate covered by `tests/integration/recording-transfer-gate.test.ts`.
 
 ### 4.4 `POST /api/collections/[id]/members` — **NEW** (fills the gap)
 

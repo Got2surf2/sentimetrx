@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type TransferableResource = 'bot' | 'study' | 'dataset' | 'townhall_session'
+export type TransferableResource = 'bot' | 'study' | 'dataset' | 'townhall_session' | 'recording'
 
 export interface TransferContext {
   service:           SupabaseClient   // service-role client

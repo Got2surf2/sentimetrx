@@ -44,7 +44,9 @@ function fmtDate(s: string | null): string {
   try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) } catch { return '' }
 }
 
-export default function RecordingsListClient({ rows: initial, showOrg }: { rows: RecordingCard[]; showOrg: boolean }) {
+interface OrgOption { id: string; name: string }
+
+export default function RecordingsListClient({ rows: initial, showOrg, isAdmin = false, allOrgs = [] }: { rows: RecordingCard[]; showOrg: boolean; isAdmin?: boolean; allOrgs?: OrgOption[] }) {
   const router = useRouter()
   const [rows, setRows] = useState(initial)
   const [target, setTarget] = useState<RecordingCard | null>(null)
@@ -55,6 +57,33 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
   const [menuId, setMenuId] = useState<string | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState('')
+
+  // Cross-org transfer (platform-admin only).
+  const [xferTarget, setXferTarget] = useState<RecordingCard | null>(null)
+  const [xferOrgId, setXferOrgId] = useState('')
+  const [xferring, setXferring] = useState(false)
+
+  async function confirmTransfer() {
+    if (!xferTarget || !xferOrgId) return
+    setXferring(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/recordings/${xferTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: xferOrgId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `Transfer failed (${res.status})`)
+      setXferTarget(null)
+      setXferOrgId('')
+      router.refresh()
+    } catch (e: any) {
+      setError(e.message || 'Transfer failed')
+    } finally {
+      setXferring(false)
+    }
+  }
 
   async function submitRename(id: string) {
     const name = renameVal.trim()
@@ -135,6 +164,13 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
                         className="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50">
                         Rename
                       </button>
+                      {isAdmin && allOrgs.length > 0 && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuId(null); setXferOrgId(''); setXferTarget(r) }}
+                          className="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                          Move to org
+                        </button>
+                      )}
                       <div className="h-px bg-gray-100 my-1" />
                       <button
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuId(null); setTarget(r) }}
@@ -210,6 +246,37 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
               <button onClick={confirmDelete} disabled={deleting}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">
                 {deleting ? 'Deleting…' : 'Delete everything'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {xferTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !xferring && setXferTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900">Move “{xferTarget.name}” to another org</h2>
+            <p className="text-sm text-gray-600 mt-2">
+              Moves the recording and <strong>everything it owns</strong> — files, transcript, Q&amp;A pairs, the derived dataset, and its stored audio — to the selected organization. The audit log records the move.
+            </p>
+            <select
+              value={xferOrgId}
+              onChange={e => setXferOrgId(e.target.value)}
+              className="mt-4 w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900"
+              style={{ fontSize: '16px' }}>
+              <option value="">— Select organization —</option>
+              {allOrgs.filter(o => o.name).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+            {error && <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={() => { setXferTarget(null); setError('') }} disabled={xferring}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={confirmTransfer} disabled={xferring || !xferOrgId}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+                style={{ background: '#e8622a' }}>
+                {xferring ? 'Moving…' : 'Move recording'}
               </button>
             </div>
           </div>

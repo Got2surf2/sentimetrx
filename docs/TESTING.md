@@ -67,6 +67,7 @@ tests/
 │   ├── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
 │   ├── recordings-routes.test.ts      # 8 recordings routes — auth/feature/org gates + validation (mocked)
 │   ├── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes incl. recordings pptx (404/409/200+content-type; mocked)
+│   ├── recording-transfer-gate.test.ts # PATCH recording transfer — platform-admin-only 403 gate + RPC/audit orchestration + rename isolation (mocked)
 │   └── tenant-routes-gate.test.ts     # campaign-send / social-handle / dataset route — 401 + cross-org 404 (mocked)
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
