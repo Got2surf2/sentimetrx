@@ -39,7 +39,9 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = 
 
 function fmtDate(s: string | null): string {
   if (!s) return ''
-  try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return '' }
+  // meeting_date is a date-only column — format in UTC so a value like
+  // '2026-05-21' doesn't render as the 20th in negative-UTC timezones.
+  try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) } catch { return '' }
 }
 
 export default function RecordingsListClient({ rows: initial, showOrg }: { rows: RecordingCard[]; showOrg: boolean }) {

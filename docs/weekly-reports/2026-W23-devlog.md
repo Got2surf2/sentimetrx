@@ -9,9 +9,10 @@
 - `app/api/recordings/[id]/route.ts` — new **PATCH** handler: updates `name` only, same owner/org-admin/platform-admin gate as DELETE, service-role read pairs id+org_id (404 cross-org), trims + 200-char cap.
 - `app/recordings/page.tsx` — hydrates each card's `favorited` from `user_favorites` (per-user, resource_type `'recording'`).
 - Favorites plumbing for the new type: `app/api/favorites/route.ts` (ResourceType + VALID_TYPES + TYPE_MAP + byType bucket) and `components/ui/FavoriteStar.tsx` (type union) gain `'recording'`.
-- **`sql/101_favorites_recording.sql`** — extends the `user_favorites` resource_type CHECK to include `'recording'`. **NOT yet applied** — the star will 500 on insert until this lands on prod (owner-authorized `supabase db query --linked`).
+- **`sql/101_favorites_recording.sql`** — extends the `user_favorites` resource_type CHECK to include `'recording'`. **APPLIED + verified on prod 2026-06-04** (owner-authorized; `pg_get_constraintdef` confirms the 6-value list).
+- Date bug: `RecordingsListClient.fmtDate` now formats in **UTC** (caught in visual QC — a `2026-05-21` meeting_date rendered as the 20th). Completes the sweep started in `reportHtml.ts` + `app/th/[token]/page.tsx`.
 
-Verified: `/recordings` compiles + serves (307 login redirect, no runtime error) against the linked DB; typecheck clean; 434 tests pass. Live visual QC of the card + applying `sql/101` are the owner-env steps. Spec §intro list + card-actions updated. **Local-only — owner pushes.**
+Verified: card QC'd in all three states (default / ⋯ menu / rename overlay) via a throwaway public route + Playwright screenshots — star/kebab/rename render correctly, long titles clamp, dates now correct; typecheck clean; 434 tests pass. Spec §intro list + card-actions updated. **Local-only — owner pushes.**
 
 ## 2026-06-04 — Town Hall: PDF report export (Q&A + selectable transcript)
 
