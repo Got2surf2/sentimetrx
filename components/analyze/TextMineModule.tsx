@@ -28,6 +28,7 @@ import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
 import EntitiesCard from '@/components/analyze/EntitiesCard'
+import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
@@ -155,7 +156,7 @@ interface Props {
   initialOpenEditor?: boolean
 }
 
-type SubTab = 'themes' | 'clouds' | 'compare' | 'comments'
+type SubTab = 'themes' | 'clouds' | 'compare' | 'comments' | 'dimensions'
 
 // ─── ApiKeyModal ──────────────────────────────────────────────────────────────
 
@@ -1639,6 +1640,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     { id: 'clouds',   label: 'Theme Clouds', help: 'A word cloud per theme, showing the words that appear most often within that theme\'s comments. Useful for spotting the exact language people use.' },
     { id: 'compare',  label: 'Compare',      help: 'Slice your themes by a categorical field — region, channel, age bracket — to see which segments care about which themes. Significance markers flag groups whose mix differs meaningfully from the baseline.' },
     { id: 'comments', label: 'Comments',     help: 'The raw quotes underlying everything. Search the text, filter by theme, or jump here from any chart to see the source rows.' },
+    // Dimensions (the 7-axis classification) — review datasets only; doesn't depend on a theme model.
+    ...(datasetSource === 'google_reviews' ? [{ id: 'dimensions' as SubTab, label: 'Dimensions', help: 'Every review classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
   ]
 
   return (
@@ -1707,7 +1710,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
             {subTabs.map(function(tab) {
               var isActive = subTab === tab.id
-              var isLocked = !hasThemes && tab.id !== 'themes'
+              var isLocked = !hasThemes && tab.id !== 'themes' && tab.id !== 'dimensions'
               return (
                 <div key={tab.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                   <button onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
@@ -2399,6 +2402,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 scopeType={entityCatalogScopeType}
                 onDrillEntity={function(e) { handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: e.aliases || [] }) }}
               />
+            )}
+
+            {/* ═══ DIMENSIONS TAB ═══ (self-contained module — fetches dataset_row_taxonomy itself) */}
+            {subTab === 'dimensions' && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <TaxonomyModule datasetId={datasetId} />
+              </div>
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}

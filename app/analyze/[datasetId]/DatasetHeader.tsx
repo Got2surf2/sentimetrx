@@ -41,7 +41,6 @@ var TABS: { key: string; label: string; icon: string; collapse: number; sources?
   { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA', collapse: 2 },
   { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
   // Restaurant 7-axis taxonomy \u2014 only for review datasets where it applies.
-  { key: 'taxonomy', label: 'Dimensions', icon: '\uD83C\uDFF7', collapse: 4, sources: ['google_reviews'] },
   { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9

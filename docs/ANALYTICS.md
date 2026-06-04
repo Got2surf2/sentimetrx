@@ -358,9 +358,11 @@ A restaurant-specific capability that classifies every review against one shared
 context · outcome) + a cross-cutting **severity flag** (`normal | alert | crisis`).
 Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integration:
 
-- **Tab.** `/analyze/[datasetId]/taxonomy` — a **"Dimensions"** tab in `DatasetHeader`'s
-  `TABS` (user-facing label is "Dimensions"; internal key/route stays `taxonomy`), shown
-  **only for `source==='google_reviews'`** datasets. Renders
+- **Where it lives.** A **"Dimensions"** sub-tab **inside TextMine** (`TextMineModule` renders
+  `<TaxonomyModule>` when `subTab==='dimensions'`), shown **only for `datasetSource==='google_reviews'`**
+  and exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
+  `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
+  top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, per-axis mention-rate bars,
   and top sub-topics with sentiment. **Severity alerts (food safety / pests) live as red
   pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
