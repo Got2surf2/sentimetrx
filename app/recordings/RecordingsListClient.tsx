@@ -1,12 +1,14 @@
 'use client'
 
 // Card grid for the recordings list. Each card links to the report (complete)
-// or the status surface (in-progress/failed), and offers a delete that hard-
-// removes the recording + all its files (confirmed in a modal).
+// or the status surface (in-progress/failed). The top-right carries a favorite
+// star + a ⋯ menu (Rename / Delete) — matching the Analyze/Surveys card family.
+// Delete hard-removes the recording + all its files (confirmed in a modal).
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { FavoriteStar } from '@/components/ui/FavoriteStar'
 
 export interface RecordingCard {
   id: string
@@ -19,6 +21,7 @@ export interface RecordingCard {
   created_at: string
   owner_name: string | null
   org_name: string | null
+  favorited: boolean
 }
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
@@ -45,6 +48,31 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
   const [target, setTarget] = useState<RecordingCard | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+
+  // ⋯ menu + inline rename, keyed by recording id.
+  const [menuId, setMenuId] = useState<string | null>(null)
+  const [renameId, setRenameId] = useState<string | null>(null)
+  const [renameVal, setRenameVal] = useState('')
+
+  async function submitRename(id: string) {
+    const name = renameVal.trim()
+    const current = rows.find(r => r.id === id)?.name
+    if (!name || name === current) { setRenameId(null); return }
+    // Optimistic — revert on failure.
+    setRows(prev => prev.map(r => (r.id === id ? { ...r, name } : r)))
+    setRenameId(null)
+    try {
+      const res = await fetch(`/api/recordings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setRows(prev => prev.map(r => (r.id === id ? { ...r, name: current ?? r.name } : r)))
+      setError('Rename failed')
+    }
+  }
 
   async function confirmDelete() {
     if (!target) return
@@ -88,13 +116,53 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
             <div key={r.id} className="group relative bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden min-h-[176px]">
               {/* top accent strip — status color (matches the family's colored card header) */}
               <div className="h-1.5 w-full" style={{ background: st.fg }} />
-              <button
-                onClick={() => setTarget(r)}
-                title="Delete Town Hall"
-                className="absolute top-3.5 right-2.5 z-10 w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors">
-                🗑
-              </button>
-              <Link href={href} className="flex flex-col flex-1 p-4 pr-9">
+              {/* top-right: favorite star + ⋯ menu (Rename / Delete) — matches the card family */}
+              <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-0.5">
+                <FavoriteStar resourceType="recording" resourceId={r.id} initialFavorited={r.favorited} size={16} />
+                <div className="relative">
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuId(menuId === r.id ? null : r.id) }}
+                    title="More actions"
+                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors font-black leading-none">
+                    ⋯
+                  </button>
+                  {menuId === r.id && (
+                    <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-30 min-w-[150px] py-1 overflow-hidden">
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRenameVal(r.name); setRenameId(r.id); setMenuId(null) }}
+                        className="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                        Rename
+                      </button>
+                      <div className="h-px bg-gray-100 my-1" />
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuId(null); setTarget(r) }}
+                        className="w-full text-left px-3.5 py-2 text-xs text-red-600 hover:bg-red-50">
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Inline rename — overlays the title row, sits above the card Link */}
+              {renameId === r.id && (
+                <div className="absolute inset-x-0 top-1.5 z-30 bg-white px-3 pt-3 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      autoFocus
+                      value={renameVal}
+                      onChange={(e) => setRenameVal(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') submitRename(r.id); if (e.key === 'Escape') setRenameId(null) }}
+                      className="flex-1 min-w-0 px-2 py-1 border border-orange-400 rounded-lg outline-none"
+                      style={{ fontSize: '16px' }}
+                    />
+                    <button onClick={() => submitRename(r.id)} className="shrink-0 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-lg px-2.5 py-1.5">Save</button>
+                    <button onClick={() => setRenameId(null)} className="shrink-0 text-sm text-gray-400 hover:text-gray-600 px-1">✕</button>
+                  </div>
+                </div>
+              )}
+
+              <Link href={href} className="flex flex-col flex-1 p-4 pr-16">
                 <div className="flex items-start gap-2">
                   <span className="text-lg leading-none mt-0.5">🏛️</span>
                   <h3 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 group-hover:text-orange-700 transition-colors">{r.name}</h3>
@@ -112,6 +180,9 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
           )
         })}
       </div>
+
+      {/* Click-away to dismiss an open ⋯ menu */}
+      {menuId && <div className="fixed inset-0 z-10" onClick={() => setMenuId(null)} />}
 
       {target && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !deleting && setTarget(null)}>

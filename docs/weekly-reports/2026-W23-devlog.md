@@ -1,5 +1,18 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall cards: favorite star + ⋯ menu (rename/delete)
+
+**Why**: Open-item #3 (card overhaul), parts a+b. The Town Hall list cards only had a bare delete 🗑; the Analyze/Surveys card family has a favorite star + a ⋯ menu. Bring the cards up to parity.
+
+**What changed**:
+- `app/recordings/RecordingsListClient.tsx` — top-right now renders a shared `<FavoriteStar>` + a ⋯ menu (Rename / Delete). Rename is an inline overlay input (optimistic PATCH, reverts on failure, 16px font per the iOS-zoom rule); Delete still opens the existing confirm modal. Click-away closes the menu.
+- `app/api/recordings/[id]/route.ts` — new **PATCH** handler: updates `name` only, same owner/org-admin/platform-admin gate as DELETE, service-role read pairs id+org_id (404 cross-org), trims + 200-char cap.
+- `app/recordings/page.tsx` — hydrates each card's `favorited` from `user_favorites` (per-user, resource_type `'recording'`).
+- Favorites plumbing for the new type: `app/api/favorites/route.ts` (ResourceType + VALID_TYPES + TYPE_MAP + byType bucket) and `components/ui/FavoriteStar.tsx` (type union) gain `'recording'`.
+- **`sql/101_favorites_recording.sql`** — extends the `user_favorites` resource_type CHECK to include `'recording'`. **NOT yet applied** — the star will 500 on insert until this lands on prod (owner-authorized `supabase db query --linked`).
+
+Verified: `/recordings` compiles + serves (307 login redirect, no runtime error) against the linked DB; typecheck clean; 434 tests pass. Live visual QC of the card + applying `sql/101` are the owner-env steps. Spec §intro list + card-actions updated. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall: PDF report export (Q&A + selectable transcript)
 
 **Why**: Open-item #2 from the Town Hall pickup queue — principals want a PDF handoff, not just the web share link. Owner: "Q&A + transcript but user-selectable."

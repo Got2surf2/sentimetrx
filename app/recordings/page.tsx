@@ -30,6 +30,7 @@ interface Row {
   completed_at: string | null
   owner_name: string | null
   org_name: string | null
+  favorited: boolean
 }
 
 export default async function RecordingsListPage() {
@@ -71,6 +72,17 @@ export default async function RecordingsListPage() {
     }
   }
 
+  // The caller's favorited recordings (per-user) → hydrate the card star state.
+  const favIds = new Set<string>()
+  {
+    const { data: favs } = await service
+      .from('user_favorites')
+      .select('resource_id')
+      .eq('user_id', ctx.userId)
+      .eq('resource_type', 'recording')
+    for (const f of (favs ?? []) as any[]) favIds.add(f.resource_id as string)
+  }
+
   const rows: Row[] = (data ?? []).map((r: any) => ({
     id: r.id,
     org_id: r.org_id,
@@ -86,6 +98,7 @@ export default async function RecordingsListPage() {
     completed_at: r.completed_at,
     owner_name: ownerById.get(r.created_by)?.full_name || ownerById.get(r.created_by)?.email || null,
     org_name: r.organizations?.name || null,
+    favorited: favIds.has(r.id),
   }))
 
   return (

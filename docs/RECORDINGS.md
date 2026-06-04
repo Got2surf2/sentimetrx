@@ -7,7 +7,8 @@
 > - **Extract (§ 3.3):** ffmpeg runs in the Vercel Sandbox via a downloaded **static binary** (+ `xz` to unpack), not `dnf` — the base image lacks ffmpeg and it isn't in the default repos. Bake a snapshot (`FFMPEG_SANDBOX_SNAPSHOT_ID`) in production to skip the per-cold-boot download.
 > - **Analyze (§ 3.5):** extraction is **topic-agnostic** (pull every audience Q&A with a free-form label); the Sonnet curator pass **clusters them into emergent topics**. The agenda is an optional naming hint, no longer a recall anchor or fixed taxonomy. Claude calls pass a long `timeoutMs` (callAI defaults to 15s).
 > - **Delete:** `DELETE /api/recordings/[id]` hard-deletes storage objects + derived dataset/rows + the recording (cascades files/transcripts/extractions). Owner / org-admin / platform-admin only.
-> - **List UX:** `/recordings` is the top-level Town Hall home — cards with per-card delete + a materials-guidance panel, reachable from the Town Hall nav item. The report Q&A tab exposes a clear "Re-extract all" action.
+> - **Rename:** `PATCH /api/recordings/[id]` updates `name` only (same owner/org-admin/platform-admin gate, pairs id+org_id). Inline-edit from the card ⋯ menu.
+> - **List UX:** `/recordings` is the top-level Town Hall home — cards carry a **favorite star** (per-user, `user_favorites` resource_type `'recording'`, extended in `sql/101`) + a **⋯ menu (Rename / Delete)**, matching the Analyze/Surveys card family, plus a materials-guidance panel, reachable from the Town Hall nav item. The report Q&A tab exposes a clear "Re-extract all" action.
 
 **Module:** `/app/recordings/new/`, `/app/recordings/[id]/report/`, `/app/api/recordings/*`, `/app/recordings/`, `lib/recordings/*`, `lib/asr/*`, `lib/featureFlags.ts`
 **Storage:** Supabase Storage bucket `recordings` (chunked direct upload from browser, signed URLs for ASR vendors). Source audio + transcripts retained permanently by default; per-org retention policy configurable.

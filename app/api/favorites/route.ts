@@ -12,8 +12,8 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
-type ResourceType = 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session'
-const VALID_TYPES: ResourceType[] = ['bot', 'study', 'dataset', 'campaign', 'townhall_session']
+type ResourceType = 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session' | 'recording'
+const VALID_TYPES: ResourceType[] = ['bot', 'study', 'dataset', 'campaign', 'townhall_session', 'recording']
 
 // resource_type → (table, name field, href builder, timestamp field)
 const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: string) => string }> = {
@@ -22,6 +22,7 @@ const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: str
   dataset:          { table: 'datasets',          ts: 'created_at', href: (id) => '/analyze/' + id },
   campaign:         { table: 'campaigns',         ts: 'created_at', href: (id) => '/campaigns/' + id },
   townhall_session: { table: 'townhall_sessions', ts: 'created_at', href: (id) => '/townhall/' + id },
+  recording:        { table: 'recordings',        ts: 'created_at', href: (id) => '/recordings/' + id + '/report' },
 }
 
 async function resolveCaller(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -52,7 +53,7 @@ export async function GET() {
 
   // Bucket by type, then look up each resource in a single query per type.
   const byType: Record<ResourceType, string[]> = {
-    bot: [], study: [], dataset: [], campaign: [], townhall_session: [],
+    bot: [], study: [], dataset: [], campaign: [], townhall_session: [], recording: [],
   }
   for (const f of favs || []) {
     if (VALID_TYPES.includes(f.resource_type as ResourceType)) {

@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 
-type ResourceType = 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session'
+type ResourceType = 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session' | 'recording'
 
 interface Props {
   resourceType:     ResourceType

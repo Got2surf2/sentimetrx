@@ -176,3 +176,43 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   return NextResponse.json({ ok: true, deleted: recording_id })
 }
+
+// PATCH /api/recordings/[id] — rename a recording. Only `name` is editable here;
+// the rest of the row is owned by the pipeline. Permitted for the owner, an org
+// admin, or a platform admin (same gate as DELETE). Service-role read pairs id
+// with org_id (admin-org may reach any org) so a bare id can't cross tenants.
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recording_id = (await ctx.params).id
+  if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
+
+  const body = await req.json().catch(() => ({}))
+  const name = typeof body?.name === 'string' ? body.name.trim() : ''
+  if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  if (name.length > 200) return NextResponse.json({ error: 'name too long' }, { status: 400 })
+
+  const supabase = await createClient()
+  const uc = await getUserContext(supabase)
+  if (!uc) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+
+  // Load the recording, org-scoped (platform admins can reach any org).
+  let recQ = service.from('recordings').select('id, org_id, created_by').eq('id', recording_id)
+  if (!uc.isAdminOrg) recQ = recQ.eq('org_id', uc.orgId)
+  const { data: rec } = await recQ.single()
+  if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
+
+  // Owner, org admin, or platform admin may rename.
+  if (!(uc.isAdminOrg || uc.isAdmin || rec.created_by === uc.userId)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+
+  const { error: updErr } = await service
+    .from('recordings')
+    .update({ name })
+    .eq('id', recording_id)
+    .eq('org_id', rec.org_id)
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true, id: recording_id, name })
+}
