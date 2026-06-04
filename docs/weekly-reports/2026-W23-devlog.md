@@ -1,5 +1,11 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Taxonomy tab: Severity Alerts moved to the top
+
+**Why**: Owner — the Severity Alerts buttons (food safety / pests) sat below the axes + sub-topics, requiring a scroll. They're the most urgent thing on the page.
+
+**What changed**: `components/analyze/TaxonomyModule.tsx` — moved the Severity Alerts block to render right after the KPI row (above the By-axis / Top-sub-topics columns), `marginBottom` instead of `marginTop`. No logic change. tsc clean.
+
 ## 2026-06-03 — Taxonomy comment drawer: snap evidence highlight to word boundaries
 
 **Why**: Owner saw the evidence highlight in the taxonomy comment drawer cutting words in half ("w as really good… were ju", "k ey west… rece ived"). Stored evidence is a fixed-width char window, and `highlight()` was wrapping it verbatim.
@@ -721,3 +727,18 @@ Docs: BOTS.md (dynamicChips section rewritten for the toggle/injection model, ne
 **Why**: The short `/th` ("town hall") public prefix should belong to the new recordings-based **Town Hall** product, not PulseIQ. Moved PulseIQ's participant + live screen from `/th/[sessionId]` to `/pi/[sessionId]` (route dir `app/th/` → `app/pi/`). Public URL only — internal `townhall_*` tables, the `/townhall` facilitator console, `/api/townhall/*`, and `features.townhall` are all unchanged (project convention: internal name ≠ UI label). Safe with no back-compat redirect since there are no live PulseIQ sessions; `/th` is left free (no route) for Town Hall to claim when it ships a public surface.
 
 **What changed**: renamed `app/th/[sessionId]/{page,TownHallChat,live/page}` → `app/pi/...`; swapped `/th/` → `/pi/` in the 6 participant-link generation/display sites (`TownHallListClient`, `SessionDetailClient` incl. the live link, `NewSessionClient`, the moved `live/page`) + incidental refs (architecture-deck label, chatCore/townhall-live comments, loadtest). Specs (TOWNHALL.md, SECURITY.md, DATA_FLOW.md) updated. tsc clean. Commit-only, not pushed.
+
+## 2026-06-04 — Recordings promoted to top-level "Town Hall" product
+
+**Why**: Recordings isn't a passive data source like Google Reviews/Reddit — it's a workspace (audio + slides + agenda + roster) with a workflow and deliverables. Burying it under Analyze ("New dataset → Recordings tile") framed it wrong. Promoted to a first-class product, user-facing label **Town Hall** (internal slug/tables/feature-key stay `recordings`, per bots=Agents). Distinct from PulseIQ (the live/digital product) — the `/th` swap earlier reserved that prefix.
+
+**What changed**:
+- **Feature decouple**: removed `recordings` from `ANALYZE_CHILDREN` (`lib/resolveOrg.ts` + `OrgFeatureToggles`); it's a standalone top-level feature gating on `features.recordings` alone. `MODULE_LABELS.recordings = 'Town Hall'`.
+- **Nav**: added a top-level Town Hall item (🏛️) in `TopNav` (peer of PulseIQ); `currentPage`/features plumbed.
+- **Routes consolidated under `/recordings/*`** (git-tracked renames): landing `/recordings`, wizard `/recordings/new` (was `/analyze/new/recording`), status `/recordings/[id]/status`, **report `/recordings/[id]/report` re-keyed datasetId→recording_id** (resolves the recording directly, org-paired 404). Thin back-compat redirect left at `/analyze/[datasetId]/report`. Status/wizard/list links + DownloadMonitor updated.
+- **Landing**: `/recordings` rewritten as the Town Hall home — list + "New Town Hall" CTA + a materials-guidance panel (recording / slides PDF / agenda / roster).
+- **Removed Analyze entry points**: the `/analyze` header Recordings button + the `/analyze/new` source tile (+ cleaned the dead `recordingsEnabled` prop). The dataset mirror stays as the analytics view, reachable via an "Open in Analytics" cross-link on the report (shown only when analyze is on + a dataset exists).
+- **Labels**: ~10 user-facing "Recording(s)" → "Town Hall" (list, wizard, breadcrumbs, admin usage + download monitor).
+- **Specs**: RECORDINGS.md, ANALYTICS.md, FEATURES.md, SPEC.md, CLAUDE.md updated (PulseIQ vs Town Hall disambiguated; PulseIQ public link corrected to /pi).
+
+tsc clean; full suite green; verified routes on the dev server. No SQL/data changes. Commit-only, not pushed.

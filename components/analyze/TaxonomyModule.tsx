@@ -233,6 +233,29 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
       {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
+      {/* Severity alerts — surfaced at the top so they're visible without scrolling */}
+      {data.alerts.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: RED, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            ⚠ Severity alerts <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· reviews flagged alert / crisis</span>
+          </h3>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {data.alerts.map(a => (
+              <div
+                key={a.tag}
+                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, label: a.tag })}
+                title="View the flagged comments"
+                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
+              >
+                <span style={{ fontWeight: 700, color: RED }}>{a.tag}</span>
+                <span style={{ color: '#991b1b', marginLeft: 8, fontWeight: 700 }}>{a.count}</span>
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>›</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* Axes */}
         <div style={{ flex: '1 1 420px', minWidth: 360 }}>
@@ -279,29 +302,6 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
           </div>
         </div>
       </div>
-
-      {/* Alerts */}
-      {data.alerts.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: RED, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-            ⚠ Severity alerts <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· reviews flagged alert / crisis</span>
-          </h3>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {data.alerts.map(a => (
-              <div
-                key={a.tag}
-                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, label: a.tag })}
-                title="View the flagged comments"
-                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
-              >
-                <span style={{ fontWeight: 700, color: RED }}>{a.tag}</span>
-                <span style={{ color: '#991b1b', marginLeft: 8, fontWeight: 700 }}>{a.count}</span>
-                <span style={{ color: '#fca5a5', marginLeft: 6 }}>›</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
         Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Click any sub-topic or alert to read the comments behind it.
