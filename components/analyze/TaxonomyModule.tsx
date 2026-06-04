@@ -7,7 +7,7 @@
 // by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
 // here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null }
@@ -43,6 +43,28 @@ function Pill({ posPct }: { posPct: number | null }) {
   )
 }
 
+interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[] }
+
+function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+
+/** Bold the matched-evidence phrases inside a comment so the demo shows WHY it was tagged. */
+function highlight(text: string, phrases: string[]): Array<string | ReactElement> {
+  const cleaned = [...new Set(phrases.map(p => p.trim()).filter(p => p.length >= 2))].sort((a, b) => b.length - a.length)
+  if (!cleaned.length) return [text]
+  let re: RegExp
+  try { re = new RegExp('(' + cleaned.map(escapeRE).join('|') + ')', 'gi') } catch { return [text] }
+  const out: Array<string | ReactElement> = []
+  let last = 0, m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    out.push(<mark key={m.index} style={{ background: '#fff3cd', padding: '0 2px', borderRadius: 3 }}>{m[0]}</mark>)
+    last = m.index + m[0].length
+    if (m.index === re.lastIndex) re.lastIndex++
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
 export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [data, setData] = useState<Rollup | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -53,6 +75,22 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [progress, setProgress] = useState<{ scanned: number; total: number | null }>({ scanned: 0, total: null })
   const [classifyErr, setClassifyErr] = useState<string | null>(null)
   const [field, setField] = useState('')  // which column to classify (user pick)
+
+  // Drill-down: clicking a sub-topic / alert opens the comments behind it.
+  const [drill, setDrill] = useState<{ qs: string; label: string } | null>(null)
+  const [drillData, setDrillData] = useState<{ count: number; comments: DrillComment[] } | null>(null)
+  const [drillLoading, setDrillLoading] = useState(false)
+
+  useEffect(() => {
+    if (!drill) { setDrillData(null); return }
+    let alive = true
+    setDrillLoading(true); setDrillData(null)
+    fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}`)
+      .then(r => r.json())
+      .then(d => { if (alive) { setDrillData({ count: d.count ?? 0, comments: d.comments ?? [] }); setDrillLoading(false) } })
+      .catch(() => { if (alive) { setDrillData({ count: 0, comments: [] }); setDrillLoading(false) } })
+    return () => { alive = false }
+  }, [drill, datasetId])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -212,13 +250,21 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
           </h3>
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
             {data.subs.slice(0, 18).map((s, i) => (
-              <div key={s.axis + ':' + s.sub} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+              <div
+                key={s.axis + ':' + s.sub}
+                onClick={() => setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, label: `${s.axis} · ${s.sub}` })}
+                title="View the comments tagged with this"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
                 <span style={{ flex: 1, fontSize: 13 }}>
                   <span style={{ color: SLATE }}>{s.axis} · </span>
                   <span style={{ fontWeight: 700, color: NAVY }}>{s.sub}</span>
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: TEAL, width: 48, textAlign: 'right' }}>{s.rate}%</span>
                 <span style={{ width: 70, textAlign: 'right' }}><Pill posPct={s.posPct} /></span>
+                <span style={{ color: SLATE, fontSize: 16 }}>›</span>
               </div>
             ))}
           </div>
@@ -233,9 +279,15 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
           </h3>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {data.alerts.map(a => (
-              <div key={a.tag} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px' }}>
+              <div
+                key={a.tag}
+                onClick={() => setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, label: a.tag })}
+                title="View the flagged comments"
+                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
+              >
                 <span style={{ fontWeight: 700, color: RED }}>{a.tag}</span>
                 <span style={{ color: '#991b1b', marginLeft: 8, fontWeight: 700 }}>{a.count}</span>
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>›</span>
               </div>
             ))}
           </div>
@@ -243,8 +295,40 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       )}
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive.
+        Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Click any sub-topic or alert to read the comments behind it.
       </p>
+
+      {/* Comment drill-down drawer */}
+      {drill && (
+        <>
+          <div onClick={() => setDrill(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 40 }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, height: '100%', width: 'min(520px, 92vw)', background: '#fff', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)', zIndex: 41, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Comments</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: NAVY }}>{drill.label}</div>
+                {drillData && <div style={{ fontSize: 12, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} tagged{drillData.count > drillData.comments.length ? ` · showing ${drillData.comments.length}` : ''}</div>}
+              </div>
+              <button onClick={() => setDrill(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: NAVY }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+              {drillLoading && <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 60 }}><LottieLoader size={90} message="Loading comments…" /></div>}
+              {!drillLoading && drillData && drillData.comments.length === 0 && (
+                <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
+              )}
+              {!drillLoading && drillData && drillData.comments.map((c, i) => (
+                <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    {c.rating != null && <span style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>★ {c.rating}</span>}
+                    {c.date && <span style={{ fontSize: 12, color: SLATE }}>{c.date}</span>}
+                  </div>
+                  <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

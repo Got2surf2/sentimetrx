@@ -69,6 +69,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
   instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
   `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
+  **Comment drill-down**: clicking a sub-topic row or an alert chip opens a side drawer of
+  the comments behind it, fed by `GET /api/datasets/[datasetId]/taxonomy/rows`
+  (`?axis=&sub=` or `?alert=`, org-gated; `.contains()` on the GIN-indexed axis array →
+  joins `dataset_rows_flat` for text; returns matched-evidence quotes the UI bolds).
+  (Minimal first cut shipped for a demo — the longer-term home is a TextMine lens reusing
+  the shared `CommentsPanel`.)
 - **Admin pilot viewer** — `/admin/taxonomy-pilot/[datasetId]` (requireAdmin),
   per-row legacy-vs-new side-by-side.
 - **Decks** — `lib/pptx/reviewIntelligenceDeck.ts` + `app/api/review-intelligence-deck`

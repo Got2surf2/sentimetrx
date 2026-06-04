@@ -697,3 +697,13 @@ Docs: BOTS.md (dynamicChips section rewritten for the toggle/injection model, ne
 **Scope note**: the Taxonomy tab is still gated to `source==='google_reviews'` datasets, and the keyword dictionary is restaurant-vertical — so this field picker generalizes *within* that gate today and unblocks survey data once the tab is opened to more dataset types (a separate, flagged decision). Did **not** silently ungate.
 
 **Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Ran `detectTextFields` logic in isolation against the real `reviewToRow` shape → default `review_text`, junk fields (place_id, review_date, rating, ids) correctly excluded (a few multi-word location columns remain as harmless extra options). Commit-only, not pushed.
+
+## 2026-06-03 — Taxonomy: comment drill-down on the tab (demo-minimal)
+
+**Why**: Owner has a demo in ~8h and needs to click into the taxonomy and retrieve the comments behind a tag (like the Themes/Entities drill-down). The Taxonomy tab was aggregate-only. Built a deliberately-minimal, throwaway-acceptable first cut on the existing standalone tab (the agreed longer-term home is a TextMine lens reusing `CommentsPanel` — not done under demo time pressure).
+
+**What changed**:
+- New `GET /api/datasets/[datasetId]/taxonomy/rows` — `?axis=&sub=` or `?alert=`, org-gated (pairs the dataset's org_id). `.contains()` on the GIN-indexed `axis_*` array (axis name → column via a fixed allowlist, so the param can't name an arbitrary column) → joins `dataset_rows_flat` for the row text → returns `{ label, count, comments[] }` with each comment's matched-evidence quotes. `pickText` prefers review_text/comment/feedback/response/text then longest string.
+- `components/analyze/TaxonomyModule.tsx`: sub-topic rows + alert chips are now clickable (hover + `›` affordance) → open a right-side drawer listing the comments, rating ★ + date, with the matched evidence phrases highlighted (`<mark>`).
+
+**Verification**: tsc clean (React 19: used `ReactElement`, not the removed global `JSX` namespace). Data path verified against real Cheddar's data — see session notes. Commit-only, not pushed.

@@ -358,7 +358,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Tab.** `/analyze/[datasetId]/taxonomy` — a "Taxonomy" tab in `DatasetHeader`'s
   `TABS`, shown **only for `source==='google_reviews'`** datasets. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, per-axis mention-rate
-  bars, top sub-topics with sentiment, and a severity-alerts panel.
+  bars, top sub-topics with sentiment, and a severity-alerts panel. Sub-topics and alert
+  chips are **clickable** → a comment drill-down drawer via `GET …/taxonomy/rows`
+  (`?axis=&sub=` or `?alert=`), with matched-evidence quotes highlighted.
 - **Data.** Read via `GET /api/datasets/[datasetId]/taxonomy` (org-gated; pairs the
   dataset's `org_id` on the read) → `computeTaxonomyRollup` in `lib/taxonomyRollup.ts`
   over the persisted `dataset_row_taxonomy` rows (table from sql/088).
