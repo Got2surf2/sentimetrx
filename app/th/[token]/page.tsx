@@ -29,7 +29,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   const service = createServiceRoleClient()
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, analysis_summary')
+    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary')
     .eq('share_token', token)
     .maybeSingle()
 
@@ -82,8 +82,10 @@ export default async function PublicTownHallReport({ params }: { params: Promise
                 <div className="space-y-5">
                   {tPairs.map((p, i) => {
                     const qa = p.payload as QaPairPayload
-                    const q = qa.polished_question || qa.question
-                    const a = qa.polished_answer || qa.answer
+                    // Owner setting: verbatim shows the words spoken; polished
+                    // (default) shows the editorial version, verbatim fallback.
+                    const q = rec.share_verbatim ? qa.question : (qa.polished_question || qa.question)
+                    const a = rec.share_verbatim ? qa.answer : (qa.polished_answer || qa.answer)
                     return (
                       <div key={i} className="rounded-xl bg-white border border-slate-200 overflow-hidden">
                         <div className="px-4 py-3 border-b border-slate-100">

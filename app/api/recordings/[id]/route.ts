@@ -107,7 +107,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       'setup_inputs, asr_strategy, asr_vendor_chosen, status, error_message, ' +
       'source_duration_sec, source_size_bytes, cost_cents, coverage_report, analysis_summary, ' +
       'meeting_profile, phase_map, presentation_outline, entity_map, ' +
-      'share_token, share_enabled, share_expires_at, ' +
+      'share_token, share_enabled, share_expires_at, share_verbatim, ' +
       'created_at, started_at, completed_at',
     )
     .eq('id', recording_id)
@@ -142,6 +142,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const share = {
     enabled: rec.share_enabled as boolean,
     expires_at: rec.share_expires_at as string | null,
+    verbatim: !!rec.share_verbatim,
     token: isOwner ? (rec.share_token as string | null) : null,
   }
 

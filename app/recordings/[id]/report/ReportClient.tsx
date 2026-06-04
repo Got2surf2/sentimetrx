@@ -122,6 +122,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
             isOwner={data.isOwner}
             initialShareEnabled={data.recording.share_enabled}
             initialShareToken={data.recording.share_token}
+            initialShareVerbatim={data.recording.share_verbatim}
           />
         )}
       </div>
@@ -764,13 +765,14 @@ function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: Recordin
 
 // ── Export & Share tab ───────────────────────────────────────────────────────
 
-function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken }: {
+function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken, initialShareVerbatim }: {
   recordingId: string
   recordingName: string
   status: string
   isOwner: boolean
   initialShareEnabled: boolean
   initialShareToken: string | null
+  initialShareVerbatim: boolean
 }) {
   const [generating, setGenerating] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -781,29 +783,36 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   // Public share link (§4.7). Owner-only; the token-gated page lives at /th/[token].
   const [shareEnabled, setShareEnabled] = useState(initialShareEnabled)
   const [shareToken, setShareToken] = useState<string | null>(initialShareToken)
+  const [shareVerbatim, setShareVerbatim] = useState(initialShareVerbatim)
   const [shareBusy, setShareBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/th/${shareToken}` : ''
 
-  const toggleShare = async (next: boolean) => {
+  // One call covers both fields — always send the current state of the other so
+  // toggling one never clobbers the other (the route updates whatever's present).
+  const postShare = async (body: { enabled: boolean; show_verbatim: boolean }) => {
     setShareBusy(true)
     setError(null)
     try {
       const res = await fetch(`/api/recordings/${recordingId}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify(body),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d?.error || `Share update failed (${res.status})`)
       setShareEnabled(d.enabled)
       if (d.token) setShareToken(d.token)
+      if (typeof d.show_verbatim === 'boolean') setShareVerbatim(d.show_verbatim)
     } catch (e) {
       setError((e as Error)?.message || 'Share update failed')
     } finally {
       setShareBusy(false)
     }
   }
+
+  const toggleShare = (next: boolean) => postShare({ enabled: next, show_verbatim: shareVerbatim })
+  const setVerbatim = (next: boolean) => postShare({ enabled: shareEnabled, show_verbatim: next })
 
   const copyLink = async () => {
     if (!shareUrl) return
@@ -953,21 +962,48 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
             </button>
           </div>
           {shareEnabled && shareUrl && (
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                readOnly
-                value={shareUrl}
-                onFocus={e => e.currentTarget.select()}
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-gray-50"
-                style={{ fontSize: '16px' }}
-              />
-              <button
-                onClick={copyLink}
-                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
+            <>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shareUrl}
+                  onFocus={e => e.currentTarget.select()}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-gray-50"
+                  style={{ fontSize: '16px' }}
+                />
+                <button
+                  onClick={copyLink}
+                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              {/* What the public page shows for each answer. Polished is the default. */}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <span className="text-gray-500">Show:</span>
+                <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    onClick={() => setVerbatim(false)}
+                    disabled={shareBusy}
+                    className={`px-3 py-1.5 font-medium transition-colors ${!shareVerbatim ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    Polished
+                  </button>
+                  <button
+                    onClick={() => setVerbatim(true)}
+                    disabled={shareBusy}
+                    className={`px-3 py-1.5 font-medium transition-colors border-l border-gray-300 ${shareVerbatim ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    Verbatim
+                  </button>
+                </div>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {shareVerbatim
+                  ? 'The link shows the exact words spoken (verbatim Q&A). The meeting transcript stays private.'
+                  : 'The link shows the cleaned-up, publication-ready Q&A (recommended).'}
+              </p>
+            </>
           )}
         </div>
       )}

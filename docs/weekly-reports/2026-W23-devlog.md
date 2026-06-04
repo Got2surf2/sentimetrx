@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall share link: polished vs verbatim Q&A (owner setting)
+
+**Why**: Owner — the public share link should let the owner choose polished (default) vs verbatim Q&A for what recipients see; some meetings read better as the exact words. (The page already preferred polished with per-pair fallback — this adds explicit control.)
+
+**What changed**:
+- **`sql/104`** — `recordings.share_verbatim BOOLEAN NOT NULL DEFAULT FALSE` (false = polished, the existing behavior).
+- `app/th/[token]/page.tsx` — when `share_verbatim`, render `question`/`answer` (verbatim); else `polished_* || verbatim` (default). The meeting transcript is still never shown.
+- `POST /api/recordings/[id]/share` — accepts `show_verbatim`; updates `share_verbatim` only when the key is present (so enable/disable doesn't clobber the choice, and vice-versa); returns it. GET `/api/recordings/[id]` returns `share.verbatim`.
+- Report Export & Share tab — a **Polished/Verbatim segmented control** on the enabled link (`postShare` always sends the current state of the other field). Default Polished.
+
+Verified: `sql/104` applied + verified on prod (boolean, default false); /th + report routes compile and query clean post-migration; typecheck clean. Spec §4.6/§4.7 updated. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall: brand-entity convergence (§3.5c)
 
 **Why**: Owner — a brand's agent (e.g. Sarina/NOWOCATS) already has a curated entity catalog; a Town Hall meeting of that brand should reuse it to correct ASR spellings, not start from a blank slate, and the meeting should feed brand-level analysis back. The brand infra already exists for *datasets* (brand_tag → collection → entity_catalog); bots were the island (no collection membership). Approach chosen: brand_tag + agent link with a read-time union (no membership surgery); auto-seed at extraction, still reviewable at the gate.

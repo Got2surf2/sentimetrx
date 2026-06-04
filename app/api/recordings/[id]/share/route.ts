@@ -32,7 +32,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // confirm the row exists to a caller who shouldn't see it.
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, created_by, status, share_token, share_enabled')
+    .select('id, org_id, created_by, status, share_token, share_enabled, share_verbatim')
     .eq('id', recording_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
@@ -44,7 +44,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: 'only the recording owner can change sharing' }, { status: 403 })
   }
 
-  let body: { enabled?: boolean; expires_in_days?: number } = {}
+  let body: { enabled?: boolean; expires_in_days?: number; show_verbatim?: boolean } = {}
   try { body = await req.json() } catch { /* empty body → treat as no-op */ }
   const enabled = body.enabled === true
 
@@ -62,9 +62,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     expires_at = new Date(Date.now() + days * 86400_000).toISOString()
   }
 
+  // Polished (default) vs verbatim Q&A on the public page. Only touched when the
+  // caller includes the key, so enable/disable calls don't clobber the setting.
+  const patch: Record<string, unknown> = {
+    share_enabled: enabled,
+    share_token: token,
+    share_expires_at: enabled ? expires_at : null,
+  }
+  if ('show_verbatim' in body) patch.share_verbatim = body.show_verbatim === true
+  const verbatim = 'show_verbatim' in body ? body.show_verbatim === true : !!rec.share_verbatim
+
   const { error: updErr } = await service
     .from('recordings')
-    .update({ share_enabled: enabled, share_token: token, share_expires_at: enabled ? expires_at : null })
+    .update(patch)
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
   if (updErr) return NextResponse.json({ error: `share update failed: ${updErr.message}` }, { status: 500 })
@@ -75,5 +85,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     token: enabled ? token : null,
     path: enabled ? `/th/${token}` : null,
     expires_at: enabled ? expires_at : null,
+    show_verbatim: verbatim,
   })
 }

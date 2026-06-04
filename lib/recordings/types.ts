@@ -119,6 +119,8 @@ export interface RecordingRow {
   share_enabled: boolean
   share_expires_at: string | null
   share_password_hash: string | null
+  // §4.6 — public link shows verbatim Q&A when true, polished (default) when false.
+  share_verbatim: boolean
 
   created_at: string
   started_at: string | null
