@@ -358,8 +358,9 @@ A restaurant-specific capability that classifies every review against one shared
 context · outcome) + a cross-cutting **severity flag** (`normal | alert | crisis`).
 Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integration:
 
-- **Tab.** `/analyze/[datasetId]/taxonomy` — a "Taxonomy" tab in `DatasetHeader`'s
-  `TABS`, shown **only for `source==='google_reviews'`** datasets. Renders
+- **Tab.** `/analyze/[datasetId]/taxonomy` — a **"Categories"** tab in `DatasetHeader`'s
+  `TABS` (user-facing label is "Categories"; internal key/route stays `taxonomy`), shown
+  **only for `source==='google_reviews'`** datasets. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, per-axis mention-rate bars,
   and top sub-topics with sentiment. **Severity alerts (food safety / pests) live as red
   pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and

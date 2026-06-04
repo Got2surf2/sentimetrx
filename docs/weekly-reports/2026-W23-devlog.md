@@ -953,3 +953,9 @@ Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy
 **Why**: Owner wanted a closer match to TextMine's comment cards — a column-count (grid) selector and a per-card side-bar reflecting the underlying rating.
 
 **What changed** (`components/analyze/TaxonomyModule.tsx`): added `rampColor`/`ratingColor` (the same red→green ramp as TextMine's CommentsPanel), so each card gets a **4px left bar** coloured by its 1–5 rating + a faint rgba tint. Added a **1–4 column grid picker** in the panel header (`gridCols` state) and rendered the comments in a CSS grid (`repeat(N,1fr)`, equal-height cells via flex-column cards with meta pinned `marginTop:auto`). tsc clean; page compiles.
+
+## 2026-06-03 — Taxonomy tab renamed "Categories" (user-facing only)
+
+**Why**: "Taxonomy" is jargon and sits oddly next to Themes/Entities; the competitor calls it "categories", which helps in a head-to-head pitch. Owner picked "Categories" for now (personally prefers "Aspects"/"Dimensions" — parked).
+
+**What changed** (user-facing strings only; all internal `taxonomy` code/routes/keys unchanged): `DatasetHeader` tab label `Taxonomy`→`Categories`; `TaxonomyModule` copy (loader, error, "No categories yet", empty-state, footer, filter labels Topic/Sub-topic → Category/Sub-category, breadcrumb root `Categories`, CSV filename fallback `categories.csv`). tsc clean; page compiles.

@@ -54,7 +54,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 4. Surfaces
 
-- **In-app Taxonomy tab** — `/analyze/[datasetId]/taxonomy` (gated to
+- **In-app Categories tab** (user-facing label is **"Categories"**; internal code/routes/keys stay `taxonomy` — the competitor calls it "categories", and it's friendlier than "taxonomy") — `/analyze/[datasetId]/taxonomy` (gated to
   `source==='google_reviews'` in `DatasetHeader.TABS`) → `TaxonomyModule.tsx`, fed by
   `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
   the empty state offers a **"Classify this dataset"** button (and the populated view a

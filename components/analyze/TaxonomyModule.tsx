@@ -140,7 +140,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     const slug = drill.crumbs.join('-').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     const url = URL.createObjectURL(new Blob([rows], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
-    a.href = url; a.download = `${slug || 'taxonomy'}.csv`; a.click()
+    a.href = url; a.download = `${slug || 'categories'}.csv`; a.click()
     URL.revokeObjectURL(url)
   }, [drill, drillData])
 
@@ -211,8 +211,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </select>
     ) : null
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading taxonomy…" /></div>
-  if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load taxonomy: {err}</div>
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading categories…" /></div>
+  if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load categories: {err}</div>
 
   if (classifying) {
     const pct = progress.total ? Math.min(100, Math.round(100 * progress.scanned / progress.total)) : null
@@ -233,9 +233,9 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   if (!data || data.classifiedRows === 0) {
     return (
       <div style={{ padding: 40, maxWidth: 560 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No taxonomy yet</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No categories yet</h2>
         <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-          This dataset hasn’t been classified against the 7-axis taxonomy yet. Run the classifier to tag every row by touchpoint, attribute, product, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
+          This dataset hasn’t been sorted into categories yet. Run the classifier to tag every row by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
         </p>
         {data && data.textFields && data.textFields.length > 0 && (
           <div style={{ marginBottom: 20 }}>
@@ -286,7 +286,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       {/* Filter by topic / sub-topic — pills. Topics show first; pick one to reveal its sub-topics. */}
       <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Topic</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Category</span>
           {(filterAxis || drill) && (
             <button onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill(null) }}
               style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: SLATE, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Clear ✕</button>
@@ -306,16 +306,16 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         </div>
         {filterAxis && (
           <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>Sub-topic</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>Sub-category</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {data.subs.filter(s => s.axis === filterAxis).length === 0 && (
-                <span style={{ fontSize: 13, color: SLATE }}>No sub-topics surfaced for this topic.</span>
+                <span style={{ fontSize: 13, color: SLATE }}>No sub-categories surfaced for this category.</span>
               )}
               {data.subs.filter(s => s.axis === filterAxis).map(s => {
                 const active = filterSub === s.sub
                 return (
                   <button key={s.sub}
-                    onClick={() => { if (active) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', filterAxis, s.sub] }) } }}
+                    onClick={() => { if (active) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Categories',filterAxis, s.sub] }) } }}
                     style={pillStyle(active, TEAL)}>
                     {s.sub} <span style={{ opacity: 0.55, fontWeight: 600 }}>{s.count}</span>
                   </button>
@@ -334,7 +334,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 const active = drill?.qs === `alert=${encodeURIComponent(a.tag)}`
                 return (
                   <button key={a.tag}
-                    onClick={() => { if (active) { setDrill(null) } else { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] }) } }}
+                    onClick={() => { if (active) { setDrill(null) } else { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Categories','Severity alert', a.tag] }) } }}
                     style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
                     {a.tag} <span style={{ opacity: 0.6, fontWeight: 600 }}>{a.count}</span>
                   </button>
@@ -456,7 +456,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {data.subs.slice(0, 18).map((s, i) => (
               <div
                 key={s.axis + ':' + s.sub}
-                onClick={() => { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Taxonomy', s.axis, s.sub] }) }}
+                onClick={() => { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Categories',s.axis, s.sub] }) }}
                 title="View the comments tagged with this"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
@@ -476,7 +476,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification on the shared 7-axis taxonomy. Mention rate = % of classified reviews touching the axis/sub; sentiment = share of polarised mentions that are positive. Filter by topic / sub-topic above, or click any sub-topic or alert, to read the comments behind it.
+        Keyword-tier classification into a shared, consistent set of categories. Mention rate = % of classified reviews touching the category/sub-category; sentiment = share of polarised mentions that are positive. Filter by category / sub-category above, or click any sub-category or alert, to read the comments behind it.
       </p>
     </div>
   )
