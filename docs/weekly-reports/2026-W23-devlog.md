@@ -685,3 +685,15 @@ Docs: BOTS.md (dynamicChips section rewritten for the toggle/injection model, ne
 - `components/analyze/TaxonomyModule.tsx`: empty state now has a **"Classify this dataset"** button (loops POST chunks with a live progress bar, then refreshes the roll-up); populated view gets a **"Re-classify"** control for picking up daily-synced reviews. Writes are idempotent on `(dataset_id, row_id)` so an interrupted run resumes.
 
 **Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Confirmed against `lib/reviewSync.ts::reviewToRow` that Google review rows store text in `review_text` (the classifier's default `textField`) — the key silent-failure mode (wrong field → all rows skipped) is ruled out. NOT yet click-tested end-to-end (the tab is auth-gated on prod data; the button is only usable by the owner after deploy). Commit-only, not pushed.
+
+## 2026-06-03 — Taxonomy: user-selectable text field (not hardcoded review_text)
+
+**Why**: The self-serve classifier (shipped earlier today) hardcoded `textField: 'review_text'`. Owner flagged that's review-only — a guest-satisfaction survey stores the written feedback under a different column (`comment`, `feedback`, etc.), so the user should pick which field to classify.
+
+**What changed**:
+- `app/api/datasets/[datasetId]/taxonomy/route.ts`: `GET` now also returns `{ textFields, defaultField }` via a new `detectTextFields` helper — samples ~25 rows of `dataset_rows_flat`, keeps columns whose sampled values are mostly multi-word strings ≥12 chars (so place_id / dates / ratings / ids / single-word fields drop out), labels them from `dataset_state.schema_config` when present, and recommends `review_text` as default. `POST` accepts `textField` from the body and threads it to `classifyDatasetKeyword` (it's a JSONB key lookup — an unknown field yields no matches, never an error, so no injection surface).
+- `components/analyze/TaxonomyModule.tsx`: a **"Field to classify"** dropdown (empty state + a compact one beside Re-classify); selection rides each POST as `textField`. Progress copy de-review-ified ("rows", not "reviews").
+
+**Scope note**: the Taxonomy tab is still gated to `source==='google_reviews'` datasets, and the keyword dictionary is restaurant-vertical — so this field picker generalizes *within* that gate today and unblocks survey data once the tab is opened to more dataset types (a separate, flagged decision). Did **not** silently ungate.
+
+**Verification**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Ran `detectTextFields` logic in isolation against the real `reviewToRow` shape → default `review_text`, junk fields (place_id, review_date, rating, ids) correctly excluded (a few multi-word location columns remain as harmless extra options). Commit-only, not pushed.

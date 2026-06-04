@@ -367,7 +367,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
   `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
   **"Classify this dataset"** / **"Re-classify"** buttons loop `POST /api/datasets/[datasetId]/taxonomy`
-  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost.
+  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The text
+  column is **user-selectable** via a "Field to classify" dropdown (GET returns detected `textFields[]`
+  + `defaultField` = `review_text` when present), so survey datasets can target `comment`/`feedback`.
   `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Still not wired into the upload/ingest path (auto-classify-on-sync is roadmap).
 - **Vendor benchmark.** For datasets with legacy vendor labels, the classifier reproduces
   ~90% of the vendor's topics at higher coverage and far higher alert precision (see

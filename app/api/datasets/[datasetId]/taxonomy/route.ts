@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
 import { classifyDatasetKeyword } from '@/lib/taxonomyClassify'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -23,6 +24,57 @@ export const maxDuration = 120
 const CHUNK = 10000
 
 interface Params { params: Promise<{ datasetId: string }> }
+
+interface TextField { field: string; label: string }
+
+function prettifyField(field: string): string {
+  return field.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+/**
+ * Detect which columns hold free-text worth classifying, so the UI can let the
+ * user pick (a review dataset uses `review_text`; a survey might use `comment`,
+ * `feedback`, etc.). Samples rows rather than trusting schema detection, which
+ * may not have run yet. A column qualifies when its sampled values are mostly
+ * multi-word strings of reasonable length. Labels come from schema_config when
+ * present. Returns candidates (most text-like first) + a recommended default.
+ */
+async function detectTextFields(
+  service: SupabaseClient,
+  datasetId: string,
+): Promise<{ textFields: TextField[]; defaultField: string | null }> {
+  const [{ data: rows }, { data: stateRow }] = await Promise.all([
+    service.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId)
+      .order('row_index', { ascending: true }).limit(25),
+    service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle(),
+  ])
+
+  const labels: Record<string, string> = {}
+  for (const f of (stateRow?.schema_config?.fields ?? []) as { field: string; label?: string }[]) {
+    if (f?.field && f.label) labels[f.field] = f.label
+  }
+
+  const stat: Record<string, { strs: number; spaced: number; len: number }> = {}
+  for (const r of (rows ?? []) as { data: Record<string, unknown> }[]) {
+    for (const [k, v] of Object.entries(r.data ?? {})) {
+      const s = stat[k] ?? (stat[k] = { strs: 0, spaced: 0, len: 0 })
+      if (typeof v === 'string' && v.trim()) {
+        s.strs++; s.len += v.trim().length
+        if (/\s/.test(v.trim())) s.spaced++
+      }
+    }
+  }
+
+  const sampled = (rows ?? []).length
+  const candidates = Object.entries(stat)
+    .filter(([, s]) => s.strs >= Math.max(1, sampled * 0.5) && s.spaced >= s.strs * 0.4 && s.len / s.strs >= 12)
+    .map(([field, s]) => ({ field, avgLen: s.len / s.strs }))
+    .sort((a, b) => b.avgLen - a.avgLen)
+
+  const textFields = candidates.map(c => ({ field: c.field, label: labels[c.field] || prettifyField(c.field) }))
+  const defaultField = textFields.find(f => f.field === 'review_text')?.field || textFields[0]?.field || null
+  return { textFields, defaultField }
+}
 
 /** Resolve the dataset and enforce org ownership. Returns the dataset row or a NextResponse error. */
 async function gateDataset(datasetId: string, select: string) {
@@ -46,8 +98,11 @@ export async function GET(_req: Request, props: Params) {
   if (gate.error) return gate.error
 
   const service = createServiceRoleClient()
-  const rollup = await computeTaxonomyRollup({ service, datasetId, orgId: gate.dataset.org_id as string })
-  return NextResponse.json(rollup)
+  const [rollup, fields] = await Promise.all([
+    computeTaxonomyRollup({ service, datasetId, orgId: gate.dataset.org_id as string }),
+    detectTextFields(service, datasetId),
+  ])
+  return NextResponse.json({ ...rollup, ...fields })
 }
 
 export async function POST(req: Request, props: Params) {
@@ -58,11 +113,16 @@ export async function POST(req: Request, props: Params) {
 
   const body = await req.json().catch(() => ({}))
   const cursor = Number.isFinite(body?.cursor) ? Math.max(0, Math.floor(body.cursor)) : 0
+  // Which column to classify. The client passes the user's pick; default to the
+  // review field. It's a JSONB key lookup (object access, not SQL), so an
+  // unknown field simply yields no matches rather than erroring.
+  const textField = typeof body?.textField === 'string' && body.textField.trim()
+    ? body.textField.trim() : 'review_text'
 
   const service = createServiceRoleClient()
   const r = await classifyDatasetKeyword({
     service, datasetId, orgId: dataset.org_id as string,
-    brand: 'core', offset: cursor, limit: CHUNK,
+    brand: 'core', textField, offset: cursor, limit: CHUNK,
   })
 
   return NextResponse.json({

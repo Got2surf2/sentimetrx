@@ -59,9 +59,16 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
   the empty state offers a **"Classify this dataset"** button (and the populated view a
   **"Re-classify"** control); both loop `POST /api/datasets/[datasetId]/taxonomy`
-  (`{ cursor }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row
-  chunks, `core` overlay, org-gated like the GET) with a live progress bar until `done`.
-  Keyword-tier → no AI cost; idempotent so an interrupted run resumes.
+  (`{ cursor, textField }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
+  10K-row chunks, `core` overlay, org-gated like the GET) with a live progress bar until
+  `done`. Keyword-tier → no AI cost; idempotent so an interrupted run resumes.
+  **Field picker**: the text column isn't hardcoded — the `GET` response carries
+  `textFields[]` + a recommended `defaultField`, detected by `detectTextFields` (samples
+  ~25 rows; a column qualifies when its values are mostly multi-word strings ≥12 chars;
+  labels from `schema_config` when present; defaults to `review_text`). The tab renders a
+  **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
+  instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
+  `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
 - **Admin pilot viewer** — `/admin/taxonomy-pilot/[datasetId]` (requireAdmin),
   per-row legacy-vs-new side-by-side.
 - **Decks** — `lib/pptx/reviewIntelligenceDeck.ts` + `app/api/review-intelligence-deck`

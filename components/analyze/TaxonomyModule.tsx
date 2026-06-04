@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null }
+interface TextField { field: string; label: string }
 interface Rollup {
   classifiedRows: number
   withSignal: number
@@ -18,6 +19,8 @@ interface Rollup {
   subs: SubStat[]
   alerts: { tag: string; count: number }[]
   alertRows: number
+  textFields: TextField[]
+  defaultField: string | null
 }
 
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
@@ -49,13 +52,16 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [classifying, setClassifying] = useState(false)
   const [progress, setProgress] = useState<{ scanned: number; total: number | null }>({ scanned: 0, total: null })
   const [classifyErr, setClassifyErr] = useState<string | null>(null)
+  const [field, setField] = useState('')  // which column to classify (user pick)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const r = await fetch(`/api/datasets/${datasetId}/taxonomy`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
-      setData(await r.json())
+      const j: Rollup = await r.json()
+      setData(j)
+      setField(prev => prev || j.defaultField || '')
       setErr(null)
     } catch (e: any) {
       setErr(String(e.message || e))
@@ -78,7 +84,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cursor }),
+          body: JSON.stringify({ cursor, textField: field || undefined }),
         })
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
         const j = await r.json()
@@ -92,7 +98,21 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     } finally {
       setClassifying(false)
     }
-  }, [datasetId, load])
+  }, [datasetId, load, field])
+
+  // Reusable text-field picker (empty state + re-classify). Hidden when no
+  // candidate text columns were detected (POST then falls back to review_text).
+  const fieldPicker = (compact: boolean) =>
+    data && data.textFields && data.textFields.length > 0 ? (
+      <select
+        value={field}
+        onChange={e => setField(e.target.value)}
+        aria-label="Field to classify"
+        style={{ fontSize: compact ? 13 : 16, padding: compact ? '0 10px' : '9px 12px', height: compact ? '100%' : undefined, borderRadius: compact ? 10 : 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, fontWeight: compact ? 700 : 500, minWidth: compact ? 0 : 280 }}
+      >
+        {data.textFields.map(f => <option key={f.field} value={f.field}>{f.label}</option>)}
+      </select>
+    ) : null
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading taxonomy…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load taxonomy: {err}</div>
@@ -101,9 +121,9 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     const pct = progress.total ? Math.min(100, Math.round(100 * progress.scanned / progress.total)) : null
     return (
       <div style={{ padding: 40, maxWidth: 560 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Classifying reviews…</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Classifying…</h2>
         <p style={{ fontSize: 14, color: '#475569', marginBottom: 16 }}>
-          {progress.scanned.toLocaleString()}{progress.total ? ` of ${progress.total.toLocaleString()}` : ''} reviews scanned. Keep this tab open — you can leave it running.
+          {progress.scanned.toLocaleString()}{progress.total ? ` of ${progress.total.toLocaleString()}` : ''} rows scanned. Keep this tab open — you can leave it running.
         </p>
         <div style={{ background: '#eef2f4', borderRadius: 6, height: 16, overflow: 'hidden' }}>
           <div style={{ width: pct === null ? '100%' : `${pct}%`, height: 16, background: TEAL, borderRadius: 6, transition: 'width .3s', opacity: pct === null ? 0.5 : 1 }} />
@@ -118,8 +138,15 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       <div style={{ padding: 40, maxWidth: 560 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No taxonomy yet</h2>
         <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-          This dataset hasn’t been classified against the 7-axis taxonomy yet. Run the classifier to tag every review by touchpoint, attribute, product, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
+          This dataset hasn’t been classified against the 7-axis taxonomy yet. Run the classifier to tag every row by touchpoint, attribute, product, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
         </p>
+        {data && data.textFields && data.textFields.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 6 }}>Field to classify</label>
+            {fieldPicker(false)}
+            <p style={{ fontSize: 12, color: SLATE, marginTop: 6 }}>The column holding the written feedback — e.g. the review or comment text.</p>
+          </div>
+        )}
         <button
           onClick={runClassifier}
           style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
@@ -146,13 +173,16 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         {kpi('reviews classified', data.classifiedRows.toLocaleString(), TEAL)}
         {kpi('with a signal', `${Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}%`, NAVY)}
         {kpi('severity alerts', data.alertRows, data.alertRows ? RED : SLATE)}
-        <button
-          onClick={runClassifier}
-          title="Re-run the classifier to pick up newly synced reviews"
-          style={{ marginLeft: 'auto', alignSelf: 'stretch', background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-        >
-          Re-classify
-        </button>
+        <div style={{ marginLeft: 'auto', alignSelf: 'stretch', display: 'flex', gap: 8 }}>
+          {fieldPicker(true)}
+          <button
+            onClick={runClassifier}
+            title="Re-run the classifier (on the selected field) to pick up newly synced rows"
+            style={{ background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Re-classify
+          </button>
+        </div>
       </div>
       {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
