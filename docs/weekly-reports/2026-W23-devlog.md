@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall cards: ℹ️ lifecycle progress popover
+
+**Why**: Owner — recordings don't require every step, so users get confused about what's done / what's optional. An at-a-glance progress checklist per recording.
+
+**What changed**:
+- `app/recordings/RecordingsListClient.tsx` — an **ℹ️** button in the card's top-right cluster opens a **Progress** popover: Uploaded · Transcribed · Entities reviewed *(opt)* · Q&A generated · Polished edits *(opt)* · Public link shared *(opt)*, each ✓ (green) / ○ (gray) with "optional" marked and a footer note "only upload + generate are required." Steps derived by `lifecycleSteps()` from `status` + flags. Click-away shared with the ⋯ menu.
+- `app/recordings/page.tsx` — the query now selects `share_enabled` + `entity_map` and runs one JSONB query (`payload->>edited_at` not null) to flag which recordings have human edits; maps `entities_reviewed` / `has_edits` / `shared` onto each card.
+
+Verified: popover QC'd via throwaway route + Playwright (complete card all ✓, edits predicate confirmed against prod); /recordings compiles; tsc clean. Spec §5.5 updated. **Local-only.**
+
 ## 2026-06-04 — Town Hall: human edit layer for Q&A pairs (§3.5d)
 
 **Why**: Owner wants the AI polish to be hand-correctable — and explicitly to **retain** the AI version when a human edits, so a botched edit can't destroy it ("stops people from fucking up royally"). A third text layer.

@@ -22,6 +22,23 @@ export interface RecordingCard {
   owner_name: string | null
   org_name: string | null
   favorited: boolean
+  entities_reviewed: boolean
+  has_edits: boolean
+  shared: boolean
+}
+
+// Lifecycle steps for the ℹ️ progress popover. `done` from the recording's
+// status + flags; `optional` steps can be skipped without blocking the report.
+function lifecycleSteps(r: RecordingCard): Array<{ label: string; done: boolean; optional?: boolean }> {
+  const transcribed = ['transcribed', 'analyzing', 'rendering', 'complete'].includes(r.status)
+  return [
+    { label: 'Uploaded', done: r.status !== 'uploading' },
+    { label: 'Transcribed', done: transcribed },
+    { label: 'Entities reviewed', done: r.entities_reviewed, optional: true },
+    { label: 'Q&A generated', done: r.status === 'complete' },
+    { label: 'Polished edits', done: r.has_edits, optional: true },
+    { label: 'Public link shared', done: r.shared, optional: true },
+  ]
 }
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
@@ -55,6 +72,7 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
 
   // ⋯ menu + inline rename, keyed by recording id.
   const [menuId, setMenuId] = useState<string | null>(null)
+  const [infoId, setInfoId] = useState<string | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState('')
 
@@ -147,8 +165,31 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
             <div key={r.id} className="group relative bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden min-h-[176px]">
               {/* top accent strip — status color (matches the family's colored card header) */}
               <div className="h-1.5 w-full" style={{ background: st.fg }} />
-              {/* top-right: favorite star + ⋯ menu (Rename / Delete) — matches the card family */}
+              {/* top-right: progress ℹ️ + favorite star + ⋯ menu (Rename / Delete) */}
               <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-0.5">
+                <div className="relative">
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoId(infoId === r.id ? null : r.id) }}
+                    title="Progress — what's done, what's optional"
+                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-base leading-none">
+                    ⓘ
+                  </button>
+                  {infoId === r.id && (
+                    <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-30 w-60 p-3 text-left cursor-default" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                      <div className="text-xs font-bold text-gray-700 mb-2">Progress</div>
+                      <div className="space-y-1">
+                        {lifecycleSteps(r).map(step => (
+                          <div key={step.label} className="flex items-center gap-2 text-xs">
+                            <span className={`w-3.5 text-center ${step.done ? 'text-green-600' : 'text-gray-300'}`}>{step.done ? '✓' : '○'}</span>
+                            <span className={step.done ? 'text-gray-800' : 'text-gray-500'}>{step.label}</span>
+                            {step.optional && <span className="ml-auto text-[10px] text-gray-400 italic">optional</span>}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-2 pt-2 border-t border-gray-100">Optional steps can be skipped — only upload + generate are required.</p>
+                    </div>
+                  )}
+                </div>
                 <FavoriteStar resourceType="recording" resourceId={r.id} initialFavorited={r.favorited} size={16} />
                 <div className="relative">
                   <button
@@ -219,8 +260,8 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
         })}
       </div>
 
-      {/* Click-away to dismiss an open ⋯ menu */}
-      {menuId && <div className="fixed inset-0 z-10" onClick={() => setMenuId(null)} />}
+      {/* Click-away to dismiss an open ⋯ menu or ℹ️ progress popover */}
+      {(menuId || infoId) && <div className="fixed inset-0 z-10" onClick={() => { setMenuId(null); setInfoId(null) }} />}
 
       {target && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !deleting && setTarget(null)}>

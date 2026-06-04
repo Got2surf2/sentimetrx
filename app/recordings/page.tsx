@@ -31,6 +31,9 @@ interface Row {
   owner_name: string | null
   org_name: string | null
   favorited: boolean
+  entities_reviewed: boolean
+  has_edits: boolean
+  shared: boolean
 }
 
 export default async function RecordingsListPage() {
@@ -45,7 +48,7 @@ export default async function RecordingsListPage() {
     .from('recordings')
     .select(
       'id, org_id, created_by, dataset_id, name, session_type, meeting_date, status, ' +
-      'cost_cents, source_duration_sec, created_at, completed_at, ' +
+      'cost_cents, source_duration_sec, created_at, completed_at, share_enabled, entity_map, ' +
       'organizations:org_id(name)',
     )
     .order('created_at', { ascending: false })
@@ -69,6 +72,21 @@ export default async function RecordingsListPage() {
     const { data: owners } = await service.from('users').select('id, full_name, email').in('id', ownerIds)
     for (const u of (owners ?? []) as any[]) {
       ownerById.set(u.id as string, { full_name: u.full_name ?? null, email: u.email ?? null })
+    }
+  }
+
+  // Which recordings have a human-edited Q&A pair (§3.5d) → the "Polished edits"
+  // lifecycle step. One JSONB query across the loaded recordings' extractions.
+  const editedIds = new Set<string>()
+  {
+    const ids = (data ?? []).map((r: any) => r.id)
+    if (ids.length > 0) {
+      const { data: edits } = await service
+        .from('recording_extractions')
+        .select('recording_id')
+        .in('recording_id', ids)
+        .not('payload->>edited_at', 'is', null)
+      for (const e of (edits ?? []) as any[]) editedIds.add(e.recording_id as string)
     }
   }
 
@@ -110,6 +128,10 @@ export default async function RecordingsListPage() {
     owner_name: ownerById.get(r.created_by)?.full_name || ownerById.get(r.created_by)?.email || null,
     org_name: r.organizations?.name || null,
     favorited: favIds.has(r.id),
+    // §5.5 lifecycle checklist flags.
+    entities_reviewed: !!r.entity_map?.reviewed_at,
+    has_edits: editedIds.has(r.id),
+    shared: !!r.share_enabled,
   }))
 
   return (
