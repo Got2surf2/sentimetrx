@@ -1,5 +1,13 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-03 — Taxonomy comment drawer: snap evidence highlight to word boundaries
+
+**Why**: Owner saw the evidence highlight in the taxonomy comment drawer cutting words in half ("w as really good… were ju", "k ey west… rece ived"). Stored evidence is a fixed-width char window, and `highlight()` was wrapping it verbatim.
+
+**What changed**: `components/analyze/TaxonomyModule.tsx` `highlight()` now expands each match left/right to the nearest word boundary (Unicode letter/number test) before wrapping it in `<mark>`, and advances the regex past the expanded span so matches can't overlap. The highlight never cuts a word now.
+
+Note on the separate "view resets to the taxonomy start" report: not a bug in this component (no internal remount/poll/timer). The dev-server log showed multiple Fast-Refresh full reloads — a concurrent session editing files on the same dev server forces full reloads that wipe React state (closes the drawer, refetches). Isolate by running a dedicated dev server. tsc clean.
+
 ## 2026-06-03 — Transcripts: Q&A-pairs export
 
 **Why**: Owner needs to be able to produce a clean list of every question/answer pair on demand. The existing export was one-row-per-turn (Session/Turn/Role/Content) — usable but not paired.

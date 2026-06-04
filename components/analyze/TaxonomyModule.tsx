@@ -47,18 +47,27 @@ interface DrillComment { text: string; rating: number | null; date: string | nul
 
 function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-/** Bold the matched-evidence phrases inside a comment so the demo shows WHY it was tagged. */
+/** Bold the matched-evidence phrases inside a comment so the demo shows WHY it was tagged.
+ *  Stored evidence is often a fixed-width char window (e.g. "…were ju"), so we snap each
+ *  match out to whole-word boundaries — the highlight never cuts a word in half. */
 function highlight(text: string, phrases: string[]): Array<string | ReactElement> {
   const cleaned = [...new Set(phrases.map(p => p.trim()).filter(p => p.length >= 2))].sort((a, b) => b.length - a.length)
   if (!cleaned.length) return [text]
   let re: RegExp
   try { re = new RegExp('(' + cleaned.map(escapeRE).join('|') + ')', 'gi') } catch { return [text] }
+  const isWord = (ch: string) => /[\p{L}\p{N}]/u.test(ch)
   const out: Array<string | ReactElement> = []
   let last = 0, m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index))
-    out.push(<mark key={m.index} style={{ background: '#fff3cd', padding: '0 2px', borderRadius: 3 }}>{m[0]}</mark>)
-    last = m.index + m[0].length
+    // Expand the matched span left/right to the nearest word boundaries.
+    let s = m.index, e = m.index + m[0].length
+    while (s > 0 && isWord(text[s - 1])) s--
+    while (e < text.length && isWord(text[e])) e++
+    if (s < last) s = last                              // don't backtrack into already-emitted text
+    if (s > last) out.push(text.slice(last, s))
+    if (e > s) out.push(<mark key={s} style={{ background: '#fff3cd', padding: '0 2px', borderRadius: 3 }}>{text.slice(s, e)}</mark>)
+    last = e
+    if (re.lastIndex < e) re.lastIndex = e              // skip past the expanded word so the next match can't overlap it
     if (m.index === re.lastIndex) re.lastIndex++
   }
   if (last < text.length) out.push(text.slice(last))
