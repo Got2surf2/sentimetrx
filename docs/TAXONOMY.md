@@ -76,7 +76,9 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `Taxonomy › axis › sub` / `Taxonomy › Severity alert › tag`, count, a scrollable list)
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=&sub=` or `?alert=`,
   org-gated; `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
-  text; returns matched-evidence quotes the UI bolds). The panel has an **Export CSV**
+  text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
+  the row** so each comment shows what else it hit). Cards mirror TextMine's `CommentCard`
+  (text, meta chips, **Show more** for long text); the panel has an **Export CSV**
   (rating/date/comment/evidence of the shown comments) and a per-comment **Copy** button.
   (Inline, not the theme-coupled TextMine `CommentsPanel` — that's 944 lines bound to the
   theme model + in-memory rows; the taxonomy panel reuses the same UX pattern + the

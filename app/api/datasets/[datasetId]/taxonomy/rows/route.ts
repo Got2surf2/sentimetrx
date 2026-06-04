@@ -48,6 +48,19 @@ function collectEvidence(assertions: unknown, axis: string, sub: string, alert: 
   return [...out]
 }
 
+/** Every distinct (axis, sub) tag on a row — so the UI can show what else the comment hit. */
+function collectTags(assertions: unknown): { axis: string; sub: string }[] {
+  if (!Array.isArray(assertions)) return []
+  const seen = new Set<string>()
+  const out: { axis: string; sub: string }[] = []
+  for (const a of assertions as { axis?: string; sub?: string }[]) {
+    if (!a?.axis || !a?.sub) continue
+    const k = a.axis + '' + a.sub
+    if (!seen.has(k)) { seen.add(k); out.push({ axis: a.axis, sub: a.sub }) }
+  }
+  return out
+}
+
 export async function GET(req: Request, props: Params) {
   const { datasetId } = await props.params
   const supabase = await createClient()
@@ -105,6 +118,7 @@ export async function GET(req: Request, props: Params) {
       rating:   (data.rating as number) ?? null,
       date:     (data.review_date as string) || (data.date as string) || null,
       evidence: collectEvidence(t.assertions, axis, sub, alert),
+      tags:     collectTags(t.assertions),
     }
   }).filter(c => c.text)
 

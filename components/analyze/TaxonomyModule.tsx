@@ -53,7 +53,7 @@ function Pill({ posPct }: { posPct: number | null }) {
   )
 }
 
-interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[] }
+interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[]; tags: { axis: string; sub: string }[] }
 
 function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
@@ -100,13 +100,15 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [drillData, setDrillData] = useState<{ count: number; comments: DrillComment[] } | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())  // long comments shown in full
   const [filterAxis, setFilterAxis] = useState('')  // topic filter
   const [filterSub, setFilterSub] = useState('')    // sub-topic filter
+  const toggleExpand = (i: number) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
   useEffect(() => {
     if (!drill) { setDrillData(null); return }
     let alive = true
-    setDrillLoading(true); setDrillData(null)
+    setDrillLoading(true); setDrillData(null); setExpanded(new Set())
     fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}`)
       .then(r => r.json())
       .then(d => { if (alive) { setDrillData({ count: d.count ?? 0, comments: d.comments ?? [] }); setDrillLoading(false) } })
@@ -361,16 +363,38 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {!drillLoading && drillData && drillData.comments.length === 0 && (
               <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
             )}
-            {!drillLoading && drillData && drillData.comments.map((c, i) => (
-              <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
-                <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>{highlight(c.text, c.evidence)}</p>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {c.rating != null && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>★ {c.rating}</span>}
-                  {c.date && <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>{String(c.date).slice(0, 10)}</span>}
-                  <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
-                </div>
-              </div>
-            ))}
+            {!drillLoading && drillData && drillData.comments.map((c, i) => {
+                const LIMIT = 300
+                const isLong = c.text.length > LIMIT
+                const isOpen = expanded.has(i)
+                const shownText = isLong && !isOpen ? c.text.slice(0, LIMIT).trimEnd() + '… ' : c.text
+                return (
+                  <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                    <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>
+                      {highlight(shownText, c.evidence)}
+                      {isLong && <button onClick={() => toggleExpand(i)} style={{ background: 'transparent', border: 'none', color: TEAL, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{isOpen ? 'Show less' : 'Show more'}</button>}
+                    </p>
+                    {c.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+                        {c.tags.map(t => {
+                          const isActive = t.axis === filterAxis && t.sub === filterSub
+                          return (
+                            <span key={t.axis + ':' + t.sub} title={isActive ? 'The tag you filtered on' : `Also tagged ${t.axis} · ${t.sub}`}
+                              style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: isActive ? '#ccfbf1' : '#f1f5f9', color: isActive ? '#0f766e' : '#64748b', border: '1px solid ' + (isActive ? '#5eead4' : '#e2e8f0') }}>
+                              {t.axis} · {t.sub}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {c.rating != null && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>★ {c.rating}</span>}
+                      {c.date && <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>{String(c.date).slice(0, 10)}</span>}
+                      <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
+                    </div>
+                  </div>
+                )
+              })}
           </div>
         </div>
       )}

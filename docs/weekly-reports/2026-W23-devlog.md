@@ -895,3 +895,9 @@ Cosmetic: reduced topic/sub-topic/severity pill size (fontSize 13→11, padding 
 ## 2026-06-03 — Taxonomy: center KPI numbers + align comment cards to TextMine style
 
 Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy comment cards restyled to mirror TextMine's `CommentCard` look — comment text on top, meta as bottom rounded chips (rating colored amber, date as YYYY-MM-DD), and the evidence highlight switched to the TextMine underline-mark style (light amber bg + bottom border). Still a lightweight render, not the theme-coupled `CommentsPanel` component.
+
+## 2026-06-03 — Taxonomy comments: show all hit tags + show-more + closer TextMine match
+
+**Why**: Owner wanted the taxonomy comment boxes to match TextMine's as much as possible, and to show what OTHER topic/sub-topic pairs each comment hit.
+
+**What changed**: `GET …/taxonomy/rows` now returns `tags: {axis,sub}[]` per comment (all distinct assertions on the row, via new `collectTags`). `TaxonomyModule.tsx` cards now render those as small chips (the filtered one highlighted teal, others gray) + a **Show more / Show less** toggle for comments over 300 chars (`expanded` Set, reset when the drill changes). Verified the tags populate richly (a "speed" comment also shows server/flavor/apps). tsc clean; page compiles.
