@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { autoFlagReasons, resolveReviewStatus, includedInReports, duplicateFingerprintSet, type TurnLike } from '@/lib/conversationReview'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,11 +34,11 @@ export async function GET(req: NextRequest, props: Params) {
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  let turns: { session_id: string; turn_number: number; role: string; content: string; language: string | null; created_at: string; source: string | null }[] | null = null
+  let turns: { session_id: string; turn_number: number; role: string; content: string; content_en: string | null; language: string | null; created_at: string; source: string | null; content_flags: string[] | null }[] | null = null
   if (isPhase3ReadSafe()) {
     const { data } = await service
       .from('conversation_turns')
-      .select('turn_number, role, content, language, created_at, source, conversations!inner(session_id, bot_id)')
+      .select('turn_number, role, content, content_en, language, created_at, source, content_flags, conversations!inner(session_id, bot_id)')
       .eq('conversations.bot_id', params.id)
       .order('turn_number', { ascending: true })
       .limit(5000)
@@ -46,14 +47,16 @@ export async function GET(req: NextRequest, props: Params) {
       turn_number: r.turn_number,
       role: r.role,
       content: r.content,
+      content_en: r.content_en,
       language: r.language,
       created_at: r.created_at,
       source: r.source,
+      content_flags: r.content_flags,
     }))
   } else {
     const { data } = await service
       .from('bot_conversation_turns')
-      .select('session_id, turn_number, role, content, language, created_at, source')
+      .select('session_id, turn_number, role, content, content_en, language, created_at, source, content_flags')
       .eq('bot_id', params.id)
       .order('session_id')
       .order('turn_number', { ascending: true })
@@ -79,10 +82,27 @@ export async function GET(req: NextRequest, props: Params) {
       if (!bySession.has(t.session_id)) bySession.set(t.session_id, [])
       bySession.get(t.session_id)!.push(t)
     }
+
+    // Apply the SAME review gate as the report: drop conversations a human
+    // excluded or that auto-flag as troll/bot/duplicate/wholly-off-topic (and a
+    // human hasn't approved). So this is "every Q&A from the conversations we
+    // count as good" — not the raw dump.
+    const sessionsForGate = new Map<string, TurnLike[]>(bySession)
+    let human = new Map<string, 'approved' | 'excluded'>()
+    try {
+      const { data } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', params.id)
+      for (const r of (data || [])) human.set(r.session_id, r.status)
+    } catch { /* table absent → treat all as clean */ }
+    const dup = duplicateFingerprintSet(sessionsForGate)
+    const isGood = (sid: string, ts: TurnLike[]) =>
+      includedInReports(resolveReviewStatus(human.get(sid) ?? null, autoFlagReasons(ts, { duplicateFingerprints: dup })))
+
     const rows: (string | number | null)[][] = []
     let pairNo = 0
+    let droppedSessions = 0
     for (const [sid, ts] of bySession) {
       ts.sort((a, b) => a.turn_number - b.turn_number)
+      if (!isGood(sid, ts)) { droppedSessions++; continue }
       for (let i = 0; i < ts.length; i++) {
         const t = ts[i]
         if (t.role !== 'user' || t.source === 'greeting' || isLeak(t.content)) continue
@@ -91,6 +111,7 @@ export async function GET(req: NextRequest, props: Params) {
         rows.push([++pairNo, sid, t.created_at, clean(t.content), answer, t.language])
       }
     }
+    console.log({ at: 'qa-pairs-export', bot: params.id, pairs: rows.length, droppedSessions })
     const fileBase = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_QA_Pairs'
     return dataResponse(format, fileBase, [{
       name: 'Q&A Pairs',

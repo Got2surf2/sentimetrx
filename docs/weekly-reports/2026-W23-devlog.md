@@ -5,10 +5,11 @@
 **Why**: Owner needs to be able to produce a clean list of every question/answer pair on demand. The existing export was one-row-per-turn (Session/Turn/Role/Content) — usable but not paired.
 
 **What changed**:
-- `app/api/bots/[id]/conversations/export/route.ts`: added `?shape=pairs`. Pairs each user question with the agent's next reply (skipping greeting preamble + the historical prompt-leak), emitting one row per pair: `#, Session ID, Timestamp, Question (user), Answer (agent), Language`. Default `shape=turns` unchanged. Added `source` to the turn selects to drive the skip.
+- `app/api/bots/[id]/conversations/export/route.ts`: added `?shape=pairs`. Pairs each user question with the agent's next reply (skipping greeting preamble + the historical prompt-leak), emitting one row per pair: `#, Session ID, Timestamp, Question (user), Answer (agent), Language`. Default `shape=turns` unchanged. Added `source`/`content_en`/`content_flags` to the turn selects.
+- **Review-gated (per owner)**: the pairs export reuses `autoFlagReasons`/`resolveReviewStatus`/`includedInReports` + `duplicateFingerprintSet` from `lib/conversationReview` to drop auto-flagged (troll/bot/duplicate/wholly-off-topic) and reviewer-excluded conversations — same gate as the report. So it's "every Q&A from the *good* conversations." Short one-word exchanges are kept. (`shape=turns` stays ungated.)
 - `ConversationsClient.tsx`: a second **Q&A pairs** download button (CSV/XLSX) next to the existing Download.
 
-**Verification**: replicated the pairing on live Sarina read-only → 189 pairs, 100% with a non-empty answer, sample Q→A correct. tsc clean.
+**Verification**: replicated on live Sarina read-only — gate drops the 6 auto-flagged/excluded sessions (0 human exclusions), leaving the good conversations' pairs; sample Q→A correct, 100% with a non-empty answer. tsc clean.
 
 ## 2026-06-03 — Agent Study PDF: fix local launch + wordmark spelling
 
