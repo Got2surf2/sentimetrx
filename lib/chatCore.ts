@@ -3,7 +3,7 @@
 // app/api/bots/[id]/chat/route.ts during Phase 4 commit 1 of the
 // agents/PulseIQ convergence so the same handler can serve both the
 // agent widget (`/b/[guid]`) and the PulseIQ town hall widget
-// (`/th/[guid]`) once Phase 4 commit 2 wires PulseIQ in.
+// (`/pi/[guid]`) once Phase 4 commit 2 wires PulseIQ in.
 //
 // Phase 4 commit 1 is a pure code move. Behavior is preserved. The
 // `townHallContext` field is plumbed on the context but is not yet

@@ -4,6 +4,8 @@
 
 > User-facing name is **PulseIQ**. Internal table/code names (`townhall_*`, `app/townhall/*`, `app/api/townhall/*`) are kept as-is for backwards compatibility. See `[[feedback-product-naming]]`.
 
+> **Update (2026-06-03) — public participant URL moved `/th/[sessionId]` → `/pi/[sessionId]`** (route dir `app/th/` → `app/pi/`). The short `/th` ("town hall") prefix is **reserved for the new recordings-based Town Hall product**; PulseIQ participant/live links now use `/pi` ("PulseIQ"). No back-compat redirect — done while there were no live sessions. Internal `townhall_*` tables and the `/townhall` facilitator console + `/api/townhall/*` endpoints are unchanged.
+
 ## Overview
 
 Live group feedback sessions with AI moderation. Participants chat anonymously with a bot that rotates through discussion topics, probes for deeper insights, and detects emerging themes in real-time. Facilitators monitor via a live console with topic cards, sentiment tracking, and organic topic discovery.
@@ -56,7 +58,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 > - `/api/townhall/live/[sessionId]` GET — phase-3 branch pulls stats + sentiment from `conversation_turns` directly. Trending / per-topic keyword analytics minimal in phase-3.
 > - `/api/townhall/themes/[id]` POST — detects `town_hall_topics` id and routes there. `sql/082` extended `town_hall_topics.state` CHECK to accept the full legacy vocab so the existing dashboard state machine works as-is.
 > - `/api/townhall/themes/custom` POST — phase-3 `session_id` writes to `town_hall_topics` with `source='manual'`.
-> - `/api/townhall/sessions/[id]` PATCH — `handlePhase3Patch` supports status change (with seed-on-activate copying `discussion_guide` into `town_hall_topics`), discussion_guide sync (add / pause / reactivate / dismiss), restart (wipe conversations + drop auto_detected), reanalyze (call `detectThemesForTownHall`), delete_participants (cascade through `conversations`). **Slug edit + org transfer stay legacy-only by design** — once a phase-3 town hall has its participant URL printed on postcards / QR codes / signage, renaming the slug 404s every offline reference. The route returns `405 — slug edit on phase-3 town halls not yet supported` if the body carries `slug`; the facilitator UI's `Participant Link` input is rendered `readOnly` on phase-3 substrate (with a "URL is locked" caption) and the Save handler no longer sends the field unless it actually changed. To re-enable safe renames, a follow-on commit would (a) add a `previous_slugs text[]` column on `town_halls`, (b) push the current slug onto that array on update, (c) extend `app/th/[slug]/page.tsx` to fall back to `... where $1 = any(previous_slugs)` and 301 to the canonical slug.
+> - `/api/townhall/sessions/[id]` PATCH — `handlePhase3Patch` supports status change (with seed-on-activate copying `discussion_guide` into `town_hall_topics`), discussion_guide sync (add / pause / reactivate / dismiss), restart (wipe conversations + drop auto_detected), reanalyze (call `detectThemesForTownHall`), delete_participants (cascade through `conversations`). **Slug edit + org transfer stay legacy-only by design** — once a phase-3 town hall has its participant URL printed on postcards / QR codes / signage, renaming the slug 404s every offline reference. The route returns `405 — slug edit on phase-3 town halls not yet supported` if the body carries `slug`; the facilitator UI's `Participant Link` input is rendered `readOnly` on phase-3 substrate (with a "URL is locked" caption) and the Save handler no longer sends the field unless it actually changed. To re-enable safe renames, a follow-on commit would (a) add a `previous_slugs text[]` column on `town_halls`, (b) push the current slug onto that array on update, (c) extend `app/pi/[slug]/page.tsx` to fall back to `... where $1 = any(previous_slugs)` and 301 to the canonical slug.
 > - `/api/townhall/sessions/[id]` DELETE — phase-3 cascade through `conversations` → drop `town_halls`.
 >
 > **#5 wired (2026-05-22)**: `/api/townhall/sessions/[id]/analyze` now substrate-aware — phase-3 town halls sync into Ana via `town_hall_conversations → conversations → conversation_turns`, paired-user-turn shape identical to legacy + bot-level analyze. Datasets can be combined in Analytics for multi-event rollups (e.g. all Vindman events). Theme model populated from `town_hall_topics`. Same `DatasetRow` schema regardless of substrate.
@@ -178,7 +180,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ---
 
-## Live Screen (`app/th/[sessionId]/live/`)
+## Live Screen (`app/pi/[sessionId]/live/`)
 
 Public presenter display (no auth, aggregate data only):
 
@@ -195,7 +197,7 @@ Public presenter display (no auth, aggregate data only):
 
 ---
 
-## Participant Chat (`app/th/[sessionId]/`)
+## Participant Chat (`app/pi/[sessionId]/`)
 
 ### Chat Phases (state machine in `TownHallChat.tsx`)
 
@@ -444,8 +446,8 @@ The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api
 |------|---------|
 | `app/townhall/new/NewSessionClient.tsx` | Creator (6-step wizard) |
 | `app/townhall/[sessionId]/SessionDetailClient.tsx` | Facilitator console |
-| `app/th/[sessionId]/TownHallChat.tsx` | Participant chat UI |
-| `app/th/[sessionId]/live/page.tsx` | Live presenter screen |
+| `app/pi/[sessionId]/TownHallChat.tsx` | Participant chat UI |
+| `app/pi/[sessionId]/live/page.tsx` | Live presenter screen |
 | `app/api/townhall/chat/route.ts` | Chat engine (~1100 lines) |
 | `app/api/townhall/sessions/[id]/route.ts` | Session CRUD + analytics + `gateSessionAccess` |
 | `app/api/townhall/sessions/[id]/export/route.ts` | CSV / XLSX / JSON / themes export |

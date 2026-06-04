@@ -88,7 +88,7 @@ export default function LivePresenter() {
   )
 
   const { session: s, stats, sentiment, themes } = data
-  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + (s.slug || s.id) : ''
+  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/pi/' + (s.slug || s.id) : ''
 
   const isWaiting = s.status === 'setup'
   const isEnded = s.status === 'ended'

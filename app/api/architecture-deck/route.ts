@@ -244,7 +244,7 @@ function slideSystemArch(pptx: any, pg: number) {
 
   // Layered tiers
   const tiers: { label: string; items: string; color: string }[] = [
-    { label: 'CLIENT',           items: 'Authenticated app  ·  Public surfaces (/s/[guid], /b/[slug], /th/[id])  ·  Embed widgets  ·  Shared analytics links',                color: DN.sarinaBlue },
+    { label: 'CLIENT',           items: 'Authenticated app  ·  Public surfaces (/s/[guid], /b/[slug], /pi/[id])  ·  Embed widgets  ·  Shared analytics links',                color: DN.sarinaBlue },
     { label: 'EDGE / APP ROUTER', items: 'Next.js 14 App Router  ·  Server Components  ·  Route handlers (force-dynamic)  ·  Auth callback  ·  Public widgets',              color: DN.teal },
     { label: 'SERVICE LAYER',    items: 'lib/ai (LLM router)  ·  lib/personaExtractor  ·  lib/opinionMining  ·  lib/deflect  ·  lib/guardrails  ·  lib/usageLog  ·  lib/rateLimit', color: DN.hermesOrange },
     { label: 'EXTERNAL APIs',    items: 'Anthropic Claude  ·  OpenAI Embeddings + Moderation  ·  Resend  ·  Meta Graph v19  ·  DataForSEO  ·  Reddit / Substack / Reg.gov',  color: DN.gold },

@@ -380,17 +380,17 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                       <button
                         onClick={e => {
                           e.stopPropagation()
-                          const url = window.location.origin + '/th/' + (s.slug || s.id)
+                          const url = window.location.origin + '/pi/' + (s.slug || s.id)
                           navigator.clipboard.writeText(url)
                           const span = e.currentTarget.querySelector('span')
-                          if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/th/' + (s.slug || s.id) }, 1500) }
+                          if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/pi/' + (s.slug || s.id) }, 1500) }
                         }}
                         className="text-xs text-gray-300 hover:text-green-600 truncate text-left transition-colors flex items-center gap-1.5"
                         title="Click to copy participant link">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                         </svg>
-                        <span>/th/{s.slug || s.id}</span>
+                        <span>/pi/{s.slug || s.id}</span>
                       </button>
 
                       {/* Action pills — identical layout to survey cards */}

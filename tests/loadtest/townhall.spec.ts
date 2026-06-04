@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 // Real-browser load alongside the k6 API load. Each worker drives a full
 // participant journey through the actual UI: scan-equivalent navigation to
-// /th/[sessionId], chat input via the textarea, send via Enter.
+// /pi/[sessionId], chat input via the textarea, send via Enter.
 //
 // Run via tests/loadtest/playwright.config.ts (workers=BROWSERS env, default 5).
 
@@ -33,7 +33,7 @@ for (let i = 1; i <= BROWSERS; i++) {
   test('participant ' + i + ' chats and submits', async ({ page }) => {
     test.setTimeout(5 * 60_000)
 
-    await page.goto('/th/' + SESSION)
+    await page.goto('/pi/' + SESSION)
 
     // Chat textarea has placeholder="Message" (see TownHallChat.tsx)
     const input = page.getByPlaceholder('Message')

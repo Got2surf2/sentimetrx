@@ -307,7 +307,7 @@ suite reports the reason inline.
 
 ## Load testing (Town Hall)
 
-PulseIQ (`/th/[guid]`) is the highest-throughput public surface — a venue
+PulseIQ (`/pi/[guid]`) is the highest-throughput public surface — a venue
 of N participants can fire chat messages, joins, and response submissions
 at full LLM rate. Two parallel load drivers live in `tests/loadtest/`:
 
@@ -316,7 +316,7 @@ at full LLM rate. Two parallel load drivers live in `tests/loadtest/`:
   `ITERATIONS_PER_VU`, `RAMP_UP_S`. Exercises the per-participant 20/min
   chat cap, the per-IP 600/min backstop, and Anthropic provider limits.
 - `townhall.spec.ts` — Playwright drives N real Chromium browsers against
-  `/th/[guid]`, mirroring the actual participant journey (visit, type,
+  `/pi/[guid]`, mirroring the actual participant journey (visit, type,
   send via Enter). Catches UI-layer breakage that HTTP-only load can't.
 - `playwright.config.ts` — a load-specific Playwright config (separate
   from the e2e config) with no built-in webServer and tunable workers.

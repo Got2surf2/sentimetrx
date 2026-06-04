@@ -43,7 +43,7 @@ function classifySentiment(pos: number, neg: number): string {
 // Phase-3 live screen handler — pulls aggregate stats from
 // town_halls + town_hall_topics + town_hall_conversations + conversations
 // + conversation_turns. Returns the same JSON shape the legacy handler
-// returns so /th/[sessionId]/live/page.tsx renders without conditional UI.
+// returns so /pi/[sessionId]/live/page.tsx renders without conditional UI.
 //
 // Trending / keyword-frequency / per-topic example-quote enrichment is
 // intentionally minimal — analytics rebuild on the new substrate is a

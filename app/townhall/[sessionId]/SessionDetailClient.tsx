@@ -397,7 +397,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setActionLoading(null)
   }
 
-  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + (session?.slug || sessionId) : ''
+  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/pi/' + (session?.slug || sessionId) : ''
   const copyLink = () => { navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
 
   if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
@@ -578,7 +578,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <EInput value={editName} onChange={setEditName} />
                 <ELabel>Participant Link</ELabel>
                 <div className="flex items-center">
-                  <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
+                  <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/pi/</span>
                   <input type="text" value={editSlug}
                     onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     readOnly={(session as any)?.__substrate === 'phase3'}
@@ -1255,7 +1255,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <p className="text-[10px] text-gray-400 mt-1">Scan to join</p>
                   </div>
                 )}
-                <a href={'/th/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
+                <a href={'/pi/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
                   className="rounded-lg text-center hover:bg-gray-100 transition-colors flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 self-start">
                   <span className="text-[11px] font-semibold text-gray-600">Live Screen</span>
                   <span className="text-[10px] text-gray-400">&rarr;</span>

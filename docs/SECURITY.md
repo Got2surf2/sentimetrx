@@ -222,7 +222,7 @@ test project exists.
   org-scoped SELECT), and always returns 204 so it never leaks
   whether a bot exists.
 - **API auth for embeddable widgets** — survey at `/s/[guid]`,
-  agent at `/b/[slug]`, PulseIQ at `/th/[sessionId]`. The route
+  agent at `/b/[slug]`, PulseIQ at `/pi/[sessionId]`. The route
   param name varies but each one is an opaque, high-entropy
   identifier (≥122-bit) checked for org binding on every
   request. No cookie auth.

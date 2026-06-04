@@ -70,7 +70,7 @@ flowchart LR
 |---|---|---|
 | **Customer admin** | Browser → `/admin/*` | Email + magic-link, optional SSO; CSRF on mutating routes |
 | **Customer analyst** | Browser → `/analyze/*` | Same as admin, scoped to their org only |
-| **Guest / employee** | Browser → `/s/[guid]`, `/b/[guid]`, `/th/[guid]` | Opaque 122-bit identifier bound to the owning org. No cookie auth |
+| **Guest / employee** | Browser → `/s/[guid]`, `/b/[guid]`, `/pi/[guid]` | Opaque 122-bit identifier bound to the owning org. No cookie auth |
 | **Internal operator (Datanautix)** | Browser → `/admin/*` | `requireAdmin` gate (admin-org membership + role) |
 
 ## 3. Storage locations
