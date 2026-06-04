@@ -769,3 +769,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner — the top materials panel on /recordings was "oddly placed and ugly"; the card showed an internal $$ AI-processing cost that doesn't belong on a user-facing card.
 
 **What changed**: removed the orange materials-guidance panel from the `/recordings` landing (`app/recordings/page.tsx`); removed the per-card cost (`fmtCost`) from `RecordingsListClient.tsx` — cost is an accounting metric that lives in /admin/usage. Footer now shows owner (+ org name for the admin org), matching the Analyze/Surveys card family.
+
+## 2026-06-04 — Town Hall deck: Appendix section divider
+
+**Why**: Owner — the deck jumped straight from the analysis slides into the per-question appendix; wanted a clear page separator between the two sections.
+
+**What changed** (`lib/pptx/recordingDeck.ts`): inserted a navy section-divider slide (matching the title slide — gold top strip, "APPENDIX" eyebrow, "Question & Answer Detail", "N questions" subtitle, datanautix wordmark) before the appendix loop. Renders only when ≥1 Q&A pair exists. QC'd via a render of all 11 slides — divider sits correctly between Action Items and Q&A 1.

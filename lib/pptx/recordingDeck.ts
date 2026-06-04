@@ -415,6 +415,25 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     footer(s, pptx, name)
   }
 
+  // ── Section divider: Appendix ──
+  // A navy break slide (matches the title) so the per-question detail reads as
+  // a distinct section after the analysis, not a continuation of it.
+  if (qaPairs.length > 0) {
+    const d = pptx.addSlide()
+    bgFill(d, pptx, DN.navy)
+    d.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.08, fill: { color: DN.gold }, line: { width: 0 } })
+    d.addText('APPENDIX', { x: PAD, y: 2.9, w: W - PAD * 2, h: 0.5, fontSize: 16, bold: true, color: DN.gold, charSpacing: 3, align: 'center' })
+    d.addText('Question & Answer Detail', { x: PAD, y: 3.45, w: W - PAD * 2, h: 0.8, fontSize: 30, bold: true, color: DN.white, align: 'center' })
+    d.addText(`One slide per question  ·  ${qaPairs.length} question${qaPairs.length === 1 ? '' : 's'}`, { x: PAD, y: 4.35, w: W - PAD * 2, h: 0.5, fontSize: 14, color: DN.tealLight, align: 'center' })
+    d.addText(
+      [
+        { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
+        { text: 'nautix', options: { color: DN.tealLight, bold: true, italic: true } },
+      ],
+      { x: W - 2.8, y: H - 0.8, w: 2.4, h: 0.5, fontSize: 18, align: 'right' }
+    )
+  }
+
   // ── Appendix: one Q&A pair per slide ──
   qaPairs.forEach((ex, idx) => {
     const qa = ex.payload as QaPairPayload
