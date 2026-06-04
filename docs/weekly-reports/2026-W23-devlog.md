@@ -814,3 +814,16 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Demo polish. Owner wanted the comment drill-down as a centered modal (not a side drawer) with breadcrumb context, a scrollable list, a whole-modal export, and a copy button per comment.
 
 **What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): replaced the right-side drawer with a centered modal — breadcrumb header (`Taxonomy › axis › sub` or `Taxonomy › Severity alert › tag`) + count + scrollable comment body. Added **Export CSV** (client-side Blob download: rating/date/comment/matched_evidence of the shown comments) and a per-comment **Copy** button (clipboard + ✓ feedback). `drill` state now carries `crumbs[]` instead of a flat label. tsc clean; page compiles (dev 307). Commit-only, not pushed.
+
+## 2026-06-04 — Town Hall: auto entity-spelling extraction (Phase 1 backend)
+
+**Why**: Owner — better than manual glossary entry: auto-extract the proper nouns the meeting mentioned, cluster the ASR's phonetic mis-hearings, let the user correct, then use the correct spellings. ASR errors are phonetic, so an LLM clusters variants where edit-distance fuzzy matching can't.
+
+**What changed (backend foundation)**:
+- `sql/100_recordings_entity_map.sql` — additive nullable `recordings.entity_map` jsonb (RLS already covers the table). **NOT YET APPLIED to prod** (needs owner authorization).
+- `lib/recordings/entities.ts` — `extractEntities` (Sonnet ≈ $0.10) clusters variants→canonical; `glossaryFromEntities` (canonicals ∪ manual); `normalizeSegments`/`normalizeText`/`buildReplacements` = deterministic variant→canonical for the "Corrected" transcript view (raw ASR never mutated — the two-transcripts model). `buildEntityExtractionPrompt` in `prompts/qa.ts`.
+- Workflow: `runEntityExtraction` step runs after transcription, before the gate (best-effort), stores `entity_map`.
+- Polish glossary now derives from `entity_map` ∪ manual `setup_inputs.glossary` (replaced the standalone `cleanGlossary` with `glossaryFromEntities`); threaded through analyze/reanalyze/regenerate.
+- Types (`EntityMap`/`EntityMapEntry`/`EntityType`), tests (`entities.test.ts`: parse/glossary/normalize; 52 recordings tests pass).
+
+**Next**: Phase 2 review/correct UI at the gate (`StatusClient` + a PATCH route); Phase 3 Raw/Corrected transcript toggle (`ReportClient`).

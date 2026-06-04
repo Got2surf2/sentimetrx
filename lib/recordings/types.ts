@@ -105,6 +105,10 @@ export interface RecordingRow {
   presentation_outline: PresentationOutline | null
   proceedings_summary: ProceedingsSummary | null
 
+  // Entity-spelling normalization (sql/100). Auto-extracted at the gate, then
+  // user-corrected. Feeds the polish glossary + the "Corrected" transcript view.
+  entity_map: EntityMap | null
+
   share_token: string | null
   share_enabled: boolean
   share_expires_at: string | null
@@ -297,6 +301,29 @@ export type NewExtraction = Omit<
 >
 
 // ── Coverage report ──────────────────────────────────────────────────────────
+
+// ── Entity-spelling normalization (sql/100) ──────────────────────────────────
+//
+// Auto-extracted from the transcript after transcription, then reviewed at the
+// gate. Each entry clusters the ASR's spelling/phonetic variants under one
+// canonical spelling. Powers: (a) the polish-pass glossary (so the polished Q&A
+// uses correct spellings), and (b) a deterministic "Corrected" transcript view
+// (variants → canonical). The raw ASR transcript is never mutated.
+
+export type EntityType = 'person' | 'place' | 'org' | 'project' | 'term'
+
+export interface EntityMapEntry {
+  canonical: string        // the correct spelling (best-guess until the user edits it)
+  variants: string[]       // distinct spellings seen in the transcript that map to it
+  type: EntityType
+  mentions: number         // total occurrences across variants (for sort/relevance)
+}
+
+export interface EntityMap {
+  entities: EntityMapEntry[]
+  extracted_at: string     // ISO — when the auto-extraction ran
+  reviewed_at?: string | null   // ISO — set once the user confirms/edits at the gate
+}
 
 export interface CoverageReport {
   per_topic: Array<{ topic: string; count: number; flagged: boolean }>

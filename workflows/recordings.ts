@@ -30,6 +30,7 @@ import { resolveProfile, hasPresentationPhase } from '@/lib/recordings/profiles'
 import { detectPhases, slicePhaseSegments } from '@/lib/recordings/phases'
 import { ingestSlides } from '@/lib/recordings/slides'
 import { summarizePresentation } from '@/lib/recordings/presentation'
+import { extractEntities } from '@/lib/recordings/entities'
 import type {
   RecordingRow,
   RecordingTranscriptRow,
@@ -56,6 +57,10 @@ export async function processRecordingWorkflow(recording_id: string, org_id: str
     // single-phase Q&A preset (legacy behavior). Best-effort — never blocks the
     // pause, so a slide/phase failure still lets the user run analysis.
     await runSlidesAndPhases(recording_id, org_id)
+
+    // Auto-extract entity candidates so the spelling-correction panel is ready
+    // at the gate (§3.5b). Best-effort — never blocks the pause.
+    await runEntityExtraction(recording_id, org_id)
 
     await setStatus(recording_id, org_id, 'transcribed')
   } catch (err) {
@@ -131,6 +136,32 @@ async function runSlidesAndPhases(recording_id: string, org_id: string) {
     .eq('id', recording_id).eq('org_id', org_id)
 }
 
+// Entity extraction — pull proper nouns + cluster the ASR's spelling variants so
+// the user can correct names at the gate (§3.5b). Best-effort: extractEntities
+// swallows AI errors and a missing transcript is a no-op, so it never blocks the
+// pause. Q&A session types only.
+async function runEntityExtraction(recording_id: string, org_id: string) {
+  "use step"
+  const rec = await loadRecording(recording_id, org_id)
+  if (!rec || rec.session_type !== 'qa') return
+  const transcript = await loadTranscript(recording_id, org_id)
+  if (!transcript || transcript.segments.length === 0) return
+
+  const { entityMap, cents } = await extractEntities({
+    transcript: transcript.segments,
+    setup: rec.setup_inputs as QaSetupInputs,
+    org_id,
+    recording_id,
+    now: new Date().toISOString(),
+  })
+  if (!entityMap) return
+
+  const service = createServiceRoleClient()
+  await service.from('recordings')
+    .update({ entity_map: entityMap, cost_cents: (rec.cost_cents ?? 0) + cents })
+    .eq('id', recording_id).eq('org_id', org_id)
+}
+
 async function runAnalyze(recording_id: string, org_id: string, instructions?: string) {
   "use step"
   const rec = await loadRecording(recording_id, org_id)
@@ -151,6 +182,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     setup_inputs: rec.setup_inputs,
     transcript: qaSegments.length > 0 ? qaSegments : transcript.segments,
     instructions,
+    entity_map: rec.entity_map,
   })
 
   await mirrorExtractionsToDataset({

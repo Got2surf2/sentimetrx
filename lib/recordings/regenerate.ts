@@ -14,7 +14,8 @@ import 'server-only'
 import { callAI } from '@/lib/ai'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildQaRegeneratePrompt, VALID_TYPOLOGIES } from '@/lib/recordings/prompts/qa'
-import { polishQaPairs, cleanGlossary } from '@/lib/recordings/analyze'
+import { polishQaPairs } from '@/lib/recordings/analyze'
+import { glossaryFromEntities } from '@/lib/recordings/entities'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import type {
   CoverageReport,
@@ -59,7 +60,7 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
       .single(),
     service
       .from('recordings')
-      .select('id, org_id, name, created_by, session_type, setup_inputs, status, cost_cents, source_duration_sec, coverage_report, dataset_id')
+      .select('id, org_id, name, created_by, session_type, setup_inputs, status, cost_cents, source_duration_sec, coverage_report, dataset_id, entity_map')
       .eq('id', input.recording_id)
       .eq('org_id', input.org_id)
       .single(),
@@ -76,7 +77,7 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
   if (!txRes.data) throw new Error('transcript not found — cannot regenerate without context')
 
   const existing = exRes.data as unknown as RecordingExtractionRow
-  const recording = recRes.data as unknown as Pick<RecordingRow, 'id' | 'org_id' | 'name' | 'created_by' | 'session_type' | 'setup_inputs' | 'status' | 'cost_cents' | 'source_duration_sec' | 'coverage_report' | 'dataset_id'>
+  const recording = recRes.data as unknown as Pick<RecordingRow, 'id' | 'org_id' | 'name' | 'created_by' | 'session_type' | 'setup_inputs' | 'status' | 'cost_cents' | 'source_duration_sec' | 'coverage_report' | 'dataset_id' | 'entity_map'>
   if (recording.session_type !== 'qa') {
     throw new Error(`regenerate v1 only supports session_type='qa' (got '${recording.session_type}')`)
   }
@@ -137,7 +138,7 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
     {
       org_id: input.org_id,
       recording_id: input.recording_id,
-      glossary: cleanGlossary((recording.setup_inputs as QaSetupInputs).glossary),
+      glossary: glossaryFromEntities(recording.entity_map ?? null, (recording.setup_inputs as QaSetupInputs).glossary),
     },
   )
   if (polish.polished[0]) {

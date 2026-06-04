@@ -273,6 +273,57 @@ ${pairBlock}`
   return { system, userPrompt }
 }
 
+// ── Entity-extraction prompt (Sonnet 4.6) — § 3.5b ──────────────────────────
+//
+// Runs after transcription. Pulls the proper nouns mentioned in the meeting and
+// CLUSTERS the spelling/phonetic variants the transcriber produced under one
+// best-guess canonical. The user reviews/corrects the result at the gate; the
+// confirmed map feeds the polish glossary + the "Corrected" transcript view.
+// Focused on names worth fixing — not every capitalized word.
+
+export function buildEntityExtractionPrompt(opts: {
+  transcript: TranscriptSegment[]
+  setup?: { panel?: Array<{ name: string; role?: string }>; agenda?: string[] }
+}): { system: string; userPrompt: string } {
+  const panel = (opts.setup?.panel ?? []).map(p => `  - ${p.name}${p.role ? ` (${p.role})` : ''}`).join('\n')
+  const agenda = (opts.setup?.agenda ?? []).map((t, i) => `  ${i + 1}. ${t}`).join('\n')
+
+  const system = `You are reviewing an automatic speech-recognition (ASR) transcript of a recorded meeting. ASR frequently mis-hears proper names PHONETICALLY (e.g. "Babuji" → "Babu G", "NOWOCATS" → "no what cats", "Kelly Park Road" → "Kelly Parke Road"). Your job: list the proper nouns mentioned and, for each, cluster the different spellings that appear in the transcript under one best-guess CANONICAL spelling, so they can be corrected.
+
+WHAT TO EXTRACT — proper nouns worth normalizing:
+- person  — people's names
+- place   — streets, neighborhoods, cities, venues, landmarks
+- org     — companies, agencies, departments, groups
+- project — named projects, programs, initiatives, plans
+- term    — domain-specific named terms / acronyms
+
+RULES:
+- One entry per real-world entity. Put EVERY distinct spelling that appears in the transcript for that entity into its "variants" list (including the canonical itself if it appears that way).
+- "canonical" = your best guess at the correct spelling. Prefer a spelling supported by the panel roster / agenda below when one matches. The user will correct it, so a reasonable guess is fine.
+- "mentions" = approximate total number of times the entity is referred to (sum across variants).
+- Skip common words, generic nouns, and anything that isn't a name. Skip entities mentioned only in passing with no spelling ambiguity if they're clearly common (e.g. "Florida"). Favor names that look mis-heard or are meeting-specific.
+- Do NOT invent entities or variants not present in the transcript.
+
+CONTEXT (authoritative spellings — prefer these when a transcript entity matches):
+Panel:
+${panel || '  (none provided)'}
+Agenda:
+${agenda || '  (none provided)'}
+
+OUTPUT FORMAT — a single JSON object, no prose, no markdown fences:
+
+{
+  "entities": [
+    { "canonical": "Kelly Park Road", "variants": ["Kelly Park Road", "Kelly Parke Road", "Kelly Park Rd"], "type": "place", "mentions": 6 }
+  ]
+}`
+
+  const text = opts.transcript.map(s => s.text).join(' ')
+  const userPrompt = `TRANSCRIPT\n${text}`
+
+  return { system, userPrompt }
+}
+
 // ── Polish prompt (Sonnet 4.6) — fourth pass, § 3.5 ─────────────────────────
 //
 // Faithful editorial cleanup of the verbatim transcript quotes into readable,

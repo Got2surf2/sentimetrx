@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/ai', () => ({ callAI: vi.fn() }))
 
-import { analyzeRecording, overallSentiment, cleanGlossary, type AnalyzeInput } from '@/lib/recordings/analyze'
+import { analyzeRecording, overallSentiment, type AnalyzeInput } from '@/lib/recordings/analyze'
 import { callAI } from '@/lib/ai'
 import type { QaSetupInputs, QaPairPayload } from '@/lib/recordings/types'
 
@@ -264,18 +264,6 @@ describe('analyzeRecording — polish pass (pass 4)', () => {
     const payload = (extractions.find(e => e.unit_type === 'qa_pair')!).payload as QaPairPayload
     expect(payload.polished_answer).toBeUndefined()
     expect(payload.answer).toBe('Two levels.')   // verbatim survives
-  })
-})
-
-describe('cleanGlossary — entity-spelling list normalization', () => {
-  it('trims, drops blanks, de-dupes case-insensitively', () => {
-    expect(cleanGlossary(['  NOWOCATS ', '', 'Kelly Park Road', 'nowocats', '   '])).toEqual(['NOWOCATS', 'Kelly Park Road'])
-  })
-  it('returns undefined for empty / non-array input', () => {
-    expect(cleanGlossary([])).toBeUndefined()
-    expect(cleanGlossary(['  ', ''])).toBeUndefined()
-    expect(cleanGlossary(undefined)).toBeUndefined()
-    expect(cleanGlossary('NOWOCATS')).toBeUndefined()
   })
 })
 
