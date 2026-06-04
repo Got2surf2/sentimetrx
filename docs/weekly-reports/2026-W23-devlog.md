@@ -877,3 +877,9 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 - Security tests in `tests/integration/export-org-gate.test.ts`: cross-org 404, non-owner 403, not-complete 409, owner happy-path → token + /th path.
 
 434 tests pass, tsc clean. Open-items #2 (PDF, reuses this template) + #3 (card favorite/kebab/transfer) next.
+
+## 2026-06-03 — Taxonomy: fold severity alerts into the filter card as pills
+
+**Why**: The standalone "Severity alerts" section (food safety / pests chips) ate vertical space. Owner asked to move them into the top filter card as two pills.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): removed the separate severity-alerts block; the alerts now render as red **Severity** pills at the bottom of the filter card (active state + count, clicking loads the flagged comments inline — same drill mechanism). Saves a full section of vertical real estate.

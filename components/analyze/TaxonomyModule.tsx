@@ -309,6 +309,25 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             </div>
           </>
         )}
+        {data.alerts.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>
+              ⚠ Severity <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· flagged alert / crisis</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {data.alerts.map(a => {
+                const active = drill?.qs === `alert=${encodeURIComponent(a.tag)}`
+                return (
+                  <button key={a.tag}
+                    onClick={() => { if (active) { setDrill(null) } else { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] }) } }}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 999, cursor: 'pointer', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
+                    {a.tag} <span style={{ opacity: 0.6, fontWeight: 600 }}>{a.count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Inline comments panel — driven by the filter above or by clicking a sub-topic / alert. */}
@@ -350,29 +369,6 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                   <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
                 </div>
                 <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{highlight(c.text, c.evidence)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Severity alerts — surfaced at the top so they're visible without scrolling */}
-      {data.alerts.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: RED, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-            ⚠ Severity alerts <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· reviews flagged alert / crisis</span>
-          </h3>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {data.alerts.map(a => (
-              <div
-                key={a.tag}
-                onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Taxonomy', 'Severity alert', a.tag] }) }}
-                title="View the flagged comments"
-                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}
-              >
-                <span style={{ fontWeight: 700, color: RED }}>{a.tag}</span>
-                <span style={{ color: '#991b1b', marginLeft: 8, fontWeight: 700 }}>{a.count}</span>
-                <span style={{ color: '#fca5a5', marginLeft: 6 }}>›</span>
               </div>
             ))}
           </div>

@@ -358,10 +358,10 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 
 - **Tab.** `/analyze/[datasetId]/taxonomy` — a "Taxonomy" tab in `DatasetHeader`'s
   `TABS`, shown **only for `source==='google_reviews'`** datasets. Renders
-  `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, a **severity-alerts panel
-  surfaced directly under the KPIs** (top of page — the most urgent items need no scroll),
-  per-axis mention-rate bars, and top sub-topics with sentiment. Sub-topics and alert
-  chips are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
+  `components/analyze/TaxonomyModule.tsx`: classified-row KPIs, per-axis mention-rate bars,
+  and top sub-topics with sentiment. **Severity alerts (food safety / pests) live as red
+  pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
+  alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
   (topic pills first; pick one to reveal its sub-topic pills) → an **inline comments panel** (breadcrumb header + scrollable list + Export CSV + per-comment
   Copy) via `GET …/taxonomy/rows` (`?axis=&sub=` or `?alert=`), matched-evidence quotes
   highlighted. (Inline panel reuses the same UX as TextMine comments but not the
