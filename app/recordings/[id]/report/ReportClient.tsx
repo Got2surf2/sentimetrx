@@ -227,6 +227,13 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
 }) {
   const router = useRouter()
   const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
+  // "In order" = every pair in the sequence it was asked (start_sec, then the
+  // analyzer's sort_order as a tiebreaker for missing timestamps).
+  const ordered = useMemo(
+    () => [...extractions].sort((a, b) => (a.start_sec ?? Number.MAX_SAFE_INTEGER) - (b.start_sec ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order),
+    [extractions],
+  )
+  const [sortMode, setSortMode] = useState<'topic' | 'order'>('topic')
   const [expandedAll, setExpandedAll] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [reanalyzeModal, setReanalyzeModal] = useState<{ scope: 'all' | 'topic'; topic?: string } | null>(null)
@@ -239,12 +246,21 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <button type="button" onClick={() => { setExpandedAll(true); setExpanded(new Set()) }}
-            className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Expand all</button>
-          <button type="button" onClick={() => { setExpandedAll(false); setExpanded(new Set()) }}
-            className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Collapse all</button>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          {/* By topic (grouped) vs In order (chronological as asked) */}
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            <button type="button" onClick={() => setSortMode('topic')}
+              className={`px-3 py-1.5 transition-colors ${sortMode === 'topic' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>By topic</button>
+            <button type="button" onClick={() => setSortMode('order')}
+              className={`px-3 py-1.5 border-l border-gray-200 transition-colors ${sortMode === 'order' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>In order</button>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setExpandedAll(true); setExpanded(new Set()) }}
+              className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Expand all</button>
+            <button type="button" onClick={() => { setExpandedAll(false); setExpanded(new Set()) }}
+              className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Collapse all</button>
+          </div>
         </div>
         <button
           type="button"
@@ -260,36 +276,53 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
         <EmptyState label="No 'ask' pairs extracted. Check the Appendix tab for clarifications and commentary." />
       )}
 
-      {grouped.map(({ topic, items }) => (
-        <section key={topic}>
-          <header className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-bold text-gray-900">
-              {topic} <span className="text-gray-400 text-sm font-normal">· {items.length}</span>
-            </h2>
-            <button
-              type="button"
-              onClick={() => setReanalyzeModal({ scope: 'topic', topic })}
-              className="text-xs px-2 py-1 text-gray-500 hover:text-gray-900"
-              title={`Re-extract pairs for "${topic}" (§ 4.11)`}
-            >
-              ⋯
-            </button>
-          </header>
-          <ul className="space-y-2">
-            {items.map(e => (
-              <QACard
-                key={e.id}
-                recordingId={recordingId}
-                extraction={e}
-                expanded={expandedAll || expanded.has(e.id)}
-                onToggle={() => toggleCard(e.id)}
-                onReplaced={onReplaced}
-                onPlay={onPlay}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {sortMode === 'order' ? (
+        <ul className="space-y-2">
+          {ordered.map((e, i) => (
+            <QACard
+              key={e.id}
+              recordingId={recordingId}
+              extraction={e}
+              expanded={expandedAll || expanded.has(e.id)}
+              onToggle={() => toggleCard(e.id)}
+              onReplaced={onReplaced}
+              onPlay={onPlay}
+              ordinal={i + 1}
+            />
+          ))}
+        </ul>
+      ) : (
+        grouped.map(({ topic, items }) => (
+          <section key={topic}>
+            <header className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-gray-900">
+                {topic} <span className="text-gray-400 text-sm font-normal">· {items.length}</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setReanalyzeModal({ scope: 'topic', topic })}
+                className="text-xs px-2 py-1 text-gray-500 hover:text-gray-900"
+                title={`Re-extract pairs for "${topic}" (§ 4.11)`}
+              >
+                ⋯
+              </button>
+            </header>
+            <ul className="space-y-2">
+              {items.map(e => (
+                <QACard
+                  key={e.id}
+                  recordingId={recordingId}
+                  extraction={e}
+                  expanded={expandedAll || expanded.has(e.id)}
+                  onToggle={() => toggleCard(e.id)}
+                  onReplaced={onReplaced}
+                  onPlay={onPlay}
+                />
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
 
       {reanalyzeModal && (
         <ReanalyzeModal
@@ -399,13 +432,15 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
   )
 }
 
-function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay }: {
+function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal }: {
   recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
   onToggle: () => void
   onReplaced: (e: RecordingExtractionRow) => void
   onPlay: PlayHandler
+  // Sequence number in the "In order" view; omitted in topic view.
+  ordinal?: number
 }) {
   const payload = extraction.payload as QaPairPayload
   const flagged = extraction.flagged_for_review
@@ -457,7 +492,10 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-gray-900">{shownQuestion}</div>
+            <div className="text-sm font-semibold text-gray-900">
+              {ordinal != null && <span className="text-gray-400 font-normal mr-1.5">{ordinal}.</span>}
+              {shownQuestion}
+            </div>
             <div className="text-xs text-gray-500 mt-1">
               {payload.asker_name ?? 'Audience member'}
               {extraction.start_sec != null ? ` · ${formatTime(extraction.start_sec)}` : ''}

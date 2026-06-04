@@ -1,5 +1,11 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-04 — Town Hall report: "In order" Q&A view
+
+**Why**: Owner — the Q&A tab only grouped by topic; there was no way to see all questions in the sequence they were actually asked. Added a chronological view.
+
+**What changed** (`app/recordings/[id]/report/ReportClient.tsx`, QATab): a **By topic / In order** segmented toggle next to Expand/Collapse. "In order" flattens every pair into one list sorted by `start_sec` (sort_order tiebreaker), each numbered via a new optional `QACard ordinal` prop. Same cards, same controls, just re-sorted. tsc clean. Spec §5 Q&A-tab updated. **Local-only.**
+
 ## 2026-06-04 — Town Hall polish pass: vendor-grade Q&A (synthesis + road numbers)
 
 **Why**: Owner shared the competitor's NOWOCATS "Q&A Forum" PDF as the bar to beat, and flagged that road numbers came out as words ("forty one State Road" instead of SR 441) and inconsistently. The polish pass was a faithful cleanup of both Q and A; it needed to match the vendor's *synthesized* question style + correct domain terminology.
