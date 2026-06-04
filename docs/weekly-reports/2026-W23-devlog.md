@@ -12,7 +12,7 @@
 - New Town Hall wizard — "Brand & known entities" block: brand-tag input + optional agent picker (`/recordings/new/page.tsx` fetches the org's agents). Create route stores both; insert omits the keys when unset so creation still works pre-sql/103.
 - `tests/unit/recordings/brandGlossary.test.ts` — 4 cases on the deterministic merge.
 
-Verified: 441 tests pass (4 new); typecheck clean. **`sql/103` NOT applied** — the auto-mode classifier (correctly) declined a prod apply without explicit per-migration authorization; brand/agent tagging is inert until it lands (creation + untagged meetings unaffected by design). Spec §3.5c added. Discovered along the way: the §3.5b claim was right — `extractEntities` *does* run in `runEntityExtraction` (it lives in `workflows/`, outside lib/app, which earlier greps missed). **Local-only — owner pushes.**
+Verified: 441 tests pass (4 new); typecheck clean. **`sql/103` APPLIED to prod 2026-06-04** (owner-authorized) — first apply failed because the FK targeted `bots` (a backward-compat VIEW); fixed to reference `agents` (the real table) and re-applied, both columns verified. Spec §3.5c added. Discovered along the way: the §3.5b claim was right — `extractEntities` *does* run in `runEntityExtraction` (it lives in `workflows/`, outside lib/app, which earlier greps missed). **Local-only — owner pushes.**
 
 ## 2026-06-04 — Town Hall: cross-org recording transfer (#3c)
 

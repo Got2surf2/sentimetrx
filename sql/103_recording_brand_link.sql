@@ -14,8 +14,10 @@
 
 BEGIN;
 
+-- `agents` is the real table; `bots` is a backward-compat VIEW, so the FK must
+-- target agents(id).
 ALTER TABLE recordings
   ADD COLUMN IF NOT EXISTS brand_tag TEXT,
-  ADD COLUMN IF NOT EXISTS underlying_agent_id UUID REFERENCES bots(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS underlying_agent_id UUID REFERENCES agents(id) ON DELETE SET NULL;
 
 COMMIT;
