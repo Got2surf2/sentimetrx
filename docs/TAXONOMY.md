@@ -50,7 +50,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
-  per-sub mention rates, sentiment per sub, alert tag counts.
+  per-sub mention rates, sentiment per sub, alert tag counts, and **avg star rating per
+  axis / per sub + an overall avg** (the read pulls `data->>rating` from `dataset_rows_flat`
+  by `row_id` per page; `aggregateTaxonomy` averages it over matching rows). The UI shows a
+  ★ badge (red→green ramp) on the KPIs, axis bars, and sub-topic rows — complements the
+  text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
+  ★2.4 vs `attribute·flavor` ★4.1).
 
 ## 4. Surfaces
 

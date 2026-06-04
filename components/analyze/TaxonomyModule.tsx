@@ -10,12 +10,13 @@
 import { useCallback, useEffect, useState, type ReactElement, type CSSProperties } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
-interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null }
+interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
 interface TextField { field: string; label: string }
 interface Rollup {
   classifiedRows: number
   withSignal: number
-  axes: { axis: string; label: string; count: number; rate: number }[]
+  overallAvgRating: number | null
+  axes: { axis: string; label: string; count: number; rate: number; avgRating: number | null }[]
   subs: SubStat[]
   alerts: { tag: string; count: number }[]
   alertRows: number
@@ -46,6 +47,12 @@ function pillStyle(active: boolean, color: string): CSSProperties {
     color: active ? '#fff' : NAVY,
     cursor: 'pointer', whiteSpace: 'nowrap',
   }
+}
+
+/** ★ avg-rating badge, coloured red→green by the 1–5 value (null = render nothing). */
+function StarBadge({ avg, size = 12 }: { avg: number | null; size?: number }) {
+  if (avg == null) return null
+  return <span title="Average star rating of reviews touching this" style={{ fontSize: size, fontWeight: 700, color: ratingColor(avg) || '#8FA3AE', whiteSpace: 'nowrap' }}>★ {avg.toFixed(1)}</span>
 }
 
 function sentimentColor(posPct: number | null): string {
@@ -270,6 +277,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 24 }}>
         {kpi('reviews classified', data.classifiedRows.toLocaleString(), TEAL)}
         {kpi('with a signal', `${Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}%`, NAVY)}
+        {data.overallAvgRating != null && kpi('avg rating', `★ ${data.overallAvgRating.toFixed(1)}`, ratingColor(data.overallAvgRating) || NAVY)}
         {kpi('severity alerts', data.alertRows, data.alertRows ? RED : SLATE)}
         <div style={{ marginLeft: 'auto', alignSelf: 'stretch', display: 'flex', gap: 8 }}>
           {fieldPicker(true)}
@@ -442,13 +450,14 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         {/* Axes */}
         <div style={{ flex: '1 1 420px', minWidth: 360 }}>
           <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            By axis <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· % of reviews</span>
+            By axis <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· % of reviews · avg rating</span>
           </h3>
           {data.axes.map(a => (
             <div key={a.axis} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, color: NAVY }}>{a.label}</span>
-                <span style={{ fontWeight: 700, color: TEAL }}>{a.rate}%</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, fontSize: 13, marginBottom: 3 }}>
+                <span style={{ fontWeight: 600, color: NAVY, flex: 1 }}>{a.label}</span>
+                <StarBadge avg={a.avgRating} />
+                <span style={{ fontWeight: 700, color: TEAL, width: 44, textAlign: 'right' }}>{a.rate}%</span>
               </div>
               <div style={{ background: '#eef2f4', borderRadius: 4, height: 14 }}>
                 <div style={{ width: `${100 * a.rate / maxAxis}%`, height: 14, background: TEAL, borderRadius: 4 }} />
@@ -460,7 +469,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         {/* Top sub-buckets */}
         <div style={{ flex: '1 1 420px', minWidth: 360 }}>
           <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            Top sub-topics <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· rate &amp; sentiment</span>
+            Top sub-topics <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· rate · rating · sentiment</span>
           </h3>
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
             {data.subs.slice(0, 18).map((s, i) => (
@@ -477,6 +486,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                   <span style={{ fontWeight: 700, color: NAVY }}>{s.sub}</span>
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: TEAL, width: 48, textAlign: 'right' }}>{s.rate}%</span>
+                <span style={{ width: 48, textAlign: 'right' }}><StarBadge avg={s.avgRating} /></span>
                 <span style={{ width: 70, textAlign: 'right' }}><Pill posPct={s.posPct} /></span>
                 <span style={{ color: SLATE, fontSize: 16 }}>›</span>
               </div>

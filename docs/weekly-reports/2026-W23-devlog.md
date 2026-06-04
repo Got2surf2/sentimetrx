@@ -1035,3 +1035,9 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Why**: Owner wanted to see exactly which words of a comment tie to a given dimension. Hovering a dimension/sub-dimension chip now lights up that dimension's evidence span in the comment text.
 
 **What changed**: `GET …/taxonomy/rows` `collectTags` now returns evidence **per** (axis,sub) tag (was tag-only). `TaxonomyModule.tsx`: new `hoverTag` state; the comment text highlight defaults to the filtered tag's evidence but switches to the hovered chip's evidence on mouse-over (the chip turns amber to match the `<mark>`). Verified per-tag evidence populates (e.g., a comment's `attribute·flavor` → "...has always been delicious...", `product·seafood` → "Salmon was not very good"). tsc clean; page compiles.
+
+## 2026-06-03 — Dimensions: avg star rating per dimension / sub-dimension
+
+**Why**: From the client session — they wanted avg rating shown alongside the existing sentiment, so a low-scored dimension pops. Did Dimensions first because it's collision-free (my code, not TextMine).
+
+**What changed**: `lib/taxonomyRollup.ts` — the paged read now also pulls `data->>rating` from `dataset_rows_flat` by `row_id`; `aggregateTaxonomy` averages it into `avgRating` per axis + per sub + `overallAvgRating` (red→green ramp). `TaxonomyModule.tsx` — new `StarBadge`; shows ★ on the avg-rating KPI, each axis bar, and each sub-topic row. Verified on Cheddar's: overall ★3.9, and the spread is meaningful — `touchpoint·manager` ★2.4 (named when things go wrong) vs `attribute·flavor` ★4.1. tsc clean; 346 unit tests pass.
