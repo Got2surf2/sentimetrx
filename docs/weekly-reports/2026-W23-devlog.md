@@ -865,3 +865,15 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner asked for pill-based topic/sub-topic filtering — show topic pills first; once a topic is picked, reveal that topic's sub-topic pills.
 
 **What changed** (`components/analyze/TaxonomyModule.tsx`, UI-only): replaced the two `<select>` dropdowns with pill rows. Topic pills (axes, with %) always show; selecting one reveals its sub-topic pills (with counts); selecting a sub-topic loads the inline comments (same drill mechanism). Toggling a pill off / "Clear ✕" resets. Rollup sub-topic & alert clicks still sync the active pills. New module-level `pillStyle()` helper. tsc clean; page compiles.
+
+## 2026-06-04 — Town Hall: public share link (open-items #1)
+
+**Why**: deliver the polished Q&A report as a shareable web page ("send link to principals") — reusing the polished data already built. The DB foundation (share_token/share_enabled/share_expires_at) shipped back in sql/090; this wires the surface.
+
+**What changed**:
+- `app/th/[token]/page.tsx` — public, no-auth, token-gated read-only report (server component). Fails closed: 404 unless share_enabled + status=complete + not expired. Renders only shareable fields (meeting meta + exec summary + polished Q&A by topic, polished→verbatim fallback); never raw transcript/flags/confidence/cost/org. Datanautix footer. `/th` is the reserved Town Hall public prefix (PulseIQ is /pi).
+- `app/api/recordings/[id]/share/route.ts` — owner-gated enable/disable (403 for non-owner org members, 404 cross-org, 409 until complete). 24-char URL-safe token minted once + reused. Returns `{ enabled, token, path }`.
+- Report Export & Share tab — owner-only "Enable public link" toggle + copy-link (removed the public-link "coming soon" line).
+- Security tests in `tests/integration/export-org-gate.test.ts`: cross-org 404, non-owner 403, not-complete 409, owner happy-path → token + /th path.
+
+434 tests pass, tsc clean. Open-items #2 (PDF, reuses this template) + #3 (card favorite/kebab/transfer) next.

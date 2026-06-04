@@ -15,6 +15,7 @@ const ctx = {
   caller: { userId: 'u1', orgId: 'orgA', isAdmin: false } as any,
   rowOrg: 'orgB',          // the resource's owning org (cross-tenant by default)
   recStatus: 'complete',   // recordings.status for the export-route happy path
+  recOwner: 'u1',          // recordings.created_by — the share route is owner-gated
 }
 
 vi.mock('@/lib/auth/orgAccess', () => ({ getCallerOrgContext: async () => ctx.caller }))
@@ -27,10 +28,10 @@ vi.mock('@/lib/supabase/server', () => {
         : table === 'townhall_sessions' || table === 'town_halls'
           ? { id: 's_1', name: 'X', status: 'complete', config: {}, started_at: null, ended_at: null, org_id: ctx.rowOrg }
           : table === 'recordings'
-            ? { id: 'rec_1', name: 'X', meeting_date: null, location: null, status: ctx.recStatus, analysis_summary: null, org_id: ctx.rowOrg }
+            ? { id: 'rec_1', name: 'X', meeting_date: null, location: null, status: ctx.recStatus, analysis_summary: null, org_id: ctx.rowOrg, created_by: ctx.recOwner, share_token: null, share_enabled: false }
             : { id: 'x', org_id: ctx.rowOrg }
     const b: any = {}
-    for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit']) b[m] = () => b
+    for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit', 'update']) b[m] = () => b
     b.single = async () => ({ data: row, error: null })
     b.maybeSingle = async () => ({ data: row, error: null })
     b.then = (res: any, rej: any) => Promise.resolve({ data: [row], error: null, count: 1 }).then(res, rej)
@@ -54,11 +55,13 @@ import * as pptxExport from '@/app/api/datasets/[datasetId]/export/pptx/route'
 import * as thPptx from '@/app/api/townhall/sessions/[id]/export/pptx/route'
 import * as thCsv from '@/app/api/townhall/sessions/[id]/export/route'
 import * as recPptx from '@/app/api/recordings/[id]/export/pptx/route'
+import * as recShare from '@/app/api/recordings/[id]/share/route'
 
 beforeEach(() => {
   ctx.caller = { userId: 'u1', orgId: 'orgA', isAdmin: false }
   ctx.rowOrg = 'orgB'
   ctx.recStatus = 'complete'
+  ctx.recOwner = 'u1'
 })
 
 function post(body: unknown, url = 'http://t/x') {
@@ -96,6 +99,11 @@ describe('export routes — cross-org gate (non-admin in orgA, resource in orgB 
     expect(res.status).toBe(404)
   })
 
+  it('recording share enable (cross-org → 404, never publishes another org\'s report)', async () => {
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(404)
+  })
+
   it('same-org caller is NOT blocked by the gate (orgA owns it)', async () => {
     ctx.rowOrg = 'orgA'
     // signals-pptx proceeds past the gate; next branch is the reddit/substack
@@ -126,5 +134,31 @@ describe('recording pptx export — status + content-type', () => {
     ctx.caller = { userId: null, orgId: null, isAdmin: false }
     const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
     expect(res.status).toBe(401)
+  })
+})
+
+describe('recording public-share toggle — owner + status gates', () => {
+  it('same-org non-owner cannot enable sharing (403)', async () => {
+    ctx.rowOrg = 'orgA'
+    ctx.recOwner = 'someone_else'   // caller u1 is in the org but isn't the owner
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(403)
+  })
+
+  it('owner cannot enable sharing until analysis is complete (409)', async () => {
+    ctx.rowOrg = 'orgA'
+    ctx.recStatus = 'transcribed'
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(409)
+  })
+
+  it('owner of a complete recording enables sharing → ok + token + /th path', async () => {
+    ctx.rowOrg = 'orgA'
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.enabled).toBe(true)
+    expect(typeof body.token).toBe('string')
+    expect(body.path).toMatch(/^\/th\//)
   })
 })

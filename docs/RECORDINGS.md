@@ -639,9 +639,15 @@ Also: fix existing `DELETE /api/collections/[id]?member=X` to re-run schema rebu
 
 See § 3.8.
 
-### 4.6 Public report — `GET /r/[shareToken]`
+### 4.6 Public report — `GET /th/[token]` (built 2026-06-04)
 
-**No auth.** Validates `share_enabled=true` AND (`share_expires_at` IS NULL OR `share_expires_at > now()`). If `share_password_hash` is set, requires a `?p=<password>` query param (compared via bcrypt) or returns a password-entry form.
+**No auth — gated purely by the token** (`/th` is reserved for Town Hall; PulseIQ moved to `/pi`). The page (`app/th/[token]/page.tsx`, server component, service-role lookup by `share_token` alone) **fails closed**: 404 unless the row exists AND `share_enabled=true` AND `status='complete'` AND (`share_expires_at` IS NULL OR `> now()`). Renders **only shareable fields** — meeting name/date/location, the exec summary, and the **polished** Q&A grouped by topic (`polished_*`, fallback verbatim). Never the raw transcript, flags, confidence, cost, org, or IDs. Datanautix-branded footer.
+
+### 4.7 Enable/disable the public link — `POST /api/recordings/[id]/share` (built 2026-06-04)
+
+Body `{ enabled: boolean, expires_in_days?: number }`. **Owner (or admin-org) only** — sharing publishes outside the org, so a general org member can't toggle it (403). Service-role read pairs `id` with `org_id` (404 cross-org). Mints a 24-char URL-safe token once (`randomBytes(18).base64url`), reused across enable/disable. Refuses to enable until `status='complete'` (409). Returns `{ enabled, token, path: '/th/<token>', expires_at }`. Wired to the report's **Export & Share** tab (owner-only "Enable public link" toggle + copy-link).
+
+The earlier `share_password_hash` idea is deferred; v1 is token-only with optional expiry.
 
 Renders the same HTML report as `/recordings/[id]/report` but with:
 - Sentimetrx branding header + "Powered by Sentimetrx" footer
@@ -954,13 +960,15 @@ Add ~$0.02 for ffmpeg + Resend + Storage per meeting. Negligible.
 
 ### 7.2b Public share security
 
-The public report route at `/r/[shareToken]` is the primary distribution mechanism for the June 16 pilot ("send link to principals at end of meeting") and the productized workflow.
+The public report route at `/th/[token]` (built 2026-06-04) is the primary distribution mechanism for the pilot ("send link to principals at end of meeting") and the productized workflow.
 
-- **Token entropy:** 24 URL-safe characters (~144 bits). Brute-force is infeasible; rate-limit at the edge to mitigate enumeration anyway (`<TBD: per-IP rate on /r/* per middleware>`).
-- **Default expiry:** 30 days from `share_enabled=true`. Owner can override (longer / shorter / NULL=forever) on the share form.
-- **Optional password:** bcrypt-hashed; ?p=<pw> query param OR form post.
-- **Robots:** `<meta name="robots" content="noindex, nofollow">` on the public route to prevent search indexing.
-- **Revocation:** flipping `share_enabled=false` immediately invalidates the token. Owner can also rotate the token (issues new `share_token`, old links 404).
+- **Token entropy:** 24 URL-safe characters (`randomBytes(18).base64url`, ~144 bits). Brute-force is infeasible. `<TBD: per-IP rate-limit on /th/* to mitigate enumeration>`.
+- **Fail-closed:** the page 404s unless `share_enabled=true` AND `status='complete'` AND not expired — built into `app/th/[token]/page.tsx`.
+- **Owner-gated toggle:** only the recording owner (or admin-org) can enable/disable (`POST /api/recordings/[id]/share`, 403 otherwise); cross-org service-role lookup pairs id+org_id (404).
+- **Minimal surface:** the page renders only meeting meta + exec summary + polished Q&A. Never the raw transcript, flags, confidence, cost, or org. (Asker/panelist names ARE shown — they're part of the shareable Q&A record.)
+- **Expiry:** optional `expires_in_days` (1–365) on enable; NULL = no expiry. `<TBD: default expiry — currently none unless set>`.
+- **Revocation:** flipping `share_enabled=false` immediately 404s the link (the token is preserved and reused if re-enabled).
+- **`<TBD>`:** robots noindex meta on the public route; optional password (deferred — token-only in v1).
 - **Audit log:** every public access logged with `share_token, ip, user_agent, accessed_at` for forensic trace. Per-token access count visible on the share panel.
 - **No PII redaction in v1.** The owner controls who gets the link; they're responsible for the audience. v1.5 may add an opt-in redaction pass (asker names → "Audience member", etc.) for broader distribution.
 

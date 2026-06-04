@@ -114,7 +114,16 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} onPlay={playAt} />}
-        {tab === 'export' && <ExportTab recordingId={recordingId} recordingName={data.recording.name} status={data.recording.status} />}
+        {tab === 'export' && (
+          <ExportTab
+            recordingId={recordingId}
+            recordingName={data.recording.name}
+            status={data.recording.status}
+            isOwner={data.isOwner}
+            initialShareEnabled={data.recording.share_enabled}
+            initialShareToken={data.recording.share_token}
+          />
+        )}
       </div>
 
       {audioReq && (
@@ -755,10 +764,49 @@ function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: Recordin
 
 // ── Export & Share tab ───────────────────────────────────────────────────────
 
-function ExportTab({ recordingId, recordingName, status }: { recordingId: string; recordingName: string; status: string }) {
+function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken }: {
+  recordingId: string
+  recordingName: string
+  status: string
+  isOwner: boolean
+  initialShareEnabled: boolean
+  initialShareToken: string | null
+}) {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const ready = status === 'complete'
+
+  // Public share link (§4.7). Owner-only; the token-gated page lives at /th/[token].
+  const [shareEnabled, setShareEnabled] = useState(initialShareEnabled)
+  const [shareToken, setShareToken] = useState<string | null>(initialShareToken)
+  const [shareBusy, setShareBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/th/${shareToken}` : ''
+
+  const toggleShare = async (next: boolean) => {
+    setShareBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Share update failed (${res.status})`)
+      setShareEnabled(d.enabled)
+      if (d.token) setShareToken(d.token)
+    } catch (e) {
+      setError((e as Error)?.message || 'Share update failed')
+    } finally {
+      setShareBusy(false)
+    }
+  }
+
+  const copyLink = async () => {
+    if (!shareUrl) return
+    try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
+  }
 
   const handleExport = async () => {
     setGenerating(true)
@@ -817,13 +865,51 @@ function ExportTab({ recordingId, recordingName, status }: { recordingId: string
         </button>
       </div>
 
+      {isOwner && (
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Public link</div>
+              <p className="text-sm text-gray-500 mt-0.5">
+                A read-only web report (polished Q&amp;A by topic) anyone with the link can open — no login. Share it with principals or post it publicly.
+              </p>
+              {!ready && <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete.</p>}
+            </div>
+            <button
+              onClick={() => toggleShare(!shareEnabled)}
+              disabled={!ready || shareBusy}
+              className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 ${shareEnabled ? 'border border-gray-300 text-gray-700 hover:bg-gray-50' : 'text-white'}`}
+              style={shareEnabled ? undefined : { background: HERMES }}
+            >
+              {shareBusy ? '…' : shareEnabled ? 'Disable link' : 'Enable public link'}
+            </button>
+          </div>
+          {shareEnabled && shareUrl && (
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                readOnly
+                value={shareUrl}
+                onFocus={e => e.currentTarget.select()}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-gray-50"
+                style={{ fontSize: '16px' }}
+              />
+              <button
+                onClick={copyLink}
+                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <p className="text-sm text-gray-500">More formats land in a follow-up:</p>
       <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
         <li>PDF — Q&amp;A summary + transcript appendix (default for principal handoff)</li>
         <li>XLSX — structured pairs only (analyst format)</li>
-        <li>Public share link — short-TTL token-gated read-only report</li>
         <li>Send to principals — Resend email with the share link</li>
       </ul>
     </div>
