@@ -401,6 +401,13 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   const [instructions, setInstructions] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Polished = public-shareable cleanup of the verbatim quote (what exports use).
+  // Show it by default so the page matches the deck; toggle reveals the verbatim.
+  const hasPolished = !!(payload.polished_answer || payload.polished_question)
+  const [showVerbatim, setShowVerbatim] = useState(false)
+  const usePolished = hasPolished && !showVerbatim
+  const shownQuestion = usePolished ? (payload.polished_question || payload.question) : payload.question
+  const shownAnswer = usePolished ? (payload.polished_answer || payload.answer) : payload.answer
 
   const handleRegenerate = async () => {
     setBusy(true)
@@ -438,7 +445,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-gray-900">{payload.question}</div>
+            <div className="text-sm font-semibold text-gray-900">{shownQuestion}</div>
             <div className="text-xs text-gray-500 mt-1">
               {payload.asker_name ?? 'Audience member'}
               {extraction.start_sec != null ? ` · ${formatTime(extraction.start_sec)}` : ''}
@@ -446,7 +453,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             </div>
             {!expanded && (
               <div className="text-sm text-gray-600 mt-1 line-clamp-1">
-                {firstLine(payload.answer)}
+                {firstLine(shownAnswer)}
               </div>
             )}
           </div>
@@ -456,8 +463,24 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
       {expanded && (
         <div className="px-4 pb-4 space-y-2 text-sm">
           <div className="border-l-2 border-gray-200 pl-3">
-            <div className="text-xs text-gray-500 mb-1">Answer{payload.panelist_name ? ` — ${payload.panelist_name}` : ''}</div>
-            <div className="text-gray-800 whitespace-pre-wrap">{payload.answer}</div>
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+              <span>Answer{payload.panelist_name ? ` — ${payload.panelist_name}` : ''}</span>
+              {hasPolished && (
+                <>
+                  <span className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 text-[10px] font-medium">
+                    {showVerbatim ? 'Verbatim' : 'Polished for sharing'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowVerbatim(v => !v)}
+                    className="text-[11px] text-gray-500 underline hover:text-gray-700"
+                  >
+                    {showVerbatim ? 'Show polished' : 'Show verbatim'}
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="text-gray-800 whitespace-pre-wrap">{shownAnswer}</div>
           </div>
           <div className="flex items-center gap-2 text-xs">
             {extraction.topic && (

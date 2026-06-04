@@ -138,35 +138,35 @@ describe('analyzeRecording — pass orchestration + cost', () => {
     expect(total_cost_cents).toBe(17)             // Opus tokens only, no curator budget
   })
 
-  it('runs all three passes and adds curator + synthesis budget once reviews come back', async () => {
+  it('runs all four passes and adds curator + synthesis + polish budget once reviews come back', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft()] })
     const sonnet = JSON.stringify({ reviews: [{ draft_index: 0, flag: false, topic: 'Parking' }] })
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse(sonnet))
     const { total_cost_cents } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis (1 published pair)
-    expect(total_cost_cents).toBe(62)             // 17 Opus + 20 curator + 25 synthesis
+    expect(mockCallAI).toHaveBeenCalledTimes(4)   // Opus + curator + synthesis + polish (1 pair)
+    expect(total_cost_cents).toBe(87)             // 17 Opus + 20 curator + 25 synthesis + 25 polish
   })
 
   it('omits the curator budget when the pass runs but returns no parseable reviews', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft()] })
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse('{"reviews":[]}'))
     const { total_cost_cents } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis
-    expect(total_cost_cents).toBe(42)             // 17 Opus + 0 curator (no reviews) + 25 synthesis
+    expect(mockCallAI).toHaveBeenCalledTimes(4)   // Opus + curator + synthesis + polish
+    expect(total_cost_cents).toBe(67)             // 17 Opus + 0 curator (no reviews) + 25 synthesis + 25 polish
   })
 
-  it('still runs synthesis when pairs are flagged (deck must reconcile with the page, which counts flagged pairs)', async () => {
+  it('still runs synthesis + polish when pairs are flagged (deck must reconcile with the page, which counts flagged pairs)', async () => {
     const opus = JSON.stringify({ extractions: [opusDraft({ confidence: 0.4 })] }) // low-confidence → flagged
     mockCallAI.mockResolvedValueOnce(aiResponse(opus)).mockResolvedValueOnce(aiResponse('{"reviews":[]}'))
     const { analysis_summary } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(3)   // Opus + curator + synthesis — flagged pairs are NOT excluded
+    expect(mockCallAI).toHaveBeenCalledTimes(4)   // Opus + curator + synthesis + polish — flagged pairs are NOT excluded
     expect(analysis_summary).not.toBeNull()
   })
 
-  it('skips synthesis only when there are no Q&A pairs at all', async () => {
+  it('skips synthesis + polish only when there are no Q&A pairs at all', async () => {
     mockCallAI.mockResolvedValueOnce(aiResponse('{"extractions":[]}'))
     const { analysis_summary } = await analyzeRecording(baseInput())
-    expect(mockCallAI).toHaveBeenCalledTimes(1)   // Opus only — no drafts → no curator, no synthesis
+    expect(mockCallAI).toHaveBeenCalledTimes(1)   // Opus only — no drafts → no curator, synthesis, or polish
     expect(analysis_summary).toBeNull()
   })
 })
@@ -230,6 +230,40 @@ describe('analyzeRecording — synthesis pass', () => {
     expect(analysis_summary).toBeNull()
     expect(extractions.filter(e => e.unit_type === 'action_item')).toHaveLength(0)  // no items on failure
     expect(extractions.filter(e => e.unit_type === 'qa_pair')).toHaveLength(2)      // pairs survive
+  })
+})
+
+describe('analyzeRecording — polish pass (pass 4)', () => {
+  const oneOpus = JSON.stringify({ extractions: [opusDraft()] })
+  const cleanReview = JSON.stringify({ reviews: [{ draft_index: 0, flag: false, topic: 'Parking' }] })
+
+  it('writes polished_question/polished_answer onto the pair payload', async () => {
+    const polish = JSON.stringify({
+      polished: [{ index: 0, question: 'How much parking is available?', answer: 'Two levels, with weekend overflow.' }],
+    })
+    mockCallAI.mockResolvedValueOnce(aiResponse(oneOpus))      // Opus
+                .mockResolvedValueOnce(aiResponse(cleanReview)) // curator
+                .mockResolvedValueOnce(aiResponse('{}'))        // synthesis
+                .mockResolvedValueOnce(aiResponse(polish))      // polish
+    const { extractions } = await analyzeRecording(baseInput())
+    const pair = extractions.find(e => e.unit_type === 'qa_pair')!
+    const payload = pair.payload as QaPairPayload
+    expect(payload.polished_question).toBe('How much parking is available?')
+    expect(payload.polished_answer).toBe('Two levels, with weekend overflow.')
+    // Verbatim is untouched — record of truth.
+    expect(payload.question).toBe('How much parking?')
+    expect(payload.answer).toBe('Two levels.')
+  })
+
+  it('leaves polished fields unset (verbatim fallback) when polish JSON is unparseable', async () => {
+    mockCallAI.mockResolvedValueOnce(aiResponse(oneOpus))
+                .mockResolvedValueOnce(aiResponse(cleanReview))
+                .mockResolvedValueOnce(aiResponse('{}'))
+                .mockResolvedValueOnce(aiResponse('not json'))
+    const { extractions } = await analyzeRecording(baseInput())
+    const payload = (extractions.find(e => e.unit_type === 'qa_pair')!).payload as QaPairPayload
+    expect(payload.polished_answer).toBeUndefined()
+    expect(payload.answer).toBe('Two levels.')   // verbatim survives
   })
 })
 

@@ -1,6 +1,6 @@
 // lib/recordings/analyze.ts
 //
-// Two-pass Claude analysis for a transcribed recording.
+// Multi-pass Claude analysis for a transcribed recording.
 //
 //   Pass 1 — Opus 4.7 primary extraction (claude-opus-4-7). Best structured
 //            reasoning we have for the "is this an audience question vs panel
@@ -8,6 +8,10 @@
 //   Pass 2 — Sonnet 4.6 curator (claude-sonnet-4-6). Reviews drafts and flags
 //            any that shouldn't be published. Productized substitute for the
 //            PDF-as-ground-truth feedback loop.
+//   Pass 3 — Sonnet 4.6 synthesis. Meeting-level narrative (exec summary,
+//            per-topic summaries, decisions, action items) → analysis_summary.
+//   Pass 4 — Sonnet 4.6 polish. Faithful public-shareable cleanup of each
+//            verbatim Q&A pair → payload.polished_question/polished_answer.
 //
 // v1 supports session_type='qa' only. Other types deferred per spec § 3.5.
 
@@ -17,6 +21,7 @@ import {
   buildQaExtractionPrompt,
   buildQaCuratorPrompt,
   buildQaSynthesisPrompt,
+  buildQaPolishPrompt,
   VALID_TYPOLOGIES,
   VALID_SENTIMENTS,
   type ExtractionDraft,
@@ -198,12 +203,87 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
     }
   }
 
+  // ── Pass 4: polish — public-shareable cleanup of each Q&A pair ─────────────
+  // Faithful cleanup of the verbatim quotes into readable Question/Response text
+  // for public distribution. ADDITIVE: payload.question/answer stay the record
+  // of truth; this writes payload.polished_question/polished_answer in place
+  // (qaPairs holds the same payload refs as `extractions`). Non-fatal — on
+  // failure the fields are left unset and surfaces fall back to verbatim. Runs
+  // over all pairs, including topic-scoped re-extracts.
+  let polishCents = 0
+  if (qaPairs.length > 0) {
+    const { polished, cents } = await polishQaPairs(
+      qaPairs.map(e => { const qa = e.payload as QaPairPayload; return { question: qa.question, answer: qa.answer } }),
+      { org_id: input.org_id, recording_id: input.recording_id },
+    )
+    polishCents = cents
+    qaPairs.forEach((e, i) => {
+      const p = polished[i]
+      if (!p) return
+      const qa = e.payload as QaPairPayload
+      qa.polished_question = p.question
+      qa.polished_answer = p.answer
+    })
+  }
+
   const total_cost_cents =
     centsFromUsage(opusResp.usage) +
     centsFromUsageMaybe(curatorReviews.size > 0) +
-    synthesisCents
+    synthesisCents +
+    polishCents
 
   return { extractions, total_cost_cents, analysis_summary }
+}
+
+// ── Pass 4 polish ──────────────────────────────────────────────────────────
+//
+// Faithful editorial cleanup of verbatim Q&A into public-shareable text. One
+// Sonnet call over all pairs. Returns one polished {question,answer} per input
+// index (null for any index the model dropped or garbled → caller keeps the
+// verbatim version). Exported + reused by the single-pair regenerate path so a
+// regenerated pair also gets a polished version. `glossary` (optional) =
+// canonical entity spellings to normalize against (future entity-normalization).
+export async function polishQaPairs(
+  pairs: Array<{ question: string; answer: string }>,
+  ctx: { org_id: string; recording_id: string; glossary?: string[] },
+): Promise<{ polished: Array<{ question: string; answer: string } | null>; cents: number }> {
+  const out: Array<{ question: string; answer: string } | null> = pairs.map(() => null)
+  if (pairs.length === 0) return { polished: out, cents: 0 }
+
+  let cents = 0
+  try {
+    const { system, userPrompt } = buildQaPolishPrompt({ pairs, glossary: ctx.glossary })
+    const resp = await callAI({
+      tier: 'advanced',
+      modelOverride: SONNET_MODEL,
+      maxTokens: 8000,
+      timeoutMs: 300000,
+      system: [{ type: 'text', text: system, cache: true }],
+      messages: [{ role: 'user', content: userPrompt }],
+      usage: {
+        org_id: ctx.org_id,
+        resource_type: 'recording',
+        resource_id: ctx.recording_id,
+        event_type: 'recording_polish',
+      },
+    })
+    cents = 25
+    const obj = parseJsonObject(resp.text)
+    const arr = (obj?.polished ?? []) as unknown[]
+    for (const item of arr) {
+      if (!item || typeof item !== 'object') continue
+      const it = item as Record<string, unknown>
+      const idx = Number(it.index)
+      if (!Number.isInteger(idx) || idx < 0 || idx >= pairs.length) continue
+      const q = String(it.question ?? '').trim()
+      const a = String(it.answer ?? '').trim()
+      if (!q || !a) continue
+      out[idx] = { question: q, answer: a }
+    }
+  } catch {
+    // Non-fatal — leave nulls; surfaces fall back to the verbatim text.
+  }
+  return { polished: out, cents }
 }
 
 // ── Pass 3 synthesis ──────────────────────────────────────────────────────────

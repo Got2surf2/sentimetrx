@@ -273,6 +273,57 @@ ${pairBlock}`
   return { system, userPrompt }
 }
 
+// ── Polish prompt (Sonnet 4.6) — fourth pass, § 3.5 ─────────────────────────
+//
+// Faithful editorial cleanup of the verbatim transcript quotes into readable,
+// publication-ready Question/Response text for public sharing (the vendor-
+// sample format). The verbatim question/answer stay the record of truth; this
+// is ADDITIVE (payload.polished_question / polished_answer). One Sonnet call
+// over all pairs.
+//
+// `glossary` (optional) = canonical entity spellings to normalize against. ASR
+// mangles proper names PHONETICALLY ("no what cats" → NOWOCATS), which classic
+// edit-distance fuzzy matching misses; handing the model the canonical list lets
+// it map phonetic/spelling variants to the right name. Hook for the future
+// "entity-spelling normalization" feature (glossary sourced from uploaded docs /
+// a provided list / the dataset entity catalog).
+
+export function buildQaPolishPrompt(opts: {
+  pairs: Array<{ question: string; answer: string }>
+  glossary?: string[]
+}): { system: string; userPrompt: string } {
+  const glossaryBlock = opts.glossary && opts.glossary.length > 0
+    ? `\n\nCANONICAL SPELLINGS — when any name/place/term below appears in the text (including phonetic mis-hearings or alternate spellings from the audio transcription), use this EXACT spelling. Do not change anything else about the meaning:\n${opts.glossary.map(g => `  - ${g}`).join('\n')}`
+    : ''
+
+  const system = `You are an editor preparing an official, public-shareable Q&A record from a recorded town hall / public forum. Each pair below is a VERBATIM question and answer transcribed from audio. For each, produce a CLEANED, readable version suitable for public distribution.
+
+RULES — CRITICAL:
+- Preserve meaning EXACTLY. Do NOT add, infer, or invent any fact, number, name, date, commitment, caveat, or opinion not present in the original. This is a faithful cleanup, NOT a rewrite or a summary.
+- Remove ONLY: filler ("um", "uh", "you know", "like", "sort of"), false starts, self-corrections, repeated words, and transcription crosstalk. Fix obvious grammar, punctuation, and run-on sentences for readability.
+- Keep ALL substance: every figure, dollar amount, date, name, commitment, qualifier, and the speaker's stance stay intact and unchanged. Do not soften or strengthen what was said.
+- Stay strictly NEUTRAL and FACTUAL — no spin, no editorializing.
+- Do NOT drop content to shorten. A long answer stays long if it carries substance; only the verbal noise goes.
+- If a pair is already clean, return it essentially unchanged.
+- Output exactly one cleaned pair per input index. Do NOT merge, split, reorder, or drop pairs.${glossaryBlock}
+
+OUTPUT FORMAT — a single JSON object, no prose, no markdown fences:
+
+{
+  "polished": [
+    { "index": <int>, "question": "<cleaned question>", "answer": "<cleaned answer>" }
+  ]
+}`
+
+  const pairBlock = opts.pairs.map((p, i) =>
+    `[${i}]\n  Q: ${p.question}\n  A: ${p.answer}`
+  ).join('\n\n')
+
+  const userPrompt = `VERBATIM Q&A PAIRS TO CLEAN\n${pairBlock}`
+
+  return { system, userPrompt }
+}
+
 // ── Regenerate prompt (Sonnet 4.6) — per-card fix (§ 4.10) ──────────────────
 
 export function buildQaRegeneratePrompt(opts: {

@@ -14,6 +14,7 @@ import 'server-only'
 import { callAI } from '@/lib/ai'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildQaRegeneratePrompt, VALID_TYPOLOGIES } from '@/lib/recordings/prompts/qa'
+import { polishQaPairs } from '@/lib/recordings/analyze'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import type {
   CoverageReport,
@@ -127,6 +128,19 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
     panelist_name: revised.panelist_name ?? null,
     question_typology: revised.question_typology,
   }
+
+  // Re-polish the revised pair so it keeps a public-shareable version (the main
+  // pipeline polishes in bulk; without this a regenerated pair would lose its
+  // polished text). Non-fatal — falls back to verbatim.
+  const polish = await polishQaPairs(
+    [{ question: newPayload.question, answer: newPayload.answer }],
+    { org_id: input.org_id, recording_id: input.recording_id },
+  )
+  if (polish.polished[0]) {
+    newPayload.polished_question = polish.polished[0].question
+    newPayload.polished_answer = polish.polished[0].answer
+  }
+
   const newTopic = revised.topic
   const flaggedForReview = newConfidence < LOW_CONFIDENCE_THRESHOLD
   const flagReason = flaggedForReview ? 'low_confidence' : null
@@ -174,8 +188,8 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
       .filter('data->>extraction_id', 'eq', updated.id)
   }
 
-  // 5. Cost accounting — Sonnet cents added to recordings.cost_cents.
-  const sonnetCents = centsFromSonnet(resp.usage)
+  // 5. Cost accounting — Sonnet cents (regenerate + polish) added to recordings.cost_cents.
+  const sonnetCents = centsFromSonnet(resp.usage) + polish.cents
   await service
     .from('recordings')
     .update({ cost_cents: (recording.cost_cents ?? 0) + sonnetCents })

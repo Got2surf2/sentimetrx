@@ -44,6 +44,10 @@ export interface RecordingDeckInput {
   proceedings_summary?: ProceedingsSummary | null   // presentation overview (meeting tool)
   meeting_profile?: MeetingProfile | null
   extractions: RecordingExtractionRow[]   // qa_pair + action_item, any order
+  // Use the public-shareable polished question/answer in the appendix when
+  // available (falls back to verbatim per-pair). Default true — the deck is the
+  // client deliverable. Pass false to render the raw verbatim transcript quotes.
+  polished?: boolean
 }
 
 // ── Local slide helpers (copied from the townhall export pattern) ────────────
@@ -435,8 +439,13 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   }
 
   // ── Appendix: one Q&A pair per slide ──
+  // Prefer the polished (public-shareable) text when present; fall back to the
+  // verbatim quote per pair. `polished: false` forces verbatim throughout.
+  const usePolished = input.polished !== false
   qaPairs.forEach((ex, idx) => {
     const qa = ex.payload as QaPairPayload
+    const qQuestion = usePolished ? (qa.polished_question || qa.question) : qa.question
+    const qAnswer = usePolished ? (qa.polished_answer || qa.answer) : qa.answer
     const s = pptx.addSlide()
     bgFill(s, pptx)
     hdr(s, pptx, `Appendix — Q&A ${idx + 1} of ${qaPairs.length}`)
@@ -455,7 +464,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     s.addShape(pptx.ShapeType.rect, { x: PAD, y: qY, w: W - PAD * 2, h: qH, fill: { color: DN.white }, line: { color: DN.divider, width: 1 }, rectRadius: 0.08 })
     s.addShape(pptx.ShapeType.rect, { x: PAD, y: qY, w: 0.07, h: qH, fill: { color: DN.teal }, line: { width: 0 } })
     s.addText('QUESTION' + (qa.asker_name ? '  ·  ' + qa.asker_name : ''), { x: PAD + 0.25, y: qY + 0.12, w: W - PAD * 2 - 0.5, h: 0.3, fontSize: 12, bold: true, color: DN.teal, charSpacing: 1 })
-    s.addText('“' + qa.question + '”', { x: PAD + 0.25, y: qY + 0.45, w: W - PAD * 2 - 0.5, h: qH - 0.6, fontSize: 13, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.1 })
+    s.addText('“' + qQuestion + '”', { x: PAD + 0.25, y: qY + 0.45, w: W - PAD * 2 - 0.5, h: qH - 0.6, fontSize: 13, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.1 })
 
     // Answer card
     const aY = qY + qH + 0.25
@@ -463,7 +472,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     s.addShape(pptx.ShapeType.rect, { x: PAD, y: aY, w: W - PAD * 2, h: aH, fill: { color: DN.slateCard }, line: { color: DN.divider, width: 1 }, rectRadius: 0.08 })
     s.addShape(pptx.ShapeType.rect, { x: PAD, y: aY, w: 0.07, h: aH, fill: { color: DN.orange }, line: { width: 0 } })
     s.addText('RESPONSE' + (qa.panelist_name ? '  ·  ' + qa.panelist_name : ''), { x: PAD + 0.25, y: aY + 0.12, w: W - PAD * 2 - 0.5, h: 0.3, fontSize: 12, bold: true, color: DN.orange, charSpacing: 1 })
-    s.addText(qa.answer, { x: PAD + 0.25, y: aY + 0.45, w: W - PAD * 2 - 0.5, h: aH - 0.6, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.1 })
+    s.addText(qAnswer, { x: PAD + 0.25, y: aY + 0.45, w: W - PAD * 2 - 0.5, h: aH - 0.6, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.1 })
 
     footer(s, pptx, name)
   })

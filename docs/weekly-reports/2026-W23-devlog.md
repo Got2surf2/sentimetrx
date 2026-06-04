@@ -775,3 +775,16 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 **Why**: Owner — the deck jumped straight from the analysis slides into the per-question appendix; wanted a clear page separator between the two sections.
 
 **What changed** (`lib/pptx/recordingDeck.ts`): inserted a navy section-divider slide (matching the title slide — gold top strip, "APPENDIX" eyebrow, "Question & Answer Detail", "N questions" subtitle, datanautix wordmark) before the appendix loop. Renders only when ≥1 Q&A pair exists. QC'd via a render of all 11 slides — divider sits correctly between Action Items and Q&A 1.
+
+## 2026-06-04 — Town Hall: public-shareable Q&A polish pass (Phase 1 + deck/page surfaces)
+
+**Why**: Owner — the original vendor sample and our earlier sample out-file summarized/polished the Q&A for public sharing; the new pipeline only had verbatim quotes + topic-level summaries, missing the per-question "Question → cleaned Response" public document. Build it, save it, make it available across export formats.
+
+**What changed**:
+- **Polish pass (pass 4)** — `polishQaPairs` in `lib/recordings/analyze.ts` + `buildQaPolishPrompt` in `prompts/qa.ts`. One Sonnet call over all pairs; faithful cleanup (remove filler/false-starts, fix grammar, keep every figure/name/date/commitment, strictly neutral, no added facts). Writes `polished_question`/`polished_answer` ADDITIVELY onto the payload (jsonb — no migration); verbatim stays the record of truth. Non-fatal → verbatim fallback. Optional `glossary` param = hook for future entity-spelling normalization (LLM phonetic match > edit-distance).
+- **Saved automatically** — persists via `mirror.ts` (full payload insert). Swept the single-pair `regenerate.ts` path so a regenerated pair also gets re-polished (else it'd lose polish).
+- **Deck surface** — `recordingDeck.ts` appendix renders polished when present (fallback verbatim); `input.polished` (default true) can force verbatim.
+- **Report page surface** — Q&A cards show polished by default with a "Polished for sharing" badge + per-card "Show verbatim" toggle, so the page matches what the deck exports (avoids a new page-vs-deck mismatch).
+- Cost +$0.25/meeting (~$1.45 total). Tests: polish populate + verbatim fallback; updated pass-count/cost assertions (now 4 passes). QC'd deck render (polished pair clean, no-polish pair falls back).
+
+**Deferred (queued)**: PDF report + public share link `/r/[token]` reading the same saved polished field; entity-spelling-normalization glossary sources.

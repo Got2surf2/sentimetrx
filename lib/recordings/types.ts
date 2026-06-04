@@ -238,6 +238,12 @@ export interface QaPairPayload {
   // Tone of the panel's answer toward the asker's concern. Optional so old
   // extractions (pre-2026-06) parse without it; defaults to 'neutral' downstream.
   sentiment?: QaSentiment
+  // Public-shareable cleaned versions of the verbatim question/answer, produced
+  // by the polish pass (§3.5 pass 4). ADDITIVE — the verbatim question/answer
+  // above stay the record of truth. Absent on older rows and when polish fails;
+  // surfaces fall back to the verbatim text in that case.
+  polished_question?: string | null
+  polished_answer?: string | null
 }
 
 export interface QuotePayload {
