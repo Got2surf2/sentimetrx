@@ -124,18 +124,6 @@ export default async function RecordingsListPage() {
           </div>
         )}
 
-        {/* Materials guidance — what to bring for a great Town Hall report. */}
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
-          <p className="text-sm font-semibold text-gray-900 mb-1">Record a meeting → get a board-ready report</p>
-          <p className="text-sm text-gray-600 mb-2">For the richest report, bring as much as you have:</p>
-          <ul className="text-sm text-gray-700 grid sm:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
-            <li><strong>Room recording</strong> — audio or video of the meeting (required)</li>
-            <li><strong>Presentation slides</strong> — the deck shown, as a PDF (grounds the meeting notes)</li>
-            <li><strong>Agenda</strong> — the topics covered</li>
-            <li><strong>Panel / speaker roster</strong> — who presented and who answered questions</li>
-          </ul>
-        </div>
-
         <RecordingsListClient rows={rows} showOrg={ctx.isAdminOrg} />
       </main>
     </div>

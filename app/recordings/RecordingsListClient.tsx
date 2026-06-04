@@ -34,10 +34,6 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = 
   rendering:    { bg: '#ffedd5', fg: '#c2410c', label: 'Rendering' },
 }
 
-function fmtCost(cents: number): string {
-  if (!cents) return '—'
-  return '$' + (cents / 100).toFixed(2)
-}
 function fmtDate(s: string | null): string {
   if (!s) return ''
   try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return '' }
@@ -108,8 +104,8 @@ export default function RecordingsListClient({ rows: initial, showOrg }: { rows:
                   <span className="text-xs text-gray-400">{fmtDate(r.meeting_date) || fmtDate(r.created_at)}</span>
                 </div>
                 <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-                  <span className="truncate max-w-[62%]">{showOrg && r.org_name ? r.org_name : (r.owner_name || '—')}</span>
-                  <span>{fmtCost(r.cost_cents)}</span>
+                  <span className="truncate">{r.owner_name || '—'}</span>
+                  {showOrg && r.org_name && <span className="truncate max-w-[45%] text-gray-500">{r.org_name}</span>}
                 </div>
               </Link>
             </div>
