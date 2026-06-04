@@ -40,7 +40,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       'id, org_id, created_by, dataset_id, name, session_type, meeting_date, location, language, ' +
       'setup_inputs, asr_strategy, asr_vendor_chosen, status, error_message, ' +
       'source_duration_sec, source_size_bytes, cost_cents, coverage_report, analysis_summary, ' +
-      'meeting_profile, phase_map, presentation_outline, ' +
+      'meeting_profile, phase_map, presentation_outline, entity_map, ' +
       'share_token, share_enabled, share_expires_at, ' +
       'created_at, started_at, completed_at',
     )
@@ -99,6 +99,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       meeting_profile: rec.meeting_profile,
       phase_map: rec.phase_map,
       presentation_outline: rec.presentation_outline,
+      entity_map: rec.entity_map,
       dataset_id: rec.dataset_id,
       created_at: rec.created_at,
       started_at: rec.started_at,

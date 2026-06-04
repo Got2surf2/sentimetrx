@@ -63,21 +63,24 @@ export async function extractEntities(input: {
   }
 }
 
-// Tolerant parse + sanitize of the extraction response into clean entries.
-export function parseEntities(text: string): EntityMapEntry[] {
-  const obj = parseJsonObject(text)
-  const arr = (obj?.entities ?? []) as unknown[]
+const MAX_ENTITIES = 200
+const MAX_LEN = 120
+
+// Validate + clean a raw array of entity-like objects into well-formed entries.
+// Shared by parseEntities (AI output) and sanitizeEntityMap (user-edited save).
+export function sanitizeEntries(arr: unknown[]): EntityMapEntry[] {
   const out: EntityMapEntry[] = []
   for (const item of arr) {
+    if (out.length >= MAX_ENTITIES) break
     if (!item || typeof item !== 'object') continue
     const it = item as Record<string, unknown>
-    const canonical = String(it.canonical ?? '').trim()
+    const canonical = String(it.canonical ?? '').trim().slice(0, MAX_LEN)
     if (!canonical) continue
     const rawVariants = Array.isArray(it.variants) ? it.variants : []
     const seen = new Set<string>()
     const variants: string[] = []
     for (const v of rawVariants) {
-      const s = String(v ?? '').trim()
+      const s = String(v ?? '').trim().slice(0, MAX_LEN)
       if (!s || seen.has(s.toLowerCase())) continue
       seen.add(s.toLowerCase())
       variants.push(s)
@@ -93,6 +96,24 @@ export function parseEntities(text: string): EntityMapEntry[] {
   // Most-mentioned first — the names most worth checking surface at the top.
   out.sort((a, b) => b.mentions - a.mentions)
   return out
+}
+
+// Tolerant parse + sanitize of the extraction response into clean entries.
+export function parseEntities(text: string): EntityMapEntry[] {
+  const obj = parseJsonObject(text)
+  return sanitizeEntries((obj?.entities ?? []) as unknown[])
+}
+
+// Sanitize a user-edited entity map (from the review gate) before persisting.
+// Preserves the original extraction timestamp; stamps reviewed_at = now. Returns
+// null when there are no valid entries (treated as "clear the map").
+export function sanitizeEntityMap(raw: unknown, now: string): EntityMap | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const entities = sanitizeEntries(Array.isArray(r.entities) ? r.entities : [])
+  if (entities.length === 0) return null
+  const extracted_at = typeof r.extracted_at === 'string' ? r.extracted_at : now
+  return { entities, extracted_at, reviewed_at: now }
 }
 
 // The polish-pass glossary = confirmed canonical spellings ∪ any manually-typed
@@ -111,40 +132,10 @@ export function glossaryFromEntities(entityMap: EntityMap | null, manual?: strin
   return out.length > 0 ? out : undefined
 }
 
-// Deterministic variant → canonical replacement (the "Corrected" transcript
-// view). NOT an AI rewrite: only the listed mis-heard spellings change; all other
-// text is byte-identical. Case-insensitive, whole-word, longest-variant-first so
-// "Kelly Park Road" is replaced before "Kelly Park". Never touches the stored raw.
-export function buildReplacements(entityMap: EntityMap | null): Array<{ re: RegExp; to: string }> {
-  if (!entityMap) return []
-  const pairs: Array<{ from: string; to: string }> = []
-  for (const e of entityMap.entities) {
-    for (const v of e.variants) {
-      if (!v || v.toLowerCase() === e.canonical.toLowerCase()) continue
-      pairs.push({ from: v, to: e.canonical })
-    }
-  }
-  pairs.sort((a, b) => b.from.length - a.from.length)
-  return pairs.map(p => ({ re: new RegExp(`\\b${escapeRegExp(p.from)}\\b`, 'gi'), to: p.to }))
-}
-
-export function normalizeText(text: string, repl: Array<{ re: RegExp; to: string }>): string {
-  let out = text
-  for (const r of repl) out = out.replace(r.re, r.to)
-  return out
-}
-
-// Apply the corrections to transcript segments, returning new segment objects
-// (the raw segments are left untouched by the caller).
-export function normalizeSegments(segments: TranscriptSegment[], entityMap: EntityMap | null): TranscriptSegment[] {
-  const repl = buildReplacements(entityMap)
-  if (repl.length === 0) return segments
-  return segments.map(s => ({ ...s, text: normalizeText(s.text, repl) }))
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
+// Deterministic variant→canonical normalization (the "Corrected" transcript
+// view) lives in the client-safe ./normalize module so the report page can use
+// it too. Re-exported here for the existing server-side callers + tests.
+export { buildReplacements, normalizeText, normalizeSegments } from '@/lib/recordings/normalize'
 
 // Tolerant JSON extractor — strips markdown fences, slices to the outer object.
 function parseJsonObject(text: string): Record<string, unknown> | null {

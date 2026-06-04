@@ -11,7 +11,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
-import type { MeetingProfile, PhaseMap, MeetingPhase } from '@/lib/recordings/types'
+import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry } from '@/lib/recordings/types'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -82,6 +82,7 @@ interface StatusResponse {
     source_duration_sec: number | null
     meeting_profile: MeetingProfile | null
     phase_map: PhaseMap | null
+    entity_map: EntityMap | null
     cost_cents: number
     dataset_id: string | null
     started_at: string | null
@@ -188,6 +189,7 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
           setupInputs={data.recording.setup_inputs}
           meetingProfile={data.recording.meeting_profile}
           phaseMap={data.recording.phase_map}
+          entityMap={data.recording.entity_map}
           durationSec={data.recording.source_duration_sec}
           onStarted={fetchStatus}
         />
@@ -423,13 +425,14 @@ function inferFailedStepIdx(data: StatusResponse | null): number {
 // "Name — role" per line — full structured editing lives on the report page's
 // re-extract flow once pairs exist.
 function GeneratePanel({
-  recordingId, sessionType, setupInputs, meetingProfile, phaseMap, durationSec, onStarted,
+  recordingId, sessionType, setupInputs, meetingProfile, phaseMap, entityMap, durationSec, onStarted,
 }: {
   recordingId: string
   sessionType: string
   setupInputs: QaSetupInputs | Record<string, unknown> | null
   meetingProfile: MeetingProfile | null
   phaseMap: PhaseMap | null
+  entityMap: EntityMap | null
   durationSec: number | null
   onStarted: () => void | Promise<void>
 }) {
@@ -452,12 +455,34 @@ function GeneratePanel({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  // Entity-spelling review (§3.5b). Seeded with the auto-extracted candidates;
+  // the user fixes canonical spellings / drops noise / adds a missed name.
+  const [entities, setEntities] = useState<EntityMapEntry[]>(() => entityMap?.entities ?? [])
+  const setCanonical = (i: number, value: string) =>
+    setEntities(prev => prev.map((e, j) => (j === i ? { ...e, canonical: value } : e)))
+  const removeEntity = (i: number) => setEntities(prev => prev.filter((_, j) => j !== i))
+  const addEntity = () =>
+    setEntities(prev => [...prev, { canonical: '', variants: [], type: 'term', mentions: 1 }])
+
   const handleGenerate = async () => {
     setBusy(true)
     setErr(null)
     try {
-      const body: { setup_inputs?: Record<string, unknown>; instructions?: string; phase_map?: PhaseMap } = {
+      const body: {
+        setup_inputs?: Record<string, unknown>
+        instructions?: string
+        phase_map?: PhaseMap
+        entity_map?: { entities: EntityMapEntry[]; extracted_at: string; reviewed_at?: string | null }
+      } = {
         instructions: instructions.trim() || undefined,
+      }
+      // Persist the reviewed entity map (drop blank canonicals). Always sent so an
+      // emptied list clears the map; the server stamps reviewed_at.
+      if (isQa) {
+        body.entity_map = {
+          entities: entities.filter(e => e.canonical.trim()),
+          extracted_at: entityMap?.extracted_at ?? new Date().toISOString(),
+        }
       }
       if (isQa) {
         body.setup_inputs = {
@@ -534,6 +559,53 @@ function GeneratePanel({
               style={{ fontSize: '16px' }}
             />
           </label>
+        </div>
+      )}
+
+      {isQa && (
+        <div className="rounded-lg border border-gray-200 p-3">
+          <span className="block text-xs font-semibold text-gray-700">Names &amp; spellings</span>
+          <p className="text-xs text-gray-500 mt-0.5 mb-2">
+            The transcriber often mis-hears proper names. We pulled the names it heard and grouped the
+            spellings — fix the correct spelling (left), drop noise, or add a name it missed. We&apos;ll use
+            these spellings in the report and offer a corrected transcript. The raw transcript is never changed.
+          </p>
+          {entities.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No names detected{entityMap ? '' : ' yet'}. Add any worth correcting.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {entities.map((e, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={e.canonical}
+                    onChange={ev => setCanonical(i, ev.target.value)}
+                    disabled={busy}
+                    placeholder="Correct spelling"
+                    className="w-48 shrink-0 border border-gray-300 rounded px-2 py-1.5 font-medium"
+                    style={{ fontSize: '16px' }}
+                  />
+                  <span className="text-xs text-gray-400 min-w-0 flex-1 truncate" title={e.variants.join(', ')}>
+                    heard as: {e.variants.join(', ') || '—'}
+                    {e.mentions > 1 ? ` · ${e.mentions}×` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeEntity(i)}
+                    disabled={busy}
+                    className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-1 shrink-0"
+                    title="Remove"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={addEntity}
+            disabled={busy}
+            className="mt-2 text-xs text-gray-600 hover:text-orange-600 disabled:opacity-30"
+          >+ Add name</button>
         </div>
       )}
 

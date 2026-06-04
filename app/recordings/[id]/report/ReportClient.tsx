@@ -21,7 +21,9 @@ import type {
   QaPairPayload,
   TranscriptSegment,
   QaSetupInputs,
+  EntityMap,
 } from '@/lib/recordings/types'
+import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
 
 // A request to open the audio modal at a given point. `nonce` forces a re-seek
 // even when two Play buttons share the same start_sec.
@@ -111,7 +113,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} onPlay={playAt} />}
+        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} onPlay={playAt} />}
         {tab === 'export' && <ExportTab recordingId={recordingId} recordingName={data.recording.name} status={data.recording.status} />}
       </div>
 
@@ -672,7 +674,7 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript, onPlay }: { transcript: RecordingTranscriptRow | null; onPlay: PlayHandler }) {
+function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
@@ -680,11 +682,20 @@ function TranscriptTab({ transcript, onPlay }: { transcript: RecordingTranscript
     () => (transcript?.segments ?? []) as TranscriptSegment[],
     [transcript],
   )
+  // Corrected view = deterministic variant→canonical from the entity map. Only
+  // meaningful when there's something to replace. The raw ASR is never mutated;
+  // this derives the corrected view on read (the two-transcripts model).
+  const replacements = useMemo(() => buildReplacements(entityMap), [entityMap])
+  const canCorrect = replacements.length > 0
+  const [view, setView] = useState<'corrected' | 'raw'>(canCorrect ? 'corrected' : 'raw')
+  const corrected = useMemo(() => normalizeSegments(segments, entityMap), [segments, entityMap])
+  const active = view === 'corrected' && canCorrect ? corrected : segments
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return segments
-    return segments.filter(s => s.text.toLowerCase().includes(q))
-  }, [segments, search])
+    if (!q) return active
+    return active.filter(s => s.text.toLowerCase().includes(q))
+  }, [active, search])
 
   if (!transcript) return <EmptyState label="Transcript not available yet." />
 
@@ -699,12 +710,28 @@ function TranscriptTab({ transcript, onPlay }: { transcript: RecordingTranscript
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base"
           style={{ fontSize: '16px' }}
         />
+        {canCorrect && (
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0 text-xs">
+            <button
+              type="button"
+              onClick={() => setView('corrected')}
+              className={`px-3 py-2 font-medium ${view === 'corrected' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >Corrected</button>
+            <button
+              type="button"
+              onClick={() => setView('raw')}
+              className={`px-3 py-2 font-medium ${view === 'raw' ? 'bg-gray-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >Raw</button>
+          </div>
+        )}
         <div className="text-xs text-gray-500 shrink-0">
           {filtered.length} / {segments.length} segments
         </div>
       </div>
       <p className="text-xs text-gray-500">
-        Record of truth — verbatim ASR output ({transcript.vendor}). Never edited by AI.
+        {canCorrect && view === 'corrected'
+          ? <>Spelling-corrected view — names normalized to the reviewed spellings. The raw ASR (record of truth, {transcript.vendor}) is unchanged — switch to “Raw” to see it.</>
+          : <>Record of truth — verbatim ASR output ({transcript.vendor}). Never edited by AI.</>}
       </p>
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
         {filtered.map((s, i) => (

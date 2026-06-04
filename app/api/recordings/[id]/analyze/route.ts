@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { analyzeRecordingWorkflow } from '@/workflows/recordings'
+import { sanitizeEntityMap } from '@/lib/recordings/entities'
 import type { PhaseMap } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,7 @@ interface Body {
   setup_inputs?: Record<string, unknown>
   instructions?: string
   phase_map?: PhaseMap          // user-adjusted phase boundaries from the review gate
+  entity_map?: unknown          // user-corrected entity-spelling map from the gate (§3.5b)
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -77,6 +79,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // won't be assumed authoritative, and analysis scopes to these spans.
   if (body.phase_map && Array.isArray(body.phase_map.phases) && body.phase_map.phases.length > 0) {
     setupPatch.phase_map = { ...body.phase_map, edited_by_user: true }
+  }
+  // User-corrected entity-spelling map (§3.5b) — persist before analysis so the
+  // polish glossary uses the confirmed canonical spellings. Sending an empty map
+  // clears it (entity_map → null).
+  if ('entity_map' in body) {
+    setupPatch.entity_map = sanitizeEntityMap(body.entity_map, new Date().toISOString())
   }
   if (Object.keys(setupPatch).length > 0) {
     const { error: updErr } = await service

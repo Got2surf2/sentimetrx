@@ -827,3 +827,13 @@ tsc clean; full suite green; verified routes on the dev server. No SQL/data chan
 - Types (`EntityMap`/`EntityMapEntry`/`EntityType`), tests (`entities.test.ts`: parse/glossary/normalize; 52 recordings tests pass).
 
 **Next**: Phase 2 review/correct UI at the gate (`StatusClient` + a PATCH route); Phase 3 Raw/Corrected transcript toggle (`ReportClient`).
+
+## 2026-06-04 — Town Hall: entity-spelling review UI + Corrected transcript (Phases 2–3)
+
+**Why**: complete the auto-extract → user-correct → apply loop from the Phase-1 backend.
+
+**Phase 2 — review at the gate**: the "Review & generate" panel (`StatusClient` `GeneratePanel`) gained a "Names & spellings" block — lists the auto-extracted entities with the canonical spelling editable, the ASR variants shown as "heard as: …", drop/add controls. On Generate the reviewed map POSTs to `/api/recordings/[id]/analyze`, which sanitizes (`sanitizeEntityMap`) + persists it (stamped `reviewed_at`) before analysis, so the polish glossary uses the confirmed spellings. GET `/api/recordings/[id]` now returns `entity_map`.
+
+**Phase 3 — Corrected transcript view**: extracted the pure normalize helpers into client-safe `lib/recordings/normalize.ts` (entities.ts re-exports them). The report Transcript tab gained a **Corrected / Raw toggle** (defaults to Corrected when a reviewed map exists): Corrected applies the deterministic variant→canonical fix client-side; Raw is the untouched record of truth. The raw transcript is never mutated — two transcripts, one record.
+
+430 tests pass, tsc clean. Migration `sql/100` still NOT applied to prod (needed before the column-selecting paths work).
