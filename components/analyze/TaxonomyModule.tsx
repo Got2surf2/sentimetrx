@@ -26,6 +26,18 @@ interface Rollup {
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
 const GREEN = '#059669', AMBER = '#D97706', RED = '#DC2626', SLATE = '#8FA3AE'
 
+// Red→green ramp (0..1), mirrors TextMine's CommentsPanel rating colouring.
+function rampColor(pct: number): string {
+  if (pct <= 0.5) { const g = Math.round(80 + pct * 2 * 120); return `rgb(220,${g},40)` }
+  const r = Math.round(220 - (pct - 0.5) * 2 * 180), g = Math.round(160 + (pct - 0.5) * 2 * 40)
+  return `rgb(${r},${g},40)`
+}
+// Colour for a 1–5 rating (null when no rating).
+function ratingColor(rating: number | null): string | null {
+  if (rating == null || isNaN(rating)) return null
+  return rampColor(Math.max(0, Math.min(1, (rating - 1) / 4)))
+}
+
 function pillStyle(active: boolean, color: string): CSSProperties {
   return {
     fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999,
@@ -101,6 +113,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [drillLoading, setDrillLoading] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())  // long comments shown in full
+  const [gridCols, setGridCols] = useState(2)  // comment grid column count
   const [filterAxis, setFilterAxis] = useState('')  // topic filter
   const [filterSub, setFilterSub] = useState('')    // sub-topic filter
   const toggleExpand = (i: number) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
@@ -351,7 +364,17 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
               <div style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>{drill.crumbs[drill.crumbs.length - 1]}</div>
               {drillData && <div style={{ fontSize: 13, color: SLATE, marginTop: 2 }}>{drillData.count.toLocaleString()} comment{drillData.count === 1 ? '' : 's'} tagged{drillData.count > drillData.comments.length ? ` · showing first ${drillData.comments.length}` : ''}</div>}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+              {drillData && drillData.comments.length > 1 && (
+                <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }} title="Comment columns">
+                  {[1, 2, 3, 4].map(n => (
+                    <button key={n} onClick={() => setGridCols(n)} title={`${n} column${n > 1 ? 's' : ''}`}
+                      style={{ padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', borderRight: n < 4 ? '1px solid #e2e8f0' : 'none', background: gridCols === n ? TEAL : '#fff', color: gridCols === n ? '#fff' : SLATE }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
               {drillData && drillData.comments.length > 0 && (
                 <button onClick={exportCsv} title="Download these comments as CSV" style={{ background: TEAL, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>⤓ Export CSV</button>
               )}
@@ -363,13 +386,17 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             {!drillLoading && drillData && drillData.comments.length === 0 && (
               <p style={{ color: SLATE, fontSize: 13, padding: 16 }}>No comments found for this tag.</p>
             )}
-            {!drillLoading && drillData && drillData.comments.map((c, i) => {
+            {!drillLoading && drillData && drillData.comments.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, 1fr)`, gap: 10, alignItems: 'stretch' }}>
+                {drillData.comments.map((c, i) => {
                 const LIMIT = 300
                 const isLong = c.text.length > LIMIT
                 const isOpen = expanded.has(i)
                 const shownText = isLong && !isOpen ? c.text.slice(0, LIMIT).trimEnd() + '… ' : c.text
+                const accent = ratingColor(c.rating)
+                const cardBg = accent ? accent.replace('rgb(', 'rgba(').replace(')', ', 0.07)') : '#fff'
                 return (
-                  <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                  <div key={i} style={{ background: cardBg, border: '1px solid #e2e8f0', borderLeft: '4px solid ' + (accent || '#e2e8f0'), borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column' }}>
                     <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>
                       {highlight(shownText, c.evidence)}
                       {isLong && <button onClick={() => toggleExpand(i)} style={{ background: 'transparent', border: 'none', color: TEAL, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{isOpen ? 'Show less' : 'Show more'}</button>}
@@ -387,7 +414,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                         })}
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 'auto' }}>
                       {c.rating != null && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>★ {c.rating}</span>}
                       {c.date && <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>{String(c.date).slice(0, 10)}</span>}
                       <button onClick={() => copyComment(c.text, i)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '2px 10px', fontSize: 11, fontWeight: 700, color: copiedIdx === i ? GREEN : SLATE, cursor: 'pointer' }}>{copiedIdx === i ? '✓ Copied' : 'Copy'}</button>
@@ -395,6 +422,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                   </div>
                 )
               })}
+              </div>
+            )}
           </div>
         </div>
       )}

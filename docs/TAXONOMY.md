@@ -78,7 +78,8 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   org-gated; `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
   text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
   the row** so each comment shows what else it hit). Cards mirror TextMine's `CommentCard`
-  (text, meta chips, **Show more** for long text); the panel has an **Export CSV**
+  (text, meta chips, **Show more** for long text, a **rating-coloured left bar** via the same
+  red→green ramp as TextMine, and a **1–4 column grid selector**); the panel has an **Export CSV**
   (rating/date/comment/evidence of the shown comments) and a per-comment **Copy** button.
   (Inline, not the theme-coupled TextMine `CommentsPanel` — that's 944 lines bound to the
   theme model + in-memory rows; the taxonomy panel reuses the same UX pattern + the

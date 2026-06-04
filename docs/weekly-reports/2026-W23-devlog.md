@@ -921,3 +921,9 @@ Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy
 **Why**: Owner realized the dataset's date range wasn't surfaced anywhere. Added it to the "records · signals · theme-fit · themes" strip.
 
 **What changed**: `signal-stats` route now returns `{ dateMin, dateMax }` from `datasets.description.start_date/end_date` — read via the RLS-enforced user client (NOT a bare service-role id lookup), instant (no row scan; a live min/max over `data->>review_date` measured ~2.4s on 19.7K rows and would balloon at full sync, so rejected). `DatasetMetricStrip.tsx` shows "📅 Jan 1, 2026 – Jun 3, 2026" when present. Shown only when the strip renders (which is theme-gated). tsc clean for my files; note: a parallel session's `scripts/_townhall_pdf_qc.ts` currently has an unrelated tsc error (their WIP).
+
+## 2026-06-03 — Taxonomy comments: rating left-bar + grid column selector (match TextMine)
+
+**Why**: Owner wanted a closer match to TextMine's comment cards — a column-count (grid) selector and a per-card side-bar reflecting the underlying rating.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`): added `rampColor`/`ratingColor` (the same red→green ramp as TextMine's CommentsPanel), so each card gets a **4px left bar** coloured by its 1–5 rating + a faint rgba tint. Added a **1–4 column grid picker** in the panel header (`gridCols` state) and rendered the comments in a CSS grid (`repeat(N,1fr)`, equal-height cells via flex-column cards with meta pinned `marginTop:auto`). tsc clean; page compiles.
