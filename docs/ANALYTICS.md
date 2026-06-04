@@ -68,8 +68,10 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 5. Performance: O(rows x themes x keywords), single pass
 
 ### Signal-stats toolbar (`lib/signalStats.ts`)
-The TextMine strip ("N records · M signals · theme-fit X% · K themes") and the
-`/analyze` listing cards are powered by `computeSignalStats`. `records` is the
+The TextMine strip ("N records · M signals · theme-fit X% · K themes · 📅 date range") and the
+`/analyze` listing cards are powered by `computeSignalStats`. The **date range** is added in
+the `signal-stats` route (not the cached compute) from `datasets.description.start_date/end_date`
+— read via the RLS-enforced user client, instant (no row scan); shown only when present. `records` is the
 **max** non-empty count across the saved theme model's fields (summed across
 collection members); `signals` / `inThemes` come from `count_theme_matches`.
 Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**

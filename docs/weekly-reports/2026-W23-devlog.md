@@ -901,3 +901,9 @@ Cosmetic: KPI boxes now center the number + label (`textAlign:center`). Taxonomy
 **Why**: Owner wanted the taxonomy comment boxes to match TextMine's as much as possible, and to show what OTHER topic/sub-topic pairs each comment hit.
 
 **What changed**: `GET …/taxonomy/rows` now returns `tags: {axis,sub}[]` per comment (all distinct assertions on the row, via new `collectTags`). `TaxonomyModule.tsx` cards now render those as small chips (the filtered one highlighted teal, others gray) + a **Show more / Show less** toggle for comments over 300 chars (`expanded` Set, reset when the drill changes). Verified the tags populate richly (a "speed" comment also shows server/flavor/apps). tsc clean; page compiles.
+
+## 2026-06-03 — TextMine metric strip: show the dataset date range
+
+**Why**: Owner realized the dataset's date range wasn't surfaced anywhere. Added it to the "records · signals · theme-fit · themes" strip.
+
+**What changed**: `signal-stats` route now returns `{ dateMin, dateMax }` from `datasets.description.start_date/end_date` — read via the RLS-enforced user client (NOT a bare service-role id lookup), instant (no row scan; a live min/max over `data->>review_date` measured ~2.4s on 19.7K rows and would balloon at full sync, so rejected). `DatasetMetricStrip.tsx` shows "📅 Jan 1, 2026 – Jun 3, 2026" when present. Shown only when the strip renders (which is theme-gated). tsc clean for my files; note: a parallel session's `scripts/_townhall_pdf_qc.ts` currently has an unrelated tsc error (their WIP).

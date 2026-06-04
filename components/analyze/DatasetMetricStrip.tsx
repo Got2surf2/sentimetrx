@@ -23,9 +23,17 @@ interface SignalStats {
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
   themeCount: number
+  dateMin?: string | null
+  dateMax?: string | null
 }
 
 interface Props { datasetId: string }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function fmtDate(d: string): string {
+  const m = String(d).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${MONTHS[+m[2] - 1]} ${+m[3]}, ${m[1]}` : String(d).slice(0, 10)
+}
 
 const BAND_STYLES: Record<SignalStats['themeFitBand'], { fg: string; bg: string; border: string }> = {
   Tight:   { fg: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
@@ -111,6 +119,15 @@ export default function DatasetMetricStrip({ datasetId }: Props) {
         <strong style={{ color: '#111827' }}>{stats.themeCount}</strong>{' '}
         <span style={{ color: '#6b7280' }}>themes</span>
       </span>
+      {stats.dateMin && stats.dateMax && (
+        <>
+          <span style={{ color: '#d1d5db' }}>·</span>
+          <span title="Date range covered by this dataset">
+            <span style={{ color: '#6b7280' }}>{'📅'} </span>
+            <strong style={{ color: '#111827' }}>{fmtDate(stats.dateMin)} – {fmtDate(stats.dateMax)}</strong>
+          </span>
+        </>
+      )}
     </div>
   )
 }

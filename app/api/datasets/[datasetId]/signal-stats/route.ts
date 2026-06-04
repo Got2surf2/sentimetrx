@@ -20,5 +20,20 @@ export async function GET(_req: Request, props: Props) {
 
   const service = createServiceRoleClient()
   const stats = await computeSignalStats(service, params.datasetId)
-  return NextResponse.json(stats)
+
+  // Date range covered by the dataset, from its stored download window
+  // (instant — no row scan). Read via the RLS-enforced user client so it
+  // can't reach another org's dataset. description is a JSON string set by
+  // the review-sources create route ({ ..., start_date, end_date }).
+  let dateMin: string | null = null, dateMax: string | null = null
+  const { data: dsRow } = await supabase
+    .from('datasets').select('description').eq('id', params.datasetId).maybeSingle()
+  try {
+    const desc = (dsRow as { description?: string } | null)?.description
+    const parsed = desc ? JSON.parse(desc) : null
+    if (parsed?.start_date) dateMin = parsed.start_date
+    if (parsed?.end_date) dateMax = parsed.end_date
+  } catch { /* description not JSON — leave the range unset */ }
+
+  return NextResponse.json({ ...stats, dateMin, dateMax })
 }
