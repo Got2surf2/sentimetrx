@@ -1270,3 +1270,13 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - **Gate**: the textmine/charts/stats pages compute `taxonomyEnabled = datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled` and thread it to TextMine (Dimensions sub-tab) + Charts/Stats (`hasDimensions`).
 
 **Verify**: tsc clean; 461 tests; sql/109 applied to prod + verified (column exists). Browser pixel-render pending (auth-gated). Restaurant-industry orgs + flagged datasets now see the Dimensions tab + dim charts/stats; classify from the Dimensions tab as before.
+
+## 2026-06-05 — classifyDatasetKeyword multi-field + applied Dimensions to Carabbas GSS
+
+**Why**: Owner asked to apply Dimensions to the "Carabbas GSS" dataset (a guest-satisfaction survey, source=upload, 19,133 rows, Datanautix org). GSS exports have TWO open-ended verbatims ("What did you like MOST" / "LEAST"); the classifier read a single field.
+
+**What changed**: `classifyDatasetKeyword` gained an optional `textFields[]` (concatenated with ` . ` so a phrase can't span a field boundary; takes precedence over `textField`). Backward-compatible.
+
+**Operation (one-off, owner-authorized)**: set `datasets.taxonomy_enabled=true` for Carabbas GSS + ran the keyword classifier over both verbatims → 19,133 classified, 9,505 with a signal, 41 severity alerts. Top attribute subs: flavor 2,670 / friendly 1,540 / attentive 596 / professional 375 / speed 360 — sensible restaurant dimensions. (Datanautix is an admin org so it auto-qualifies for the Dimensions tab once the gating code deploys; the per-dataset flag is set too.)
+
+**Verify**: tsc clean; classification verified read-only vs prod (counts + sub breakdown). The run mutates prod, but it's the explicitly-requested operation (idempotent upsert), not verification.

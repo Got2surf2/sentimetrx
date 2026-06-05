@@ -56,13 +56,15 @@ export async function classifyDatasetKeyword(opts: {
   datasetId:  string
   orgId:      string
   brand?:     BrandOverlay
-  textField?: string
+  textField?:  string
+  textFields?: string[]  // classify the concatenation of several fields (e.g. a survey's MOST + LEAST verbatims). Takes precedence over textField.
   limit?:     number   // max rows to scan this run (relative to offset)
   offset?:    number   // row offset to start from (default 0)
   onProgress?: (done: number) => void
 }): Promise<ClassifyResult> {
-  const { service, datasetId, orgId, brand = 'core', textField = 'review_text', limit, offset = 0, onProgress } = opts
+  const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
   const dict = resolveDictionary(brand)
+  const fields = textFields && textFields.length ? textFields : [textField]
 
   let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
@@ -81,7 +83,8 @@ export async function classifyDatasetKeyword(opts: {
     const upserts: Record<string, unknown>[] = []
     for (const row of data as { id: number; data: Record<string, unknown> }[]) {
       total++
-      const text = String(row.data?.[textField] ?? '').replace(CONTROL_CHARS, '').trim()
+      // Join multiple fields with ' . ' so a phrase can't span a field boundary.
+      const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
       if (!text) { skippedEmpty++; continue }
       const { assertions } = classifyByKeyword(text, dict)
       upserts.push({

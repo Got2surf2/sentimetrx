@@ -48,6 +48,8 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
   UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
+  Accepts either a single `textField` or `textFields[]` (concatenated with ` . ` so a
+  phrase can't span a boundary) — e.g. a survey's MOST + LEAST verbatims classified together.
 - **Auto-classify-on-sync safety net** (`classifyPendingRows` + `sql/108`): without this,
   reviews pulled by the 6-hourly `review-sync` cron (and manual sync) land in
   `dataset_rows_flat` but stay **unclassified** until a manual Re-classify, so the
