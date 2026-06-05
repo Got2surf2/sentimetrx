@@ -1288,3 +1288,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: `sql/110` `field_aliased_avg(dataset, field, present_field, aliases)` — maps each stored label to its alias number, then averages (optional present_field to keep the analyzed-population consistency). The `signal-stats` route now detects a remapped rating field (numeric field whose `valueAliases` has numeric values) and routes to it instead of `numeric_field_stats`.
 
 **Verify**: tsc clean; sql/110 applied + verified live — Carabbas GSS "Rating" field → ★4.14 over 15,384 analyzed rows. (Noted to owner: their map has "Somewhat Satisfied"→1, looks like a typo for 4.)
+
+## 2026-06-05 — Session state (Dimensions/Analyze track)
+
+**~11 analyze commits ahead of origin, NOT pushed** (owner chose "not yet"). `sql/105–110` ALL applied to prod, but the calling code is local → the Dimensions-on-any-dataset gating, the Charts/Stats dim fields, the strip rating fixes, and the entity-panel rework are **inert/invisible in the live app until a deploy**. Carabbas GSS is classified + flagged in prod and works in local `npm run dev` only. Spec docs (ANALYTICS/TAXONOMY/SECURITY/DATA_SOURCES/SURVEYS/TESTING) + this devlog are current per-commit.
+
+**Open items** (also in the task list / queue memory):
+1. **Deploy** — push the ~11 commits when ready (each prod build ~$8–10).
+2. **Per-theme Dimensions row on theme cards** — owner asked; needs a server theme×dimension RPC + render (the one deferred mid-session).
+3. **Dimensions rollup hardcodes `data->>rating`** — per-dimension ★ won't pick up survey/aliased rating fields (e.g. Carabbas); make it detect the field dynamically + apply `valueAliases`.
+4. **Carabbas mapping typo** — "Somewhat Satisfied" → 1 (likely 4); owner to fix in the Schema editor.
+5. Entity filtering on Comments + pill→Comments nav (owner-queued); dims into Score Driver delta; user-facing↔internal name-map doc.
