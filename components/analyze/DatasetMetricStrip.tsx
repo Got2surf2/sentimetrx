@@ -25,6 +25,9 @@ interface SignalStats {
   themeCount: number
   dateMin?: string | null
   dateMax?: string | null
+  avgRating?: number | null
+  ratingMax?: number | null
+  ratingLabel?: string | null
 }
 
 interface Props { datasetId: string }
@@ -119,6 +122,22 @@ export default function DatasetMetricStrip({ datasetId }: Props) {
         <strong style={{ color: '#111827' }}>{stats.themeCount}</strong>{' '}
         <span style={{ color: '#6b7280' }}>themes</span>
       </span>
+      {stats.avgRating != null && (function() {
+        // green/amber/red by rating relative to its scale max (default 5)
+        const max = stats.ratingMax && stats.ratingMax > 0 ? stats.ratingMax : 5
+        const frac = stats.avgRating! / max
+        const color = frac >= 0.7 ? '#047857' : frac >= 0.5 ? '#92400e' : '#9f1239'
+        return (
+          <>
+            <span style={{ color: '#d1d5db' }}>·</span>
+            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across the dataset (out of ' + max + '). This is the baseline the per-theme and per-dimension ratings compare against.'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: color }}>{'★'}</span>
+              <strong style={{ color: '#111827' }}>{stats.avgRating!.toFixed(1)}</strong>
+              <span style={{ color: '#6b7280' }}>avg rating</span>
+            </span>
+          </>
+        )
+      })()}
       {stats.dateMin && stats.dateMax && (
         <>
           <span style={{ color: '#d1d5db' }}>·</span>

@@ -35,5 +35,27 @@ export async function GET(_req: Request, props: Props) {
     if (parsed?.end_date) dateMax = parsed.end_date
   } catch { /* description not JSON — leave the range unset */ }
 
-  return NextResponse.json({ ...stats, dateMin, dateMax })
+  // Overall average of the dataset's rating field — the baseline the per-theme /
+  // per-dimension ratings compare against. The schema is read via the RLS user
+  // client (org-enforced, like the dates); only when that succeeds do we run the
+  // service-role numeric_field_stats. Optional: absent for datasets with no
+  // rating-type field (open-text surveys) — the strip omits it then.
+  let avgRating: number | null = null, ratingMax: number | null = null, ratingLabel: string | null = null
+  try {
+    const { data: stateRow } = await supabase
+      .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).maybeSingle()
+    const fields = ((stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean }> } } | null)?.schema_config?.fields) || []
+    const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
+    if (rf) {
+      const { data: ns } = await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
+      const row = Array.isArray(ns) ? ns[0] : null
+      if (row && Number(row.n) > 0 && row.avg_val != null) {
+        avgRating = Math.round(Number(row.avg_val) * 100) / 100
+        ratingMax = row.max_val != null ? Number(row.max_val) : null
+        ratingLabel = rf.label || rf.field
+      }
+    }
+  } catch { /* rating field not detectable — leave avgRating unset */ }
+
+  return NextResponse.json({ ...stats, dateMin, dateMax, avgRating, ratingMax, ratingLabel })
 }

@@ -1115,3 +1115,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Bug fix (pre-existing, surfaced by this work)**: `incompleteGamma` used a series expansion that overflows for `x ≥ a+1` (the term grows to ~x mid-sum), so `chiSqP`/`fDistP` returned garbage for large χ²/F — e.g. ANOVA rating~touchpoint (F=64, dfW=5263) reported p=0.23 instead of ~0. This silently affected the existing chi-square test and ANOVA on any large sample. Fixed with the standard split: series for `x < a+1`, continued fraction (upper-gamma Lentz) above. Verified against χ² critical values (3.841/1→0.0500, 11.070/5→0.0500, 7.879/1→0.0050) and the large case (chiSqP(384,6)≈0).
 
 **Verify**: tsc clean (my files); 449 tests pass; from-stats helpers verified vs raw-data fns; full dim path confirmed live (t-test server-vs-manager t=16.89 p≈0 d=0.69; ANOVA F=64 p≈0 η²=0.068). Browser pixel-render pending (auth-gated). **No new migration** — reuses sql/105–106.
+
+## 2026-06-04 — Avg rating on the TextMine metric strip
+
+**Why**: The strip shows records/signals/theme-fit/themes/date-range; adding the dataset's overall average rating frames how to read the per-theme and per-dimension rating badges (is steak ★3.2 good or bad? — depends on the ★4.1 baseline).
+
+**What changed**: `signal-stats` route now also returns `avgRating`/`ratingMax`/`ratingLabel` — detects the rating field from `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField`, the same rule TextMine uses) via the RLS user client, then averages it with the existing `numeric_field_stats` RPC (service-role, gated by the prior org-safe schema read). `DatasetMetricStrip` renders "★ R avg rating" (★ coloured green/amber/red by R relative to the scale max) with a tooltip explaining it's the baseline the theme/dimension ratings compare against. Optional — omitted for datasets with no rating field (open-text surveys) or empty collections.
+
+**Verify**: tsc clean; 449 tests pass; value confirmed live (Cheddar's ★4.14 over n=19,708, max=5 — sits above the steak ★3.2 / manager ★2.4 dimension ratings). No migration (reuses numeric_field_stats).
