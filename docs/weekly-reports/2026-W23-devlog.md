@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Town Hall: post-upload brand/agent link + prompt cleanups
+
+Four follow-ups from the open-items review:
+- **Post-upload brand/agent link (the recurring gap).** `PATCH /api/recordings/[id]` now accepts `{name?, brand_tag?, underlying_agent_id?}` (owner/admin; agent verified in-org) alongside rename + org-transfer — an existing recording can finally be tagged to a brand/agent after upload. UI: an owner-only "Brand & linked agent" editor in the report's Export & Share tab (brand input + agent picker fed by a new org-agents fetch in `report/page.tsx` → `ReportData.agents`). Set it, then re-extract to apply spelling correction (§3.5c).
+- **Typology reframe (§3.5).** The extraction + curator prompts no longer frame non-`ask` typologies as "kept for the appendix / not actionable" — typology is now described as a descriptive label only (all pairs retained equally; it just drives the report's filter). Matches the unified Q&A tab and discourages under-classifying real questions as commentary.
+- **Curator agenda-string fix (§3.6 issue 1, deeper).** `buildQaCuratorPrompt` B-GROUP now copies a matching agenda topic's string **verbatim** (no re-casing) and only Title-Cases topics it invents — stops the casing drift at the source (the display-layer normalize stays as a backstop).
+- **Entity dedupe (data op, prod).** Folded `Hatem A. Abou-Senna` into `Hatem Abou-Senna`'s aliases and deleted the duplicate catalog row in Sarina's bot scope. Catalog now has one Hatem with aliases `Hatham | Hatham Abou-Senna | Hatem A. Abou-Senna`.
+
+Typecheck clean. Specs RECORDINGS.md §3.6/§5.4 updated. **Local-only.**
+
 ## 2026-06-05 — Agent entities: wire Delete (full CRUD on manual)
 
 **Why**: After manual-add, the only "removal" in the UI was Hide (soft-delete). Manual rows the user added by mistake should be truly deletable.

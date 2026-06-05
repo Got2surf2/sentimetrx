@@ -60,7 +60,7 @@ ${agenda || '  (none provided — that is fine)'}
 RULES
 1. Extract EVERY audience-to-panel question and its answer — comprehensively, regardless of subject. NEVER skip a question because it doesn't match an agenda topic. Filter out only: panel-to-panel exchanges, panel-to-self commentary, and audience side-comments that aren't actual questions.
 2. ONE Q→A pair per distinct question. When the same asker chains multiple questions in a single turn ("My question is X. Also, can you address Y?") OR when an answer is followed by a follow-up question and a separate answer ("Q1 → A1 → Q2 → A2"), emit each pair as its OWN extraction in order. Do NOT merge multiple questions into one extraction. (This is the most common miss in the manual baseline.)
-3. For each question, classify question_typology: "ask" | "complaint" | "commentary" | "clarification". Only "ask" types should be marked as actionable; the others are kept for the appendix.
+3. For each question, classify question_typology: "ask" (a direct question or request) | "clarification" (a short follow-up question seeking a detail) | "complaint" (a grievance — note it often still contains a question) | "commentary" (a statement or opinion, not really a question). This is a descriptive LABEL only — every extracted pair is retained and shown equally; none are demoted, hidden, or treated as secondary. Do not under-classify genuine questions as commentary.
 4. For "topic", write a short 2-5 word label for this question's subject in your own words (e.g. "Kelly Park Road timeline", "SunRail extension", "Trail routing"). Reuse an agenda hint if one genuinely fits; otherwise label freely. A later pass clusters these, so don't worry about matching other pairs exactly.
 5. Quote the question and answer verbatim from the transcript. Do not paraphrase.
 6. If the asker self-identifies (e.g. "Hi I'm Maria from Apopka"), capture asker_name.
@@ -135,7 +135,7 @@ A) REVIEW. Would you publish this in an official Q&A doc? Set "flag": true if AN
 - The pair is duplicative of an earlier extraction in this batch.
 Do NOT flag for: wording/grammar (verbatim quotes), honest "I don't know" answers, or typology nuance.
 
-B) GROUP. Cluster the WHOLE batch into a small set of coherent topics, then label each draft with its cluster. Merge near-duplicates (e.g. "Kelly Park design %" + "Kelly Park timeline" → "Kelly Park Road"). Where a cluster matches an agenda hint, use that name; otherwise name it yourself. Use Title Case and the EXACT SAME topic string for every draft in one cluster. Aim for a handful of topics — not one per pair.
+B) GROUP. Cluster the WHOLE batch into a small set of coherent topics, then label each draft with its cluster. Merge near-duplicates (e.g. "Kelly Park design %" + "Kelly Park timeline" → "Kelly Park Road"). When a cluster matches one of the agenda topics above, use that agenda topic's string **verbatim** — copy it character-for-character, do NOT re-case or reword it (so it reconciles to the agenda). Only when you name a NEW topic not on the agenda, use Title Case. Use the EXACT SAME topic string for every draft in one cluster. Aim for a handful of topics — not one per pair.
 
 OUTPUT FORMAT
 Respond with a single JSON object — no prose, no markdown. Schema:
@@ -431,7 +431,7 @@ RULES
 2. If no user instructions are given, infer the most likely correction from the transcript context (e.g. the asker self-identified later, the panelist who answered was named after the fact, the typology is clearly wrong).
 3. Question and answer must be verbatim quotes from the transcript window — do not paraphrase or summarize.
 4. Keep the existing topic unless the content clearly belongs to a different subject; if you change it, use a short free-form label (reuse an agenda hint if one fits).
-5. Typology must be one of: ask | complaint | commentary | clarification. "ask" is the only one that surfaces in the main Q&A summary; the rest go to the appendix.
+5. Typology must be one of: ask | complaint | commentary | clarification — a descriptive label only (all pairs are retained and shown equally; typology just drives an optional filter, nothing is hidden).
 6. Confidence is your self-assessment of how sure you are about the revised pair (0.0–1.0).
 
 OUTPUT FORMAT

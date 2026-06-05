@@ -41,8 +41,8 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
   if (!ctx.isAdminOrg && (recRow as { org_id: string }).org_id !== ctx.orgId) notFound()
   const recording = recRow as unknown as RecordingRow
 
-  // 3. Fetch the three side rows in parallel.
-  const [filesRes, transcriptRes, extractionsRes] = await Promise.all([
+  // 3. Fetch the side rows + the org's agents (for the brand/agent link) in parallel.
+  const [filesRes, transcriptRes, extractionsRes, agentsRes] = await Promise.all([
     service
       .from('recording_files')
       .select('*')
@@ -61,17 +61,24 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
       .eq('recording_id', recording.id)
       .eq('org_id', recording.org_id)
       .order('sort_order', { ascending: true }),
+    service
+      .from('agents')
+      .select('id, name')
+      .eq('org_id', recording.org_id)
+      .order('name'),
   ])
 
   const files = (filesRes.data ?? []) as unknown as RecordingFileRow[]
   const transcript = (transcriptRes.data ?? null) as unknown as RecordingTranscriptRow | null
   const extractions = (extractionsRes.data ?? []) as unknown as RecordingExtractionRow[]
+  const agents = ((agentsRes.data ?? []) as Array<{ id: string; name: string | null }>).map(a => ({ id: a.id, name: a.name || 'Untitled' }))
 
   const data: ReportData = {
     recording,
     files,
     transcript,
     extractions,
+    agents,
     isOwner: recording.created_by === ctx.userId,
     // "Open in Analytics" cross-link — only when the dataset mirror exists AND
     // the user actually has Analytics (graceful degradation when it's off).

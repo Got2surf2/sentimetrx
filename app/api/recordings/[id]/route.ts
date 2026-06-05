@@ -288,21 +288,50 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ ok: true, id: recording_id, org_id: toOrg })
   }
 
-  // ── Rename branch — owner / org-admin / platform-admin ──
-  const name = typeof body?.name === 'string' ? body.name.trim() : ''
-  if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
-  if (name.length > 200) return NextResponse.json({ error: 'name too long' }, { status: 400 })
-
+  // ── Update branch — owner / org-admin / platform-admin ──
+  // Handles rename and/or the brand/agent link (§3.5c). Letting an existing
+  // recording be tagged to a brand + agent after upload means a re-extract can
+  // seed spelling correction from that brand's curated entity catalog.
   if (!(uc.isAdminOrg || uc.isAdmin || rec.created_by === uc.userId)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
+  const patch: Record<string, unknown> = {}
+
+  if ('name' in body) {
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    if (!name) return NextResponse.json({ error: 'name cannot be empty' }, { status: 400 })
+    if (name.length > 200) return NextResponse.json({ error: 'name too long' }, { status: 400 })
+    patch.name = name
+  }
+
+  if ('brand_tag' in body) {
+    const bt = typeof body.brand_tag === 'string' ? body.brand_tag.trim() : ''
+    patch.brand_tag = bt || null
+  }
+
+  if ('underlying_agent_id' in body) {
+    const agentId = typeof body.underlying_agent_id === 'string' && body.underlying_agent_id ? body.underlying_agent_id : null
+    if (agentId) {
+      // Verify the agent is in this recording's org before linking it.
+      const { data: agent } = await service.from('agents').select('id, org_id').eq('id', agentId).maybeSingle()
+      if (!agent || (agent as { org_id: string }).org_id !== rec.org_id) {
+        return NextResponse.json({ error: 'agent not found in this org' }, { status: 400 })
+      }
+    }
+    patch.underlying_agent_id = agentId
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
+  }
+
   const { error: updErr } = await service
     .from('recordings')
-    .update({ name })
+    .update(patch)
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, id: recording_id, name })
+  return NextResponse.json({ ok: true, id: recording_id, ...patch })
 }

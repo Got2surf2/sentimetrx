@@ -46,6 +46,7 @@ export interface ReportData {
   files: RecordingFileRow[]
   transcript: RecordingTranscriptRow | null
   extractions: RecordingExtractionRow[]
+  agents: Array<{ id: string; name: string }>   // org's agents, for the brand/agent link (§3.5c)
   isOwner: boolean
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
@@ -131,6 +132,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
             initialShareEnabled={data.recording.share_enabled}
             initialShareToken={data.recording.share_token}
             initialShareVerbatim={data.recording.share_verbatim}
+            agents={data.agents}
+            initialBrandTag={data.recording.brand_tag}
+            initialAgentId={data.recording.underlying_agent_id}
           />
         )}
       </div>
@@ -1178,7 +1182,7 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
 
 // ── Export & Share tab ───────────────────────────────────────────────────────
 
-function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken, initialShareVerbatim }: {
+function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken, initialShareVerbatim, agents, initialBrandTag, initialAgentId }: {
   recordingId: string
   recordingName: string
   status: string
@@ -1186,6 +1190,9 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   initialShareEnabled: boolean
   initialShareToken: string | null
   initialShareVerbatim: boolean
+  agents: Array<{ id: string; name: string }>
+  initialBrandTag: string | null
+  initialAgentId: string | null
 }) {
   const [generating, setGenerating] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -1200,6 +1207,30 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   const [shareBusy, setShareBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/th/${shareToken}` : ''
+
+  // Brand / linked agent (§3.5c) — settable post-upload; a re-extract then seeds
+  // spelling correction from that brand's curated entity catalog (agent + brand).
+  const [brandTag, setBrandTag] = useState(initialBrandTag ?? '')
+  const [agentId, setAgentId] = useState(initialAgentId ?? '')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkSaved, setLinkSaved] = useState(false)
+  const saveLink = async () => {
+    setLinkBusy(true); setError(null); setLinkSaved(false)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_tag: brandTag.trim() || null, underlying_agent_id: agentId || null }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
+      setLinkSaved(true)
+    } catch (e: any) {
+      setError(e?.message || 'Save failed')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
 
   // One call covers both fields — always send the current state of the other so
   // toggling one never clobbers the other (the route updates whatever's present).
@@ -1305,6 +1336,36 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   return (
     <div className="space-y-5">
       <h2 className="text-base font-bold text-gray-900">Export &amp; Share</h2>
+
+      {isOwner && (
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="text-sm font-semibold text-gray-900">Brand &amp; linked agent</div>
+          <p className="text-sm text-gray-500 mt-0.5 mb-3">
+            Tag this meeting with a brand and/or link an agent — a re-extract then draws on that brand&apos;s curated entity catalog to auto-correct name spellings (e.g. panel members) and feeds brand-level analysis.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">Brand tag</span>
+              <input value={brandTag} onChange={e => { setBrandTag(e.target.value); setLinkSaved(false) }} placeholder="e.g. NOWOCATS"
+                className="border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px', minWidth: 200 }} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">Linked agent</span>
+              <select value={agentId} onChange={e => { setAgentId(e.target.value); setLinkSaved(false) }}
+                className="border border-gray-300 rounded-lg px-3 py-2 bg-white" style={{ fontSize: '16px', minWidth: 200 }}>
+                <option value="">— none —</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+            <button onClick={saveLink} disabled={linkBusy}
+              className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50">
+              {linkBusy ? 'Saving…' : 'Save'}
+            </button>
+            {linkSaved && <span className="text-xs text-emerald-600 self-center">Saved ✓ — re-extract to apply.</span>}
+          </div>
+          {agents.length === 0 && <p className="text-xs text-gray-400 mt-2">No agents in this org yet.</p>}
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-4">
         <div>
