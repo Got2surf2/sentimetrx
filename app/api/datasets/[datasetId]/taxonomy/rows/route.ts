@@ -1,6 +1,7 @@
 // app/api/datasets/[datasetId]/taxonomy/rows/route.ts
 // GET — the comments behind a taxonomy tag, for the Taxonomy tab's drill-down.
 //   ?axis=<axis>&sub=<sub>   reviews tagged that axis/sub
+//   ?axis=<axis>             reviews tagged ANYWHERE on that axis (any sub)
 //   ?alert=<tag>             reviews flagged at alert/crisis severity for that tag
 //   ?limit=<n>               default 100, max 200
 // Org-gated: pairs the dataset's org_id (multi-tenancy invariant); non-admins
@@ -42,7 +43,8 @@ function collectEvidence(assertions: unknown, axis: string, sub: string, alert: 
   if (!Array.isArray(assertions)) return []
   const out = new Set<string>()
   for (const a of assertions as { axis?: string; sub?: string; evidence?: string }[]) {
-    const hit = alert ? a?.sub === alert : (a?.axis === axis && a?.sub === sub)
+    // sub empty → axis-level drill: match any assertion on this axis.
+    const hit = alert ? a?.sub === alert : (a?.axis === axis && (sub ? a?.sub === sub : true))
     if (hit && typeof a?.evidence === 'string' && a.evidence.trim()) out.add(a.evidence.trim())
   }
   return [...out]
@@ -95,9 +97,14 @@ export async function GET(req: Request, props: Params) {
     label = alert
   } else {
     const col = AXIS_COL[axis]
-    if (!col || !sub) return NextResponse.json({ error: 'axis+sub or alert is required' }, { status: 400 })
-    q = q.contains(col, [sub])
-    label = `${axis} · ${sub}`
+    if (!col) return NextResponse.json({ error: 'a valid axis (with optional sub) or alert is required' }, { status: 400 })
+    if (sub) {
+      q = q.contains(col, [sub])           // specific sub-dimension
+      label = `${axis} · ${sub}`
+    } else {
+      q = q.neq(col, '{}')                  // any tag on this axis (non-empty array)
+      label = axis
+    }
   }
 
   const { data: tax, count, error } = await q.limit(limit)

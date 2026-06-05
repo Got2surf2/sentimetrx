@@ -1153,3 +1153,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Fix**: `sql/107` adds `numeric_field_stats_present(dataset, field, present_field)` — averages a numeric field only over rows where a second field is non-empty. The `signal-stats` route now reads the theme-source field from `theme_model` and averages the rating over rows where that text field is present (falling back to plain `numeric_field_stats` when there's no theme model), so the strip's avg rating uses the exact same population as `records`. Tooltip updated to say "across the N analyzed reviews (those with text)".
 
 **Verify**: tsc clean; `sql/107` applied to prod + validated in a rolled-back tx; route path confirmed live — ★3.90 over n=12,351, matching the Dimensions tab + theme cards.
+
+## 2026-06-05 — Dimension (axis) pill now drills into its comments
+
+**Why**: On the Dimensions tab, clicking a top-level dimension pill (Product, Touchpoint…) only expanded its sub-pills — flat. Owner wanted it to drill into every comment tagged anywhere on that dimension.
+
+**What changed**: `GET /api/datasets/[id]/taxonomy/rows` now accepts an **axis-only** query (`?axis=product` with no `sub`) → filters `dataset_row_taxonomy` with `.neq(axis_col,'{}')` (rows with any tag on that axis) and `collectEvidence` matches any assertion on the axis. `TaxonomyModule`'s axis pill onClick now sets the drill (`axis=<axis>`, crumb `Dimensions › <Label>`) in addition to revealing the sub-pills — so clicking Product opens the Product comments panel and you can then click a sub to narrow. Sub/alert drills unchanged.
+
+**Verify**: tsc clean; 456 tests pass; axis-only filter confirmed live (Product → 3,238 distinct tagged reviews). No migration. Browser pixel-render pending (auth-gated).

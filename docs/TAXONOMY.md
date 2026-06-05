@@ -74,12 +74,15 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
   `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
   **Filter + comment drill-down**: a **pill-based Topic** (axis) + **Sub-topic** (sub)
-  filter — topic pills show first; picking a topic reveals that axis's sub-topic pills;
-  picking a sub-topic — or clicking a sub-topic row / alert chip (which syncs the pills) —
-  opens an **inline comments panel** (breadcrumb header
-  `Taxonomy › axis › sub` / `Taxonomy › Severity alert › tag`, count, a scrollable list)
-  fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=&sub=` or `?alert=`,
-  org-gated; `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
+  filter — topic pills show first; **clicking a topic (dimension) pill both reveals that
+  axis's sub-topic pills AND drills into every comment tagged anywhere on that dimension**
+  (axis-level); picking a specific sub-topic — or clicking a sub-topic row / alert chip
+  (which syncs the pills) — narrows the drill to that sub. Either opens an **inline comments
+  panel** (breadcrumb header `Dimensions › axis [› sub]` / `Dimensions › Severity alert › tag`,
+  count, a scrollable list)
+  fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=` for the whole axis,
+  `?axis=&sub=` for a sub, or `?alert=`,
+  org-gated; axis-only uses `.neq(col,'{}')` for any non-empty tag, sub uses `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
   text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
   the row, each with its own evidence** so each comment shows what else it hit — and
   **hovering a dimension chip highlights the exact span of the comment that fired it**).

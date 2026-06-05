@@ -306,7 +306,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             const active = filterAxis === a.axis
             return (
               <button key={a.axis}
-                onClick={() => { if (active) { setFilterAxis(''); setFilterSub(''); setDrill(null) } else { setFilterAxis(a.axis); setFilterSub(''); setDrill(null) } }}
+                onClick={() => { if (active) { setFilterAxis(''); setFilterSub(''); setDrill(null) } else { setFilterAxis(a.axis); setFilterSub(''); setDrill({ qs: `axis=${encodeURIComponent(a.axis)}`, crumbs: ['Dimensions', a.label] }) } }}
                 style={pillStyle(active, NAVY)}>
                 {a.label} <span style={{ opacity: 0.55, fontWeight: 600 }}>{a.rate}%</span>
               </button>
