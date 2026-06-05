@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — TextMine: make every count pill drill into the Comments filter
+
+**Why**: Owner — follow-up to the unified Comments filter: any entity/dimension/theme pill should be clickable to see the comments behind it. Several were static.
+
+**What changed** (`TextMineModule.tsx` + `WordCloud.tsx`, UI-only):
+- Theme card **Co-occurs** pills → `handleDrillTheme(otherTheme)` (drills that theme).
+- Theme card **Items mentioned** entity pills → `handleDrillEntity` (+ selects the card's theme → theme ∧ entity); aliases looked up from `entityCatalogRows`.
+- Theme-cloud (`WordCloud`) **Items** chips → new `onEntityClick` prop, wired to `handleDrillEntity`.
+- (Already drillable, unchanged: Entities card, Entity cloud, theme-card Dimensions chip + title, Dimensions-tab axis/sub drawer, cloud theme-title popover which shows its comments inline.)
+
+**Verify**: tsc clean (cache-cleared); 461 tests pass. Browser pixel-render pending (auth-gated). Spec ANALYTICS.md updated. **Local-only.**
+
 ## 2026-06-05 — TextMine Comments: unified entity + dimension + theme filter (AND)
 
 **Why**: Owner — the Comments tab could filter by theme (strip) OR drill one entity OR drill one dimension, but never combine them. Wanted to filter comments by entity AND dimension AND theme simultaneously ("show me *steak* comments tagged *temperature* that mention *the ribeye*").

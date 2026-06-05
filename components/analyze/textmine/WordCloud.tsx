@@ -47,6 +47,7 @@ interface Props {
   activeField: string
   activeFields?: string[]
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
+  onEntityClick?: (entity: { slug: string; canonical: string; category: string; aliases: string[] }) => void
   isReddit?: boolean
   entities?: EntityRow[]
 }
@@ -109,7 +110,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   )
 }
 
-export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, isReddit, entities }: Props) {
+export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, onEntityClick, isReddit, entities }: Props) {
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
   const [colorBy, setColorBy] = useState<'theme' | 'sentiment'>('theme')
   const [sizeBy, setSizeBy] = useState<'frequency' | 'signal'>('frequency')
@@ -530,9 +531,11 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                       <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }} title="Named items reviewers mention when discussing this theme">Items</span>
                       {teList.slice(0, 8).map(function(e) {
                         const ec = ENTITY_CAT_COLOR[e.category] || ENTITY_NEUTRAL
+                        const ecRow = (entities || []).find(function(x) { return x.slug === e.slug })
                         return (
-                          <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's')}
-                            style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's') + (onEntityClick ? ' — click to see these comments' : '')}
+                            onClick={onEntityClick ? function() { onEntityClick({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: ecRow ? (ecRow.aliases || []) : [] }) } : undefined}
+                            style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: onEntityClick ? 'pointer' : 'default' }}>
                             <span style={{ width: 5, height: 5, borderRadius: 3, background: ec, flexShrink: 0 }} />
                             <span style={{ fontWeight: 600 }}>{e.canonical}</span>
                             <span style={{ color: T.textFaint }}>{e.count.toLocaleString()}</span>

@@ -2325,8 +2325,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           var otherIdx = (themes?.themes || []).findIndex(function(x) { return x.id === otherId })
                                           var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
                                           var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
+                                          var otherTheme = (themes?.themes || []).find(function(x) { return x.id === otherId })
                                           return (
-                                            <span key={otherId} title={themeNameById[otherId] + ' — co-occurs in ' + pairCount.toLocaleString() + ' "' + t.name + '" comment' + (pairCount === 1 ? '' : 's') + ' (' + pctOfThis + '% of this theme)'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
+                                            <span key={otherId} title={themeNameById[otherId] + ' — co-occurs in ' + pairCount.toLocaleString() + ' "' + t.name + '" comment' + (pairCount === 1 ? '' : 's') + ' (' + pctOfThis + '% of this theme) — click to see these comments'}
+                                              onClick={function(ev) { ev.stopPropagation(); if (otherTheme) handleDrillTheme(otherTheme) }}
+                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60', cursor: 'pointer' }}>
                                               {themeNameById[otherId]} ({pctOfThis}%)
                                             </span>
                                           )
@@ -2351,8 +2354,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                         {teList.slice(0, 6).map(function(e) {
                                           var ec = ENT_COLOR[e.category] || '#8FA3AE'
                                           return (
-                                            <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's')}
-                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's') + ' — click to see these comments'}
+                                              onClick={function(ev) {
+                                                ev.stopPropagation()
+                                                var ecRow = entityCatalogRows.find(function(x) { return x.slug === e.slug })
+                                                setSelectedThemes([t]); setDrillTheme(t)
+                                                handleDrillEntity({ slug: e.slug, canonical: e.canonical, category: e.category, aliases: ecRow ? (ecRow.aliases || []) : [] })
+                                              }}
+                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                                               <span style={{ width: 5, height: 5, borderRadius: 3, background: ec, flexShrink: 0 }} />
                                               <span style={{ fontWeight: 600 }}>{e.canonical}</span>
                                               <span style={{ color: T.textFaint }}>{e.count.toLocaleString()}</span>
@@ -2505,6 +2514,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       activeField={activeField || themes!.fieldName}
                       entities={entityCatalogRows}
                       isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
+                      onEntityClick={function(e) { handleDrillEntity(e) }}
                       onWordClick={function(word, themeIdx, type) {
                         // Word click: opinion popover. Theme title click: theme popover.
                         if (type === 'theme') {
