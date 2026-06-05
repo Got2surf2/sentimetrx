@@ -1123,3 +1123,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: `signal-stats` route now also returns `avgRating`/`ratingMax`/`ratingLabel` — detects the rating field from `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField`, the same rule TextMine uses) via the RLS user client, then averages it with the existing `numeric_field_stats` RPC (service-role, gated by the prior org-safe schema read). `DatasetMetricStrip` renders "★ R avg rating" (★ coloured green/amber/red by R relative to the scale max) with a tooltip explaining it's the baseline the theme/dimension ratings compare against. Optional — omitted for datasets with no rating field (open-text surveys) or empty collections.
 
 **Verify**: tsc clean; 449 tests pass; value confirmed live (Cheddar's ★4.14 over n=19,708, max=5 — sits above the steak ★3.2 / manager ★2.4 dimension ratings). No migration (reuses numeric_field_stats).
+
+## 2026-06-04 — "Items mentioned" on theme cards (entities in the card)
+
+**Why**: The Theme Clouds already show the named entities within each theme ("Items"); the request was to surface the same on the Theme **Cards** so you can see, e.g., which dishes drive "Food Quality & Taste".
+
+**What changed**: Extracted the theme×entity cross-tab out of `WordCloud` into a shared `lib/themeEntities.computeThemeEntities` (keyed by theme id/name so both views look it up regardless of ordering). `WordCloud` now calls the shared helper (dropped its inline memo + the now-unused `buildKwRegex`/`expandEntityTerms` imports). `TextMineModule` computes `themeCardEntities` over the filtered rows + entity catalog and renders an **"Items mentioned"** chip row on each theme card (between Co-occurs and the footer; top 6, count ≥ 2, category-dot colored, with a "+N more"). Only appears when the entity catalog has hits for that theme.
+
+**Verify**: tsc clean; 454 tests pass; shared helper verified in isolation (Steak→Ribeye:2/Filet:1, Service→John:1, John absent from Steak). Same proven cross-tab the Clouds already ship. Browser pixel-render pending (auth-gated).

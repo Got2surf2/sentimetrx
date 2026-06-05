@@ -15,6 +15,7 @@ import {
   ratingColor,
 } from '@/lib/themeUtils'
 import { expandEntityTerms } from '@/lib/entityVariants'
+import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -1413,6 +1414,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return { byEntity: byEntity, overall: oN > 0 ? Math.round(oSum / oN * 100) / 100 : null }
   }, [entityCatalogRows, filteredRows, effectiveFields, ratingField])
 
+  // Theme × entity cross-tab for the theme cards' "Items mentioned" row (shared
+  // with the Theme Clouds via lib/themeEntities). Keyed by theme key.
+  var themeCardEntities = useMemo(function() {
+    var ths = (displayThemes || themes)?.themes || []
+    return computeThemeEntities(ths, filteredRows, effectiveFields, entityCatalogRows)
+  }, [displayThemes, themes, filteredRows, effectiveFields, entityCatalogRows])
+
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
     if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
@@ -2259,6 +2267,35 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                             </span>
                                           )
                                         })}
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                                {/* Items mentioned — named entities reviewers bring up within
+                                    this theme's matched comments (shared cross-tab with the
+                                    Theme Clouds). Only shown when the entity catalog has hits. */}
+                                {(function() {
+                                  var teList = themeCardEntities[themeKey(t, 0)] || []
+                                  if (!teList.length) return null
+                                  var ENT_COLOR: Record<string, string> = { food: '#EA580C', person: '#1E40AF' }
+                                  return (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }} title="Named items (dishes, drinks, people, brands) reviewers mention when discussing this theme">
+                                        Items mentioned
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                        {teList.slice(0, 6).map(function(e) {
+                                          var ec = ENT_COLOR[e.category] || '#8FA3AE'
+                                          return (
+                                            <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's')}
+                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                              <span style={{ width: 5, height: 5, borderRadius: 3, background: ec, flexShrink: 0 }} />
+                                              <span style={{ fontWeight: 600 }}>{e.canonical}</span>
+                                              <span style={{ color: T.textFaint }}>{e.count.toLocaleString()}</span>
+                                            </span>
+                                          )
+                                        })}
+                                        {teList.length > 6 && <span style={{ fontSize: 9, color: T.textFaint, alignSelf: 'center' }}>+{teList.length - 6} more</span>}
                                       </div>
                                     </div>
                                   )
