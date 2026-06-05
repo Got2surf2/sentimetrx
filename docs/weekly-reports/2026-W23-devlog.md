@@ -1246,3 +1246,16 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - **"Done managing" → "Save (N)"** button that flushes staged changes (PATCH per row, chunked 10-at-a-time), then refetches + ✓ flash. Separate **Close** exits manage mode (confirms if unsaved). Toggled rows get an accent outline so pending edits are visible.
 
 **Verify**: tsc clean; 461 tests pass (UI-only, no test surface). Browser pixel-render pending (auth-gated).
+
+## 2026-06-05 — Dimensions on any dataset (per-org taxonomy flag) + co-occurs hover
+
+**Why**: Owner wanted a way to apply Dimensions to datasets beyond Google Reviews (e.g. an uploaded CSV of restaurant feedback). The Dimensions tab + Charts/Stats dim fields were gated to `datasetSource==='google_reviews'`; the taxonomy dictionary is restaurant-specific, so the right control is a per-org capability, not the data source.
+
+**What changed**:
+- New **`taxonomy` capability** in `ModuleFeatures` (label "Dimensions"; `MODULE_LABELS` + `OrgFeatureToggles` description; registered in `resolveOrg` `ALL_MODULE_KEYS` + `ANALYZE_CHILDREN` so it's forced off when Analytics is off + auto-on for admin orgs). Auto-appears as a toggle in team settings.
+- Threaded `taxonomyEnabled` from the analyze textmine/charts/stats pages → `TextMineModule` (Dimensions sub-tab gate), `ChartsModule`/`StatsModule` (`hasDimensions`). All three now gate on `datasetSource==='google_reviews' || taxonomyEnabled`. The classify route was already org-gated (not source-gated), so classification works on any dataset; the field picker handles non-`review_text` text fields.
+- **Co-occurs hover fix**: theme-card "Co-occurs with themes" pill tooltip now matches the "Items mentioned" pattern (`<Theme> — co-occurs in N "<theme>" comments (X% of this theme)`) and dropped the inconsistent `cursor:'help'`.
+
+**Enable it**: turn on "Dimensions" for a restaurant org in team settings → that org's analyze datasets all get the Dimensions tab + Classify button + dim fields in Charts/Stats.
+
+**Verify**: tsc clean; 461 tests pass. Browser pixel-render pending (auth-gated). No migration.

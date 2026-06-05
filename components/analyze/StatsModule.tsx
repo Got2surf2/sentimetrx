@@ -66,6 +66,7 @@ interface Props {
   schema: SchemaConfig
   themeModel?: any
   datasetSource?: string
+  taxonomyEnabled?: boolean
 }
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
@@ -1806,7 +1807,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
   )
 }
 
-export default function StatsModule({ datasetId, schema, themeModel, datasetSource }: Props) {
+export default function StatsModule({ datasetId, schema, themeModel, datasetSource, taxonomyEnabled }: Props) {
   // Defaults-only init for SSR-safety; restore from sessionStorage post-mount.
   var _statKey = 'stats_' + datasetId
 
@@ -1950,7 +1951,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   // Tests panel can use them (t-test/ANOVA from per-sub stats, chi-square from a
   // crosstab). They are spliced ONLY into that panel's categorical list — not the
   // global catFields — so the row-based panels never see fields they can't compute.
-  var hasDimensions = datasetSource === 'google_reviews'
+  var hasDimensions = datasetSource === 'google_reviews' || !!taxonomyEnabled
   var groupTestCatFields = useMemo(function() {
     return hasDimensions ? catFields.concat(dimVirtualFields() as any) : catFields
   }, [catFields, hasDimensions])

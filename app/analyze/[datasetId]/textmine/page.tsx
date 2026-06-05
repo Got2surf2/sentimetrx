@@ -60,6 +60,7 @@ export default async function TextMinePage(props: Props) {
         analytics={analytics}
         savedThemeModel={themeModel}
         datasetSource={(dataset?.source as 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection') || 'upload'}
+        taxonomyEnabled={!!orgData?.features?.taxonomy}
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
       />

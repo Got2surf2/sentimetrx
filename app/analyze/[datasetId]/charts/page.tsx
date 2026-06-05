@@ -45,5 +45,5 @@ export default async function ChartsPage(props: Props) {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} />
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={!!orgData?.features?.taxonomy} />
 }

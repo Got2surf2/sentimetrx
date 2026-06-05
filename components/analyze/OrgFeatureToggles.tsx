@@ -16,6 +16,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
   bots:          'Agents — create branded AI agents trained on custom content',
   social:        'Social monitoring — Facebook & Instagram comment moderation and analytics',
+  taxonomy:      'Dimensions — classify any Analyze dataset into the restaurant 7-axis taxonomy (service, food, drinks, ambiance…), not just Google Reviews. Restaurant clients only — the dictionary is restaurant-specific.',
 }
 
 interface Props {

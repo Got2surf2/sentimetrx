@@ -2,7 +2,7 @@ import type { ModuleFeatures } from './types'
 
 const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
   'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'recordings',
-  'townhall', 'campaigns', 'bots', 'social',
+  'townhall', 'campaigns', 'bots', 'social', 'taxonomy',
 ]
 
 // Features only reachable *through* the Analyze module. When analyze is off,
@@ -10,7 +10,7 @@ const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
 // NOTE: `recordings` was promoted out of here (2026-06) — it's the standalone
 // top-level "Town Hall" product now, independent of Analyze.
 const ANALYZE_CHILDREN: (keyof ModuleFeatures)[] = [
-  'googleReviews', 'reddit', 'substack',
+  'googleReviews', 'reddit', 'substack', 'taxonomy',
 ]
 
 export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: string; name?: string; features?: any } | null {
@@ -22,7 +22,7 @@ export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: s
     org.features = {
       ...org.features,
       surveys: true, analyze: true, googleReviews: true, reddit: true,
-      substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true,
+      substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true, taxonomy: true,
     }
   }
   return org

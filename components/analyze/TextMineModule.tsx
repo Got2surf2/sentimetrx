@@ -154,6 +154,7 @@ interface Props {
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
   datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
+  taxonomyEnabled?:  boolean   // org has the 'taxonomy' (Dimensions) capability → show Dimensions on any analyze dataset, not just google_reviews
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
 }
@@ -939,7 +940,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary, initialOpenEditor }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
@@ -1696,8 +1697,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     { id: 'clouds',   label: 'Theme Clouds', help: 'A word cloud per theme, showing the words that appear most often within that theme\'s comments. Useful for spotting the exact language people use.' },
     { id: 'compare',  label: 'Compare',      help: 'Slice your themes by a categorical field — region, channel, age bracket — to see which segments care about which themes. Significance markers flag groups whose mix differs meaningfully from the baseline.' },
     { id: 'comments', label: 'Comments',     help: 'The raw quotes underlying everything. Search the text, filter by theme, or jump here from any chart to see the source rows.' },
-    // Dimensions (the 7-axis classification) — review datasets only; doesn't depend on a theme model.
-    ...(datasetSource === 'google_reviews' ? [{ id: 'dimensions' as SubTab, label: 'Dimensions', help: 'Every review classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
+    // Dimensions (the 7-axis classification) — Google Reviews datasets, OR any
+    // analyze dataset when the org has the 'taxonomy' (Dimensions) capability.
+    // Doesn't depend on a theme model.
+    ...((datasetSource === 'google_reviews' || taxonomyEnabled) ? [{ id: 'dimensions' as SubTab, label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
   ]
 
   return (
@@ -2262,7 +2265,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
                                           var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
                                           return (
-                                            <span key={otherId} title={pctOfThis + '% of ' + t.name + ' records also mention ' + themeNameById[otherId] + ' (' + pairCount.toLocaleString() + ' records)'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60', cursor: 'help' }}>
+                                            <span key={otherId} title={themeNameById[otherId] + ' — co-occurs in ' + pairCount.toLocaleString() + ' "' + t.name + '" comment' + (pairCount === 1 ? '' : 's') + ' (' + pctOfThis + '% of this theme)'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
                                               {themeNameById[otherId]} ({pctOfThis}%)
                                             </span>
                                           )

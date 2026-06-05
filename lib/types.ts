@@ -19,6 +19,7 @@ export interface ModuleFeatures {
   campaigns?:     boolean   // Email campaigns
   bots?:          boolean   // Branded chatbots
   social?:        boolean   // Social monitoring (Facebook/Instagram)
+  taxonomy?:      boolean   // Dimensions — restaurant 7-axis taxonomy on ANY analyze dataset (not just Google Reviews). Analyze sub-feature; off by default because the dictionary is restaurant-specific (enable only for restaurant clients).
 }
 
 export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
@@ -32,6 +33,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   campaigns:     'Campaigns',
   bots:          'Agents',
   social:        'Social',
+  taxonomy:      'Dimensions',
 }
 
 export const MODULE_KEYS = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]

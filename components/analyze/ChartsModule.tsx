@@ -39,7 +39,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
 // SchemaField, SchemaConfig imported from @/lib/analyzeTypes
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
-interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string }
+interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string; taxonomyEnabled?: boolean }
 
 // Cap on how many categorical values any categorical-axis chart will
 // render. Beyond this, labels overlap, bars get too thin to read, and
@@ -1839,7 +1839,7 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 // MAIN MODULE
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function ChartsModule({ datasetId, schema, analytics, themeModel, datasetSource }: Props) {
+export default function ChartsModule({ datasetId, schema, analytics, themeModel, datasetSource, taxonomyEnabled }: Props) {
   var rawOpenFields = schema.fields.filter(function(f) { return f.type === 'open-ended' })
   var _themeKey = 'chartTheme_' + datasetId
   var _displayKey = 'chartDisplay_' + datasetId
@@ -1907,7 +1907,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // from the stored dataset_row_taxonomy tags via the tax_* /aggregate ops —
   // gated to google_reviews (where the restaurant taxonomy is meaningful),
   // matching the Dimensions sub-tab gate.
-  var hasDimensions = datasetSource === 'google_reviews'
+  var hasDimensions = datasetSource === 'google_reviews' || !!taxonomyEnabled
 
   // Per-sub counts for the dimension fields, from the same rollup the Dimensions
   // tab uses (so the simple count bar + field picker reconcile exactly). One

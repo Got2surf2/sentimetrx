@@ -44,5 +44,5 @@ export default async function StatsPage(props: Props) {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} datasetSource={dataset?.source} />
+  return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={!!orgData?.features?.taxonomy} />
 }
