@@ -1219,3 +1219,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Coverage / limits**: only datasets the user already classified (never auto-starts). Assumes `review_text` (the button default; a non-default-field classify would need a manual Re-classify). Huge initial gaps converge over a few syncs (capped per run; idempotent so timeouts are safe).
 
 **Verify**: tsc clean; 461 tests pass (3 new `classifyPendingRows` unit tests — drain, cap/hasMore, no-work, real assertions fire); `sql/108` validated read-only vs prod (returns the 11 pending Cheddar's rows). Did NOT run the live backfill (no prod-mutating verification). **sql/108 must be applied to prod before the deployed hook works.**
+
+## 2026-06-05 — Manage Entities: group by type, bulk None/All, staged Save
+
+**Why**: Owner feedback on the Manage Entities panel (Schema tab): every hide/show click PATCHed + refetched, scrolling the panel back to the top — couldn't toggle several then save; and the "Done managing" button should be a Save.
+
+**What changed** (`ExtractEntitiesPanel.tsx`, UI-only):
+- **Grouped by category (type)** with a per-type header showing `shown/total` + **Show all / Hide all** buttons — so you can ignore a whole type (e.g. people) in one click.
+- Hide/show is now **staged locally** (`pendingHidden` slug→desired, only when it differs from server; `effHidden` overlays it at render so an add/edit/discover refetch doesn't drop unsaved toggles). No per-click PATCH, no scroll jump.
+- **"Done managing" → "Save (N)"** button that flushes staged changes (PATCH per row, chunked 10-at-a-time), then refetches + ✓ flash. Separate **Close** exits manage mode (confirms if unsaved). Toggled rows get an accent outline so pending edits are visible.
+
+**Verify**: tsc clean; 461 tests pass (UI-only, no test surface). Browser pixel-render pending (auth-gated).

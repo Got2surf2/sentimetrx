@@ -281,8 +281,13 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
 - **Schema tab** — one per-dataset panel with two modes. Preview mode shows
   last-discovery timestamp, catalog size, and a top-12 chip preview with live
   counts + category dots. Manage mode (`?manage=1`) surfaces the full catalog
-  (including hidden rows + source flag) with per-row hide/unhide, single-add
-  form, bulk-paste textarea, and the "Reset discovered" admin action.
+  (including hidden rows + source flag), **grouped by category (type)** with a
+  per-type **Show all / Hide all** control (ignore a whole type — e.g. people — at
+  once). Hide/show edits are **staged locally** (`pendingHidden`) — clicking no
+  longer PATCHes + refetches per click (which scrolled the panel to the top); a
+  **Save** button (was "Done managing") flushes the staged changes (chunked PATCHes)
+  and a **Close** exits manage mode (confirms if there are unsaved changes). Plus the
+  single-add form, bulk-paste textarea, per-row Edit, and the "Reset discovered" admin action.
 - **TextMine → Themes tab** — a dedicated **Entities card** (`components/analyze/
   EntitiesCard.tsx`), scope-wide, grouped by category. Pills are styled like the theme
   keyword pills; clicking one opens a modal of the comments that mention it (via

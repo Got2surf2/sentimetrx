@@ -93,6 +93,39 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
   const [resetConfirm, setResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
 
+  // Visibility (hide/show) edits are STAGED locally, not written per-click —
+  // clicking used to PATCH + refetch, which scrolled the panel back to the top.
+  // pendingHidden maps slug -> desired hidden, only for rows that differ from the
+  // server; the Save button flushes them. Render reads the effective state via
+  // effHidden so a refetch (add/edit/discover) doesn't drop unsaved toggles.
+  const [pendingHidden, setPendingHidden] = useState<Record<string, boolean>>({})
+  const [savingHidden, setSavingHidden] = useState(false)
+  const dirtyCount = Object.keys(pendingHidden).length
+
+  function effHidden(e: EntityRow): boolean {
+    return e.slug in pendingHidden ? pendingHidden[e.slug] : !!e.hidden
+  }
+  // Stage one row. If the new value matches the server's, drop the key so it's
+  // no longer counted dirty.
+  function stageHidden(slug: string, serverHidden: boolean, val: boolean) {
+    setPendingHidden(function(prev) {
+      const next = Object.assign({}, prev)
+      if (val === serverHidden) delete next[slug]; else next[slug] = val
+      return next
+    })
+  }
+  // Bulk: hide/show every row in a category (the per-type None/All control).
+  function stageCategory(category: string, val: boolean) {
+    setPendingHidden(function(prev) {
+      const next = Object.assign({}, prev)
+      entities.forEach(function(e) {
+        if (e.category !== category) return
+        if (val === !!e.hidden) delete next[e.slug]; else next[e.slug] = val
+      })
+      return next
+    })
+  }
+
   // Inline edit state — at most one row in edit mode at a time. Editing
   // toggles the row from a display layout to a form layout; Save calls PATCH
   // /entities/[slug]; Cancel reverts. Aliases are edited as comma-separated
@@ -208,18 +241,41 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
     }
   }
 
-  async function toggleHidden(row: EntityRow) {
-    setRowBusy(row.slug)
+  // Flush the staged visibility edits — one PATCH per changed row, chunked so a
+  // big "hide all" doesn't fire hundreds of concurrent requests. Then refetch so
+  // the server state and the (now-empty) staged state agree.
+  async function saveHidden() {
+    const slugs = Object.keys(pendingHidden)
+    if (!slugs.length || savingHidden) return
+    setSavingHidden(true)
+    setError('')
     try {
-      await fetch('/api/datasets/' + datasetId + '/entities/' + encodeURIComponent(row.slug), {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ hidden: !row.hidden }),
-      })
+      for (let i = 0; i < slugs.length; i += 10) {
+        await Promise.all(slugs.slice(i, i + 10).map(function(slug) {
+          return fetch('/api/datasets/' + datasetId + '/entities/' + encodeURIComponent(slug), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ hidden: pendingHidden[slug] }),
+          })
+        }))
+      }
+      setPendingHidden({})
       await loadPreview()
+      setSavedFlash(true)
+      setTimeout(function() { setSavedFlash(false) }, 2500)
+    } catch (err: any) {
+      setError(err?.message || 'Save failed')
     } finally {
-      setRowBusy(null)
+      setSavingHidden(false)
     }
+  }
+
+  // Exit manage mode. Warn if there are unsaved visibility edits.
+  function closeManage() {
+    if (dirtyCount > 0 && !confirm('Discard ' + dirtyCount + ' unsaved visibility change' + (dirtyCount === 1 ? '' : 's') + '?')) return
+    setPendingHidden({})
+    setManageOpen(false)
+    setResetConfirm(false)
   }
 
   async function deleteManual(row: EntityRow) {
@@ -312,17 +368,42 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
           {schemaDirty && !discovering && (
             <span style={{ fontSize: 11, color: P.textMute }}>Save schema first</span>
           )}
-          <button
-            onClick={function() { setManageOpen(function(v) { return !v }); setResetConfirm(false) }}
-            style={{
-              fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
-              background: manageOpen ? P.accentBg : P.bg,
-              color: manageOpen ? P.accent : P.textMid,
-              border: '1px solid ' + (manageOpen ? P.accent + '40' : P.border),
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>
-            {manageOpen ? 'Done managing' : 'Manage'}
-          </button>
+          {manageOpen ? (
+            <>
+              <button
+                onClick={saveHidden}
+                disabled={savingHidden || dirtyCount === 0}
+                title={dirtyCount === 0 ? 'No unsaved visibility changes' : 'Save your hide/show changes'}
+                style={{
+                  fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7,
+                  background: (savingHidden || dirtyCount === 0) ? P.bg : P.accent,
+                  color: (savingHidden || dirtyCount === 0) ? P.textFaint : P.white,
+                  border: '1px solid ' + ((savingHidden || dirtyCount === 0) ? P.border : P.accent),
+                  cursor: (savingHidden || dirtyCount === 0) ? 'default' : 'pointer', fontFamily: 'inherit',
+                }}>
+                {savingHidden ? 'Saving…' : dirtyCount > 0 ? 'Save (' + dirtyCount + ')' : 'Saved'}
+              </button>
+              <button
+                onClick={closeManage}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+                  background: P.bg, color: P.textMid, border: '1px solid ' + P.border,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                Close
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={function() { setManageOpen(true); setResetConfirm(false) }}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+                background: P.bg, color: P.textMid, border: '1px solid ' + P.border,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              Manage
+            </button>
+          )}
           <button
             onClick={runDiscover}
             disabled={discovering || !!schemaDirty}
@@ -506,10 +587,32 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
             <div style={{ textAlign: 'center' as const }}>Delete</div>
           </div>
           <div style={{ maxHeight: 420, overflowY: 'auto' as const, background: P.white }}>
-            {entities.map(function(e) {
+            {(function() {
+              // Group by category (type). Each group gets a header with a None/All
+              // (Show all / Hide all) control so you can ignore a whole type at once.
+              const ORDER = ['food', 'drink', 'place', 'person', 'brand', 'other']
+              const byCat: Record<string, EntityRow[]> = {}
+              entities.forEach(function(e) { (byCat[e.category] = byCat[e.category] || []).push(e) })
+              const cats = ORDER.filter(function(c) { return byCat[c] }).concat(Object.keys(byCat).filter(function(c) { return ORDER.indexOf(c) === -1 }).sort())
+              return cats.map(function(cat) {
+                const items = byCat[cat]
+                const shown = items.filter(function(e) { return !effHidden(e) }).length
+                const catColor = CATEGORY_COLOR[cat] || CATEGORY_COLOR.other
+                return (
+                <div key={'cat-' + cat}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: P.bg, borderBottom: '1px solid ' + P.border, position: 'sticky' as const, top: 0, zIndex: 1 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 4, background: catColor, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, fontWeight: 800, color: P.text, textTransform: 'capitalize' as const }}>{cat}</span>
+                    <span style={{ fontSize: 10, color: P.textFaint }}>{shown}/{items.length} shown</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button onClick={function() { stageCategory(cat, false) }} title={'Show all ' + cat} style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 5, background: P.white, color: P.textMid, border: '1px solid ' + P.border, cursor: 'pointer', fontFamily: 'inherit' }}>Show all</button>
+                      <button onClick={function() { stageCategory(cat, true) }} title={'Hide all ' + cat} style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 5, background: P.white, color: P.textMid, border: '1px solid ' + P.border, cursor: 'pointer', fontFamily: 'inherit' }}>Hide all</button>
+                    </div>
+                  </div>
+                  {items.map(function(e) {
               const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
               const isManual = e.source === 'manual'
-              const isHidden = !!e.hidden
+              const isHidden = effHidden(e)
               const busy = rowBusy === e.slug
               const isEditing = editSlug === e.slug
 
@@ -627,15 +730,15 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' as const }}>
                     <button
-                      onClick={function() { toggleHidden(e) }}
-                      disabled={busy}
-                      title={isHidden ? 'Unhide (visible in cloud / compare / drill)' : 'Hide (excluded from cloud / compare / drill; survives re-discovery)'}
+                      onClick={function() { stageHidden(e.slug, !!e.hidden, !isHidden) }}
+                      title={isHidden ? 'Show (visible in cloud / compare / drill). Click Save to persist.' : 'Hide (excluded from cloud / compare / drill; survives re-discovery). Click Save to persist.'}
                       style={{
                         fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 5,
-                        background: P.white, color: P.textMid,
-                        border: '1px solid ' + P.border, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                        background: (e.slug in pendingHidden) ? P.accentBg : P.white,
+                        color: (e.slug in pendingHidden) ? P.accent : P.textMid,
+                        border: '1px solid ' + ((e.slug in pendingHidden) ? P.accent + '40' : P.border), cursor: 'pointer', fontFamily: 'inherit',
                       }}>
-                      {isHidden ? 'Unhide' : 'Hide'}
+                      {isHidden ? 'Show' : 'Hide'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' as const }}>
@@ -657,7 +760,11 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                   </div>
                 </div>
               )
-            })}
+                  })}
+                </div>
+                )
+              })
+            })()}
           </div>
         </div>
         )
