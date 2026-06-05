@@ -119,3 +119,62 @@ export function tightenSpansFromTranscript(
     return { start_sec: Math.round(a.min), end_sec: Math.round(a.max) }
   })
 }
+
+// Common words that carry no locating signal — excluded so a tiny "the the"
+// segment can't out-score the real passage on shared filler.
+const STOPWORDS = new Set([
+  'the', 'and', 'are', 'you', 'for', 'was', 'this', 'that', 'with', 'have', 'they', 'what', 'from',
+  'your', 'will', 'would', 'about', 'there', 'their', 'which', 'were', 'them', 'then', 'than', 'into',
+  'out', 'not', 'but', 'all', 'can', 'has', 'had', 'his', 'her', 'one', 'two', 'get', 'got', 'just',
+  'like', 'know', 'yeah', 'okay', 'right', 'going', 'gonna', 'want', 'need', 'said', 'say', 'see',
+  'put', 'way', 'lot', 'now', 'here', 'how', 'who', 'why', 'when', 'where', 'some', 'any', 'its',
+  'our', 'too', 'use', 'kind', 'sort', 'thing', 'really', 'actually', 'think', 'well', 'come', 'back',
+])
+function contentWords(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const w of (text || '').toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) out.add(w)
+  }
+  return out
+}
+
+// Trace a synthesis-derived action item back to the transcript: action_item rows
+// carry no timestamps, so we locate the window of segments that shares the most
+// DISTINCTIVE content words with the (paraphrased) description — a sliding sum so
+// a multi-segment discussion outscores any single short line — and return a
+// context window for a "where did this come from" jump. Null on a weak match.
+export function traceActionItem(
+  segments: SegLite[],
+  description: string,
+): { anchorStart: number; windowStart: number; windowEnd: number } | null {
+  if (!description || segments.length === 0) return null
+  const ordered = [...segments].sort((a, b) => a.start - b.start)
+  const desc = contentWords(description)
+  if (desc.size === 0) return null
+
+  // Distinctive content-word matches per segment (raw count, not a fraction).
+  const scores = ordered.map(s => {
+    let n = 0
+    for (const w of contentWords(s.text)) if (desc.has(w)) n++
+    return n
+  })
+
+  // Best ±2 window by summed score; anchor = the strongest single line in it.
+  const R = 2
+  let bestI = -1
+  let bestSum = 0
+  for (let i = 0; i < ordered.length; i++) {
+    let sum = 0
+    for (let j = Math.max(0, i - R); j <= Math.min(ordered.length - 1, i + R); j++) sum += scores[j]
+    if (sum > bestSum) { bestSum = sum; bestI = i }
+  }
+  if (bestI < 0 || bestSum < 3) return null   // too few distinctive matches → don't fabricate a trace
+
+  let anchorI = bestI
+  for (let j = Math.max(0, bestI - R); j <= Math.min(ordered.length - 1, bestI + R); j++) {
+    if (scores[j] > scores[anchorI]) anchorI = j
+  }
+  const from = Math.max(0, bestI - R - 1)
+  const to = Math.min(ordered.length - 1, bestI + R + 1)
+  return { anchorStart: ordered[anchorI].start, windowStart: ordered[from].start, windowEnd: ordered[to].end }
+}

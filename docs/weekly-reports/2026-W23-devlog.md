@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Action-item transcript traceability + NOWOCATS entity alias
+
+**Why**: Action items had no link back to the transcript (synthesis creates them without timestamps), so a reviewer couldn't verify where each came from. And the panel member "Hatem Abou-Senna" kept rendering as ASR's "Hatham" — the canonical was in Sarina's catalog but had no alias to map the misspelling.
+
+**What changed**:
+- `lib/recordings/transcriptRoles.ts` — new `traceActionItem(segments, description)`: locates the best ±2-segment window by **distinctive content-word** overlap (stopword-filtered, raw count — a sliding sum so a multi-segment discussion beats any single short line) with the paraphrased description; returns the anchor + window, or null on a weak match. First attempt (fraction-of-segment-words, no stopwords) anchored on junk like "the the," — fixed with the content-word approach; re-verified on Meeting 2 (SR 429→"four twenty nine Wakaiwa Parkway", Christina Moore, follow-up date all anchor correctly).
+- `app/recordings/[id]/report/ReportClient.tsx` — Action items tab gains a `↪ Source · {time}` chip → `ActionSourceModal` showing the derived transcript window (anchor bolded). Tests in `tests/unit/recordings/transcriptRoles.test.ts` (2 new).
+- **Entity alias (data op, prod, authorized):** added `Hatham` + `Hatham Abou-Senna` as aliases of `Hatem Abou-Senna` in Sarina's `entity_catalog` (bot scope) → all future NOWOCATS recordings auto-correct the ASR misspelling via §3.5c brand convergence. (Meeting 2's existing data was brute-forced separately.)
+
+68 recordings unit tests pass; typecheck clean; trace QC'd on real data. Spec §5.4 updated. **Local-only.**
+
 ## 2026-06-05 — Town Hall report: unified Q&A list + Coverage-first nav
 
 **Why**: Owner pushed back on the two-group split — the "Appendix" tab held clarifications + question-bearing complaints, which ARE questions, so the "Q&A summary (6)" headline under-represented the ~14 questions actually asked. The split dates to the first recordings spec commit (`38a18d13`, 2026-05-30); the extraction prompt routes `ask`→main / rest→appendix. Owner chose: one unified list, typology as a filter not a hide.

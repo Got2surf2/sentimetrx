@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTranscriptRoles, tightenSpansFromTranscript } from '@/lib/recordings/transcriptRoles'
+import { buildTranscriptRoles, tightenSpansFromTranscript, traceActionItem } from '@/lib/recordings/transcriptRoles'
 
 const seg = (start: number, text: string) => ({ start, end: start + 3, text })
 const pair = (start_sec: number, end_sec: number, question: string, answer: string) => ({
@@ -67,5 +67,25 @@ describe('tightenSpansFromTranscript', () => {
     const out = tightenSpansFromTranscript(segments, [noMatch, action])
     expect(out[0]).toEqual({ start_sec: 100, end_sec: 130 })  // estimate kept
     expect(out[1]).toBeNull()
+  })
+})
+
+describe('traceActionItem', () => {
+  it('anchors on the distinctive-content window, ignoring filler segments', () => {
+    const segments = [
+      seg(0, 'and the the so yeah'),                                       // filler
+      seg(10, 'we should investigate the Wekiva Parkway freight diversion'), // content
+      seg(20, 'staff will look at Apopka freight numbers'),                 // content
+      seg(30, 'okay thanks everyone'),                                      // filler
+    ]
+    const t = traceActionItem(segments, 'Staff to investigate Wekiva Parkway freight diversion from Apopka')
+    expect(t).not.toBeNull()
+    expect(t!.anchorStart).toBeGreaterThanOrEqual(10)
+    expect(t!.anchorStart).toBeLessThanOrEqual(20)
+  })
+
+  it('returns null when nothing distinctive matches (no fabricated trace)', () => {
+    const segments = [seg(0, 'and the the so yeah okay'), seg(5, 'right we will go now')]
+    expect(traceActionItem(segments, 'Investigate the Wekiva Parkway freight diversion from Apopka')).toBeNull()
   })
 })

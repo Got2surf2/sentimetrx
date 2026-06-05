@@ -27,7 +27,7 @@ import type {
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
 import { computeCoverage } from '@/lib/recordings/coverage'
-import { buildTranscriptRoles } from '@/lib/recordings/transcriptRoles'
+import { buildTranscriptRoles, traceActionItem } from '@/lib/recordings/transcriptRoles'
 import { packLanes, laneTop, barHeight, LANE_H } from '@/lib/recordings/timeline'
 
 // A request to open the audio modal at a given point. `nonce` forces a re-seek
@@ -119,7 +119,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
-        {tab === 'actions' && <ActionItemsTab extractions={actionItems} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
         {tab === 'export' && (
@@ -774,7 +774,16 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
 
 // ── Action items tab ─────────────────────────────────────────────────────────
 
-function ActionItemsTab({ extractions }: { extractions: RecordingExtractionRow[] }) {
+function ActionItemsTab({ extractions, transcript }: { extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null }) {
+  const segments = useMemo(() => (transcript?.segments ?? []) as TranscriptSegment[], [transcript])
+  // action_item rows carry no timestamps — trace each back to its closest
+  // transcript passage so a reviewer can verify where it came from.
+  const traces = useMemo(
+    () => extractions.map(e => traceActionItem(segments, (e.payload as ActionItemPayload)?.description ?? '')),
+    [extractions, segments],
+  )
+  const [modal, setModal] = useState<{ description: string; trace: NonNullable<ReturnType<typeof traceActionItem>> } | null>(null)
+
   if (extractions.length === 0) return <EmptyState label="No action items extracted." />
   return (
     <div className="space-y-4">
@@ -782,28 +791,73 @@ function ActionItemsTab({ extractions }: { extractions: RecordingExtractionRow[]
         Follow-ups and commitments the synthesis pass pulled from the discussion. These are not Q&amp;A pairs — they also appear in the exported deck, and never on the public Q&amp;A link.
       </p>
       <ul className="space-y-2">
-        {extractions.map(e => {
+        {extractions.map((e, i) => {
           const p = e.payload as ActionItemPayload
+          const trace = traces[i]
           return (
             <li key={e.id} className="border border-gray-200 rounded-xl p-4 bg-white">
               <p className="text-sm text-gray-900">{p.description}</p>
-              {(p.related_agenda_item || p.owner || p.due_date) && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {p.related_agenda_item && (
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
-                  )}
-                  {p.owner && (
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {p.owner}</span>
-                  )}
-                  {p.due_date && (
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {p.due_date}</span>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {p.related_agenda_item && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
+                )}
+                {p.owner && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {p.owner}</span>
+                )}
+                {p.due_date && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {p.due_date}</span>
+                )}
+                {trace && (
+                  <button
+                    type="button"
+                    onClick={() => setModal({ description: p.description, trace })}
+                    className="px-2 py-0.5 rounded-full text-xs font-medium text-teal-700 border border-teal-200 hover:bg-teal-50 transition-colors"
+                    title="Show the transcript passage this action item came from"
+                  >
+                    ↪ Source · {formatTime(trace.anchorStart)}
+                  </button>
+                )}
+              </div>
             </li>
           )
         })}
       </ul>
+      {modal && <ActionSourceModal description={modal.description} trace={modal.trace} segments={segments} onClose={() => setModal(null)} />}
+    </div>
+  )
+}
+
+// Trace modal: the transcript window an action item was derived from, anchor bold.
+function ActionSourceModal({ description, trace, segments, onClose }: {
+  description: string
+  trace: { anchorStart: number; windowStart: number; windowEnd: number }
+  segments: TranscriptSegment[]
+  onClose: () => void
+}) {
+  const window = useMemo(
+    () => segments.filter(s => s.start >= trace.windowStart - 0.5 && s.start <= trace.windowEnd + 0.5).sort((a, b) => a.start - b.start),
+    [segments, trace],
+  )
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-teal-700 mb-1">Action item · source</div>
+            <p className="text-sm font-medium text-gray-900">{description}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none shrink-0">✕</button>
+        </div>
+        <ol className="space-y-1.5">
+          {window.map((s, i) => (
+            <li key={i} className="text-sm flex gap-2">
+              <span className="font-mono text-xs text-gray-400 shrink-0 pt-0.5">{formatTime(s.start)}</span>
+              <span className={s.start === trace.anchorStart ? 'font-semibold text-gray-900' : 'text-gray-600'}>{s.text}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs text-gray-400 mt-3">Closest transcript passage for this action item (bold line = best match). Synthesis paraphrases, so this is the nearest source — not a verbatim quote.</p>
+      </div>
     </div>
   )
 }
