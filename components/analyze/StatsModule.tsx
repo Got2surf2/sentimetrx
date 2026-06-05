@@ -41,6 +41,7 @@ import {
   mean, std, median, quantile, skewness, kurtosis, shapiroWilk,
   pearsonR, spearmanR, welchTTest, mannWhitneyU, oneWayANOVA,
   chiSquareStat, olsRegression, getNum, probit,
+  welchTTestFromStats, anovaFromStats, chiSquareFromTable,
   fmt2, fmt4, fmtN, fmtP, sigLabel,
   descBL, descBL_naive, corrBL, corrBL_naive,
   ttestBL, ttestBL_naive, anovaBL, anovaBL_naive,
@@ -48,6 +49,7 @@ import {
   chiBL, chiBL_naive, regrBL, regrBL_naive,
   bootstrapCI, type MCResult,
 } from '@/lib/statsUtils'
+import { axisOfDimField, isDimField, dimVirtualFields, dimFieldName, DIM_AXES, DIM_AXIS_LABEL } from '@/lib/dimensionFields'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
@@ -502,7 +504,16 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
   useEffect(function() { if (!numF && numFields.length) setNumF(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catF && catFields.length) setCatF(catFields[0].field) }, [catFields.length])
 
-  var result = useMemo(function() {
+  // A dimension (taxonomy axis) on the group/variable side is aggregated
+  // server-side: t-test/ANOVA from per-sub summary stats, chi-square from a
+  // server crosstab. Mann-Whitney needs raw ranks \u2192 unsupported for dimensions.
+  var groupDimAxis = testType !== 'chisq' ? axisOfDimField(catF) : null
+  var chiDimA = testType === 'chisq' ? axisOfDimField(catF) : null
+  var chiDimB = testType === 'chisq' ? axisOfDimField(catF2) : null
+  var dimInvolved = !!groupDimAxis || !!chiDimA || !!chiDimB
+
+  var syncResult = useMemo(function() {
+    if (dimInvolved) return null
     try {
       if (testType === 'chisq') { if (!catF || !catF2) return null; return { type: 'chisq', res: chiSquareStat(catF, catF2, data) } }
       if (!numF || !catF) return null
@@ -525,7 +536,55 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
       }
       return { type: 'anova', res: oneWayANOVA(groups), groups: groups }
     } catch { return null }
-  }, [testType, numF, catF, catF2, data])
+  }, [testType, numF, catF, catF2, data, dimInvolved])
+
+  // Server-aggregated result when a dimension is involved.
+  var [dimResult, setDimResult] = useState<any>(null)
+  useEffect(function() {
+    if (!dimInvolved) { setDimResult(null); return }
+    var cancelled = false
+    var post = function(body: any) { return fetch('/api/datasets/' + datasetId + '/aggregate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r) { return r.json() }) }
+    ;(async function() {
+      try {
+        if (testType === 'chisq') {
+          var axis = chiDimA || chiDimB
+          var other = chiDimA ? catF2 : catF
+          if (!axis || !other || isDimField(other)) { if (!cancelled) setDimResult(null); return }  // both-dim unsupported
+          var d = await post({ op: 'tax_crosstab', axis: axis, field: other, axisIsRow: !!chiDimA, limit: 50 })
+          if (cancelled) return
+          var grid: Record<string, Record<string, number>> = d.grid || {}
+          var rkeys = Object.keys(grid)
+          var cset = new Set<string>(); rkeys.forEach(function(rk) { Object.keys(grid[rk]).forEach(function(c) { cset.add(c) }) })
+          var res = chiSquareFromTable(grid, rkeys, Array.from(cset))
+          setDimResult(res ? { type: 'chisq', res: res } : null)
+          return
+        }
+        if (!numF || !groupDimAxis) { if (!cancelled) setDimResult(null); return }
+        var dg = await post({ op: 'tax_group_stats', axis: groupDimAxis, valueField: numF })
+        if (cancelled) return
+        var groups = (dg.groups || {}) as Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }>
+        var gKeys = Object.keys(groups).filter(function(k) { return groups[k].n >= 2 })
+        if (gKeys.length < 2) { setDimResult(null); return }
+        var eff = testType === 'auto' ? (gKeys.length === 2 ? 'ttest' : 'anova') : testType
+        var boxStats: Record<string, any> = {}
+        gKeys.forEach(function(k) { var s = groups[k]; boxStats[k] = { q1: s.q1, median: s.median, q3: s.q3, min: s.min, max: s.max, mean: s.mean } })
+        if (eff === 'mw') { setDimResult({ type: 'mw_unsupported' }); return }
+        if (eff === 'ttest') {
+          var k2 = gKeys.slice(0, 2)
+          var tr = welchTTestFromStats({ mean: groups[k2[0]].mean, sd: groups[k2[0]].stddev, n: groups[k2[0]].n }, { mean: groups[k2[1]].mean, sd: groups[k2[1]].stddev, n: groups[k2[1]].n })
+          setDimResult(tr ? { type: 'ttest', res: tr, g1: k2[0], g2: k2[1], boxStats: boxStats } : null)
+          return
+        }
+        var statsIn: Record<string, { mean: number; sd: number; n: number }> = {}
+        gKeys.forEach(function(k) { statsIn[k] = { mean: groups[k].mean, sd: groups[k].stddev, n: groups[k].n } })
+        var ar = anovaFromStats(statsIn)
+        setDimResult(ar ? { type: 'anova', res: ar, boxStats: boxStats } : null)
+      } catch { if (!cancelled) setDimResult(null) }
+    })()
+    return function() { cancelled = true }
+  }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId])
+
+  var result: any = dimInvolved ? dimResult : syncResult
 
   if (!catFields.length) return <StatsEmpty icon={'\u2297'} msg="No categorical fields active" />
   if (!numFields.length && testType !== 'chisq') return <StatsEmpty icon={'\u2297'} msg="No numeric fields active" sub="Select Chi-square to compare two categorical fields." />
@@ -646,17 +705,33 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
         </Card>
       )}
 
-      {/* Box plots for numeric group comparisons */}
-      {result && result.res && result.type !== 'chisq' && result.groups && (
+      {/* Mann-Whitney needs raw ranks — not available for server-aggregated dimensions */}
+      {result && result.type === 'mw_unsupported' && (
+        <Card style={{ padding: '16px 20px' }}>
+          <div style={{ fontSize: 13, color: T.textMid }}>
+            Mann-Whitney U needs the raw values to rank, which aren&rsquo;t available for Dimensions (they&rsquo;re aggregated on the server). Use <strong>t-test</strong> or <strong>ANOVA</strong> to compare a numeric outcome across this dimension.
+          </div>
+        </Card>
+      )}
+
+      {/* Box plots for numeric group comparisons — raw arrays, or precomputed from dimension stats */}
+      {result && result.res && result.type !== 'chisq' && (result.groups || result.boxStats) && (
         <Card style={{ padding: '14px 16px', marginTop: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Group Distributions</div>
           <PlotlyChart
             data={(function() {
+              var pal = [T.accent, T.blue, T.green, T.purple, T.amber, T.red]
+              if (result.boxStats) {
+                var bs = result.boxStats as Record<string, { q1: number; median: number; q3: number; min: number; max: number; mean: number }>
+                return Object.keys(bs).slice(0, 10).map(function(key, i) {
+                  var st = bs[key]
+                  return { type: 'box', name: key.slice(0, 20), q1: [st.q1], median: [st.median], q3: [st.q3], lowerfence: [st.min], upperfence: [st.max], mean: [st.mean], marker: { color: pal[i % pal.length] } }
+                })
+              }
               var grps = result.groups as Record<string, number[]>
               var catFieldObj = catFields.find(function(f) { return f.field === catF })
               var orderedKeys = smartOrder(Object.keys(grps), catFieldObj?.remapping).slice(0, 10)
               return orderedKeys.map(function(key, i) {
-                var pal = [T.accent, T.blue, T.green, T.purple, T.amber, T.red]
                 return { y: grps[key], type: 'box', name: key.slice(0, 20), marker: { color: pal[i % pal.length] }, boxpoints: 'outliers', jitter: 0.3, pointpos: -1.8 }
               })
             })()}
@@ -1871,13 +1946,23 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var dateFields = useMemo(function() { return allFields.filter(function(f) { return f.type === 'date' }).sort(asc) }, [allFields, asc])
   var openFields = useMemo(function() { return allFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc) }, [allFields, asc])
 
+  // Dimension (taxonomy axis) fields are server-aggregated and only the Group
+  // Tests panel can use them (t-test/ANOVA from per-sub stats, chi-square from a
+  // crosstab). They are spliced ONLY into that panel's categorical list — not the
+  // global catFields — so the row-based panels never see fields they can't compute.
+  var hasDimensions = datasetSource === 'google_reviews'
+  var groupTestCatFields = useMemo(function() {
+    return hasDimensions ? catFields.concat(dimVirtualFields() as any) : catFields
+  }, [catFields, hasDimensions])
+
   var aliases = useMemo(function() {
     var out: Record<string, string> = {}
     schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) out[f.field] = f.label })
     if (hasThemes) out['__themes__'] = 'Themes'
     mappedFields.forEach(function(f) { out['__mapped_' + f.field + '__'] = (f.label || f.field) })
+    if (hasDimensions) DIM_AXES.forEach(function(a) { out[dimFieldName(a)] = DIM_AXIS_LABEL[a] })
     return out
-  }, [schema.fields, hasThemes, mappedFields])
+  }, [schema.fields, hasThemes, mappedFields, hasDimensions])
 
   // Per-field quality flags for the left sidebar — dims fields with no analytical value
   var sidebarDiag = useMemo(function() {
@@ -2060,7 +2145,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
             <>
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} datasetId={datasetId} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
-              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} datasetId={datasetId} />}

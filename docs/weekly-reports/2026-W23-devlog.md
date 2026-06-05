@@ -1105,3 +1105,13 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: `sql/106` — `taxonomy_group_stats` gains q1_val/q3_val (drop+recreate for the new OUT cols); new `taxonomy_date_series(dataset,axis,date,metric,bucket)`. `/aggregate` — `tax_date_series` op + q1/q3 passthrough. `ChartsModule` — expand `DIM_WIRED_CHARTS`; `BulletSplitInner`/`GanttInner`/`DistSplitInner` get `tax_group_stats` paths; `TimeSeriesInner` gets a `tax_date_series` path (new `catAgg` precomputed map + shared `tsBreakdownY` helper feeding both the combined and split-mode trace builders).
 
 **Verify**: tsc clean (my files); 446 tests pass; `sql/106` applied to prod + validated in a rolled-back tx; data path confirmed live — box quartiles (steak q1=2/med=3/q3=5) and manager×time (★2.58→2.48→2.29, declining). Browser pixel-render still pending (auth-gated).
+
+## 2026-06-04 — Dimensions in the Statistics module (Phase B.2)
+
+**Why**: Close out the deferred Stats piece — let the Group Tests panel compare a numeric outcome across a taxonomy Dimension.
+
+**What changed**: Group Tests is the only Stats panel that consumes categorical fields, so dims are spliced only into its list (`groupTestCatFields`), never the row-based panels (Descriptives/Correlations/Regression/Insights/Outliers stay dim-free). When a dimension is the group/variable, the panel fetches `tax_group_stats` (t-test/ANOVA) or `tax_crosstab` (chi-square) from `/aggregate` instead of computing from client rows. New `lib/statsUtils` helpers: `welchTTestFromStats`, `anovaFromStats`, `chiSquareFromTable` — return the exact same shapes as the raw-data functions (verified to match to 6–8 decimals), so the renderer is unchanged. Group box plots render from the q1/q3 quartiles. Mann-Whitney shows an "unsupported for Dimensions" note (needs raw ranks).
+
+**Bug fix (pre-existing, surfaced by this work)**: `incompleteGamma` used a series expansion that overflows for `x ≥ a+1` (the term grows to ~x mid-sum), so `chiSqP`/`fDistP` returned garbage for large χ²/F — e.g. ANOVA rating~touchpoint (F=64, dfW=5263) reported p=0.23 instead of ~0. This silently affected the existing chi-square test and ANOVA on any large sample. Fixed with the standard split: series for `x < a+1`, continued fraction (upper-gamma Lentz) above. Verified against χ² critical values (3.841/1→0.0500, 11.070/5→0.0500, 7.879/1→0.0050) and the large case (chiSqP(384,6)≈0).
+
+**Verify**: tsc clean (my files); 449 tests pass; from-stats helpers verified vs raw-data fns; full dim path confirmed live (t-test server-vs-manager t=16.89 p≈0 d=0.69; ANOVA F=64 p≈0 η²=0.068). Browser pixel-render pending (auth-gated). **No new migration** — reuses sql/105–106.

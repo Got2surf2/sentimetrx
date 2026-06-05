@@ -52,10 +52,29 @@ function incompleteBeta(x: number, a: number, b: number): number {
   return front * f
 }
 
+// Regularized lower incomplete gamma P(a,x). The series form converges only for
+// x < a+1; for larger x it overflows mid-sum and returns garbage (the series
+// term grows to ~x before shrinking). Above that threshold use the continued
+// fraction for the upper gamma Q(a,x) and return 1−Q. (Numerical Recipes gammp.)
 function incompleteGamma(a: number, x: number): number {
-  if (x <= 0) return 0; var sum = 1 / a, term = 1 / a
-  for (var n = 1; n < 200; n++) { term *= x / (a + n); sum += term; if (Math.abs(term) < 1e-10) break }
-  return sum * Math.exp(-x + a * Math.log(x) - logGamma(a))
+  if (x <= 0) return 0
+  if (x < a + 1) {
+    var sum = 1 / a, term = 1 / a
+    for (var n = 1; n < 300; n++) { term *= x / (a + n); sum += term; if (Math.abs(term) < Math.abs(sum) * 1e-14) break }
+    return sum * Math.exp(-x + a * Math.log(x) - logGamma(a))
+  }
+  var tiny = 1e-300
+  var b = x + 1 - a, c = 1 / tiny, d = 1 / b, h = d
+  for (var i = 1; i < 300; i++) {
+    var an = -i * (i - a)
+    b += 2
+    d = an * d + b; if (Math.abs(d) < tiny) d = tiny
+    c = b + an / c; if (Math.abs(c) < tiny) c = tiny
+    d = 1 / d; var del = d * c; h *= del
+    if (Math.abs(del - 1) < 1e-14) break
+  }
+  var Q = Math.exp(-x + a * Math.log(x) - logGamma(a)) * h
+  return 1 - Q
 }
 
 export function tDist2p(t: number, df: number): number {
@@ -134,6 +153,53 @@ export function welchTTest(a: number[], b: number[]): { t: number; df: number; p
   var t = (ma - mb) / se, df = (va / na + vb / nb) ** 2 / ((va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1))
   var d = (ma - mb) / Math.sqrt((va + vb) / 2)
   return { t: t, df: df, p: tDist2p(Math.abs(t), df), ma: ma, mb: mb, sa: Math.sqrt(va), sb: Math.sqrt(vb), na: na, nb: nb, d: d, se: se }
+}
+
+// Welch's t-test from per-group summary stats (mean, sample sd, n) instead of
+// raw values — for dimension groups aggregated server-side. Same result shape
+// as welchTTest so the renderer is unchanged.
+export function welchTTestFromStats(a: { mean: number; sd: number; n: number }, b: { mean: number; sd: number; n: number }): { t: number; df: number; p: number; ma: number; mb: number; sa: number; sb: number; na: number; nb: number; d: number; se: number } | null {
+  var na = a.n, nb = b.n; if (na < 2 || nb < 2) return null
+  var ma = a.mean, mb = b.mean, va = a.sd * a.sd, vb = b.sd * b.sd
+  var se = Math.sqrt(va / na + vb / nb); if (!se) return null
+  var t = (ma - mb) / se, df = (va / na + vb / nb) ** 2 / ((va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1))
+  var d = (ma - mb) / Math.sqrt((va + vb) / 2)
+  return { t: t, df: df, p: tDist2p(Math.abs(t), df), ma: ma, mb: mb, sa: a.sd, sb: b.sd, na: na, nb: nb, d: d, se: se }
+}
+
+// One-way ANOVA from per-group summary stats. SSB from group means vs the
+// n-weighted grand mean; SSW from (n-1)·var per group. Same shape as oneWayANOVA.
+export function anovaFromStats(groups: Record<string, { mean: number; sd: number; n: number }>): any {
+  var keys = Object.keys(groups); if (keys.length < 2) return null
+  var N = 0, weighted = 0
+  keys.forEach(function(k) { N += groups[k].n; weighted += groups[k].n * groups[k].mean })
+  if (N === 0) return null
+  var gm = weighted / N, kk = keys.length
+  var SSB = 0, SSW = 0; var gs: Record<string, { n: number; mean: number; sd: number }> = {}
+  keys.forEach(function(k) { var g = groups[k]; SSB += g.n * (g.mean - gm) ** 2; SSW += (g.n - 1) * g.sd * g.sd; gs[k] = { n: g.n, mean: g.mean, sd: g.sd } })
+  var dfB = kk - 1, dfW = N - kk; if (dfW <= 0) return null
+  var MSB = SSB / dfB, MSW = SSW / dfW; if (!MSW) return null
+  var F = MSB / MSW, p = fDistP(F, dfB, dfW), eta2 = SSB / (SSB + SSW)
+  var pairwise: any[] = []
+  for (var ii = 0; ii < keys.length; ii++) {
+    for (var jj = ii + 1; jj < keys.length; jj++) {
+      var r = welchTTestFromStats(groups[keys[ii]], groups[keys[jj]])
+      if (r) pairwise.push({ a: keys[ii], b: keys[jj], t: r.t, df: r.df, p: r.p, ma: r.ma, mb: r.mb, pAdj: Math.min(1, r.p * keys.length * (keys.length - 1) / 2) })
+    }
+  }
+  return { F: F, dfB: dfB, dfW: dfW, p: p, eta2: eta2, SSB: SSB, SSW: SSW, MSB: MSB, MSW: MSW, groupStats: gs, pairwise: pairwise, k: kk, N: N }
+}
+
+// Chi-square from a precomputed contingency table (for dimension × categorical
+// crosstabs computed server-side). Same shape as chiSquareStat.
+export function chiSquareFromTable(tbl: Record<string, Record<string, number>>, rows: string[], cols: string[]): any {
+  if (rows.length < 2 || cols.length < 2) return null
+  var rS: Record<string, number> = {}; rows.forEach(function(r) { rS[r] = cols.reduce(function(s, c) { return s + (tbl[r]?.[c] || 0) }, 0) })
+  var cS: Record<string, number> = {}; cols.forEach(function(c) { cS[c] = rows.reduce(function(s, r) { return s + (tbl[r]?.[c] || 0) }, 0) })
+  var N = rows.reduce(function(s, r) { return s + rS[r] }, 0); if (N === 0) return null
+  var chi2 = 0; rows.forEach(function(r) { cols.forEach(function(c) { var E = rS[r] * cS[c] / N; if (E > 0) chi2 += ((tbl[r]?.[c] || 0) - E) ** 2 / E }) })
+  var df = (rows.length - 1) * (cols.length - 1), p = chiSqP(chi2, df), V = Math.sqrt(chi2 / (N * Math.min(rows.length - 1, cols.length - 1)))
+  return { chi2: chi2, df: df, p: p, V: V, N: N, rows: rows, cols: cols, table: tbl, rowSums: rS, colSums: cS }
 }
 
 export function mannWhitneyU(a: number[], b: number[]): { U: number; z: number; p: number; na: number; nb: number } | null {
