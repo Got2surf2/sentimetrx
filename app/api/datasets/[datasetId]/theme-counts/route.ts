@@ -21,6 +21,7 @@ export async function POST(req: Request, props: Props) {
     fields: string[]
     cooccurrence?: boolean      // when true, also compute pairwise theme intersection counts
     topical?: boolean           // when true, also extract topical-word lists per theme
+    dimensions?: boolean        // when true, also compute the per-theme Dimensions (taxonomy) breakdown
   }
   try {
     body = await req.json()
@@ -28,7 +29,7 @@ export async function POST(req: Request, props: Props) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { themes, fields, cooccurrence, topical } = body
+  const { themes, fields, cooccurrence, topical, dimensions } = body
   if (!themes?.length || !fields?.length) {
     return NextResponse.json({ error: 'Provide themes and fields' }, { status: 400 })
   }
@@ -175,7 +176,39 @@ export async function POST(req: Request, props: Props) {
       }
     }
 
-    return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords })
+    // Optional: per-theme Dimensions breakdown. For each theme, the top
+    // taxonomy sub-buckets (across all 7 axes) carried by the reviews that
+    // match the theme — the classification analog of "Items mentioned".
+    // Summed across member datasets for collections; only meaningful when the
+    // dataset has been classified (datasets without taxonomy rows just return
+    // empty arrays, which the client suppresses).
+    let themeDimensions: Record<string, { axis: string; sub: string; count: number }[]> | undefined
+    if (dimensions) {
+      themeDimensions = {}
+      for (const t of themes) {
+        const kws = (t.keywords || []).filter(Boolean)
+        if (!kws.length) { themeDimensions[t.id] = []; continue }
+        const merged: Record<string, { axis: string; sub: string; count: number }> = {}
+        for (const did of datasetIds) {
+          const { data } = await service.rpc('theme_dimension_counts', {
+            p_dataset_id: did,
+            p_field_keys: fields,
+            p_keywords: kws,
+            p_limit: 12,   // a bit wider than the card shows so the post-merge top-N has room
+          })
+          for (const r of ((data || []) as { axis: string; sub: string; count: number }[])) {
+            const k = r.axis + ':' + r.sub
+            if (!merged[k]) merged[k] = { axis: r.axis, sub: r.sub, count: 0 }
+            merged[k].count += Number(r.count) || 0
+          }
+        }
+        themeDimensions[t.id] = Object.values(merged)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8)
+      }
+    }
+
+    return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })
   }
 
   // Fallback: batch streaming (same as before but simplified)

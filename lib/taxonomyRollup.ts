@@ -115,11 +115,46 @@ export function aggregateTaxonomy(rows: TaxonomyRow[], topSubs = 40): TaxonomyRo
 
 const PAGE = 1000
 
+/**
+ * Detect the dataset's rating field for the avg-rating-per-dimension rollup —
+ * the same rule the metric strip / signal-stats route uses. Returns the JSONB
+ * key plus, when the field stores text labels mapped to numbers (valueAliases
+ * like {"Highly Satisfied":"5"}), the alias map so a per-row label resolves to
+ * its number. Falls back to the legacy `rating` key when no schema is found, so
+ * existing google_reviews datasets behave exactly as before.
+ */
+async function detectRatingField(service: SupabaseClient, datasetId: string): Promise<{ field: string; aliases: Record<string, string> | null }> {
+  try {
+    const { data: stateRow } = await service
+      .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle()
+    const fields = (stateRow as { schema_config?: { fields?: Array<{ field: string; type?: string; sqt?: string; scoreField?: boolean; valueAliases?: Record<string, string> }> } } | null)?.schema_config?.fields || []
+    const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
+    if (!rf) return { field: 'rating', aliases: null }
+    // Only treat the field as remapped when its alias values are numeric.
+    const aliases = rf.valueAliases && typeof rf.valueAliases === 'object'
+      && Object.values(rf.valueAliases).some(v => /^-?[0-9]+\.?[0-9]*$/.test(String(v)))
+      ? rf.valueAliases : null
+    return { field: rf.field, aliases }
+  } catch {
+    return { field: 'rating', aliases: null }
+  }
+}
+
 /** Org-scoped paged read + aggregate. Pairs (dataset_id, org_id) per invariant. */
 export async function computeTaxonomyRollup(opts: {
   service: SupabaseClient; datasetId: string; orgId: string; topSubs?: number
 }): Promise<TaxonomyRollup> {
   const { service, datasetId, orgId, topSubs } = opts
+
+  // Resolve the rating field once (dynamic — supports survey/aliased fields, not
+  // just a literal `rating` column). The key can carry spaces/commas/apostrophes
+  // (survey question text), which a PostgREST select string can't express, so
+  // values are fetched via the dataset_field_values RPC (field passed as a bind
+  // param). A plain `rating`-named field still uses the direct select so existing
+  // google_reviews rollups don't depend on the new RPC being applied first.
+  const { field: ratingField, aliases } = await detectRatingField(service, datasetId)
+  const useDirectSelect = ratingField === 'rating' && !aliases
+
   const all: TaxonomyRow[] = []
   let from = 0
   for (;;) {
@@ -137,11 +172,15 @@ export async function computeTaxonomyRollup(opts: {
     // table — fetch only the rating value, keyed by row_id, for this page.
     const ids = page.map(r => r.row_id).filter((x): x is number => x != null)
     if (ids.length) {
-      const { data: rd } = await service
-        .from('dataset_rows_flat').select('id, rating:data->>rating').in('id', ids)
       const ratingById = new Map<number, number>()
-      for (const r of (rd || []) as { id: number; rating: string | null }[]) {
-        const v = r.rating != null ? parseFloat(r.rating) : NaN
+      const rows: { id: number; val: string | null }[] = useDirectSelect
+        ? ((await service.from('dataset_rows_flat').select('id, val:data->>rating').in('id', ids)).data as unknown as { id: number; val: string | null }[] || [])
+        : ((await service.rpc('dataset_field_values', { p_dataset_id: datasetId, p_field: ratingField, p_ids: ids })).data as { id: number; val: string | null }[] || [])
+      for (const r of rows) {
+        // Remapped fields store a text label → resolve via the alias map; plain
+        // numeric fields parse directly.
+        const mapped = aliases && r.val != null ? aliases[r.val] : r.val
+        const v = mapped != null ? parseFloat(mapped) : NaN
         if (!isNaN(v)) ratingById.set(r.id, v)
       }
       for (const r of page) r.rating = ratingById.get(r.row_id) ?? null

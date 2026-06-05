@@ -16,6 +16,7 @@ import {
 } from '@/lib/themeUtils'
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
+import { DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -972,6 +973,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [serverTopical, setServerTopical] = useState<Record<string, [string, number][]>>({})
   const [serverCoOccurrence, setServerCoOccurrence] = useState<Record<string, Record<string, number>>>({})
   const [cooccurrenceLoaded, setCooccurrenceLoaded] = useState(false)
+  // Per-theme Dimensions (taxonomy) breakdown: themeId → top {axis, sub, count}.
+  // Populated by fetchServerThemeCounts when the dataset has Dimensions enabled.
+  const [serverThemeDimensions, setServerThemeDimensions] = useState<Record<string, { axis: string; sub: string; count: number }[]>>({})
+  // Same gate as the Dimensions sub-tab: dataset is classifiable into Dimensions.
+  const dimensionsEnabled = datasetSource === 'google_reviews' || !!taxonomyEnabled
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
@@ -1248,6 +1254,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
           fields: fields,
           cooccurrence: true,   // pairwise theme intersection counts
+          dimensions: dimensionsEnabled,   // per-theme Dimensions (taxonomy) breakdown — only when classified
           // topical: false — extract_theme_topical_words SQL times out on
           // large collections with the ±2 window; the no-window version
           // surfaces too much boilerplate. Section dropped from the card.
@@ -1272,12 +1279,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setSamplingInfo({ sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows })
       if (data.topical) setServerTopical(data.topical)
       if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
+      if (data.dimensions) setServerThemeDimensions(data.dimensions)
       // Mark loaded whether or not cooccurrence is present, so the theme
       // card stops showing the placeholder once the fetch resolves —
       // even when a theme has no co-occurring siblings.
       setCooccurrenceLoaded(true)
     } catch { /* fallback to client-side counts silently */ }
-  }, [datasetId, totalRows])
+  }, [datasetId, totalRows, dimensionsEnabled])
 
   // Trigger shared row fetch on mount
   useEffect(function() {
@@ -2299,6 +2307,40 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           )
                                         })}
                                         {teList.length > 6 && <span style={{ fontSize: 9, color: T.textFaint, alignSelf: 'center' }}>+{teList.length - 6} more</span>}
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                                {/* Dimensions — top taxonomy sub-buckets (across all 7 axes)
+                                    carried by this theme's matched reviews. Server-computed
+                                    (theme_dimension_counts RPC); only shown when the dataset is
+                                    classified into Dimensions and this theme has tagged rows. */}
+                                {dimensionsEnabled && (function() {
+                                  var dimList = serverThemeDimensions[t.id] || []
+                                  if (!dimList.length) return null
+                                  var AXIS_COLOR: Record<string, string> = {
+                                    touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C',
+                                    beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777',
+                                  }
+                                  return (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }} title="Dimension sub-buckets (service, food, drinks, ambiance, …) reviewers discuss when this theme comes up">
+                                        Dimensions
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                        {dimList.slice(0, 6).map(function(d) {
+                                          var dc = AXIS_COLOR[d.axis] || '#8FA3AE'
+                                          var axisLabel = DIM_AXIS_LABEL[d.axis as Axis] || d.axis
+                                          return (
+                                            <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — in ' + d.count.toLocaleString() + ' "' + t.name + '" comment' + (d.count === 1 ? '' : 's')}
+                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: dc + '0d', border: '1px solid ' + dc + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                              <span style={{ width: 5, height: 5, borderRadius: 3, background: dc, flexShrink: 0 }} />
+                                              <span style={{ fontWeight: 600 }}>{dimSubLabel(d.sub)}</span>
+                                              <span style={{ color: T.textFaint }}>{d.count.toLocaleString()}</span>
+                                            </span>
+                                          )
+                                        })}
+                                        {dimList.length > 6 && <span style={{ fontSize: 9, color: T.textFaint, alignSelf: 'center' }}>+{dimList.length - 6} more</span>}
                                       </div>
                                     </div>
                                   )

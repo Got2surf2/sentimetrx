@@ -68,11 +68,20 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
   per-sub mention rates, sentiment per sub, alert tag counts, and **avg star rating per
-  axis / per sub + an overall avg** (the read pulls `data->>rating` from `dataset_rows_flat`
-  by `row_id` per page; `aggregateTaxonomy` averages it over matching rows). The UI shows a
+  axis / per sub + an overall avg**. The rating field is **detected dynamically** from
+  `dataset_state.schema_config` (the first numeric field tagged `sqt` rating/nps/likert or
+  `scoreField` — the same rule the metric strip uses), not a hardcoded `rating` key, so it
+  works for surveys whose rating lives under an arbitrary question-text key. **Remapped
+  fields** (stored text labels like "Highly Satisfied" mapped to numbers via the field's
+  `valueAliases`) are resolved label→number per row before averaging. Per-page values are
+  read via the `dataset_field_values(dataset, field, ids[])` RPC (field passed as a bind
+  param, so keys with spaces/commas/apostrophes work); a plain `rating`-named field still
+  uses a direct `data->>rating` select so existing google_reviews rollups don't depend on
+  the new RPC. `aggregateTaxonomy` then averages over matching rows. The UI shows a
   ★ badge (red→green ramp) on the KPIs, axis bars, and sub-topic rows — complements the
   text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
-  ★2.4 vs `attribute·flavor` ★4.1).
+  ★2.4 vs `attribute·flavor` ★4.1; on Carrabba's GSS, `attribute·temp` ★2.35 vs
+  `attribute·professional` ★4.56).
 - **"flagged reviews" KPI** = `alertRows` = the count of **distinct reviews** carrying ≥1
   severity alert. The Severity section's per-tag pills (`alerts[].count`) count alert
   *occurrences per type*, so a review flagged for both food safety AND pests adds to both

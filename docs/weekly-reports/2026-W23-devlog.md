@@ -1,5 +1,26 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Dimensions rollup: dynamic rating field + aliases (open item #3)
+
+**Why**: The Dimensions per-axis/per-sub ★ ratings hardcoded `data->>rating` (`taxonomyRollup.ts`), so on surveys whose rating field has a different key (and aliased text values) — e.g. Carrabba's GSS, where the field is literally the satisfaction question text with `valueAliases` "Highly Satisfied"→5 — every per-dimension ★ came back blank. (The metric strip already handled this via `field_aliased_avg`; the rollup didn't.)
+
+**What changed**:
+- `lib/taxonomyRollup.ts` — `computeTaxonomyRollup` now **detects the rating field dynamically** (`detectRatingField`: first numeric field with `sqt` rating/nps/likert or `scoreField`, from `dataset_state.schema_config` — same rule as the strip) and resolves **remapped** values (label→number via the field's `valueAliases`) per row before averaging. Per-page values come from a new `dataset_field_values(dataset, field, ids[])` RPC (sql/112) — the field is a **bind param**, so survey keys with spaces/commas/apostrophes/"?" work (a PostgREST select string can't express them; the select parser splits on the comma in the question text). A plain `rating`-named field still uses the direct `data->>rating` select, so existing google_reviews rollups don't depend on the new RPC.
+- `sql/112_dataset_field_values.sql` — read-only SECURITY-DEFINER helper; org access enforced by the caller (pairs dataset_id+org_id).
+
+**Verify**: tsc clean; 461 tests pass; logic validated read-only vs prod — Carrabba's GSS now computes overall ★4.14 (matches the strip) + per-dimension ★ (attribute·flavor 4.20, ·accuracy 2.68, ·temp 2.35 — sensible, low on accuracy/temp complaints), all blank before the fix. **sql/112 must be applied to prod before the deployed rollup picks up aliased fields** (degrades gracefully without it: the RPC errors → ratings null → ★ blank, same as today). NB: Carrabba's still carries the owner's "Somewhat Satisfied"→1 alias typo (open item #4, owner fixes in Schema editor). **Local-only.**
+
+## 2026-06-05 — Per-theme Dimensions row on theme cards (open item #2)
+
+**Why**: Owner asked (deferred mid the Dimensions arc) — the theme cards already show "Items mentioned" (entities within a theme); the classification analog was missing. "When people talk about *steak*, which Dimensions (service/food/drinks/…) do they discuss?"
+
+**What changed**:
+- `sql/111_theme_dimension_counts.sql` — new `theme_dimension_counts(dataset, field_keys, keywords, limit)` RPC: matches rows by the theme's keyword regex (`\m(kw1|kw2|…)`, same as `count_theme_matches`) → joins `dataset_row_taxonomy` → unnests all 7 axis arrays → returns top `(axis, sub, count)`. Read-only, SECURITY DEFINER.
+- `app/api/datasets/[datasetId]/theme-counts/route.ts` — new optional `dimensions` flag: per theme, calls the RPC (summed across member datasets for collections), returns `dimensions: {themeId → [{axis, sub, count}]}`.
+- `components/analyze/TextMineModule.tsx` — `fetchServerThemeCounts` passes `dimensions: dimensionsEnabled` (gate = `datasetSource==='google_reviews' || taxonomyEnabled`, same as the Dimensions sub-tab); stores `serverThemeDimensions`; theme card renders a **"Dimensions" chip row** (top 6, axis-dot colored, after "Items mentioned") via `DIM_AXIS_LABEL`/`dimSubLabel`. Renders only when the dataset is classified and the theme's matched rows carry tags.
+
+**Verify**: tsc clean; 461 tests pass; RPC logic validated read-only vs prod (Cheddar's steak theme → product·steak 1044, touchpoint·server 418, attribute·flavor 339 — sensible). Route degrades gracefully if the RPC isn't applied (empty → suppressed). **sql/111 must be applied to prod** for the row to populate after deploy. Browser pixel-render pending (auth-gated). Specs ANALYTICS.md + TAXONOMY.md updated. **Local-only.**
+
 ## 2026-06-05 — Town Hall: post-upload brand/agent link + prompt cleanups
 
 Four follow-ups from the open-items review:
