@@ -1,5 +1,17 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Town Hall report: unified Q&A list + Coverage-first nav
+
+**Why**: Owner pushed back on the two-group split — the "Appendix" tab held clarifications + question-bearing complaints, which ARE questions, so the "Q&A summary (6)" headline under-represented the ~14 questions actually asked. The split dates to the first recordings spec commit (`38a18d13`, 2026-05-30); the extraction prompt routes `ask`→main / rest→appendix. Owner chose: one unified list, typology as a filter not a hide.
+
+**What changed** (`app/recordings/[id]/report/ReportClient.tsx`):
+- **Removed the Appendix tab.** The Q&A tab (renamed "Q&A") now shows **all** `qa_pair` rows (every typology), keeping By-topic / In-order. A **typology filter** (All / ask / clarification / complaint / commentary chips, with counts) narrows the list; each card already shows its typology chip. Deleted the dead `AppendixTab` + the ask/non-ask split memo.
+- **Coverage is now the first tab AND the default landing** (was default-but-3rd, which was incoherent). Bar order: Coverage · Q&A · Action items · Transcript · Export & Share.
+- Fixed the Coverage "flagged" copy that referenced the removed Appendix tab.
+- The deck, `/th` share, and PDF already rendered all pairs (never split on `ask`), so no change needed there.
+
+Spec `RECORDINGS.md §5.4` updated (unified tab + filter, renumbered). Typecheck clean; 66 recordings tests pass. **Also (data op, not code):** brute-forced `Hatham`→`Hatem` across Meeting 2's transcript / extractions / summary / derived dataset (ASR misspelled panel member Hatem Abou-Senna; the canonical is in Sarina's catalog but had no `Hatham` alias — root-cause fix = add the alias, pending). **Local-only.**
+
 ## 2026-06-05 — Town Hall report: auditability overhaul (Coverage timeline, transcript marking, span tightening)
 
 **Why**: Auditing a recording's Q&A extraction was hard — the report mislabeled counts, the Coverage view was broken/confusing, and there was no way to see *where* in the meeting each Q&A came from or *what* the raw transcript said. Owner wanted the report to make extraction trustworthy at a glance, and flagged two recorded issues in `docs/RECORDINGS.md §3.6`.

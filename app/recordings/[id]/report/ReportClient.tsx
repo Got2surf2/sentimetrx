@@ -50,7 +50,7 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
-type Tab = 'qa' | 'appendix' | 'actions' | 'coverage' | 'transcript' | 'export'
+type Tab = 'qa' | 'actions' | 'coverage' | 'transcript' | 'export'
 
 const HERMES = '#E8632A'
 
@@ -68,19 +68,15 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   const recordingId = data.recording.id
 
-  const { askExtractions, nonAskExtractions } = useMemo(() => {
-    const ask: RecordingExtractionRow[] = []
-    const nonAsk: RecordingExtractionRow[] = []
-    for (const e of extractions) {
-      // action_item rows have no question/answer — they belong to the deck, not
-      // the Q&A / Appendix tabs. Skip them here.
-      if (e.unit_type !== 'qa_pair') continue
-      const payload = e.payload as QaPairPayload
-      if (payload?.question_typology === 'ask') ask.push(e)
-      else nonAsk.push(e)
-    }
-    return { askExtractions: ask, nonAskExtractions: nonAsk }
-  }, [extractions])
+  // All Q&A pairs in ONE list. We deliberately no longer split "ask" into a
+  // headline tab and everything else into an "Appendix" — clarifications and
+  // question-bearing complaints ARE questions, so demoting them undercounted and
+  // misrepresented the Q&A. Typology is shown as a per-card chip + a filter
+  // instead. (action_item rows have no Q/A and live in their own tab.)
+  const qaPairs = useMemo(
+    () => extractions.filter(e => e.unit_type === 'qa_pair'),
+    [extractions],
+  )
 
   // Action items are a separate unit_type (no question/answer) — synthesis pulls
   // them from the discussion. Surfaced in their own tab + the deck, not the Q&A.
@@ -109,22 +105,20 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      <ReportHeader recording={data.recording} qaPairCount={askExtractions.length + nonAskExtractions.length} analyticsDatasetId={data.analyticsDatasetId} />
+      <ReportHeader recording={data.recording} qaPairCount={qaPairs.length} analyticsDatasetId={data.analyticsDatasetId} />
 
       <TabBar
         tab={tab}
         onChange={setTab}
         counts={{
-          qa: askExtractions.length,
-          appendix: nonAskExtractions.length,
+          qa: qaPairs.length,
           actions: actionItems.length,
           coverage: data.recording.coverage_report?.flagged_count ?? 0,
         }}
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
-        {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
@@ -196,13 +190,12 @@ function TabBar({
 }: {
   tab: Tab
   onChange: (t: Tab) => void
-  counts: { qa: number; appendix: number; actions: number; coverage: number }
+  counts: { qa: number; actions: number; coverage: number }
 }) {
   const tabs: Array<{ key: Tab; label: string; badge?: number }> = [
-    { key: 'qa',         label: 'Q&A summary',  badge: counts.qa },
-    { key: 'appendix',   label: 'Appendix',     badge: counts.appendix },
-    { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'coverage',   label: 'Coverage',     badge: counts.coverage },
+    { key: 'qa',         label: 'Q&A',          badge: counts.qa },
+    { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'transcript', label: 'Transcript' },
     { key: 'export',     label: 'Export & Share' },
   ]
@@ -241,12 +234,29 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
   onPlay: PlayHandler
 }) {
   const router = useRouter()
-  const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
+  // Typology filter — all pairs show by default; chips narrow to one typology.
+  const TYPOLOGY_ORDER = ['ask', 'clarification', 'complaint', 'commentary'] as const
+  const typeCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of extractions) {
+      const t = (e.payload as QaPairPayload)?.question_typology || 'ask'
+      m.set(t, (m.get(t) ?? 0) + 1)
+    }
+    return m
+  }, [extractions])
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const filtered = useMemo(
+    () => typeFilter === 'all'
+      ? extractions
+      : extractions.filter(e => ((e.payload as QaPairPayload)?.question_typology || 'ask') === typeFilter),
+    [extractions, typeFilter],
+  )
+  const grouped = useMemo(() => groupByTopic(filtered, agenda), [filtered, agenda])
   // "In order" = every pair in the sequence it was asked (start_sec, then the
   // analyzer's sort_order as a tiebreaker for missing timestamps).
   const ordered = useMemo(
-    () => [...extractions].sort((a, b) => (a.start_sec ?? Number.MAX_SAFE_INTEGER) - (b.start_sec ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order),
-    [extractions],
+    () => [...filtered].sort((a, b) => (a.start_sec ?? Number.MAX_SAFE_INTEGER) - (b.start_sec ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order),
+    [filtered],
   )
   const [sortMode, setSortMode] = useState<'topic' | 'order'>('topic')
   const [expandedAll, setExpandedAll] = useState(false)
@@ -287,8 +297,28 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
         </button>
       </div>
 
+      {typeCounts.size > 1 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-gray-400 mr-0.5">Type:</span>
+          {(['all', ...TYPOLOGY_ORDER.filter(t => typeCounts.has(t))] as string[]).map(t => {
+            const active = typeFilter === t
+            const n = t === 'all' ? extractions.length : typeCounts.get(t)
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTypeFilter(t)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+              >
+                {t === 'all' ? 'All' : t} <span className={active ? 'text-gray-300' : 'text-gray-400'}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {grouped.length === 0 && (
-        <EmptyState label="No 'ask' pairs extracted. Check the Appendix tab for clarifications and commentary." />
+        <EmptyState label="No Q&A pairs for this filter." />
       )}
 
       {sortMode === 'order' ? (
@@ -742,51 +772,6 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
   )
 }
 
-// ── Appendix tab ─────────────────────────────────────────────────────────────
-
-function AppendixTab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
-  recordingId: string
-  extractions: RecordingExtractionRow[]
-  agenda: string[]
-  onReplaced: (e: RecordingExtractionRow) => void
-  onPlay: PlayHandler
-}) {
-  const grouped = useMemo(() => groupByTopic(extractions, agenda), [extractions, agenda])
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-gray-500">
-        Pairs the model classified as <em>complaint</em>, <em>commentary</em>, or <em>clarification</em> — kept for completeness but not surfaced in the main Q&amp;A summary. Use Regenerate with an instruction like "this is actually an ask" to move a card back into the main summary.
-      </p>
-      {grouped.length === 0 && <EmptyState label="No appendix pairs." />}
-      {grouped.map(({ topic, items }) => (
-        <section key={topic}>
-          <h2 className="text-base font-bold text-gray-900 mb-2">
-            {topic} <span className="text-gray-400 text-sm font-normal">· {items.length}</span>
-          </h2>
-          <ul className="space-y-2">
-            {items.map(e => (
-              <QACard
-                key={e.id}
-                recordingId={recordingId}
-                extraction={e}
-                expanded={expanded.has(e.id)}
-                onToggle={() => setExpanded(prev => {
-                  const next = new Set(prev)
-                  if (next.has(e.id)) next.delete(e.id); else next.add(e.id)
-                  return next
-                })}
-                onReplaced={onReplaced}
-                onPlay={onPlay}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
-  )
-}
-
 // ── Action items tab ─────────────────────────────────────────────────────────
 
 function ActionItemsTab({ extractions }: { extractions: RecordingExtractionRow[] }) {
@@ -958,7 +943,7 @@ function CoverageTab({ recording, extractions, transcript }: { recording: Record
           <p className="text-sm text-gray-500">Nothing flagged — every extracted pair passed the curator.</p>
         ) : (
           <p className="text-sm text-gray-700">
-            {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} flagged — shown with a yellow background and a flag reason in whichever tab holds them ({'Q&A'} for asks, Appendix for clarifications / commentary / complaints).
+            {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} flagged for review — shown with a yellow background and a flag reason on the Q&amp;A tab (filter by typology to find them).
           </p>
         )}
       </section>
