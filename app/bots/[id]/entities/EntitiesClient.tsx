@@ -91,6 +91,13 @@ export default function EntitiesClient({
   const [editCanonical, setEditCanonical] = useState('')
   const [editAliases, setEditAliases] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
+  // Manual add-entity form.
+  const [addOpen, setAddOpen] = useState(false)
+  const [addCanonical, setAddCanonical] = useState('')
+  const [addAliases, setAddAliases] = useState('')
+  const [addCategory, setAddCategory] = useState('person')
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   async function reload(opts: { includeHidden?: boolean } = {}) {
     const url = '/api/bots/' + botId + '/entities' + (opts.includeHidden ? '?include_hidden=1' : '')
@@ -127,6 +134,31 @@ export default function EntitiesClient({
       setExtractMessage('Extract failed: ' + (e?.message || 'network error'))
     } finally {
       setExtracting(false)
+    }
+  }
+
+  async function addEntity() {
+    const canonical = addCanonical.trim()
+    if (!canonical) { setAddError('Name is required.'); return }
+    setAddSaving(true); setAddError(null)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          canonical,
+          aliases: addAliases.split(',').map(a => a.trim()).filter(Boolean),
+          category: addCategory,
+        }),
+      })
+      const d = await r.json()
+      if (d?.error) { setAddError(d.error); return }
+      setAddOpen(false); setAddCanonical(''); setAddAliases(''); setAddCategory('person')
+      await reload({ includeHidden: showHidden })
+    } catch (e: any) {
+      setAddError(e?.message || 'network error')
+    } finally {
+      setAddSaving(false)
     }
   }
 
@@ -203,6 +235,10 @@ export default function EntitiesClient({
           </div>
           <div className='flex gap-2'>
             <button
+              onClick={() => { setAddOpen(v => !v); setAddError(null) }}
+              className='px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50'
+            >+ Add entity</button>
+            <button
               onClick={runExtract}
               disabled={extracting}
               className='px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50'
@@ -213,6 +249,39 @@ export default function EntitiesClient({
             >View transcripts</Link>
           </div>
         </div>
+
+        {/* Manual add-entity form — manual rows survive re-extraction */}
+        {addOpen && (
+          <div className='mb-4 p-4 rounded-lg border border-emerald-200 bg-emerald-50/50'>
+            <div className='flex flex-wrap gap-3 items-end'>
+              <label className='flex flex-col gap-1'>
+                <span className='text-xs font-medium text-gray-600'>Name (canonical)</span>
+                <input value={addCanonical} onChange={e => setAddCanonical(e.target.value)} placeholder='e.g. Hatem Abou-Senna'
+                  className='border border-gray-300 rounded-lg px-3 py-2' style={{ fontSize: '16px', minWidth: 220 }} />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-xs font-medium text-gray-600'>Aliases / misspellings (comma-separated)</span>
+                <input value={addAliases} onChange={e => setAddAliases(e.target.value)} placeholder='Hatham, Hatham Abou-Senna'
+                  className='border border-gray-300 rounded-lg px-3 py-2' style={{ fontSize: '16px', minWidth: 260 }} />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-xs font-medium text-gray-600'>Category</span>
+                <select value={addCategory} onChange={e => setAddCategory(e.target.value)}
+                  className='border border-gray-300 rounded-lg px-3 py-2 bg-white' style={{ fontSize: '16px' }}>
+                  {['person', 'place', 'organization', 'product', 'program', 'event', 'policy', 'other'].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+              <button onClick={addEntity} disabled={addSaving}
+                className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
+              >{addSaving ? 'Adding…' : 'Add'}</button>
+              <button onClick={() => { setAddOpen(false); setAddError(null) }}
+                className='px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-white'
+              >Cancel</button>
+            </div>
+            <p className='text-xs text-gray-500 mt-2'>Manually-added entities are kept as <strong>manual</strong> — re-extraction never removes or overwrites them. Aliases also drive ASR spelling correction for this brand's recordings.</p>
+            {addError && <p className='text-xs text-red-600 mt-1'>{addError}</p>}
+          </div>
+        )}
 
         {/* Last-refresh strip */}
         {lastRefresh && (

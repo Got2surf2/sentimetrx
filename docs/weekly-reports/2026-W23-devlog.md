@@ -1,5 +1,15 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Agent entities: manual add (survives re-extraction)
+
+**Why**: You could edit/hide discovered entities on `/bots/[id]/entities`, but there was no way to *create* one the NER never caught (e.g. a panel member). The preservation half already existed — `entity_catalog.source='manual'` (sql/073), and both `entityDiscovery.ts` (dataset) + `botEntityExtraction.ts` (bot) skip/preserve manual rows — but the create path was missing for bot scope.
+
+**What changed**:
+- `app/api/bots/[id]/entities/route.ts` — new **`POST`**: creates an `entity_catalog` row (`scope_type='bot'`, `source='manual'`, slug via `slugify`). Idempotent: if the slug already exists (even hidden), it unhides it, flips to `manual`, and merges aliases instead of erroring — so "add" also rescues a hidden row. Same paired `(id, org_id)` gate as GET/PATCH.
+- `app/bots/[id]/entities/EntitiesClient.tsx` — "+ Add entity" button → inline form (name / aliases / category, 16px iOS-safe inputs). Note explains manual rows survive re-extraction and that aliases drive ASR spelling correction for the brand's recordings (§3.5c) — i.e. how to add "Hatem Abou-Senna" + the "Hatham" alias via UI instead of SQL.
+
+Manual rows are NEVER overwritten/removed by re-extraction (verified). Typecheck clean for these files; spec BOTS.md §9.y updated. **Local-only.** NOTE: the **dataset-scope** manual-add (`ExtractEntitiesPanel.tsx`) is being built in a **parallel session** (uncommitted, mid-edit, has its own tsc error) — left untouched; this is the bot/agent-scope counterpart.
+
 ## 2026-06-05 — Action-item transcript traceability + NOWOCATS entity alias
 
 **Why**: Action items had no link back to the transcript (synthesis creates them without timestamps), so a reviewer couldn't verify where each came from. And the panel member "Hatem Abou-Senna" kept rendering as ASR's "Hatham" — the canonical was in Sarina's catalog but had no alias to map the misspelling.

@@ -11,6 +11,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { slugify } from '@/lib/entityFilter'
+
+const ENTITY_FIELDS = 'id, canonical, slug, category, aliases, sample_count, source, hidden, first_seen_at, last_seen_at'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -66,4 +69,59 @@ export async function GET(req: NextRequest, props: Params) {
     hidden_count: hiddenCount || 0,
     last_refresh: lastRefresh || null,
   })
+}
+
+// POST — manually create an entity_catalog row (source='manual'). Manual rows
+// are NEVER overwritten or removed by re-discovery (lib/entityDiscovery.ts +
+// lib/botEntityExtraction.ts both skip/preserve source='manual'), so a curated
+// entity the NER never caught (e.g. a panel member) sticks. If the slug already
+// exists (even hidden), we unhide it, flip it to manual, and merge the aliases
+// rather than erroring — so "add" is idempotent and also rescues a hidden row.
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params
+  const supabase = await createClient()
+  const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
+  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && (bot as { org_id: string }).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const body = await req.json().catch(() => ({})) as { canonical?: unknown; aliases?: unknown; category?: unknown }
+  const canonical = typeof body.canonical === 'string' ? body.canonical.trim() : ''
+  if (!canonical) return NextResponse.json({ error: 'canonical is required' }, { status: 400 })
+  if (canonical.length > 200) return NextResponse.json({ error: 'canonical too long' }, { status: 400 })
+  const slug = slugify(canonical)
+  if (!slug) return NextResponse.json({ error: 'canonical must contain letters or numbers' }, { status: 400 })
+
+  const aliases = Array.isArray(body.aliases)
+    ? Array.from(new Set((body.aliases as unknown[]).map(a => String(a ?? '').trim()).filter(Boolean))).slice(0, 50)
+    : []
+  const category = typeof body.category === 'string' && body.category.trim() ? body.category.trim().slice(0, 40) : 'other'
+
+  // Existing row for this slug (incl. hidden)? Rescue + merge instead of duplicating.
+  const { data: existing } = await service
+    .from('entity_catalog')
+    .select('id, aliases')
+    .eq('scope_type', 'bot').eq('scope_id', params.id).eq('slug', slug)
+    .maybeSingle()
+
+  if (existing) {
+    const merged = Array.from(new Set([...((existing as { aliases: string[] }).aliases ?? []), ...aliases]))
+    const { data: updated, error } = await service
+      .from('entity_catalog')
+      .update({ canonical, aliases: merged, category, source: 'manual', hidden: false, last_seen_at: new Date().toISOString() })
+      .eq('id', (existing as { id: string }).id).eq('scope_type', 'bot').eq('scope_id', params.id)
+      .select(ENTITY_FIELDS).single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ entity: updated, merged: true })
+  }
+
+  const { data: created, error } = await service
+    .from('entity_catalog')
+    .insert({ scope_type: 'bot', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', hidden: false, sample_count: 0 })
+    .select(ENTITY_FIELDS).single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ entity: created })
 }
