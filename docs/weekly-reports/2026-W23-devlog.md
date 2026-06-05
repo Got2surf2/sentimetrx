@@ -1,5 +1,19 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Town Hall report: auditability overhaul (Coverage timeline, transcript marking, span tightening)
+
+**Why**: Auditing a recording's Q&A extraction was hard — the report mislabeled counts, the Coverage view was broken/confusing, and there was no way to see *where* in the meeting each Q&A came from or *what* the raw transcript said. Owner wanted the report to make extraction trustworthy at a glance, and flagged two recorded issues in `docs/RECORDINGS.md §3.6`.
+
+**What changed**:
+- **Q&A count fix** — the report header + Status page counted ALL extraction rows (incl. `action_item`) as "Q&A pairs" (showed 22 vs the real 17). Both now count `unit_type='qa_pair'` only. New **Action items** tab surfaces the 5 action items (were invisible in the UI, deck-only). `ReportClient.tsx`, `app/api/recordings/[id]/route.ts`.
+- **Coverage tab overhaul** — recomputes live from current pairs (excludes action items; self-heals without re-extract). Fixed the empty confidence histogram (CSS %-height collapse → px heights + count labels). New **meeting timeline**: one block per pair placed/sized by time, green/amber (clean/flagged), circled numbers, time axis, **click → transcript modal** (Q bold / A bold-italic).
+- **Transcript marking** — `lib/recordings/transcriptRoles.ts` `buildTranscriptRoles` maps each segment to question/answer via monotonic word-overlap; Transcript tab renders Q **bold** / A ***bold-italic*** / ignored plain. Verified the Q→A boundary lands correctly on Meeting 2.
+- **Issue 1 FIXED (per-topic false flag)** — `perTopic` reconciled agenda↔topic by exact string; curator's emergent casing split "Project timeline (0 ⚠)" from "Project Timeline (9)". Now normalized (`trim().toLowerCase()`). `lib/recordings/coverage.ts` + regression test.
+- **Issue 2 FIXED (overlapping timeline blocks)** — confirmed NOT a duplicate (#10/#11 are distinct Qs with overlapping Opus spans). Root-cause fix: `tightenSpansFromTranscript` re-anchors each pair's `start_sec/end_sec` to its matched segments' real ASR timestamps (global one-segment-one-pair assignment) at analyze-time — deterministic, $0, beats a second AI pass. On Meeting 2: #11 start 1443→1470, all overlaps gone (2 lanes → 1). `packLanes` lane-staggering kept as backstop for genuine simultaneity. `scripts/backfill-recording-spans.ts` tightens existing recordings (no AI; **run pending owner auth**).
+- **Timeline on all 4 surfaces** — shared `lib/recordings/timeline.ts` (geometry + lanes + HTML renderer) drives the Coverage tab, the public `/th` share page, the PDF report (`reportHtml.ts`), and the PPTX deck (`recordingDeck.ts`). External surfaces use a single brand colour and **never show the flagged state** (internal QC). Span columns + `source_duration_sec` threaded through the PDF + PPTX routes.
+
+Verified: 66 recordings unit tests pass (new: timeline, transcriptRoles incl. tightening, coverage casing); typecheck clean; PDF + PPTX timeline rendered to PNG and eyeballed (deck shows 17 numbered blocks, 1 lane, teal, Datanautix footer). Specs: `RECORDINGS.md §3.6` both issues marked fixed + §3.8/timeline. **Local-only — owner pushes.**
+
 ## 2026-06-04 — Town Hall cards: ℹ️ lifecycle progress popover
 
 **Why**: Owner — recordings don't require every step, so users get confused about what's done / what's optional. An at-a-glance progress checklist per recording.

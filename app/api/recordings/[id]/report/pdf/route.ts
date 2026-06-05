@@ -60,7 +60,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, analysis_summary, entity_map')
+    .select('id, org_id, name, meeting_date, location, status, analysis_summary, entity_map, source_duration_sec')
     .eq('id', recording_id)
     .single()
   // 404 (not 403) on cross-org so we don't confirm the row exists. THE gate.
@@ -77,7 +77,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const [extractionsRes, transcriptRes] = await Promise.all([
     service
       .from('recording_extractions')
-      .select('unit_type, topic, payload, sort_order')
+      .select('unit_type, topic, payload, sort_order, start_sec, end_sec')
       .eq('recording_id', recording_id)
       .eq('org_id', rec.org_id)
       .order('sort_order', { ascending: true }),
@@ -104,11 +104,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     location: rec.location,
     summary: (rec.analysis_summary ?? null) as RecordingAnalysisSummary | null,
     pairs: (extractionsRes.data ?? []) as unknown as Array<
-      Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order'>
+      Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order' | 'start_sec' | 'end_sec'>
     >,
     transcript,
     entityMap: (rec.entity_map ?? null) as EntityMap | null,
     includeTranscript,
+    source_duration_sec: (rec as { source_duration_sec?: number | null }).source_duration_sec ?? null,
   })
 
   const puppeteer = (await import('puppeteer-core')).default

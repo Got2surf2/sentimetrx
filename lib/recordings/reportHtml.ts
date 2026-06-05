@@ -21,6 +21,7 @@ import type {
 } from '@/lib/recordings/types'
 import { normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
+import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
 
 const TEAL = '#0f766e'
 const ORANGE = '#c2410c'
@@ -59,12 +60,14 @@ export interface TownHallReportInput {
   meeting_date: string | null
   location: string | null
   summary: RecordingAnalysisSummary | null
-  pairs: Array<Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order'>>
+  pairs: Array<Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order' | 'start_sec' | 'end_sec'>>
   /** Raw ASR segments + vendor; only used when includeTranscript is true. */
   transcript: { vendor: string; segments: TranscriptSegment[] } | null
   /** Reviewed entity map — drives the spelling-corrected transcript view. */
   entityMap: EntityMap | null
   includeTranscript: boolean
+  /** Meeting length — anchors the timeline bar; falls back to last pair end. */
+  source_duration_sec?: number | null
 }
 
 // One Q&A card — mirrors the /th page's question/response block.
@@ -151,6 +154,10 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     ? `<section class="overview"><h2 class="ov-h">Overview</h2><p class="ov-p">${esc(summary.executive_summary)}</p></section>`
     : ''
 
+  // Meeting timeline summary bar (single brand colour — flagged state is internal).
+  const tlModel = buildTimelineModel(pairs, input.source_duration_sec ?? null)
+  const timeline = tlModel ? renderTimelineHtml(tlModel, TEAL) : ''
+
   return (
     `<!doctype html><html><head><meta charset="utf-8"><style>` +
     `@page{margin:14mm 12mm}` +
@@ -179,6 +186,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `</style></head><body><div class="wrap">` +
     `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}</header>` +
     overview +
+    timeline +
     `<section>${topics}</section>` +
     transcriptSection(input) +
     `<footer class="foot">Prepared by ${DN_WORDMARK}  ·  datanautix.com</footer>` +

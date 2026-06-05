@@ -44,6 +44,7 @@ import type {
   EntityMap,
 } from '@/lib/recordings/types'
 import { glossaryFromEntities } from '@/lib/recordings/entities'
+import { tightenSpansFromTranscript } from '@/lib/recordings/transcriptRoles'
 
 const OPUS_MODEL = 'claude-opus-4-7'
 const SONNET_MODEL = 'claude-sonnet-4-6'
@@ -170,6 +171,19 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
       sort_order: i,
     }
   })
+
+  // Tighten each pair's span to the REAL transcript timestamps of the segments
+  // it matches. Opus' start/end estimates overlap for back-to-back exchanges;
+  // anchoring to the ASR de-overlaps the timeline + keeps the click-to-transcript
+  // modal from pulling a neighbour's segments. Deterministic; per-pair fallback
+  // to the estimate when nothing matches. (docs/RECORDINGS.md §3.6 issue 2)
+  if (input.transcript.length > 0) {
+    const tightened = tightenSpansFromTranscript(input.transcript, extractions)
+    extractions.forEach((e, i) => {
+      const t = tightened[i]
+      if (t) { e.start_sec = t.start_sec; e.end_sec = t.end_sec }
+    })
+  }
 
   // ── Pass 3: synthesis — exec summary, per-topic, decisions, action items ───
   // Runs over ALL Q&A pairs (including flagged-for-review ones) so the deck's

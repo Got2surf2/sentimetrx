@@ -19,12 +19,16 @@ import type {
   RecordingTranscriptRow,
   RecordingExtractionRow,
   QaPairPayload,
+  ActionItemPayload,
   TranscriptSegment,
   QaSetupInputs,
   EntityMap,
 } from '@/lib/recordings/types'
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
+import { computeCoverage } from '@/lib/recordings/coverage'
+import { buildTranscriptRoles } from '@/lib/recordings/transcriptRoles'
+import { packLanes, laneTop, barHeight, LANE_H } from '@/lib/recordings/timeline'
 
 // A request to open the audio modal at a given point. `nonce` forces a re-seek
 // even when two Play buttons share the same start_sec.
@@ -46,12 +50,12 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
-type Tab = 'qa' | 'appendix' | 'coverage' | 'transcript' | 'export'
+type Tab = 'qa' | 'appendix' | 'actions' | 'coverage' | 'transcript' | 'export'
 
 const HERMES = '#E8632A'
 
 export default function ReportClient({ data }: { data: ReportData }) {
-  const [tab, setTab] = useState<Tab>('qa')
+  const [tab, setTab] = useState<Tab>('coverage')
 
   // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
   // replaces individual rows in place, so we keep state here and rebuild
@@ -78,6 +82,13 @@ export default function ReportClient({ data }: { data: ReportData }) {
     return { askExtractions: ask, nonAskExtractions: nonAsk }
   }, [extractions])
 
+  // Action items are a separate unit_type (no question/answer) — synthesis pulls
+  // them from the discussion. Surfaced in their own tab + the deck, not the Q&A.
+  const actionItems = useMemo(
+    () => extractions.filter(e => e.unit_type === 'action_item'),
+    [extractions],
+  )
+
   const agenda = useMemo(() => {
     const setup = data.recording.setup_inputs as Partial<QaSetupInputs>
     return Array.isArray(setup?.agenda) ? setup.agenda : []
@@ -98,7 +109,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      <ReportHeader recording={data.recording} extractionCount={extractions.length} analyticsDatasetId={data.analyticsDatasetId} />
+      <ReportHeader recording={data.recording} qaPairCount={askExtractions.length + nonAskExtractions.length} analyticsDatasetId={data.analyticsDatasetId} />
 
       <TabBar
         tab={tab}
@@ -106,6 +117,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         counts={{
           qa: askExtractions.length,
           appendix: nonAskExtractions.length,
+          actions: actionItems.length,
           coverage: data.recording.coverage_report?.flagged_count ?? 0,
         }}
       />
@@ -113,8 +125,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={askExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
         {tab === 'appendix' && <AppendixTab recordingId={recordingId} extractions={nonAskExtractions} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
-        {tab === 'coverage' && <CoverageTab recording={data.recording} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} onPlay={playAt} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} />}
+        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} />}
+        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
         {tab === 'export' && (
           <ExportTab
             recordingId={recordingId}
@@ -142,7 +155,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
-function ReportHeader({ recording, extractionCount, analyticsDatasetId }: { recording: RecordingRow; extractionCount: number; analyticsDatasetId: string | null }) {
+function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recording: RecordingRow; qaPairCount: number; analyticsDatasetId: string | null }) {
   return (
     <header className="flex items-baseline justify-between">
       <div>
@@ -152,7 +165,7 @@ function ReportHeader({ recording, extractionCount, analyticsDatasetId }: { reco
           {recording.meeting_date ?? 'No date'}
           {recording.location ? ` · ${recording.location}` : ''}
           {' · '}
-          {extractionCount} Q&amp;A pair{extractionCount === 1 ? '' : 's'}
+          {qaPairCount} Q&amp;A pair{qaPairCount === 1 ? '' : 's'}
           {recording.source_duration_sec ? ` · ${formatDuration(recording.source_duration_sec)} audio` : ''}
           {recording.asr_vendor_chosen ? ` · transcribed by ${recording.asr_vendor_chosen}` : ''}
         </p>
@@ -183,12 +196,13 @@ function TabBar({
 }: {
   tab: Tab
   onChange: (t: Tab) => void
-  counts: { qa: number; appendix: number; coverage: number }
+  counts: { qa: number; appendix: number; actions: number; coverage: number }
 }) {
   const tabs: Array<{ key: Tab; label: string; badge?: number }> = [
-    { key: 'qa',         label: 'Q&A summary', badge: counts.qa },
-    { key: 'appendix',   label: 'Appendix',    badge: counts.appendix },
-    { key: 'coverage',   label: 'Coverage',    badge: counts.coverage },
+    { key: 'qa',         label: 'Q&A summary',  badge: counts.qa },
+    { key: 'appendix',   label: 'Appendix',     badge: counts.appendix },
+    { key: 'actions',    label: 'Action items', badge: counts.actions },
+    { key: 'coverage',   label: 'Coverage',     badge: counts.coverage },
     { key: 'transcript', label: 'Transcript' },
     { key: 'export',     label: 'Export & Share' },
   ]
@@ -773,16 +787,135 @@ function AppendixTab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
   )
 }
 
+// ── Action items tab ─────────────────────────────────────────────────────────
+
+function ActionItemsTab({ extractions }: { extractions: RecordingExtractionRow[] }) {
+  if (extractions.length === 0) return <EmptyState label="No action items extracted." />
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        Follow-ups and commitments the synthesis pass pulled from the discussion. These are not Q&amp;A pairs — they also appear in the exported deck, and never on the public Q&amp;A link.
+      </p>
+      <ul className="space-y-2">
+        {extractions.map(e => {
+          const p = e.payload as ActionItemPayload
+          return (
+            <li key={e.id} className="border border-gray-200 rounded-xl p-4 bg-white">
+              <p className="text-sm text-gray-900">{p.description}</p>
+              {(p.related_agenda_item || p.owner || p.due_date) && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {p.related_agenda_item && (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
+                  )}
+                  {p.owner && (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {p.owner}</span>
+                  )}
+                  {p.due_date && (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {p.due_date}</span>
+                  )}
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 // ── Coverage tab ─────────────────────────────────────────────────────────────
 
-function CoverageTab({ recording }: { recording: RecordingRow }) {
-  const cr = recording.coverage_report
-  if (!cr) {
-    return <EmptyState label="No coverage report computed yet." />
-  }
+function CoverageTab({ recording, extractions, transcript }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null }) {
+  const qaPairs = useMemo(
+    () => extractions.filter(e => e.unit_type === 'qa_pair'),
+    [extractions],
+  )
+  const segments = useMemo(() => (transcript?.segments ?? []) as TranscriptSegment[], [transcript])
+  const [modal, setModal] = useState<{ pair: RecordingExtractionRow; index: number } | null>(null)
+  // Recompute coverage live from the current Q&A pairs — excludes action items
+  // (which would spike the histogram + inflate totals) and reflects regenerated
+  // pairs without needing a re-extract. NewExtraction is a subset of the row.
+  const cr = useMemo(
+    () => computeCoverage({
+      setup_inputs: recording.setup_inputs,
+      extractions: qaPairs,
+      source_duration_sec: recording.source_duration_sec,
+    }),
+    [recording.setup_inputs, recording.source_duration_sec, qaPairs],
+  )
+
+  if (qaPairs.length === 0) return <EmptyState label="No Q&A pairs to analyze yet." />
+
   const maxTopicCount = Math.max(1, ...cr.per_topic.map(t => t.count))
+  const histMax = Math.max(1, ...cr.confidence_histogram.map(x => x.count))
+  const durationSec = recording.source_duration_sec && recording.source_duration_sec > 0
+    ? recording.source_duration_sec
+    : Math.max(1, ...qaPairs.map(p => p.end_sec ?? 0))
+  const timed = qaPairs
+    .filter(p => typeof p.start_sec === 'number')
+    .sort((a, b) => (a.start_sec as number) - (b.start_sec as number))
+  // Stagger overlapping pairs into lanes so a block never hides another's number.
+  const { lanes, laneCount } = packLanes(timed.map(p => ({ start: p.start_sec as number, end: p.end_sec ?? (p.start_sec as number) })))
+  // Six evenly-spaced time ticks across the meeting for the axis.
+  const axisTicks = Array.from({ length: 6 }, (_, i) => Math.round((durationSec * i) / 5))
+
   return (
     <div className="space-y-6">
+      <section>
+        <h2 className="text-base font-bold text-gray-900 mb-2">
+          Meeting timeline <span className="text-gray-400 text-sm font-normal">· {timed.length} Q&amp;A across {formatDuration(durationSec)}</span>
+        </h2>
+        <div className="relative">
+          <div className="relative bg-gray-100 rounded" style={{ height: barHeight(laneCount) }}>
+            {timed.map((p, i) => {
+              const start = p.start_sec as number
+              const end = p.end_sec ?? start
+              const left = (start / durationSec) * 100
+              const widthPct = Math.max(1.2, ((end - start) / durationSec) * 100)
+              const color = p.flagged_for_review ? '#F59E0B' : '#16A34A'
+              const q = (p.payload as QaPairPayload)?.question ?? ''
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setModal({ pair: p, index: i + 1 })}
+                  className="absolute flex items-center justify-center gap-1 rounded-sm border border-white box-border hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 transition-shadow"
+                  style={{ top: laneTop(lanes[i]), height: LANE_H, left: `${left}%`, width: `${widthPct}%`, backgroundColor: color }}
+                  title={`#${i + 1} · ${formatTime(start)}–${formatTime(end)} (${formatDuration(end - start)}) — ${q}`}
+                >
+                  <span
+                    className="rounded-full bg-white flex items-center justify-center font-bold shadow-sm leading-none shrink-0"
+                    style={{ width: 16, height: 16, fontSize: 9, color }}
+                  >
+                    {i + 1}
+                  </span>
+                  {widthPct >= 6 && (
+                    <span className="text-white font-semibold whitespace-nowrap leading-none" style={{ fontSize: 9 }}>
+                      {formatDuration(end - start)}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          {/* time axis */}
+          <div className="relative h-4 mt-1">
+            {axisTicks.map(t => (
+              <span
+                key={t}
+                className="absolute -translate-x-1/2 text-[10px] text-gray-400 font-mono"
+                style={{ left: `${(t / durationSec) * 100}%` }}
+              >
+                {formatTime(t)}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="text-xs text-gray-500 mt-1">
+          Each block is a Q&amp;A pair, placed + sized by when it occurred — <span className="font-semibold" style={{ color: '#16A34A' }}>green</span> = clean, <span className="font-semibold" style={{ color: '#F59E0B' }}>amber</span> = flagged for review. Click a block to read its transcript; blank gaps = no extraction.
+        </div>
+      </section>
+
       <section>
         <h2 className="text-base font-bold text-gray-900 mb-2">Per-topic density</h2>
         <ul className="space-y-1">
@@ -802,19 +935,19 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
 
       <section>
         <h2 className="text-base font-bold text-gray-900 mb-2">Confidence histogram</h2>
-        <div className="grid grid-cols-10 gap-1 items-end h-24">
+        <div className="grid grid-cols-10 gap-1 items-end">
           {cr.confidence_histogram.map(b => {
-            const max = Math.max(1, ...cr.confidence_histogram.map(x => x.count))
-            const h = Math.round((b.count / max) * 100)
+            const h = b.count === 0 ? 0 : Math.max(6, Math.round((b.count / histMax) * 80))
             return (
-              <div key={b.bucket} className="flex flex-col items-center">
-                <div className="w-full bg-orange-300" style={{ height: `${h}%` }} title={`${b.bucket}: ${b.count}`} />
+              <div key={b.bucket} className="flex flex-col items-center justify-end">
+                <span className="text-[10px] text-gray-600 mb-0.5 h-3 leading-none">{b.count > 0 ? b.count : ''}</span>
+                <div className="w-full bg-orange-300 rounded-t" style={{ height: `${h}px` }} title={`${b.bucket}: ${b.count}`} />
                 <span className="text-[10px] text-gray-400 mt-1">{b.bucket.slice(0, 3)}</span>
               </div>
             )
           })}
         </div>
-        <div className="text-xs text-gray-500 mt-2">Pairs grouped by confidence; left edge = least confident.</div>
+        <div className="text-xs text-gray-500 mt-2">Q&amp;A pairs grouped by extraction confidence; left edge = least confident.</div>
       </section>
 
       <section>
@@ -841,13 +974,77 @@ function CoverageTab({ recording }: { recording: RecordingRow }) {
           <div className="text-xs text-gray-500 mt-1">Stretches ≥ 5 minutes with no extraction. May indicate missed pairs or genuine quiet (panel monologue, technical breaks).</div>
         </section>
       )}
+
+      {modal && (
+        <TimelineExcerptModal
+          pair={modal.pair}
+          index={modal.index}
+          segments={segments}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Click-through from a timeline block → the verbatim transcript for that Q&A
+// span, with the same question-bold / answer-bold-italic overlay.
+function TimelineExcerptModal({ pair, index, segments, onClose }: {
+  pair: RecordingExtractionRow
+  index: number
+  segments: TranscriptSegment[]
+  onClose: () => void
+}) {
+  const start = pair.start_sec ?? 0
+  const end = pair.end_sec ?? start
+  const inSpan = useMemo(
+    () => segments.filter(s => s.start >= start - 1 && s.start <= end + 1).sort((a, b) => a.start - b.start),
+    [segments, start, end],
+  )
+  const roles = useMemo(() => buildTranscriptRoles(inSpan, [pair]), [inSpan, pair])
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <span
+              className="rounded-full text-white flex items-center justify-center font-bold shrink-0"
+              style={{ width: 20, height: 20, fontSize: 11, backgroundColor: pair.flagged_for_review ? '#F59E0B' : '#16A34A' }}
+            >
+              {index}
+            </span>
+            {formatTime(start)} → {formatTime(end)}
+            {pair.flagged_for_review && <span className="text-xs font-normal text-yellow-700">⚠ flagged for review</span>}
+          </h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+        </div>
+        {inSpan.length === 0 ? (
+          <p className="text-sm text-gray-500">Transcript segments for this span aren&apos;t available.</p>
+        ) : (
+          <ol className="space-y-1.5">
+            {inSpan.map((s, i) => {
+              const role = roles.get(s.start)
+              const cls = role === 'question' ? 'font-bold text-gray-900'
+                : role === 'answer' ? 'font-bold italic text-gray-900'
+                : 'text-gray-600'
+              return (
+                <li key={i} className="text-sm flex gap-2">
+                  <span className="font-mono text-xs text-gray-400 shrink-0 pt-0.5">{formatTime(s.start)}</span>
+                  <span className={cls}>{s.text}</span>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+        <p className="text-xs text-gray-400 mt-3"><span className="font-bold">Bold</span> = question · <span className="font-bold italic">bold italic</span> = answer. Verbatim transcript.</p>
+      </div>
     </div>
   )
 }
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; onPlay: PlayHandler }) {
+function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
@@ -855,6 +1052,9 @@ function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: Recordin
     () => (transcript?.segments ?? []) as TranscriptSegment[],
     [transcript],
   )
+  // Audit overlay: which segments became an extracted Q&A pair (question vs
+  // answer), keyed by segment start. Plain segments weren't extracted.
+  const roles = useMemo(() => buildTranscriptRoles(segments, extractions), [segments, extractions])
   // Corrected view = deterministic variant→canonical from the entity map. Only
   // meaningful when there's something to replace. The raw ASR is never mutated;
   // this derives the corrected view on read (the two-transcripts model).
@@ -906,6 +1106,11 @@ function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: Recordin
           ? <>Spelling-corrected view — names normalized to the reviewed spellings. The raw ASR (record of truth, {transcript.vendor}) is unchanged — switch to “Raw” to see it.</>
           : <>Record of truth — verbatim ASR output ({transcript.vendor}). Never edited by AI.</>}
       </p>
+      {roles.size > 0 && (
+        <p className="text-xs text-gray-500">
+          Audit overlay: <span className="font-bold text-gray-900">bold</span> = extracted question · <span className="font-bold italic text-gray-900">bold italic</span> = answer · plain = not extracted into a Q&amp;A pair.
+        </p>
+      )}
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
         {filtered.map((s, i) => (
           <li key={i} className="py-2 text-sm flex items-start gap-3 group">
@@ -918,7 +1123,13 @@ function TranscriptTab({ transcript, entityMap, onPlay }: { transcript: Recordin
               ▶ {formatTime(s.start)}
             </button>
             {s.speaker && <span className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5">{s.speaker}</span>}
-            <span className="text-gray-800">{highlight(s.text, search)}</span>
+            {(() => {
+              const role = roles.get(s.start)
+              const cls = role === 'question' ? 'font-bold text-gray-900'
+                : role === 'answer' ? 'font-bold italic text-gray-900'
+                : 'text-gray-800'
+              return <span className={cls}>{highlight(s.text, search)}</span>
+            })()}
           </li>
         ))}
       </ol>

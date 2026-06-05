@@ -19,6 +19,7 @@
 
 import 'server-only'
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill, trunc } from '@/lib/pptx/shared'
+import { buildTimelineModel } from '@/lib/recordings/timeline'
 import type {
   RecordingExtractionRow,
   RecordingAnalysisSummary,
@@ -45,6 +46,7 @@ export interface RecordingDeckInput {
   proceedings_summary?: ProceedingsSummary | null   // presentation overview (meeting tool)
   meeting_profile?: MeetingProfile | null
   extractions: RecordingExtractionRow[]   // qa_pair + action_item, any order
+  source_duration_sec?: number | null     // anchors the meeting-timeline slide
   // Use the public-shareable polished question/answer in the appendix when
   // available (falls back to verbatim per-pair). Default true — the deck is the
   // client deliverable. Pass false to render the raw verbatim transcript quotes.
@@ -339,6 +341,43 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
       footer(s, pptx, name)
     }
+  }
+
+  // ── Meeting timeline ── one block per Q&A pair, placed by when it occurred.
+  // Overlapping Opus spans are de-overlapped upstream (analyze-time tightening),
+  // and any residual overlap staggers into lanes. Single brand colour — the
+  // internal "flagged" state is never shown on the client deck.
+  const tlModel = buildTimelineModel(qaPairs, input.source_duration_sec ?? null)
+  if (tlModel) {
+    const s = pptx.addSlide()
+    bgFill(s, pptx)
+    hdr(s, pptx, 'Meeting Timeline')
+    logoRight(s)
+    s.addText(`${tlModel.count} questions across ${tlModel.durationLabel}`, { x: PAD, y: CY + 0.2, w: W - PAD * 2, h: 0.4, fontSize: 12, color: DN.slateDark })
+
+    const barW = W - PAD * 2
+    const laneH = 0.34
+    const laneGap = 0.1
+    const trackY = CY + 1.2
+    const trackH = tlModel.laneCount * laneH + (tlModel.laneCount - 1) * laneGap
+    s.addShape(pptx.ShapeType.rect, { x: PAD, y: trackY, w: barW, h: trackH, fill: { color: DN.slateLight }, line: { width: 0 }, rectRadius: 0.04 })
+
+    for (const seg of tlModel.segments) {
+      const x = PAD + (seg.leftPct / 100) * barW
+      const w = Math.max(0.2, (seg.widthPct / 100) * barW)
+      const y = trackY + seg.lane * (laneH + laneGap)
+      s.addShape(pptx.ShapeType.rect, { x, y, w, h: laneH, fill: { color: DN.teal }, line: { color: DN.white, width: 1 }, rectRadius: 0.03 })
+      const cD = 0.2
+      s.addShape(pptx.ShapeType.ellipse, { x: x + 0.03, y: y + (laneH - cD) / 2, w: cD, h: cD, fill: { color: DN.white }, line: { width: 0 } })
+      s.addText(String(seg.index), { x: x + 0.03, y: y + (laneH - cD) / 2, w: cD, h: cD, fontSize: 8, bold: true, color: DN.teal, align: 'center', valign: 'middle' })
+    }
+
+    const axisY = trackY + trackH + 0.08
+    for (const t of tlModel.ticks) {
+      s.addText(t.label, { x: PAD + (t.pct / 100) * barW - 0.4, y: axisY, w: 0.8, h: 0.22, fontSize: 9, color: DN.slate, align: 'center' })
+    }
+    s.addText('Each block is a Q&A pair, placed + sized by when it occurred in the meeting.', { x: PAD, y: axisY + 0.35, w: W - PAD * 2, h: 0.3, fontSize: 10, italic: true, color: DN.slate })
+    footer(s, pptx, name)
   }
 
   // ── Slide 4+: Conversation themes (2 cards / slide) ──

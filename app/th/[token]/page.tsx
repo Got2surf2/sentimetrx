@@ -13,6 +13,7 @@ import { notFound } from 'next/navigation'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import type { RecordingAnalysisSummary, QaPairPayload, RecordingExtractionRow } from '@/lib/recordings/types'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
+import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   const service = createServiceRoleClient()
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary')
+    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary, source_duration_sec')
     .eq('share_token', token)
     .maybeSingle()
 
@@ -40,13 +41,16 @@ export default async function PublicTownHallReport({ params }: { params: Promise
 
   const { data: rows } = await service
     .from('recording_extractions')
-    .select('unit_type, topic, payload, sort_order')
+    .select('unit_type, topic, payload, sort_order, start_sec, end_sec')
     .eq('recording_id', rec.id)
     .eq('org_id', rec.org_id)
     .order('sort_order', { ascending: true })
 
-  const pairs = ((rows ?? []) as Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order'>[])
+  const pairs = ((rows ?? []) as Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order' | 'start_sec' | 'end_sec'>[])
     .filter(e => e.unit_type === 'qa_pair')
+
+  // Meeting timeline summary bar (single brand colour — internal flags never shown).
+  const tlModel = buildTimelineModel(pairs, (rec as { source_duration_sec?: number | null }).source_duration_sec ?? null)
 
   const summary = (rec.analysis_summary ?? null) as RecordingAnalysisSummary | null
 
@@ -70,6 +74,12 @@ export default async function PublicTownHallReport({ params }: { params: Promise
           <section className="mb-8 rounded-2xl bg-white border border-slate-200 p-5">
             <h2 className="text-sm font-bold text-slate-700 mb-2">Overview</h2>
             <p className="text-[15px] leading-relaxed text-slate-700 whitespace-pre-wrap">{summary.executive_summary}</p>
+          </section>
+        )}
+
+        {tlModel && (
+          <section className="mb-8 rounded-2xl bg-white border border-slate-200 p-5">
+            <div dangerouslySetInnerHTML={{ __html: renderTimelineHtml(tlModel, '#0f766e') }} />
           </section>
         )}
 

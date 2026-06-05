@@ -29,7 +29,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, analysis_summary, proceedings_summary, meeting_profile')
+    .select('id, org_id, name, meeting_date, location, status, analysis_summary, proceedings_summary, meeting_profile, source_duration_sec')
     .eq('id', recording_id)
     .single()
   // 404 (not 403) on cross-org so we don't confirm the row exists. THE gate.
@@ -55,6 +55,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     proceedings_summary: (rec.proceedings_summary ?? null) as any,
     meeting_profile: (rec.meeting_profile ?? null) as any,
     extractions: (extractions ?? []) as unknown as RecordingExtractionRow[],
+    source_duration_sec: (rec as { source_duration_sec?: number | null }).source_duration_sec ?? null,
   })
 
   // Fire-and-forget download log for /admin/decks + DD parity.

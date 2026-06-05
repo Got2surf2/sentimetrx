@@ -133,7 +133,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       .from('recording_extractions')
       .select('id', { count: 'exact', head: true })
       .eq('recording_id', recording_id)
-      .eq('org_id', org_id),
+      .eq('org_id', org_id)
+      .eq('unit_type', 'qa_pair'),   // "Q&A pairs" excludes action_item rows (deck-only)
   ])
 
   // Don't leak share_token to non-owners. Owners get the share state; everyone

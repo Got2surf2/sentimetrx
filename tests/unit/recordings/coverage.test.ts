@@ -48,6 +48,23 @@ describe('computeCoverage — per_topic', () => {
     expect(budget).toEqual({ topic: 'Budget', count: 0, flagged: true })
   })
 
+  // §3.6 known issue 1: curator emits emergent topic labels whose casing/
+  // whitespace drifts from the agenda; exact-match split them into a false
+  // "0 / flagged" agenda row + a separate real row. Normalized matching collapses
+  // them into ONE canonical-labelled row.
+  it('reconciles agenda topics to extraction topics by normalized casing', () => {
+    const r = computeCoverage(input({
+      setup_inputs: { panel: [], agenda: ['Project timeline'] },
+      extractions: [
+        extraction({ topic: 'Project Timeline' }),
+        extraction({ topic: 'project timeline ' }),
+      ],
+    }))
+    const rows = r.per_topic.filter(t => t.topic.toLowerCase().includes('project'))
+    expect(rows).toHaveLength(1)                          // not split into two
+    expect(rows[0]).toEqual({ topic: 'Project timeline', count: 2, flagged: false })
+  })
+
   it('appends non-agenda topics without flagging and maps null topic to "Other"', () => {
     const r = computeCoverage(input({
       extractions: [extraction({ topic: null }), extraction({ topic: 'Surprise' })],

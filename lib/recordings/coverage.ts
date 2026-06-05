@@ -24,7 +24,11 @@ const GAP_THRESHOLD_SEC = 5 * 60          // ≥5 minutes with 0 extractions = g
 const HISTOGRAM_BUCKETS = 10              // 0.0-0.1, 0.1-0.2, ..., 0.9-1.0
 
 export function computeCoverage(input: CoverageInput): CoverageReport {
-  const { extractions } = input
+  // Coverage describes Q&A extraction across the meeting. action_item rows are
+  // synthesis-derived (confidence 0, no real time span, no topic) — counting
+  // them pollutes the confidence histogram with a fake low-confidence spike and
+  // inflates the totals. Only qa_pairs represent meeting coverage.
+  const extractions = input.extractions.filter(e => e.unit_type === 'qa_pair')
   const agenda = topicsFromSetup(input.setup_inputs)
 
   return {
@@ -43,21 +47,37 @@ function topicsFromSetup(setup: SetupInputs | Record<string, unknown>): string[]
 }
 
 function perTopic(extractions: NewExtraction[], agenda: string[]): CoverageReport['per_topic'] {
-  // Count by topic across the supplied agenda. Topics not in the agenda
-  // (like "Other") are also counted but never marked flagged.
+  // Count by topic, reconciling agenda topics to extraction topics by a
+  // NORMALIZED key (trim + lowercase). Extraction is topic-agnostic and the
+  // curator emits *emergent* labels whose casing/whitespace drifts from the raw
+  // agenda strings — so exact-equality matching split e.g. agenda "Project
+  // timeline" (→ false ⚠️ "0 / flagged") from the real "Project Timeline" (9)
+  // into two rows. Normalizing collapses them; we emit the canonical agenda
+  // label and only append a topic in the second loop when it's genuinely absent
+  // from the agenda after normalization. (docs/RECORDINGS.md §3.6 known issue 1)
+  const norm = (t: string) => t.trim().toLowerCase()
   const counts = new Map<string, number>()
   for (const e of extractions) {
-    const t = e.topic ?? 'Other'
-    counts.set(t, (counts.get(t) ?? 0) + 1)
+    const k = norm(e.topic ?? 'Other')
+    counts.set(k, (counts.get(k) ?? 0) + 1)
   }
   const out: CoverageReport['per_topic'] = []
+  const agendaKeys = new Set<string>()
   for (const topic of agenda) {
-    const count = counts.get(topic) ?? 0
-    out.push({ topic, count, flagged: count === 0 })
+    const k = norm(topic)
+    agendaKeys.add(k)
+    const count = counts.get(k) ?? 0
+    out.push({ topic, count, flagged: count === 0 })   // canonical agenda label
   }
-  // Append non-agenda topics ("Other", anything else) without flagging.
-  for (const [topic, count] of Array.from(counts.entries())) {
-    if (!agenda.includes(topic)) out.push({ topic, count, flagged: false })
+  // Append emergent / non-agenda topics ("Other", etc.) once, keeping their
+  // display casing, never flagged.
+  const appended = new Set<string>()
+  for (const e of extractions) {
+    const label = e.topic ?? 'Other'
+    const k = norm(label)
+    if (agendaKeys.has(k) || appended.has(k)) continue
+    appended.add(k)
+    out.push({ topic: label, count: counts.get(k) ?? 0, flagged: false })
   }
   return out
 }
