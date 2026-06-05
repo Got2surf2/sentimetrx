@@ -379,12 +379,10 @@ Return ONLY JSON, no markdown:
   } catch { return empty }
 }
 
-// ── Open-question validation (filters false positives, adds context) ─────────
-// logged_questions captures liberally (any uncertain reply), so the raw log is
-// full of non-questions: acks ("yes"), context the user shared, fragments,
-// chip taps. We pull the agent's preceding line for context and AI-validate
-// each as a genuine unanswered question, restating it cleanly.
-interface QVerdict { valid: boolean; restated: string; reason: string }
+// ── Open-question context helpers ────────────────────────────────────────────
+// The report shows each open question with the agent line just before it (what
+// teed it up) and just after (how the agent answered/flubbed it). No AI cleanup
+// of the queue — it's curated by hand on the Questions page.
 
 function findPriorAgentLine(sessions: Map<string, Turn[]>, sessionId: string, userMessage: string): string {
   const ts = sessions.get(sessionId)
@@ -409,25 +407,6 @@ function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string
   if (idx < 0) return ''
   for (let j = idx + 1; j < ts.length; j++) if (ts[j].role === 'assistant') return ts[j].content_en || ts[j].content || ''
   return ''
-}
-
-async function validateOpenQuestions(botId: string, botName: string, items: { question: string; context: string }[]): Promise<QVerdict[]> {
-  if (items.length === 0) return []
-  const lines = items.map((it, i) => `[${i}] AGENT SAID BEFORE: ${(it.context || '(nothing)').slice(0, 220)}\n    USER MESSAGE: ${it.question.slice(0, 300)}`).join('\n')
-  const res = await callAI({
-    tier: 'fast', maxTokens: 1300, timeoutMs: 35000,
-    system: `These USER messages were each flagged as "a question ${botName} could not answer." Many are FALSE POSITIVES — acknowledgements ("yes", "ok"), statements like "I'm here to learn", context the user shared about themselves, location fragments, or the agent's own text. Using the agent's preceding line as context, decide for each whether it is genuinely a question or request the agent failed to answer.
-Return ONLY a JSON array, no markdown:
-[{"i":0,"valid":true|false,"restated":"one-sentence clean restatement of the real question (empty string if not valid)","reason":"short why"}]`,
-    messages: [{ role: 'user', content: lines }],
-  })
-  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_validate_q' }, res.usage)
-  let parsed: any[] = []
-  try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
-  return items.map((_it, i) => {
-    const p = parsed.find((x: any) => x && x.i === i) || {}
-    return { valid: !!p.valid, restated: typeof p.restated === 'string' ? p.restated : '', reason: typeof p.reason === 'string' ? p.reason : '' }
-  })
 }
 
 // ── Cache key ────────────────────────────────────────────────────────────────
@@ -694,33 +673,4 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   }, { onConflict: 'bot_id' })
 
   return study
-}
-
-// ── Backfill: re-validate a bot's OPEN logged_questions, mark false positives ─
-// "Corrects internally" so the Questions admin page also self-cleans. False
-// positives get status='n_a' + a notes trail (no migration — existing columns).
-// `apply:false` is a dry-run. Service-role; pairs bot_id + org_id on the write.
-export async function revalidateOpenQuestions(botId: string, opts: { apply: boolean }): Promise<{ total: number; kept: number; filtered: { question: string; reason: string }[] }> {
-  const service = createServiceRoleClient()
-  const { data: bot } = await service.from('agents').select('id, name, org_id').eq('id', botId).single()
-  if (!bot) return { total: 0, kept: 0, filtered: [] }
-  const turns = await loadTurns(service, botId)
-  const sessions = groupSessions(turns)
-  const { data: open } = await service.from('logged_questions')
-    .select('id, session_id, user_message').eq('bot_id', botId).eq('status', 'open').limit(500)
-  const rows = open || []
-  if (rows.length === 0) return { total: 0, kept: 0, filtered: [] }
-  const verdicts = await validateOpenQuestions(botId, bot.name, rows.map((q: any) => ({ question: q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message) })))
-  const filtered: { question: string; reason: string }[] = []
-  for (let i = 0; i < rows.length; i++) {
-    const v = verdicts[i] || { valid: true, restated: '', reason: '' }
-    if (v.valid) continue
-    filtered.push({ question: rows[i].user_message, reason: v.reason })
-    if (opts.apply) {
-      await service.from('logged_questions')
-        .update({ status: 'n_a', notes: 'Auto-filtered by agent study: not a real question — ' + (v.reason || 'no reason').slice(0, 200), resolved_at: new Date().toISOString() })
-        .eq('id', rows[i].id).eq('org_id', bot.org_id)
-    }
-  }
-  return { total: rows.length, kept: rows.length - filtered.length, filtered }
 }

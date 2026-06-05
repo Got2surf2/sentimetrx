@@ -1341,3 +1341,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - `STUDY_SCHEMA_VERSION` → **v4** so stale cached studies recompute. `validateOpenQuestions`/`revalidateOpenQuestions` (the on-demand queue-cleanup action) are untouched.
 
 **Verify**: tsc clean; 461 tests pass (no test surface — render/copy only). Browser pixel-render of the report pending (auth-gated). No migration. Spec: `docs/BOTS.md` updated (superseded the 2026-06-03 validation bullet + added the v4 bullet).
+
+## 2026-06-05 — Remove AI queue-cleaning entirely (owner: humans curate, no AI)
+
+**Why**: Follow-on to the count-reconciliation fix. Owner's standing rule for the open-questions queue: *no AI cleaning — let the team mark questions Answered/Referred/N-A as they see fit*. The per-render AI validation was already gone; what remained was the on-demand AI cleanup path (`revalidateOpenQuestions` + the `scripts/agent-question-revalidate.ts` CLI, dry-run by default) that re-judged open rows with Claude and wrote false positives to `status='n_a'`. CLI-only, never wired to UI — but still AI-cleans the queue, contradicting the rule.
+
+**What changed**: Deleted `scripts/agent-question-revalidate.ts`; removed `revalidateOpenQuestions` + the now-orphaned `validateOpenQuestions` helper and `QVerdict` type from `lib/agentStudy.ts`. The `findPriorAgentLine`/`findFollowingAgentLine` context helpers stay (the report still shows AGENT-before / USER / AGENT-after). The Questions page (mark Answered/Referred/N-A) is now the **sole** arbiter of what's open — no automated AI judgment anywhere in the path.
+
+**Verify**: tsc clean (full tree, exit 0); no test/import references to the removed symbols (grepped app/lib/components/tests/scripts/package.json). Spec: `docs/BOTS.md` both open-question bullets updated to record the removal.
