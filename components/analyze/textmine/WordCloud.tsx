@@ -9,6 +9,11 @@ import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'
+import { dimSubLabel, DIM_AXIS_LABEL, type Axis } from '@/lib/dimensionFields'
+
+// Per-axis dot colors for the "Dimensions" chip row — kept in sync with the
+// theme-card Dimensions row in TextMineModule.
+const DIM_AXIS_COLOR: Record<string, string> = { touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C', beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777' }
 
 // Category dot colors — kept in sync with EntitiesCard so the per-theme "Items"
 // chips read the same as the scope-wide Entities card.
@@ -48,8 +53,12 @@ interface Props {
   activeFields?: string[]
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
   onEntityClick?: (entity: { slug: string; canonical: string; category: string; aliases: string[] }) => void
+  onDimensionClick?: (axis: string, sub: string) => void
   isReddit?: boolean
   entities?: EntityRow[]
+  // Per-theme Dimensions breakdown (themeId → top {axis,sub,count}), from the
+  // theme-counts `dimensions` flag. Renders a drillable "Dimensions" chip row.
+  themeDimensions?: Record<string, { axis: string; sub: string; count: number }[]>
 }
 
 function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick, signalScore, maxSignal, sizeBy }: {
@@ -110,7 +119,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   )
 }
 
-export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, onEntityClick, isReddit, entities }: Props) {
+export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, onEntityClick, onDimensionClick, isReddit, entities, themeDimensions }: Props) {
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
   const [colorBy, setColorBy] = useState<'theme' | 'sentiment'>('theme')
   const [sizeBy, setSizeBy] = useState<'frequency' | 'signal'>('frequency')
@@ -544,6 +553,33 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                       })}
                       {teList.length > 8 && (
                         <span style={{ fontSize: 9, color: T.textFaint }}>+{teList.length - 8} more</span>
+                      )}
+                    </div>
+                    )
+                  })()}
+                  {/* Dimensions mentioned within this theme — taxonomy cross-tab,
+                      drillable into the Comments filter (parity with Items). */}
+                  {(function() {
+                    const dList = (themeDimensions && themeDimensions[t.id]) || []
+                    if (!dList.length) return null
+                    return (
+                    <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }} title="Dimension sub-buckets reviewers discuss when this theme comes up">Dimensions</span>
+                      {dList.slice(0, 8).map(function(d) {
+                        const dc = DIM_AXIS_COLOR[d.axis] || ENTITY_NEUTRAL
+                        const axisLabel = DIM_AXIS_LABEL[d.axis as Axis] || d.axis
+                        return (
+                          <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — in ' + d.count.toLocaleString() + ' "' + t.name + '" comment' + (d.count === 1 ? '' : 's') + (onDimensionClick ? ' — click to see these comments' : '')}
+                            onClick={onDimensionClick ? function() { onDimensionClick(d.axis, d.sub) } : undefined}
+                            style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: dc + '0d', border: '1px solid ' + dc + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: onDimensionClick ? 'pointer' : 'default' }}>
+                            <span style={{ width: 5, height: 5, borderRadius: 3, background: dc, flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{dimSubLabel(d.sub)}</span>
+                            <span style={{ color: T.textFaint }}>{d.count.toLocaleString()}</span>
+                          </span>
+                        )
+                      })}
+                      {dList.length > 8 && (
+                        <span style={{ fontSize: 9, color: T.textFaint }}>+{dList.length - 8} more</span>
                       )}
                     </div>
                     )

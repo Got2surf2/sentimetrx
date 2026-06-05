@@ -1,5 +1,13 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — TextMine: drillable Dimensions chips on Theme Clouds (parity)
+
+**Why**: Owner asked whether the pill-drill applies to dimensions too. It did on the theme **cards** (`handleDrillDimension`), but the **Theme Clouds** had no Dimensions row at all — only an Items (entity) row — so dimensions weren't at parity with entities there.
+
+**What changed** (`WordCloud.tsx` + `TextMineModule.tsx`, UI-only): `WordCloud` gains a **"Dimensions" chip row** per theme (reuses the `serverThemeDimensions` map already computed for the cards, keyed by theme id) plus an `onDimensionClick` prop; chips are axis-dot colored and **drill into the Comments filter**. Wired in `TextMineModule` (`themeDimensions={serverThemeDimensions}`, `onDimensionClick → handleDrillDimension`). Now both Items and Dimensions chips appear and drill on cards *and* clouds.
+
+**Verify**: tsc clean (cache-cleared); 461 tests pass. Browser pixel-render pending (auth-gated). Spec ANALYTICS.md updated. **Local-only.**
+
 ## 2026-06-05 — Surveys: per-prompt clarifier depth (Q3/Q4)
 
 **Why**: Owner — prospect work (Carrabba's guest-feedback). Open-end clarifiers were single-shot per prompt with only a session-wide `maxClarifierCount`; needed a per-prompt depth dial so a high-value open-end can drill 2–3 follow-ups deep while a low-value one stays single-shot — without multi-probing every prompt (drop-off risk).

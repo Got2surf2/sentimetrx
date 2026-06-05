@@ -2513,8 +2513,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       parsedData={filteredRows}
                       activeField={activeField || themes!.fieldName}
                       entities={entityCatalogRows}
+                      themeDimensions={serverThemeDimensions}
                       isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
                       onEntityClick={function(e) { handleDrillEntity(e) }}
+                      onDimensionClick={function(axis, sub) { handleDrillDimension(axis, sub) }}
                       onWordClick={function(word, themeIdx, type) {
                         // Word click: opinion popover. Theme title click: theme popover.
                         if (type === 'theme') {
