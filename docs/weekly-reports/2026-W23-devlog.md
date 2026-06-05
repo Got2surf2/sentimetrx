@@ -1389,3 +1389,13 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - **Spec drift fix**: `RECORDINGS.md` had a stale duplicate §4.7 describing an old design (share route emailing principals, Sentimetrx branding, `/r/<token>` URLs, password hashing) that never matched the built split — replaced with the accurate §4.7a; §4.5 updated to note the shared renderer.
 
 **Verify**: tsc clean; 461 tests pass. **Email QC done** — rendered all three variants (link-only / pdf-only / both+note) to PNG via a throwaway harness (now deleted) + local Chrome and eyeballed: datanautix wordmark correct, layout clean, adaptive CTA correct, and caught + fixed a date off-by-one (date-only `meeting_date` parsed as UTC → rendered a day early in PDT; now parsed from local Y/M/D components). No migration. NOT sent to any real address (would email live recipients) — the route path is exercised only by the QC render of the template; first real send is the manual prod test. ALL LOCAL.
+
+## 2026-06-05 — Town Hall cards: content meta row (files · Q&A · duration)
+
+**Why**: Owner wanted richer info on the Town Hall list cards — how many files are attached, how many Q&A pairs the meeting yielded, etc. — so the list conveys substance at a glance, not just name/status/date.
+
+**What changed**:
+- **`app/recordings/page.tsx`** — hoisted the recording-ids array and added two batched aggregate queries over the loaded ids (no N+1): one on `recording_extractions` filtered to `unit_type='qa_pair'` (the same filter the report header + `GET /api/recordings/[id]` use, so the card and report agree), counted per recording in memory; one on `recording_files` selecting `recording_id, file_role`, counted per recording split into media vs slides. New `Row` fields `qa_pair_count`, `media_file_count`, `slide_file_count` (+ `source_duration_sec`, already fetched).
+- **`app/recordings/RecordingsListClient.tsx`** — extended `RecordingCard`, added `fmtDur` (sec → "1h 12m"/"45m") + `cardMeta` (builds the parts list, dropping any zero/unknown part), and rendered a middot-separated meta row between the status/date row and the owner footer. An in-progress card with no pairs/duration just shows its file count (or nothing).
+
+**Verify**: tsc clean; 461 tests pass. **Data path verified read-only vs prod** (supabase db query): NOWOCATS Meeting 2 → 5 media · 0 slides · 17 qa_pairs · 2760s (46m) — the qa_pair count matches the documented Meeting 2 number exactly, confirming the filter agrees with the report. Browser pixel-render pending (auth-gated). No migration. Spec RECORDINGS.md §5.5 (List UX bullet) updated. ALL LOCAL.

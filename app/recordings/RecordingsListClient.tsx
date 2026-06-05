@@ -18,6 +18,7 @@ export interface RecordingCard {
   meeting_date: string | null
   status: string
   cost_cents: number
+  source_duration_sec: number | null
   created_at: string
   owner_name: string | null
   org_name: string | null
@@ -25,6 +26,9 @@ export interface RecordingCard {
   entities_reviewed: boolean
   has_edits: boolean
   shared: boolean
+  qa_pair_count: number
+  media_file_count: number
+  slide_file_count: number
 }
 
 // Lifecycle steps for the ℹ️ progress popover. `done` from the recording's
@@ -59,6 +63,35 @@ function fmtDate(s: string | null): string {
   // meeting_date is a date-only column — format in UTC so a value like
   // '2026-05-21' doesn't render as the 20th in negative-UTC timezones.
   try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) } catch { return '' }
+}
+
+// Source audio length → "1h 12m" / "45m" / "30s". Blank when unknown (the
+// meta row drops the item entirely rather than showing "0m").
+function fmtDur(sec: number | null): string {
+  if (!sec || sec <= 0) return ''
+  const h = Math.floor(sec / 3600)
+  const m = Math.round((sec % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m`
+  return `${sec}s`
+}
+
+// Compact "3 files · 17 Q&A · 1h 12m" line for a card. Each part is dropped
+// when it would be empty/zero, so an in-progress recording shows only what it has.
+function cardMeta(r: RecordingCard): string[] {
+  const totalFiles = r.media_file_count + r.slide_file_count
+  const parts: string[] = []
+  if (totalFiles > 0) {
+    parts.push(
+      r.media_file_count > 0 && r.slide_file_count > 0
+        ? `${r.media_file_count} media · ${r.slide_file_count} slides`
+        : `${totalFiles} file${totalFiles === 1 ? '' : 's'}`,
+    )
+  }
+  if (r.qa_pair_count > 0) parts.push(`${r.qa_pair_count} Q&A`)
+  const dur = fmtDur(r.source_duration_sec)
+  if (dur) parts.push(dur)
+  return parts
 }
 
 interface OrgOption { id: string; name: string }
@@ -250,6 +283,19 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                   <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
                   <span className="text-xs text-gray-400">{fmtDate(r.meeting_date) || fmtDate(r.created_at)}</span>
                 </div>
+                {(() => {
+                  const meta = cardMeta(r)
+                  return meta.length > 0 ? (
+                    <div className="mt-2.5 flex items-center flex-wrap gap-x-1.5 text-xs text-gray-500">
+                      {meta.map((part, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5">
+                          {i > 0 && <span className="text-gray-300">·</span>}
+                          {part}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null
+                })()}
                 <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
                   <span className="truncate">{r.owner_name || '—'}</span>
                   {showOrg && r.org_name && <span className="truncate max-w-[45%] text-gray-500">{r.org_name}</span>}
