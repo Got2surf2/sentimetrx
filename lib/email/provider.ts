@@ -5,13 +5,19 @@ import 'server-only'
 
 import type { EmailProviderType } from '@/lib/types'
 
+export interface EmailAttachment {
+  filename: string
+  content:  string  // base64-encoded file contents
+}
+
 export interface SendEmailParams {
-  to:       string
-  subject:  string
-  html:     string
-  text?:    string
-  from?:    string
-  replyTo?: string
+  to:           string
+  subject:      string
+  html:         string
+  text?:        string
+  from?:        string
+  replyTo?:     string
+  attachments?: EmailAttachment[]  // currently honored by the Resend provider only
 }
 
 export interface SendResult {
@@ -51,6 +57,7 @@ class ResendProvider implements EmailProvider {
         subject:  params.subject,
         html:     params.html,
         text:     params.text,
+        attachments: params.attachments?.length ? params.attachments : undefined,
       }),
     })
 

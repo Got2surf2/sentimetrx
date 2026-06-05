@@ -674,7 +674,9 @@ Server-rendered PDF of the **same report the public `/th` link shows** (§4.6). 
 
 Body `{ includeTranscript?: boolean }`. When true, a **Full Transcript** appendix is appended on its own page — the **spelling-corrected** view (`normalizeSegments` applies the reviewed `entity_map` variants→canonical; raw ASR is never mutated), consecutive same-speaker segments merged into paragraphs. This is the one thing the public `/th` page never shows, so it's owner-gated by the same org check as the PPTX export.
 
-**Cross-org gate** mirrors `export/pptx`: `getCallerOrgContext` + service-role read pairing `id` with the caller's `org_id` (admin-org may export any) → 404 on cross-org, 409 until `status='complete'`. Streams `application/pdf` (no Storage round-trip); fire-and-forget `logDeckDownload('recording-pdf-report', name)`. Wired to the report's **Export & Share** tab ("PDF report" card + "Include full transcript appendix" checkbox, default on). XLSX export remains a fast-follow.
+The data-fetch + HTML bake + Chrome render live in the shared `lib/recordings/reportPdf.ts → renderRecordingReportPdf(service, rec, { includeTranscript })` (this route owns auth + the cross-org gate, then hands it a paired `rec`); §4.7a (send-to-principals → attach) reuses the same renderer.
+
+**Cross-org gate** mirrors `export/pptx`: `getCallerOrgContext` + service-role read pairing `id` with the caller's `org_id` (admin-org may export any) → 404 on cross-org, 409 until `status='complete'`. Streams `application/pdf` (no Storage round-trip); fire-and-forget `logDeckDownload('recording-pdf-report', name)`. Wired to the report's **Export & Share** tab ("PDF report" card + "Include full transcript appendix" checkbox, default on).
 
 ### 4.6 Public report — `GET /th/[token]` (built 2026-06-04)
 
@@ -686,29 +688,17 @@ Body `{ includeTranscript?: boolean }`. When true, a **Full Transcript** appendi
 
 Body `{ enabled: boolean, expires_in_days?: number, show_verbatim?: boolean }`. **Owner (or admin-org) only** — sharing publishes outside the org, so a general org member can't toggle it (403). Service-role read pairs `id` with `org_id` (404 cross-org). Mints a 24-char URL-safe token once (`randomBytes(18).base64url`), reused across enable/disable. Refuses to enable until `status='complete'` (409). `share_verbatim` is updated only when `show_verbatim` is present in the body, so toggling the link's enabled state never clobbers the polished/verbatim choice (and vice-versa) — the client sends the current state of the other field. Returns `{ enabled, token, path: '/th/<token>', expires_at, show_verbatim }`. Wired to the report's **Export & Share** tab (owner-only "Enable public link" toggle + copy-link + Polished/Verbatim segmented control).
 
-The earlier `share_password_hash` idea is deferred; v1 is token-only with optional expiry.
+The earlier `share_password_hash` idea is deferred; v1 is token-only with optional expiry. Sharing only mints/toggles the link — **emailing it to principals is a separate route** (§4.7a), so the toggle never sends anything by surprise.
 
-Renders the same HTML report as `/recordings/[id]/report` but with:
-- Sentimetrx branding header + "Powered by Sentimetrx" footer
-- No "Edit" / admin controls
-- `<meta name="robots" content="noindex, nofollow">` so search engines don't index principals' meeting Q&A
-- A canonical link back to itself (no leak to the internal route)
+### 4.7a `POST /api/recordings/[id]/report/send` — send to principals (built 2026-06-05)
 
-### 4.7 `POST /api/recordings/[id]/share` — enable + email principals
+Emails the report to a typed recipient list — the v1 "send to principals at end of meeting" deliverable. **Owner (or admin-org) only** (same gate as `/share`; sending publishes outside the org → 403 otherwise); service-role read pairs `id` with `org_id` (404 cross-org), 409 until `status='complete'`. CSRF/same-origin via `proxy.ts`.
 
-**Auth:** session cookie + CSRF. Owner or org admin only.
+**Body** `{ recipients, note?, includeLink?, includePdf?, includeTranscript? }`:
+- `recipients` — array **or** a comma/newline/semicolon-separated string; parsed, lowercased, email-validated, de-duped, capped at **25**. Unparseable addresses come back in `rejected` (not a hard failure unless *none* are valid → 400).
+- `includeLink` / `includePdf` — the sender picks what to send; **at least one required** (400 otherwise). `includeLink` requires the public link to be **enabled + unexpired** (400 otherwise) and embeds `${NEXT_PUBLIC_BASE_URL}/th/<token>`. `includePdf` renders the PDF **once** (shared `lib/recordings/reportPdf.ts → renderRecordingReportPdf`, the same renderer §4.5 now uses) and attaches it (base64) to every recipient; `includeTranscript` appends the transcript appendix to that PDF.
 
-**Body:**
-```json
-{
-  "enabled": true,
-  "expires_at": "2026-07-16T23:59:59Z",       // optional
-  "password": "optional-password",             // optional, hashed before storage
-  "send_to": ["principal1@example.com", "principal2@example.com"]   // optional; if present, Resend sends each
-}
-```
-
-Generates `share_token` if not already set (24-char URL-safe). Returns `{ url: "https://sentimetrx.ai/r/<token>" }`. If `send_to` provided, sends each recipient an email with the link + a one-line preview of the meeting name + date.
+**Email** — Datanautix-branded, since it's a client report deliverable (`lib/recordings/reportEmail.ts → buildReportEmail`: the "datanautix" wordmark — data teal + nautix orange — and a datanautix.com footer, **not** Sentimetrx). Body adapts to what's included (link button / "PDF attached" line / both) with an optional escaped sender note. From `Datanautix <reports@sentimetrx.ai>` (verified `sentimetrx.ai` domain), **reply-to = the sending user** so principals reach a human. Sent per-recipient through the Resend provider (extended with an `attachments` field). Returns `{ ok, sent, failed, rejected, results[] }`. Wired to the report's **Export & Share** tab ("Send to principals" owner-only card: recipients + optional note + include-link / attach-PDF (+ transcript) toggles + per-send result). XLSX export remains the last fast-follow.
 
 ### 4.8 `GET /api/recordings` — list (scoped by role)
 

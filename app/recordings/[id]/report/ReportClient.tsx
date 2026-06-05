@@ -1208,6 +1208,17 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   const [copied, setCopied] = useState(false)
   const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/th/${shareToken}` : ''
 
+  // Send to principals (§4.15) — owner emails the report (link and/or PDF) to a
+  // typed recipient list. The sender chooses what to include.
+  const [recipients, setRecipients] = useState('')
+  const [sendNote, setSendNote] = useState('')
+  const [sendLink, setSendLink] = useState(true)
+  const [sendPdf, setSendPdf] = useState(false)
+  const [sendTranscript, setSendTranscript] = useState(false)
+  const [sendBusy, setSendBusy] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sendResult, setSendResult] = useState<{ sent: number; failed: number; rejected?: string[] } | null>(null)
+
   // Brand / linked agent (§3.5c) — settable post-upload; a re-extract then seeds
   // spelling correction from that brand's curated entity catalog (agent + brand).
   const [brandTag, setBrandTag] = useState(initialBrandTag ?? '')
@@ -1261,6 +1272,31 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   const copyLink = async () => {
     if (!shareUrl) return
     try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
+  }
+
+  const handleSend = async () => {
+    setSendBusy(true); setSendError(null); setSendResult(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/report/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients,
+          note: sendNote,
+          includeLink: sendLink && shareEnabled,
+          includePdf: sendPdf,
+          includeTranscript: sendTranscript,
+        }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Send failed (${res.status})`)
+      setSendResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, rejected: d.rejected })
+      if ((d.sent ?? 0) > 0) { setRecipients(''); setSendNote('') }
+    } catch (e: any) {
+      setSendError(e?.message || 'Send failed')
+    } finally {
+      setSendBusy(false)
+    }
   }
 
   const handleExport = async () => {
@@ -1482,12 +1518,98 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
         </div>
       )}
 
+      {isOwner && (
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="text-sm font-semibold text-gray-900">Send to principals</div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Email the Datanautix-branded report straight to stakeholders. Choose whether to include the live link, attach the PDF, or both. Replies go to you.
+          </p>
+          {!ready && <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete.</p>}
+
+          <label className="block text-xs font-medium text-gray-600 mt-3 mb-1">Recipients</label>
+          <textarea
+            value={recipients}
+            onChange={e => setRecipients(e.target.value)}
+            placeholder="principal@example.org, chair@example.org"
+            rows={2}
+            disabled={!ready}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-700 disabled:bg-gray-50"
+            style={{ fontSize: '16px' }}
+          />
+          <p className="text-xs text-gray-400 mt-1">Separate addresses with commas or new lines (up to 25).</p>
+
+          <label className="block text-xs font-medium text-gray-600 mt-3 mb-1">Personal note (optional)</label>
+          <textarea
+            value={sendNote}
+            onChange={e => setSendNote(e.target.value)}
+            placeholder="Thanks for joining — here's the Q&A summary from today's meeting."
+            rows={2}
+            disabled={!ready}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-700 disabled:bg-gray-50"
+            style={{ fontSize: '16px' }}
+          />
+
+          <div className="mt-3 space-y-2">
+            <label className={`flex items-center gap-2 text-sm select-none ${shareEnabled ? 'text-gray-700 cursor-pointer' : 'text-gray-400'}`}>
+              <input
+                type="checkbox"
+                checked={sendLink && shareEnabled}
+                disabled={!shareEnabled}
+                onChange={e => setSendLink(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              Include the report link
+              {!shareEnabled && <span className="text-xs text-amber-600">(enable the public link above first)</span>}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendPdf}
+                onChange={e => setSendPdf(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              Attach the PDF report
+            </label>
+            {sendPdf && (
+              <label className="flex items-center gap-2 text-sm text-gray-700 select-none cursor-pointer pl-6">
+                <input
+                  type="checkbox"
+                  checked={sendTranscript}
+                  onChange={e => setSendTranscript(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                Include full transcript appendix in the PDF
+              </label>
+            )}
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={handleSend}
+              disabled={!ready || sendBusy || !recipients.trim() || (!sendPdf && !(sendLink && shareEnabled))}
+              className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
+              style={{ background: HERMES }}
+            >
+              {sendBusy ? 'Sending…' : 'Send report'}
+            </button>
+            {sendResult && sendResult.sent > 0 && (
+              <span className="text-sm text-green-700">
+                Sent to {sendResult.sent} recipient{sendResult.sent === 1 ? '' : 's'}{sendResult.failed > 0 ? `, ${sendResult.failed} failed` : ''}.
+              </span>
+            )}
+          </div>
+          {sendResult && sendResult.rejected && sendResult.rejected.length > 0 && (
+            <p className="text-xs text-amber-600 mt-1.5">Skipped invalid: {sendResult.rejected.join(', ')}</p>
+          )}
+          {sendError && <p className="text-sm text-red-600 mt-1.5">{sendError}</p>}
+        </div>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <p className="text-sm text-gray-500">More formats land in a follow-up:</p>
       <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
         <li>XLSX — structured pairs only (analyst format)</li>
-        <li>Send to principals — Resend email with the share link</li>
       </ul>
     </div>
   )
