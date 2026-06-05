@@ -1958,7 +1958,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
   }, [addMsg, config, inputRef, scrollBottom])
 
-  const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
+  const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string, depthSoFar: number = 1) => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
@@ -1996,11 +1996,25 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       if (checkVerbose(val, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
-      if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
+      const accumulated = isDecline(val) ? originalVal : originalVal + ' [+ ' + val + ']'
+      if (!isDecline(val)) state.current.answers[qKey] = accumulated
       savePartialRef.current()
       clearInput()
       // AI deflection: detect questions/off-topic and respond contextually
       const deflected = !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')
+      // Per-prompt clarify depth: probe again only while the answer stays vague and depth allows.
+      // depthSoFar counts clarifiers already fired on THIS prompt; default depth 1 = single-shot (unchanged).
+      const maxDepth = Math.max(1, qKey === 'q3' ? (config.q3ClarifyDepth ?? 1) : (config.q4ClarifyDepth ?? 1))
+      if (!deflected && !isDecline(val) && depthSoFar < maxDepth &&
+          state.current.clarifyCount < (config.maxClarifierCount || 5) && shouldClarify(val)) {
+        const cq = await showTypingDuring(buildClarify(accumulated, qKey), 800)
+        if (cq) {
+          state.current.clarifyCount++
+          addMsg('bot', cq, true)
+          showClarifyInputRef.current(qKey, accumulated, depthSoFar + 1)
+          return
+        }
+      }
       await progressFlowRef.current(qKey, deflected || undefined)
     }
 
@@ -2009,6 +2023,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
+  // Ref so the recursive (depth > 1) re-probe always calls the latest version
+  const showClarifyInputRef = useRef(showClarifyInput)
+  showClarifyInputRef.current = showClarifyInput
 
 
 

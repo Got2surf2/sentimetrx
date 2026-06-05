@@ -33,6 +33,26 @@ function Toggle({ on, onToggle, labelOn, labelOff }: { on: boolean; onToggle: ()
 }
 
 
+function ClarifyDepthPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-gray-600">Follow-ups while answer stays vague</span>
+      <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+        {[1, 2, 3].map(n => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            className={`px-3 py-1 text-sm font-semibold transition-colors ${value === n ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'} ${n > 1 ? 'border-l border-gray-200' : ''}`}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function newConvQuestion(type: 'open' | 'radio' | 'checkbox'): SurveyQuestion {
   const id = 'cq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   return { id, type, prompt: '', exportLabel: '', conversationPosition: true, ...(type !== 'open' ? { options: ['', ''] } : {}) }
@@ -103,6 +123,12 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
                 labelOn="Clarifier on — bot may ask a follow-up"
                 labelOff="No clarifier"
               />
+              {c.q3Clarify && (
+                <ClarifyDepthPicker
+                  value={c.q3ClarifyDepth || 1}
+                  onChange={n => updateConfig({ q3ClarifyDepth: n })}
+                />
+              )}
             </div>
           </>
         )}
@@ -138,6 +164,12 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
                 labelOn="Clarifier on — bot may ask a follow-up"
                 labelOff="No clarifier"
               />
+              {c.q4Clarify && (
+                <ClarifyDepthPicker
+                  value={c.q4ClarifyDepth || 1}
+                  onChange={n => updateConfig({ q4ClarifyDepth: n })}
+                />
+              )}
             </div>
           </>
         )}

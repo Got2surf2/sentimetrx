@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Surveys: per-prompt clarifier depth (Q3/Q4)
+
+**Why**: Owner — prospect work (Carrabba's guest-feedback). Open-end clarifiers were single-shot per prompt with only a session-wide `maxClarifierCount`; needed a per-prompt depth dial so a high-value open-end can drill 2–3 follow-ups deep while a low-value one stays single-shot — without multi-probing every prompt (drop-off risk).
+
+**What changed**:
+- `lib/types.ts` — added `q3ClarifyDepth?` / `q4ClarifyDepth?` (number, default 1) to StudyConfig.
+- `components/survey/useSurveyEngine.ts` — `showClarifyInput` now takes a `depthSoFar` arg and re-probes (via a new `showClarifyInputRef`) up to the configured depth, re-checking `shouldClarify` each turn so a specific answer stops it early; still gated by the session-wide `maxClarifierCount` and deflection/decline. Accumulated answer is threaded into `buildClarify` so the re-probe sees prior context.
+- `components/creator/StepConversation.tsx` — `ClarifyDepthPicker` (1/2/3) rendered only when that prompt's clarifier toggle is on.
+
+**Verify**: tsc clean (cache-cleared, exit 0). Backward-compatible — absent value `?? 1` = prior single-shot behavior. Builder UI not pixel-rendered (auth-gated creator flow). Spec SURVEYS.md updated. **Local-only.**
+
 ## 2026-06-05 — TextMine: make every count pill drill into the Comments filter
 
 **Why**: Owner — follow-up to the unified Comments filter: any entity/dimension/theme pill should be clickable to see the comments behind it. Several were static.

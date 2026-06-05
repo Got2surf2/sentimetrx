@@ -238,11 +238,13 @@ export interface StudyConfig {
   q3Required?:        boolean
   q3ExportLabel?:     string
   q3Clarify?:         boolean   // enable clarifier follow-up for Q3
+  q3ClarifyDepth?:    number    // max consecutive clarifiers on Q3 while the answer stays vague (default 1)
   q3Enabled?:         boolean   // default true — set false to skip Q3 entirely
   q4:                 string
   q4Required?:        boolean
   q4ExportLabel?:     string
   q4Clarify?:         boolean   // enable clarifier follow-up for Q4
+  q4ClarifyDepth?:    number    // max consecutive clarifiers on Q4 while the answer stays vague (default 1)
   q4Enabled?:         boolean   // default true — set false to skip Q4 entirely
 
   // Opening flow (drag-ordered): absent = legacy npsEnabled/experienceEnabled cascade

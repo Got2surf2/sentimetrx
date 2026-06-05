@@ -118,7 +118,8 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - `ratingScale` — Custom emoji + label + score array
 - `clarifiers` — `{ keyword: follow_on_prompt, default: fallback }`
 - `useAIClarify` — Enable Claude-powered follow-ups
-- `maxClarifierCount` — Default 5; 0 = unlimited
+- `maxClarifierCount` — Session-wide cap on total clarifiers fired; default 5; 0 = unlimited
+- `q3ClarifyDepth` / `q4ClarifyDepth` — Per-prompt clarifier depth (default 1). Max number of consecutive follow-ups the bot may ask on that open-end **while the answer stays vague** (`shouldClarify` re-checked each turn; a specific answer stops it early). Capped by `maxClarifierCount`. Set in Creator → Conversation step, shown only when that prompt's clarifier toggle is on.
 
 ### Theming
 - `primaryColor`, `headerGradient`, `backgroundColor`, `accentColor`, `botAvatarGradient`
