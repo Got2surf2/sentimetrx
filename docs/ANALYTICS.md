@@ -77,7 +77,11 @@ are added in the `signal-stats` route (not the cached compute). The date range c
 `datasets.description.start_date/end_date`; the **avg rating** detects the dataset's rating field from
 `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField` — the same rule TextMine uses) and
 averages it over the **same population as `records`** — the rows carrying the theme-source text (the
-*analyzed* reviews) — via `numeric_field_stats_present(ratingField, themeSourceField)` (sql/107). This
+*analyzed* reviews) — via `numeric_field_stats_present(ratingField, themeSourceField)` (sql/107).
+**Remapped rating fields** (a survey scale tagged numeric whose stored values are text labels mapped to
+numbers via the field's `valueAliases`, e.g. "Highly Satisfied"→5) are detected (any numeric alias value)
+and averaged via `field_aliased_avg(field, presentField, aliases)` (sql/110) — which maps each label to its
+number before averaging, since the raw value is the label (numeric_field_stats would cast nothing). This
 matters: averaging *every* rated row pulls the number above the per-theme/dimension baseline because
 text-less reviews are mostly silent 5-stars (Cheddar's: all rated ★4.14 vs analyzed ★3.90 — and 3.90 is
 what the Dimensions tab + theme cards show, so they reconcile). Falls back to plain `numeric_field_stats`

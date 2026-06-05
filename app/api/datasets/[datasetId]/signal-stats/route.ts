@@ -48,15 +48,23 @@ export async function GET(_req: Request, props: Props) {
   try {
     const { data: stateRow } = await supabase
       .from('dataset_state').select('schema_config, theme_model').eq('dataset_id', params.datasetId).maybeSingle()
-    const sr = stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean }> }; theme_model?: { fieldName?: string; fieldNames?: string[] } } | null
+    const sr = stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean; valueAliases?: Record<string, string> }> }; theme_model?: { fieldName?: string; fieldNames?: string[] } } | null
     const fields = sr?.schema_config?.fields || []
     const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
     // The field whose presence marks an "analyzed review" — the theme-source text.
     const textField = sr?.theme_model?.fieldNames?.[0] || sr?.theme_model?.fieldName || null
     if (rf) {
-      const { data: ns } = textField
-        ? await service.rpc('numeric_field_stats_present', { p_dataset_id: params.datasetId, p_field_key: rf.field, p_present_field: textField })
-        : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
+      // A "remapped" rating field stores text labels mapped to numbers via
+      // valueAliases ({"Highly Satisfied":"5",…}). Its raw value is the label,
+      // so numeric_field_stats casts nothing — apply the alias map first.
+      const aliases = rf.valueAliases
+      const isRemapped = !!aliases && typeof aliases === 'object'
+        && Object.values(aliases).some(v => /^-?[0-9]+\.?[0-9]*$/.test(String(v)))
+      const { data: ns } = isRemapped
+        ? await service.rpc('field_aliased_avg', { p_dataset_id: params.datasetId, p_field: rf.field, p_present_field: textField || '', p_aliases: aliases })
+        : textField
+          ? await service.rpc('numeric_field_stats_present', { p_dataset_id: params.datasetId, p_field_key: rf.field, p_present_field: textField })
+          : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
       const row = Array.isArray(ns) ? ns[0] : null
       if (row && Number(row.n) > 0 && row.avg_val != null) {
         avgRating = Math.round(Number(row.avg_val) * 100) / 100

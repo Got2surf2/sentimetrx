@@ -1280,3 +1280,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Operation (one-off, owner-authorized)**: set `datasets.taxonomy_enabled=true` for Carabbas GSS + ran the keyword classifier over both verbatims → 19,133 classified, 9,505 with a signal, 41 severity alerts. Top attribute subs: flavor 2,670 / friendly 1,540 / attentive 596 / professional 375 / speed 360 — sensible restaurant dimensions. (Datanautix is an admin org so it auto-qualifies for the Dimensions tab once the gating code deploys; the per-dataset flag is set too.)
 
 **Verify**: tsc clean; classification verified read-only vs prod (counts + sub breakdown). The run mutates prod, but it's the explicitly-requested operation (idempotent upsert), not verification.
+
+## 2026-06-05 — Metric strip avg rating: support remapped (valueAliases) fields
+
+**Why**: Owner remapped a survey satisfaction field to a numeric score and tagged it as a rating, but the top info bar (metric strip) stayed blank. Root cause: the field's values are text labels ("Highly Satisfied"…) mapped to numbers via the field's `valueAliases` ({"Highly Satisfied":"5",…}); the client surfaces apply the aliases, but the strip ran SQL `avg((data->>field)::numeric)` on the RAW label → cast nothing → no avg.
+
+**What changed**: `sql/110` `field_aliased_avg(dataset, field, present_field, aliases)` — maps each stored label to its alias number, then averages (optional present_field to keep the analyzed-population consistency). The `signal-stats` route now detects a remapped rating field (numeric field whose `valueAliases` has numeric values) and routes to it instead of `numeric_field_stats`.
+
+**Verify**: tsc clean; sql/110 applied + verified live — Carabbas GSS "Rating" field → ★4.14 over 15,384 analyzed rows. (Noted to owner: their map has "Somewhat Satisfied"→1, looks like a typo for 4.)
