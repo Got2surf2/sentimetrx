@@ -77,7 +77,8 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   filter — topic pills show first; **clicking a topic (dimension) pill both reveals that
   axis's sub-topic pills AND drills into every comment tagged anywhere on that dimension**
   (axis-level); picking a specific sub-topic — or clicking a sub-topic row / alert chip
-  (which syncs the pills) — narrows the drill to that sub. Either opens an **inline comments
+  (which syncs the pills) — narrows the drill to that sub; **deselecting the sub reverts the
+  panel to the axis-level drill** (rather than closing). Either opens an **inline comments
   panel** (breadcrumb header `Dimensions › axis [› sub]` / `Dimensions › Severity alert › tag`,
   count, a scrollable list)
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=` for the whole axis,

@@ -385,7 +385,7 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
   alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
   (topic pills first; **clicking a topic/dimension pill reveals its sub-topic pills AND drills
-  into every comment tagged anywhere on that axis** — clicking a specific sub then narrows) → an **inline comments panel**
+  into every comment tagged anywhere on that axis** — clicking a specific sub then narrows, deselecting it reverts to the axis drill) → an **inline comments panel**
   (cards mirror TextMine's: text + meta chips + Show-more + a rating-coloured left bar + a 1–4
   column grid selector; each comment also shows its other axis·sub tag chips — hovering a chip
   highlights the span of the comment that triggered that dimension) (breadcrumb header + scrollable list + Export CSV + per-comment

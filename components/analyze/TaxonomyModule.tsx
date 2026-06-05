@@ -313,7 +313,9 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             )
           })}
         </div>
-        {filterAxis && (
+        {filterAxis && (() => {
+          const axisLabel = data.axes.find(x => x.axis === filterAxis)?.label || filterAxis
+          return (
           <>
             <div style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>Sub-dimension</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -324,7 +326,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 const active = filterSub === s.sub
                 return (
                   <button key={s.sub}
-                    onClick={() => { if (active) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Dimensions',filterAxis, s.sub] }) } }}
+                    onClick={() => { if (active) { setFilterSub(''); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}`, crumbs: ['Dimensions', axisLabel] }) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Dimensions', axisLabel, s.sub] }) } }}
                     style={pillStyle(active, TEAL)}>
                     {s.sub} <span style={{ opacity: 0.55, fontWeight: 600 }}>{s.count}</span>
                   </button>
@@ -332,7 +334,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
               })}
             </div>
           </>
-        )}
+          )
+        })()}
         {data.alerts.length > 0 && (
           <>
             <div style={{ fontSize: 11, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>

@@ -1161,3 +1161,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: `GET /api/datasets/[id]/taxonomy/rows` now accepts an **axis-only** query (`?axis=product` with no `sub`) → filters `dataset_row_taxonomy` with `.neq(axis_col,'{}')` (rows with any tag on that axis) and `collectEvidence` matches any assertion on the axis. `TaxonomyModule`'s axis pill onClick now sets the drill (`axis=<axis>`, crumb `Dimensions › <Label>`) in addition to revealing the sub-pills — so clicking Product opens the Product comments panel and you can then click a sub to narrow. Sub/alert drills unchanged.
 
 **Verify**: tsc clean; 456 tests pass; axis-only filter confirmed live (Product → 3,238 distinct tagged reviews). No migration. Browser pixel-render pending (auth-gated).
+
+## 2026-06-05 — Dimensions: deselecting a sub reverts to the axis drill
+
+**Why**: After drilling axis → sub, deselecting the sub closed the comments panel entirely instead of falling back to the axis-level drill. Minor follow-up to the axis-pill drill.
+
+**What changed**: `TaxonomyModule` sub-pill onClick now, on deselect, sets the axis-level drill (`axis=<axis>`) instead of `null`. Wrapped the sub-section in an IIFE to compute `axisLabel` once (from `data.axes`) so both the sub crumbs and the revert use the dimension's display label consistently (`Dimensions › Product › steak` / `Dimensions › Product`). UI-only.
+
+**Verify**: tsc clean; 456 tests pass.
