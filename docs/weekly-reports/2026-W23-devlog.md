@@ -1206,3 +1206,16 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Why**: After pushing the Dimensions arc, CI failed at the `check:sql-tx` guard — migrations numbered >70 must be transaction-wrapped. Offenders: my `sql/105/106/107` (taxonomy aggregates) **and the pre-existing `sql/100`** (Town Hall entity_map, from the parallel session — main was already red on this before my push). All four are tx-safe (CREATE/DROP FUNCTION, one ADD COLUMN; no CONCURRENTLY).
 
 **What changed**: wrapped all four in `BEGIN; … COMMIT;`. No behavioral change — the RPCs are already live in prod (applied directly); this only satisfies the CI lint so partial failures would roll back. Guard now green locally.
+
+## 2026-06-05 — Auto-classify-on-sync safety net (Dimensions stays current)
+
+**Why**: Dimensions only reflected the last manual Re-classify — reviews pulled by the 6-hourly `review-sync` cron (and manual syncs) landed in `dataset_rows_flat` unclassified, so the tab silently drifted behind live data (e.g. Cheddar's: 11 text-bearing rows already pending). Owner asked for a safety net.
+
+**What changed**:
+- `sql/108` — `dataset_rows_pending_taxonomy(dataset, text_field, limit)` RPC: anti-join returning flat rows with NO taxonomy row AND non-empty text. The text filter is essential — text-less star-only reviews are skipped by the classifier and never get a row, so including them would make the LIMIT window loop on them forever; excluding them also keeps "reviews classified" = text-bearing rows.
+- `lib/taxonomyClassify.classifyPendingRows()` — classifies only pending rows via that RPC, keyword tier, idempotent upsert, capped at `maxRows`.
+- `lib/reviewSync.syncReviewSource` — after the post-sync schema/analytics recompute, **if the dataset is already classified** (≥1 taxonomy row → user opted in), classify the freshly-synced pending rows. Gated, capped (10K/sync), non-fatal (a hiccup can't fail the sync). Hooks the shared sync fn so it covers BOTH the manual sync route and the `review-sync` cron.
+
+**Coverage / limits**: only datasets the user already classified (never auto-starts). Assumes `review_text` (the button default; a non-default-field classify would need a manual Re-classify). Huge initial gaps converge over a few syncs (capped per run; idempotent so timeouts are safe).
+
+**Verify**: tsc clean; 461 tests pass (3 new `classifyPendingRows` unit tests — drain, cap/hasMore, no-work, real assertions fire); `sql/108` validated read-only vs prod (returns the 11 pending Cheddar's rows). Did NOT run the live backfill (no prod-mutating verification). **sql/108 must be applied to prod before the deployed hook works.**

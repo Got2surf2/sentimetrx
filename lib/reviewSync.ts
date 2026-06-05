@@ -7,6 +7,7 @@ import { submitReviewTask, submitTripadvisorReviewTask, checkReviewTask, type Re
 import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
 import { getReviewBudget, logReviewDownload } from './reviewLimits'
+import { classifyPendingRows } from './taxonomyClassify'
 
 export interface SyncResult {
   synced: number
@@ -325,6 +326,28 @@ export async function syncReviewSource(
   await updateSourceTimestamps(service, source, (pendingCount || 0) > 0)
   if (allNewRows.length > 0) {
     await ensureSchemaAndRecompute(service, source.dataset_id, allNewRows)
+
+    // Auto-classify safety net: keep the Dimensions (taxonomy) tab current.
+    // If this dataset has already been classified (the user opted in), classify
+    // the freshly-synced rows that still lack tags — otherwise newly synced
+    // reviews would be invisible to Dimensions until a manual Re-classify.
+    // Gated on prior classification (never auto-starts an un-opted dataset),
+    // capped, and non-fatal so a hiccup can't fail the sync.
+    try {
+      const { count: taxCount } = await service
+        .from('dataset_row_taxonomy')
+        .select('row_id', { count: 'exact', head: true })
+        .eq('dataset_id', source.dataset_id)
+      if (taxCount && taxCount > 0) {
+        const { classified } = await classifyPendingRows({
+          service, datasetId: source.dataset_id, orgId: source.org_id,
+          textField: 'review_text', brand: 'core', maxRows: 10000,
+        })
+        if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified })
+      }
+    } catch (e) {
+      console.error({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, err: e })
+    }
   }
 
   // Stamp the dataset only when the refresh cycle is genuinely complete —

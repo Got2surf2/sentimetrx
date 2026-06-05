@@ -1,7 +1,7 @@
 # Restaurant Taxonomy Classifier
 
-**Status:** keyword tier + persistence + in-app analytics tab shipped (local);
-ingest-hook auto-classify and the paid AI/brand-overlay tiers are roadmap
+**Status:** keyword tier + persistence + in-app analytics tab + **auto-classify-on-sync
+safety net** shipped (local); the paid AI/brand-overlay tiers are roadmap
 (`docs/TAXONOMY_PRODUCTIZATION_PLAN.md`). Originated as the Ruth's Chris
 CX-tagging-replacement pilot (`[[project-rc-taxonomy-pilot]]`).
 
@@ -48,6 +48,21 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
   UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
+- **Auto-classify-on-sync safety net** (`classifyPendingRows` + `sql/108`): without this,
+  reviews pulled by the 6-hourly `review-sync` cron (and manual sync) land in
+  `dataset_rows_flat` but stay **unclassified** until a manual Re-classify, so the
+  Dimensions tab silently drifts behind the live data. After every sync,
+  `lib/reviewSync.syncReviewSource` now — **only if the dataset is already classified**
+  (≥1 `dataset_row_taxonomy` row; never auto-starts an un-opted dataset) — classifies the
+  still-pending rows via `classifyPendingRows`. That reads pending rows from the
+  `dataset_rows_pending_taxonomy(dataset, text_field, limit)` RPC: an anti-join for flat
+  rows with no taxonomy row **and non-empty text** (text-less star-only reviews are
+  excluded — the classifier skips them and never writes a row, so including them would
+  make the LIMIT window loop forever and never reach the new rows; excluding them also
+  keeps "reviews classified" = text-bearing rows). Capped at `maxRows` per sync, non-fatal,
+  idempotent (a timeout just leaves already-upserted rows classified; the next sync
+  continues). Assumes the `review_text` field (the default the button uses); a dataset
+  manually classified on a non-default field would need a manual Re-classify to stay exact.
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
   per-sub mention rates, sentiment per sub, alert tag counts, and **avg star rating per

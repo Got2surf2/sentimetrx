@@ -39,6 +39,7 @@ tests/
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
+│   ├── classifyPendingRows.test.ts  # auto-classify-on-sync safety net — pending-row loop drain, maxRows cap/hasMore, real keyword assertions
 │   ├── deflectionRouter.test.ts
 │   ├── engagementSignals.test.ts
 │   ├── entityAnalysis.test.ts    # PPTX entity slides — splitMentions, catalogToAggregate (catalog-first reuse), entitySlideSpecs slide shape

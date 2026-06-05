@@ -321,6 +321,8 @@ Finalizer. Reads sample rows from `dataset_rows_flat`, builds the Reddit schema 
 
 The most complex source — operates async via DataforSEO's task-submit/task-get pattern, driven by a 6-hour cron.
 
+**Auto-classify-on-sync:** `lib/reviewSync.syncReviewSource` (the shared fn behind both the manual sync route and the `review-sync` cron) runs an **auto-classify safety net** after each sync — if the dataset already has taxonomy ("Dimensions") classification, it classifies the freshly-synced still-pending rows (`classifyPendingRows` + the `dataset_rows_pending_taxonomy` RPC, `sql/108`). Gated on prior classification (never auto-starts an un-opted dataset), capped, non-fatal. Keeps the Dimensions tab from drifting behind newly synced reviews. See `docs/TAXONOMY.md`.
+
 **Multi-platform:** despite the legacy name, this module pulls from both **Google** and **Tripadvisor** (migration 065). The platform is chosen in the wizard and stored on `review_sources.source`. `datasets.source` stays `'google_reviews'` for both — it's the discriminator the analyze UI keys off; the authoritative platform lives on `review_sources.source` (and `datasets.description.platform`). Yelp is intentionally excluded — DataForSEO retired its Yelp endpoints.
 
 ### Wizard flow — `components/analyze/GoogleReviewsWizard.tsx`
