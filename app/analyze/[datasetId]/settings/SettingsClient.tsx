@@ -17,7 +17,7 @@ import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 interface OrgOption { id: string; name: string }
 
 interface Props {
-  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'source' | 'visibility' | 'status' | 'row_count'>
+  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'source' | 'visibility' | 'status' | 'row_count' | 'taxonomy_enabled'>
   schema:     SchemaConfig
   isOwner:    boolean
   isAdmin?:   boolean
@@ -33,6 +33,8 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [name,        setName]        = useState(dataset.name)
   const [description, setDescription] = useState(dataset.description || '')
   const [visibility,  setVisibility]  = useState<'private' | 'public'>(dataset.visibility)
+  const [taxonomyEnabled, setTaxonomyEnabled] = useState(!!dataset.taxonomy_enabled)
+  const [taxSaving, setTaxSaving] = useState(false)
   const [schema,      setSchema]      = useState<SchemaConfig>(initialSchema)
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
@@ -296,6 +298,28 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             )
           })}
         </div>
+      </div>
+
+      {/* Dimensions (taxonomy) — per-dataset opt-in, persisted immediately */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-3">
+        <h2 className="font-bold text-gray-800">Dimensions</h2>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" checked={taxonomyEnabled} disabled={taxSaving}
+            onChange={async function() {
+              const next = !taxonomyEnabled
+              setTaxonomyEnabled(next); setTaxSaving(true); setError('')
+              try {
+                const res = await fetch('/api/datasets/' + dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taxonomy_enabled: next }) })
+                if (!res.ok) { setTaxonomyEnabled(!next); const d = await res.json().catch(function() { return {} }); setError(d.error || 'Failed to update Dimensions') }
+              } catch { setTaxonomyEnabled(!next); setError('Failed to update Dimensions') }
+              finally { setTaxSaving(false) }
+            }}
+            className="accent-orange-500 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Apply Dimensions{taxSaving && <span className="text-xs text-gray-400 font-normal"> · saving…</span>}</p>
+            <p className="text-xs text-gray-400">Make the restaurant taxonomy (service, food, drinks, ambiance…) available for this dataset — the Dimensions tab plus dimension breakdowns in Charts &amp; Stats. For restaurant data. After enabling, open the Dimensions tab and click “Classify this dataset.” Restaurant-industry orgs get this automatically.</p>
+          </div>
+        </label>
       </div>
 
       {/* Schema editor */}

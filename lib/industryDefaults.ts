@@ -42,6 +42,9 @@ export type Industry =
   | 'automotive_repair'
   | 'other'
 
+// Industries that get the restaurant 7-axis taxonomy ("Dimensions") auto-enabled.
+export const RESTAURANT_INDUSTRIES: Industry[] = ['casual_dining', 'fine_dining', 'fast_food']
+
 // Human-readable labels shown in the study creator dropdown
 export const INDUSTRY_LABELS: Record<Industry, string> = {
   healthcare:          'Healthcare',

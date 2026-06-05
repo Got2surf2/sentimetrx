@@ -1,4 +1,18 @@
 import type { ModuleFeatures } from './types'
+import { RESTAURANT_INDUSTRIES } from './industryDefaults'
+
+/**
+ * Whether an org gets the Dimensions (taxonomy) capability: the explicit
+ * `taxonomy` feature flag, OR the org's industry is a restaurant type (the
+ * dictionary is restaurant-specific, so restaurant clients get it automatically).
+ * Pages also OR in a per-dataset flag (`datasets.taxonomy_enabled`).
+ */
+export function orgTaxonomyEnabled(orgFeatures: { taxonomy?: boolean; primaryIndustries?: string[] } | null | undefined): boolean {
+  if (!orgFeatures) return false
+  if (orgFeatures.taxonomy) return true
+  const inds = orgFeatures.primaryIndustries
+  return Array.isArray(inds) && inds.some(function(i) { return (RESTAURANT_INDUSTRIES as string[]).indexOf(i) !== -1 })
+}
 
 const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
   'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'recordings',

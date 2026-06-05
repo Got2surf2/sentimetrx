@@ -3,7 +3,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, orgTaxonomyEnabled } from '@/lib/resolveOrg'
 import ChartsModule from '@/components/analyze/ChartsModule'
 
 export const dynamic = 'force-dynamic'
@@ -40,10 +40,10 @@ export default async function ChartsPage(props: Props) {
   var themeModel = stateRow.theme_model || null
 
   // Inject signal_tier for Reddit/Substack datasets
-  var { data: dataset } = await service.from('datasets').select('source').eq('id', params.datasetId).single()
+  var { data: dataset } = await service.from('datasets').select('source, taxonomy_enabled').eq('id', params.datasetId).single()
   if (dataset?.source === 'reddit' || dataset?.source === 'substack') {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={!!orgData?.features?.taxonomy} />
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled} />
 }

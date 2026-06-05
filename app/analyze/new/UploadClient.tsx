@@ -190,6 +190,7 @@ export default function UploadClient() {
   const [description, setDescription] = useState('')
   const [brandTag,    setBrandTag]    = useState('')
   const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
+  const [applyDimensions, setApplyDimensions] = useState(false)  // per-dataset Dimensions (restaurant taxonomy) opt-in
   const [creating,    setCreating]    = useState(false)
   const [uploadPct,   setUploadPct]   = useState(0)
   const [uploadMsg,   setUploadMsg]   = useState('')
@@ -266,7 +267,7 @@ export default function UploadClient() {
       // 1. Create dataset record
       const dsRes  = await fetch('/api/datasets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility, brand_tag: brandTag.trim() || null }),
+        body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility, brand_tag: brandTag.trim() || null, taxonomy_enabled: applyDimensions }),
       })
       const dsData = await dsRes.json()
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
@@ -475,6 +476,13 @@ export default function UploadClient() {
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors resize-none" />
             </div>
             <BrandTagInput value={brandTag} onChange={setBrandTag} />
+            <label className="flex items-start gap-2.5 px-4 py-3 rounded-xl border border-gray-200 cursor-pointer hover:border-orange-300 transition-colors">
+              <input type="checkbox" checked={applyDimensions} onChange={function() { setApplyDimensions(function(v) { return !v }) }} className="accent-orange-500 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Apply Dimensions</p>
+                <p className="text-xs text-gray-400">Classify rows into the restaurant taxonomy (service, food, drinks, ambiance…) so the Dimensions tab is available. For restaurant data — you can also turn this on later from the Schema tab.</p>
+              </div>
+            </label>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-gray-700">Visibility</label>
               <div className="flex gap-3">

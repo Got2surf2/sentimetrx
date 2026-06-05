@@ -78,6 +78,8 @@ export async function PATCH(req: Request, props: Params) {
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }
+  // Per-dataset Dimensions (taxonomy) opt-in — coerced to a clean boolean.
+  if ('taxonomy_enabled' in body) updates.taxonomy_enabled = !!body.taxonomy_enabled
 
   // Admin-only: allow changing org_id (transfer dataset to another org)
   let isTransfer = false

@@ -1259,3 +1259,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Enable it**: turn on "Dimensions" for a restaurant org in team settings → that org's analyze datasets all get the Dimensions tab + Classify button + dim fields in Charts/Stats.
 
 **Verify**: tsc clean; 461 tests pass. Browser pixel-render pending (auth-gated). No migration.
+
+## 2026-06-05 — Dimensions gating: restaurant-org auto-enable + per-dataset flag
+
+**Why**: Owner has restaurant clients who upload data (not just Google Reviews) and needs (a) restaurant orgs to get Dimensions automatically, and (b) an admin/upload-time per-dataset apply.
+
+**What changed**:
+- **Auto-enable for restaurant orgs**: `orgTaxonomyEnabled(orgFeatures)` (`lib/resolveOrg`) = explicit `ModuleFeatures.taxonomy` flag OR `primaryIndustries` includes a restaurant type (`RESTAURANT_INDUSTRIES` = casual/fine/fast). The explicit toggle stays as an override for non-restaurant orgs.
+- **Per-dataset flag**: `datasets.taxonomy_enabled` (sql/109). Set by an "Apply Dimensions" checkbox in the CSV upload flow (UploadClient → POST /api/datasets) and a toggle on the Schema tab (SettingsClient → PATCH /api/datasets/[id], allowlisted). Added to the `Dataset` type.
+- **Gate**: the textmine/charts/stats pages compute `taxonomyEnabled = datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled` and thread it to TextMine (Dimensions sub-tab) + Charts/Stats (`hasDimensions`).
+
+**Verify**: tsc clean; 461 tests; sql/109 applied to prod + verified (column exists). Browser pixel-render pending (auth-gated). Restaurant-industry orgs + flagged datasets now see the Dimensions tab + dim charts/stats; classify from the Dimensions tab as before.

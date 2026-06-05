@@ -32,7 +32,7 @@ export default async function SettingsPage(props: Props) {
   const [{ data: dataset }, { data: stateRow }] = await Promise.all([
     supabase
       .from('datasets')
-      .select('id, name, description, source, visibility, status, row_count, created_by, org_id')
+      .select('id, name, description, source, visibility, status, row_count, created_by, org_id, taxonomy_enabled')
       .eq('id', params.datasetId)
       .single(),
     supabase

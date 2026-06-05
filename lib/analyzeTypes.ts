@@ -183,6 +183,7 @@ export interface Dataset {
   ana_library:    string | null
   visibility:     'private' | 'public'
   status:         'active' | 'archived'
+  taxonomy_enabled?: boolean   // per-dataset Dimensions (taxonomy) opt-in
   row_count:      number
   last_synced_at: string | null
   created_at:     string

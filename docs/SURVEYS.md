@@ -185,5 +185,5 @@ Three tabs in a single page (`TestingClient.tsx`):
 | `lib/types.ts` | StudyConfig, SurveyQuestion, SurveyPayload types |
 | `lib/studyDraft.ts` | Draft structure |
 | `lib/guardrails.ts` | Content safety |
-| `lib/industryDefaults.ts` | 18 industry presets |
+| `lib/industryDefaults.ts` | 18 industry presets; also exports `RESTAURANT_INDUSTRIES` (casual/fine/fast) used by Analyze to auto-enable the Dimensions taxonomy for restaurant orgs |
 | `lib/surveyBlueprints.ts` | 7 study blueprints |

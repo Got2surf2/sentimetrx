@@ -380,11 +380,14 @@ context · outcome) + a cross-cutting **severity flag** (`normal | alert | crisi
 Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integration:
 
 - **Where it lives.** A **"Dimensions"** sub-tab **inside TextMine** (`TextMineModule` renders
-  `<TaxonomyModule>` when `subTab==='dimensions'`), shown for `datasetSource==='google_reviews'` **OR
-  when the org has the `taxonomy` (Dimensions) capability flag** (per-org `ModuleFeatures.taxonomy`,
-  toggled in team settings; threaded as `taxonomyEnabled` to TextMine/Charts/Stats — lets restaurant
-  clients classify ANY analyze dataset, not just Google Reviews; the classify route is org-gated, not
-  source-gated, so it already works on any dataset). Exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
+  `<TaxonomyModule>` when `subTab==='dimensions'`), shown when **`taxonomyEnabled`** is true — which the
+  analyze pages compute as `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`:
+  (a) Google Reviews datasets; (b) **org capability** — `orgTaxonomyEnabled` (`lib/resolveOrg`) = the explicit
+  per-org `ModuleFeatures.taxonomy` toggle **OR** the org's `primaryIndustries` includes a restaurant type
+  (`casual_dining`/`fine_dining`/`fast_food`, auto-enabled); (c) **per-dataset** — `datasets.taxonomy_enabled`
+  (sql/109), set by an "Apply Dimensions" checkbox at CSV upload or a toggle on the Schema tab, for admin/one-off
+  datasets whose org isn't a restaurant. `taxonomyEnabled` is threaded to TextMine/Charts/Stats. The classify
+  route is org-gated, not source-gated, so classification already works on any dataset. Exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs (incl. an **avg-rating ★ KPI**),
