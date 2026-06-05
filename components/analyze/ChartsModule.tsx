@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
+import { axisOfDimField, isDimField, dimVirtualFields } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -369,7 +370,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var rawKeys = rawEntries.map(function(e) { return e[0] })
     var isOrd = !!(catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(rawKeys)
     var freqThenAlpha = function(a: [string, number], b: [string, number]) { return b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0]) }
-    var orderedKeys = catField === '__themes__'
+    var orderedKeys = catField === '__themes__' || axisOfDimField(catField)
       ? rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] })
       : useSmartOrder
         ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] }))
@@ -630,6 +631,17 @@ function useAggregation(datasetId: string, spec: Record<string, unknown> | null)
   return { data: data, loaded: loaded }
 }
 
+// Build a tax_crosstab agg spec when exactly one of (a, b) is a dimension
+// field and the other is a real scalar field. Returns null otherwise (e.g.
+// dimension × theme, or two dimensions — unsupported in v1). axisIsRow tells
+// the route which side of the grid the dimension lands on.
+function taxCrosstabSpec(a: string, b: string, limit: number): { op: string; axis: string; field: string; axisIsRow: boolean; limit: number } | null {
+  var aDim = axisOfDimField(a), bDim = axisOfDimField(b)
+  if (aDim && b && !b.startsWith('__')) return { op: 'tax_crosstab', axis: aDim, field: b, axisIsRow: true, limit: limit }
+  if (bDim && a && !a.startsWith('__')) return { op: 'tax_crosstab', axis: bDim, field: a, axisIsRow: false, limit: limit }
+  return null
+}
+
 // Reads source field, active themes, and mapped fields from _enrichCtx
 function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   var themeModel = _enrichCtx.themeModel
@@ -679,10 +691,12 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
   // Collections have no dataset_rows_flat, so SQL aggregation returns empty — always use rows
   var isCollection = _enrichCtx.datasetSource === 'collection'
-  var aggSpec = !isCollection && catField && colorByField ? { op: 'crosstab', rowField: catField, colField: colorByField, limit: 30 } : null
+  // Dimension axis on either side → taxonomy crosstab (server-side over stored tags)
+  var taxSpec = !isCollection ? taxCrosstabSpec(catField, colorByField, 30) : null
+  var aggSpec = taxSpec || (!isCollection && catField && colorByField ? { op: 'crosstab', rowField: catField, colField: colorByField, limit: 30 } : null)
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   // Fallback to useRows for virtual fields or collections that aren't in the flat table
-  var needsRows = isCollection || catField.startsWith('__') || colorByField.startsWith('__')
+  var needsRows = !taxSpec && (isCollection || catField.startsWith('__') || colorByField.startsWith('__'))
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
@@ -782,9 +796,12 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; valueField: string; smartAxes?: boolean; colors?: string[]; orient?: string
 }) {
   var isCollection = _enrichCtx.datasetSource === 'collection'
-  var spec = !isCollection ? { op: 'group_stats', groupField: catField, valueField: valueField } : null
+  var aggDimAxis = axisOfDimField(catField)
+  var spec = aggDimAxis
+    ? { op: 'tax_group_stats', axis: aggDimAxis, valueField: valueField }
+    : (!isCollection ? { op: 'group_stats', groupField: catField, valueField: valueField } : null)
   var agg = useAggregation(datasetId, spec)
-  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, isCollection ? (_enrichCtx.enrichKey || 0) : -1)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, isCollection && !aggDimAxis ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = isCollection ? rowsLoaded : agg.loaded
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Computing averages...</div>
 
@@ -1507,8 +1524,9 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
   var isCollection = _enrichCtx.datasetSource === 'collection'
-  var needsRows = isCollection || rowField.startsWith('__') || colField.startsWith('__')
-  var aggSpec = !needsRows && rowField && colField ? { op: 'crosstab', rowField: rowField, colField: colField, limit: 30 } : null
+  var taxSpec = !isCollection ? taxCrosstabSpec(rowField, colField, 30) : null
+  var needsRows = !taxSpec && (isCollection || rowField.startsWith('__') || colField.startsWith('__'))
+  var aggSpec = taxSpec || (!needsRows && rowField && colField ? { op: 'crosstab', rowField: rowField, colField: colField, limit: 30 } : null)
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
@@ -1833,6 +1851,35 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // Inject virtual "Themes" field if theme model exists
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
 
+  // Inject virtual "Dimensions" fields (one per taxonomy axis) when the dataset
+  // carries taxonomy classification. Values + averages are computed server-side
+  // from the stored dataset_row_taxonomy tags via the tax_* /aggregate ops —
+  // gated to google_reviews (where the restaurant taxonomy is meaningful),
+  // matching the Dimensions sub-tab gate.
+  var hasDimensions = datasetSource === 'google_reviews'
+
+  // Per-sub counts for the dimension fields, from the same rollup the Dimensions
+  // tab uses (so the simple count bar + field picker reconcile exactly). One
+  // fetch, only when dimensions apply.
+  var [dimSubCounts, setDimSubCounts] = useState<Record<string, Record<string, number>> | null>(null)
+  useEffect(function() {
+    if (!hasDimensions) { setDimSubCounts(null); return }
+    var cancelled = false
+    fetch('/api/datasets/' + datasetId + '/taxonomy')
+      .then(function(r) { return r.ok ? r.json() : null })
+      .then(function(d) {
+        if (cancelled || !d || !Array.isArray(d.subs)) return
+        var byAxis: Record<string, Record<string, number>> = {}
+        d.subs.forEach(function(s: any) {
+          if (!byAxis[s.axis]) byAxis[s.axis] = {}
+          byAxis[s.axis][s.sub] = Number(s.count) || 0
+        })
+        setDimSubCounts(byAxis)
+      })
+      .catch(function() { /* dimension count bars degrade to empty until loaded */ })
+    return function() { cancelled = true }
+  }, [datasetId, hasDimensions])
+
   // Live theme counts via the existing server-side endpoint. The persisted
   // theme_model.themes[].count is unreliable — it's often 0 on datasets
   // where AI mining didn't populate it or a sync added rows without a
@@ -1878,6 +1925,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
   })
 
+  // Inject the 7 virtual "Dimension" categorical fields.
+  if (hasDimensions) allFields = allFields.concat(dimVirtualFields() as any)
+
   // Build theme counts for the virtual field
   var enrichedAnalytics = analytics
   if (analytics) {
@@ -1912,6 +1962,16 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         stddev: Math.sqrt(vals.reduce(function(s, v) { return s + (v - sum / vals.length) * (v - sum / vals.length) }, 0) / vals.length)
       }
     })
+    // Dimension fields: counts come from the taxonomy rollup (per-sub mention
+    // counts). nonNull is left as totalRows so % bars read as share of rows.
+    if (hasDimensions && dimSubCounts) {
+      var dsc = dimSubCounts
+      Object.keys(dsc).forEach(function(axis) {
+        var counts = dsc[axis]
+        if (!counts || Object.keys(counts).length === 0) return
+        extraSummaries['__dim_' + axis + '__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: counts, topN: Object.keys(counts) }
+      })
+    }
     if (Object.keys(extraSummaries).length > 0) {
       enrichedAnalytics = Object.assign({}, analytics, {
         fieldSummaries: Object.assign({}, analytics.fieldSummaries, extraSummaries)
@@ -1999,11 +2059,17 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     if (sc.config) setChartConfigs(function(prev) { var u = Object.assign({}, prev); u[sc.chartType] = Object.assign({}, sc.config); return u })
   }
 
+  // Dimension fields are server-aggregated; only the bar + crosstab charts are
+  // wired for them. Hide them from the pickers of other chart types (they'd
+  // render empty since those Inners compute from client rows that lack tags).
+  var dimWiredChart = activeChart === 'bar' || activeChart === 'crosstab'
+  var pickerFields = dimWiredChart ? allFields : allFields.filter(function(f) { return !isDimField(f.field) })
+
   // Field type groups
-  var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
-  var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
-  var dateFields = allFields.filter(function(f) { return f.type === 'date' })
-  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
+  var catFields = pickerFields.filter(function(f) { return f.type === 'categorical' })
+  var numFields = pickerFields.filter(function(f) { return f.type === 'numeric' })
+  var dateFields = pickerFields.filter(function(f) { return f.type === 'date' })
+  var openFields = pickerFields.filter(function(f) { return f.type === 'open-ended' })
 
   // Smart-drop state for the chart body area
   var [bodyDragOver, setBodyDragOver] = useState(false)
@@ -2182,9 +2248,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           {/* Field groups — filtered to types accepted by the current chart's slots */}
           {(function() {
             var slots = CHART_SLOTS[activeChart] || []
-            if (slots.length === 0) return <ChartFieldGroups fields={allFields} currentConfig={currentConfig} />
+            if (slots.length === 0) return <ChartFieldGroups fields={pickerFields} currentConfig={currentConfig} />
             var accepted = new Set(slots.flatMap(function(s) { return s.accepts }))
-            var visible = accepted.has('any') ? allFields : allFields.filter(function(f) { return accepted.has(f.type) })
+            var visible = accepted.has('any') ? pickerFields : pickerFields.filter(function(f) { return accepted.has(f.type) })
             return <ChartFieldGroups fields={visible} currentConfig={currentConfig} />
           })()}
 
@@ -2251,7 +2317,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           {currentSlots.length > 0 && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {currentSlots.map(function(slot) {
-                var opts = allFields.filter(function(f) {
+                var opts = pickerFields.filter(function(f) {
                   return slot.accepts.includes(f.type) || slot.accepts.includes('any')
                 }).map(function(f) {
                   var label = fl(f)

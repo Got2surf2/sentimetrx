@@ -426,6 +426,14 @@ Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are 
 | Score Driver (`driver`) | themes, rating | Which themes drive higher/lower scores |
 | Data Table (`table`) | any fields | Sortable, filterable data table |
 
+### Synthetic categorical fields
+
+Three families of virtual fields are spliced into the chart field list alongside the real schema fields:
+
+- **`__themes__`** — single best theme per row, re-derived client-side from row text (keyword match in `enrichRows`). Forces the client-rows path.
+- **`__mapped_<field>__`** — numeric remap of a categorical (Likert→number).
+- **`__dim_<axis>__`** (Dimensions, 2026-06-04) — one per taxonomy axis (Touchpoint, Attribute, Product, Beverage, Ambiance, Context, Outcome), gated to `datasetSource==='google_reviews'`. **Values are the axis sub-buckets** (steak, seafood, manager…) and are **multi-value** — a review tagged `product=[steak,seafood]` counts in BOTH. Unlike `__themes__`, dimension values are **never** re-derived on the client (the 250+ keyword dictionary is ~30s/50K rows); they are aggregated **server-side from the stored `dataset_row_taxonomy` tags** via three `tax_*` ops on `/aggregate` (`tax_counts`, `tax_group_stats`, `tax_crosstab`; RPCs in `sql/105`, which UNNEST the `axis_<a>` arrays + join `dataset_rows_flat`). Counts reconcile exactly with the Dimensions sub-tab rollup (same source). Helper: `lib/dimensionFields.ts`. **Wired chart types: Bar (count / % / average) and Crosstab only** — `BarAggInner`→`tax_group_stats` (avg rating per dimension), `BarStackedInner`/`CrosstabInner`→`tax_crosstab` (dimension × any scalar field, either orientation), simple count/% bars from the rollup-fed summary. Dim fields are hidden from the pickers of unwired chart types (`pickerFields`). Stats and the other chart types are deferred (Phase B.2) — their per-row significance tests don't map to summary aggregation.
+
 ### Drag-to-Assign Interface
 - Drag fields from sidebar to chart slots
 - Smart slot selection: prefers empty required > empty optional > replace
