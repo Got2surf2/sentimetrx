@@ -1089,3 +1089,19 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Coverage / deferred**: Bar + Crosstab only. Stats (Phase B.2) deferred — its panels run per-row significance tests (t-test/ANOVA/Mann-Whitney/correlation/regression) that don't map to summary aggregation, and client enrichment is off the table for perf. Other chart types (KPI/score-driver/gantt/time-series) not yet wired; dim fields are hidden from their pickers.
 
 **Verify**: tsc clean; 446 unit tests pass; SQL bodies validated read-only vs prod. **`sql/105` must be applied to prod before the avg-rating/crosstab paths work** (dev hits the linked prod DB; the count bars work off the rollup without it). Live render-QC pending the apply.
+
+## 2026-06-04 — Dimensions in (almost) all chart types
+
+**Why**: Follow-up to the Phase B Bar+Crosstab work — wire the taxonomy Dimensions into the rest of the Charts module so any chart can break down by a dimension axis.
+
+**Coverage**: 10 of 13 chart types now accept `__dim_<axis>__` fields, all server-aggregated:
+- **Free** (count from the rollup-fed summary): Treemap, Bubbles, Waterfall, Funnel.
+- **`tax_group_stats`**: Bullet/KPI + Gantt (avg / min-max per sub); Distribution (precomputed box plot — `sql/106` adds q1/q3 quartiles so the box renders without shipping raw values).
+- **`tax_date_series`** (`sql/106`, new RPC): Time Series "break down by" → dimension × time (count or avg per sub per bucket).
+- Already done: Bar (count/%/avg), Crosstab/stacked Bar.
+
+**Excluded** (hidden from those charts' dim pickers): Scatter (colours each point — needs per-row tags), Data Table (lists rows), Score Driver (theme-keyword regression engine; the avg Bar already answers "which dimension drives rating"). Stats stays deferred (B.2).
+
+**What changed**: `sql/106` — `taxonomy_group_stats` gains q1_val/q3_val (drop+recreate for the new OUT cols); new `taxonomy_date_series(dataset,axis,date,metric,bucket)`. `/aggregate` — `tax_date_series` op + q1/q3 passthrough. `ChartsModule` — expand `DIM_WIRED_CHARTS`; `BulletSplitInner`/`GanttInner`/`DistSplitInner` get `tax_group_stats` paths; `TimeSeriesInner` gets a `tax_date_series` path (new `catAgg` precomputed map + shared `tsBreakdownY` helper feeding both the combined and split-mode trace builders).
+
+**Verify**: tsc clean (my files); 446 tests pass; `sql/106` applied to prod + validated in a rolled-back tx; data path confirmed live — box quartiles (steak q1=2/med=3/q3=5) and manager×time (★2.58→2.48→2.29, declining). Browser pixel-render still pending (auth-gated).

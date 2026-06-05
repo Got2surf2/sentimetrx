@@ -965,9 +965,27 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
 }
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
-  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
+  var distDimAxis = axisOfDimField(splitByField)
+  var distAgg = useAggregation(datasetId, distDimAxis ? { op: 'tax_group_stats', axis: distDimAxis, valueField: numField } : null)
+  var { rows, loaded: distRowsLoaded } = useChartRows(datasetId, distDimAxis ? -1 : (_enrichCtx.enrichKey || 0))
+  var loaded = distDimAxis ? distAgg.loaded : distRowsLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
+  var numSumD = analytics.fieldSummaries[numField]
+  var intYD = isSmallIntRange(numSumD?.min, numSumD?.max)
+  // Dimension split \u2192 precomputed box per sub (server can't ship raw per-row values).
+  if (distDimAxis) {
+    var dg = (distAgg.data && distAgg.data.groups) as Record<string, { n: number; mean: number; median: number; min: number; max: number; q1: number | null; q3: number | null }> | undefined
+    var dKeys = dg ? Object.keys(dg).filter(function(k) { return dg![k].q1 != null && dg![k].q3 != null }) : []
+    if (!dKeys.length) return <EmptyChart msg="No numeric data for this split." />
+    var dTotal = dKeys.reduce(function(s, k) { return s + dg![k].n }, 0)
+    var dTraces = dKeys.map(function(k, i) {
+      var st = dg![k]
+      var pct = dTotal > 0 ? Math.round(st.n / dTotal * 100) : 0
+      return { type: 'box' as const, name: resolveAlias(splitByField, k, schema) + ' (' + pct + '%)', q1: [st.q1], median: [st.median], q3: [st.q3], lowerfence: [st.min], upperfence: [st.max], mean: [st.mean], marker: { color: pal[i % pal.length] } }
+    })
+    return <PlotlyChart traces={dTraces} layout={{ title: flByName(numField, schema) + ' by ' + flByName(splitByField, schema), yaxis: { title: flByName(numField, schema), ...(intYD ? { dtick: 1, tick0: numSumD?.min } : {}) }, legend: { orientation: 'v' as const, x: 1.02, y: 1, xanchor: 'left' as const, yanchor: 'top' as const, title: { text: flByName(splitByField, schema) } }, margin: { t: 48, r: 220, b: 56, l: 56 } }} />
+  }
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
     var grp = String(r[splitByField] || '').trim()
@@ -1014,8 +1032,11 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
   var bulletPal = colors || CHART_COLORS
   var isCollection = _enrichCtx.datasetSource === 'collection'
-  var needsRows = isCollection || splitByField.startsWith('__') || measureField.startsWith('__')
-  var aggSpec = !needsRows && splitByField && measureField ? { op: 'group_stats', groupField: splitByField, valueField: measureField } : null
+  var bulletDimAxis = axisOfDimField(splitByField)
+  var needsRows = !bulletDimAxis && (isCollection || splitByField.startsWith('__') || measureField.startsWith('__'))
+  var aggSpec = bulletDimAxis
+    ? { op: 'tax_group_stats', axis: bulletDimAxis, valueField: measureField }
+    : (!needsRows && splitByField && measureField ? { op: 'group_stats', groupField: splitByField, valueField: measureField } : null)
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
@@ -1575,11 +1596,25 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   // useChartRows useEffect short-circuits and stale (pre-toggle) rows
   // survive, which is the bug behind "I unchecked a theme but the line
   // is still showing."
+  // Dimension breakdown (colour-by an axis) → server-side date series per sub.
+  var tsDimAxis = hasBreakdown ? axisOfDimField(colorByField!) : null
+  var taxSeriesSpec = tsDimAxis && dateField ? { op: 'tax_date_series', axis: tsDimAxis, dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
+  var taxSeries = useAggregation(datasetId, taxSeriesSpec)
   var aggSpec = !isCollection && dateField && !hasBreakdown ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var useRowsFallback = isCollection || hasBreakdown || !aggLoaded || !(aggData?.series)
+  var useRowsFallback = !tsDimAxis && (isCollection || hasBreakdown || !aggLoaded || !(aggData?.series))
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, useRowsFallback ? (_enrichCtx.enrichKey || 0) : -1)
-  var loaded = (isCollection || hasBreakdown) ? rowsLoaded : (aggLoaded && aggData?.series ? true : rowsLoaded)
+  var loaded = tsDimAxis ? taxSeries.loaded : ((isCollection || hasBreakdown) ? rowsLoaded : (aggLoaded && aggData?.series ? true : rowsLoaded))
+  // Precomputed (sub → date → {n, avg}) from the dimension date-series, used by
+  // the breakdown trace builders below in place of raw per-row arrays.
+  var catAgg: Record<string, Record<string, { n: number; avg: number | null }>> | null = null
+  if (tsDimAxis && taxSeries.data && taxSeries.data.series) {
+    catAgg = {}
+    taxSeries.data.series.forEach(function(s: any) {
+      if (!catAgg![s.sub]) catAgg![s.sub] = {}
+      catAgg![s.sub][s.date] = { n: s.count, avg: s.avg }
+    })
+  }
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
@@ -1592,6 +1627,15 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var sortedDates: string[] = []
   var catNames: string[] = []
 
+  // y value for a (category, bucket) — from the dimension date-series when
+  // present, else from the raw per-row arrays.
+  var tsBreakdownY = function(cat: string, d: string): number {
+    if (catAgg) { var a = catAgg[cat] && catAgg[cat][d]; return a ? (metricField ? (a.avg || 0) : a.n) : 0 }
+    var arr = catGroups[cat] && catGroups[cat][d]
+    if (!arr || arr.length === 0) return 0
+    return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
+  }
+
   if (hasBreakdown) {
     // Group rows by category value, then by bucketed date. Rows where the
     // breakdown field is empty / null are dropped entirely — they were
@@ -1599,25 +1643,25 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
     // Themes sidebar doesn't list "(blank)" so the user couldn't toggle
     // it off. Skipping them keeps chart and sidebar in sync.
     var allDates = new Set<string>()
-    rows.forEach(function(r) {
-      var raw = String(r[dateField] || ''); if (!raw) return
-      var rawCat = r[colorByField!]
-      var cat = String(rawCat ?? '').trim()
-      if (!cat) return  // drop unlabeled rows from the breakdown
-      var d = bucketKey(raw, effectiveBucket)
-      allDates.add(d)
-      if (!catGroups[cat]) catGroups[cat] = {}
-      if (!catGroups[cat][d]) catGroups[cat][d] = []
-      if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
-    })
-    sortedDates = Array.from(allDates).sort()
-    catNames = Object.keys(catGroups).sort()
-    catNames.forEach(function(cat, ci) {
-      var yVals = sortedDates.map(function(d) {
-        var arr = catGroups[cat][d]
-        if (!arr || arr.length === 0) return 0
-        return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
+    if (catAgg) {
+      Object.keys(catAgg).forEach(function(cat) { Object.keys(catAgg![cat]).forEach(function(d) { allDates.add(d) }) })
+    } else {
+      rows.forEach(function(r) {
+        var raw = String(r[dateField] || ''); if (!raw) return
+        var rawCat = r[colorByField!]
+        var cat = String(rawCat ?? '').trim()
+        if (!cat) return  // drop unlabeled rows from the breakdown
+        var d = bucketKey(raw, effectiveBucket)
+        allDates.add(d)
+        if (!catGroups[cat]) catGroups[cat] = {}
+        if (!catGroups[cat][d]) catGroups[cat][d] = []
+        if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
       })
+    }
+    sortedDates = Array.from(allDates).sort()
+    catNames = (catAgg ? Object.keys(catAgg) : Object.keys(catGroups)).sort()
+    catNames.forEach(function(cat, ci) {
+      var yVals = sortedDates.map(function(d) { return tsBreakdownY(cat, d) })
       traces.push({ x: sortedDates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, name: cat, showlegend: true })
     })
   } else {
@@ -1658,11 +1702,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var splitCharts: { name: string; traces: any[]; color: string }[] = []
   if (hasBreakdown && splitMode && catNames.length > 0) {
     catNames.forEach(function(cat, ci) {
-      var yVals = sortedDates.map(function(d) {
-        var arr = catGroups[cat] ? catGroups[cat][d] : null
-        if (!arr || arr.length === 0) return 0
-        return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
-      })
+      var yVals = sortedDates.map(function(d) { return tsBreakdownY(cat, d) })
       splitCharts.push({
         name: cat,
         color: pal[ci % pal.length],
@@ -1737,12 +1777,23 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 }
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
-  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
+  var ganttDimAxis = axisOfDimField(catField)
+  var agg = useAggregation(datasetId, ganttDimAxis ? { op: 'tax_group_stats', axis: ganttDimAxis, valueField: rangeField } : null)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, ganttDimAxis ? -1 : (_enrichCtx.enrichKey || 0))
+  var loaded = ganttDimAxis ? agg.loaded : rowsLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
-  var groups: Record<string, number[]> = {}
-  rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
-  var catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); var mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); var ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
+  var catArr: string[], mins: number[], ranges: number[]
+  if (ganttDimAxis && agg.data && agg.data.groups) {
+    var g = agg.data.groups as Record<string, { min: number; max: number }>
+    catArr = Object.keys(g)
+    mins = catArr.map(function(c) { return g[c].min })
+    ranges = catArr.map(function(c) { return g[c].max - g[c].min })
+  } else {
+    var groups: Record<string, number[]> = {}
+    rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
+    catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
+  }
   return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 
@@ -2059,10 +2110,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     if (sc.config) setChartConfigs(function(prev) { var u = Object.assign({}, prev); u[sc.chartType] = Object.assign({}, sc.config); return u })
   }
 
-  // Dimension fields are server-aggregated; only the bar + crosstab charts are
-  // wired for them. Hide them from the pickers of other chart types (they'd
-  // render empty since those Inners compute from client rows that lack tags).
-  var dimWiredChart = activeChart === 'bar' || activeChart === 'crosstab'
+  // Dimension fields are server-aggregated (via the tax_* /aggregate ops). Most
+  // chart types are wired for them; the rest are hidden from the dim pickers
+  // because they need per-row/per-point data the aggregation can't provide
+  // (scatter colours each point, table lists rows) or are redundant/specialised
+  // (score-driver is a theme-keyword regression engine — the avg bar covers it).
+  var DIM_WIRED_CHARTS = ['bar', 'crosstab', 'treemap', 'bubbles', 'waterfall', 'funnel', 'bullet', 'gantt', 'distribution', 'timeseries']
+  var dimWiredChart = DIM_WIRED_CHARTS.indexOf(activeChart) !== -1
   var pickerFields = dimWiredChart ? allFields : allFields.filter(function(f) { return !isDimField(f.field) })
 
   // Field type groups
