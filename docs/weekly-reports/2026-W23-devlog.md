@@ -1418,3 +1418,16 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - **`app/recordings/RecordingsListClient.tsx`** — extended `RecordingCard`, added `fmtDur` (sec → "1h 12m"/"45m") + `cardMeta` (builds the parts list, dropping any zero/unknown part), and rendered a middot-separated meta row between the status/date row and the owner footer. An in-progress card with no pairs/duration just shows its file count (or nothing).
 
 **Verify**: tsc clean; 461 tests pass. **Data path verified read-only vs prod** (supabase db query): NOWOCATS Meeting 2 → 5 media · 0 slides · 17 qa_pairs · 2760s (46m) — the qa_pair count matches the documented Meeting 2 number exactly, confirming the filter agrees with the report. Browser pixel-render pending (auth-gated). No migration. Spec RECORDINGS.md §5.5 (List UX bullet) updated. ALL LOCAL.
+
+## 2026-06-05 — Town Hall cards: "needs review" pending-work pill + deep-linkable report tabs
+
+**Why**: Owner wanted the cards to flag pending reviewer work so it's visible without opening each recording, in a darker color, ideally a clickable pill that jumps straight to where you resolve it. Note: the Town Hall data model has **no "unanswered question" concept** — every extracted Q&A pair has both a question and an answer (required). The real "needs human intervention" signal that exists today is `recording_extractions.flagged_for_review` (low_confidence / curator_questioned / cross_vendor_disagreement / panel_to_panel_suspect). Owner agreed: show flagged now, separated; a true "unanswered" pill is a follow-up needing an analyzer detector.
+
+**What changed**:
+- **`app/recordings/page.tsx`** — the existing qa_pair aggregate query now also counts `flagged_for_review` pairs in the same pass (one query, two counts). New `Row.flagged_count`.
+- **`app/recordings/RecordingsListClient.tsx`** — on `status==='complete' && flagged_count>0`, a **darker-amber full-width action bar** ("⚠ N pairs need review →") renders at the card bottom. It's its **own `<Link>`** to `…/report?tab=coverage` — a sibling of, never nested inside, the card's body link (nested `<a>` is invalid). Built to hold a second "unanswered" pill later; both will funnel to the same review tab.
+- **`app/recordings/[id]/report/ReportClient.tsx`** — report tabs are now **deep-linkable**: initial tab reads `?tab=` (`useSearchParams`, validated against the Tab union, defaults to `coverage`). The page is auth-dynamic so no static CSR-bailout concern.
+
+**Open follow-up**: **truly-unanswered-question detection** — add a `flag_reason='no_response'` (or payload flag) the analyzer sets when an audience question got no substantive panel answer, then a second card pill counting it. Bigger build (analyzer prompt/pass + backfill via re-extract); scoped, NOT built.
+
+**Verify**: my files tsc-clean (the 3 tsc errors in the tree are the parallel TextMine session's uncommitted `EntityCompareTab.tsx` — `SchemaField.max`/`.sqt` — NOT mine; excluded from this commit). **Data verified read-only vs prod**: NOWOCATS Meeting 2 → 17 qa / 3 flagged → card shows "⚠ 3 pairs need review". 461 tests pass. Browser pixel-render pending (auth-gated). No migration. Spec RECORDINGS.md §5.5 updated. ALL LOCAL.

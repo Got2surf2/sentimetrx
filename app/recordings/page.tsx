@@ -37,6 +37,7 @@ interface Row {
   qa_pair_count: number
   media_file_count: number
   slide_file_count: number
+  flagged_count: number
 }
 
 export default async function RecordingsListPage() {
@@ -94,15 +95,21 @@ export default async function RecordingsListPage() {
 
   // Per-recording Q&A pair count for the card meta row — same filter the report
   // header + GET /api/recordings/[id] use (unit_type='qa_pair'; excludes
-  // action_item / quote rows) so the card and the report agree.
+  // action_item / quote rows) so the card and the report agree. Same pass also
+  // counts pairs flagged_for_review → the card's "needs review" pending-work pill
+  // (mirrors coverage_report.flagged_count).
   const qaCountById = new Map<string, number>()
+  const flaggedCountById = new Map<string, number>()
   if (ids.length > 0) {
     const { data: pairs } = await service
       .from('recording_extractions')
-      .select('recording_id')
+      .select('recording_id, flagged_for_review')
       .in('recording_id', ids)
       .eq('unit_type', 'qa_pair')
-    for (const p of (pairs ?? []) as any[]) qaCountById.set(p.recording_id, (qaCountById.get(p.recording_id) ?? 0) + 1)
+    for (const p of (pairs ?? []) as any[]) {
+      qaCountById.set(p.recording_id, (qaCountById.get(p.recording_id) ?? 0) + 1)
+      if (p.flagged_for_review) flaggedCountById.set(p.recording_id, (flaggedCountById.get(p.recording_id) ?? 0) + 1)
+    }
   }
 
   // Per-recording file counts, split by role (media = audio/video, slides = PDF
@@ -165,6 +172,7 @@ export default async function RecordingsListPage() {
     qa_pair_count: qaCountById.get(r.id) ?? 0,
     media_file_count: mediaCountById.get(r.id) ?? 0,
     slide_file_count: slideCountById.get(r.id) ?? 0,
+    flagged_count: flaggedCountById.get(r.id) ?? 0,
   }))
 
   return (

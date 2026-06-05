@@ -29,6 +29,7 @@ export interface RecordingCard {
   qa_pair_count: number
   media_file_count: number
   slide_file_count: number
+  flagged_count: number
 }
 
 // Lifecycle steps for the ℹ️ progress popover. `done` from the recording's
@@ -301,6 +302,23 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                   {showOrg && r.org_name && <span className="truncate max-w-[45%] text-gray-500">{r.org_name}</span>}
                 </div>
               </Link>
+              {/* Pending-work action bar — flagged Q&A pairs needing reviewer
+                  intervention. Its own Link (NOT nested in the card's body Link)
+                  → the report's Coverage review tab. A second pill (truly
+                  unanswered questions) will sit alongside once the analyzer
+                  detects them. */}
+              {r.status === 'complete' && r.flagged_count > 0 && (
+                <Link
+                  href={`/recordings/${r.id}/report?tab=coverage`}
+                  className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-amber-200 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-semibold transition-colors"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden>⚠</span>
+                    {r.flagged_count} {r.flagged_count === 1 ? 'pair needs' : 'pairs need'} review
+                  </span>
+                  <span aria-hidden className="text-amber-700">→</span>
+                </Link>
+              )}
             </div>
           )
         })}

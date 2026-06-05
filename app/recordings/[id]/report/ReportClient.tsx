@@ -10,7 +10,7 @@
 // click handlers show a "not yet wired" tooltip rather than firing.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type {
@@ -55,8 +55,14 @@ type Tab = 'qa' | 'actions' | 'coverage' | 'transcript' | 'export'
 
 const HERMES = '#E8632A'
 
+const TABS: readonly Tab[] = ['qa', 'actions', 'coverage', 'transcript', 'export']
+
 export default function ReportClient({ data }: { data: ReportData }) {
-  const [tab, setTab] = useState<Tab>('coverage')
+  // Deep-linkable tab (e.g. the list card's "needs review" pill → ?tab=coverage).
+  // Defaults to coverage, the review hub.
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as Tab) : 'coverage')
 
   // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
   // replaces individual rows in place, so we keep state here and rebuild
