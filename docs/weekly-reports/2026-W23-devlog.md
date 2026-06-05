@@ -1,5 +1,20 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — TextMine Comments: unified entity + dimension + theme filter (AND)
+
+**Why**: Owner — the Comments tab could filter by theme (strip) OR drill one entity OR drill one dimension, but never combine them. Wanted to filter comments by entity AND dimension AND theme simultaneously ("show me *steak* comments tagged *temperature* that mention *the ribeye*").
+
+**Decision**: client rows (`/rows`) carry only `data` — no flat `id`/`row_index` — so dimension tags (keyed by `row_id`) can't be joined client-side, and exposing a join key pollutes 4+ `Object.keys(row)` consumers (FrequencyChart/signalTier/termInsights/datasetUtils). Entity + dimension drills are already server-side, so the surgical path is a **combined server endpoint** (chosen with owner over a forced client-side join).
+
+**What changed**:
+- `sql/113_get_rows_by_filters.sql` — RPC returning rows matching ALL active facets (AND across, OR within): theme + entity reuse the `get_rows_by_entity` FTS prefilter + open-ended recheck (independent `websearch_to_tsquery` per facet); dimension is an axis array-overlap on `dataset_row_taxonomy` (one `text[]` of selected subs per axis). `count(*) OVER()` carries the total.
+- `lib/commentFilter.ts` — `getRowsByFilters`: resolves the comment scope (collection→members, else the dataset itself — *not* brand siblings, matching what `/rows` loads), builds the theme/entity tsqueries (reuses `buildThemeQuery`/`buildEntityQuery`, now exported) + per-axis sub arrays, calls the RPC.
+- `POST /api/datasets/[id]/comments` — org-gated; flattens selected themes' keywords, entities (canonical+aliases), dimension {axis,sub}; returns `{rows, total}`.
+- `components/analyze/textmine/FilteredCommentsPanel.tsx` (new) — server-filtered results panel (card/sort/grid/infinite-scroll adapted from the old EntityCommentsPanel) with multi-term highlight + an active-filter summary header.
+- `TextMineModule.tsx` — Comments tab now has a **3-row filter bar** (Themes strip + Entities picker + Dimensions picker). `commentsServerMode = any entity/dimension selected` → `FilteredCommentsPanel` (debounced fetch on facet change); themes-alone keeps the rich client `CommentsPanel`. Entity drill (`handleDrillEntity`) + the theme-card **Dimensions chip** (`handleDrillDimension`) now add to the facets and open the tab pre-filtered. Removed the now-orphaned `EntityCommentsPanel.tsx` (its single-entity drill is subsumed). Dimension facet options fetched once from `/taxonomy` (axes+subs).
+
+**Verify**: tsc clean (cache-cleared); 461 tests pass; `sql/113` APPLIED to prod + verified end-to-end (Cheddar's theme `steak` ∧ dimension `product:steak` → 948 total, paged). Degrades gracefully if the RPC is absent (endpoint errors → empty results, filter bar still renders). Browser pixel-render pending (auth-gated). Specs ANALYTICS.md + specMap updated. **Local-only.**
+
 ## 2026-06-05 — Dimensions rollup: dynamic rating field + aliases (open item #3)
 
 **Why**: The Dimensions per-axis/per-sub ★ ratings hardcoded `data->>rating` (`taxonomyRollup.ts`), so on surveys whose rating field has a different key (and aliased text values) — e.g. Carrabba's GSS, where the field is literally the satisfaction question text with `valueAliases` "Highly Satisfied"→5 — every per-dimension ★ came back blank. (The metric strip already handled this via `field_aliased_avg`; the rollup didn't.)

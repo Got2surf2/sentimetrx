@@ -167,6 +167,7 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'lib/timeBucket.ts',
     'lib/entityDiscovery.ts',
     'lib/entityFilter.ts',
+    'lib/commentFilter.ts',
     'lib/entityVariants.ts',
     'lib/brandMatch.ts',
     'lib/brandRules.ts',

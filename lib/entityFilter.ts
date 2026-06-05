@@ -182,7 +182,7 @@ export function buildEntityQuery(canonical: string, aliases: string[]): string {
 }
 
 /** Build a websearch query from a theme's keyword list (OR'd phrases). */
-function buildThemeQuery(keywords: string[]): string | null {
+export function buildThemeQuery(keywords: string[]): string | null {
   const quoted = (keywords || [])
     .map(k => (k || '').replace(/["']/g, '').trim())
     .filter(k => k.length >= 2)

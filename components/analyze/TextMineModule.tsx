@@ -119,8 +119,8 @@ const CommentsPanel = dynamic(
     },
   }
 )
-const EntityCommentsPanel = dynamic(
-  function() { return import('@/components/analyze/textmine/EntityCommentsPanel') },
+const FilteredCommentsPanel = dynamic(
+  function() { return import('@/components/analyze/textmine/FilteredCommentsPanel') },
   {
     ssr: false,
     loading: function() {
@@ -1049,11 +1049,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   // Entity drill mode — set when user clicks an entity pill in EntitiesCard.
   // Comments tab enters entity mode: shows API-fetched rows instead of client filteredRows.
-  const [drillEntity, setDrillEntity] = useState<{ slug: string; canonical: string; category: string; aliases: string[] } | null>(null)
-  const [entityRows, setEntityRows]   = useState<Array<{ id: number; dataset_id: string; row_index: number; data: Record<string, unknown> }>>([])
-  const [entityTotal, setEntityTotal] = useState(0)
-  const [entityLoading, setEntityLoading] = useState(false)
-  const [entityError, setEntityError]     = useState('')
+  // Unified Comments filter — entity + dimension facets that AND-combine with
+  // the selected themes. Selecting any entity/dimension switches the Comments
+  // results to the server-filtered panel (get_rows_by_filters).
+  type DimSel = { axis: string; sub: string }
+  const [filterEntities, setFilterEntities] = useState<{ slug: string; canonical: string; category: string; aliases: string[] }[]>([])
+  const [filterDims, setFilterDims] = useState<DimSel[]>([])
+  const [dimFacets, setDimFacets] = useState<{ axis: string; label: string; subs: { sub: string; count: number }[] }[]>([])
+  const [dimFacetsLoaded, setDimFacetsLoaded] = useState(false)
+  const [filterRows, setFilterRows]   = useState<Array<{ id: number; dataset_id: string; row_index: number; data: Record<string, unknown> }>>([])
+  const [filterTotal, setFilterTotal] = useState(0)
+  const [filterLoading, setFilterLoading] = useState(false)
+  const [filterError, setFilterError]     = useState('')
 
   // After mount, restore persisted UI state. Gating on restoredFromSession
   // ensures the writer-effect below doesn't overwrite sessionStorage with
@@ -1306,6 +1313,56 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       enrichSearchInterest(savedThemeModel)
     }
   }, [rowsLoaded])
+
+  // ── Unified Comments filter ────────────────────────────────────────────────
+  // serverMode: any entity or dimension facet selected → results come from the
+  // combined /comments endpoint (themes alone keep the rich client CommentsPanel).
+  const commentsServerMode = filterEntities.length > 0 || filterDims.length > 0
+
+  // Dimension facet options (axes + their subs), fetched once when the Comments
+  // tab is open on a Dimensions-enabled dataset.
+  useEffect(function() {
+    if (subTab !== 'comments' || !dimensionsEnabled || dimFacetsLoaded) return
+    setDimFacetsLoaded(true)
+    fetch('/api/datasets/' + datasetId + '/taxonomy')
+      .then(function(r) { return r.ok ? r.json() : null })
+      .then(function(d) {
+        if (!d) return
+        var axes = (d.axes || []) as { axis: string; label: string }[]
+        var subs = (d.subs || []) as { axis: string; sub: string; count: number }[]
+        var byAxis: Record<string, { sub: string; count: number }[]> = {}
+        subs.forEach(function(s) { (byAxis[s.axis] = byAxis[s.axis] || []).push({ sub: s.sub, count: s.count }) })
+        setDimFacets(axes.filter(function(a) { return (byAxis[a.axis] || []).length > 0 }).map(function(a) {
+          return { axis: a.axis, label: a.label, subs: byAxis[a.axis] || [] }
+        }))
+      })
+      .catch(function() { /* facets stay empty — picker just won't show */ })
+  }, [subTab, dimensionsEnabled, dimFacetsLoaded, datasetId])
+
+  // Fetch combined-filter results (debounced) whenever the active facets change.
+  useEffect(function() {
+    if (subTab !== 'comments' || !commentsServerMode) return
+    var cancelled = false
+    var handle = setTimeout(function() {
+      setFilterLoading(true); setFilterError('')
+      fetch('/api/datasets/' + datasetId + '/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: effectiveFields,
+          themes: selectedThemes.map(function(t) { return { keywords: t.keywords } }),
+          entities: filterEntities.map(function(e) { return { canonical: e.canonical, aliases: e.aliases } }),
+          dimensions: filterDims,
+          limit: 300,
+        }),
+      })
+        .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to filter comments')) })
+        .then(function(d) { if (!cancelled) { setFilterRows(d.rows || []); setFilterTotal(d.total || 0) } })
+        .catch(function(err) { if (!cancelled) setFilterError(err?.message || 'Failed to filter comments') })
+        .finally(function() { if (!cancelled) setFilterLoading(false) })
+    }, 250)
+    return function() { cancelled = true; clearTimeout(handle) }
+  }, [subTab, commentsServerMode, datasetId, effectiveFields, selectedThemes, filterEntities, filterDims])
 
   // Theme colors
   const themeColors = useMemo<Record<number, typeof THEME_PALETTE[0]>>(function() {
@@ -1622,9 +1679,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleSubTab(tab: SubTab) {
     if (tab === 'comments') setPreviousTab(subTab)
     setSubTab(tab)
-    // Always clear entity mode when the user navigates tabs explicitly.
-    setDrillEntity(null)
-    if (tab !== 'comments') { setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
+    // Clear the entity/dimension filter facets when leaving Comments explicitly.
+    if (tab !== 'comments') { setFilterEntities([]); setFilterDims([]); setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
   }
 
   function handleDrillTheme(t: Theme, group?: string) {
@@ -1639,27 +1695,24 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setDrillTheme(null)
     setSelectedThemes([])
     setDrillGroup(null)
-    setDrillEntity(null)
+    setFilterEntities([]); setFilterDims([])
     setSubTab(previousTab)
   }
 
-  async function handleDrillEntity(entity: { slug: string; canonical: string; category: string; aliases: string[] }) {
+  // Clicking an entity (cloud / card / pill) adds it to the Comments entity
+  // facet and opens the Comments tab — combinable with themes + dimensions.
+  function handleDrillEntity(entity: { slug: string; canonical: string; category: string; aliases: string[] }) {
     setPreviousTab(subTab)
-    setDrillEntity(entity)
-    setDrillTheme(null); setSelectedThemes([]); setDrillGroup(null)
+    setFilterEntities(function(prev) { return prev.some(function(e) { return e.slug === entity.slug }) ? prev : prev.concat([entity]) })
     setSubTab('comments')
-    setEntityLoading(true); setEntityError(''); setEntityRows([]); setEntityTotal(0)
-    try {
-      const res = await fetch('/api/datasets/' + datasetId + '/rows-by-entity?entity=' + encodeURIComponent(entity.slug) + '&limit=100')
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Failed to load comments')
-      setEntityRows(data.rows || [])
-      setEntityTotal(typeof data.total === 'number' ? data.total : (data.rows || []).length)
-    } catch (err: any) {
-      setEntityError(err?.message || 'Failed to load comments')
-    } finally {
-      setEntityLoading(false)
-    }
+  }
+
+  // Clicking a Dimension chip (theme-card row / facet) adds it to the Comments
+  // dimension facet and opens the Comments tab.
+  function handleDrillDimension(axis: string, sub: string) {
+    setPreviousTab(subTab)
+    setFilterDims(function(prev) { return prev.some(function(d) { return d.axis === axis && d.sub === sub }) ? prev : prev.concat([{ axis: axis, sub: sub }]) })
+    setSubTab('comments')
   }
 
   function handleThemeEditorApply(themeArr: Theme[], libName: string, source: string) {
@@ -2332,8 +2385,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           var dc = AXIS_COLOR[d.axis] || '#8FA3AE'
                                           var axisLabel = DIM_AXIS_LABEL[d.axis as Axis] || d.axis
                                           return (
-                                            <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — in ' + d.count.toLocaleString() + ' "' + t.name + '" comment' + (d.count === 1 ? '' : 's')}
-                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: dc + '0d', border: '1px solid ' + dc + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — click to see these "' + t.name + '" comments (' + d.count.toLocaleString() + ')'}
+                                              onClick={function(ev) { ev.stopPropagation(); setSelectedThemes([t]); setDrillTheme(t); handleDrillDimension(d.axis, d.sub) }}
+                                              style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: dc + '0d', border: '1px solid ' + dc + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                                               <span style={{ width: 5, height: 5, borderRadius: 3, background: dc, flexShrink: 0 }} />
                                               <span style={{ fontWeight: 600 }}>{dimSubLabel(d.sub)}</span>
                                               <span style={{ color: T.textFaint }}>{d.count.toLocaleString()}</span>
@@ -2565,19 +2619,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     </div>
                   )}
                 </div>
-                {drillEntity ? (
-                  <EntityCommentsPanel
-                    entity={drillEntity}
-                    rows={entityRows}
-                    total={entityTotal}
-                    loading={entityLoading}
-                    error={entityError}
-                    openFields={openFields}
-                    schema={schema.fields}
-                    onBack={handleBackFromComments}
-                    datasetId={datasetId}
-                  />
-                ) : hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
+                {hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
                   <>
                     {/* Breadcrumb + Theme strip — multi-select */}
                     <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2607,6 +2649,80 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         })}
                       </div>
                     </div>
+                    {/* Entities + Dimensions facets — AND-combine with the themes above */}
+                    {(entityCatalogRows.length > 0 || (dimensionsEnabled && dimFacets.length > 0)) && (function() {
+                      var DIM_AXIS_COLOR: Record<string, string> = { touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C', beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777' }
+                      var entOpts = entityCatalogRows.filter(function(e) { return !filterEntities.some(function(fe) { return fe.slug === e.slug }) }).slice(0, 200)
+                      return (
+                        <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {entityCatalogRows.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', width: 64, flexShrink: 0 }}>Entities</span>
+                              {filterEntities.map(function(e) {
+                                return (
+                                  <span key={e.slug} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px 2px 10px', borderRadius: 20, background: '#EA580C14', border: '1px solid #EA580C40', color: '#9a3412', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    {e.canonical}
+                                    <button onClick={function() { setFilterEntities(function(prev) { return prev.filter(function(x) { return x.slug !== e.slug }) }) }} style={{ background: 'none', border: 'none', color: '#9a3412', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                                  </span>
+                                )
+                              })}
+                              <select value="" onChange={function(ev) {
+                                var slug = ev.target.value; if (!slug) return
+                                const ent = entityCatalogRows.find(function(x) { return x.slug === slug })
+                                if (ent) setFilterEntities(function(prev) { return prev.some(function(p) { return p.slug === slug }) ? prev : prev.concat([{ slug: ent.slug, canonical: ent.canonical, category: ent.category, aliases: ent.aliases || [] }]) })
+                              }} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, border: '1px dashed ' + T.borderMid, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>
+                                <option value="">+ Entity</option>
+                                {entOpts.map(function(e) { return <option key={e.slug} value={e.slug}>{e.canonical} ({e.mentions.toLocaleString()})</option> })}
+                              </select>
+                            </div>
+                          )}
+                          {dimensionsEnabled && dimFacets.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', width: 64, flexShrink: 0 }}>Dimensions</span>
+                              {filterDims.map(function(d) {
+                                var dc = DIM_AXIS_COLOR[d.axis] || '#8FA3AE'
+                                return (
+                                  <span key={d.axis + ':' + d.sub} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px 2px 10px', borderRadius: 20, background: dc + '14', border: '1px solid ' + dc + '40', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ width: 5, height: 5, borderRadius: 3, background: dc, flexShrink: 0 }} />
+                                    {dimSubLabel(d.sub)}
+                                    <button onClick={function() { setFilterDims(function(prev) { return prev.filter(function(x) { return !(x.axis === d.axis && x.sub === d.sub) }) }) }} style={{ background: 'none', border: 'none', color: T.textMid, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                                  </span>
+                                )
+                              })}
+                              <select value="" onChange={function(ev) {
+                                var v = ev.target.value; if (!v) return
+                                var parts = v.split('||'); var axis = parts[0]; var sub = parts[1]
+                                if (axis && sub) setFilterDims(function(prev) { return prev.some(function(p) { return p.axis === axis && p.sub === sub }) ? prev : prev.concat([{ axis: axis, sub: sub }]) })
+                              }} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, border: '1px dashed ' + T.borderMid, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>
+                                <option value="">+ Dimension</option>
+                                {dimFacets.map(function(a) {
+                                  return (
+                                    <optgroup key={a.axis} label={a.label}>
+                                      {a.subs.filter(function(s) { return !filterDims.some(function(fd) { return fd.axis === a.axis && fd.sub === s.sub }) }).map(function(s) {
+                                        return <option key={a.axis + s.sub} value={a.axis + '||' + s.sub}>{dimSubLabel(s.sub)} ({s.count.toLocaleString()})</option>
+                                      })}
+                                    </optgroup>
+                                  )
+                                })}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                    {commentsServerMode ? (
+                      <FilteredCommentsPanel
+                        rows={filterRows}
+                        total={filterTotal}
+                        loading={filterLoading}
+                        error={filterError}
+                        hlTerms={filterEntities.reduce<string[]>(function(acc, e) { return acc.concat([e.canonical]).concat(e.aliases || []) }, []).concat(selectedThemes.reduce<string[]>(function(acc, t) { return acc.concat(t.keywords || []) }, []))}
+                        chips={<span style={{ fontSize: 11, color: T.textMute }}>{selectedThemes.length + filterEntities.length + filterDims.length} filter{(selectedThemes.length + filterEntities.length + filterDims.length) !== 1 ? 's' : ''} active {'·'} all must match</span>}
+                        openFields={openFields}
+                        schema={schema.fields}
+                        datasetId={datasetId}
+                      />
+                    ) : (
                     <CommentsPanel
                       theme={drillTheme || { id: '__all__', name: 'All', description: '', keywords: [], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] }}
                       allThemes={themes.themes}
@@ -2622,6 +2738,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       datasetId={datasetId}
                       showAllMode={selectedThemes.length === 0}
                     />
+                    )}
                   </>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>

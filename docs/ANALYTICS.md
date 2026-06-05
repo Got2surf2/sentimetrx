@@ -44,6 +44,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 
 **4. Comments**
 - Collapsible inline full-text **search** at the top of the tab (a "🔍 Search comments" toggle that expands the panel, closeable) — the same `SearchPanel` + `/search` endpoint (FTS + optional AI re-rank) as the dataset-header search modal, embedded here for in-place comment search
+- **Unified filter bar (Themes + Entities + Dimensions), AND-combined.** Three facet rows let you stack any mix of selected **themes** (the multi-select strip), **entities** (a "+ Entity" picker from the scope's catalog), and **dimensions** (a "+ Dimension" picker grouped by axis, on Dimensions-enabled datasets). Comments must match ALL active facets (AND across facets; OR within a facet). Selecting any entity or dimension switches the results to a **server-filtered** panel (`FilteredCommentsPanel`) backed by `POST /api/datasets/[id]/comments` → `get_rows_by_filters` (sql/113): theme/entity matching reuses the `get_rows_by_entity` FTS prefilter + open-ended recheck, dimension matching is an axis array-overlap on `dataset_row_taxonomy` (so it scales past the 50K client cap and handles collections via member datasets). Returns up to 300 rows + a window-count total; the panel sorts/grids/infinite-scrolls client-side and highlights the active theme keywords + entity terms. **Themes alone** (no entity/dimension) keep the richer client-side `CommentsPanel` (AI summaries, signal tier). Clicking an entity (cloud/card) or a theme-card **Dimensions chip** adds it to the corresponding facet and opens the tab pre-filtered (the chip also selects its theme, so you land on theme ∧ dimension).
 - Paginated comment browser with keyword highlighting
 - Filter by theme, sentiment, or custom criteria
 - Clause-boundary highlight expansion (not just the keyword, but surrounding context)
@@ -775,8 +776,8 @@ open-ended / date / id / ignore).
 | `components/analyze/EntitiesCard.tsx` | Entities card rendered on the Themes sub-tab |
 | `components/analyze/textmine/WordCloud.tsx` | Theme Clouds sub-tab content |
 | `components/analyze/textmine/BreakdownDist.tsx` | Breakdown visualization |
-| `components/analyze/textmine/CommentsPanel.tsx` | Comment browser |
-| `components/analyze/textmine/EntityCommentsPanel.tsx` | Entity drill-down comments modal |
+| `components/analyze/textmine/CommentsPanel.tsx` | Theme comment browser (themes-only, client-side) |
+| `components/analyze/textmine/FilteredCommentsPanel.tsx` | Unified filter results (theme + entity + dimension, server-filtered) |
 | `components/analyze/textmine/ThemeEditor.tsx` | Theme CRUD |
 | `lib/themeUtils.ts` | recountThemes(), Wilson CI, keyword matching |
 | `lib/sentimentLexicon.ts` | POSITIVE_WORDS / NEGATIVE_WORDS / NEGATORS sets |
