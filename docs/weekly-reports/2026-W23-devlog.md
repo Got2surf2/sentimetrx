@@ -1,5 +1,13 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — TextMine Compare: % ↔ ★ Rating bar-metric toggle
+
+**Why**: Owner — on the Group Comparison chart, wanted to toggle the bars between the current % view and average rating (the rating was already shown as a number on the right, just not visualized).
+
+**What changed** (`TextMineModule.tsx` `CompareTab` + `EntityCompareTab.tsx`, UI-only): a **% / ★ Rating** toggle (shown only when a rating field exists) next to the By Group/By Theme control. In rating mode each bar's width = `avgRating / ratingMax` (absolute scale from the rating field's schema `max`, NPS→10/else 5) and is colored on a red→green ramp; share mode is the existing relative `mentionRate / maxShare`. The right-hand %, n, and ★ columns stay visible in both modes — only the bar encoding changes. `CompareBar` is a closure so it reads `effectiveBarMetric`/`ratingMax` directly (no prop threading); `EntityCompareTab` uses a shared `barStyle()` helper at both its bar render sites. Falls back to share when no rating field.
+
+**Verify**: tsc clean (cache-cleared); 461 tests pass. Browser pixel-render pending (auth-gated). Spec ANALYTICS.md updated. **Local-only.**
+
 ## 2026-06-05 — TextMine: drillable Dimensions chips on Theme Clouds (parity)
 
 **Why**: Owner asked whether the pill-drill applies to dimensions too. It did on the theme **cards** (`handleDrillDimension`), but the **Theme Clouds** had no Dimensions row at all — only an Items (entity) row — so dimensions weren't at parity with entities there.

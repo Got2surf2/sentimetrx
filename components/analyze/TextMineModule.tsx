@@ -457,6 +457,9 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   var [copiedSig, setCopiedSig] = useState(false)
   var sigLeaveTimer = useRef<any>(null)
   var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  // Bar metric: 'share' (theme % within segment, default) vs 'rating' (avg star
+  // rating). Toggle only meaningful when the dataset has a rating field.
+  var [barMetric, setBarMetric] = useState<'share' | 'rating'>('share')
 
   if (!themes) {
     return (
@@ -475,6 +478,17 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     var sf = schema.find(function(s) { return s.field === f })
     return (sf && sf.label && sf.label !== f) ? sf.label : f
   }
+  // Rating scale max for the 'rating' bar metric (absolute scale, so a bar
+  // reads as "how close to full marks"). From the rating field's schema max,
+  // else 10 for NPS / 5 default.
+  var ratingMax = (function() {
+    if (!ratingField) return 5
+    var rf = schema.find(function(s) { return s.field === ratingField })
+    if (rf && rf.max != null) return rf.max
+    return rf && rf.sqt === 'nps' ? 10 : 5
+  })()
+  // Rating mode is only offered when a rating field exists; fall back to share.
+  var effectiveBarMetric: 'share' | 'rating' = (ratingField && barMetric === 'rating') ? 'rating' : 'share'
 
   var toggleField = function(f: string) {
     setBreakdownFields(
@@ -618,9 +632,24 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         <span style={{ fontSize: 11, color: props.isUnclassified ? T.textFaint : T.textMid, width: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, fontStyle: props.isUnclassified ? 'italic' : 'normal' }}>
           {props.label}
         </span>
-        <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: Math.max(props.maxPct > 0 ? props.pct / props.maxPct * 100 : 0, props.pct > 0 ? 2 : 0) + '%', background: props.isUnclassified ? T.borderMid : props.color, borderRadius: 5, transition: 'width .5s' }} />
-        </div>
+        {(function() {
+          // 'rating' bars scale against the rating-scale max (absolute); 'share'
+          // bars scale against the largest segment share (relative). Unclassified
+          // rows have no rating, so they show empty in rating mode.
+          var widthPct = effectiveBarMetric === 'rating'
+            ? (props.avgRating != null && ratingMax ? Math.min(100, props.avgRating / ratingMax * 100) : 0)
+            : (props.maxPct > 0 ? props.pct / props.maxPct * 100 : 0)
+          var minPct = effectiveBarMetric === 'rating' ? (props.avgRating != null ? 2 : 0) : (props.pct > 0 ? 2 : 0)
+          // In rating mode color by the red→green ramp so a low-rated segment reads at a glance.
+          var ramp = props.avgRating != null && ratingMax ? props.avgRating / ratingMax : 0
+          var ratingColor = ramp >= 0.8 ? '#059669' : ramp >= 0.6 ? '#84cc16' : ramp >= 0.4 ? '#f59e0b' : '#dc2626'
+          var barColor = props.isUnclassified ? T.borderMid : (effectiveBarMetric === 'rating' ? (props.avgRating != null ? ratingColor : T.borderMid) : props.color)
+          return (
+            <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: Math.max(widthPct, minPct) + '%', background: barColor, borderRadius: 5, transition: 'width .5s' }} />
+            </div>
+          )
+        })()}
         {/* Fixed-width columns: [mention ★] [pct] [n=] [rating ★] [rating] */}
         <span style={{ fontSize: 12, fontWeight: 800, color: sigColor || 'transparent', flexShrink: 0, width: 14, textAlign: 'center', cursor: sigColor ? 'pointer' : 'default' }}
           {...(sigColor ? {
@@ -703,6 +732,19 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 </button>
               })}
             </div>
+            {/* Bar metric: % share vs avg rating (only when a rating field exists) */}
+            {ratingField && (
+              <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border }}>
+                {[['share', '%'], ['rating', '★ Rating']].map(function(pair) {
+                  var m = pair[0]; var lbl = pair[1]
+                  return <button key={m} onClick={function() { setBarMetric(m as 'share' | 'rating') }}
+                    title={m === 'rating' ? 'Bars show average rating (out of ' + ratingMax + ')' : 'Bars show theme share (% of segment)'}
+                    style={{ fontSize: 11, fontWeight: barMetric === m ? 700 : 500, padding: '4px 12px', borderRadius: 18, background: barMetric === m ? T.bgCard : 'transparent', color: barMetric === m ? T.text : T.textMute, border: 'none', cursor: 'pointer', transition: 'all .12s' }}>
+                    {lbl}
+                  </button>
+                })}
+              </div>
+            )}
             {/* Smart Axes checkbox */}
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute, cursor: 'pointer', userSelect: 'none' }}>
               <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />

@@ -38,6 +38,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 **3. Compare**
 - Cross-group analysis by a categorical breakdown field (region, channel, age bracket, etc.)
 - Stacked bar distributions, by-group / by-theme views
+- **Bar-metric toggle (% ↔ ★ Rating):** when the dataset has a rating field, a toggle switches the bars between **theme/mention share** (relative to the largest segment) and **average rating** (absolute, scaled to the rating field's max; bar colored on a red→green ramp so a low-rated segment reads at a glance). The right-hand columns (%, n, ★ rating) stay visible in both modes — only the bar's encoded metric changes. Present on both the **theme** Compare (`CompareTab`) and **entity** Compare (`EntityCompareTab`). Falls back to share when no rating field exists.
 - Two-proportion z-test flags groups whose theme mix differs meaningfully from the baseline
 - Welch t-test for rating significance across groups
 - (Crosstab is a chart type in the Charts module, not a TextMine sub-tab.)

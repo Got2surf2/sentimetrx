@@ -33,6 +33,8 @@ interface SchemaField {
   type:  string
   label?: string
   values?: unknown[]
+  max?:   number
+  sqt?:   string | null
 }
 
 interface Props {
@@ -85,11 +87,30 @@ export default function EntityCompareTab({
   const [showAll, setShowAll] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const [copied, setCopied] = useState(false)
+  // Bar metric: 'share' (mention rate, default) vs 'rating' (avg star rating).
+  const [barMetric, setBarMetric] = useState<'share' | 'rating'>('share')
 
   const catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
   const fieldLabel = function(f: string): string {
     const sf = schema.find(function(s) { return s.field === f })
     return (sf && sf.label && sf.label !== f) ? sf.label : f
+  }
+  // Rating scale max + a width/color helper shared by both bar render sites.
+  const ratingMax = (function() {
+    if (!ratingField) return 5
+    const rf = schema.find(function(s) { return s.field === ratingField })
+    if (rf && rf.max != null) return rf.max
+    return rf && rf.sqt === 'nps' ? 10 : 5
+  })()
+  const effectiveBarMetric: 'share' | 'rating' = (ratingField && barMetric === 'rating') ? 'rating' : 'share'
+  function barStyle(mentionRate: number, avgRating: number | null, maxShare: number, shareColor: string) {
+    if (effectiveBarMetric === 'rating') {
+      const ramp = avgRating != null && ratingMax ? avgRating / ratingMax : 0
+      const w = avgRating != null && ratingMax ? Math.min(100, avgRating / ratingMax * 100) : 0
+      const color = avgRating == null ? T.borderMid : (ramp >= 0.8 ? '#059669' : ramp >= 0.6 ? '#84cc16' : ramp >= 0.4 ? '#f59e0b' : '#dc2626')
+      return { width: Math.max(w, avgRating != null ? 2 : 0) + '%', background: color }
+    }
+    return { width: Math.max(maxShare > 0 ? mentionRate / maxShare * 100 : 0, mentionRate > 0 ? 2 : 0) + '%', background: shareColor }
   }
 
   function toggleField(f: string) {
@@ -313,6 +334,20 @@ export default function EntityCompareTab({
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+            {ratingField && (
+              <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+                {[['share', '%'], ['rating', '★ Rating']].map(function(pair) {
+                  const m = pair[0]; const lbl = pair[1]
+                  return (
+                    <button key={m} onClick={function() { setBarMetric(m as 'share' | 'rating') }}
+                      title={m === 'rating' ? 'Bars show average rating (out of ' + ratingMax + ')' : 'Bars show mention rate (% of segment)'}
+                      style={{ fontSize: 11, fontWeight: barMetric === m ? 700 : 500, padding: '4px 10px', borderRadius: 6, background: barMetric === m ? T.bgCard : 'transparent', color: barMetric === m ? T.text : T.textMute, border: 'none', cursor: 'pointer' }}>
+                      {lbl}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
               <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
               Sort by impact
@@ -408,7 +443,7 @@ export default function EntityCompareTab({
                           {x.es.entityName}
                         </span>
                         <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' as const }}>
-                          <div style={{ height: '100%', width: Math.max(maxShare > 0 ? x.local.mentionRate / maxShare * 100 : 0, x.local.mentionRate > 0 ? 2 : 0) + '%', background: pal.border, borderRadius: 5, transition: 'width .5s' }} />
+                          <div style={{ height: '100%', borderRadius: 5, transition: 'width .5s', ...barStyle(x.local.mentionRate, ra, maxShare, pal.border) }} />
                         </div>
                         <span style={{ fontSize: 12, fontWeight: 800, color: sigColor || 'transparent', flexShrink: 0, width: 14, textAlign: 'center' as const }}
                           title={sig && sigColor ? (sig.dir === 'over' ? '"' + g.group + '" mentions "' + x.es.entityName + '" at ' + Math.round(sig.p1 * 100) + '%, significantly higher than the ' + Math.round(sig.p2 * 100) + '% baseline (z=' + sig.z.toFixed(1) + ').' : '"' + g.group + '" mentions "' + x.es.entityName + '" at ' + Math.round(sig.p1 * 100) + '%, significantly lower than the ' + Math.round(sig.p2 * 100) + '% baseline (z=' + sig.z.toFixed(1) + ').') : ''}>
@@ -473,7 +508,7 @@ export default function EntityCompareTab({
                         } : undefined}>
                         <span style={{ fontSize: 11, color: T.amber, width: 150, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const, flexShrink: 0 }} title={g.group}>{g.group}</span>
                         <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' as const }}>
-                          <div style={{ height: '100%', width: Math.max(maxShare > 0 ? g.mentionRate / maxShare * 100 : 0, g.mentionRate > 0 ? 2 : 0) + '%', background: pal.border, borderRadius: 5, transition: 'width .5s' }} />
+                          <div style={{ height: '100%', borderRadius: 5, transition: 'width .5s', ...barStyle(g.mentionRate, ra, maxShare, pal.border) }} />
                         </div>
                         <span style={{ fontSize: 12, fontWeight: 800, color: sigColor || 'transparent', flexShrink: 0, width: 14, textAlign: 'center' as const }}
                           title={sig && sigColor ? (sig.dir === 'over' ? '"' + g.group + '" mentions "' + es.entityName + '" at ' + Math.round(sig.p1 * 100) + '%, significantly higher than the ' + Math.round(sig.p2 * 100) + '% baseline (z=' + sig.z.toFixed(1) + ').' : '"' + g.group + '" mentions "' + es.entityName + '" at ' + Math.round(sig.p1 * 100) + '%, significantly lower than the ' + Math.round(sig.p2 * 100) + '% baseline (z=' + sig.z.toFixed(1) + ').') : ''}>
