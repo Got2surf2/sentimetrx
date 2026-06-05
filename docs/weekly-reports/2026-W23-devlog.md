@@ -1059,3 +1059,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed** (UI-only): `TextMineModule.tsx` theme card now shows **both** the ★ avg-rating badge AND the sentiment badge (was either/or). `WordCloud.tsx` per-theme header gets a ★ avg-rating badge colored green/red vs the dataset overall (via `ratingDelta`). tsc clean; page compiles.
 
 **Re: the "parallel session in TextMine" caution I'd been repeating** — verified it was wrong: nothing uncommitted in TextMine, latest commits to those files are all mine (today), the next are weeks old (05-18/05-14). The active parallel session is in Town Hall/recordings, NOT TextMine. Proceeded cleanly, staged only my files.
+
+## 2026-06-04 — Entities: avg star rating per entity (client request 1b)
+
+**Why**: Next item in the client's TextMine ratings sequence (1a themes ✅, 1c dimensions ✅). They wanted to see at a glance whether an entity — a dish, a competitor, a person — is loved or hated, not just how often it's mentioned. EntitiesCard showed mention counts only.
+
+**What changed**: `TextMineModule.tsx` adds an `entityRatings` memo that derives avg rating per entity client-side (no server source exists): it matches each catalog entity's terms (`expandEntityTerms`, canonical + aliases + plurals) against the active text fields of the loaded/filtered rows and averages `row[ratingField]`, returning `{ byEntity: {slug→{avg,n}}, overall }`. Same matcher family as EntityCloud's sentiment scan but **row-level** (a star rating is a row attribute, not a clause attribute). `EntitiesCard.tsx` renders a ★ avg-rating badge on each pill (green/red vs the dataset overall, matching the WordCloud theme-badge style), gated to ≥3 rated mentions (`MIN_RATED`) so a lone 5★ row isn't a signal; tooltip surfaces `n` + delta. Mention counts stay scope-wide (SQL); ratings are filter-aware — the same honest split EntityCloud documents for sentiment. tsc clean; 446 unit tests pass.
+
+**Next in the sequence**: (2) theme cloud → entities within a theme ("when they talk about steak, what items are they asking about?") — med-high, a new theme×entity cross-ref panel.

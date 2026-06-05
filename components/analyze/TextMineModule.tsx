@@ -14,6 +14,7 @@ import {
   commentMatchesTheme, getRowText, sentColor, sentBg,
   ratingColor,
 } from '@/lib/themeUtils'
+import { expandEntityTerms } from '@/lib/entityVariants'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -1365,6 +1366,53 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [filteredRows, effectiveFields])
   var activeFieldCount = activeFieldRows.length
 
+  // ── Per-entity average rating (row-enrichment) ──────────────────────────
+  // EntitiesCard shows mention counts (scope-wide, computed by the SQL entity
+  // catalog). Ratings have no server source, so we derive them client-side:
+  // match each entity's terms (canonical + aliases + plural variants) against
+  // the active text fields, and average the rating of every row that mentions
+  // it. Filter-aware like the theme recount; `n` is surfaced so small-sample
+  // badges stay honest. Same matcher family as EntityCloud's sentiment scan,
+  // but row-level (a star rating is a row attribute, not a clause attribute).
+  var entityRatings = useMemo(function(): { byEntity: Record<string, { avg: number; n: number }>; overall: number | null } {
+    var byEntity: Record<string, { avg: number; n: number }> = {}
+    if (!ratingField || entityCatalogRows.length === 0 || filteredRows.length === 0 || effectiveFields.length === 0) {
+      return { byEntity: byEntity, overall: null }
+    }
+    function escapeRE(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+    var termToSlugs: Record<string, string[]> = {}
+    entityCatalogRows.forEach(function(e) {
+      expandEntityTerms([e.canonical].concat(e.aliases || [])).forEach(function(t) {
+        var key = t.toLowerCase()
+        if (!termToSlugs[key]) termToSlugs[key] = []
+        if (termToSlugs[key].indexOf(e.slug) === -1) termToSlugs[key].push(e.slug)
+      })
+    })
+    var allTerms = Object.keys(termToSlugs).sort(function(a, b) { return b.length - a.length })
+    if (allTerms.length === 0) return { byEntity: byEntity, overall: null }
+    var re = new RegExp('\\b(' + allTerms.map(escapeRE).join('|') + ')\\b', 'gi')
+    var sums: Record<string, number> = {}, counts: Record<string, number> = {}
+    var oSum = 0, oN = 0
+    filteredRows.forEach(function(row) {
+      var rv = parseFloat(String(row[ratingField as string] ?? ''))
+      if (isNaN(rv)) return
+      oSum += rv; oN++
+      var text = getRowText(row, effectiveFields).toLowerCase()
+      if (!text) return
+      re.lastIndex = 0
+      var slugs = new Set<string>()
+      var m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        (termToSlugs[m[0].toLowerCase()] || []).forEach(function(s) { slugs.add(s) })
+      }
+      slugs.forEach(function(s) { sums[s] = (sums[s] || 0) + rv; counts[s] = (counts[s] || 0) + 1 })
+    })
+    Object.keys(counts).forEach(function(s) {
+      byEntity[s] = { avg: Math.round(sums[s] / counts[s] * 100) / 100, n: counts[s] }
+    })
+    return { byEntity: byEntity, overall: oN > 0 ? Math.round(oSum / oN * 100) / 100 : null }
+  }, [entityCatalogRows, filteredRows, effectiveFields, ratingField])
+
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
     if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
@@ -2016,6 +2064,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         loading={entityCatalogLoading}
                         error={entityCatalogError}
                         onDrillEntity={handleDrillEntity}
+                        ratings={entityRatings.byEntity}
+                        overallRating={entityRatings.overall}
                       />
 
                       {/* ── Distribution view ─── */}

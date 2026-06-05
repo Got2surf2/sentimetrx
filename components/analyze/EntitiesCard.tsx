@@ -26,7 +26,15 @@ interface Props {
   loading:       boolean
   error:         string
   onDrillEntity: (entity: EntityRow) => void
+  // Per-entity avg rating, computed client-side by the parent from the loaded
+  // rows (keyed by slug). Absent when the dataset has no rating field selected.
+  ratings?:      Record<string, { avg: number; n: number }>
+  overallRating?: number | null
 }
+
+// Star badges only show once an entity has enough rated mentions to be
+// meaningful — a single 5★ row mentioning "ribeye" isn't a signal.
+const MIN_RATED = 3
 
 const P = {
   bg:        '#f7f7f8',
@@ -53,7 +61,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 const MIN_MENTIONS  = 10
 const ROW_CAP_PX    = 112  // ~4 rows of pills at current type metrics
 
-export default function EntitiesCard({ entities, totalDistinct, scopeType, loading, error, onDrillEntity }: Props) {
+export default function EntitiesCard({ entities, totalDistinct, scopeType, loading, error, onDrillEntity, ratings, overallRating }: Props) {
   // Two independent toggles:
   //   rowsExpanded — visual row cap (4 rows when collapsed)
   //   showAll       — include low-frequency entities (<10 mentions)
@@ -99,7 +107,7 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
         )}
       </div>
       <div style={{ fontSize: 11, color: P.textMute, lineHeight: 1.5, marginBottom: 10 }}>
-        The named things reviewers talk about {'—'} dishes, drinks, people, competitor brands. Click any entity to read the comments that mention it. Discover or re-run entities on the Schema tab.
+        The named things reviewers talk about {'—'} dishes, drinks, people, competitor brands. Click any entity to read the comments that mention it.{ratings && Object.keys(ratings).length > 0 ? ' The ★ badge is the average rating of the rows mentioning that entity.' : ''} Discover or re-run entities on the Schema tab.
       </div>
 
       {/* Flat pill list — each pill tinted by its own category color.
@@ -114,6 +122,9 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
           const aliasHint = e.aliases && e.aliases.length > 0
             ? '\nAlso matched: ' + e.aliases.join(', ')
             : ''
+          const rating = ratings ? ratings[e.slug] : undefined
+          const showRating = rating != null && rating.n >= MIN_RATED
+          const delta = showRating && overallRating != null ? rating.avg - overallRating : null
           return (
             <button key={e.slug} onClick={function() { onDrillEntity(e) }}
               title={'See comments mentioning ' + e.canonical + aliasHint}
@@ -129,6 +140,12 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
               <span style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
               <span style={{ fontWeight: 600 }}>{e.canonical}</span>
               <span style={{ color: P.textFaint }}>{e.mentions.toLocaleString()}</span>
+              {showRating && (
+                <span title={'Average rating when ' + e.canonical + ' is mentioned: ' + rating!.avg.toFixed(2) + ' (n=' + rating!.n.toLocaleString() + (delta != null ? ', ' + (delta >= 0 ? '+' : '') + delta.toFixed(2) + ' vs overall' : '') + ')'}
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#fffbeb', border: '1px solid #fde68a', color: delta != null && delta > 0.1 ? '#059669' : delta != null && delta < -0.1 ? '#dc2626' : '#92400e' }}>
+                  {'★'} {rating!.avg.toFixed(1)}
+                </span>
+              )}
             </button>
           )
         })}

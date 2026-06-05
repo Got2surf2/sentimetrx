@@ -279,7 +279,13 @@ endpoint. The brand-collection scope means one POST seeds every dataset in the b
   EntitiesCard.tsx`), scope-wide, grouped by category. Pills are styled like the theme
   keyword pills; clicking one opens a modal of the comments that mention it (via
   `rows-by-entity`). Entities are *not* shown per-theme-card — dishes co-occur with every
-  theme, so a per-card list just repeated the same entities and added clutter.
+  theme, so a per-card list just repeated the same entities and added clutter. When a
+  rating field is selected, each pill carries a **★ avg-rating badge** (green/red vs the
+  dataset overall) — computed client-side in `TextMineModule` by matching each entity's
+  terms (`expandEntityTerms`) against the active text fields of the loaded/filtered rows
+  and averaging `row[ratingField]`. The badge shows only once an entity has ≥3 rated
+  mentions (`MIN_RATED`); the tooltip surfaces `n` and the delta. Mention counts stay
+  scope-wide (SQL); ratings are filter-aware — the same split EntityCloud uses for sentiment.
 - **TextMine → Clouds tab** — **Entity Clouds** (`components/analyze/textmine/
   EntityCloud.tsx`), rendered below the Theme Clouds. Words sized by `entity.mentions`
   — the SAME scope-wide count the Entities pill list uses (live full-text via
