@@ -1309,3 +1309,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 3. **Dimensions rollup hardcodes `data->>rating`** — per-dimension ★ won't pick up survey/aliased rating fields (e.g. Carabbas); make it detect the field dynamically + apply `valueAliases`.
 4. **Carabbas mapping typo** — "Somewhat Satisfied" → 1 (likely 4); owner to fix in the Schema editor.
 5. Entity filtering on Comments + pill→Comments nav (owner-queued); dims into Score Driver delta; user-facing↔internal name-map doc.
+
+## 2026-06-05 — Agent Study open-question count = the curated queue (matches the agent card)
+
+**Why**: The per-agent Report's "Open Questions" count could disagree with the **agent card** on the bots list. The card reads `logged_questions.status='open'` (one grouped count, no cap). The Study, since 2026-06-03, ran a per-render **AI validation pass** that re-judged each open row and dropped false positives, then labeled the survivors "(N validated)" — so its count was a *different* number than the card's, and the two surfaces visibly contradicted. Owner wants one number.
+
+**What changed** (`lib/agentStudy.ts` + 3 consumers):
+- `getAgentStudy` now computes **`openQuestions.total`** from the same `logged_questions.status='open'` count the card uses (`count: 'exact', head: true`, no time/row cap) and drives every headline off it: the Overview KPI, the Open Questions card header, the deck KPI, and `answerRatePct` (`answeredPairs = totalPairs − total`). The displayed `open[]` list stays the **40 most recent** for drill-down, with a "showing N most recent of {total}" note when truncated.
+- **Dropped from the AgentStudy object**: `openQuestions.autoFiltered`, `filteredExamples`, and `open[].restated`. The report shows the **raw user message**, not an AI restatement. Copy de-"validated"-ed across the in-app report (`ReportClient.tsx`), the baked HTML export (`agentStudyHtml.ts`), and the leave-behind deck (`pptx/agentStudyDeck.ts`). False-positive cleanup is no longer per-render — it's the team's deliberate action on the Questions page (Answered/Referred/N-A) or the `agent-question-revalidate` script, both unchanged.
+- `STUDY_SCHEMA_VERSION` → **v4** so stale cached studies recompute. `validateOpenQuestions`/`revalidateOpenQuestions` (the on-demand queue-cleanup action) are untouched.
+
+**Verify**: tsc clean; 461 tests pass (no test surface — render/copy only). Browser pixel-render of the report pending (auth-gated). No migration. Spec: `docs/BOTS.md` updated (superseded the 2026-06-03 validation bullet + added the v4 bullet).

@@ -44,7 +44,7 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     { value: String(t.totalPairs), label: 'Q&A Pairs', color: '0F7173' },
     { value: String(study.health.medianPairs), label: 'Median Depth', sub: 'pairs / conversation', color: 'E85A1A' },
     { value: String(study.entities.length), label: 'Distinct Entities', color: 'E8B84B' },
-    { value: String(study.openQuestions.open.length), label: 'Open Questions', sub: 'unanswered, awaiting follow-up', color: 'DC2626' },
+    { value: String(study.openQuestions.total), label: 'Open Questions', sub: 'unanswered, awaiting follow-up', color: 'DC2626' },
   ]
   slides.push({
     type: 'kpi_grid',
@@ -127,15 +127,16 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     })
   }
 
-  // 9. Open questions — validated + restated (false positives filtered out)
+  // 9. Open questions — straight from the curated queue (logged_questions.status='open')
   if (study.openQuestions.open.length > 0) {
-    const af = study.openQuestions.autoFiltered
+    const total = study.openQuestions.total
+    const shown = Math.min(8, study.openQuestions.open.length)
     slides.push({
       type: 'bullets',
       title: 'Open Questions',
-      subtitle: 'Genuine questions the agent could not answer — validated, awaiting follow-up',
-      bullets: study.openQuestions.open.slice(0, 8).map(q => (q.restated || q.question).slice(0, 170)),
-      insight: af > 0 ? `${af} flagged item${af === 1 ? '' : 's'} were auto-filtered as not a real question (acks, one-word replies, shared context).` : undefined,
+      subtitle: 'Questions the agent could not answer — awaiting follow-up',
+      bullets: study.openQuestions.open.slice(0, 8).map(q => q.question.slice(0, 170)),
+      insight: total > shown ? `${total} open questions in the queue; showing the ${shown} most recent.` : undefined,
     })
   }
 
@@ -164,7 +165,7 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
       `${study.meta.classifiedExchanges} Q&A pairs classified across ${t.conversations} useful conversations. Excluded: ${t.initiatedNotEntered} initiated-but-not-entered (one-word taps) + ${t.abandonedNoInput} no-input.`,
       'A conversation counts as useful only when the visitor sent a real message (≥3 words or a question); greeting/name preamble and chip taps are stripped.',
       'Each question is tagged to one focus area; its paired answer inherits the same focus.',
-      'Open questions are AI-validated — false positives (statements, acks, shared context) are filtered, the rest restated.',
+      'Open questions are the live unanswered queue (logged_questions.status=open); the team clears each by marking it Answered, Referred, or N/A on the Questions page.',
       'Non-English conversations analyzed on translated text; counts reported by source language.',
       study.totals.impressions != null
         ? 'Widget opens tracked via on-mount beacon → true invocation + response-rate.'

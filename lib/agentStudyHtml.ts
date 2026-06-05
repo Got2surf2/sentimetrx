@@ -86,7 +86,7 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     ...(t.answerRatePct != null ? [{ v: t.answerRatePct + '%', l: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '#059669' }] : []),
     { v: t.totalPairs, l: 'Q&A Pairs' },
     { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
-    { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
+    { v: s.openQuestions.total, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.total > 0 ? '#DC2626' : INK },
     ...(showOpens ? [
       { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
       { v: t.impressions as number, l: 'Widget Opens' },
@@ -239,16 +239,17 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
   }
 
   // ── Open Questions ──
-  if (s.openQuestions.open.length > 0 || s.openQuestions.autoFiltered > 0) {
-    let block = '<div style="' + CARD + '"><div style="' + H2 + '">Open Questions <span style="font-size:12px;font-weight:400;color:' + MUTE + '">(' + s.openQuestions.open.length + ' validated)</span></div>'
-      + '<p style="font-size:12px;color:' + MUTE + ';margin:0 0 12px">Genuine questions the agent couldn&rsquo;t answer — AI-validated, restated, with the conversation context. Expand each for the full exchange.</p>'
+  if (s.openQuestions.open.length > 0) {
+    const oqMore = s.openQuestions.total > s.openQuestions.open.length
+    let block = '<div style="' + CARD + '"><div style="' + H2 + '">Open Questions <span style="font-size:12px;font-weight:400;color:' + MUTE + '">(' + s.openQuestions.total + ' open' + (oqMore ? ' · showing ' + s.openQuestions.open.length + ' most recent' : '') + ')</span></div>'
+      + '<p style="font-size:12px;color:' + MUTE + ';margin:0 0 12px">Questions the agent couldn&rsquo;t answer, from the curated queue, with the conversation context. Expand each for the full exchange.</p>'
     block += s.openQuestions.open.map(q => {
       let det = '<details style="border-bottom:1px solid #f3f4f6;padding:8px 0">'
         + '<summary style="cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none">'
         + '<span style="font-size:9px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 6px;border-radius:6px;flex-shrink:0">' + esc(q.classification.replace(/_/g, ' ')) + '</span>'
       const dc = depthChip(q.sessionPairs)
       det += '<span title="How deep the conversation was — deeper chats that still hit a wall are higher-value gaps" style="font-size:9px;font-weight:700;color:' + dc.fg + ';background:' + dc.bg + ';padding:1px 6px;border-radius:6px;flex-shrink:0;white-space:nowrap">' + esc(dc.label) + '</span>'
-      det += '<span style="font-size:13px;color:' + INK + '">' + esc(q.restated || q.question) + '</span></summary>'
+      det += '<span style="font-size:13px;color:' + INK + '">' + esc(q.question) + '</span></summary>'
         + '<div style="padding-left:12px;margin-top:6px;font-size:12px;color:' + MUTE + ';line-height:1.5">'
       if (q.context) det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#374151;background:#F3F4F6;padding:1px 6px;border-radius:6px">' + botUpper + ' BEFORE</span> <span style="color:#374151">' + esc(q.context.slice(0, 240)) + '</span></div>'
       det += '<div style="margin-bottom:4px"><span style="font-size:9px;font-weight:700;color:#0369A1;background:#E0F2FE;padding:1px 6px;border-radius:6px">USER' + (q.language && q.language !== 'en' ? ' · ' + esc(q.language) : '') + '</span> <span style="color:#374151">' + esc(q.question) + '</span></div>'
@@ -258,12 +259,6 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
       det += '</div></details>'
       return det
     }).join('')
-    if (s.openQuestions.autoFiltered > 0) {
-      block += '<div style="margin-top:10px;font-size:11px;color:' + MUTE + '"><strong>' + s.openQuestions.autoFiltered + '</strong> flagged item'
-        + (s.openQuestions.autoFiltered !== 1 ? 's were' : ' was') + ' auto-filtered as not a real question (acks, one-word replies, shared context)'
-        + (s.openQuestions.filteredExamples.length > 0 ? ' — e.g. ' + s.openQuestions.filteredExamples.map(f => '“' + esc(f.question.slice(0, 40)) + '”').join(', ') : '')
-        + '.</div>'
-    }
     block += '</div>'
     parts.push(block)
   }

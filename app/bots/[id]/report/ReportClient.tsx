@@ -197,7 +197,7 @@ export default function ReportClient() {
             ...(t.answerRatePct != null ? [{ v: t.answerRatePct + '%', l: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '#059669' }] : []),
             { v: t.totalPairs, l: 'Q&A Pairs' },
             { v: s.health.medianPairs, l: 'Median Depth', sub: 'pairs' },
-            { v: s.openQuestions.open.length, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.open.length > 0 ? '#DC2626' : INK },
+            { v: s.openQuestions.total, l: 'Open Questions', sub: 'unanswered', color: s.openQuestions.total > 0 ? '#DC2626' : INK },
             ...(showOpens ? [
               { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
               { v: t.impressions as number, l: 'Widget Opens' },
@@ -343,16 +343,16 @@ export default function ReportClient() {
       </div>
 
       {/* ── Act 3: Gaps ── */}
-      {(s.openQuestions.open.length > 0 || s.openQuestions.autoFiltered > 0) && (
+      {s.openQuestions.total > 0 && (
         <div style={card}>
-          <div style={h2}>Open Questions <span style={{ fontSize: 12, fontWeight: 400, color: MUTE }}>({s.openQuestions.open.length} validated)</span></div>
-          <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Genuine questions the agent couldn&rsquo;t answer — AI-validated, restated, with the conversation context. Expand each for the full exchange.</p>
+          <div style={h2}>Open Questions <span style={{ fontSize: 12, fontWeight: 400, color: MUTE }}>({s.openQuestions.total})</span></div>
+          <p style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>Questions the agent couldn&rsquo;t answer, with the conversation context. Curate them on the Questions page — mark each Answered, Referred, or N/A to clear it from this count. Expand each for the full exchange.</p>
           {s.openQuestions.open.map((q, i) => (
             <details key={i} style={{ borderBottom: '1px solid #f3f4f6', padding: '8px 0' }}>
               <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, listStyle: 'none' }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{q.classification.replace(/_/g, ' ')}</span>
                 {(() => { const d = depthChip(q.sessionPairs); return <span title="How deep the conversation was — deeper chats that still hit a wall are higher-value gaps" style={{ fontSize: 9, fontWeight: 700, color: d.fg, background: d.bg, padding: '1px 6px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>{d.label}</span> })()}
-                <span style={{ fontSize: 13, color: INK }}>{q.restated || q.question}</span>
+                <span style={{ fontSize: 13, color: INK }}>{q.question}</span>
               </summary>
               <div style={{ paddingLeft: 12, marginTop: 6, fontSize: 12, color: MUTE, lineHeight: 1.5 }}>
                 {q.context && <div style={{ marginBottom: 4 }}><span style={{ fontSize: 9, fontWeight: 700, color: '#374151', background: '#F3F4F6', padding: '1px 6px', borderRadius: 6 }}>{s.bot.name.toUpperCase().slice(0, 8)} BEFORE</span> <span style={{ color: '#374151' }}>{q.context.slice(0, 240)}</span></div>}
@@ -363,9 +363,9 @@ export default function ReportClient() {
               </div>
             </details>
           ))}
-          {s.openQuestions.autoFiltered > 0 && (
+          {s.openQuestions.total > s.openQuestions.open.length && (
             <div style={{ marginTop: 10, fontSize: 11, color: MUTE }}>
-              <strong>{s.openQuestions.autoFiltered}</strong> flagged item{s.openQuestions.autoFiltered !== 1 ? 's were' : ' was'} auto-filtered as not a real question (acks, one-word replies, shared context){s.openQuestions.filteredExamples.length > 0 ? ' — e.g. ' + s.openQuestions.filteredExamples.map(f => '“' + f.question.slice(0, 40) + '”').join(', ') : ''}.
+              Showing the {s.openQuestions.open.length} most recent of <strong>{s.openQuestions.total}</strong> open questions. Triage the full queue on the Questions page.
             </div>
           )}
         </div>

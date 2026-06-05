@@ -82,9 +82,8 @@ export interface AgentStudy {
   openQuestions: {
     byClassification: { classification: string; count: number }[]
     byStatus: { status: string; count: number }[]
-    open: { question: string; restated: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string; sessionPairs: number }[]
-    autoFiltered: number   // flagged but validated as not-a-real-question
-    filteredExamples: { question: string; reason: string }[]
+    total: number          // count of logged_questions.status='open' — matches the agent card exactly
+    open: { question: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string; sessionPairs: number }[]
   }
   insights: {
     commonQuestions: string[]
@@ -438,7 +437,9 @@ Return ONLY a JSON array, no markdown:
 //   v2 (2026-06-03): totalSessions, answerRatePct/answeredPairs, open[].after,
 //   language-routing intents excluded.
 //   v3 (2026-06-03): open[].sessionPairs (conversation depth per open question).
-const STUDY_SCHEMA_VERSION = 'v3'
+//   v4 (2026-06-05): openQuestions.total (= card's status='open' count); dropped
+//   AI validation of open questions (open[].restated, autoFiltered, filteredExamples).
+const STUDY_SCHEMA_VERSION = 'v4'
 function cacheKeyFor(pairTotal: number, bot: BotRow): string {
   const h = crypto.createHash('sha1')
   h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
@@ -510,6 +511,11 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const allImpRes = await service.from('agent_impressions').select('id', { count: 'exact', head: true }).eq('bot_id', botId)
   const totalImpressions = allImpRes.count
   const loggedQ = oqRes.data || []
+  // Open-question count, computed the SAME way the agent card computes it
+  // (logged_questions.status='open', no time/row cap) so the two never disagree.
+  // The card lives in app/api/bots/route.ts; keep these in lockstep.
+  const openCountRes = await service.from('logged_questions').select('id', { count: 'exact', head: true }).eq('bot_id', botId).eq('status', 'open')
+  const openCount = openCountRes.count || 0
 
   // ── classify exchanges (AI) ──
   const tags = await classifyExchanges(botId, bot.name, bot.focuses, allExchanges)
@@ -586,38 +592,39 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const languagesArr = [...langSessions.entries()].map(([language, s]) => ({ language, sessions: s.size, pct: Math.round((s.size / langTotal) * 100) })).sort((a, b) => b.sessions - a.sessions)
 
   // ── open questions summary ──
+  // No AI cleanup: the open count IS logged_questions.status='open' (same as the
+  // agent card). The team curates the queue by hand on the Questions page —
+  // marking each Answered / Referred / N/A — and both surfaces reflect that one
+  // status. The list below is the most recent 40 for display; `total` is the
+  // true count and drives the headline metric.
   const byClass = new Map<string, number>(), byStatus = new Map<string, number>()
   for (const q of loggedQ) { byClass.set(q.classification, (byClass.get(q.classification) || 0) + 1); byStatus.set(q.status, (byStatus.get(q.status) || 0) + 1) }
-  const rawOpen = loggedQ.filter((q: any) => q.status === 'open').slice(0, 40)
-  const verdicts = await validateOpenQuestions(botId, bot.name, rawOpen.map((q: any) => ({ question: q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message) })))
-  const validOpen: AgentStudy['openQuestions']['open'] = []
-  const filtered: { question: string; reason: string }[] = []
-  rawOpen.forEach((q: any, i: number) => {
-    const v = verdicts[i] || { valid: true, restated: '', reason: '' }
-    if (v.valid) {
-      // How deep was the conversation this question came from? An unanswered
-      // question from a long, engaged chat is a higher-value gap than one from a
-      // one-and-done — the report color-codes by this.
-      const sessionPairs = buildExchanges(sessions.get(q.session_id) || []).length
-      validOpen.push({ question: q.user_message, restated: v.restated || q.user_message, context: findPriorAgentLine(sessions, q.session_id, q.user_message), after: findFollowingAgentLine(sessions, q.session_id, q.user_message), classification: q.classification, language: q.language, suggestedKb: q.suggested_kb_addition, createdAt: q.created_at, sessionPairs })
-    } else {
-      filtered.push({ question: q.user_message, reason: v.reason })
-    }
-  })
+  const open: AgentStudy['openQuestions']['open'] = loggedQ.filter((q: any) => q.status === 'open').slice(0, 40).map((q: any) => ({
+    question: q.user_message,
+    context: findPriorAgentLine(sessions, q.session_id, q.user_message),
+    after: findFollowingAgentLine(sessions, q.session_id, q.user_message),
+    classification: q.classification,
+    language: q.language,
+    suggestedKb: q.suggested_kb_addition,
+    createdAt: q.created_at,
+    // Conversation depth this question came from — an unanswered question from a
+    // long, engaged chat is a higher-value gap than a one-and-done; the report
+    // color-codes by this.
+    sessionPairs: buildExchanges(sessions.get(q.session_id) || []).length,
+  }))
   const openQuestions = {
     byClassification: [...byClass.entries()].map(([classification, count]) => ({ classification, count })).sort((a, b) => b.count - a.count),
     byStatus: [...byStatus.entries()].map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
-    open: validOpen,
-    autoFiltered: filtered.length,
-    filteredExamples: filtered.slice(0, 5),
+    total: openCount,
+    open,
   }
 
   // ── answer rate (the "strength" number) ──
   // Of every Q&A pair the agent fielded, what share did it actually answer?
-  // "Unanswered" = the validated open questions (genuine knowledge gaps); each
-  // maps to roughly one pair where the agent hit a wall. Deflections (off-topic)
-  // are intentional and NOT counted as failures.
-  const answeredPairs = Math.max(0, totalPairs - validOpen.length)
+  // "Unanswered" = the open logged questions (status='open'); each maps to
+  // roughly one pair where the agent hit a wall. Deflections (off-topic) are
+  // intentional and NOT counted as failures.
+  const answeredPairs = Math.max(0, totalPairs - openCount)
   const answerRatePct = totalPairs > 0 ? Math.min(100, Math.round((answeredPairs / totalPairs) * 100)) : null
 
   // ── narrative insights (AI) ──
@@ -634,7 +641,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const depth = BUCKET_ORDER.map(b => ({ bucket: b, sessions: depthCounts.get(b) || 0 })).filter(d => d.sessions > 0)
 
   // ── health + range ──
-  const health = computeHealth(sessions, impressions, loggedQ.filter((q: any) => q.status === 'open').length)
+  const health = computeHealth(sessions, impressions, openCount)
   const allDates = turns.map(t => new Date(t.created_at).getTime()).sort((a, b) => a - b)
   const activeDays = new Set(turns.map(t => t.created_at.slice(0, 10))).size
 
