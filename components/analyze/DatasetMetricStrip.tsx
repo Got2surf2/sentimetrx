@@ -130,7 +130,7 @@ export default function DatasetMetricStrip({ datasetId }: Props) {
         return (
           <>
             <span style={{ color: '#d1d5db' }}>·</span>
-            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across the dataset (out of ' + max + '). This is the baseline the per-theme and per-dimension ratings compare against.'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across the ' + stats.records.toLocaleString() + ' analyzed reviews (those with text — out of ' + max + '). This is the baseline the per-theme and per-dimension ratings compare against; rating-only reviews with no text are excluded so it matches the theme/dimension numbers.'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: color }}>{'★'}</span>
               <strong style={{ color: '#111827' }}>{stats.avgRating!.toFixed(1)}</strong>
               <span style={{ color: '#6b7280' }}>avg rating</span>

@@ -36,18 +36,27 @@ export async function GET(_req: Request, props: Props) {
   } catch { /* description not JSON — leave the range unset */ }
 
   // Overall average of the dataset's rating field — the baseline the per-theme /
-  // per-dimension ratings compare against. The schema is read via the RLS user
-  // client (org-enforced, like the dates); only when that succeeds do we run the
-  // service-role numeric_field_stats. Optional: absent for datasets with no
-  // rating-type field (open-text surveys) — the strip omits it then.
+  // per-dimension ratings compare against. It must average over the SAME
+  // population as `records` (the rows carrying the theme-source text, i.e. the
+  // analyzed reviews) — NOT every rated row. On review datasets the text-less
+  // rows are mostly silent 5-stars that pull a plain average above what the
+  // theme/dimension ratings reflect (Cheddar's: all rated ★4.14 vs analyzed
+  // ★3.90). The schema + theme model are read via the RLS user client
+  // (org-enforced, like the dates); only then do we run the service-role RPC.
+  // Optional: absent for datasets with no rating-type field (open-text surveys).
   let avgRating: number | null = null, ratingMax: number | null = null, ratingLabel: string | null = null
   try {
     const { data: stateRow } = await supabase
-      .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).maybeSingle()
-    const fields = ((stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean }> } } | null)?.schema_config?.fields) || []
+      .from('dataset_state').select('schema_config, theme_model').eq('dataset_id', params.datasetId).maybeSingle()
+    const sr = stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean }> }; theme_model?: { fieldName?: string; fieldNames?: string[] } } | null
+    const fields = sr?.schema_config?.fields || []
     const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
+    // The field whose presence marks an "analyzed review" — the theme-source text.
+    const textField = sr?.theme_model?.fieldNames?.[0] || sr?.theme_model?.fieldName || null
     if (rf) {
-      const { data: ns } = await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
+      const { data: ns } = textField
+        ? await service.rpc('numeric_field_stats_present', { p_dataset_id: params.datasetId, p_field_key: rf.field, p_present_field: textField })
+        : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
       const row = Array.isArray(ns) ? ns[0] : null
       if (row && Number(row.n) > 0 && row.avg_val != null) {
         avgRating = Math.round(Number(row.avg_val) * 100) / 100

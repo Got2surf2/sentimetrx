@@ -1131,3 +1131,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: Extracted the theme×entity cross-tab out of `WordCloud` into a shared `lib/themeEntities.computeThemeEntities` (keyed by theme id/name so both views look it up regardless of ordering). `WordCloud` now calls the shared helper (dropped its inline memo + the now-unused `buildKwRegex`/`expandEntityTerms` imports). `TextMineModule` computes `themeCardEntities` over the filtered rows + entity catalog and renders an **"Items mentioned"** chip row on each theme card (between Co-occurs and the footer; top 6, count ≥ 2, category-dot colored, with a "+N more"). Only appears when the entity catalog has hits for that theme.
 
 **Verify**: tsc clean; 454 tests pass; shared helper verified in isolation (Steak→Ribeye:2/Filet:1, Service→John:1, John absent from Steak). Same proven cross-tab the Clouds already ship. Browser pixel-render pending (auth-gated).
+
+## 2026-06-04 — Fix: strip avg rating now matches the Dimensions box
+
+**Why**: Owner spotted the top-bar avg rating (★4.1) disagreeing with the Dimensions box (★3.9). Root cause: the strip averaged EVERY rated row (Cheddar's: 19,708 rows → ★4.14), but Dimensions / per-theme / per-dimension ratings only cover the *analyzed* reviews — those with text (12,351 rows → ★3.90). The 7,357 text-less rows are mostly silent 5-stars (★4.54) that pulled the strip's number up, making every theme look below baseline when it was at baseline.
+
+**Fix**: `sql/107` adds `numeric_field_stats_present(dataset, field, present_field)` — averages a numeric field only over rows where a second field is non-empty. The `signal-stats` route now reads the theme-source field from `theme_model` and averages the rating over rows where that text field is present (falling back to plain `numeric_field_stats` when there's no theme model), so the strip's avg rating uses the exact same population as `records`. Tooltip updated to say "across the N analyzed reviews (those with text)".
+
+**Verify**: tsc clean; `sql/107` applied to prod + validated in a rolled-back tx; route path confirmed live — ★3.90 over n=12,351, matching the Dimensions tab + theme cards.
