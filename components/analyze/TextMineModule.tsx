@@ -2367,6 +2367,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       themeColors={themeColors}
                       parsedData={filteredRows}
                       activeField={activeField || themes!.fieldName}
+                      entities={entityCatalogRows}
                       isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
                       onWordClick={function(word, themeIdx, type) {
                         // Word click: opinion popover. Theme title click: theme popover.

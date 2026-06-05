@@ -31,6 +31,7 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 **2. Theme Clouds**
 - One word cloud per theme — the words that appear most often inside that theme's matched comments
 - Each theme's header carries a **★ avg-rating badge** (green/red vs the dataset overall, via `ratingDelta`)
+- Each theme also gets an **"Items" chip row** — the named entities reviewers mention *within that theme's matched comments* ("when they talk about steak, what items?" → ribeye 45 / filet 30 / …). Computed in `WordCloud` as a theme×entity cross-tab: one pass over the filtered rows matching entities (combined `expandEntityTerms` regex) against precompiled per-theme keyword regexes (`buildKwRegex`), tallying `count[themeIdx][slug]`. Top 8 per theme, count ≥ 2, category-dot colored to match the Entities card. Filter-aware; renders only for themes that actually have entity mentions.
 - Useful for spotting the exact language people use within a theme
 
 **3. Compare**

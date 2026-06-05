@@ -5,8 +5,18 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
-import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
+import { Theme, THEME_PALETTE, getRowText, buildKwRegex } from '@/lib/themeUtils'
+import { expandEntityTerms } from '@/lib/entityVariants'
+import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'
+
+// Category dot colors — kept in sync with EntitiesCard so the per-theme "Items"
+// chips read the same as the scope-wide Entities card.
+const ENTITY_NEUTRAL = '#8FA3AE'
+const ENTITY_CAT_COLOR: Record<string, string> = {
+  food: '#EA580C', person: '#1E40AF',
+  drink: ENTITY_NEUTRAL, place: ENTITY_NEUTRAL, brand: ENTITY_NEUTRAL, other: ENTITY_NEUTRAL,
+}
 
 import { T } from '@/lib/analyzeTheme'
 
@@ -38,6 +48,7 @@ interface Props {
   activeFields?: string[]
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
   isReddit?: boolean
+  entities?: EntityRow[]
 }
 
 function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick, signalScore, maxSignal, sizeBy }: {
@@ -98,7 +109,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   )
 }
 
-export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, isReddit }: Props) {
+export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, isReddit, entities }: Props) {
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
   const [colorBy, setColorBy] = useState<'theme' | 'sentiment'>('theme')
   const [sizeBy, setSizeBy] = useState<'frequency' | 'signal'>('frequency')
@@ -177,6 +188,67 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
 
     return { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total }
   }, [parsedData, themes, fields])
+
+  // ── Theme × entity cross-tab ("Items mentioned" per theme) ──────────────
+  // Answers the ops question "when they talk about <theme>, what items are
+  // they asking about?" — for the rows that match each theme, tally which
+  // catalog entities are mentioned. One pass over rows: match entities with a
+  // single combined regex, match themes against precompiled keyword regexes
+  // (buildKwRegex isn't memoized, so compile once here rather than per row via
+  // commentMatchesTheme). Filter-aware (parsedData is the filtered rows).
+  const themeEntities = useMemo(function() {
+    const result: Record<number, Array<{ slug: string; canonical: string; category: string; count: number }>> = {}
+    if (!entities || !entities.length || !themes.length || !fields.length || !parsedData.length) return result
+
+    const meta: Record<string, { canonical: string; category: string }> = {}
+    const termToSlugs: Record<string, string[]> = {}
+    for (const e of entities) {
+      meta[e.slug] = { canonical: e.canonical, category: e.category }
+      for (const t of expandEntityTerms([e.canonical].concat(e.aliases || []))) {
+        const key = t.toLowerCase()
+        if (!termToSlugs[key]) termToSlugs[key] = []
+        if (termToSlugs[key].indexOf(e.slug) === -1) termToSlugs[key].push(e.slug)
+      }
+    }
+    const allTerms = Object.keys(termToSlugs).sort(function(a, b) { return b.length - a.length })
+    if (!allTerms.length) return result
+    const entityRe = new RegExp('\\b(' + allTerms.map(function(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }).join('|') + ')\\b', 'gi')
+
+    // Precompile keyword regexes per theme once.
+    const themeRegexes = themes.map(function(t) { return (t.keywords || []).map(buildKwRegex) })
+
+    const counts: Record<number, Record<string, number>> = {}
+    for (const row of parsedData) {
+      const text = getRowText(row, fields).toLowerCase()
+      if (!text) continue
+      entityRe.lastIndex = 0
+      const slugs = new Set<string>()
+      let m: RegExpExecArray | null
+      while ((m = entityRe.exec(text)) !== null) {
+        const list = termToSlugs[m[0].toLowerCase()] || []
+        for (const s of list) slugs.add(s)
+      }
+      if (slugs.size === 0) continue
+      for (let idx = 0; idx < themeRegexes.length; idx++) {
+        const res = themeRegexes[idx]
+        if (!res.length) continue
+        let matched = false
+        for (let k = 0; k < res.length; k++) { if (res[k].test(text)) { matched = true; break } }
+        if (!matched) continue
+        if (!counts[idx]) counts[idx] = {}
+        slugs.forEach(function(s) { counts[idx][s] = (counts[idx][s] || 0) + 1 })
+      }
+    }
+
+    Object.keys(counts).forEach(function(k) {
+      const idx = Number(k)
+      result[idx] = Object.keys(counts[idx])
+        .map(function(s) { return { slug: s, canonical: meta[s].canonical, category: meta[s].category, count: counts[idx][s] } })
+        .filter(function(e) { return e.count >= 2 })
+        .sort(function(a, b) { return b.count - a.count })
+    })
+    return result
+  }, [parsedData, themes, fields, entities])
 
   // Compute per-word average score for signal strength sizing (Reddit only)
   var wordSignals = useMemo(function() {
@@ -502,6 +574,26 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                       </span>
                     )}
                   </div>
+                  {/* Items mentioned within this theme — entity cross-tab */}
+                  {(themeEntities[idx] || []).length > 0 && (
+                    <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }} title="Named items reviewers mention when discussing this theme">Items</span>
+                      {themeEntities[idx].slice(0, 8).map(function(e) {
+                        const ec = ENTITY_CAT_COLOR[e.category] || ENTITY_NEUTRAL
+                        return (
+                          <span key={e.slug} title={e.canonical + ' — mentioned in ' + e.count.toLocaleString() + ' "' + t.name + '" comment' + (e.count === 1 ? '' : 's')}
+                            style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: ec + '0d', border: '1px solid ' + ec + '30', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: 3, background: ec, flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{e.canonical}</span>
+                            <span style={{ color: T.textFaint }}>{e.count.toLocaleString()}</span>
+                          </span>
+                        )
+                      })}
+                      {themeEntities[idx].length > 8 && (
+                        <span style={{ fontSize: 9, color: T.textFaint }}>+{themeEntities[idx].length - 8} more</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )
