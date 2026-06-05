@@ -56,6 +56,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   ★ badge (red→green ramp) on the KPIs, axis bars, and sub-topic rows — complements the
   text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
   ★2.4 vs `attribute·flavor` ★4.1).
+- **"flagged reviews" KPI** = `alertRows` = the count of **distinct reviews** carrying ≥1
+  severity alert. The Severity section's per-tag pills (`alerts[].count`) count alert
+  *occurrences per type*, so a review flagged for both food safety AND pests adds to both
+  pills — meaning the pills can sum to MORE than the flagged-reviews KPI (e.g. Cheddar's: 79
+  food safety + 40 pests = 119 across 118 distinct reviews, 1 review hit both). Labeled
+  "flagged reviews" (not "severity alerts") + tooltip so the distinct-vs-per-type distinction is clear.
 
 ## 4. Surfaces
 

@@ -264,8 +264,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   }
 
   const maxAxis = Math.max(1, ...data.axes.map(a => a.rate))
-  const kpi = (label: string, value: string | number, color: string) => (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150, textAlign: 'center' }}>
+  const kpi = (label: string, value: string | number, color: string, tip?: string) => (
+    <div title={tip} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150, textAlign: 'center', cursor: tip ? 'help' : undefined }}>
       <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
       <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 2 }}>{label}</div>
     </div>
@@ -278,7 +278,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         {kpi('reviews classified', data.classifiedRows.toLocaleString(), TEAL)}
         {kpi('with a signal', `${Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}%`, NAVY)}
         {data.overallAvgRating != null && kpi('avg rating', `★ ${data.overallAvgRating.toFixed(1)}`, ratingColor(data.overallAvgRating) || NAVY)}
-        {kpi('severity alerts', data.alertRows, data.alertRows ? RED : SLATE)}
+        {kpi('flagged reviews', data.alertRows, data.alertRows ? RED : SLATE, 'Distinct reviews with at least one severity alert (food safety / pests). A single review can be flagged for more than one type, so the per-type counts in the Severity section can add up to more than this number.')}
         <div style={{ marginLeft: 'auto', alignSelf: 'stretch', display: 'flex', gap: 8 }}>
           {fieldPicker(true)}
           <button
@@ -339,7 +339,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         {data.alerts.length > 0 && (
           <>
             <div style={{ fontSize: 11, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>
-              ⚠ Severity <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· flagged alert / crisis</span>
+              ⚠ Severity <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· flagged alert / crisis · counts are per type, so they can exceed the flagged-reviews total when a review hits more than one</span>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {data.alerts.map(a => {

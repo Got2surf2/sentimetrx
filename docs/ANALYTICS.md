@@ -381,7 +381,10 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs (incl. an **avg-rating ★ KPI**),
   per-axis mention-rate bars and top sub-topics — each with a **★ avg-rating badge** (red→green
-  ramp, from `data->>rating`) alongside the text-polarity sentiment. **Severity alerts (food safety / pests) live as red
+  ramp, from `data->>rating`) alongside the text-polarity sentiment. The **"flagged reviews" KPI** =
+  `alertRows` = distinct reviews with ≥1 severity alert; the per-type alert pills count occurrences
+  *per type*, so they can sum to MORE than the KPI when a review hits more than one (Cheddar's: 79
+  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity alerts (food safety / pests) live as red
   pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
   alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
   (topic pills first; **clicking a topic/dimension pill reveals its sub-topic pills AND drills

@@ -1169,3 +1169,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed**: `TaxonomyModule` sub-pill onClick now, on deselect, sets the axis-level drill (`axis=<axis>`) instead of `null`. Wrapped the sub-section in an IIFE to compute `axisLabel` once (from `data.axes`) so both the sub crumbs and the revert use the dimension's display label consistently (`Dimensions › Product › steak` / `Dimensions › Product`). UI-only.
 
 **Verify**: tsc clean; 456 tests pass.
+
+## 2026-06-05 — Dimensions: clarify the "severity alerts" KPI (118 vs 79+40)
+
+**Why**: Owner: "118 severity alerts but 79 food safety + 40 pests = 119 — why are the numbers off?" Not a bug: the KPI (`alertRows`) counts distinct *reviews* with ≥1 alert (118), while the pills count alerts *per type* (79+40=119). Exactly 1 review is flagged for both food safety AND pests, so it's counted once in the KPI but in both pills (verified live). The "severity alerts" label made it read like a total that should sum.
+
+**What changed** (UI copy only): relabeled the KPI **"severity alerts" → "flagged reviews"** (value unchanged = distinct alertRows), added a help tooltip explaining a review can carry multiple alert types so the per-type counts can exceed it, and extended the Severity section header to say counts are per type. `kpi()` helper gained an optional `tip` (title) param.
+
+**Verify**: tsc clean; 456 tests pass; prod confirms 118 distinct flagged reviews, food safety 79 / pests 40, 1 review with both.
