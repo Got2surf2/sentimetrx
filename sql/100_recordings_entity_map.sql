@@ -15,4 +15,8 @@
 -- has no behavioral effect until populated. recordings already has RLS enabled
 -- with an org-scoped policy, which covers this column — no new policy needed.
 
+BEGIN;
+
 ALTER TABLE recordings ADD COLUMN IF NOT EXISTS entity_map jsonb;
+
+COMMIT;

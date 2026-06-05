@@ -8,6 +8,8 @@
 --      time bucket), for the Time Series chart's "break down by" slot.
 -- Read-only, additive. Same axis-whitelist + org-gated-by-route guarantees as 105.
 
+BEGIN;
+
 -- ── 1. group_stats + quartiles ────────────────────────────────────────────
 -- OUT columns change, so the function must be dropped before recreate.
 DROP FUNCTION IF EXISTS taxonomy_group_stats(uuid, text, text);
@@ -109,3 +111,5 @@ BEGIN
   ) USING p_dataset_id, p_date_field, p_bucket, p_metric_field;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+COMMIT;

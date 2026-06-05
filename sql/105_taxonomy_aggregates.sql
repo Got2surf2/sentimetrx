@@ -13,6 +13,8 @@
 -- to a single p_dataset_id. p_axis is validated against the fixed 7-axis
 -- whitelist before being interpolated as a column name (no injection surface).
 
+BEGIN;
+
 -- ── 1. Sub counts for one axis (field_counts analog) ──────────────────────
 CREATE OR REPLACE FUNCTION taxonomy_sub_counts(
   p_dataset_id uuid,
@@ -117,3 +119,5 @@ BEGIN
   ) USING p_dataset_id, p_field, p_limit * p_limit;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+COMMIT;

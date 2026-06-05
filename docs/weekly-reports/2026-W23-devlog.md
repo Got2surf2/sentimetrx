@@ -1177,3 +1177,9 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed** (UI copy only): relabeled the KPI **"severity alerts" → "flagged reviews"** (value unchanged = distinct alertRows), added a help tooltip explaining a review can carry multiple alert types so the per-type counts can exceed it, and extended the Severity section header to say counts are per type. `kpi()` helper gained an optional `tip` (title) param.
 
 **Verify**: tsc clean; 456 tests pass; prod confirms 118 distinct flagged reviews, food safety 79 / pests 40, 1 review with both.
+
+## 2026-06-05 — CI fix: wrap migrations in BEGIN/COMMIT (tx-wrap guard)
+
+**Why**: After pushing the Dimensions arc, CI failed at the `check:sql-tx` guard — migrations numbered >70 must be transaction-wrapped. Offenders: my `sql/105/106/107` (taxonomy aggregates) **and the pre-existing `sql/100`** (Town Hall entity_map, from the parallel session — main was already red on this before my push). All four are tx-safe (CREATE/DROP FUNCTION, one ADD COLUMN; no CONCURRENTLY).
+
+**What changed**: wrapped all four in `BEGIN; … COMMIT;`. No behavioral change — the RPCs are already live in prod (applied directly); this only satisfies the CI lint so partial failures would roll back. Guard now green locally.

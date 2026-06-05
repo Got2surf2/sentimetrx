@@ -8,6 +8,8 @@
 -- (e.g. Cheddar's: all rated rows ★4.14 vs text-bearing rows ★3.90).
 -- Read-only, additive.
 
+BEGIN;
+
 CREATE OR REPLACE FUNCTION numeric_field_stats_present(
   p_dataset_id   uuid,
   p_field_key    text,
@@ -41,3 +43,5 @@ BEGIN
   FROM v;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+COMMIT;
