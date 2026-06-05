@@ -162,6 +162,24 @@ export default function EntitiesClient({
     }
   }
 
+  // Hard-delete a manual entity (the API rejects deleting discovered rows —
+  // those should be hidden instead, so re-discovery doesn't resurface them).
+  async function deleteEntity(entityId: string, canonical: string) {
+    if (!confirm(`Delete "${canonical}"?\n\nThis permanently removes the manual entity. (Re-extraction won't bring it back.)`)) return
+    setSavingId(entityId)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/entities/' + entityId, { method: 'DELETE' })
+      const d = await r.json()
+      if (d?.ok) {
+        await reload({ includeHidden: showHidden })
+      } else {
+        alert('Delete failed: ' + (d?.error || 'unknown error'))
+      }
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   async function setHidden(entityId: string, hidden: boolean) {
     setSavingId(entityId)
     try {
@@ -424,6 +442,14 @@ export default function EntitiesClient({
                           onClick={() => setHidden(e.id, !e.hidden)}
                           className='px-2 py-1 rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 disabled:opacity-50'
                         >{e.hidden ? 'Unhide' : 'Hide'}</button>
+                        {e.source === 'manual' && (
+                          <button
+                            disabled={savingId === e.id}
+                            onClick={() => deleteEntity(e.id, e.canonical)}
+                            className='px-2 py-1 rounded-md text-red-600 font-medium hover:bg-red-50 disabled:opacity-50'
+                            title='Permanently delete this manual entity'
+                          >Delete</button>
+                        )}
                         {savingId === e.id && <span className='text-gray-400'>saving…</span>}
                       </>
                     )}

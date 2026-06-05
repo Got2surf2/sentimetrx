@@ -918,7 +918,7 @@ For the demo to show role-tagged, theme-tagged transcripts, do these in order:
 
 Driver: every shipped agent (MCO, UCF Incubator, Hope, Sarina/NOWOCATS, Sir O'Gate) has a rich named-entity vocabulary buried in its KB — terminals, gates, airlines, programs, partners, council members, ordinances. Today we can't query "how many users asked about Terminal A this week" or "did anyone mention the Foundations Project by name." This MVP captures entity mentions structurally on user turns so the data lands; aggregation views come in v2.
 
-**Status**: shipped. `sql/087_entity_catalog_bot_scope.sql` applied to prod 2026-05-22. `lib/botEntityExtraction.ts` + `lib/entityMentionDetector.ts` written; chat-route hook wired (bundled with the probe-focus block to share one merged content_flags UPDATE — avoids the write race that would have occurred with two separate fire-and-forget blocks); `entity:` emerald pill style live in `lib/flagStyles.ts`; admin tab at `/bots/[id]/entities` with hide/edit/extract/**manual-add** actions; "Entities" link added to bot card footer on `/bots`. Local commits not yet pushed.
+**Status**: shipped. `sql/087_entity_catalog_bot_scope.sql` applied to prod 2026-05-22. `lib/botEntityExtraction.ts` + `lib/entityMentionDetector.ts` written; chat-route hook wired (bundled with the probe-focus block to share one merged content_flags UPDATE — avoids the write race that would have occurred with two separate fire-and-forget blocks); `entity:` emerald pill style live in `lib/flagStyles.ts`; admin tab at `/bots/[id]/entities` with full CRUD on manual entities (hide/edit/extract/**manual-add**/**delete**); "Entities" link added to bot card footer on `/bots`. Local commits not yet pushed.
 
 **Open design questions** (resolved 2026-05-23):
 1. **When to extract** → on demand only. No auto-extraction at KB seed time. Admin clicks "Re-extract entities" on the new tab when they want it. Keeps cost predictable and avoids stale data on bots whose KB never gets touched.
@@ -1009,7 +1009,7 @@ Algorithm (string match, not AI):
 | `lib/flagStyles.ts` | +~6 lines — `entity:` dynamic style + `isFixedFlag` exclusion |
 | `app/api/bots/[id]/entities/route.ts` | `GET` (list, scoped by bot's org via paired `id`+`org_id`) + `POST` (added 2026-06-05 — manually create an entity, `source='manual'`; idempotent: existing/hidden slug is unhidden + flipped to manual + aliases merged. Manual rows survive re-extraction — `botEntityExtraction.ts` preserves them. Aliases also seed ASR spelling correction for the brand's recordings via §3.5c convergence.) |
 | `app/api/bots/[id]/entities/extract/route.ts` | New — `POST` (trigger re-extract) |
-| `app/api/bots/[id]/entities/[entityId]/route.ts` | New — `PATCH` (hide / edit canonical / aliases) |
+| `app/api/bots/[id]/entities/[entityId]/route.ts` | `PATCH` (hide / edit canonical / aliases) + `DELETE` (hard-delete — **manual rows only**; discovered rows return 400 "Hide instead" so re-discovery can't resurface them). Delete button wired in the UI 2026-06-05 (manual rows only). |
 | `app/bots/[id]/entities/page.tsx` + `EntitiesClient.tsx` | New admin tab |
 | `app/bots/BotsClient.tsx` | Added "Entities" link to the bot card footer (alongside Questions / History / Export JSON) |
 | `tests/unit/entityMentionDetector.test.ts` | 12 tests: word boundaries, case-insensitivity, variant expansion, multi-word entities, longest-first precedence, alias matching, cache invalidation, dedup within a turn |

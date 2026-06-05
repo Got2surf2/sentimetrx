@@ -1,5 +1,11 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-05 — Agent entities: wire Delete (full CRUD on manual)
+
+**Why**: After manual-add, the only "removal" in the UI was Hide (soft-delete). Manual rows the user added by mistake should be truly deletable.
+
+**What changed** (`app/bots/[id]/entities/EntitiesClient.tsx`): a **Delete** button on **manual rows only** (red, with confirm) → `DELETE /api/bots/[id]/entities/[entityId]` → reload. The DELETE endpoint already existed and is correct — it hard-deletes `source='manual'` only and returns 400 ("Hide discovered entities instead") for discovered rows, so re-discovery can't resurface admin-rejected noise. So bot entities now have full CRUD: Create (POST) · Read (GET) · Update (PATCH) · Delete (DELETE, manual-only); Hide/Unhide remains for discovered rows. Typecheck clean; BOTS.md §9.y updated. **Local-only.**
+
 ## 2026-06-05 — Agent entities: manual add (survives re-extraction)
 
 **Why**: You could edit/hide discovered entities on `/bots/[id]/entities`, but there was no way to *create* one the NER never caught (e.g. a panel member). The preservation half already existed — `entity_catalog.source='manual'` (sql/073), and both `entityDiscovery.ts` (dataset) + `botEntityExtraction.ts` (bot) skip/preserve manual rows — but the create path was missing for bot scope.
