@@ -112,7 +112,9 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   (axis dot + ★ rating + pos/neg sentiment bar + rate% lead / count muted); **clicking a card**
   drills into the comments tagged with that sub-dimension, and a **"Read all comments on this
   dimension"** header link runs the axis-level drill (every comment tagged anywhere on the
-  axis). Severity stays a separate **red pill** row; clicking one drills its alert comments.
+  axis). Severity is an 8th **red pill** in the same axis-pill row (status, not
+  navigation); selecting it opens its alert sub-types (food safety / pests) as red
+  cards, and clicking a card drills that alert's comments.
   Any of these opens an **inline comments
   panel** (breadcrumb header `Dimensions › axis [› sub]` / `Dimensions › Severity alert › tag`,
   count, a scrollable list)
@@ -151,7 +153,12 @@ cards** below. A pill is the collapsed form of its cards.
 
 - **Keep as-is**: the KPI row; the inline comment drill panel
   (`GET …/taxonomy/rows`); the self-serve Classify / Re-classify controls + field
-  picker; the Severity pills (still **red**, their own row, status not navigation).
+  picker. **Severity** is promoted to an 8th pill in the axis-pill row (kept **red** —
+  status, not navigation; via the `SEVERITY='__severity__'` sentinel `filterAxis`),
+  showing the total flagged-review count; selecting it **opens its alert sub-types as
+  red cards** (food safety / pests → ⚠ tag + the matching attribute sub's ★ rating +
+  flagged count, click → `?alert=` drill), mirroring the axis→sub-card flow. The old
+  separate severity-pill row is gone.
 - **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
   `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
   + a red→green **★ rating badge**. The pills **filter the card grid**; selected/

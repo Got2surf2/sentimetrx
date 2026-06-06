@@ -404,8 +404,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   ★ rating + pos/neg sentiment bar + rate% lead / count). The **"flagged reviews" KPI** =
   `alertRows` = distinct reviews with ≥1 severity alert; the per-type alert pills count occurrences
   *per type*, so they can sum to MORE than the KPI when a review hits more than one (Cheddar's: 79
-  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity alerts (food safety / pests) stay red
-  pills** in their own row (status, not navigation). Picking an axis pill **focuses** the card grid
+  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity is an 8th red pill** in the
+  axis-pill row (status, not navigation); selecting it opens its alert sub-types (food safety / pests) as red cards
+  that drill `?alert=`. Picking an axis pill **focuses** the card grid
   to that axis (no pick = top sub-buckets across all axes); **clicking a card** drills that
   sub-dimension and a **"Read all comments on this dimension"** header link does the axis-level
   drill (every comment tagged anywhere on the axis) → an **inline comments panel**

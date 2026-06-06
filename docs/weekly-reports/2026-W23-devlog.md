@@ -1468,3 +1468,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - **`TextMineModule.tsx` (×2) + `textmine/WordCloud.tsx`** — replaced the inline per-axis color literals in the theme-card / Theme-cloud Dimensions chip rows with the shared `AXIS_COLOR` import, so colors can't drift. **No theme-card layout change.**
 
 **Verify**: my 4 changed files **typecheck clean** (`npx tsc --noEmit` after a clean cache); the only 2 tsc errors are in the untouched `CampaignDetailClient.tsx` and trace to a *local xlsx stub* I had to create — the env's network policy 403s `cdn.sheetjs.com` (the CDN-pinned `xlsx` dep), so a full `npm install` can't complete; I installed everything else and stubbed `xlsx` as `any` for the typecheck, which is what makes `sheet_to_json<T>()` complain. Not present with the real package. **461 tests pass** (`npm test`). No migration. Spec `TAXONOMY.md §4 + §4a` and `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Dimensions: Severity promoted to a top-level pill + alert cards
+
+**Why**: Owner wanted severity handled like the other dimensions — a single top-level **⚠ Severity** pill that, when selected, opens its sub-alerts (rather than a separate always-visible red pill row). Mirrors the axis→sub-card flow exactly.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`):
+- Replaced the separate severity-pill row with an **8th pill in the axis-pill row** (kept red — status, not navigation), showing the total flagged-review count. Driven by a `SEVERITY='__severity__'` sentinel `filterAxis`.
+- Selecting it renders the alert sub-types as **red cards** in the same grid (⚠ tag + the matching `attribute` sub's ★ rating + flagged count, click → `?alert=` drill), with a header showing the flagged-review total + the per-type caveat.
+- Footnote updated ("Pick a dimension chip — including ⚠ Severity — to open its cards").
+
+**Verify**: changed file typecheck-clean (the only 2 tsc errors remain the untouched `CampaignDetailClient.tsx` xlsx-stub artifacts — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend/migration — still all from the existing `taxonomy` rollup. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.

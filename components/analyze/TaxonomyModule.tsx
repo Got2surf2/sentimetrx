@@ -28,6 +28,10 @@ interface Rollup {
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
 const GREEN = '#059669', AMBER = '#D97706', RED = '#DC2626', SLATE = '#8FA3AE'
 
+// Sentinel filterAxis value for the cross-cutting Severity "dimension" — it sits
+// in the axis-pill row (red, status not navigation) and opens its alert sub-cards.
+const SEVERITY = '__severity__'
+
 // Red→green ramp (0..1), mirrors TextMine's CommentsPanel rating colouring.
 function rampColor(pct: number): string {
   if (pct <= 0.5) { const g = Math.round(80 + pct * 2 * 120); return `rgb(220,${g},40)` }
@@ -298,26 +302,19 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
               </button>
             )
           })}
+          {data.alerts.length > 0 && (() => {
+            const active = filterAxis === SEVERITY
+            return (
+              <button key={SEVERITY}
+                onClick={() => { if (active) { setFilterAxis(''); setFilterSub('') } else { setFilterAxis(SEVERITY); setFilterSub(''); setDrill(null) } }}
+                title={`Severity — ${data.alertRows.toLocaleString()} reviews flagged at alert / crisis (food safety / pests)`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, lineHeight: 1.3, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
+                <span>⚠ Severity</span>
+                <span style={{ opacity: active ? 0.85 : 0.6 }}>{data.alertRows.toLocaleString()}</span>
+              </button>
+            )
+          })()}
         </div>
-        {data.alerts.length > 0 && (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>
-              ⚠ Severity <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· flagged alert / crisis · counts are per type, so they can exceed the flagged-reviews total when a review hits more than one</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {data.alerts.map(a => {
-                const active = drill?.qs === `alert=${encodeURIComponent(a.tag)}`
-                return (
-                  <button key={a.tag}
-                    onClick={() => { if (active) { setDrill(null) } else { setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Dimensions','Severity alert', a.tag] }) } }}
-                    style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
-                    {a.tag} <span style={{ opacity: 0.6, fontWeight: 600 }}>{a.count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )}
       </div>
 
       {/* Inline comments panel — driven by the filter above or by clicking a sub-topic / alert. */}
@@ -417,6 +414,50 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
           Each card → drills into the comments tagged with that sub-dimension. */}
       {(() => {
         const axisLabelOf = (ax: string) => data.axes.find(x => x.axis === ax)?.label || DIM_AXIS_LABEL[ax as Axis] || ax
+
+        // Severity "dimension" selected → show its alert sub-types as (red) cards.
+        if (filterAxis === SEVERITY) {
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 5, background: RED, alignSelf: 'center' }} />
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Severity alerts</h3>
+                <span style={{ fontSize: 13, color: SLATE }}>{data.alertRows.toLocaleString()} flagged review{data.alertRows === 1 ? '' : 's'} · counts are per type, so they can exceed this when a review hits more than one</span>
+              </div>
+              {data.alerts.length === 0 ? (
+                <p style={{ fontSize: 13, color: SLATE }}>No severity alerts in this dataset.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+                  {data.alerts.map(a => {
+                    const sub = data.subs.find(s => s.axis === 'attribute' && s.sub === a.tag)
+                    const qs = `alert=${encodeURIComponent(a.tag)}`
+                    const active = drill?.qs === qs
+                    return (
+                      <div key={a.tag}
+                        onClick={() => { if (active) { setDrill(null) } else { setDrill({ qs, crumbs: ['Dimensions', 'Severity alert', a.tag] }) } }}
+                        title={`View the ${a.count.toLocaleString()} review${a.count === 1 ? '' : 's'} flagged for ${dimSubLabel(a.tag)}`}
+                        style={{ background: active ? '#fef2f2' : '#fff', border: '1px solid ' + (active ? RED : '#fecaca'), borderLeft: '4px solid ' + RED, boxShadow: active ? `0 0 0 1px ${RED}` : 'none', borderRadius: 12, padding: '13px 15px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8 }}
+                        onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = '#fca5a5' }}
+                        onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = '#fecaca' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ fontSize: 13 }}>⚠</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: '#b91c1c', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dimSubLabel(a.tag)}</span>
+                          <StarBadge avg={sub ? sub.avgRating : null} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <span style={{ fontSize: 18, fontWeight: 800, color: RED }}>{a.count.toLocaleString()}</span>
+                          <span style={{ fontSize: 12, color: SLATE }}>flagged · alert / crisis</span>
+                          <span style={{ marginLeft: 'auto', color: active ? RED : SLATE, fontSize: 16 }}>›</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        }
+
         const sorted = [...data.subs].sort((x, y) => (y.rate - x.rate) || (y.count - x.count))
         const list = filterAxis ? sorted.filter(s => s.axis === filterAxis) : sorted.slice(0, 24)
         const focus = filterAxis ? data.axes.find(x => x.axis === filterAxis) : null
@@ -490,7 +531,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       })()}
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension / sub-dimension; sentiment = share of polarised mentions that are positive. Pick a dimension chip to focus its sub-dimension cards, then click any card (or a severity alert) to read the comments behind it.
+        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension / sub-dimension; sentiment = share of polarised mentions that are positive. Pick a dimension chip — including ⚠ Severity — to open its cards, then click any card to read the comments behind it.
       </p>
     </div>
   )
