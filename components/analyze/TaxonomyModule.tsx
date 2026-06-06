@@ -7,8 +7,9 @@
 // by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
 // here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useCallback, useEffect, useState, type ReactElement, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { AXIS_COLOR, DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
 interface TextField { field: string; label: string }
@@ -39,16 +40,6 @@ function ratingColor(rating: number | null): string | null {
   return rampColor(Math.max(0, Math.min(1, (rating - 1) / 4)))
 }
 
-function pillStyle(active: boolean, color: string): CSSProperties {
-  return {
-    fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999,
-    border: '1px solid ' + (active ? color : '#cbd5e1'),
-    background: active ? color : '#fff',
-    color: active ? '#fff' : NAVY,
-    cursor: 'pointer', whiteSpace: 'nowrap',
-  }
-}
-
 /** ★ avg-rating badge, coloured red→green by the 1–5 value (null = render nothing). */
 function StarBadge({ avg, size = 12 }: { avg: number | null; size?: number }) {
   if (avg == null) return null
@@ -60,16 +51,6 @@ function sentimentColor(posPct: number | null): string {
   if (posPct >= 66) return GREEN
   if (posPct >= 40) return AMBER
   return RED
-}
-
-function Pill({ posPct }: { posPct: number | null }) {
-  if (posPct === null) return <span style={{ fontSize: 11, color: SLATE }}>—</span>
-  const c = sentimentColor(posPct)
-  return (
-    <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: c, borderRadius: 10, padding: '2px 8px' }}>
-      {posPct}% pos
-    </span>
-  )
 }
 
 interface DrillComment { text: string; rating: number | null; date: string | null; evidence: string[]; tags: { axis: string; sub: string; evidence: string[] }[] }
@@ -263,7 +244,6 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     )
   }
 
-  const maxAxis = Math.max(1, ...data.axes.map(a => a.rate))
   const kpi = (label: string, value: string | number, color: string, tip?: string) => (
     <div title={tip} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150, textAlign: 'center', cursor: tip ? 'help' : undefined }}>
       <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
@@ -292,9 +272,10 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       </div>
       {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
-      {/* Filter by topic / sub-topic — pills. Topics show first; pick one to reveal its sub-topics. */}
+      {/* Dimension axis pills (Entities-style: identity dot + label + mention-rate% + ★ rating).
+          Pick one to focus the sub-dimension cards below; pick again to clear. */}
       <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Dimension</span>
           {(filterAxis || drill) && (
             <button onClick={() => { setFilterAxis(''); setFilterSub(''); setDrill(null) }}
@@ -304,38 +285,20 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {data.axes.map(a => {
             const active = filterAxis === a.axis
+            const c = AXIS_COLOR[a.axis as Axis] || SLATE
             return (
               <button key={a.axis}
-                onClick={() => { if (active) { setFilterAxis(''); setFilterSub(''); setDrill(null) } else { setFilterAxis(a.axis); setFilterSub(''); setDrill({ qs: `axis=${encodeURIComponent(a.axis)}`, crumbs: ['Dimensions', a.label] }) } }}
-                style={pillStyle(active, NAVY)}>
-                {a.label} <span style={{ opacity: 0.55, fontWeight: 600 }}>{a.rate}%</span>
+                onClick={() => { if (active) { setFilterAxis(''); setFilterSub('') } else { setFilterAxis(a.axis); setFilterSub('') } }}
+                title={`${a.label} — ${a.rate}% of classified reviews${a.avgRating != null ? ` · ★ ${a.avgRating.toFixed(1)}` : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, lineHeight: 1.3, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? c : '#e2e8f0'), background: active ? c + '14' : '#fff', color: NAVY }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: c, flexShrink: 0 }} />
+                <span style={{ fontWeight: 700 }}>{a.label}</span>
+                <span style={{ color: TEAL, fontWeight: 700 }}>{a.rate}%</span>
+                <StarBadge avg={a.avgRating} size={11} />
               </button>
             )
           })}
         </div>
-        {filterAxis && (() => {
-          const axisLabel = data.axes.find(x => x.axis === filterAxis)?.label || filterAxis
-          return (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>Sub-dimension</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {data.subs.filter(s => s.axis === filterAxis).length === 0 && (
-                <span style={{ fontSize: 13, color: SLATE }}>No sub-dimensions surfaced for this dimension.</span>
-              )}
-              {data.subs.filter(s => s.axis === filterAxis).map(s => {
-                const active = filterSub === s.sub
-                return (
-                  <button key={s.sub}
-                    onClick={() => { if (active) { setFilterSub(''); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}`, crumbs: ['Dimensions', axisLabel] }) } else { setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(filterAxis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Dimensions', axisLabel, s.sub] }) } }}
-                    style={pillStyle(active, TEAL)}>
-                    {s.sub} <span style={{ opacity: 0.55, fontWeight: 600 }}>{s.count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </>
-          )
-        })()}
         {data.alerts.length > 0 && (
           <>
             <div style={{ fontSize: 11, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' }}>
@@ -346,7 +309,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 const active = drill?.qs === `alert=${encodeURIComponent(a.tag)}`
                 return (
                   <button key={a.tag}
-                    onClick={() => { if (active) { setDrill(null) } else { setFilterAxis(''); setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Dimensions','Severity alert', a.tag] }) } }}
+                    onClick={() => { if (active) { setDrill(null) } else { setFilterSub(''); setDrill({ qs: `alert=${encodeURIComponent(a.tag)}`, crumbs: ['Dimensions','Severity alert', a.tag] }) } }}
                     style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.3, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? RED : '#fecaca'), background: active ? RED : '#fef2f2', color: active ? '#fff' : '#b91c1c' }}>
                     {a.tag} <span style={{ opacity: 0.6, fontWeight: 600 }}>{a.count}</span>
                   </button>
@@ -449,57 +412,85 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {/* Axes */}
-        <div style={{ flex: '1 1 420px', minWidth: 360 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            By axis <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· % of reviews · avg rating</span>
-          </h3>
-          {data.axes.map(a => (
-            <div key={a.axis} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, fontSize: 13, marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, color: NAVY, flex: 1 }}>{a.label}</span>
-                <StarBadge avg={a.avgRating} />
-                <span style={{ fontWeight: 700, color: TEAL, width: 44, textAlign: 'right' }}>{a.rate}%</span>
-              </div>
-              <div style={{ background: '#eef2f4', borderRadius: 4, height: 14 }}>
-                <div style={{ width: `${100 * a.rate / maxAxis}%`, height: 14, background: TEAL, borderRadius: 4 }} />
-              </div>
+      {/* Level-2 sub-dimension cards (theme-card family). No axis picked = the
+          top sub-buckets across all axes; pick an axis pill to focus to that axis.
+          Each card → drills into the comments tagged with that sub-dimension. */}
+      {(() => {
+        const axisLabelOf = (ax: string) => data.axes.find(x => x.axis === ax)?.label || DIM_AXIS_LABEL[ax as Axis] || ax
+        const sorted = [...data.subs].sort((x, y) => (y.rate - x.rate) || (y.count - x.count))
+        const list = filterAxis ? sorted.filter(s => s.axis === filterAxis) : sorted.slice(0, 24)
+        const focus = filterAxis ? data.axes.find(x => x.axis === filterAxis) : null
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              {focus ? (
+                <>
+                  <span style={{ width: 10, height: 10, borderRadius: 5, background: AXIS_COLOR[focus.axis as Axis] || SLATE, alignSelf: 'center' }} />
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>{focus.label}</h3>
+                  <span style={{ fontSize: 13, color: SLATE }}>{focus.rate}% of reviews</span>
+                  <StarBadge avg={focus.avgRating} />
+                  <button
+                    onClick={() => setDrill({ qs: `axis=${encodeURIComponent(focus.axis)}`, crumbs: ['Dimensions', focus.label] })}
+                    title="Read every comment tagged anywhere on this dimension"
+                    style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Read all comments on this dimension ›
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Top sub-dimensions</h3>
+                  <span style={{ fontSize: 13, color: SLATE }}>across all dimensions · pick a chip above to focus one</span>
+                </>
+              )}
             </div>
-          ))}
-        </div>
 
-        {/* Top sub-buckets */}
-        <div style={{ flex: '1 1 420px', minWidth: 360 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            Top sub-topics <span style={{ color: SLATE, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· rate · rating · sentiment</span>
-          </h3>
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-            {data.subs.slice(0, 18).map((s, i) => (
-              <div
-                key={s.axis + ':' + s.sub}
-                onClick={() => { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs: `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`, crumbs: ['Dimensions',s.axis, s.sub] }) }}
-                title="View the comments tagged with this"
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span style={{ flex: 1, fontSize: 13 }}>
-                  <span style={{ color: SLATE }}>{s.axis} · </span>
-                  <span style={{ fontWeight: 700, color: NAVY }}>{s.sub}</span>
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: TEAL, width: 48, textAlign: 'right' }}>{s.rate}%</span>
-                <span style={{ width: 48, textAlign: 'right' }}><StarBadge avg={s.avgRating} /></span>
-                <span style={{ width: 70, textAlign: 'right' }}><Pill posPct={s.posPct} /></span>
-                <span style={{ color: SLATE, fontSize: 16 }}>›</span>
+            {list.length === 0 ? (
+              <p style={{ fontSize: 13, color: SLATE }}>No sub-dimensions surfaced for this dimension.</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+                {list.map(s => {
+                  const c = AXIS_COLOR[s.axis as Axis] || SLATE
+                  const qs = `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`
+                  const active = drill?.qs === qs
+                  return (
+                    <div key={s.axis + ':' + s.sub}
+                      onClick={() => { if (active) { setDrill(null); setFilterSub('') } else { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', axisLabelOf(s.axis), s.sub] }) } }}
+                      title={`View the comments tagged ${axisLabelOf(s.axis)} › ${dimSubLabel(s.sub)}`}
+                      style={{ background: '#fff', border: '1px solid ' + (active ? c : '#e2e8f0'), boxShadow: active ? `0 0 0 1px ${c}` : 'none', borderRadius: 12, padding: '13px 15px', cursor: 'pointer', display: 'flex', flexDirection: 'column', minHeight: 104 }}
+                      onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = '#cbd5e1' }}
+                      onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = '#e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 5, background: c, flexShrink: 0 }} />
+                        <span style={{ fontSize: 14, fontWeight: 700, color: NAVY, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dimSubLabel(s.sub)}</span>
+                        <StarBadge avg={s.avgRating} />
+                      </div>
+                      {!filterAxis && <div style={{ fontSize: 10, fontWeight: 700, color: c, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{axisLabelOf(s.axis)}</div>}
+                      {s.posPct === null ? (
+                        <div style={{ fontSize: 11, color: SLATE, marginBottom: 10 }}>No sentiment signal</div>
+                      ) : (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ display: 'flex', height: 7, borderRadius: 4, overflow: 'hidden', background: '#fee2e2' }}>
+                            <div style={{ width: `${s.posPct}%`, background: GREEN }} />
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: sentimentColor(s.posPct), marginTop: 4 }}>{s.posPct}% positive</div>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto' }}>
+                        <span style={{ fontSize: 18, fontWeight: 800, color: TEAL }}>{s.rate}%</span>
+                        <span style={{ fontSize: 12, color: SLATE }}>{s.count.toLocaleString()} mention{s.count === 1 ? '' : 's'}</span>
+                        <span style={{ marginLeft: 'auto', color: active ? c : SLATE, fontSize: 16 }}>›</span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      </div>
+        )
+      })()}
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension/sub-dimension; sentiment = share of polarised mentions that are positive. Filter by dimension / sub-dimension above, or click any sub-dimension or alert, to read the comments behind it.
+        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension / sub-dimension; sentiment = share of polarised mentions that are positive. Pick a dimension chip to focus its sub-dimension cards, then click any card (or a severity alert) to read the comments behind it.
       </p>
     </div>
   )

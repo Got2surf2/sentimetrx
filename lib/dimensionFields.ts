@@ -22,6 +22,20 @@ export const DIM_AXIS_LABEL: Record<Axis, string> = {
   outcome:    'Outcome',
 }
 
+// Per-axis identity color — the single source of truth for axis dots/chips
+// everywhere Dimensions render: the Dimensions view (TaxonomyModule) pills +
+// cards, and the theme-card / Theme-cloud "Dimensions" chip rows. Import this
+// map rather than re-declaring the literals so the colors can never drift.
+export const AXIS_COLOR: Record<Axis, string> = {
+  touchpoint: '#0EA5E9',
+  attribute:  '#8B5CF6',
+  product:    '#EA580C',
+  beverage:   '#0891B2',
+  ambiance:   '#16A34A',
+  context:    '#CA8A04',
+  outcome:    '#DB2777',
+}
+
 export function dimFieldName(axis: Axis): string {
   return '__dim_' + axis + '__'
 }

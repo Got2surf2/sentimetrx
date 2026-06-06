@@ -16,7 +16,7 @@ import {
 } from '@/lib/themeUtils'
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
-import { DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
+import { DIM_AXIS_LABEL, dimSubLabel, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -2422,10 +2422,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 {dimensionsEnabled && (function() {
                                   var dimList = serverThemeDimensions[t.id] || []
                                   if (!dimList.length) return null
-                                  var AXIS_COLOR: Record<string, string> = {
-                                    touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C',
-                                    beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777',
-                                  }
                                   return (
                                     <div style={{ marginBottom: 10 }}>
                                       <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }} title="Dimension sub-buckets (service, food, drinks, ambiance, …) reviewers discuss when this theme comes up">
@@ -2433,7 +2429,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       </div>
                                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                         {dimList.slice(0, 6).map(function(d) {
-                                          var dc = AXIS_COLOR[d.axis] || '#8FA3AE'
+                                          var dc = AXIS_COLOR[d.axis as Axis] || '#8FA3AE'
                                           var axisLabel = DIM_AXIS_LABEL[d.axis as Axis] || d.axis
                                           return (
                                             <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — click to see these "' + t.name + '" comments (' + d.count.toLocaleString() + ')'}
@@ -2705,7 +2701,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     </div>
                     {/* Entities + Dimensions facets — AND-combine with the themes above */}
                     {(entityCatalogRows.length > 0 || (dimensionsEnabled && dimFacets.length > 0)) && (function() {
-                      var DIM_AXIS_COLOR: Record<string, string> = { touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C', beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777' }
                       var entOpts = entityCatalogRows.filter(function(e) { return !filterEntities.some(function(fe) { return fe.slug === e.slug }) }).slice(0, 200)
                       return (
                         <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2734,7 +2729,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', width: 64, flexShrink: 0 }}>Dimensions</span>
                               {filterDims.map(function(d) {
-                                var dc = DIM_AXIS_COLOR[d.axis] || '#8FA3AE'
+                                var dc = AXIS_COLOR[d.axis as Axis] || '#8FA3AE'
                                 return (
                                   <span key={d.axis + ':' + d.sub} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px 2px 10px', borderRadius: 20, background: dc + '14', border: '1px solid ' + dc + '40', color: T.textMid, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     <span style={{ width: 5, height: 5, borderRadius: 3, background: dc, flexShrink: 0 }} />

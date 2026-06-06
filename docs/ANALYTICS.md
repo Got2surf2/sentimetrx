@@ -398,15 +398,17 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
   `components/analyze/TaxonomyModule.tsx`: classified-row KPIs (incl. an **avg-rating ★ KPI**),
-  per-axis mention-rate bars and top sub-topics — each with a **★ avg-rating badge** (red→green
-  ramp, from `data->>rating`) alongside the text-polarity sentiment. The **"flagged reviews" KPI** =
+  then a **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`): the 7 axes
+  are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green ramp
+  from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
+  ★ rating + pos/neg sentiment bar + rate% lead / count). The **"flagged reviews" KPI** =
   `alertRows` = distinct reviews with ≥1 severity alert; the per-type alert pills count occurrences
   *per type*, so they can sum to MORE than the KPI when a review hits more than one (Cheddar's: 79
-  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity alerts (food safety / pests) live as red
-  pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
-  alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
-  (topic pills first; **clicking a topic/dimension pill reveals its sub-topic pills AND drills
-  into every comment tagged anywhere on that axis** — clicking a specific sub then narrows, deselecting it reverts to the axis drill) → an **inline comments panel**
+  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity alerts (food safety / pests) stay red
+  pills** in their own row (status, not navigation). Picking an axis pill **focuses** the card grid
+  to that axis (no pick = top sub-buckets across all axes); **clicking a card** drills that
+  sub-dimension and a **"Read all comments on this dimension"** header link does the axis-level
+  drill (every comment tagged anywhere on the axis) → an **inline comments panel**
   (cards mirror TextMine's: text + meta chips + Show-more + a rating-coloured left bar + a 1–4
   column grid selector; each comment also shows its other axis·sub tag chips — hovering a chip
   highlights the span of the comment that triggered that dimension) (breadcrumb header + scrollable list + Export CSV + per-comment

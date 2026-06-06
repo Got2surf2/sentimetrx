@@ -1457,3 +1457,14 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Next session entry point**: implement `TAXONOMY.md §4a` in `TaxonomyModule.tsx` (+ `AXIS_COLOR` in `dimensionFields.ts`). Open detail left to build-time: exact card density vs. a theme card; whether to sub-group Context's 25 subs.
 
 **Verify**: docs-only commit — no code, no tsc/test impact, no migration, NOT pushed.
+
+## 2026-06-06 — Dimensions view redesign BUILT (pills + cards)
+
+**Why**: Implemented the design speced earlier today in `TAXONOMY.md §4a`. The Dimensions sub-tab (`TaxonomyModule.tsx`) previously showed the same data twice — axis pills + a "By axis" bar column, and sub-pills + a "Top sub-topics" list. Replaced that redundancy with one surface: Entities-style axis pills on top, theme-card-family sub-bucket cards below.
+
+**What changed**:
+- **`lib/dimensionFields.ts`** — added `AXIS_COLOR` (the 7 axis identity colors) as the single source of truth.
+- **`components/analyze/TaxonomyModule.tsx`** — axis pills now render Entities-style (identity dot + **rate%** + ★ rating badge) and only *filter* the grid (no auto-drill). New level-2 card grid (`repeat(auto-fill, minmax(240px,1fr))`): each card = axis dot + title (`dimSubLabel`) + ★ rating + pos/neg sentiment bar + rate% lead / count muted, click → existing `setDrill(...)`. No axis selected = top 24 sub-buckets across all axes (sorted rate desc, count tiebreak); axis selected = that axis's subs + a "Read all comments on this dimension" header link for the axis-level drill. Clicking a card also focuses its axis so the drill panel's per-tag highlight + breadcrumb stay in sync. Retired the sub-pill row, the "By axis" bars, and the "Top sub-topics" list; removed now-unused `pillStyle`/`Pill`/`maxAxis`/`CSSProperties`. Severity stays a red pill row, KPIs + drill panel unchanged. **All from the existing `taxonomy` rollup (`SubStat`) — no new backend, endpoint, or fetch.**
+- **`TextMineModule.tsx` (×2) + `textmine/WordCloud.tsx`** — replaced the inline per-axis color literals in the theme-card / Theme-cloud Dimensions chip rows with the shared `AXIS_COLOR` import, so colors can't drift. **No theme-card layout change.**
+
+**Verify**: my 4 changed files **typecheck clean** (`npx tsc --noEmit` after a clean cache); the only 2 tsc errors are in the untouched `CampaignDetailClient.tsx` and trace to a *local xlsx stub* I had to create — the env's network policy 403s `cdn.sheetjs.com` (the CDN-pinned `xlsx` dep), so a full `npm install` can't complete; I installed everything else and stubbed `xlsx` as `any` for the typecheck, which is what makes `sheet_to_json<T>()` complain. Not present with the real package. **461 tests pass** (`npm test`). No migration. Spec `TAXONOMY.md §4 + §4a` and `ANALYTICS.md` updated. ALL LOCAL, not pushed.

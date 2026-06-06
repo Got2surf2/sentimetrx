@@ -78,7 +78,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   param, so keys with spaces/commas/apostrophes work); a plain `rating`-named field still
   uses a direct `data->>rating` select so existing google_reviews rollups don't depend on
   the new RPC. `aggregateTaxonomy` then averages over matching rows. The UI shows a
-  ★ badge (red→green ramp) on the KPIs, axis bars, and sub-topic rows — complements the
+  ★ badge (red→green ramp) on the KPIs, axis pills, and sub-dimension cards — complements the
   text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
   ★2.4 vs `attribute·flavor` ★4.1; on Carrabba's GSS, `attribute·temp` ★2.35 vs
   `attribute·professional` ★4.56).
@@ -105,12 +105,15 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
   instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
   `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
-  **Filter + comment drill-down**: a **pill-based Topic** (axis) + **Sub-topic** (sub)
-  filter — topic pills show first; **clicking a topic (dimension) pill both reveals that
-  axis's sub-topic pills AND drills into every comment tagged anywhere on that dimension**
-  (axis-level); picking a specific sub-topic — or clicking a sub-topic row / alert chip
-  (which syncs the pills) — narrows the drill to that sub; **deselecting the sub reverts the
-  panel to the axis-level drill** (rather than closing). Either opens an **inline comments
+  **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
+  axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
+  picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top
+  sub-buckets across all axes). The level-2 sub-buckets render as **theme-card-family cards**
+  (axis dot + ★ rating + pos/neg sentiment bar + rate% lead / count muted); **clicking a card**
+  drills into the comments tagged with that sub-dimension, and a **"Read all comments on this
+  dimension"** header link runs the axis-level drill (every comment tagged anywhere on the
+  axis). Severity stays a separate **red pill** row; clicking one drills its alert comments.
+  Any of these opens an **inline comments
   panel** (breadcrumb header `Dimensions › axis [› sub]` / `Dimensions › Severity alert › tag`,
   count, a scrollable list)
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=` for the whole axis,
@@ -136,12 +139,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   --rollup`); `scripts/repair-review-dataset-state.ts` (back-fills `dataset_state` for
   script-ingested review datasets so `/analyze` opens).
 
-## 4a. Dimensions view redesign — pills + cards (DESIGNED 2026-06-06, NOT yet built)
+## 4a. Dimensions view display — pills + cards (BUILT 2026-06-06)
 
-Owner-agreed redesign of the **Dimensions** sub-tab display (`TaxonomyModule.tsx`).
-Pure presentation change — **no theme-card changes, no new backend, no new
+Redesign of the **Dimensions** sub-tab display (`TaxonomyModule.tsx`). Pure
+presentation change — **no theme-card changes, no new backend, no new
 endpoint/RPC**; everything is fed by the existing `taxonomy` rollup (`SubStat`).
-Replaces the dense two-column "By axis bars / Top sub-topics list" + the
+Replaced the dense two-column "By axis bars / Top sub-topics list" + the
 sub-dimension pill row with one coherent surface that borrows two patterns
 already in the product: **Entities-style pills** on top, **theme-card-family
 cards** below. A pill is the collapsed form of its cards.
@@ -178,16 +181,19 @@ cards** below. A pill is the collapsed form of its cards.
   — those are additive later if a backend feed is added; the layout leaves room.
 - **Grid states**: **no axis selected** → cards for the top sub-buckets **across all
   axes** (axis-colored dots = wayfinding) as the default landing; **axis selected** →
-  grid filtered to that axis's subs. Default sort **by rate% desc**. The current
-  **axis-level drill** ("read every comment tagged anywhere on Touchpoint") is
-  preserved as a header affordance on the filtered grid (it must not be lost when the
-  axis pill stops auto-opening the panel).
+  grid filtered to that axis's subs. Default sort **by rate% desc** (count as tiebreak);
+  the all-axes landing caps at the **top 24** sub-buckets. The **axis-level drill**
+  ("read every comment tagged anywhere on Touchpoint") is preserved as a
+  **"Read all comments on this dimension"** header link on the focused grid (the axis
+  pill itself only filters — it no longer auto-opens the panel). Clicking a card also
+  focuses its axis (so the comment panel's per-tag highlight + breadcrumb stay in sync).
 - **Retire**: the "By axis" horizontal-bar column, the "Top sub-topics" list column,
   and the sub-dimension pill row — all folded into pills (axis) + cards (sub).
-- **Refactor**: centralize the 7 axis colors into a single `AXIS_COLOR` map in
-  `lib/dimensionFields.ts`, imported by `TaxonomyModule` (and reusable by the existing
-  theme-card **Dimensions chip row** so the two never drift). This relocates a color
-  constant only — **no change to the theme-card layout**.
+- **Refactor (done)**: the 7 axis colors now live in a single `AXIS_COLOR` map in
+  `lib/dimensionFields.ts`, imported by `TaxonomyModule` **and** the previously-inline
+  copies in the theme-card / Theme-cloud **Dimensions chip rows** (`TextMineModule.tsx`
+  ×2, `WordCloud.tsx`) so the colors can't drift. Color constant relocation only —
+  **no change to the theme-card layout**.
 - **Edge cases**: empty buckets are already hidden (the rollup's `subs` only carries
   surfaced/non-zero subs — keep that). Largest grids are **Context** (25 subs, really
   4 clusters: Daypart/Holiday/Channel/Loose) and **Attribute** (22, a flat grab-bag);
