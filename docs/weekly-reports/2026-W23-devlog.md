@@ -1479,3 +1479,16 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - Footnote updated ("Pick a dimension chip — including ⚠ Severity — to open its cards").
 
 **Verify**: changed file typecheck-clean (the only 2 tsc errors remain the untouched `CampaignDetailClient.tsx` xlsx-stub artifacts — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend/migration — still all from the existing `taxonomy` rollup. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Dimensions view: design polish pass (header, %, comment highlight)
+
+**Why**: Owner review of the built Dimensions view flagged several fit-and-finish issues against the Themes view's look.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`):
+- **Header meshes with Themes now**: replaced the chunky centered KPI cards with a Themes-scale header — an `<h2>` "Dimensions" + a one-line stat summary (reviews classified · % with a signal · ★ avg · N flagged), field picker + Re-classify aligned right. The redundant "flagged reviews" KPI is gone (it lives on the ⚠ Severity pill). Removed the now-unused `kpi` helper; field-picker compact height fixed (`'100%'` → `34`).
+- **Grid section header slimmed** from a 15px `<h3>` to a slim toolbar line (13px focus label / 11px uppercase "Sub-dimensions"), matching the Themes toolbar scale.
+- **Sub-card % is now "% of the dimension"** (`round(100·sub.count/axis.count)`) instead of % of all reviews, labeled "X% of <dimension>"; **all percentages rounded** (axis pill, sub card, sentiment) — no decimals.
+- **Comment-card highlighting**: the chip for the picked dimension/sub pair is highlighted; an axis-only "read all" drill highlights every sub of that dimension; a severity drill highlights the `attribute:<alert>` chip; other tags rendered muted. Chips now show display labels (`DIM_AXIS_LABEL` · `dimSubLabel`) instead of raw keys.
+- Severity-as-a-dimension-pill (built in the prior commit) confirmed in place — selecting it expands its alert sub-cards.
+
+**Verify**: changed file typecheck-clean (only the 2 untouched `CampaignDetailClient.tsx` xlsx-stub artifacts remain — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend change. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.

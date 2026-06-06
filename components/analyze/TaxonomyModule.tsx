@@ -198,7 +198,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         value={field}
         onChange={e => setField(e.target.value)}
         aria-label="Field to classify"
-        style={{ fontSize: compact ? 13 : 16, padding: compact ? '0 10px' : '9px 12px', height: compact ? '100%' : undefined, borderRadius: compact ? 10 : 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, fontWeight: compact ? 700 : 500, minWidth: compact ? 0 : 280 }}
+        style={{ fontSize: compact ? 13 : 16, padding: compact ? '0 10px' : '9px 12px', height: compact ? 34 : undefined, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, fontWeight: compact ? 700 : 500, minWidth: compact ? 0 : 280 }}
       >
         {data.textFields.map(f => <option key={f.field} value={f.field}>{f.label}</option>)}
       </select>
@@ -248,33 +248,33 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     )
   }
 
-  const kpi = (label: string, value: string | number, color: string, tip?: string) => (
-    <div title={tip} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', minWidth: 150, textAlign: 'center', cursor: tip ? 'help' : undefined }}>
-      <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 2 }}>{label}</div>
-    </div>
-  )
-
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
-      {/* KPIs */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 24 }}>
-        {kpi('reviews classified', data.classifiedRows.toLocaleString(), TEAL)}
-        {kpi('with a signal', `${Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}%`, NAVY)}
-        {data.overallAvgRating != null && kpi('avg rating', `★ ${data.overallAvgRating.toFixed(1)}`, ratingColor(data.overallAvgRating) || NAVY)}
-        {kpi('flagged reviews', data.alertRows, data.alertRows ? RED : SLATE, 'Distinct reviews with at least one severity alert (food safety / pests). A single review can be flagged for more than one type, so the per-type counts in the Severity section can add up to more than this number.')}
-        <div style={{ marginLeft: 'auto', alignSelf: 'stretch', display: 'flex', gap: 8 }}>
+      {/* Header — matches the Themes view's scale: an h2 + a one-line stat summary,
+          with the field picker + Re-classify aligned right. (No chunky KPI cards — the
+          flagged count now lives on the ⚠ Severity pill below.) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Dimensions</h2>
+          <div style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
+            <strong style={{ color: NAVY }}>{data.classifiedRows.toLocaleString()}</strong> reviews classified
+            {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}% with a signal
+            {data.overallAvgRating != null && <> · <span style={{ color: ratingColor(data.overallAvgRating) || NAVY, fontWeight: 700 }}>★ {data.overallAvgRating.toFixed(1)}</span> avg rating</>}
+            {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
           {fieldPicker(true)}
           <button
             onClick={runClassifier}
             title="Re-run the classifier (on the selected field) to pick up newly synced rows"
-            style={{ background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            style={{ background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 8, height: 34, padding: '0 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
           >
             Re-classify
           </button>
         </div>
       </div>
-      {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -12, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
+      {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -8, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
       {/* Dimension axis pills (Entities-style: identity dot + label + mention-rate% + ★ rating).
           Pick one to focus the sub-dimension cards below; pick again to clear. */}
@@ -293,11 +293,11 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
             return (
               <button key={a.axis}
                 onClick={() => { if (active) { setFilterAxis(''); setFilterSub('') } else { setFilterAxis(a.axis); setFilterSub('') } }}
-                title={`${a.label} — ${a.rate}% of classified reviews${a.avgRating != null ? ` · ★ ${a.avgRating.toFixed(1)}` : ''}`}
+                title={`${a.label} — ${Math.round(a.rate)}% of classified reviews${a.avgRating != null ? ` · ★ ${a.avgRating.toFixed(1)}` : ''}`}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, lineHeight: 1.3, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? c : '#e2e8f0'), background: active ? c + '14' : '#fff', color: NAVY }}>
                 <span style={{ width: 8, height: 8, borderRadius: 4, background: c, flexShrink: 0 }} />
                 <span style={{ fontWeight: 700 }}>{a.label}</span>
-                <span style={{ color: TEAL, fontWeight: 700 }}>{a.rate}%</span>
+                <span style={{ color: TEAL, fontWeight: 700 }}>{Math.round(a.rate)}%</span>
                 <StarBadge avg={a.avgRating} size={11} />
               </button>
             )
@@ -371,6 +371,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                 // dimension chip, switch the highlight to that dimension's span.
                 const hoverEv = hoverTag && hoverTag.i === i ? c.tags.find(t => `${t.axis}:${t.sub}` === hoverTag.key)?.evidence : null
                 const activeEvidence = hoverEv && hoverEv.length ? hoverEv : c.evidence
+                // A severity drill (qs `alert=<tag>`) maps onto the attribute:<tag> chip.
+                const drilledAlert = drill && drill.qs.startsWith('alert=') ? decodeURIComponent(drill.qs.slice(6)) : null
                 return (
                   <div key={i} style={{ background: cardBg, border: '1px solid #e2e8f0', borderLeft: '4px solid ' + (accent || '#e2e8f0'), borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column' }}>
                     <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, margin: '0 0 8px' }}>
@@ -381,15 +383,21 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
                         {c.tags.map(t => {
                           const key = `${t.axis}:${t.sub}`
-                          const isActive = t.axis === filterAxis && t.sub === filterSub
+                          // The picked dimension/sub-dimension pair (or, for an axis-only
+                          // "read all" drill, every sub of that dimension; for a severity
+                          // drill, the attribute sub matching the alert) is the active match.
+                          const isActive = drilledAlert
+                            ? (t.axis === 'attribute' && t.sub === drilledAlert)
+                            : (filterAxis !== '' && filterAxis !== SEVERITY && t.axis === filterAxis && (filterSub === '' || t.sub === filterSub))
                           const isHover = hoverTag?.i === i && hoverTag.key === key
+                          const axisLabel = DIM_AXIS_LABEL[t.axis as Axis] || t.axis
                           return (
                             <span key={key}
                               onMouseEnter={() => setHoverTag({ i, key })}
                               onMouseLeave={() => setHoverTag(null)}
-                              title={`Hover to highlight the words that triggered ${t.axis} · ${t.sub}`}
-                              style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', background: isHover ? '#fef3c7' : (isActive ? '#ccfbf1' : '#f1f5f9'), color: isHover ? '#92400e' : (isActive ? '#0f766e' : '#64748b'), border: '1px solid ' + (isHover ? '#f59e0b' : (isActive ? '#5eead4' : '#e2e8f0')) }}>
-                              {t.axis} · {t.sub}
+                              title={`Hover to highlight the words that triggered ${axisLabel} · ${dimSubLabel(t.sub)}`}
+                              style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', opacity: (isActive || isHover) ? 1 : 0.7, background: isHover ? '#fef3c7' : (isActive ? '#ccfbf1' : '#f1f5f9'), color: isHover ? '#92400e' : (isActive ? '#0f766e' : '#64748b'), border: '1px solid ' + (isHover ? '#f59e0b' : (isActive ? '#5eead4' : '#e2e8f0')) }}>
+                              {axisLabel} · {dimSubLabel(t.sub)}
                             </span>
                           )
                         })}
@@ -463,24 +471,24 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         const focus = filterAxis ? data.axes.find(x => x.axis === filterAxis) : null
         return (
           <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {focus ? (
                 <>
-                  <span style={{ width: 10, height: 10, borderRadius: 5, background: AXIS_COLOR[focus.axis as Axis] || SLATE, alignSelf: 'center' }} />
-                  <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>{focus.label}</h3>
-                  <span style={{ fontSize: 13, color: SLATE }}>{focus.rate}% of reviews</span>
-                  <StarBadge avg={focus.avgRating} />
+                  <span style={{ width: 9, height: 9, borderRadius: 5, background: AXIS_COLOR[focus.axis as Axis] || SLATE, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{focus.label}</span>
+                  <span style={{ fontSize: 12, color: SLATE }}>· {Math.round(focus.rate)}% of reviews</span>
+                  <StarBadge avg={focus.avgRating} size={11} />
                   <button
                     onClick={() => setDrill({ qs: `axis=${encodeURIComponent(focus.axis)}`, crumbs: ['Dimensions', focus.label] })}
                     title="Read every comment tagged anywhere on this dimension"
-                    style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    Read all comments on this dimension ›
+                    style={{ marginLeft: 'auto', background: 'transparent', border: 'none', fontSize: 12, fontWeight: 700, color: TEAL, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Read all comments ›
                   </button>
                 </>
               ) : (
                 <>
-                  <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Top sub-dimensions</h3>
-                  <span style={{ fontSize: 13, color: SLATE }}>across all dimensions · pick a chip above to focus one</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>Sub-dimensions</span>
+                  <span style={{ fontSize: 12, color: SLATE }}>across all dimensions · pick a chip to focus one</span>
                 </>
               )}
             </div>
@@ -493,10 +501,14 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                   const c = AXIS_COLOR[s.axis as Axis] || SLATE
                   const qs = `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`
                   const active = drill?.qs === qs
+                  const axisCount = data.axes.find(x => x.axis === s.axis)?.count || 0
+                  // Sub-dimension share = % of the dimension's reviews that mention this sub
+                  // (vs s.rate, which is % of ALL classified reviews). Rounded, no decimals.
+                  const pctOfDim = axisCount ? Math.round(100 * s.count / axisCount) : 0
                   return (
                     <div key={s.axis + ':' + s.sub}
                       onClick={() => { if (active) { setDrill(null); setFilterSub('') } else { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', axisLabelOf(s.axis), s.sub] }) } }}
-                      title={`View the comments tagged ${axisLabelOf(s.axis)} › ${dimSubLabel(s.sub)}`}
+                      title={`${dimSubLabel(s.sub)} — ${pctOfDim}% of ${axisLabelOf(s.axis)} mentions · ${s.count.toLocaleString()} review${s.count === 1 ? '' : 's'} · click to read them`}
                       style={{ background: '#fff', border: '1px solid ' + (active ? c : '#e2e8f0'), boxShadow: active ? `0 0 0 1px ${c}` : 'none', borderRadius: 12, padding: '13px 15px', cursor: 'pointer', display: 'flex', flexDirection: 'column', minHeight: 104 }}
                       onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = '#cbd5e1' }}
                       onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = '#e2e8f0' }}>
@@ -513,12 +525,12 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
                           <div style={{ display: 'flex', height: 7, borderRadius: 4, overflow: 'hidden', background: '#fee2e2' }}>
                             <div style={{ width: `${s.posPct}%`, background: GREEN }} />
                           </div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: sentimentColor(s.posPct), marginTop: 4 }}>{s.posPct}% positive</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: sentimentColor(s.posPct), marginTop: 4 }}>{Math.round(s.posPct)}% positive</div>
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto' }}>
-                        <span style={{ fontSize: 18, fontWeight: 800, color: TEAL }}>{s.rate}%</span>
-                        <span style={{ fontSize: 12, color: SLATE }}>{s.count.toLocaleString()} mention{s.count === 1 ? '' : 's'}</span>
+                        <span style={{ fontSize: 18, fontWeight: 800, color: TEAL }}>{pctOfDim}%</span>
+                        <span style={{ fontSize: 12, color: SLATE }}>of {axisLabelOf(s.axis).toLowerCase()} · {s.count.toLocaleString()}</span>
                         <span style={{ marginLeft: 'auto', color: active ? c : SLATE, fontSize: 16 }}>›</span>
                       </div>
                     </div>

@@ -397,13 +397,15 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   route is org-gated, not source-gated, so classification already works on any dataset. Exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
-  `components/analyze/TaxonomyModule.tsx`: classified-row KPIs (incl. an **avg-rating ★ KPI**),
-  then a **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`): the 7 axes
-  are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green ramp
-  from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
-  ★ rating + pos/neg sentiment bar + rate% lead / count). The **"flagged reviews" KPI** =
-  `alertRows` = distinct reviews with ≥1 severity alert; the per-type alert pills count occurrences
-  *per type*, so they can sum to MORE than the KPI when a review hits more than one (Cheddar's: 79
+  `components/analyze/TaxonomyModule.tsx`: a **Themes-scale header** (an `<h2>` + a one-line stat
+  summary — reviews classified · % with a signal · ★ avg rating · flagged — replacing the old chunky
+  KPI cards), then a **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`):
+  the 7 axes are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green
+  ramp from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
+  ★ rating + pos/neg sentiment bar + the sub's **share of its dimension** `sub.count/axis.count` /
+  count; all %s rounded). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
+  alert) now rides on the ⚠ Severity pill, not a KPI card; the per-type alert counts are *per type*, so
+  they can sum to MORE than `alertRows` when a review hits more than one (Cheddar's: 79
   food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity is an 8th red pill** in the
   axis-pill row (status, not navigation); selecting it opens its alert sub-types (food safety / pests) as red cards
   that drill `?alert=`. Picking an axis pill **focuses** the card grid

@@ -122,8 +122,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `?axis=&sub=` for a sub, or `?alert=`,
   org-gated; axis-only uses `.neq(col,'{}')` for any non-empty tag, sub uses `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
   text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
-  the row, each with its own evidence** so each comment shows what else it hit — and
-  **hovering a dimension chip highlights the exact span of the comment that fired it**).
+  the row, each with its own evidence** so each comment shows what else it hit. The
+  **chip for the picked dimension/sub-dimension is highlighted** (an axis-only "read all"
+  drill highlights *every* sub of that dimension; a severity drill highlights the
+  `attribute:<alert>` chip), while the other tags are shown **muted** — and **hovering any
+  chip highlights the exact span of the comment that fired it**. Chips read with their
+  display labels (`DIM_AXIS_LABEL` · `dimSubLabel`), not raw keys.
   Cards mirror TextMine's `CommentCard`
   (text, meta chips, **Show more** for long text, a **rating-coloured left bar** via the same
   red→green ramp as TextMine, and a **1–4 column grid selector**); the panel has an **Export CSV**
@@ -159,12 +163,18 @@ cards** below. A pill is the collapsed form of its cards.
   red cards** (food safety / pests → ⚠ tag + the matching attribute sub's ★ rating +
   flagged count, click → `?alert=` drill), mirroring the axis→sub-card flow. The old
   separate severity-pill row is gone.
+- **Header** matches the Themes view's scale (not chunky KPI cards): an `<h2>`
+  "Dimensions" (20px/800) + a **one-line stat summary** ("N reviews classified · X% with
+  a signal · ★ Y avg rating · Z flagged"), with the field picker + Re-classify aligned
+  right. The old big centered KPI cards were removed (they clashed with the TextMine
+  sub-tab chrome); the **flagged count moved onto the ⚠ Severity pill**, so it isn't a
+  KPI anymore.
 - **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
   `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
-  + a red→green **★ rating badge**. The pills **filter the card grid**; selected/
-  unselected keeps the active-state styling. **Rate%** (not raw count) is the
-  axis-grain metric — "% of classified reviews touching this axis." Decided **rate%**
-  over count (volume reads better at the broad axis grain).
+  (% of classified reviews touching the axis, **rounded, no decimals**) + a red→green
+  **★ rating badge**. The pills **filter the card grid**; selected/unselected keeps the
+  active-state styling. **Rate%** (not raw count) is the axis-grain metric — volume reads
+  better at the broad axis grain.
   - **No rating/sentiment fill-coloring on the pills.** Rationale: an axis-level
     rating is an *average across heterogeneous subs* (Attribute spans flavor / pests /
     rude / food safety) — a soft, directional number. A small ★ **badge** is an
@@ -177,13 +187,14 @@ cards** below. A pill is the collapsed form of its cards.
 - **Sub-bucket cards (the level-2 breakdown)** — **theme-card family, slightly
   leaner** (same visual language: rounded card, color dot, ★ badge, footer bar;
   tighter vertical rhythm so ~4 data points don't float in theme-card whitespace):
-  `● Steak  ★4.3 / ▓▓▓▓▓▓░░ 72% positive / 18% · 1,240 mentions ›`.
+  `● Steak  ★4.3 / ▓▓▓▓▓▓░░ 72% positive / 64% of product · 1,240 ›`.
   Each card = axis-color dot + sub title (title-cased) + **★ avg rating** + **pos/neg
-  sentiment bar** (`posPct`) + **rate% lead / count muted** footer; click → the
-  existing `setDrill(...)` comment panel. **Rate% is the through-line** at both pill
-  and card level (count is the muted secondary), so the pill→card hierarchy reads
-  cleanly. Honest-by-omission: cards carry only the four things a sub genuinely knows
-  (rating, sentiment, rate, count) and **skip** the theme-card sections with no
+  sentiment bar** (`posPct`) + footer leading with the sub's **share of its dimension**
+  (`round(100·sub.count / axis.count)` — "% of *this dimension's* reviews that mention
+  the sub", distinct from the axis pill's % of *all* reviews) + the raw count muted;
+  click → the existing `setDrill(...)` comment panel. All percentages are **rounded (no
+  decimals)**. Honest-by-omission: cards carry only the four things a sub genuinely knows
+  (rating, sentiment, share, count) and **skip** the theme-card sections with no
   taxonomy-side data (description, keywords, co-occurs, items, 95% CI, top/bottom box)
   — those are additive later if a backend feed is added; the layout leaves room.
 - **Grid states**: **no axis selected** → cards for the top sub-buckets **across all
