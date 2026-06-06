@@ -136,6 +136,67 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   --rollup`); `scripts/repair-review-dataset-state.ts` (back-fills `dataset_state` for
   script-ingested review datasets so `/analyze` opens).
 
+## 4a. Dimensions view redesign — pills + cards (DESIGNED 2026-06-06, NOT yet built)
+
+Owner-agreed redesign of the **Dimensions** sub-tab display (`TaxonomyModule.tsx`).
+Pure presentation change — **no theme-card changes, no new backend, no new
+endpoint/RPC**; everything is fed by the existing `taxonomy` rollup (`SubStat`).
+Replaces the dense two-column "By axis bars / Top sub-topics list" + the
+sub-dimension pill row with one coherent surface that borrows two patterns
+already in the product: **Entities-style pills** on top, **theme-card-family
+cards** below. A pill is the collapsed form of its cards.
+
+- **Keep as-is**: the KPI row; the inline comment drill panel
+  (`GET …/taxonomy/rows`); the self-serve Classify / Re-classify controls + field
+  picker; the Severity pills (still **red**, their own row, status not navigation).
+- **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
+  `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
+  + a red→green **★ rating badge**. The pills **filter the card grid**; selected/
+  unselected keeps the active-state styling. **Rate%** (not raw count) is the
+  axis-grain metric — "% of classified reviews touching this axis." Decided **rate%**
+  over count (volume reads better at the broad axis grain).
+  - **No rating/sentiment fill-coloring on the pills.** Rationale: an axis-level
+    rating is an *average across heterogeneous subs* (Attribute spans flavor / pests /
+    rude / food safety) — a soft, directional number. A small ★ **badge** is an
+    appropriately lightweight commitment for that; flooding the **pill fill** with a
+    performance color would (a) collide with the Severity **red**, (b) fight the
+    selected-state signal, (c) double-encode what the cards already show per-sub.
+    Same reasoning is why **axes never become full cards** — a card's real estate
+    implies a depth the axis-average doesn't have (it would overclaim). UI weight
+    must match signal strength: badge = soft signal OK; card = overclaim.
+- **Sub-bucket cards (the level-2 breakdown)** — **theme-card family, slightly
+  leaner** (same visual language: rounded card, color dot, ★ badge, footer bar;
+  tighter vertical rhythm so ~4 data points don't float in theme-card whitespace):
+  `● Steak  ★4.3 / ▓▓▓▓▓▓░░ 72% positive / 18% · 1,240 mentions ›`.
+  Each card = axis-color dot + sub title (title-cased) + **★ avg rating** + **pos/neg
+  sentiment bar** (`posPct`) + **rate% lead / count muted** footer; click → the
+  existing `setDrill(...)` comment panel. **Rate% is the through-line** at both pill
+  and card level (count is the muted secondary), so the pill→card hierarchy reads
+  cleanly. Honest-by-omission: cards carry only the four things a sub genuinely knows
+  (rating, sentiment, rate, count) and **skip** the theme-card sections with no
+  taxonomy-side data (description, keywords, co-occurs, items, 95% CI, top/bottom box)
+  — those are additive later if a backend feed is added; the layout leaves room.
+- **Grid states**: **no axis selected** → cards for the top sub-buckets **across all
+  axes** (axis-colored dots = wayfinding) as the default landing; **axis selected** →
+  grid filtered to that axis's subs. Default sort **by rate% desc**. The current
+  **axis-level drill** ("read every comment tagged anywhere on Touchpoint") is
+  preserved as a header affordance on the filtered grid (it must not be lost when the
+  axis pill stops auto-opening the panel).
+- **Retire**: the "By axis" horizontal-bar column, the "Top sub-topics" list column,
+  and the sub-dimension pill row — all folded into pills (axis) + cards (sub).
+- **Refactor**: centralize the 7 axis colors into a single `AXIS_COLOR` map in
+  `lib/dimensionFields.ts`, imported by `TaxonomyModule` (and reusable by the existing
+  theme-card **Dimensions chip row** so the two never drift). This relocates a color
+  constant only — **no change to the theme-card layout**.
+- **Edge cases**: empty buckets are already hidden (the rollup's `subs` only carries
+  surfaced/non-zero subs — keep that). Largest grids are **Context** (25 subs, really
+  4 clusters: Daypart/Holiday/Channel/Loose) and **Attribute** (22, a flat grab-bag);
+  Context sub-grouping (section headers within the grid) is a nice-to-have, not v1.
+  Chip-first navigation also resolves the `flavor`/`clean` cross-axis name collision —
+  you've already picked the axis, so there's no ambiguity.
+- **Cost**: zero new fetching (no per-card requests), zero migration — a contained
+  `TaxonomyModule.tsx` + `dimensionFields.ts` change.
+
 ## 5. Vendor benchmark + critical-category audit (Ruth's Chris, 43,196 reviews)
 
 Vendor labels exist only in the client CSV (`scripts/pilot-rc-coverage.ts` reads it;

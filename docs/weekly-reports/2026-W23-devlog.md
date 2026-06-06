@@ -1439,3 +1439,21 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Open follow-up**: **truly-unanswered-question detection** — add a `flag_reason='no_response'` (or payload flag) the analyzer sets when an audience question got no substantive panel answer, then a second card pill counting it. Bigger build (analyzer prompt/pass + backfill via re-extract); scoped, NOT built.
 
 **Verify**: my files tsc-clean (the 3 tsc errors in the tree are the parallel TextMine session's uncommitted `EntityCompareTab.tsx` — `SchemaField.max`/`.sqt` — NOT mine; excluded from this commit). **Data verified read-only vs prod**: NOWOCATS Meeting 2 → 17 qa / 3 flagged → card shows "⚠ 3 pairs need review". 461 tests pass. Browser pixel-render pending (auth-gated). No migration. Spec RECORDINGS.md §5.5 updated. ALL LOCAL.
+
+## 2026-06-06 — Dimensions view redesign spec (pills + cards) — DESIGN ONLY, not built
+
+**Why**: Owner wanted to rethink how the **Dimensions** sub-tab (`TaxonomyModule.tsx`) displays the 7-axis taxonomy. Today it shows the same data twice (axis pills + a "By axis" bar column; sub-pills + a "Top sub-topics" list column), which is dense and redundant. Goal: one coherent surface that reuses patterns already in the product — **Entities-style pills** for the 7 top-level axes, **theme-card-family cards** for the level-2 sub-buckets — with a clean pill→card hierarchy.
+
+**Design decisions reached** (full spec: `TAXONOMY.md §4a`):
+- **Axis pills** = Entities-pill treatment: identity-color dot + label + **rate%** + red→green **★ badge**. Pills filter the card grid. Chose **rate%** over raw count (better at the broad axis grain).
+- **No rating/sentiment fill-coloring on pills** — an axis rating is an average-of-averages (soft); a ★ *badge* is the right lightweight weight, but coloring the *fill* would collide with Severity red, fight the selected-state, and double-encode the per-sub cards. Same principle = **axes never become full cards** (would overclaim depth the average lacks); UI weight must match signal strength.
+- **Sub cards** = theme-card family, slightly leaner: dot + ★rating + pos/neg sentiment bar + **rate% lead / count muted**, click → existing drill panel. Carry only the four things a sub genuinely knows; skip theme-card sections with no taxonomy data (description/keywords/co-occurs/items/CI/box) — additive later.
+- **Grid**: no axis selected → top subs across all axes (default landing); axis selected → filtered. Sort rate% desc. Preserve the axis-level "all comments on this axis" drill as a grid-header affordance.
+- **Retire** the "By axis" bars, "Top sub-topics" list, and sub-dimension pill row.
+- **Refactor**: centralize the 7 axis colors into `AXIS_COLOR` in `lib/dimensionFields.ts` (shared by the view + the existing theme-card Dimensions chips so they never drift) — relocates a constant only, **no theme-card layout change**.
+- **Severity** pills stay **red**, own row, unchanged.
+- **Cost when built**: zero new backend — all from the existing `taxonomy` rollup (`SubStat`); no new endpoint/RPC, no per-card fetch, no migration. Contained to `TaxonomyModule.tsx` + `dimensionFields.ts`.
+
+**Next session entry point**: implement `TAXONOMY.md §4a` in `TaxonomyModule.tsx` (+ `AXIS_COLOR` in `dimensionFields.ts`). Open detail left to build-time: exact card density vs. a theme card; whether to sub-group Context's 25 subs.
+
+**Verify**: docs-only commit — no code, no tsc/test impact, no migration, NOT pushed.
