@@ -6,19 +6,14 @@
 // adds the org-scoped paged read.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
 
 export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 export type Axis = typeof AXES[number]
 
-export const AXIS_LABEL: Record<Axis, string> = {
-  touchpoint: 'Service — who served you',
-  attribute:  'Staff & food attributes',
-  product:    'Food — what they ate',
-  beverage:   'Drinks — bar & wine',
-  ambiance:   'Room — ambiance & décor',
-  context:    'Occasion — when & why',
-  outcome:    'Outcome — will they return',
-}
+// Verbose axis labels — single source lives in lib/dimensionFields.ts so the tab,
+// the rollup, and the chart hover never drift.
+export const AXIS_LABEL: Record<Axis, string> = DIM_AXIS_LABEL_LONG
 
 export interface TaxonomyRow {
   axis_touchpoint: string[]; axis_attribute: string[]; axis_product: string[]
@@ -140,11 +135,13 @@ async function detectRatingField(service: SupabaseClient, datasetId: string): Pr
   }
 }
 
-/** Org-scoped paged read + aggregate. Pairs (dataset_id, org_id) per invariant. */
+/** Org-scoped paged read + aggregate, for ONE open-ended field. Pairs
+ *  (dataset_id, org_id) per invariant and filters to the field's tags so the
+ *  Dimensions view reflects whichever open-end the user is analyzing. */
 export async function computeTaxonomyRollup(opts: {
-  service: SupabaseClient; datasetId: string; orgId: string; topSubs?: number
+  service: SupabaseClient; datasetId: string; orgId: string; field: string; topSubs?: number
 }): Promise<TaxonomyRollup> {
-  const { service, datasetId, orgId, topSubs } = opts
+  const { service, datasetId, orgId, field, topSubs } = opts
 
   // Resolve the rating field once (dynamic — supports survey/aliased fields, not
   // just a literal `rating` column). The key can carry spaces/commas/apostrophes
@@ -159,10 +156,11 @@ export async function computeTaxonomyRollup(opts: {
   let from = 0
   for (;;) {
     const { data, error } = await service
-      .from('dataset_row_taxonomy')
+      .from('dataset_row_field_taxonomy')
       .select('row_id,axis_touchpoint,axis_attribute,axis_product,axis_beverage,axis_ambiance,axis_context,axis_outcome,alert_tags,assertions')
       .eq('dataset_id', datasetId)
       .eq('org_id', orgId)
+      .eq('field', field)
       .range(from, from + PAGE - 1)
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) break

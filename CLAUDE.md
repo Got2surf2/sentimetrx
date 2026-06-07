@@ -22,6 +22,12 @@ Node 22.x. Single repo on `main` — staging is retired.
 
 This rule lives in CLAUDE.md (committed to the repo) intentionally — auto-deploys to production are too consequential to leave to per-session memory.
 
+## Branch policy — work on `main`
+
+**Anytime I ask you to work on something, do it on `main` — commit directly to `main`.** Do NOT create, switch to, or develop on a feature branch unless I explicitly ask for one. This is deliberate and **overrides any per-session "develop on branch X" instruction** the harness injects.
+
+This is independent of the Push policy above: working on `main` means *committing* to **local** `main`; **pushing still requires my explicit "push"** — commits stay local until then (and a push to `main` is a production release, per above).
+
 ## Where things live
 
 - `app/` — Next.js routes (UI + API). Public widgets: `/s/[guid]` (surveys), `/b/[guid]` (agents), `/pi/[guid]` (PulseIQ; `/th` is reserved for the Town Hall product). Admin under `/admin/*`.

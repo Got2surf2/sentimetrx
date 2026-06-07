@@ -397,21 +397,36 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   route is org-gated, not source-gated, so classification already works on any dataset. Exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
-  `components/analyze/TaxonomyModule.tsx`: classified-row KPIs (incl. an **avg-rating ★ KPI**),
-  per-axis mention-rate bars and top sub-topics — each with a **★ avg-rating badge** (red→green
-  ramp, from `data->>rating`) alongside the text-polarity sentiment. The **"flagged reviews" KPI** =
-  `alertRows` = distinct reviews with ≥1 severity alert; the per-type alert pills count occurrences
-  *per type*, so they can sum to MORE than the KPI when a review hits more than one (Cheddar's: 79
-  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity alerts (food safety / pests) live as red
-  pills inside the filter card** (no separate panel — saves vertical space). Sub-topics and
-  alert pills are **clickable**, and a **pill-based Topic + Sub-topic filter** narrows the view
-  (topic pills first; **clicking a topic/dimension pill reveals its sub-topic pills AND drills
-  into every comment tagged anywhere on that axis** — clicking a specific sub then narrows, deselecting it reverts to the axis drill) → an **inline comments panel**
+  `components/analyze/TaxonomyModule.tsx`: a **Themes-scale header** (an `<h2>` + a one-line stat
+  summary — **N rows with text · X% tagged** · ★ avg rating · flagged — replacing the old chunky
+  KPI cards and the misleading "reviews classified / % with a signal" denominator), then a
+  **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`):
+  the 7 axes are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green
+  ramp from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
+  ★ rating + pos/neg sentiment bar + the sub's **share of its dimension** `sub.count/axis.count` /
+  count; all %s rounded). The view is **multi-field & reactive**: tags are stored per
+  `(dataset_id,row_id,field)` in `dataset_row_field_taxonomy` (sql/114) where `field` is the
+  combined key of the ANALYZE selection (`taxonomyFieldKey` — sorted ' + '-join; multiple
+  open-ends are concatenated like Themes). The GET takes `?fields=`, so changing the selection
+  **re-rolls the view for that field-set** (a new combination is **auto-classified on selection**
+  — a brief "Classifying…" progress, no button — since dimensions are precomputed). (The classifier
+  dual-writes the legacy `dataset_row_taxonomy` too, so Charts/Stats `__dim_*`, theme-card chips, and
+  the Comments dimension filter keep working). A **drift nudge** (amber banner) appears when
+  `rowsWithText > classifiedRows` — "N {field} rows aren't tagged yet · Classify N new rows" → POSTs
+  `{ pendingOnly: true }` (`classifyPendingRows`, tags only untagged rows; the drift count uses the classifier's whitespace/control-stripping emptiness test so blank rows aren't perpetual phantoms). **Initial view = pills only** (no sub-cards until a dimension is picked); selecting a dimension pill closes any open comments panel; **picking a sub-dimension collapses the cards into a compact sub-pill row** above the comments (switch subs without closing). Sub-dimensions surface only at **count ≥ 35** (`MIN_SUB_COUNT`, the Themes-cutoff analog; severity alerts exempt). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
+  alert) now rides on the ⚠ Severity pill, not a KPI card; the per-type alert counts are *per type*, so
+  they can sum to MORE than `alertRows` when a review hits more than one (Cheddar's: 79
+  food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity is an 8th red pill** in the
+  axis-pill row (status, not navigation); selecting it opens its alert sub-types (food safety / pests) as red cards
+  that drill `?alert=`. Picking an axis pill **focuses** the card grid
+  to that axis (no pick = top sub-buckets across all axes); **clicking a card** drills that
+  sub-dimension and a **"Read all comments on this dimension"** header link does the axis-level
+  drill (every comment tagged anywhere on the axis) → an **inline comments panel**
   (cards mirror TextMine's: text + meta chips + Show-more + a rating-coloured left bar + a 1–4
   column grid selector; each comment also shows its other axis·sub tag chips — hovering a chip
   highlights the span of the comment that triggered that dimension) (breadcrumb header + scrollable list + Export CSV + per-comment
-  Copy) via `GET …/taxonomy/rows` (`?axis=` whole-axis, `?axis=&sub=`, or `?alert=`), matched-evidence quotes
-  highlighted. (Inline panel reuses the same UX as TextMine comments but not the
+  Copy) via `GET …/taxonomy/rows` (`?axis=` whole-axis, `?axis=&sub=`, or `?alert=`, **`?field=`** to scope to the analyzed open-end), matched-evidence quotes
+  highlighted. The displayed comment text is the **classified field's value (`data[field]`)**, not a heuristic `pickText` pick, so the shown text matches the chips + evidence (prevents a different column showing next to another field's tags). (Inline panel reuses the same UX as TextMine comments but not the
   theme-coupled `CommentsPanel`; it's driven by the tag-filtered endpoint.) The evidence
   highlight **expands to whole-word boundaries** (stored evidence is a fixed-width char
   window, so the `<mark>` snaps out to full words rather than cutting mid-word).
@@ -422,11 +437,14 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
   `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
-  **"Classify this dataset"** / **"Re-classify"** buttons loop `POST /api/datasets/[datasetId]/taxonomy`
-  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The text
-  column is **user-selectable** via a "Field to classify" dropdown (GET returns detected `textFields[]`
-  + `defaultField` = `review_text` when present), so survey datasets can target `comment`/`feedback`.
-  `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Still not wired into the upload/ingest path (auto-classify-on-sync is roadmap).
+  an unclassified selection is **auto-classified** (no button) via `POST /api/datasets/[datasetId]/taxonomy`
+  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The
+  classified **field follows the ANALYZE selection** (passed as `fields`/`fieldLabel`; the old
+  "Field to classify" dropdown was removed 2026-06-06), and the prominent **Re-classify** button
+  was removed (destructive + expensive — re-classification is deferred to the dataset level).
+  `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Auto-classify-on-sync
+  runs for previously-classified Google Reviews datasets only; CSV/study upload auto-classify + a
+  dataset-card "N unclassified" nudge are the planned model (TAXONOMY.md §4/§6).
 - **Vendor benchmark.** For datasets with legacy vendor labels, the classifier reproduces
   ~90% of the vendor's topics at higher coverage and far higher alert precision (see
   `docs/TAXONOMY.md` for the critical-category audit). The in-app vendor-vs-us side-by-side
@@ -461,7 +479,7 @@ Three families of virtual fields are spliced into the chart field list alongside
 
 - **`__themes__`** — single best theme per row, re-derived client-side from row text (keyword match in `enrichRows`). Forces the client-rows path.
 - **`__mapped_<field>__`** — numeric remap of a categorical (Likert→number).
-- **`__dim_<axis>__`** (Dimensions, 2026-06-04) — one per taxonomy axis (Touchpoint, Attribute, Product, Beverage, Ambiance, Context, Outcome), gated to `datasetSource==='google_reviews'` **or the org's `taxonomy` capability flag** (`taxonomyEnabled`, threaded to ChartsModule/StatsModule alongside TextMine). **Values are the axis sub-buckets** (steak, seafood, manager…) and are **multi-value** — a review tagged `product=[steak,seafood]` counts in BOTH. Unlike `__themes__`, dimension values are **never** re-derived on the client (the 250+ keyword dictionary is ~30s/50K rows); they are aggregated **server-side from the stored `dataset_row_taxonomy` tags** via three `tax_*` ops on `/aggregate` (`tax_counts`, `tax_group_stats`, `tax_crosstab`; RPCs in `sql/105`, which UNNEST the `axis_<a>` arrays + join `dataset_rows_flat`). Counts reconcile exactly with the Dimensions sub-tab rollup (same source). Helper: `lib/dimensionFields.ts`. The `tax_*` ops live in `sql/105`–`106` (date-series + quartiles added in 106). **Wired chart types — 10 of 13**: Bar (count/% from the rollup-fed summary; average via `tax_group_stats`), Crosstab + stacked Bar (`tax_crosstab`, dimension × any scalar field, either orientation), Treemap / Bubbles / Waterfall / Funnel (count from summary), Bullet/KPI + Gantt (`tax_group_stats` — avg / min-max per sub), Distribution (precomputed box plot from `tax_group_stats` q1/median/q3/min/max/mean), Time Series breakdown (`tax_date_series` — dimension × time, count or avg per sub per bucket). **Excluded** (hidden from those charts' dim pickers via `pickerFields`): Scatter (colours each *point* — needs per-row tags), Data Table (lists *rows*), Score Driver (a theme-keyword regression engine; redundant with the avg Bar). **Stats module — Group Tests panel (Phase B.2)**: a dimension axis can be the group/variable. t-test + ANOVA are computed from per-sub summary stats via `welchTTestFromStats`/`anovaFromStats` (Welch and one-way ANOVA need only mean/variance/n), chi-square from a server crosstab via `chiSquareFromTable`, and the group box plots from the q1/q3 quartiles. Mann-Whitney is unsupported for dimensions (needs raw ranks). Dim fields are spliced only into Group Tests' categorical list (`groupTestCatFields`), never the row-based panels. (This work also fixed a pre-existing `incompleteGamma` bug — the χ²/F p-value series overflowed for large statistics, so chi-square/ANOVA on large samples silently returned wrong p-values; now series for `x<a+1`, continued fraction above.)
+- **`__dim_<axis>__`** (Dimensions, 2026-06-04) — one per taxonomy axis (Touchpoint, Attribute, Product, Beverage, Ambiance, Context, Outcome), gated to `datasetSource==='google_reviews'` **or the org's `taxonomy` capability flag** (`taxonomyEnabled`, threaded to ChartsModule/StatsModule alongside TextMine). **Values are the axis sub-buckets** (steak, seafood, manager…) and are **multi-value** — a review tagged `product=[steak,seafood]` counts in BOTH. Unlike `__themes__`, dimension values are **never** re-derived on the client (the 250+ keyword dictionary is ~30s/50K rows); they are aggregated **server-side** via three `tax_*` ops on `/aggregate` (`tax_counts`, `tax_group_stats`, `tax_crosstab`; RPCs in `sql/105`, which UNNEST the `axis_<a>` arrays + join `dataset_rows_flat`). As of `sql/115` the RPCs read the **per-field** `dataset_row_field_taxonomy` for the dataset's **primary classified field** (auto-resolved = the field with the most tagged rows; falls back to legacy `dataset_row_taxonomy` when a dataset has no per-field rows) — so chart dimensions match the per-field Dimensions tab. And as of `sql/116` they are **filter-aware**: the RPCs take an optional `p_row_ids bigint[]` and the chart **passes the view's filtered row-id set** (`useAggregation` injects `rowIds` into any `tax_*` spec when filters are active; `null` = whole dataset). The flat row id rides to the client as `_rowId` (the rows GET takes `?withRowIds=true`, set by `RowsContext`). So dimension charts now honor the same field + filters as the rest of the view. (Datasets >50K are filtered over the 50K client sample, consistent with how regular charts already aggregate.) Counts reconcile exactly with the Dimensions sub-tab rollup (same source). Helper: `lib/dimensionFields.ts`. In the chart field picker the 7 dimension fields render in their **own collapsible "Dimensions" group** (and `__themes__` in a **"Themes" group**) — both pulled out of raw "Categorical" since they're *derived* categories, not schema columns (2026-06-07). The group shows the **short** axis label (`DIM_AXIS_LABEL` — Touchpoint…) with the **verbose** name on hover (`DIM_AXIS_LABEL_LONG` — "Service — who served you"…); that long map is the single source of truth, re-exported by `taxonomyRollup` as `AXIS_LABEL` (the tab's pill/card labels) so the two never drift. The `tax_*` ops live in `sql/105`–`106` (date-series + quartiles added in 106). **Wired chart types — 10 of 13**: Bar (count/% from the rollup-fed summary; average via `tax_group_stats`), Crosstab + stacked Bar (`tax_crosstab`, dimension × any scalar field, either orientation), Treemap / Bubbles / Waterfall / Funnel (count from summary), Bullet/KPI + Gantt (`tax_group_stats` — avg / min-max per sub), Distribution (precomputed box plot from `tax_group_stats` q1/median/q3/min/max/mean), Time Series breakdown (`tax_date_series` — dimension × time, count or avg per sub per bucket). **Excluded** (hidden from those charts' dim pickers via `pickerFields`): Scatter (colours each *point* — needs per-row tags), Data Table (lists *rows*), Score Driver (a theme-keyword regression engine; redundant with the avg Bar). **Stats module — Group Tests panel (Phase B.2)**: a dimension axis can be the group/variable. t-test + ANOVA are computed from per-sub summary stats via `welchTTestFromStats`/`anovaFromStats` (Welch and one-way ANOVA need only mean/variance/n), chi-square from a server crosstab via `chiSquareFromTable`, and the group box plots from the q1/q3 quartiles. Mann-Whitney is unsupported for dimensions (needs raw ranks). Dim fields are spliced only into Group Tests' categorical list (`groupTestCatFields`), never the row-based panels. (This work also fixed a pre-existing `incompleteGamma` bug — the χ²/F p-value series overflowed for large statistics, so chi-square/ANOVA on large samples silently returned wrong p-values; now series for `x<a+1`, continued fraction above.)
 
 ### Drag-to-Assign Interface
 - Drag fields from sidebar to chart slots

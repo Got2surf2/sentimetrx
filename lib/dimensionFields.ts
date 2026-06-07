@@ -22,6 +22,33 @@ export const DIM_AXIS_LABEL: Record<Axis, string> = {
   outcome:    'Outcome',
 }
 
+// Verbose, customer-facing axis names. Single source of truth: the Dimensions tab
+// pills/cards use these (taxonomyRollup re-exports this as AXIS_LABEL), and the
+// chart picker shows the short DIM_AXIS_LABEL with THIS as the hover tooltip.
+export const DIM_AXIS_LABEL_LONG: Record<Axis, string> = {
+  touchpoint: 'Service — who served you',
+  attribute:  'Staff & food attributes',
+  product:    'Food — what they ate',
+  beverage:   'Drinks — bar & wine',
+  ambiance:   'Room — ambiance & décor',
+  context:    'Occasion — when & why',
+  outcome:    'Outcome — will they return',
+}
+
+// Per-axis identity color — the single source of truth for axis dots/chips
+// everywhere Dimensions render: the Dimensions view (TaxonomyModule) pills +
+// cards, and the theme-card / Theme-cloud "Dimensions" chip rows. Import this
+// map rather than re-declaring the literals so the colors can never drift.
+export const AXIS_COLOR: Record<Axis, string> = {
+  touchpoint: '#0EA5E9',
+  attribute:  '#8B5CF6',
+  product:    '#EA580C',
+  beverage:   '#0891B2',
+  ambiance:   '#16A34A',
+  context:    '#CA8A04',
+  outcome:    '#DB2777',
+}
+
 export function dimFieldName(axis: Axis): string {
   return '__dim_' + axis + '__'
 }
@@ -41,6 +68,15 @@ export function axisOfDimField(field: string): Axis | null {
 // 'food safety' -> 'Food Safety').
 export function dimSubLabel(sub: string): string {
   return sub.replace(/\b\w/g, function(c) { return c.toUpperCase() })
+}
+
+// Canonical key for a (possibly multi-field) taxonomy classification. The
+// per-field table's `field` column stores this: a single field is just its name;
+// multiple selected open-ends combine (sorted, ' + '-joined) so the same set maps
+// to the same stored classification regardless of selection order. Single-field
+// keys are unchanged, so existing rows stay valid.
+export function taxonomyFieldKey(fields: string[]): string {
+  return [...(fields || [])].filter(Boolean).sort().join(' + ')
 }
 
 // The 7 synthetic categorical field defs to splice into a chart/stats field

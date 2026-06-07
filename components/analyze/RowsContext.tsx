@@ -50,7 +50,9 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     setRowsError(null)
-    fetch('/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + SAMPLE_CAP)
+    // withRowIds=true attaches `_rowId` (the flat row id) to each row so Charts can
+    // pass the filtered row-id set to server-side dimension aggregates (view-level).
+    fetch('/api/datasets/' + datasetId + '/rows?all=true&withRowIds=true&sampleMax=' + SAMPLE_CAP)
       .then(function(r) {
         if (!r.ok) throw new Error('Failed to load rows')
         return r.json()

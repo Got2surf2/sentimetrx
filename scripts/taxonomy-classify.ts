@@ -46,7 +46,7 @@ async function main() {
   console.log(`\nDone: ${r.classified} classified, ${r.skippedEmpty} empty-text skipped, ${r.total} scanned.`)
 
   if (args.includes('--rollup')) {
-    const ru = await computeTaxonomyRollup({ service: s, datasetId: dataset.id, orgId: dataset.org_id })
+    const ru = await computeTaxonomyRollup({ service: s, datasetId: dataset.id, orgId: dataset.org_id, field: textField })
     console.log(`\nROLL-UP — ${ru.classifiedRows} rows, ${ru.withSignal} with signal, ${ru.alertRows} with alerts`)
     console.log('\nAxes (mention rate):')
     for (const a of ru.axes) console.log(`  ${a.axis.padEnd(11)} ${String(a.rate).padStart(5)}%  (${a.count})`)

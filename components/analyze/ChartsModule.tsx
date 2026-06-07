@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
-import { axisOfDimField, isDimField, dimVirtualFields } from '@/lib/dimensionFields'
+import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -140,6 +140,10 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
         <div style={{ padding: '0 12px 8px' }}>
           {fields.map(function(f) {
             var isAssigned = Object.values(currentConfig).includes(f.field)
+            // Dimension fields show the short label (Touchpoint…) but hover the
+            // verbose, customer-facing name (Service — who served you…).
+            var dimAx = axisOfDimField(f.field)
+            var hoverTitle = dimAx ? DIM_AXIS_LABEL_LONG[dimAx] : fl(f)
             return (
               <div key={f.field}
                 draggable={true}
@@ -150,7 +154,7 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
                 }}
                 onDragEnd={function() { _chartDrag = null }}
                 style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
-                title={fl(f)}>
+                title={hoverTitle}>
                 {isAssigned && '\u2713 '}{fl(f)}
               </div>
             )
@@ -170,7 +174,12 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
   var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
-  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).sort(asc2)
+  // Themes (__themes__) and Dimensions (__dim_*) are DERIVED categories, not schema
+  // columns \u2014 pull them out of raw "Categorical" into their own groups so the picker
+  // doesn't bury 8 synthetic fields among the real categoricals.
+  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' && f.field !== '__themes__' && !isDimField(f.field) }).sort(asc2)
+  var themeFields = coreFields.filter(function(f) { return f.field === '__themes__' })
+  var dimFields   = coreFields.filter(function(f) { return isDimField(f.field) }).sort(asc2)
   var dateFields = coreFields.filter(function(f) { return f.type === 'date' }).sort(asc2)
   var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc2)
 
@@ -178,6 +187,8 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
     <>
       <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Themes" icon={'\u2728'} color="#0EA5E9" fields={themeFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Dimensions" icon={'\ud83c\udff7'} color="#e8622a" fields={dimFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} />
@@ -582,6 +593,7 @@ var _enrichCtx: {
   themeSourceOverride?: string // overrides themeModel.fieldName
   activeThemeNames?: Set<string> | null  // null = all active
   datasetSource?: string       // 'reddit' | 'substack' etc for signal_tier injection
+  filteredRowIds?: number[] | null  // flat row ids of the filtered view → server dim aggregates honor filters (null = whole dataset)
 } = {}
 
 // useChartRows: reads from shared RowsContext, applies chart-specific enrichment
@@ -615,15 +627,23 @@ var _aggCache: Record<string, any> = {}
 function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
   var [data, setData] = useState<any>(null)
   var [loaded, setLoaded] = useState(false)
-  var cacheKey = datasetId + ':' + JSON.stringify(spec)
+  // For taxonomy (dimension) ops, attach the view's filtered row-id set so the
+  // server aggregate honors active filters (null = whole dataset). Done here (one
+  // place) so every tax_* chart spec is filter-aware without per-spec plumbing.
+  // rowIds is part of the cache key so the chart re-fetches when filters change.
+  var isTax = !!spec && typeof spec.op === 'string' && (spec.op as string).indexOf('tax_') === 0
+  var effSpec: Record<string, unknown> | null = (isTax && _enrichCtx.filteredRowIds)
+    ? Object.assign({}, spec, { rowIds: _enrichCtx.filteredRowIds })
+    : spec
+  var cacheKey = datasetId + ':' + JSON.stringify(effSpec)
   useEffect(function() {
-    if (!spec) return
+    if (!effSpec) return
     if (_aggCache[cacheKey]) { setData(_aggCache[cacheKey]); setLoaded(true); return }
     setLoaded(false)
     fetch('/api/datasets/' + datasetId + '/aggregate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(spec),
+      body: JSON.stringify(effSpec),
     }).then(function(r) { return r.json() })
       .then(function(d) { _aggCache[cacheKey] = d; setData(d); setLoaded(true) })
       .catch(function() { setLoaded(true) })
@@ -1893,8 +1913,18 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
   }, [chartsRestored, barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
 
+  // Filtered row-id set for filter-aware server dimension aggregates. Only loads
+  // rows when filters are active (else enrichKey -1 → no fetch, ids null = whole
+  // dataset). The ids ride into tax_* specs via useAggregation.
+  var { effectiveFilters: _effFilters } = useFilters()
+  var _anyFilter = Object.keys(_effFilters || {}).length > 0
+  var _topRows = useChartRows(datasetId, _anyFilter ? (enrichKey || 0) : -1)
+  var _filteredRowIds: number[] | null = (_anyFilter && _topRows.loaded)
+    ? (_topRows.rows.map(function(r) { return (r as any)._rowId }).filter(function(v: any) { return typeof v === 'number' }) as number[])
+    : null
+
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource }
+  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0

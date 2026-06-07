@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyByKeyword } from './taxonomyKeywordMatcher'
 import { resolveDictionary, type BrandOverlay } from './taxonomyDictionary'
 import type { Assertion } from './taxonomyVocabulary'
+import { taxonomyFieldKey } from './dimensionFields'
 
 // Bump when the closed vocabulary / dictionary changes so stale rows are
 // detectable (mirrors the productization plan's taxonomy_version).
@@ -43,6 +44,26 @@ function projectAxes(assertions: Assertion[]) {
 
 const PAGE = 1000
 
+/** Write each classified row to BOTH taxonomy tables:
+ *  - legacy single-field `dataset_row_taxonomy` (read by Charts/Stats `__dim_*`
+ *    fields, theme-card / Theme-cloud Dimension chips, the Comments dimension
+ *    filter, the Datanautix deck, and the admin viewer) — keyed (dataset_id,row_id),
+ *    so the last-classified field wins, exactly as before; and
+ *  - per-field `dataset_row_field_taxonomy` (the field-reactive Dimensions tab) —
+ *    keyed (dataset_id,row_id,field).
+ *  Base rows carry no `field`; the per-field copy adds it. Both pair org_id. */
+async function dualUpsert(service: SupabaseClient, baseRows: Record<string, unknown>[], field: string): Promise<void> {
+  if (!baseRows.length) return
+  const { error: eLegacy } = await service
+    .from('dataset_row_taxonomy')
+    .upsert(baseRows, { onConflict: 'dataset_id,row_id' })
+  if (eLegacy) throw new Error(`dataset_row_taxonomy upsert failed: ${eLegacy.message}`)
+  const { error: eField } = await service
+    .from('dataset_row_field_taxonomy')
+    .upsert(baseRows.map(r => ({ ...r, field })), { onConflict: 'dataset_id,row_id,field' })
+  if (eField) throw new Error(`dataset_row_field_taxonomy upsert failed: ${eField.message}`)
+}
+
 export interface ClassifyResult {
   classified:  number
   skippedEmpty: number
@@ -65,6 +86,10 @@ export async function classifyDatasetKeyword(opts: {
   const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
   const dict = resolveDictionary(brand)
   const fields = textFields && textFields.length ? textFields : [textField]
+  // The `field` column records which open-ended field(s) these tags came from (the
+  // canonical combined key), so the Dimensions view can show per-field results that
+  // react to the ANALYZE selection (single or multi-field).
+  const storedField = taxonomyFieldKey(textFields && textFields.length ? textFields : [textField])
 
   let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
@@ -100,10 +125,8 @@ export async function classifyDatasetKeyword(opts: {
       })
     }
     for (let i = 0; i < upserts.length; i += 500) {
-      const { error: e } = await service
-        .from('dataset_row_taxonomy')
-        .upsert(upserts.slice(i, i + 500), { onConflict: 'dataset_id,row_id' })
-      if (e) throw new Error(`dataset_row_taxonomy upsert failed: ${e.message}`)
+      const slice = upserts.slice(i, i + 500)
+      await dualUpsert(service, slice, storedField)
     }
     classified += upserts.length
     from += data.length
@@ -125,19 +148,21 @@ export async function classifyPendingRows(opts: {
   service:    SupabaseClient
   datasetId:  string
   orgId:      string
-  textField?: string
+  textFields: string[]   // the open-ended field(s) being analyzed; combined into one classification
   brand?:     BrandOverlay
   maxRows?:   number
 }): Promise<{ classified: number; hasMore: boolean }> {
-  const { service, datasetId, orgId, textField = 'review_text', brand = 'core', maxRows = 10000 } = opts
+  const { service, datasetId, orgId, textFields, brand = 'core', maxRows = 10000 } = opts
+  const fields = textFields && textFields.length ? textFields : ['review_text']
+  const fieldKey = taxonomyFieldKey(fields)   // combined key the per-field rows are stored under
   const dict = resolveDictionary(brand)
   let classified = 0
   let hasMore = false
 
   while (classified < maxRows) {
     const pageSize = Math.min(PAGE, maxRows - classified)
-    const { data, error } = await service.rpc('dataset_rows_pending_taxonomy', {
-      p_dataset_id: datasetId, p_text_field: textField, p_limit: pageSize,
+    const { data, error } = await service.rpc('dataset_rows_pending_field_taxonomy', {
+      p_dataset_id: datasetId, p_field_key: fieldKey, p_fields: fields, p_limit: pageSize,
     })
     if (error) throw new Error(error.message)
     const rows = (data ?? []) as { id: number; data: Record<string, unknown> }[]
@@ -145,8 +170,14 @@ export async function classifyPendingRows(opts: {
 
     const upserts: Record<string, unknown>[] = []
     for (const row of rows) {
-      const text = String(row.data?.[textField] ?? '').replace(CONTROL_CHARS, '').trim()
-      if (!text) continue  // RPC already excludes these, but guard anyway
+      // Concatenate the selected fields' text (matches classifyDatasetKeyword); ' . '
+      // separator keeps a phrase from spanning a field boundary.
+      const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
+      // NB: do NOT skip empties here. The pending RPC already filtered to rows the
+      // SQL considers "has text"; a few may be empty after the classifier's JS
+      // strip (unicode whitespace etc.). Skipping them left those rows pending
+      // FOREVER (the "N rows aren't tagged" nudge could never clear). Writing a
+      // (tagless) row converges: classifyByKeyword('') just returns no assertions.
       const { assertions } = classifyByKeyword(text, dict)
       upserts.push({
         org_id: orgId, dataset_id: datasetId, row_id: row.id,
@@ -156,10 +187,7 @@ export async function classifyPendingRows(opts: {
       })
     }
     for (let i = 0; i < upserts.length; i += 500) {
-      const { error: e } = await service
-        .from('dataset_row_taxonomy')
-        .upsert(upserts.slice(i, i + 500), { onConflict: 'dataset_id,row_id' })
-      if (e) throw new Error(`dataset_row_taxonomy upsert failed: ${e.message}`)
+      await dualUpsert(service, upserts.slice(i, i + 500), fieldKey)
     }
     classified += rows.length
 

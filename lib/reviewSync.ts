@@ -334,6 +334,9 @@ export async function syncReviewSource(
     // Gated on prior classification (never auto-starts an un-opted dataset),
     // capped, and non-fatal so a hiccup can't fail the sync.
     try {
+      // Gate on the legacy table — the historical "opted-in / classified before"
+      // record (existing datasets predate the per-field table). classifyPendingRows
+      // dual-writes, so this also backfills the new per-field table over time.
       const { count: taxCount } = await service
         .from('dataset_row_taxonomy')
         .select('row_id', { count: 'exact', head: true })
@@ -341,7 +344,7 @@ export async function syncReviewSource(
       if (taxCount && taxCount > 0) {
         const { classified } = await classifyPendingRows({
           service, datasetId: source.dataset_id, orgId: source.org_id,
-          textField: 'review_text', brand: 'core', maxRows: 10000,
+          textFields: ['review_text'], brand: 'core', maxRows: 10000,
         })
         if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified })
       }

@@ -37,13 +37,31 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 3. Persistence + roll-up
 
-- **Table** `dataset_row_taxonomy` (sql/088): per-axis `text[]` columns + `alert_tags`
-  + `assertions` jsonb + `raw_legacy_tags`. RLS enabled, org-scoped SELECT
-  (`dataset_row_taxonomy_org_read`); writes are service-role only. UNIQUE
-  `(dataset_id,row_id)`; GIN indexes on every axis array.
+- **Two tables, dual-written** (per-field landed 2026-06-06):
+  - **`dataset_row_taxonomy`** (sql/088) — the **legacy single classification per row**,
+    UNIQUE `(dataset_id,row_id)`. Still read by the theme-card / Theme-cloud **Dimension chips**
+    (`theme_dimension_counts`, sql/111), the Comments **dimension filter** (`get_rows_by_filters`,
+    sql/113), the Datanautix deck, and the admin pilot viewer (last classified field wins,
+    field-agnostic). **Charts `__dim_*` aggregates moved to per-field** (`sql/115`: the `tax_*`
+    RPCs read `dataset_row_field_taxonomy` for the dataset's primary classified field, legacy
+    fallback) **and are filter-aware** (`sql/116`: optional `p_row_ids` — the chart passes the
+    view's filtered row-id set so dimensions honor active filters; rows arrive with `_rowId`
+    via the rows GET `?withRowIds=true`). So Charts match the Dimensions tab's field + filters.
+  - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, where
+    `field` is the **combined key** `taxonomyFieldKey(selectedFields)` (sorted ' + '-join; a
+    single field is just its name). So each open-end OR combination of open-ends (e.g. Liked
+    Most, or Liked Most + Liked Least concatenated) carries its own tags. Read by the
+    **Dimensions tab**, which passes the ANALYZE selection so the view **reacts to it (single or
+    multi-field)** like TextMine themes. The "has text"/pending helper RPCs take the real field
+    list + the combined key (sql/117). Same RLS pattern (org-scoped SELECT, service-role writes),
+    same GIN indexes per axis.
+  - The classifier **`dualUpsert`s** every classified row into both (base row → legacy;
+    base + `field` → per-field), so existing consumers keep working unchanged while the
+    Dimensions tab gets per-field reactivity. The new table is additive — the migration never
+    touches the live `dataset_row_taxonomy`, so the running prod app is unaffected.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
   pages a dataset's rows, runs the keyword tier, projects assertions into the axis
-  columns, upserts idempotently. Pairs `(dataset_id, org_id)` on every write
+  columns, `dualUpsert`s idempotently. Pairs `(dataset_id, org_id)` on every write
   (multi-tenancy invariant). **Strips NUL/C0/surrogate chars** from text — Postgres
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
@@ -78,7 +96,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   param, so keys with spaces/commas/apostrophes work); a plain `rating`-named field still
   uses a direct `data->>rating` select so existing google_reviews rollups don't depend on
   the new RPC. `aggregateTaxonomy` then averages over matching rows. The UI shows a
-  ★ badge (red→green ramp) on the KPIs, axis bars, and sub-topic rows — complements the
+  ★ badge (red→green ramp) on the KPIs, axis pills, and sub-dimension cards — complements the
   text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
   ★2.4 vs `attribute·flavor` ★4.1; on Carrabba's GSS, `attribute·temp` ★2.35 vs
   `attribute·professional` ★4.56).
@@ -92,33 +110,82 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 ## 4. Surfaces
 
 - **In-app Dimensions view** (user-facing label **"Dimensions"**; internal code/routes/keys stay `taxonomy` — friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions"). As of 2026-06-04 it lives as a **sub-tab inside TextMine** (`TextMineModule` renders `<TaxonomyModule>` when `subTab==='dimensions'`, shown when `taxonomyEnabled` is true = `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`: Google Reviews; **OR org capability** (`orgTaxonomyEnabled` in `lib/resolveOrg` — the explicit per-org `ModuleFeatures.taxonomy` toggle OR a restaurant `primaryIndustries` value, auto-enabled); **OR per-dataset** (`datasets.taxonomy_enabled`, sql/109 — an "Apply Dimensions" checkbox at upload or a Schema-tab toggle, for admin/one-off datasets). Threaded as `taxonomyEnabled` to TextMine/Charts/Stats; the classify route is org-gated (not source-gated) so it works on any dataset. Exempt from the theme-model lock); the standalone top-level tab was retired (the `/analyze/[datasetId]/taxonomy` route still resolves but is unlinked). `TaxonomyModule.tsx` is self-contained and fed by
-  `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
-  the empty state offers a **"Classify this dataset"** button (and the populated view a
-  **"Re-classify"** control); both loop `POST /api/datasets/[datasetId]/taxonomy`
-  (`{ cursor, textField }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
+  `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Auto-classification** (no button,
+  2026-06-07): when the selected field-set isn't classified yet the tab **classifies it
+  automatically** (a guarded effect, once per field-key, fires `runClassifier`) — picking a
+  field just shows a brief "Classifying…" progress then the dimensions, like Themes' instant
+  update (only failures show a "Try again"). It loops `POST /api/datasets/[datasetId]/taxonomy`
+  (`{ cursor, textFields }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
   10K-row chunks, `core` overlay, org-gated like the GET) with a live progress bar until
-  `done`. Keyword-tier → no AI cost; idempotent so an interrupted run resumes.
-  **Field picker**: the text column isn't hardcoded — the `GET` response carries
-  `textFields[]` + a recommended `defaultField`, detected by `detectTextFields` (samples
-  ~25 rows; a column qualifies when its values are mostly multi-word strings ≥12 chars;
-  labels from `schema_config` when present; defaults to `review_text`). The tab renders a
-  **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
-  instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
-  `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
-  **Filter + comment drill-down**: a **pill-based Topic** (axis) + **Sub-topic** (sub)
-  filter — topic pills show first; **clicking a topic (dimension) pill both reveals that
-  axis's sub-topic pills AND drills into every comment tagged anywhere on that dimension**
-  (axis-level); picking a specific sub-topic — or clicking a sub-topic row / alert chip
-  (which syncs the pills) — narrows the drill to that sub; **deselecting the sub reverts the
-  panel to the axis-level drill** (rather than closing). Either opens an **inline comments
+  `done`. Keyword-tier → no AI cost;
+  tags are **saved per (row, field-key)** in `dataset_row_field_taxonomy` (idempotent) so the
+  tab reads them back — classification is a one-time pass per selection, never re-run on view.
+  **Multi-field & reactive** (no separate picker, as of 2026-06-07): the view follows the
+  parent TextMine **ANALYZE** selection — **one OR several** open-ends (`effectiveFields`),
+  passed in as `fields`/`fieldLabel`. Like Themes, multiple fields are **combined** into one
+  classification, keyed by `taxonomyFieldKey(fields)` (sorted, ' + '-joined; a single field is
+  just its own name → existing rows stay valid). The GET takes `?fields=` (comma list) and the
+  tab **refetches when the selection changes**, so Dimensions reacts to the open-end set like
+  themes. POST passes `textFields[]` to `classifyDatasetKeyword`, which concatenates them (' . '
+  separator) and stores under the combined key. **Unlike themes (instant client re-derive),
+  each new field combination is classified once** (the keyword dict is too slow client-side to
+  re-derive live) — but this is **automatic**: selecting a new combo auto-runs the classify
+  (brief "Classifying…" spinner) rather than waiting on a button press. The old
+  redundant "Field to classify" dropdown is retired.
+  **Reconciled denominator**: the GET returns `rowsWithText` (`dataset_rows_with_text_count`
+  RPC = rows with text in this field) and the header reads "**N rows with text · X% tagged**"
+  (X = `withSignal/rowsWithText`) — so it lines up with the metric strip's "records" instead
+  of the old misleading "N reviews classified · 50% with a signal" (which counted blank rows).
+  `detectTextFields` still runs server-side but the UI no longer renders a picker.
+  **No prominent Re-classify** (removed 2026-06-06): re-classification overwrites saved tags
+  and is expensive, so it is *not* a header button. Keeping new data tagged belongs at the
+  dataset level — auto-classify-on-sync already does this for previously-classified Google
+  Reviews datasets (`classifyPendingRows`); extending it to CSV/study uploads + a
+  "N unclassified rows" dataset-card nudge is the planned model (see §6).
+  **Drift nudge (in-tab)**: when `rowsWithText > classifiedRows` (rows with text in this field
+  that aren't tagged yet) the populated view shows a contextual amber banner —
+  "N {field} rows aren't tagged yet" + a **"Classify N new rows"** button that POSTs
+  `{ pendingOnly: true, textField }` → `classifyPendingRows` (per-field pending RPC
+  `dataset_rows_pending_field_taxonomy`; tags ONLY the untagged rows, non-destructive,
+  dual-writes both tables). This is the drift-triggered, in-context replacement for the old
+  always-present Re-classify button (a dataset-card version is the follow-up). Both the
+  `rowsWithText` count and the pending RPC use the **same "has real text" test as the
+  classifier** — `regexp_replace(field, '[[:space:][:cntrl:]]+', '')` non-empty — so
+  whitespace/control-only rows (which the classifier writes no row for) don't show as
+  perpetually-pending phantoms in the nudge. As a belt-and-suspenders, `classifyPendingRows`
+  now **writes a (tagless) row for every row the pending RPC hands it** — even ones that come
+  back empty after the classifier's JS strip (unicode-whitespace edge cases the SQL test
+  doesn't catch) — so clicking "Classify N new rows" always **converges the nudge to 0**
+  instead of looping. No data cleanup needed.
+  **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
+  axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
+  picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top
+  sub-buckets across all axes). The level-2 sub-buckets render as **theme-card-family cards**
+  (axis dot + ★ rating + pos/neg sentiment bar + rate% lead / count muted); **clicking a card**
+  drills into the comments tagged with that sub-dimension, and a **"Read all comments on this
+  dimension"** header link runs the axis-level drill (every comment tagged anywhere on the
+  axis). Severity is an 8th **red pill** in the same axis-pill row (status, not
+  navigation); selecting it opens its alert sub-types (food safety / pests) as red
+  cards, and clicking a card drills that alert's comments.
+  Any of these opens an **inline comments
   panel** (breadcrumb header `Dimensions › axis [› sub]` / `Dimensions › Severity alert › tag`,
   count, a scrollable list)
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=` for the whole axis,
   `?axis=&sub=` for a sub, or `?alert=`,
   org-gated; axis-only uses `.neq(col,'{}')` for any non-empty tag, sub uses `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
-  text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
-  the row, each with its own evidence** so each comment shows what else it hit — and
-  **hovering a dimension chip highlights the exact span of the comment that fired it**).
+  text. **The displayed comment text is the classified field's value (`data[field]`), not a
+  heuristic `pickText` pick** — so the shown text == the field the chips were derived from ==
+  where the evidence highlights. (Before this, a row's *other* open-ended column could be shown
+  next to chips/evidence from the classified field, reading as a false positive — e.g. a
+  Review tagged `product:chicken` displayed beside a different column with no "chicken".)
+  `pickText` is the fallback only when no field is scoped / the cell is empty. Returns
+  matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
+  the row, each with its own evidence** so each comment shows what else it hit. The
+  **chip for the picked dimension/sub-dimension is highlighted** (an axis-only "read all"
+  drill highlights *every* sub of that dimension; a severity drill highlights the
+  `attribute:<alert>` chip), while the other tags are shown **muted** — and **hovering any
+  chip highlights the exact span of the comment that fired it**. Chips read with their
+  display labels (`DIM_AXIS_LABEL` · `dimSubLabel`), not raw keys.
   Cards mirror TextMine's `CommentCard`
   (text, meta chips, **Show more** for long text, a **rating-coloured left bar** via the same
   red→green ramp as TextMine, and a **1–4 column grid selector**); the panel has an **Export CSV**
@@ -135,6 +202,89 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 - **CLI** — `scripts/taxonomy-classify.ts` (`--dataset-id|--dataset-name --brand
   --rollup`); `scripts/repair-review-dataset-state.ts` (back-fills `dataset_state` for
   script-ingested review datasets so `/analyze` opens).
+
+## 4a. Dimensions view display — pills + cards (BUILT 2026-06-06)
+
+Redesign of the **Dimensions** sub-tab display (`TaxonomyModule.tsx`). Pure
+presentation change — **no theme-card changes, no new backend, no new
+endpoint/RPC**; everything is fed by the existing `taxonomy` rollup (`SubStat`).
+Replaced the dense two-column "By axis bars / Top sub-topics list" + the
+sub-dimension pill row with one coherent surface that borrows two patterns
+already in the product: **Entities-style pills** on top, **theme-card-family
+cards** below. A pill is the collapsed form of its cards.
+
+- **Keep as-is**: the inline comment drill panel (`GET …/taxonomy/rows`); the
+  first-run **Classify** control on the empty state. The field picker and the prominent
+  **Re-classify** button were **removed** 2026-06-06 — the classified field follows the
+  ANALYZE toggle, and re-classification is deferred to the dataset level (see §4).
+  **Severity** is promoted to an 8th pill in the axis-pill row (kept **red** —
+  status, not navigation; via the `SEVERITY='__severity__'` sentinel `filterAxis`),
+  showing the total flagged-review count; selecting it **opens its alert sub-types as
+  red cards** (food safety / pests → ⚠ tag + the matching attribute sub's ★ rating +
+  flagged count, click → `?alert=` drill), mirroring the axis→sub-card flow. The old
+  separate severity-pill row is gone.
+- **Header** matches the Themes view's scale (not chunky KPI cards): an `<h2>`
+  "Dimensions" (20px/800) + a **one-line stat summary** ("N reviews classified · X% with
+  a signal · ★ Y avg rating · Z flagged"). No right-aligned controls — the field picker and
+  Re-classify were removed (2026-06-06). The old big centered KPI cards were removed (they
+  clashed with the TextMine sub-tab chrome); the **flagged count moved onto the ⚠ Severity
+  pill**, so it isn't a KPI anymore.
+- **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
+  `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
+  (% of classified reviews touching the axis, **rounded, no decimals**) + a red→green
+  **★ rating badge**. The pills **filter the card grid**; selected/unselected keeps the
+  active-state styling. **Rate%** (not raw count) is the axis-grain metric — volume reads
+  better at the broad axis grain.
+  - **No rating/sentiment fill-coloring on the pills.** Rationale: an axis-level
+    rating is an *average across heterogeneous subs* (Attribute spans flavor / pests /
+    rude / food safety) — a soft, directional number. A small ★ **badge** is an
+    appropriately lightweight commitment for that; flooding the **pill fill** with a
+    performance color would (a) collide with the Severity **red**, (b) fight the
+    selected-state signal, (c) double-encode what the cards already show per-sub.
+    Same reasoning is why **axes never become full cards** — a card's real estate
+    implies a depth the axis-average doesn't have (it would overclaim). UI weight
+    must match signal strength: badge = soft signal OK; card = overclaim.
+- **Sub-bucket cards (the level-2 breakdown)** — **theme-card family, slightly
+  leaner** (same visual language: rounded card, color dot, ★ badge, footer bar;
+  tighter vertical rhythm so ~4 data points don't float in theme-card whitespace):
+  `● Steak  ★4.3 / ▓▓▓▓▓▓░░ 72% positive / 64% of product · 1,240 ›`.
+  Each card = axis-color dot + sub title (title-cased) + **★ avg rating** + **pos/neg
+  sentiment bar** (`posPct`) + footer leading with the sub's **share of its dimension**
+  (`round(100·sub.count / axis.count)` — "% of *this dimension's* reviews that mention
+  the sub", distinct from the axis pill's % of *all* reviews) + the raw count muted;
+  click → the existing `setDrill(...)` comment panel. All percentages are **rounded (no
+  decimals)**. Honest-by-omission: cards carry only the four things a sub genuinely knows
+  (rating, sentiment, share, count) and **skip** the theme-card sections with no
+  taxonomy-side data (description, keywords, co-occurs, items, 95% CI, top/bottom box)
+  — those are additive later if a backend feed is added; the layout leaves room.
+- **Grid states**: **no dimension selected** → **pills only** (a one-line prompt, no
+  cards) — the initial view is just the L1 chips; **dimension selected, no sub** → the
+  sub-cards for that axis (sorted **rate% desc**, count tiebreak); **sub selected** → the
+  cards **collapse to a compact sub-dimension pill row** right under the dimension (with
+  "⊞ All sub-dimensions" to expand back), above the comments — so the user can **switch
+  sub-dimensions / re-drill without closing**. Selecting a dimension pill also **closes any
+  open comments panel** (`setDrill(null)`). The **axis-level drill** is a **"Read all
+  comments"** header link on the focused grid.
+- **Min-mentions floor**: sub-dimensions surface only at **count ≥ `MIN_SUB_COUNT` (35)** —
+  the Dimensions analog of the Themes signal cutoff (cards *and* the collapsed pill row).
+  **Severity alerts are exempt** (a low-count food-safety/pests flag still matters).
+  *(The comment-text evidence highlight is layout-neutral — background + box-shadow underline,
+  no padding/border/weight — so hovering a chip never reflows the text / bounces the cursor.)*
+- **Retire**: the "By axis" horizontal-bar column, the "Top sub-topics" list column,
+  and the sub-dimension pill row — all folded into pills (axis) + cards (sub).
+- **Refactor (done)**: the 7 axis colors now live in a single `AXIS_COLOR` map in
+  `lib/dimensionFields.ts`, imported by `TaxonomyModule` **and** the previously-inline
+  copies in the theme-card / Theme-cloud **Dimensions chip rows** (`TextMineModule.tsx`
+  ×2, `WordCloud.tsx`) so the colors can't drift. Color constant relocation only —
+  **no change to the theme-card layout**.
+- **Edge cases**: empty buckets are already hidden (the rollup's `subs` only carries
+  surfaced/non-zero subs — keep that). Largest grids are **Context** (25 subs, really
+  4 clusters: Daypart/Holiday/Channel/Loose) and **Attribute** (22, a flat grab-bag);
+  Context sub-grouping (section headers within the grid) is a nice-to-have, not v1.
+  Chip-first navigation also resolves the `flavor`/`clean` cross-axis name collision —
+  you've already picked the axis, so there's no ambiguity.
+- **Cost**: zero new fetching (no per-card requests), zero migration — a contained
+  `TaxonomyModule.tsx` + `dimensionFields.ts` change.
 
 ## 5. Vendor benchmark + critical-category audit (Ruth's Chris, 43,196 reviews)
 

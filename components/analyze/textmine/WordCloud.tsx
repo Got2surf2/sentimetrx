@@ -9,11 +9,7 @@ import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'
-import { dimSubLabel, DIM_AXIS_LABEL, type Axis } from '@/lib/dimensionFields'
-
-// Per-axis dot colors for the "Dimensions" chip row — kept in sync with the
-// theme-card Dimensions row in TextMineModule.
-const DIM_AXIS_COLOR: Record<string, string> = { touchpoint: '#0EA5E9', attribute: '#8B5CF6', product: '#EA580C', beverage: '#0891B2', ambiance: '#16A34A', context: '#CA8A04', outcome: '#DB2777' }
+import { dimSubLabel, DIM_AXIS_LABEL, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
 
 // Category dot colors — kept in sync with EntitiesCard so the per-theme "Items"
 // chips read the same as the scope-wide Entities card.
@@ -566,7 +562,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                     <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
                       <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }} title="Dimension sub-buckets reviewers discuss when this theme comes up">Dimensions</span>
                       {dList.slice(0, 8).map(function(d) {
-                        const dc = DIM_AXIS_COLOR[d.axis] || ENTITY_NEUTRAL
+                        const dc = AXIS_COLOR[d.axis as Axis] || ENTITY_NEUTRAL
                         const axisLabel = DIM_AXIS_LABEL[d.axis as Axis] || d.axis
                         return (
                           <span key={d.axis + ':' + d.sub} title={axisLabel + ' › ' + dimSubLabel(d.sub) + ' — in ' + d.count.toLocaleString() + ' "' + t.name + '" comment' + (d.count === 1 ? '' : 's') + (onDimensionClick ? ' — click to see these comments' : '')}

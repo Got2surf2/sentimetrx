@@ -1439,3 +1439,217 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Open follow-up**: **truly-unanswered-question detection** — add a `flag_reason='no_response'` (or payload flag) the analyzer sets when an audience question got no substantive panel answer, then a second card pill counting it. Bigger build (analyzer prompt/pass + backfill via re-extract); scoped, NOT built.
 
 **Verify**: my files tsc-clean (the 3 tsc errors in the tree are the parallel TextMine session's uncommitted `EntityCompareTab.tsx` — `SchemaField.max`/`.sqt` — NOT mine; excluded from this commit). **Data verified read-only vs prod**: NOWOCATS Meeting 2 → 17 qa / 3 flagged → card shows "⚠ 3 pairs need review". 461 tests pass. Browser pixel-render pending (auth-gated). No migration. Spec RECORDINGS.md §5.5 updated. ALL LOCAL.
+
+## 2026-06-06 — Dimensions view redesign spec (pills + cards) — DESIGN ONLY, not built
+
+**Why**: Owner wanted to rethink how the **Dimensions** sub-tab (`TaxonomyModule.tsx`) displays the 7-axis taxonomy. Today it shows the same data twice (axis pills + a "By axis" bar column; sub-pills + a "Top sub-topics" list column), which is dense and redundant. Goal: one coherent surface that reuses patterns already in the product — **Entities-style pills** for the 7 top-level axes, **theme-card-family cards** for the level-2 sub-buckets — with a clean pill→card hierarchy.
+
+**Design decisions reached** (full spec: `TAXONOMY.md §4a`):
+- **Axis pills** = Entities-pill treatment: identity-color dot + label + **rate%** + red→green **★ badge**. Pills filter the card grid. Chose **rate%** over raw count (better at the broad axis grain).
+- **No rating/sentiment fill-coloring on pills** — an axis rating is an average-of-averages (soft); a ★ *badge* is the right lightweight weight, but coloring the *fill* would collide with Severity red, fight the selected-state, and double-encode the per-sub cards. Same principle = **axes never become full cards** (would overclaim depth the average lacks); UI weight must match signal strength.
+- **Sub cards** = theme-card family, slightly leaner: dot + ★rating + pos/neg sentiment bar + **rate% lead / count muted**, click → existing drill panel. Carry only the four things a sub genuinely knows; skip theme-card sections with no taxonomy data (description/keywords/co-occurs/items/CI/box) — additive later.
+- **Grid**: no axis selected → top subs across all axes (default landing); axis selected → filtered. Sort rate% desc. Preserve the axis-level "all comments on this axis" drill as a grid-header affordance.
+- **Retire** the "By axis" bars, "Top sub-topics" list, and sub-dimension pill row.
+- **Refactor**: centralize the 7 axis colors into `AXIS_COLOR` in `lib/dimensionFields.ts` (shared by the view + the existing theme-card Dimensions chips so they never drift) — relocates a constant only, **no theme-card layout change**.
+- **Severity** pills stay **red**, own row, unchanged.
+- **Cost when built**: zero new backend — all from the existing `taxonomy` rollup (`SubStat`); no new endpoint/RPC, no per-card fetch, no migration. Contained to `TaxonomyModule.tsx` + `dimensionFields.ts`.
+
+**Next session entry point**: implement `TAXONOMY.md §4a` in `TaxonomyModule.tsx` (+ `AXIS_COLOR` in `dimensionFields.ts`). Open detail left to build-time: exact card density vs. a theme card; whether to sub-group Context's 25 subs.
+
+**Verify**: docs-only commit — no code, no tsc/test impact, no migration, NOT pushed.
+
+## 2026-06-06 — Dimensions view redesign BUILT (pills + cards)
+
+**Why**: Implemented the design speced earlier today in `TAXONOMY.md §4a`. The Dimensions sub-tab (`TaxonomyModule.tsx`) previously showed the same data twice — axis pills + a "By axis" bar column, and sub-pills + a "Top sub-topics" list. Replaced that redundancy with one surface: Entities-style axis pills on top, theme-card-family sub-bucket cards below.
+
+**What changed**:
+- **`lib/dimensionFields.ts`** — added `AXIS_COLOR` (the 7 axis identity colors) as the single source of truth.
+- **`components/analyze/TaxonomyModule.tsx`** — axis pills now render Entities-style (identity dot + **rate%** + ★ rating badge) and only *filter* the grid (no auto-drill). New level-2 card grid (`repeat(auto-fill, minmax(240px,1fr))`): each card = axis dot + title (`dimSubLabel`) + ★ rating + pos/neg sentiment bar + rate% lead / count muted, click → existing `setDrill(...)`. No axis selected = top 24 sub-buckets across all axes (sorted rate desc, count tiebreak); axis selected = that axis's subs + a "Read all comments on this dimension" header link for the axis-level drill. Clicking a card also focuses its axis so the drill panel's per-tag highlight + breadcrumb stay in sync. Retired the sub-pill row, the "By axis" bars, and the "Top sub-topics" list; removed now-unused `pillStyle`/`Pill`/`maxAxis`/`CSSProperties`. Severity stays a red pill row, KPIs + drill panel unchanged. **All from the existing `taxonomy` rollup (`SubStat`) — no new backend, endpoint, or fetch.**
+- **`TextMineModule.tsx` (×2) + `textmine/WordCloud.tsx`** — replaced the inline per-axis color literals in the theme-card / Theme-cloud Dimensions chip rows with the shared `AXIS_COLOR` import, so colors can't drift. **No theme-card layout change.**
+
+**Verify**: my 4 changed files **typecheck clean** (`npx tsc --noEmit` after a clean cache); the only 2 tsc errors are in the untouched `CampaignDetailClient.tsx` and trace to a *local xlsx stub* I had to create — the env's network policy 403s `cdn.sheetjs.com` (the CDN-pinned `xlsx` dep), so a full `npm install` can't complete; I installed everything else and stubbed `xlsx` as `any` for the typecheck, which is what makes `sheet_to_json<T>()` complain. Not present with the real package. **461 tests pass** (`npm test`). No migration. Spec `TAXONOMY.md §4 + §4a` and `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Dimensions: Severity promoted to a top-level pill + alert cards
+
+**Why**: Owner wanted severity handled like the other dimensions — a single top-level **⚠ Severity** pill that, when selected, opens its sub-alerts (rather than a separate always-visible red pill row). Mirrors the axis→sub-card flow exactly.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`):
+- Replaced the separate severity-pill row with an **8th pill in the axis-pill row** (kept red — status, not navigation), showing the total flagged-review count. Driven by a `SEVERITY='__severity__'` sentinel `filterAxis`.
+- Selecting it renders the alert sub-types as **red cards** in the same grid (⚠ tag + the matching `attribute` sub's ★ rating + flagged count, click → `?alert=` drill), with a header showing the flagged-review total + the per-type caveat.
+- Footnote updated ("Pick a dimension chip — including ⚠ Severity — to open its cards").
+
+**Verify**: changed file typecheck-clean (the only 2 tsc errors remain the untouched `CampaignDetailClient.tsx` xlsx-stub artifacts — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend/migration — still all from the existing `taxonomy` rollup. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Dimensions view: design polish pass (header, %, comment highlight)
+
+**Why**: Owner review of the built Dimensions view flagged several fit-and-finish issues against the Themes view's look.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`):
+- **Header meshes with Themes now**: replaced the chunky centered KPI cards with a Themes-scale header — an `<h2>` "Dimensions" + a one-line stat summary (reviews classified · % with a signal · ★ avg · N flagged), field picker + Re-classify aligned right. The redundant "flagged reviews" KPI is gone (it lives on the ⚠ Severity pill). Removed the now-unused `kpi` helper; field-picker compact height fixed (`'100%'` → `34`).
+- **Grid section header slimmed** from a 15px `<h3>` to a slim toolbar line (13px focus label / 11px uppercase "Sub-dimensions"), matching the Themes toolbar scale.
+- **Sub-card % is now "% of the dimension"** (`round(100·sub.count/axis.count)`) instead of % of all reviews, labeled "X% of <dimension>"; **all percentages rounded** (axis pill, sub card, sentiment) — no decimals.
+- **Comment-card highlighting**: the chip for the picked dimension/sub pair is highlighted; an axis-only "read all" drill highlights every sub of that dimension; a severity drill highlights the `attribute:<alert>` chip; other tags rendered muted. Chips now show display labels (`DIM_AXIS_LABEL` · `dimSubLabel`) instead of raw keys.
+- Severity-as-a-dimension-pill (built in the prior commit) confirmed in place — selecting it expands its alert sub-cards.
+
+**Verify**: changed file typecheck-clean (only the 2 untouched `CampaignDetailClient.tsx` xlsx-stub artifacts remain — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend change. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Policy: AI-agent sessions work directly on `main`
+
+**Why**: Owner wants Claude Code sessions to commit straight to `main` (no feature-branch juggling) so local testing is friction-free. Recorded as a permanent **Branch policy** in `CLAUDE.md` (project + a parent-level `/home/user/CLAUDE.md`), and reconciled `docs/ENGINEERING.md §2` so the formal Branch & review policy isn't contradicted — documented as an owner-directed exception where the **owner-authorized push is the review gate** (diff-read before push = the solo-founder self-review). Pushing still requires explicit authorization; no `--force`/`--no-verify`.
+
+## 2026-06-06 — Fix: favorite star showed "off" on faved dataset cards
+
+**Why**: Owner noticed faved datasets in Analyze rendered an empty star even though the card behaved as a favorite (sorted to top). Root cause: `FavoriteStar` seeded its state with `useState(initialFavorited)`, which only reads the prop on first render — but `AnalyzeClient` hydrates favorites asynchronously (`/api/favorites` fetched after first paint), so the prop flipped false→true after mount and the star never updated. The sort used the reactive `favoriteIds` set, hence state-correct but display-stale.
+
+**What changed** (`components/ui/FavoriteStar.tsx`): added `useEffect(() => setFavorited(initialFavorited), [initialFavorited])` to re-sync when the parent hydrates/changes the prop. Shared component (bots/surveys/datasets/campaigns/townhall/recordings) — all benefit; parents that hydrate synchronously just re-set the same value (no-op).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts remain); 461 tests pass. No backend change. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: field follows ANALYZE; remove field picker + prominent Re-classify
+
+**Why**: Owner: the Dimensions tab had its own "Field to classify" dropdown, redundant with the top **ANALYZE** toggle (Liked Most / Liked Least). And a prominent **Re-classify** button is dangerous (overwrites saved tags, expensive) — re-classification should be a dataset-level, drift-triggered action, not a header button.
+
+**What changed**:
+- **`components/analyze/TaxonomyModule.tsx`** — now takes `textField`/`fieldLabel` props; classification uses the parent's ANALYZE field. Removed the internal `field` state, the `fieldPicker` dropdown (header + empty state), and the prominent **Re-classify** button. Empty state shows a single first-run **"Classify «field»"** (disabled until a field is selected). Header is just the h2 + the reconciled summary line (no right-aligned controls). Side benefit: the classified field now always == the themed field, so the "rows with text" base reconciles with the metric strip (the deferred denominator question gets easier).
+- **`components/analyze/TextMineModule.tsx`** — passes `textField={effectiveFields[0]}` + `fieldLabel` to `<TaxonomyModule>`.
+
+**Model note (answering owner's question)**: classification is **saved per row** in `dataset_row_taxonomy` (idempotent), not re-run on view. Auto-classify-on-sync today covers **only** previously-classified Google Reviews datasets (`lib/reviewSync.ts` → `classifyPendingRows`); CSV/study uploads do NOT auto-classify. The right model (owner-endorsed): taxonomy-on ⇒ auto-classify future uploads + a dataset-card "N unclassified rows" nudge. Scoped, **not built yet** (TAXONOMY.md §4/§6).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No backend change this commit. Specs TAXONOMY.md §4/§4a, ANALYTICS.md, DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: contextual drift nudge (classify only new rows)
+
+**Why**: Re-classify was removed as a permanent button; the safe replacement is a drift-triggered, non-destructive "classify the new rows" action surfaced only when rows have been added since the last classify.
+
+**What changed**:
+- **`app/api/datasets/[datasetId]/taxonomy/route.ts`** — GET returns `totalRows` (dataset row_count) for drift detection. POST accepts `{ pendingOnly: true }` → `classifyPendingRows` (tags only untagged rows, idempotent/non-destructive, 10K/call, client loops on `done:false`).
+- **`components/analyze/TaxonomyModule.tsx`** — `runClassifier(pendingOnly?)` now branches (full vs pending-only loop). Populated view shows an amber drift banner when `totalRows > classifiedRows`: "N rows added since last classified" + "Classify N new rows" (pending-only). Empty-state Classify fixed to `() => runClassifier(false)` (was passing the click event as the pendingOnly arg).
+
+**Known follow-ups surfaced by owner testing (NOT yet addressed — see next)**: (1) Dimensions is NOT field-reactive — switching the ANALYZE open-end doesn't change it, because it reads persisted per-row tags (one classification), not re-derived per field like TextMine. (2) "reviews classified" (all rows incl. blanks) reads higher than "records" (rows with text) — denominator still needs the agreed relabel/align. Both point to a taxonomy field-model decision (classify all open-ends dataset-level vs per-field reactive).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: per-field & reactive (dual-write new table)
+
+**Why**: Owner testing exposed two linked issues: (1) switching the ANALYZE open-end (Liked Most ↔ Least) didn't change Dimensions — it read one field-agnostic classification; (2) "reviews classified" (all rows incl. blanks) read higher than "records" (rows with text). Both stem from the single-classification-per-row model. Owner chose **per-field, reactive**, with the **dual-write** approach to avoid breaking the ~8 other consumers that read the legacy table.
+
+**What changed**:
+- **`sql/114`** (NEW, additive — owner applies to prod): `dataset_row_field_taxonomy` keyed `(dataset_id,row_id,field)` (mirror of 088 + `field`, RLS + org SELECT + GIN indexes). Plus RPCs `dataset_rows_pending_field_taxonomy` (per-field pending) and `dataset_rows_with_text_count` (the reconciling denominator).
+- **`lib/taxonomyClassify.ts`** — new `dualUpsert`: every classified row written to BOTH the legacy `dataset_row_taxonomy` (base, `(dataset_id,row_id)` — keeps Charts/Stats `__dim_*`, theme-card chips, Comments dimension filter, deck, admin viewer working unchanged) AND `dataset_row_field_taxonomy` (base + `field`). `classifyPendingRows` now uses the per-field pending RPC.
+- **`lib/taxonomyRollup.ts`** — `computeTaxonomyRollup` takes `field`, reads the per-field table filtered by it.
+- **`app/api/datasets/[id]/taxonomy/route.ts`** — GET takes `?field=`, returns `rowsWithText` (denominator) + `field`; POST/pendingOnly unchanged. **rows route** drill scoped by `?field=`.
+- **`components/analyze/TaxonomyModule.tsx`** — passes the ANALYZE field to GET + drill; **refetches on field change** (reactive); header now "N rows with text · X% tagged" (reconciles with the metric strip); drift nudge based on `rowsWithText - classifiedRows`.
+- **`lib/reviewSync.ts`** — auto-classify guard still reads the legacy table (the historical opt-in record); `classifyPendingRows` dual-writes so it backfills the per-field table over syncs.
+- **`scripts/taxonomy-classify.ts`** — rollup call passes `field`. **Test** `classifyPendingRows.test.ts` updated for dual-write.
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); **461 tests pass**. **NOT applied to prod / not verified against the DB** — I have no DB access in this container (no Supabase CLI, no creds). Owner applies `sql/114` then re-classifies per field to populate the new table. Specs TAXONOMY.md §3/§4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
+
+**Apply command (owner, local)**: `supabase db query --linked --file sql/114_dataset_row_field_taxonomy.sql`
+
+## 2026-06-06 — Dimensions: 4 fixes from owner testing (per-field live)
+
+Owner applied sql/114 and tested per-field live. Four fixes:
+1. **Phantom "N rows aren't tagged" drift nudge** right after a full classify — `rowsWithText`/pending RPCs used `btrim` (spaces only), so whitespace/control/tab/newline-only rows counted as "text" but the classifier writes no row for them → perpetually pending. Both RPCs in **sql/114** now use the classifier's test: `regexp_replace(field,'[[:space:][:cntrl:]]+','')` non-empty. **Owner re-runs sql/114** (CREATE OR REPLACE — idempotent) + reload; no re-classify needed (the 4 drop out of the denominator).
+2. **Initial view now shows pills only** — no sub-dimension cards until a dimension pill is picked (was showing a top-24 all-axes grid). Prompt: "Pick a dimension above…".
+3. **Selecting a dimension pill closes the comments panel** (`setDrill(null)` on axis-pill click) so you land on the sub-cards, not a stale drill.
+4. **Pixel-jump on chip hover fixed** — the evidence `<mark>` was adding padding/border/font-weight, so hovering a chip re-highlighted text → reflow → cursor bounced off the chip (flicker loop). Mark is now layout-neutral (background + inset box-shadow underline only).
+
+**Files**: `components/analyze/TaxonomyModule.tsx`, `sql/114_dataset_row_field_taxonomy.sql`. **Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. Specs TAXONOMY.md §3/§4/§4a updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Dimensions drill: show the classified field's text (fix phantom false-positive)
+
+**Why**: Owner saw a comment "Delicious food and Brynan is a great server!" tagged `product:chicken` with no "chicken" in it and no evidence highlight. Trace ruled out a classifier/dictionary bug (matcher is word-boundary strict; `product:chicken` only fires on the literal "chicken"; no "bryan"/menu-item keyword exists). Root cause: the per-field drill returns chips/evidence for the **classified field** (e.g. "Review"), but the comment card rendered a **different** column via `pickText()` — so the Review field's "chicken" tag showed next to another column's text. Chips were already field-scoped (per-field table); only the displayed text was wrong.
+
+**What changed** (`app/api/datasets/[datasetId]/taxonomy/rows/route.ts`): the drill comment text now prefers **`data[field]`** (the classified/drilled field), falling back to `pickText` only when no field is scoped or the cell is empty. Shown text == tagged field == where evidence highlights → the "false positive" resolves (it was a display mismatch). Rating/date stay row-level.
+
+**Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Dimensions: phantom-converge, collapse-to-pills, min-35 floor (+ Charts finding)
+
+From owner testing (RC dataset). Three builds:
+1. **Phantom "N rows aren't tagged" converges now**: `classifyPendingRows` (`lib/taxonomyClassify.ts`) no longer skips rows the pending RPC hands it that come back empty after the JS strip (unicode-whitespace edge cases the SQL emptiness test misses) — it writes a tagless row. So clicking "Classify N new rows" drives the nudge to 0 instead of looping. No data cleanup needed (answers owner's "just clean them out?" — no).
+2. **Collapse-to-pills on sub-select** (`TaxonomyModule.tsx`): picking a sub-dimension collapses the card grid into a compact sub-pill row right under the dimension (with "⊞ All sub-dimensions" to expand back), above the comments — switch subs / re-drill without closing. Card grid returns null while a sub is selected.
+3. **Min-mentions floor** `MIN_SUB_COUNT = 35`: sub-dimensions surface only at count ≥ 35 (cards + collapsed pills) — the Themes-signal-cutoff analog. Severity alerts exempt (low-count food-safety/pests still matters).
+
+**Charts finding (item 3, investigated, NOT built)**: dimensions DO appear in Charts but (a) merged into the generic "Categorical" picker group (not a distinct "Dimensions" group), (b) labeled with `DIM_AXIS_LABEL` (Touchpoint/Attribute/…) vs the Dimensions tab's `AXIS_LABEL` (Staff & food attributes/…) — same axes, different names → recognition lag, (c) the `taxonomy_*` aggregate RPCs (sql/105/106) still read the **legacy** `dataset_row_taxonomy` (field-agnostic), and (d) top-30 cap vs the tab's 40. That's why "categories seem oddly structured." Proposed fix (separate, owner to greenlight): group dim fields under a "Dimensions" header in the chart picker + unify the label set; optionally per-field-ize the chart RPCs.
+
+**Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4/§4a + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts: Themes + Dimensions get their own picker groups
+
+**Why**: Owner — dimensions and themes are both *derived* categories, so they shouldn't be buried in the raw "Categorical" field group (which is what made the chart "categories seem oddly structured"). Investigation confirmed BOTH `__themes__` and the 7 `__dim_*` fields were merged into "Categorical".
+
+**What changed** (`components/analyze/ChartsModule.tsx`, `ChartFieldGroups`): "Categorical" now excludes `__themes__` and `__dim_*`; added two new collapsible groups — **Themes** (✨, sky) and **Dimensions** (🏷, orange) — rendered right after Categorical. `ChartCollapsibleGroup` already no-ops on empty, so they only appear when present. No change to chart wiring/aggregates.
+
+**Still open (logged, not built)**: (1) **label mismatch** — the Dimensions group uses short labels (`Touchpoint/Attribute/…`, `DIM_AXIS_LABEL`) while the Dimensions tab uses verbose ones (`Staff & food attributes/…`, `AXIS_LABEL`); pick one for consistency. (2) Chart dimension aggregates still read the **legacy** `dataset_row_taxonomy` (field-agnostic) — charts reflect the last-classified field, not per-field like the tab; per-field chart aggregates would need the `tax_*` RPCs to take a `field` param.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts dim labels: short label + verbose hover (single source)
+
+**Why**: Owner — chart Dimensions group should show the short axis names (Touchpoint…) with the full customer-facing name on hover, and stop the label drift between Charts (DIM_AXIS_LABEL) and the Dimensions tab (AXIS_LABEL).
+
+**What changed**:
+- `lib/dimensionFields.ts` — new `DIM_AXIS_LABEL_LONG` (verbose names) as the single source.
+- `lib/taxonomyRollup.ts` — `AXIS_LABEL` now re-exports `DIM_AXIS_LABEL_LONG` (the tab pills/cards use it) so tab + charts share one set.
+- `components/analyze/ChartsModule.tsx` — the picker shows the short `DIM_AXIS_LABEL` (field `.label`) but the field item's hover `title` is the verbose `DIM_AXIS_LABEL_LONG[axis]`.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts). Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts dimensions go per-field (sql/115, per-field-first)
+
+**Why**: Owner — chart dimensions should be field-level (view-level) like the Dimensions tab, not whole-dataset off the legacy table. Chose per-field first (filters later). Charts is a separate page from TextMine with NO shared analyzed-field state, so rather than add a field selector, the RPCs auto-resolve the field.
+
+**What changed** (`sql/115_taxonomy_aggregates_per_field.sql` — owner re-runs; requires 114): the 4 taxonomy aggregate RPCs (`taxonomy_sub_counts/group_stats/crosstab/date_series`) now read **`dataset_row_field_taxonomy`** for the dataset's **primary classified field** (new helper `taxonomy_primary_field` = the field with the most tagged rows), falling back to legacy `dataset_row_taxonomy` when a dataset has no per-field rows. **Signatures unchanged** (field resolved inside) → the `/aggregate` route and ChartsModule need NO changes; re-running the migration is the whole change. CREATE OR REPLACE only (no DROP).
+
+**Open follow-up**: chart dimensions don't yet honor the view's **active filters** (whole-dataset for the primary field). That's the "filters" half — would pass the filtered row-id set to the RPCs (`p_row_ids`) per the `get_rows_by_filters` precedent.
+
+**Verify**: no app/TS change (SQL only) — typecheck/tests unaffected (461 pass as of last run). **NOT applied / unverified vs DB** (no DB access here) — owner applies `sql/115`. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/115_taxonomy_aggregates_per_field.sql`
+
+## 2026-06-07 — Charts dimensions: filter-aware (view-level complete)
+
+**Why**: Finish view-level chart dimensions — they were per-field (sql/115) but still whole-dataset; now they honor the view's active filters too, like every other chart.
+
+**What changed**:
+- **`sql/116`** (owner applies; requires 114+115): the 4 `tax_*` RPCs gain optional `p_row_ids bigint[]` (DROP+CREATE — signature change) → `AND ($N IS NULL OR t.row_id = ANY($N))`. NULL = whole dataset; an id set restricts to the filtered rows. Keeps the per-field auto-resolution from 115.
+- **`app/api/datasets/[id]/rows/route.ts`** — opt-in `?withRowIds=true` attaches `_rowId` (flat id) to each bulk row (off by default; underscore key like `_collection_label`).
+- **`components/analyze/RowsContext.tsx`** — bulk fetch now passes `withRowIds=true`.
+- **`components/analyze/ChartsModule.tsx`** — top-level computes the filtered row-id set (only when filters active; loads rows only then, else enrichKey -1) into `_enrichCtx.filteredRowIds`; `useAggregation` injects `rowIds` into any `tax_*` spec (and the cache key, so charts re-fetch on filter change). One place → all dim chart types become filter-aware.
+- **`app/api/datasets/[id]/aggregate/route.ts`** — accepts sanitized `body.rowIds` and passes `p_row_ids` to all 4 tax RPCs.
+
+**Notes**: datasets >50K are filtered over the 50K client sample (consistent with regular charts). Brief unfiltered flash possible before the filtered rows load, then self-corrects (re-fetch). Collections not changed (single-dataset only).
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies sql/116. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/116_taxonomy_aggregates_filtered.sql`
+
+## 2026-06-07 — Dimensions: multi-field (concat) selection, like Themes
+
+**Why**: Owner — Themes update to include all selected open-ends; Dimensions only used effectiveFields[0]. Make Dimensions honor the full ANALYZE selection (one or several fields), all display elements reacting. Chose the concat model (combined classification, like Themes). Caveat (inherent): dimensions are server-precomputed, so each new field-combination needs a one-time classify — not instant like themes.
+
+**What changed**:
+- **`lib/dimensionFields.ts`** — new `taxonomyFieldKey(fields)` = sorted ' + '-joined canonical key (single field = its name → existing rows valid).
+- **`lib/taxonomyClassify.ts`** — `classifyDatasetKeyword` stores the combined key; `classifyPendingRows` now takes `textFields[]`, concatenates them, uses the multi-field pending RPC, stores under the combined key.
+- **`sql/117`** — `dataset_rows_with_text_count(p_dataset_id, p_fields[])` (any selected field non-empty) and `dataset_rows_pending_field_taxonomy(p_dataset_id, p_field_key, p_fields[], p_limit)` (text in any field, missing tag for the combined key). DROP+CREATE.
+- **taxonomy route** — GET `?fields=` (comma list) → combined key + rows-with-text over the field list; POST `textFields[]`. **drill route** — `?fields=` → combined key match + comment text = concat of the selected fields.
+- **`TaxonomyModule.tsx`** — `fields: string[]` prop (was single `textField`); refetches on selection change; empty/drift/classify copy updated for multi-field.
+- **`TextMineModule.tsx`** — passes `fields={effectiveFields}` + combined `fieldLabel`.
+- **`reviewSync.ts`** + **test** — updated to `textFields`.
+
+**Charts note**: Charts (separate page, no field state) still auto-resolves the *primary* classified field via `taxonomy_primary_field` — it'll pick whichever key has the most rows; matching a specific multi-field selection in charts would need a field selector (not built).
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies `sql/117` (needs 114). Specs TAXONOMY.md §3/§4 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/117_taxonomy_pending_multifield.sql`
+
+## 2026-06-07 — Dimensions: auto-classify on selection (no "Classify" button)
+
+**Why**: Owner — picking a field checkbox should instantly update the display; pressing a separate "Classify" button is dopey. Themes already re-derive instantly on selection; Dimensions had a blocking button for an unclassified selection.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`): a guarded effect auto-runs the classifier when the selected field-set loads unclassified (`classifiedRows === 0`), tracked in a `useRef<Set>` per field-key so a selection with no taggable text can't loop. The empty-state's manual "Classify «field»" button is gone — instead the tab shows a brief "Classifying…" spinner (then the existing progress screen) and renders dimensions when done; only a failure shows "Try again", and a no-text selection shows "No taggable text found". The drift nudge (new rows on an already-classified selection) stays an explicit button — it's contextual, not selection-blocking, and auto-classifying every sync-drift could surprise.
+
+**Themes**: already instant on field selection (client re-derive) — no change.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
