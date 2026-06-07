@@ -326,6 +326,15 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
   const flaggedCount = useMemo(() => extractions.filter(e => e.flagged_for_review).length, [extractions])
   const inScopeCount = useMemo(() => extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'in_scope').length, [extractions])
   const outScopeCount = useMemo(() => extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'out_of_scope').length, [extractions])
+  // Asker-sentiment counts (positive/neutral/negative/mixed), in display order.
+  const sentimentCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of extractions) {
+      const s = (e.payload as QaPairPayload)?.sentiment
+      if (s) m.set(s, (m.get(s) ?? 0) + 1)
+    }
+    return m
+  }, [extractions])
   const [typeFilter, setTypeFilter] = useState<string>(initialFlagged && flaggedCount > 0 ? 'flagged' : 'all')
   const filtered = useMemo(
     () => typeFilter === 'all'
@@ -336,6 +345,8 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
         ? extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'out_of_scope')
       : typeFilter === 'flagged'
         ? extractions.filter(e => e.flagged_for_review)
+      : typeFilter.startsWith('sent:')
+        ? extractions.filter(e => (e.payload as QaPairPayload)?.sentiment === typeFilter.slice(5))
         : extractions.filter(e => ((e.payload as QaPairPayload)?.question_typology || 'ask') === typeFilter),
     [extractions, typeFilter],
   )
@@ -385,7 +396,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
         </button>
       </div>
 
-      {(typeCounts.size > 1 || flaggedCount > 0 || (hasPresentation && (inScopeCount > 0 || outScopeCount > 0))) && (
+      {(typeCounts.size > 1 || flaggedCount > 0 || sentimentCounts.size > 0 || (hasPresentation && (inScopeCount > 0 || outScopeCount > 0))) && (
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-gray-400 mr-0.5">Type:</span>
           {(['all', ...TYPOLOGY_ORDER.filter(t => typeCounts.has(t))] as string[]).map(t => {
@@ -424,6 +435,23 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
                 title="Questions outside the presentation's scope">
                 Outside scope <span className={typeFilter === 'out_of_scope' ? 'text-purple-100' : 'text-purple-500'}>{outScopeCount}</span>
               </button>
+            </>
+          )}
+          {sentimentCounts.size > 0 && (
+            <>
+              <span className="text-gray-300 mx-0.5">·</span>
+              {(['positive', 'neutral', 'negative', 'mixed'] as const).filter(s => sentimentCounts.has(s)).map(s => {
+                const val = `sent:${s}`
+                const active = typeFilter === val
+                return (
+                  <button key={val} type="button" onClick={() => setTypeFilter(val)}
+                    className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                    title={`Asker sentiment: ${s}`}>
+                    <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: SENTIMENT_DOT[s].color }} />
+                    {s} <span className={active ? 'text-gray-300' : 'text-gray-400'}>{sentimentCounts.get(s)}</span>
+                  </button>
+                )
+              })}
             </>
           )}
         </div>
@@ -676,6 +704,9 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
               {flagged && <> · <span className="text-yellow-700">⚠ flagged{extraction.flag_reason ? `: ${extraction.flag_reason}` : ''}</span></>}
               {scope === 'in_scope' && <> · <span className="text-teal-700">in presentation</span></>}
               {scope === 'out_of_scope' && <> · <span className="text-purple-700">outside scope</span></>}
+              {payload.sentiment && SENTIMENT_DOT[payload.sentiment] && (
+                <> · <span className="inline-flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full align-middle" style={{ backgroundColor: SENTIMENT_DOT[payload.sentiment].color }} />{payload.sentiment}</span></>
+              )}
             </div>
             {!expanded && (
               <div className="text-sm text-gray-600 mt-1 line-clamp-1">
@@ -719,6 +750,12 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
               <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">{extraction.topic}</span>
             )}
             <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">{payload.question_typology}</span>
+            {payload.sentiment && SENTIMENT_DOT[payload.sentiment] && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100" title="Asker sentiment">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: SENTIMENT_DOT[payload.sentiment].color }} />
+                <span className="text-gray-700">{payload.sentiment}</span>
+              </span>
+            )}
             {typeof extraction.confidence === 'number' && (
               <span className="text-gray-500">confidence {(extraction.confidence * 100).toFixed(0)}%</span>
             )}
