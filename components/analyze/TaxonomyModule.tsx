@@ -99,7 +99,12 @@ function highlight(text: string, phrases: string[]): Array<string | ReactElement
   return out
 }
 
-export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { datasetId: string; textField?: string | null; fieldLabel?: string | null }) {
+export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { datasetId: string; fields?: string[]; fieldLabel?: string | null }) {
+  // The analyzed open-ended field SET (one or more, from TextMine's ANALYZE
+  // selection). Combined into one classification; the view reacts to the set.
+  const selFields = fields || []
+  const fieldsCsv = selFields.join(',')
+  const hasField = selFields.length > 0
   const [data, setData] = useState<Rollup | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -127,13 +132,13 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     if (!drill) { setDrillData(null); return }
     let alive = true
     setDrillLoading(true); setDrillData(null); setExpanded(new Set())
-    const fieldQs = textField ? `&field=${encodeURIComponent(textField)}` : ''
+    const fieldQs = hasField ? `&fields=${encodeURIComponent(fieldsCsv)}` : ''
     fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}${fieldQs}`)
       .then(r => r.json())
       .then(d => { if (alive) { setDrillData({ count: d.count ?? 0, comments: d.comments ?? [] }); setDrillLoading(false) } })
       .catch(() => { if (alive) { setDrillData({ count: 0, comments: [] }); setDrillLoading(false) } })
     return () => { alive = false }
-  }, [drill, datasetId, textField])
+  }, [drill, datasetId, fieldsCsv])
 
   // Download the open modal's comments as a CSV (rating, date, comment, evidence).
   const exportCsv = useCallback(() => {
@@ -161,7 +166,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     setLoading(true)
     try {
       // Per-field: pass the ANALYZE field so the rollup reacts to the toggle.
-      const qs = textField ? `?field=${encodeURIComponent(textField)}` : ''
+      const qs = hasField ? `?fields=${encodeURIComponent(fieldsCsv)}` : ''
       const r = await fetch(`/api/datasets/${datasetId}/taxonomy${qs}`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
       const j: Rollup = await r.json()
@@ -172,7 +177,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     } finally {
       setLoading(false)
     }
-  }, [datasetId, textField])
+  }, [datasetId, fieldsCsv])
 
   useEffect(() => { void load() }, [load])
 
@@ -190,7 +195,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pendingOnly: true, textField: textField || undefined }),
+            body: JSON.stringify({ pendingOnly: true, textFields: selFields }),
           })
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
           const j = await r.json()
@@ -202,7 +207,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cursor, textField: textField || undefined }),
+            body: JSON.stringify({ cursor, textFields: selFields }),
           })
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
           const j = await r.json()
@@ -217,7 +222,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     } finally {
       setClassifying(false)
     }
-  }, [datasetId, load, textField])
+  }, [datasetId, load, fieldsCsv])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading dimensions…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load dimensions: {err}</div>
@@ -243,16 +248,16 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
       <div style={{ padding: 40, maxWidth: 560 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No dimensions yet</h2>
         <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-          {textField
-            ? <>This dataset hasn’t been sorted into dimensions yet. Run the classifier to tag <strong>{fieldLabel || textField}</strong> by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets. The tags are saved on each row, so this is a one-time pass — not re-run every time you open the tab.</>
-            : <>First pick an open-ended field to analyze — the <strong>Liked Most / Liked Least</strong> toggle at the top — then run the classifier to tag it by service, food, drinks, ambiance, and more.</>}
+          {hasField
+            ? <>These open-ended field{selFields.length > 1 ? 's' : ''} haven’t been sorted into dimensions yet. Run the classifier to tag <strong>{fieldLabel || 'the selected field(s)'}</strong> by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets. Tags are saved per field-combination, so this is a one-time pass for this selection — not re-run every time you open the tab.</>
+            : <>First pick an open-ended field to analyze — the <strong>Liked Most / Liked Least</strong> toggle at the top (you can select more than one) — then run the classifier to tag it by service, food, drinks, ambiance, and more.</>}
         </p>
         <button
           onClick={() => runClassifier(false)}
-          disabled={!textField}
-          style={{ background: textField ? ORANGE : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: textField ? 'pointer' : 'not-allowed' }}
+          disabled={!hasField}
+          style={{ background: hasField ? ORANGE : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: hasField ? 'pointer' : 'not-allowed' }}
         >
-          {textField ? `Classify ${fieldLabel || 'this dataset'}` : 'Pick a field above first'}
+          {hasField ? `Classify ${fieldLabel || 'this selection'}` : 'Pick a field above first'}
         </button>
         {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: 14 }}>Classification failed: {classifyErr}</p>}
       </div>
@@ -284,7 +289,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
         // Pending = rows WITH TEXT in this field that don't have tags yet (the
         // actionable count — blank rows are never classifiable, so exclude them).
         const pending = Math.max(0, (data.rowsWithText || 0) - data.classifiedRows)
-        if (pending <= 0 || !textField) return null
+        if (pending <= 0 || !hasField) return null
         return (
           <div style={{ marginBottom: 20, padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: '#92400e' }}>
@@ -292,7 +297,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
             </span>
             <button
               onClick={() => runClassifier(true)}
-              title={`Classify only the new rows on ${fieldLabel || textField} (existing tags are untouched)`}
+              title={`Classify only the new rows on ${fieldLabel || 'the selected field(s)'} (existing tags are untouched)`}
               style={{ marginLeft: 'auto', background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Classify {pending.toLocaleString()} new row{pending === 1 ? '' : 's'}
             </button>

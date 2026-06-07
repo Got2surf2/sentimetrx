@@ -47,11 +47,14 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
     fallback) **and are filter-aware** (`sql/116`: optional `p_row_ids` — the chart passes the
     view's filtered row-id set so dimensions honor active filters; rows arrive with `_rowId`
     via the rows GET `?withRowIds=true`). So Charts match the Dimensions tab's field + filters.
-  - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, adds a
-    `field` column so each open-ended field (e.g. a survey's Liked Most vs Liked Least) carries
-    its own tags. Read by the **Dimensions tab**, which passes the ANALYZE field so the view
-    **reacts to the Liked Most / Liked Least toggle** like TextMine themes. Same RLS pattern
-    (org-scoped SELECT, service-role writes), same GIN indexes per axis.
+  - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, where
+    `field` is the **combined key** `taxonomyFieldKey(selectedFields)` (sorted ' + '-join; a
+    single field is just its name). So each open-end OR combination of open-ends (e.g. Liked
+    Most, or Liked Most + Liked Least concatenated) carries its own tags. Read by the
+    **Dimensions tab**, which passes the ANALYZE selection so the view **reacts to it (single or
+    multi-field)** like TextMine themes. The "has text"/pending helper RPCs take the real field
+    list + the combined key (sql/117). Same RLS pattern (org-scoped SELECT, service-role writes),
+    same GIN indexes per axis.
   - The classifier **`dualUpsert`s** every classified row into both (base row → legacy;
     base + `field` → per-field), so existing consumers keep working unchanged while the
     Dimensions tab gets per-field reactivity. The new table is additive — the migration never
@@ -112,15 +115,19 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   button that loops `POST /api/datasets/[datasetId]/taxonomy` (`{ cursor, textField }` body
   → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row chunks, `core` overlay,
   org-gated like the GET) with a live progress bar until `done`. Keyword-tier → no AI cost;
-  tags are **saved per row+field** in `dataset_row_field_taxonomy` (idempotent) so the tab
-  reads them back — classification is a one-time pass, never re-run on view.
-  **Per-field & reactive** (no separate picker, as of 2026-06-06): the view is scoped to the
-  parent TextMine **ANALYZE** selection (`effectiveFields[0]` — e.g. Liked Most), passed in as
-  `textField`/`fieldLabel`. The GET takes `?field=` and the tab **refetches when you toggle
-  Liked Most ↔ Liked Least**, so Dimensions reacts to the open-end like themes do (each field
-  has its own tags in `dataset_row_field_taxonomy`). This retires the old redundant
-  "Field to classify" dropdown. The POST passes the field through to `classifyDatasetKeyword`'s
-  `textField` (a JSONB key lookup — unknown field ⇒ no matches, never an error).
+  tags are **saved per (row, field-key)** in `dataset_row_field_taxonomy` (idempotent) so the
+  tab reads them back — classification is a one-time pass per selection, never re-run on view.
+  **Multi-field & reactive** (no separate picker, as of 2026-06-07): the view follows the
+  parent TextMine **ANALYZE** selection — **one OR several** open-ends (`effectiveFields`),
+  passed in as `fields`/`fieldLabel`. Like Themes, multiple fields are **combined** into one
+  classification, keyed by `taxonomyFieldKey(fields)` (sorted, ' + '-joined; a single field is
+  just its own name → existing rows stay valid). The GET takes `?fields=` (comma list) and the
+  tab **refetches when the selection changes**, so Dimensions reacts to the open-end set like
+  themes. POST passes `textFields[]` to `classifyDatasetKeyword`, which concatenates them (' . '
+  separator) and stores under the combined key. **Unlike themes (instant client re-derive),
+  each new field combination needs a one-time classify** (the keyword dict is too slow client-
+  side) — a new combo shows the empty "Classify this selection" state until run. The old
+  redundant "Field to classify" dropdown is retired.
   **Reconciled denominator**: the GET returns `rowsWithText` (`dataset_rows_with_text_count`
   RPC = rows with text in this field) and the header reads "**N rows with text · X% tagged**"
   (X = `withSignal/rowsWithText`) — so it lines up with the metric strip's "records" instead

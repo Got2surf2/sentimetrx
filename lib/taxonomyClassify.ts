@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyByKeyword } from './taxonomyKeywordMatcher'
 import { resolveDictionary, type BrandOverlay } from './taxonomyDictionary'
 import type { Assertion } from './taxonomyVocabulary'
+import { taxonomyFieldKey } from './dimensionFields'
 
 // Bump when the closed vocabulary / dictionary changes so stale rows are
 // detectable (mirrors the productization plan's taxonomy_version).
@@ -85,9 +86,10 @@ export async function classifyDatasetKeyword(opts: {
   const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
   const dict = resolveDictionary(brand)
   const fields = textFields && textFields.length ? textFields : [textField]
-  // The `field` column records which open-ended field these tags came from, so the
-  // Dimensions view can show per-field results that react to the ANALYZE toggle.
-  const storedField = textFields && textFields.length ? textFields.join(' + ') : textField
+  // The `field` column records which open-ended field(s) these tags came from (the
+  // canonical combined key), so the Dimensions view can show per-field results that
+  // react to the ANALYZE selection (single or multi-field).
+  const storedField = taxonomyFieldKey(textFields && textFields.length ? textFields : [textField])
 
   let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
@@ -146,11 +148,13 @@ export async function classifyPendingRows(opts: {
   service:    SupabaseClient
   datasetId:  string
   orgId:      string
-  textField?: string
+  textFields: string[]   // the open-ended field(s) being analyzed; combined into one classification
   brand?:     BrandOverlay
   maxRows?:   number
 }): Promise<{ classified: number; hasMore: boolean }> {
-  const { service, datasetId, orgId, textField = 'review_text', brand = 'core', maxRows = 10000 } = opts
+  const { service, datasetId, orgId, textFields, brand = 'core', maxRows = 10000 } = opts
+  const fields = textFields && textFields.length ? textFields : ['review_text']
+  const fieldKey = taxonomyFieldKey(fields)   // combined key the per-field rows are stored under
   const dict = resolveDictionary(brand)
   let classified = 0
   let hasMore = false
@@ -158,7 +162,7 @@ export async function classifyPendingRows(opts: {
   while (classified < maxRows) {
     const pageSize = Math.min(PAGE, maxRows - classified)
     const { data, error } = await service.rpc('dataset_rows_pending_field_taxonomy', {
-      p_dataset_id: datasetId, p_field: textField, p_limit: pageSize,
+      p_dataset_id: datasetId, p_field_key: fieldKey, p_fields: fields, p_limit: pageSize,
     })
     if (error) throw new Error(error.message)
     const rows = (data ?? []) as { id: number; data: Record<string, unknown> }[]
@@ -166,7 +170,9 @@ export async function classifyPendingRows(opts: {
 
     const upserts: Record<string, unknown>[] = []
     for (const row of rows) {
-      const text = String(row.data?.[textField] ?? '').replace(CONTROL_CHARS, '').trim()
+      // Concatenate the selected fields' text (matches classifyDatasetKeyword); ' . '
+      // separator keeps a phrase from spanning a field boundary.
+      const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
       // NB: do NOT skip empties here. The pending RPC already filtered to rows the
       // SQL considers "has text"; a few may be empty after the classifier's JS
       // strip (unicode whitespace etc.). Skipping them left those rows pending
@@ -181,7 +187,7 @@ export async function classifyPendingRows(opts: {
       })
     }
     for (let i = 0; i < upserts.length; i += 500) {
-      await dualUpsert(service, upserts.slice(i, i + 500), textField)
+      await dualUpsert(service, upserts.slice(i, i + 500), fieldKey)
     }
     classified += rows.length
 

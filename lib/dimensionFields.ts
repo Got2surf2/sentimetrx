@@ -70,6 +70,15 @@ export function dimSubLabel(sub: string): string {
   return sub.replace(/\b\w/g, function(c) { return c.toUpperCase() })
 }
 
+// Canonical key for a (possibly multi-field) taxonomy classification. The
+// per-field table's `field` column stores this: a single field is just its name;
+// multiple selected open-ends combine (sorted, ' + '-joined) so the same set maps
+// to the same stored classification regardless of selection order. Single-field
+// keys are unchanged, so existing rows stay valid.
+export function taxonomyFieldKey(fields: string[]): string {
+  return [...(fields || [])].filter(Boolean).sort().join(' + ')
+}
+
 // The 7 synthetic categorical field defs to splice into a chart/stats field
 // list when a dataset has taxonomy ("Dimensions") classification.
 export function dimVirtualFields(): Array<{ field: string; type: 'categorical'; label: string }> {

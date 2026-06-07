@@ -344,7 +344,7 @@ export async function syncReviewSource(
       if (taxCount && taxCount > 0) {
         const { classified } = await classifyPendingRows({
           service, datasetId: source.dataset_id, orgId: source.org_id,
-          textField: 'review_text', brand: 'core', maxRows: 10000,
+          textFields: ['review_text'], brand: 'core', maxRows: 10000,
         })
         if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified })
       }

@@ -404,9 +404,12 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   the 7 axes are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green
   ramp from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
   ★ rating + pos/neg sentiment bar + the sub's **share of its dimension** `sub.count/axis.count` /
-  count; all %s rounded). The view is now **per-field & reactive**: tags are stored per
-  `(dataset_id,row_id,field)` in `dataset_row_field_taxonomy` (sql/114) and the GET takes `?field=`,
-  so toggling Liked Most ↔ Liked Least **re-rolls the view for that field** (the classifier
+  count; all %s rounded). The view is **multi-field & reactive**: tags are stored per
+  `(dataset_id,row_id,field)` in `dataset_row_field_taxonomy` (sql/114) where `field` is the
+  combined key of the ANALYZE selection (`taxonomyFieldKey` — sorted ' + '-join; multiple
+  open-ends are concatenated like Themes). The GET takes `?fields=`, so changing the selection
+  **re-rolls the view for that field-set** (a new combination needs a one-time classify, since
+  dimensions are precomputed — not instant like themes). (The classifier
   dual-writes the legacy `dataset_row_taxonomy` too, so Charts/Stats `__dim_*`, theme-card chips, and
   the Comments dimension filter keep working). A **drift nudge** (amber banner) appears when
   `rowsWithText > classifiedRows` — "N {field} rows aren't tagged yet · Classify N new rows" → POSTs

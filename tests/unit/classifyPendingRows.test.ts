@@ -29,7 +29,7 @@ describe('classifyPendingRows (auto-classify safety net)', () => {
       [ROW(1, 'The ribeye steak was overcooked and the manager was rude'), ROW(2, 'great service, loved the wine')],
       [], // drained
     ])
-    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o', maxRows: 10000 })
+    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o', textFields: ['review_text'], maxRows: 10000 })
     expect(r.classified).toBe(2)
     expect(r.hasMore).toBe(false)
 
@@ -52,7 +52,7 @@ describe('classifyPendingRows (auto-classify safety net)', () => {
   it('respects the maxRows cap and reports hasMore', async () => {
     // maxRows=2 → first (and only) page is limited to 2; full page → cap hit
     const { service, byTable } = mockService([[ROW(1, 'steak'), ROW(2, 'service')]])
-    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o', maxRows: 2 })
+    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o', textFields: ['review_text'], maxRows: 2 })
     expect(r.classified).toBe(2)
     expect(r.hasMore).toBe(true)
     expect(byTable['dataset_row_taxonomy']).toHaveLength(2)
@@ -61,7 +61,7 @@ describe('classifyPendingRows (auto-classify safety net)', () => {
 
   it('no pending rows → no work', async () => {
     const { service, byTable } = mockService([[]])
-    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o' })
+    const r = await classifyPendingRows({ service, datasetId: 'd', orgId: 'o', textFields: ['review_text'] })
     expect(r.classified).toBe(0)
     expect(r.hasMore).toBe(false)
     expect(byTable['dataset_row_taxonomy'] ?? []).toHaveLength(0)

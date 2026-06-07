@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { taxonomyFieldKey } from '@/lib/dimensionFields'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +83,13 @@ export async function GET(req: Request, props: Params) {
   const axis  = (url.searchParams.get('axis')  || '').trim()
   const sub   = (url.searchParams.get('sub')   || '').trim()
   const alert = (url.searchParams.get('alert') || '').trim()
-  const field = (url.searchParams.get('field') || '').trim()
+  // The analyzed field SET (one or more), → the canonical combined key the tags are
+  // stored under. (?field= single accepted for back-compat.)
+  const fieldsParam = (url.searchParams.get('fields') || '').trim()
+  const selFields = fieldsParam
+    ? fieldsParam.split(',').map(s => s.trim()).filter(Boolean)
+    : (url.searchParams.get('field') ? [(url.searchParams.get('field') as string).trim()].filter(Boolean) : [])
+  const fieldKey = taxonomyFieldKey(selFields)
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '100', 10) || 100, 1), 200)
 
   const service = createServiceRoleClient()
@@ -91,9 +98,9 @@ export async function GET(req: Request, props: Params) {
     .select('row_id, assertions', { count: 'exact' })
     .eq('dataset_id', datasetId)
     .eq('org_id', orgIdForRead)
-  // Scope to the analyzed field's tags (per-field Dimensions). Older callers
+  // Scope to the analyzed field(s) tags (per-field Dimensions). Older callers
   // without a field still work (returns across fields) but the UI always sends it.
-  if (field) q = q.eq('field', field)
+  if (fieldKey) q = q.eq('field', fieldKey)
 
   let label: string
   if (alert) {
@@ -130,7 +137,11 @@ export async function GET(req: Request, props: Params) {
     // false positive (e.g. a "Review" tagged product:chicken shown next to a
     // different column with no "chicken"). Fall back to pickText only when no
     // field is scoped or that cell is empty.
-    const fieldText = field ? String((data as Record<string, unknown>)[field] ?? '').trim() : ''
+    // Show the analyzed field(s) text — the combined text the chips/evidence came
+    // from — not a heuristic pick. Multiple fields are joined with a blank line.
+    const fieldText = selFields.length
+      ? selFields.map(f => String((data as Record<string, unknown>)[f] ?? '').trim()).filter(Boolean).join('\n\n')
+      : ''
     return {
       text:     fieldText || pickText(data),
       rating:   (data.rating as number) ?? null,

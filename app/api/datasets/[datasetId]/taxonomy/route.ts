@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
 import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClassify'
+import { taxonomyFieldKey } from '@/lib/dimensionFields'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const dynamic     = 'force-dynamic'
@@ -99,15 +100,22 @@ export async function GET(req: Request, props: Params) {
   const orgId = gate.dataset.org_id as string
   const totalRows = (gate.dataset.row_count as number) ?? null
 
-  // Dimensions are per open-ended field — the client passes the ANALYZE field so
-  // the rollup reacts to the Liked Most / Liked Least toggle.
-  const field = (new URL(req.url).searchParams.get('field') || '').trim()
+  // Dimensions are per open-ended field SET — the client passes the ANALYZE
+  // selection (one or more fields) so the rollup reacts to it. The set maps to a
+  // canonical combined key the per-field rows are stored under. (?field= single is
+  // still accepted for back-compat.)
+  const url = new URL(req.url)
+  const fieldsParam = (url.searchParams.get('fields') || '').trim()
+  const selFields = fieldsParam
+    ? fieldsParam.split(',').map(s => s.trim()).filter(Boolean)
+    : (url.searchParams.get('field') ? [(url.searchParams.get('field') as string).trim()].filter(Boolean) : [])
+  const fieldKey = taxonomyFieldKey(selFields)
 
   const service = createServiceRoleClient()
   const fields = await detectTextFields(service, datasetId)
 
   // No field selected → nothing to roll up; the UI shows the "pick a field" state.
-  if (!field) {
+  if (!fieldKey) {
     return NextResponse.json({
       classifiedRows: 0, withSignal: 0, overallAvgRating: null, axes: [], subs: [], alerts: [], alertRows: 0,
       ...fields, totalRows, rowsWithText: 0, field: '',
@@ -115,12 +123,12 @@ export async function GET(req: Request, props: Params) {
   }
 
   const [rollup, rwt] = await Promise.all([
-    computeTaxonomyRollup({ service, datasetId, orgId, field }),
-    service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_field: field }),
+    computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey }),
+    service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields }),
   ])
-  // rowsWithText = the reconciling denominator (rows with text in THIS field) — the
-  // header reads "N rows with text · X% tagged" so it lines up with the metric strip.
-  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText: Number(rwt.data ?? 0), field })
+  // rowsWithText = the reconciling denominator (rows with text in ANY selected
+  // field) — header reads "N rows with text · X% tagged", aligned with the strip.
+  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText: Number(rwt.data ?? 0), field: fieldKey })
 }
 
 export async function POST(req: Request, props: Params) {
@@ -131,11 +139,13 @@ export async function POST(req: Request, props: Params) {
 
   const body = await req.json().catch(() => ({}))
   const cursor = Number.isFinite(body?.cursor) ? Math.max(0, Math.floor(body.cursor)) : 0
-  // Which column to classify. The client passes the user's pick; default to the
-  // review field. It's a JSONB key lookup (object access, not SQL), so an
-  // unknown field simply yields no matches rather than erroring.
-  const textField = typeof body?.textField === 'string' && body.textField.trim()
-    ? body.textField.trim() : 'review_text'
+  // Which column(s) to classify — the client passes the ANALYZE selection (one or
+  // more fields), combined into a single classification. JSONB key lookups, so an
+  // unknown field simply yields no matches rather than erroring. (textField single
+  // accepted for back-compat.)
+  const textFields: string[] = Array.isArray(body?.textFields)
+    ? body.textFields.map(String).map((s: string) => s.trim()).filter(Boolean)
+    : (typeof body?.textField === 'string' && body.textField.trim() ? [body.textField.trim()] : ['review_text'])
 
   const service = createServiceRoleClient()
 
@@ -145,14 +155,14 @@ export async function POST(req: Request, props: Params) {
   // pending rows; the client loops on hasMore.
   if (body?.pendingOnly) {
     const p = await classifyPendingRows({
-      service, datasetId, orgId: dataset.org_id as string, brand: 'core', textField, maxRows: CHUNK,
+      service, datasetId, orgId: dataset.org_id as string, brand: 'core', textFields, maxRows: CHUNK,
     })
     return NextResponse.json({ classifiedThisCall: p.classified, done: !p.hasMore, pendingOnly: true })
   }
 
   const r = await classifyDatasetKeyword({
     service, datasetId, orgId: dataset.org_id as string,
-    brand: 'core', textField, offset: cursor, limit: CHUNK,
+    brand: 'core', textFields, offset: cursor, limit: CHUNK,
   })
 
   return NextResponse.json({

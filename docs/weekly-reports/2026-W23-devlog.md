@@ -1624,3 +1624,22 @@ From owner testing (RC dataset). Three builds:
 **Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies sql/116. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
 
 **Apply (owner)**: `supabase db query --linked --file sql/116_taxonomy_aggregates_filtered.sql`
+
+## 2026-06-07 — Dimensions: multi-field (concat) selection, like Themes
+
+**Why**: Owner — Themes update to include all selected open-ends; Dimensions only used effectiveFields[0]. Make Dimensions honor the full ANALYZE selection (one or several fields), all display elements reacting. Chose the concat model (combined classification, like Themes). Caveat (inherent): dimensions are server-precomputed, so each new field-combination needs a one-time classify — not instant like themes.
+
+**What changed**:
+- **`lib/dimensionFields.ts`** — new `taxonomyFieldKey(fields)` = sorted ' + '-joined canonical key (single field = its name → existing rows valid).
+- **`lib/taxonomyClassify.ts`** — `classifyDatasetKeyword` stores the combined key; `classifyPendingRows` now takes `textFields[]`, concatenates them, uses the multi-field pending RPC, stores under the combined key.
+- **`sql/117`** — `dataset_rows_with_text_count(p_dataset_id, p_fields[])` (any selected field non-empty) and `dataset_rows_pending_field_taxonomy(p_dataset_id, p_field_key, p_fields[], p_limit)` (text in any field, missing tag for the combined key). DROP+CREATE.
+- **taxonomy route** — GET `?fields=` (comma list) → combined key + rows-with-text over the field list; POST `textFields[]`. **drill route** — `?fields=` → combined key match + comment text = concat of the selected fields.
+- **`TaxonomyModule.tsx`** — `fields: string[]` prop (was single `textField`); refetches on selection change; empty/drift/classify copy updated for multi-field.
+- **`TextMineModule.tsx`** — passes `fields={effectiveFields}` + combined `fieldLabel`.
+- **`reviewSync.ts`** + **test** — updated to `textFields`.
+
+**Charts note**: Charts (separate page, no field state) still auto-resolves the *primary* classified field via `taxonomy_primary_field` — it'll pick whichever key has the most rows; matching a specific multi-field selection in charts would need a field selector (not built).
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies `sql/117` (needs 114). Specs TAXONOMY.md §3/§4 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/117_taxonomy_pending_multifield.sql`
