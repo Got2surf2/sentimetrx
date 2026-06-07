@@ -204,6 +204,16 @@ const ATTRIBUTE: KeywordEntry[] = [
     { phrase: 'hair in the food', polarity: 'neg', severity: 'alert' },
     { phrase: 'hair in it',       polarity: 'neg', severity: 'alert' },
     { phrase: 'hair baked',       polarity: 'neg', severity: 'alert' },
+    // Generalized in-food phrasings (caught real Carrabba's complaints the
+    // narrower list missed: "hair in the soup", "a hair found in my food").
+    // Still in-food only — none of these fire on staff-appearance/hygiene
+    // phrasings ("hair dangling", "hairnet", "blonde hair") by design.
+    { phrase: 'hair in the',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair found in',    polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair on my plate', polarity: 'neg', severity: 'alert' },
+    { phrase: 'hair on my food',  polarity: 'neg', severity: 'alert' },
+    { phrase: 'hairs in my',      polarity: 'neg', severity: 'alert' },
+    { phrase: 'hairs in the',     polarity: 'neg', severity: 'alert' },
     // --- Foreign-object cadre. crisis = can injure / biohazard; alert = gross
     // but not dangerous. In-food / in-my phrasings to avoid false alarms.
     { phrase: 'piece of glass',   polarity: 'neg', severity: 'crisis' },

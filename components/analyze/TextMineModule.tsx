@@ -26,7 +26,7 @@ import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
 import ThemePopover from '@/components/analyze/textmine/ThemePopover'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
-import SearchPanel from '@/components/analyze/textmine/SearchPanel'
+import CommentSearchPanel from '@/components/analyze/textmine/CommentSearchPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
@@ -2650,7 +2650,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                {/* Search the comments — collapsible; reuses the dataset-wide full-text SearchPanel (same /search endpoint as the header search). */}
+                {/* Search the comments — collapsible. Scoped to the rows currently
+                    in view + the active open-ended field(s), so it respects the
+                    filters and the field selection (not the dataset-wide /search). */}
                 <div style={{ borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0 }}>
                   {!showCommentSearch ? (
                     <button onClick={function() { setShowCommentSearch(true) }}
@@ -2665,7 +2667,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           Close search {'✕'}
                         </button>
                       </div>
-                      <SearchPanel datasetId={datasetId} openEndedField={effectiveFields[0] || (openFields[0] && openFields[0].field) || undefined} />
+                      <CommentSearchPanel rows={filteredRows} fields={effectiveFields} schema={augmentedFields} ratingField={ratingField} />
                     </div>
                   )}
                 </div>

@@ -21,8 +21,14 @@ taxonomy** + a cross-cutting **severity flag**:
 | outcome | will they return | return, recommend, brand-love, value (expensive/affordable) |
 
 Severity is **not** an 8th axis — it's a flag on any assertion: `normal | alert |
-crisis`. `food safety` (food poisoning, raw chicken, foreign object) and `pests`
-fire at alert/crisis. Closed vocabulary lives in `lib/taxonomyVocabulary.ts`.
+crisis`. `food safety` (food poisoning, raw chicken, foreign object, hair/foreign
+objects **in food**) and `pests` fire at alert/crisis. Hair is matched only on
+**in-food** phrasings (`piece of hair`, `hair in the …`, `a hair found in …`, etc.)
+— deliberately NOT on staff-appearance/hygiene phrasings (`blonde hair`, `hairnet`,
+`hair dangling`) which would false-flag. Closed vocabulary lives in
+`lib/taxonomyVocabulary.ts`; the keyword dict carries a `TAXONOMY_VERSION` (now
+**v3**) bumped on vocabulary changes — already-tagged rows keep their prior version
+until re-classified (no auto-reclassify of tagged rows).
 
 ## 2. Layered dictionary (keyword tier)
 
