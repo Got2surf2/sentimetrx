@@ -1752,3 +1752,11 @@ From owner review of the edit-pane player + an existing-recording gap:
 - **Backfill an existing town hall**: previously no way to set the new §2.8 attribution/objectives on a recording created before those fields. Extended `PATCH /api/recordings/[id]` (§4.3b) to accept `analysis_org/analysts/objectives/confidentiality_class` (sanitized/validated), and added a **ProjectDetailsPanel** to the report Export tab (analysis org, analyst names, confidentiality, objectives summary/questions) → PATCH → router.refresh. Re-run analysis afterward to feed updated objectives into synthesis.
 
 Spec RECORDINGS.md §3.5d/§4.3b/§5.4. tsc clean, 361 unit tests. NOT pushed.
+
+### Town Hall: adjustable segment span + presentation-scope flag (2026-06-07)
+
+Two owner asks on the review experience:
+- **Adjust a pair's start/end** while listening: the edit-pane `SegmentAudioPlayer` gained trim controls (⇤ Set start / Set end ⇥ capture the playhead, Save segment). The extraction PATCH route (`…/extractions/[id]`) now accepts `start_sec`/`end_sec` (validated end>start) alongside the existing text edits — fixes mis-anchored spans so the clip + timeline match the real answer; can also give an untimed pair a span.
+- **Flag presentation scope**: new `QaPairPayload.presentation_scope` ('in_scope'|'out_of_scope'|null), PATCHable. Shown (only for meetings with a presentation) as a per-card Scope toggle + collapsed-header badge + Q&A-tab filter chips (In presentation / Outside scope). Human-flagged now; **AI auto-classification during analysis is a planned follow-up** (would label scope against the presentation outline/proceedings).
+
+The extraction PATCH route is now one handler for text edits + scope + span (any combination), keeping the §3.5d audit stamps on text edits only. Spec RECORDINGS.md §2.4/§3.5d. tsc clean, 361 unit tests. NOT pushed.

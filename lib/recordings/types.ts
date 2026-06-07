@@ -322,6 +322,11 @@ export interface QaPairPayload {
   // at edit time. Set alongside edited_at; cleared when the edit is fully reverted.
   edited_by?: string | null
   edited_by_name?: string | null
+  // Whether the question pertains to the presentation ('in_scope') or falls
+  // outside it ('out_of_scope'). Set by the analyzer (when a presentation exists)
+  // and/or a human reviewer. Absent/null = unclassified. Only meaningful for
+  // meetings that had a presentation phase.
+  presentation_scope?: 'in_scope' | 'out_of_scope' | null
 }
 
 export interface QuotePayload {

@@ -221,6 +221,7 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
   panelist_name?: string,
   question_typology: 'ask' | 'complaint' | 'commentary' | 'clarification',  // only 'ask' surfaces in main report
   sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed',  // tone of the exchange (added 2026-06; optional → old rows default 'neutral')
+  presentation_scope?: 'in_scope' | 'out_of_scope' | null,    // (2026-06-07) does the question pertain to the presentation? human-flagged; only meaningful for presentation meetings
 }
 
 // quote (session_type='focus_group')  -- v2
@@ -560,7 +561,11 @@ Also: the Opus extraction now classifies a `payload.sentiment` per pair (`positi
 
 A Q&A pair carries three text layers, none destroying the one before it: **verbatim** (the spoken words, record of truth, locked) → **AI polished** (`polished_*`) → **human-edited** (`edited_*`, new). `lib/recordings/qaDisplay.ts` (`displayQuestion`/`displayAnswer`, pure + client-safe) is the **one** place precedence is resolved — `edited → polished → verbatim` (with a `verbatim: true` override for the share-link verbatim setting and the per-card toggle). Every display surface imports it (report card, `/th`, PDF, PPTX) so they never drift.
 
-A reviewer hand-edits via the report's Q&A card **✎ Edit** pill → a modal showing, per side, **Verbatim (reference) · AI version (read-only) · editable box**. Saving `PATCH /api/recordings/[id]/extractions/[extractionId]` with `{ edited_question?, edited_answer? }` writes only the `edited_*` fields (a side is stored only when it differs from the AI version; null/empty clears it → "Revert to AI"). The AI + verbatim are never touched, so an edit is always undoable — distinct from **Regenerate** (which re-runs the AI). The `dataset_rows_flat` mirror keys on verbatim text (for analytics) and is intentionally not changed by an edit. No migration — `edited_*` live in the existing JSONB payload.
+A reviewer hand-edits via the report's Q&A card **✎ Edit** pill → a modal showing, per side, **Verbatim (reference) · AI version (read-only) · editable box**. Saving `PATCH /api/recordings/[id]/extractions/[extractionId]` writes only the provided edits and never touches the AI + verbatim, so an edit is always undoable — distinct from **Regenerate** (which re-runs the AI). The route accepts **any combination** of: `{ edited_question?, edited_answer? }` (payload; stored only when different from the AI version, null/empty clears → "Revert to AI", stamps the §3.5d audit trail), `{ presentation_scope? }` (payload; `in_scope`/`out_of_scope`/null), and `{ start_sec?, end_sec? }` (the **segment columns** — validated `end > start`; the edit-pane player's trim handles write these). The `dataset_rows_flat` mirror keys on verbatim text (for analytics) and is intentionally not re-keyed by an edit (its `_start_sec` metadata can lag a span trim — acceptable). No migration — `edited_*`/`presentation_scope` live in the existing JSONB payload; start/end are existing columns.
+
+**Adjust the segment span (2026-06-07):** the edit-pane `SegmentAudioPlayer` has trim controls — scrub to the real boundary, then **⇤ Set start** / **Set end ⇥** capture the playhead, and **Save segment** PATCHes `start_sec`/`end_sec`. Fixes a mis-anchored span so the clip (and the timeline) matches the actual answer. Pairs with no timestamp can be given one this way.
+
+**Presentation scope flag (2026-06-07):** for meetings that had a presentation (profile has a `presentation` phase, or a `proceedings_summary` exists), each Q&A card shows a **Scope: In presentation / Outside scope** toggle (sets `presentation_scope`; toggling the active value clears it), a collapsed-header badge, and the Q&A tab gains **In presentation / Outside scope** filter chips. Human-flagged today; AI auto-classification during analysis is a planned follow-up.
 
 **Audit trail:** every edit also stamps `edited_at`, `edited_by` (the user id) and `edited_by_name` (their display name at edit time) into the payload; all three clear together when the pair is fully reverted to AI. The report card shows "edited by {name} · {date}" next to the **Human-edited** badge.
 

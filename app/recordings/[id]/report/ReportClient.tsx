@@ -67,6 +67,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
   // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
   // Cleared whenever the user picks a tab manually (see TabBar onChange).
   const [reviewFlagged, setReviewFlagged] = useState(false)
+  // Presentation-scope flagging is only meaningful when the meeting had a presentation.
+  const hasPresentation = !!(data.recording.meeting_profile?.phases?.some(p => p.kind === 'presentation')) || !!data.recording.proceedings_summary
 
   // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
   // replaces individual rows in place, so we keep state here and rebuild
@@ -129,7 +131,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
@@ -299,13 +301,14 @@ function TabBar({
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false }: {
+function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false, hasPresentation = false }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
   onReplaced: (e: RecordingExtractionRow) => void
   onPlay: PlayHandler
   initialFlagged?: boolean
+  hasPresentation?: boolean
 }) {
   const router = useRouter()
   // Typology filter — all pairs show by default; chips narrow to one typology.
@@ -321,10 +324,16 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
     return m
   }, [extractions])
   const flaggedCount = useMemo(() => extractions.filter(e => e.flagged_for_review).length, [extractions])
+  const inScopeCount = useMemo(() => extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'in_scope').length, [extractions])
+  const outScopeCount = useMemo(() => extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'out_of_scope').length, [extractions])
   const [typeFilter, setTypeFilter] = useState<string>(initialFlagged && flaggedCount > 0 ? 'flagged' : 'all')
   const filtered = useMemo(
     () => typeFilter === 'all'
       ? extractions
+      : typeFilter === 'in_scope'
+        ? extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'in_scope')
+      : typeFilter === 'out_of_scope'
+        ? extractions.filter(e => (e.payload as QaPairPayload)?.presentation_scope === 'out_of_scope')
       : typeFilter === 'flagged'
         ? extractions.filter(e => e.flagged_for_review)
         : extractions.filter(e => ((e.payload as QaPairPayload)?.question_typology || 'ask') === typeFilter),
@@ -376,7 +385,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
         </button>
       </div>
 
-      {(typeCounts.size > 1 || flaggedCount > 0) && (
+      {(typeCounts.size > 1 || flaggedCount > 0 || (hasPresentation && (inScopeCount > 0 || outScopeCount > 0))) && (
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-gray-400 mr-0.5">Type:</span>
           {(['all', ...TYPOLOGY_ORDER.filter(t => typeCounts.has(t))] as string[]).map(t => {
@@ -403,6 +412,20 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               ⚠ Needs review <span className={typeFilter === 'flagged' ? 'text-amber-100' : 'text-amber-500'}>{flaggedCount}</span>
             </button>
           )}
+          {hasPresentation && (inScopeCount > 0 || outScopeCount > 0) && (
+            <>
+              <button type="button" onClick={() => setTypeFilter('in_scope')}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${typeFilter === 'in_scope' ? 'bg-teal-600 text-white border-teal-600' : 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100'}`}
+                title="Questions about the presentation">
+                In presentation <span className={typeFilter === 'in_scope' ? 'text-teal-100' : 'text-teal-500'}>{inScopeCount}</span>
+              </button>
+              <button type="button" onClick={() => setTypeFilter('out_of_scope')}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${typeFilter === 'out_of_scope' ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'}`}
+                title="Questions outside the presentation's scope">
+                Outside scope <span className={typeFilter === 'out_of_scope' ? 'text-purple-100' : 'text-purple-500'}>{outScopeCount}</span>
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -421,6 +444,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               onToggle={() => toggleCard(e.id)}
               onReplaced={onReplaced}
               onPlay={onPlay}
+              hasPresentation={hasPresentation}
               ordinal={i + 1}
             />
           ))}
@@ -451,6 +475,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
                   onToggle={() => toggleCard(e.id)}
                   onReplaced={onReplaced}
                   onPlay={onPlay}
+                  hasPresentation={hasPresentation}
                 />
               ))}
             </ul>
@@ -566,7 +591,7 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
   )
 }
 
-function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal }: {
+function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal, hasPresentation = false }: {
   recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
@@ -575,9 +600,23 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   onPlay: PlayHandler
   // Sequence number in the "In order" view; omitted in topic view.
   ordinal?: number
+  hasPresentation?: boolean
 }) {
   const payload = extraction.payload as QaPairPayload
   const flagged = extraction.flagged_for_review
+  const scope = payload.presentation_scope ?? null
+  // Quick scope flag (presentation meetings) — PATCHes presentation_scope; toggling
+  // the active value clears it. Mirrors back via onReplaced.
+  const setScope = async (next: 'in_scope' | 'out_of_scope') => {
+    const value = scope === next ? null : next
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extraction.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentation_scope: value }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) onReplaced(d.extraction as RecordingExtractionRow)
+    } catch { /* non-fatal */ }
+  }
   const [showComposer, setShowComposer] = useState(false)
   const [instructions, setInstructions] = useState('')
   const [busy, setBusy] = useState(false)
@@ -635,6 +674,8 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
               {payload.asker_name ?? 'Audience member'}
               {extraction.start_sec != null ? ` · ${formatTime(extraction.start_sec)}` : ''}
               {flagged && <> · <span className="text-yellow-700">⚠ flagged{extraction.flag_reason ? `: ${extraction.flag_reason}` : ''}</span></>}
+              {scope === 'in_scope' && <> · <span className="text-teal-700">in presentation</span></>}
+              {scope === 'out_of_scope' && <> · <span className="text-purple-700">outside scope</span></>}
             </div>
             {!expanded && (
               <div className="text-sm text-gray-600 mt-1 line-clamp-1">
@@ -680,6 +721,17 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">{payload.question_typology}</span>
             {typeof extraction.confidence === 'number' && (
               <span className="text-gray-500">confidence {(extraction.confidence * 100).toFixed(0)}%</span>
+            )}
+            {hasPresentation && (
+              <span className="inline-flex items-center gap-1 ml-1">
+                <span className="text-gray-400">Scope:</span>
+                <button type="button" onClick={() => setScope('in_scope')}
+                  className={`px-2 py-0.5 rounded-full border transition-colors ${scope === 'in_scope' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
+                  title="This question is about the presentation">In presentation</button>
+                <button type="button" onClick={() => setScope('out_of_scope')}
+                  className={`px-2 py-0.5 rounded-full border transition-colors ${scope === 'out_of_scope' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'}`}
+                  title="This question is outside the presentation's scope">Outside scope</button>
+              </span>
             )}
           </div>
           <div className="flex gap-2 pt-2">
@@ -798,10 +850,12 @@ function EditLayer({ label, verbatim, ai, value, onChange, rows }: {
 // Plays just this pair's [start_sec, end_sec] slice of the stitched meeting audio
 // so a reviewer can listen while correcting the text. Clamps playback to the
 // segment, with replay / scrub-within-segment / speed. Signed URL via §4.12.
-function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
+function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpanSaved }: {
   recordingId: string
+  extractionId: string
   startSec: number | null
   endSec: number | null
+  onSpanSaved?: (e: RecordingExtractionRow) => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
@@ -809,13 +863,22 @@ function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
   const [error, setError] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [pos, setPos] = useState(startSec ?? 0)
-  const [end, setEnd] = useState<number>(endSec ?? 0)
+  const [audioDur, setAudioDur] = useState<number>(0)
   const [rate, setRate] = useState(1)
 
-  const start = startSec ?? 0
-  const hasWindow = typeof endSec === 'number' && endSec > start
-  const effEnd = end > start ? end : start + 1
+  // Adjustable bounds — draft until saved. Null end = "to end of file".
+  const origStart = startSec ?? 0
+  const [draftStart, setDraftStart] = useState<number>(origStart)
+  const [draftEnd, setDraftEnd] = useState<number | null>(endSec ?? null)
+  const [spanBusy, setSpanBusy] = useState(false)
+  const [spanErr, setSpanErr] = useState<string | null>(null)
+  const [spanSaved, setSpanSaved] = useState(false)
+
+  const start = draftStart
+  const hasWindow = draftEnd != null && draftEnd > start
+  const effEnd = hasWindow ? (draftEnd as number) : (audioDur > start ? audioDur : start + 1)
   const dur = Math.max(1, effEnd - start)
+  const changed = draftStart !== origStart || draftEnd !== (endSec ?? null)
 
   useEffect(() => {
     let cancelled = false
@@ -829,7 +892,7 @@ function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
 
   const onLoaded = () => {
     const a = audioRef.current; if (!a) return
-    if (!hasWindow) setEnd(a.duration || start + 1)   // no end timestamp → play to end of file
+    setAudioDur(a.duration || 0)
     a.currentTime = start; setPos(start)
   }
   const onTime = () => {
@@ -848,12 +911,30 @@ function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     const a = audioRef.current; if (!a) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    a.currentTime = start + frac * dur; setPos(a.currentTime)
+    const f = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+    a.currentTime = start + f * dur; setPos(a.currentTime)
   }
   const cycleRate = () => {
     const next = rate === 1 ? 1.25 : rate === 1.25 ? 1.5 : rate === 1.5 ? 2 : 1
     setRate(next); if (audioRef.current) audioRef.current.playbackRate = next
+  }
+
+  // Trim: capture the current playhead as the new start / end.
+  const markStart = () => { const p = Math.round(pos); setSpanSaved(false); setDraftStart(Math.max(0, Math.min(p, (draftEnd ?? p + 1) - 1))) }
+  const markEnd = () => { const p = Math.round(pos); setSpanSaved(false); setDraftEnd(Math.max(draftStart + 1, p)) }
+  const resetSpan = () => { setDraftStart(origStart); setDraftEnd(endSec ?? null); setSpanSaved(false); setSpanErr(null) }
+  const saveSpan = async () => {
+    setSpanBusy(true); setSpanErr(null); setSpanSaved(false)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extractionId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_sec: draftStart, end_sec: draftEnd }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
+      setSpanSaved(true)
+      onSpanSaved?.(d.extraction as RecordingExtractionRow)
+    } catch (e) { setSpanErr(e instanceof Error ? e.message : 'Save failed') } finally { setSpanBusy(false) }
   }
 
   const frac = Math.min(1, Math.max(0, (pos - start) / dur))
@@ -912,10 +993,29 @@ function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
         </div>
         <button type="button" onClick={cycleRate} className="shrink-0 text-[11px] font-semibold text-gray-500 hover:text-gray-900 w-9 text-center" title="Playback speed">{rate}×</button>
       </div>
+
+      {/* Trim controls — adjust the segment to match the answer in the audio. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+        <span className="text-gray-400">Segment</span>
+        <span className="font-mono text-gray-700">{formatTime(start)} – {hasWindow ? formatTime(effEnd) : 'end'}</span>
+        <button type="button" onClick={markStart} disabled={spanBusy}
+          className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment start to the current playhead">⇤ Set start</button>
+        <button type="button" onClick={markEnd} disabled={spanBusy}
+          className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment end to the current playhead">Set end ⇥</button>
+        {changed && (
+          <>
+            <button type="button" onClick={saveSpan} disabled={spanBusy}
+              className="px-2 py-0.5 rounded text-white font-semibold disabled:opacity-40" style={{ background: HERMES }}>{spanBusy ? 'Saving…' : 'Save segment'}</button>
+            <button type="button" onClick={resetSpan} disabled={spanBusy} className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40">Reset</button>
+          </>
+        )}
+        {spanSaved && !changed && <span className="text-green-700">Saved ✓</span>}
+        {spanErr && <span className="text-red-600">{spanErr}</span>}
+      </div>
       <p className="text-[10px] text-gray-400 mt-1">
         {hasWindow
-          ? `Plays this answer's segment (${formatTime(start)}–${formatTime(effEnd)}, ${formatDuration(effEnd - start)}) and stops at its end. Drag to scrub within it.`
-          : 'No timestamp on this pair — plays the full meeting.'}
+          ? `Plays this answer's segment and stops at its end. Scrub to find the real boundaries, then “Set start/end” + Save to fix the timestamps.`
+          : 'No timestamp on this pair — plays the full meeting. Scrub to the answer and “Set start/end” to give it one.'}
       </p>
     </div>
   )
@@ -969,7 +1069,7 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
         <h2 className="text-base font-bold text-gray-900 mb-1">Edit this Q&amp;A for display</h2>
         <p className="text-xs text-gray-500 mb-4">Your edit becomes the version shown in the report, link, PDF, and deck. The verbatim and AI versions are kept — use “Revert to AI” to undo.</p>
         <div className="mb-4">
-          <SegmentAudioPlayer recordingId={recordingId} startSec={extraction.start_sec} endSec={extraction.end_sec} />
+          <SegmentAudioPlayer recordingId={recordingId} extractionId={extraction.id} startSec={extraction.start_sec} endSec={extraction.end_sec} onSpanSaved={onSaved} />
         </div>
         <div className="space-y-5">
           <EditLayer label="Question" verbatim={payload.question} ai={aiQ} value={editQ} onChange={setEditQ} rows={2} />
