@@ -593,6 +593,7 @@ var _enrichCtx: {
   themeSourceOverride?: string // overrides themeModel.fieldName
   activeThemeNames?: Set<string> | null  // null = all active
   datasetSource?: string       // 'reddit' | 'substack' etc for signal_tier injection
+  filteredRowIds?: number[] | null  // flat row ids of the filtered view → server dim aggregates honor filters (null = whole dataset)
 } = {}
 
 // useChartRows: reads from shared RowsContext, applies chart-specific enrichment
@@ -626,15 +627,23 @@ var _aggCache: Record<string, any> = {}
 function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
   var [data, setData] = useState<any>(null)
   var [loaded, setLoaded] = useState(false)
-  var cacheKey = datasetId + ':' + JSON.stringify(spec)
+  // For taxonomy (dimension) ops, attach the view's filtered row-id set so the
+  // server aggregate honors active filters (null = whole dataset). Done here (one
+  // place) so every tax_* chart spec is filter-aware without per-spec plumbing.
+  // rowIds is part of the cache key so the chart re-fetches when filters change.
+  var isTax = !!spec && typeof spec.op === 'string' && (spec.op as string).indexOf('tax_') === 0
+  var effSpec: Record<string, unknown> | null = (isTax && _enrichCtx.filteredRowIds)
+    ? Object.assign({}, spec, { rowIds: _enrichCtx.filteredRowIds })
+    : spec
+  var cacheKey = datasetId + ':' + JSON.stringify(effSpec)
   useEffect(function() {
-    if (!spec) return
+    if (!effSpec) return
     if (_aggCache[cacheKey]) { setData(_aggCache[cacheKey]); setLoaded(true); return }
     setLoaded(false)
     fetch('/api/datasets/' + datasetId + '/aggregate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(spec),
+      body: JSON.stringify(effSpec),
     }).then(function(r) { return r.json() })
       .then(function(d) { _aggCache[cacheKey] = d; setData(d); setLoaded(true) })
       .catch(function() { setLoaded(true) })
@@ -1904,8 +1913,18 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
   }, [chartsRestored, barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
 
+  // Filtered row-id set for filter-aware server dimension aggregates. Only loads
+  // rows when filters are active (else enrichKey -1 → no fetch, ids null = whole
+  // dataset). The ids ride into tax_* specs via useAggregation.
+  var { effectiveFilters: _effFilters } = useFilters()
+  var _anyFilter = Object.keys(_effFilters || {}).length > 0
+  var _topRows = useChartRows(datasetId, _anyFilter ? (enrichKey || 0) : -1)
+  var _filteredRowIds: number[] | null = (_anyFilter && _topRows.loaded)
+    ? (_topRows.rows.map(function(r) { return (r as any)._rowId }).filter(function(v: any) { return typeof v === 'number' }) as number[])
+    : null
+
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource }
+  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0

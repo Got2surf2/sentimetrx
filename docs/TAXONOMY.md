@@ -42,9 +42,11 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
     UNIQUE `(dataset_id,row_id)`. Still read by the theme-card / Theme-cloud **Dimension chips**
     (`theme_dimension_counts`, sql/111), the Comments **dimension filter** (`get_rows_by_filters`,
     sql/113), the Datanautix deck, and the admin pilot viewer (last classified field wins,
-    field-agnostic). **Charts/Stats `__dim_*` aggregates moved to per-field** as of `sql/115`
-    (the `tax_*` RPCs now read `dataset_row_field_taxonomy` for the dataset's primary classified
-    field, legacy fallback) — so charts match the Dimensions tab.
+    field-agnostic). **Charts `__dim_*` aggregates moved to per-field** (`sql/115`: the `tax_*`
+    RPCs read `dataset_row_field_taxonomy` for the dataset's primary classified field, legacy
+    fallback) **and are filter-aware** (`sql/116`: optional `p_row_ids` — the chart passes the
+    view's filtered row-id set so dimensions honor active filters; rows arrive with `_rowId`
+    via the rows GET `?withRowIds=true`). So Charts match the Dimensions tab's field + filters.
   - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, adds a
     `field` column so each open-ended field (e.g. a survey's Liked Most vs Liked Least) carries
     its own tags. Read by the **Dimensions tab**, which passes the ANALYZE field so the view

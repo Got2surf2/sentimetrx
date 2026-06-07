@@ -86,6 +86,10 @@ export async function GET(req: Request, props: Params) {
   const fieldsP    = url.searchParams.get('fields') || null
   const sampleMaxP = url.searchParams.get('sampleMax')
   const sampleMax  = sampleMaxP ? Math.max(1, parseInt(sampleMaxP)) : null
+  // Opt-in: attach the flat row id as `_rowId` so the client can build a filtered
+  // row-id set for server-side dimension aggregates (view-level charts). Off by
+  // default so existing callers' row shape is unchanged.
+  const withRowIds = url.searchParams.get('withRowIds') === 'true'
 
   // Build field projection set
   let fieldSet: Set<string> | null = null
@@ -115,14 +119,16 @@ export async function GET(req: Request, props: Params) {
     let fetchMore = true
     while (fetchMore) {
       const { data: flatRows, error: flatErr } = await service
-        .from('dataset_rows_flat').select('data')
+        .from('dataset_rows_flat').select(withRowIds ? 'id, data' : 'data')
         .eq('dataset_id', params.datasetId)
         .order('row_index', { ascending: true })
         .range(offset, offset + FLAT_PAGE - 1)
       if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
       if (!flatRows || flatRows.length === 0) break
       for (let i = 0; i < flatRows.length; i++) {
-        allRows.push(projectRow(flatRows[i].data, fieldSet))
+        const r = projectRow((flatRows[i] as any).data, fieldSet)
+        if (withRowIds) r._rowId = (flatRows[i] as any).id
+        allRows.push(r)
       }
       if (flatRows.length < FLAT_PAGE) fetchMore = false
       offset += FLAT_PAGE

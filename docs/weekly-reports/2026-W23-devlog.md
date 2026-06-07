@@ -1607,3 +1607,20 @@ From owner testing (RC dataset). Three builds:
 **Verify**: no app/TS change (SQL only) — typecheck/tests unaffected (461 pass as of last run). **NOT applied / unverified vs DB** (no DB access here) — owner applies `sql/115`. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
 
 **Apply (owner)**: `supabase db query --linked --file sql/115_taxonomy_aggregates_per_field.sql`
+
+## 2026-06-07 — Charts dimensions: filter-aware (view-level complete)
+
+**Why**: Finish view-level chart dimensions — they were per-field (sql/115) but still whole-dataset; now they honor the view's active filters too, like every other chart.
+
+**What changed**:
+- **`sql/116`** (owner applies; requires 114+115): the 4 `tax_*` RPCs gain optional `p_row_ids bigint[]` (DROP+CREATE — signature change) → `AND ($N IS NULL OR t.row_id = ANY($N))`. NULL = whole dataset; an id set restricts to the filtered rows. Keeps the per-field auto-resolution from 115.
+- **`app/api/datasets/[id]/rows/route.ts`** — opt-in `?withRowIds=true` attaches `_rowId` (flat id) to each bulk row (off by default; underscore key like `_collection_label`).
+- **`components/analyze/RowsContext.tsx`** — bulk fetch now passes `withRowIds=true`.
+- **`components/analyze/ChartsModule.tsx`** — top-level computes the filtered row-id set (only when filters active; loads rows only then, else enrichKey -1) into `_enrichCtx.filteredRowIds`; `useAggregation` injects `rowIds` into any `tax_*` spec (and the cache key, so charts re-fetch on filter change). One place → all dim chart types become filter-aware.
+- **`app/api/datasets/[id]/aggregate/route.ts`** — accepts sanitized `body.rowIds` and passes `p_row_ids` to all 4 tax RPCs.
+
+**Notes**: datasets >50K are filtered over the 50K client sample (consistent with regular charts). Brief unfiltered flash possible before the filtered rows load, then self-corrects (re-fetch). Collections not changed (single-dataset only).
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies sql/116. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/116_taxonomy_aggregates_filtered.sql`

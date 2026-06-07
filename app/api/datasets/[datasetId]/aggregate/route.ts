@@ -108,10 +108,18 @@ export async function POST(req: Request, props: Params) {
   // chart components consume them unchanged.
   var TAX_AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome']
 
+  // Optional filtered row-id set (view-level dimensions). null = whole dataset;
+  // an empty/array value restricts the aggregate to those flat row ids. Sanitized
+  // to finite numbers. The client (ChartsModule) sends this only when filters are
+  // active, capped at its 50K row sample.
+  var taxRowIds: number[] | null = Array.isArray(body.rowIds)
+    ? body.rowIds.filter(function(x: any) { return typeof x === 'number' && Number.isFinite(x) }).slice(0, 200000)
+    : null
+
   if (op === 'tax_counts') {
     var { axis } = body
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_sub_counts', { p_dataset_id: params.datasetId, p_axis: axis })
+    var { data, error } = await service.rpc('taxonomy_sub_counts', { p_dataset_id: params.datasetId, p_axis: axis, p_row_ids: taxRowIds })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     var counts: Record<string, number> = {}
     ;(data || []).forEach(function(r: any) { counts[r.value] = Number(r.count) })
@@ -122,7 +130,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, valueField } = body
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!valueField) return NextResponse.json({ error: 'valueField required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_group_stats', { p_dataset_id: params.datasetId, p_axis: axis, p_value_field: valueField })
+    var { data, error } = await service.rpc('taxonomy_group_stats', { p_dataset_id: params.datasetId, p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     var taxGroups: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }> = {}
     ;(data || []).forEach(function(r: any) {
@@ -135,7 +143,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, dateField, metricField, bucket } = body
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!dateField) return NextResponse.json({ error: 'dateField required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_date_series', { p_dataset_id: params.datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day' })
+    var { data, error } = await service.rpc('taxonomy_date_series', { p_dataset_id: params.datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({
       series: (data || []).map(function(r: any) { return { sub: r.sub_val, date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
@@ -148,7 +156,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, field, axisIsRow, limit } = body
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50 })
+    var { data, error } = await service.rpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
