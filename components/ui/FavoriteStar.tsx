@@ -4,7 +4,7 @@
 // (bots, surveys, datasets). Parent hydrates the initial state; the
 // component toggles on click via POST /api/favorites.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type ResourceType = 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session' | 'recording'
 
@@ -20,6 +20,13 @@ interface Props {
 export function FavoriteStar({ resourceType, resourceId, initialFavorited, size = 18, label }: Props) {
   const [favorited, setFavorited] = useState(initialFavorited)
   const [pending, setPending]     = useState(false)
+
+  // The parent often hydrates favorites ASYNCHRONOUSLY (e.g. AnalyzeClient
+  // fetches /api/favorites after first paint), so initialFavorited flips
+  // false→true after mount. useState only reads the prop once, which left
+  // faved cards showing an empty star while the parent's set still sorted
+  // them as favorites. Re-sync whenever the hydrated prop changes.
+  useEffect(() => { setFavorited(initialFavorited) }, [initialFavorited])
 
   async function toggle(e: React.MouseEvent) {
     e.stopPropagation()

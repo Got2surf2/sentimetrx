@@ -1496,3 +1496,11 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 ## 2026-06-06 — Policy: AI-agent sessions work directly on `main`
 
 **Why**: Owner wants Claude Code sessions to commit straight to `main` (no feature-branch juggling) so local testing is friction-free. Recorded as a permanent **Branch policy** in `CLAUDE.md` (project + a parent-level `/home/user/CLAUDE.md`), and reconciled `docs/ENGINEERING.md §2` so the formal Branch & review policy isn't contradicted — documented as an owner-directed exception where the **owner-authorized push is the review gate** (diff-read before push = the solo-founder self-review). Pushing still requires explicit authorization; no `--force`/`--no-verify`.
+
+## 2026-06-06 — Fix: favorite star showed "off" on faved dataset cards
+
+**Why**: Owner noticed faved datasets in Analyze rendered an empty star even though the card behaved as a favorite (sorted to top). Root cause: `FavoriteStar` seeded its state with `useState(initialFavorited)`, which only reads the prop on first render — but `AnalyzeClient` hydrates favorites asynchronously (`/api/favorites` fetched after first paint), so the prop flipped false→true after mount and the star never updated. The sort used the reactive `favoriteIds` set, hence state-correct but display-stale.
+
+**What changed** (`components/ui/FavoriteStar.tsx`): added `useEffect(() => setFavorited(initialFavorited), [initialFavorited])` to re-sync when the parent hydrates/changes the prop. Shared component (bots/surveys/datasets/campaigns/townhall/recordings) — all benefit; parents that hydrate synchronously just re-set the same value (no-op).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts remain); 461 tests pass. No backend change. ALL LOCAL on main, not pushed.
