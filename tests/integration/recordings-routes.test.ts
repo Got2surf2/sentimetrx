@@ -106,14 +106,21 @@ describe('POST /api/recordings (create)', () => {
     expect(await status(await collection.POST(req(validBody)))).toBe(403)
   })
 
-  it('400 on invalid body (bad session_type, empty files, duplicate filename)', async () => {
+  it('400 on invalid body (bad session_type, duplicate filename)', async () => {
     ctx.userCtx = userCtx()
     expect(await status(await collection.POST(req({ ...validBody, session_type: 'nope' })))).toBe(400)
-    expect(await status(await collection.POST(req({ ...validBody, files: [] })))).toBe(400)
     expect(await status(await collection.POST(req({
       ...validBody,
       files: [validBody.files[0], validBody.files[0]],
     })))).toBe(400)
+  })
+
+  it('201 awaiting_media when files[] is empty (setup-before-media)', async () => {
+    ctx.userCtx = userCtx()
+    ctx.results['recordings'] = { single: { data: { id: 'rec_1' }, error: null } }
+    const res = await collection.POST(req({ ...validBody, files: [] }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).status).toBe('awaiting_media')
   })
 
   it('201 + tags the insert with the caller org on the happy path', async () => {
