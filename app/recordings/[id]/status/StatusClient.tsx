@@ -11,11 +11,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
+import AddRecordingClient from '../AddRecordingClient'
 import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry } from '@/lib/recordings/types'
 
 const POLL_INTERVAL_MS = 3000
 
 type Status =
+  | 'draft' | 'awaiting_media'
   | 'uploading' | 'queued' | 'extracting' | 'transcribing' | 'transcribed'
   | 'analyzing' | 'rendering' | 'complete' | 'failed' | 'cancelled'
 
@@ -27,6 +29,8 @@ const STEPS: Status[] = [
 ]
 
 const STEP_LABELS: Record<Status, string> = {
+  draft:          'Draft',
+  awaiting_media: 'Awaiting recording',
   uploading:    'Files uploaded',
   queued:       'Queued',
   extracting:   'Extracting audio',
@@ -112,6 +116,9 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
   // re-fetch an unchanging row. Pause it; the gate's Generate flips the status
   // back to 'analyzing', which restarts the poll via the effect deps below.
   const isPaused = status === 'transcribed'
+  // Setup-before-media: the project exists but no recording is attached. Show the
+  // "Add recording" pane; nothing to poll until the user uploads + processes.
+  const isSetup = status === 'draft' || status === 'awaiting_media'
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -130,10 +137,10 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
 
   useEffect(() => {
     fetchStatus()
-    if (isTerminal || isPaused) return
+    if (isTerminal || isPaused || isSetup) return
     const id = setInterval(fetchStatus, POLL_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [fetchStatus, isTerminal, isPaused])
+  }, [fetchStatus, isTerminal, isPaused, isSetup])
 
   const handleRetry = async () => {
     setRetrying(true)
@@ -174,6 +181,14 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         <p className="text-sm text-gray-500 mt-1">Recording {recordingId.slice(0, 8)}…</p>
       </header>
 
+      {isSetup ? (
+        <AddRecordingClient
+          recordingId={recordingId}
+          showSlides={data?.recording.meeting_profile?.preset_id === 'community_meeting'}
+          onStarted={fetchStatus}
+        />
+      ) : (
+      <>
       <StepList status={status} data={data} />
 
       {error && (
@@ -236,6 +251,8 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
             <CoveragePanel count={data.extraction_count} cost_cents={data.recording.cost_cents} />
           )}
         </>
+      )}
+      </>
       )}
     </div>
   )

@@ -583,6 +583,12 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
                   >
                     {showVerbatim ? 'Show display version' : 'Show verbatim'}
                   </button>
+                  {edited && payload.edited_by_name && (
+                    <span className="text-[11px] text-gray-400" title={payload.edited_at ? `Edited ${new Date(payload.edited_at).toLocaleString()}` : undefined}>
+                      edited by {payload.edited_by_name}
+                      {payload.edited_at ? ` · ${new Date(payload.edited_at).toLocaleDateString()}` : ''}
+                    </span>
+                  )}
                 </>
               )}
             </div>

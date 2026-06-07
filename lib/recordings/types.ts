@@ -318,6 +318,10 @@ export interface QaPairPayload {
   edited_question?: string | null
   edited_answer?: string | null
   edited_at?: string | null
+  // Audit trail for the human edit: who made it (user id) and their display name
+  // at edit time. Set alongside edited_at; cleared when the edit is fully reverted.
+  edited_by?: string | null
+  edited_by_name?: string | null
 }
 
 export interface QuotePayload {

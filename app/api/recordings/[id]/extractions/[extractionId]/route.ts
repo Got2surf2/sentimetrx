@@ -32,9 +32,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string; e
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const { data: userRow } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const { data: userRow } = await supabase.from('users').select('org_id, full_name, email').eq('id', user.id).single()
   const org_id = userRow?.org_id as string | undefined
   if (!org_id) return NextResponse.json({ error: 'org not found' }, { status: 403 })
+  const editorName = ((userRow?.full_name as string | null)?.trim()) || (userRow?.email as string | null) || null
 
   const body = await req.json().catch(() => ({}))
   // Only the provided side(s) change; an explicit null/empty clears that edit.
@@ -58,8 +59,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string; e
   const payload = { ...(row.payload as QaPairPayload) }
   if (hasQ) payload.edited_question = clean(body.edited_question)
   if (hasA) payload.edited_answer = clean(body.edited_answer)
-  // Drop the stamp when both edits are cleared (fully reverted to AI).
-  payload.edited_at = payload.edited_question || payload.edited_answer ? new Date().toISOString() : null
+  // Audit trail: stamp who/when on every edit; drop the whole stamp when both
+  // edits are cleared (fully reverted to AI).
+  const stillEdited = !!(payload.edited_question || payload.edited_answer)
+  payload.edited_at = stillEdited ? new Date().toISOString() : null
+  payload.edited_by = stillEdited ? user.id : null
+  payload.edited_by_name = stillEdited ? editorName : null
 
   const { data: updated, error: updErr } = await service
     .from('recording_extractions')

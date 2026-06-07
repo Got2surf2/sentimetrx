@@ -562,6 +562,8 @@ A Q&A pair carries three text layers, none destroying the one before it: **verba
 
 A reviewer hand-edits via the report's Q&A card **✎ Edit** pill → a modal showing, per side, **Verbatim (reference) · AI version (read-only) · editable box**. Saving `PATCH /api/recordings/[id]/extractions/[extractionId]` with `{ edited_question?, edited_answer? }` writes only the `edited_*` fields (a side is stored only when it differs from the AI version; null/empty clears it → "Revert to AI"). The AI + verbatim are never touched, so an edit is always undoable — distinct from **Regenerate** (which re-runs the AI). The `dataset_rows_flat` mirror keys on verbatim text (for analytics) and is intentionally not changed by an edit. No migration — `edited_*` live in the existing JSONB payload.
 
+**Audit trail:** every edit also stamps `edited_at`, `edited_by` (the user id) and `edited_by_name` (their display name at edit time) into the payload; all three clear together when the pair is fully reverted to AI. The report card shows "edited by {name} · {date}" next to the **Human-edited** badge.
+
 ### 3.6 Coverage report
 
 After the analytical pass, compute:
@@ -639,7 +641,11 @@ Resend email to `recordings.created_by` (and optionally org admins per `<TBD: or
 
 Browser uses `tus-js-client` against `upload.endpoint` with the user's Supabase session JWT in the `Authorization` header and per-file metadata `{ bucketName, objectName: <storage_path>, contentType }`. Per-file `upload_url` is included for clients that prefer to keep the TUS endpoint inside the per-file object — it's the same string as `upload.endpoint` today.
 
-**Validation:** soft caps enforced server-side — at most 20 files per recording, at most 20GB per file, no duplicate filenames within a recording, `session_type` ∈ enum, `asr_strategy` ∈ enum.
+**Validation:** soft caps enforced server-side — at most 20 files per recording, at most 20GB per file, no duplicate filenames within a recording, `session_type` ∈ enum, `asr_strategy` ∈ enum, `confidentiality_class` ∈ enum (if present).
+
+**Attribution + intake fields (§2.8, all optional):** the body also accepts `analysis_org` (defaults to `Datanautix`), `analysts` (`[{name, member_id?}]`), `objectives` (`{summary, questions[]}`), and `confidentiality_class`. Set when provided; `analysis_org` otherwise falls back to the column default.
+
+**Setup-before-media:** `files[]` is **optional**. An empty/absent `files[]` creates the project in `status='awaiting_media'` (no `recording_files`, no upload payload — response is just `{ recording_id, status: 'awaiting_media' }`). The setup wizard (§5.2) always creates this way; media is attached later via §4.1c. When `files[]` is present the per-file rules above (incl. ≥1 media) still apply and the project is created in `uploading`.
 
 **Rollback:** if the `recording_files` insert fails after the `recordings` row was created, the route deletes the recordings row before returning the error so the user isn't left with a phantom.
 
@@ -650,6 +656,12 @@ Companion to § 4.1. Called by the wizard after each TUS upload succeeds; flips 
 **Server-side guard:** before flipping the flag, the route calls `storage.from(BUCKET).list(dir, { search: basename })` and verifies the object actually exists at the expected `storage_path`. Stops a hostile or buggy client from marking a non-existent file as uploaded (which would surface as an opaque extract failure later).
 
 **Response:** `{ ok: true, upload_status: 'uploaded' }` or `{ ok: true, upload_status: 'uploaded' | 'extracted', already: true }`.
+
+### 4.1c `POST /api/recordings/[id]/files` — attach media to a set-up project
+
+Companion to §4.1 for the setup-before-media flow. Adds media (and an optional slide deck) to a project sitting in `awaiting_media`/`draft`, then flips it to `uploading`. Same request/response contract as §4.1 (`{ files: [...] }` → `{ recording_id, upload, files }` with the TUS endpoint + per-file storage paths). The "Add recording" pane (§5.3a) then uploads via TUS, acks each file (§4.1a), and calls §4.2.
+
+**Guards:** same-tenant `(id, org_id)` pair; **409** if the project is not in `awaiting_media`/`draft` (media already attached); same per-file validation as §4.1 (≥1 media, ≤20 files, ≤20GB, ≤1 PDF deck). If a slide deck is attached and the project has a `meeting_profile`, the route sets `meeting_profile.has_slides=true` so the vision/presentation pass runs.
 
 ### 4.2 `POST /api/recordings/[id]/process` — start the pipeline
 
@@ -839,53 +851,40 @@ Builds a Datanautix-branded `.pptx` via `lib/pptx/recordingDeck.ts` from the rec
 
 Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit / etc. Selecting it routes to `/recordings/new`.
 
-### 5.2 Recording creation wizard — `/recordings/new`
+### 5.2 Project setup wizard — `/recordings/new` (setup-before-media, 2026-06)
 
-**Meeting-tool additions (2026-06):** the Setup pane has a **Meeting type** selector (`town_hall_qa` | `community_meeting`, from `lib/recordings/profiles.ts`). Choosing **Community meeting** reveals a **Presentation slides (PDF)** upload in the Files pane — it rides the same TUS flow tagged `file_role='slides'` (rendered separately from the audio/video list) and is read by AI vision to seed the meeting notes. The POST sends `meeting_profile` (with `has_slides` reflecting whether a deck was attached); `town_hall_qa` sends `meeting_profile: null` = legacy behavior. Slides are optional even for a community meeting (phase detection still runs from the transcript).
-
-Three-pane layout:
+The wizard sets up the **project**, not the upload — a Town Hall can be configured before the audio/video exists. It's a pure two-column form (no file pane); media is attached later on the status page (§5.3a).
 
 ```
 ┌──────────────────────────┬──────────────────────────────────┐
-│  Files                   │  Setup                            │
+│  Meeting                 │  Objectives & analysis            │
 │  ─────                   │  ─────                            │
-│  [Drop area]             │  Name: [___________]              │
-│  ✓ GX010114.MP4  85%▓▓░░ │  Session type: [Q&A ▼]            │
-│  ✓ GX020114.MP4  ✓ done  │  Meeting date: [2026-06-12]       │
-│  ✓ GX030114.MP4  ✓ done  │  Location: [_________]            │
-│  ↕ reorder                │  Language: [English ▼]            │
-│                          │                                   │
-│                          │  ▼ Panel members                  │
-│                          │  + Add panelist                   │
-│                          │                                   │
-│                          │  ▼ Agenda topics                  │
-│                          │  + Add topic                      │
-│                          │                                   │
-│                          │  ASR strategy: [Let system ▼]     │
-│                          │   ○ Whisper                       │
-│                          │   ○ Deepgram                      │
-│                          │   ○ Both (high accuracy)          │
-│                          │   ● Let system decide             │
+│  Name: [___________]     │  Objectives (summary)             │
+│  Meeting type: [TH Q&A ▼]│  Questions we want answered       │
+│  Meeting date: [______]  │  Analysis performed by:[Datanautix]│
+│  Location: [_________]   │  Confidentiality: [Client conf. ▼]│
+│  ▼ Panel members         │  ▼ Analyst(s) (pick or type)      │
+│  ▼ Agenda topics         │  ▼ Brand & known entities         │
+│  Names & terms           │  Language / ASR strategy          │
 └──────────────────────────┴──────────────────────────────────┘
-                          [ Process ]  (enabled when files uploaded + form valid)
+                          [ Create project ]  (enabled when name + ≥1 agenda topic)
 ```
 
-Upload runs in background; user fills setup in parallel. Process button disabled until at least one file is added + the name and ≥1 agenda topic are filled.
+- **Meeting type** (`town_hall_qa` | `community_meeting`, `lib/recordings/profiles.ts`) → `meeting_profile` (null for `town_hall_qa`). A community meeting's deck is uploaded with the recording (§5.3a), not here.
+- **Objectives** — `{summary, questions[]}` (§2.8); steers the synthesis pass. Phase 3 will AI-propose these from an uploaded deck/brief.
+- **Analysis performed by** (default `Datanautix`) + **Analyst(s)** — a `<datalist>` of org members so a name can be picked or free-typed; matched names resolve to `member_id`. **Confidentiality** — the §2.8 class, default `client_confidential`.
 
-**Drive sequence on Process click (RecordingWizardClient.tsx):**
-1. `POST /api/recordings` (§ 4.1) → recording_id + per-file IDs + TUS endpoint.
-2. `tus-js-client` uploads every file in parallel against the Supabase Storage TUS endpoint, authenticating with the user's session JWT in the `Authorization` header. 6MB chunks; auto-retry on transient failure.
-3. On each TUS `onSuccess`, the wizard calls `POST /api/recordings/[id]/files/[fileId]/uploaded` (§ 4.1a). The server verifies the object exists before flipping `upload_status` to `'uploaded'`.
-4. Once `Promise.all` over the per-file uploads resolves, `POST /api/recordings/[id]/process` (§ 4.2) starts the Workflow DevKit run.
-5. `router.push('/recordings/[id]/status')` hands off to the status surface (§ 5.3).
+**Drive sequence (RecordingWizardClient.tsx):** `POST /api/recordings` with **no files** → `{ recording_id }` in `awaiting_media` → `router.push('/recordings/[id]/status')`. No upload happens here.
 
-**v1 scope:** session_type is locked to `qa` in the UI (the field is rendered but disabled) because `analyzeRecording` throws for other types today. The other types are kept in the schema so adding them later is a UI-only change.
-
-**Mixed audio + video drops:** the wizard accepts both `video/*` and `audio/*` in the file picker. The drop-zone caption explicitly tells the user "Audio or video — drop a mix and we'll stitch them in order" because the extract path always re-encodes everything to canonical 16kHz mono 32kbps mp3 before the concat-demuxer stitch. Mixed drops are first-class; the analyst can stage GoPro clips alongside a phone backup recording without any pre-processing.
+**v1 scope:** session_type is locked to `qa` (the only type `analyzeRecording` supports today).
 
 ### 5.3 Status surface — `/recordings/[id]/status`
 
-Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll.
+Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll. Polling is likewise skipped for the setup states `draft`/`awaiting_media`.
+
+#### 5.3a "Add recording" pane (setup-before-media)
+
+When `status ∈ {draft, awaiting_media}`, the status page renders `AddRecordingClient.tsx` instead of the pipeline ladder — the file-drop pane (audio/video, reorder, plus the optional slide-deck PDF when the meeting profile is a community meeting). On **Upload & process** it runs §4.1c (attach) → TUS upload → §4.1a acks → §4.2 (process), then the page re-polls and the ladder takes over. This is the back half of the old combined wizard, lifted into its own component. The drop zone accepts a mix of `video/*`/`audio/*` (stitched in order); a community-meeting deck rides the same TUS flow tagged `file_role='slides'`.
 
 **Rendered:**
 - Step list — vertical, six rows, Claude-Code-style. Each row: status icon (✓ green for past, ⟳ orange spinning for current, ○ grey for future, ✗ red for failed) + step label + a sub-detail line derived from the § 4.3 payload. Examples:

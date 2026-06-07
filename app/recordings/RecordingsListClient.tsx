@@ -36,8 +36,9 @@ export interface RecordingCard {
 // status + flags; `optional` steps can be skipped without blocking the report.
 function lifecycleSteps(r: RecordingCard): Array<{ label: string; done: boolean; optional?: boolean }> {
   const transcribed = ['transcribed', 'analyzing', 'rendering', 'complete'].includes(r.status)
+  const preMedia = r.status === 'draft' || r.status === 'awaiting_media'
   return [
-    { label: 'Uploaded', done: r.status !== 'uploading' },
+    { label: 'Uploaded', done: !preMedia && r.status !== 'uploading' },
     { label: 'Transcribed', done: transcribed },
     { label: 'Entities reviewed', done: r.entities_reviewed, optional: true },
     { label: 'Q&A generated', done: r.status === 'complete' },
@@ -47,6 +48,8 @@ function lifecycleSteps(r: RecordingCard): Array<{ label: string; done: boolean;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
+  draft:          { bg: '#f3f4f6', fg: '#6b7280', label: 'Draft' },
+  awaiting_media: { bg: '#e0f2fe', fg: '#0369a1', label: 'Add recording' },
   complete:     { bg: '#dcfce7', fg: '#15803d', label: 'Complete' },
   failed:       { bg: '#fee2e2', fg: '#b91c1c', label: 'Failed' },
   cancelled:    { bg: '#f3f4f6', fg: '#6b7280', label: 'Cancelled' },

@@ -25,6 +25,16 @@ export default async function NewRecordingPage() {
     .order('name')
   const agents = (agentRows ?? []).map((a: any) => ({ id: a.id as string, name: (a.name as string) || 'Untitled' }))
 
+  // §2.8 — org members for the analyst picker (pick-a-teammate OR free-text).
+  const { data: memberRows } = await service
+    .from('users')
+    .select('id, full_name, email')
+    .eq('org_id', ctx.orgId)
+    .order('full_name')
+  const members = (memberRows ?? [])
+    .map((m: any) => ({ id: m.id as string, name: ((m.full_name as string)?.trim()) || (m.email as string) || '' }))
+    .filter((m: { name: string }) => m.name)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav
@@ -38,7 +48,7 @@ export default async function NewRecordingPage() {
         currentPage="recordings"
       />
       <main className="pt-20 px-4 pb-12 max-w-5xl mx-auto">
-        <RecordingWizardClient agents={agents} />
+        <RecordingWizardClient agents={agents} members={members} />
       </main>
     </div>
   )

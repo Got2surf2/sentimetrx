@@ -1691,3 +1691,14 @@ Two follow-ups from inspecting Carabbas GSS dimensions directly against prod.
 - TS mirrors: `Analyst`, `MeetingObjectives`, `SetupProvenance`, `ConfidentialityClass`, `Signoff`, `RecordingConfigSnapshot`, `RecordingConfigVersionRow`; fields added to `RecordingRow`; `draft`/`awaiting_media` added to `RecordingStatus`. Spec RECORDINGS.md §2.8.
 
 Verified: `tsc --noEmit` clean; 361 unit tests pass. Migration NOT yet applied to prod (additive, idempotent — apply before phases 2–5 can be live-verified). Remaining: 2) split wizard (Setup vs Add-recording), 3) doc-ingest pre-fill + provenance, 4) versioning wiring + footer stamp, 5) export attribution + sign-off + confidentiality.
+
+### Town Hall: Q&A edit audit trail + phase 2 (setup-before-media) (2026-06-07)
+
+**Q&A edit audit trail** (owner ask): every human edit of a Q&A pair now stamps `edited_by` (user id) + `edited_by_name` (display name) alongside `edited_at`; all three clear on full revert. The PATCH extraction route resolves the editor name from `users.full_name||email`; the report card shows "edited by {name} · {date}" next to the Human-edited badge. Type fields added to `QaPairPayload`.
+
+**Phase 2 of the setup overhaul — split the wizard so a project can be set up before the audio/video exists.**
+- `POST /api/recordings`: `files[]` is now optional → empty creates `status='awaiting_media'` (no files, returns `{recording_id,status}`); accepts the §2.8 attribution/intake fields (`analysis_org` default Datanautix, `analysts`, `objectives`, `confidentiality_class`). `validate()` short-circuits the file rules when no files; GET list statuses gain draft/awaiting_media.
+- NEW `POST /api/recordings/[id]/files` (§4.1c): attach media to an awaiting_media/draft project (same-tenant gate, 409 otherwise), insert files, flip → uploading, set `meeting_profile.has_slides` when a deck is attached, return the TUS endpoint.
+- `RecordingWizardClient.tsx` rewritten as a setup-only form (no file pane) + new Objectives / Analysis-org / Analysts (datalist of org members, pick-or-type → member_id) / Confidentiality fields; creates the project and redirects to the status page. `new/page.tsx` now also fetches org members.
+- NEW `AddRecordingClient.tsx` — the file-upload pane (audio/video + optional deck) + TUS + process, shown by `StatusClient.tsx` for draft/awaiting_media (polling skipped for those). List card gains draft/awaiting_media styles + correct lifecycle "Uploaded" step.
+- Spec RECORDINGS.md §4.1/§4.1c/§3.5d/§5.2/§5.3a. Verified: tsc clean, 361 unit tests pass. sql/118 already applied to prod (phase 1). Remaining: phases 3 (doc-ingest pre-fill) / 4 (versioning) / 5 (export attribution); then the 6-item Coverage/audio backlog.

@@ -20,6 +20,9 @@ import type {
   SessionType,
   SetupInputs,
   MeetingProfile,
+  Analyst,
+  MeetingObjectives,
+  ConfidentialityClass,
 } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
@@ -54,8 +57,20 @@ interface CreateBody {
   meeting_profile?: MeetingProfile | null   // meeting-tool preset + phases; null = legacy Q&A
   brand_tag?: string | null                 // §3.5c brand-entity convergence
   underlying_agent_id?: string | null       // §3.5c linked agent (entity catalog seed)
-  files: CreateFileSpec[]
+  // §2.8 (sql/118) attribution + intake. All optional; analysis_org defaults to Datanautix.
+  analysis_org?: string | null
+  analysts?: Analyst[]
+  objectives?: MeetingObjectives | null
+  confidentiality_class?: ConfidentialityClass
+  // Optional now: a project can be created WITHOUT media (setup-before-media). An
+  // empty/absent files[] creates the project in 'awaiting_media' — media is
+  // attached later via POST /api/recordings/[id]/files (§4.1c).
+  files?: CreateFileSpec[]
 }
+
+const VALID_CONFIDENTIALITY: ReadonlySet<string> = new Set([
+  'public', 'internal', 'client_confidential', 'restricted',
+])
 
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -78,6 +93,11 @@ export async function POST(req: Request) {
 
   const service = createServiceRoleClient()
 
+  // Setup-before-media: no files → create in 'awaiting_media'; media is attached
+  // later. With files → 'uploading' as before.
+  const files = body.files ?? []
+  const hasMedia = files.some(f => (f.file_role ?? 'media') === 'media')
+
   // Create the recording row first — we need its UUID to compute storage paths.
   const { data: rec, error: rErr } = await service
     .from('recordings')
@@ -96,9 +116,14 @@ export async function POST(req: Request) {
       // adds these columns (omitting the keys avoids "column does not exist").
       ...((body.brand_tag ?? '').trim() ? { brand_tag: (body.brand_tag as string).trim() } : {}),
       ...(body.underlying_agent_id ? { underlying_agent_id: body.underlying_agent_id } : {}),
-      status: 'uploading',
+      // §2.8 attribution + intake — only set when provided (analysis_org has a DB default).
+      ...((body.analysis_org ?? '').trim() ? { analysis_org: (body.analysis_org as string).trim() } : {}),
+      ...(Array.isArray(body.analysts) && body.analysts.length ? { analysts: body.analysts } : {}),
+      ...(body.objectives ? { objectives: body.objectives } : {}),
+      ...(body.confidentiality_class ? { confidentiality_class: body.confidentiality_class } : {}),
+      status: hasMedia ? 'uploading' : 'awaiting_media',
       // Only media files count toward the source byte total; slides are tiny.
-      source_size_bytes: body.files.filter(f => (f.file_role ?? 'media') === 'media').reduce((sum, f) => sum + f.size_bytes, 0),
+      source_size_bytes: files.filter(f => (f.file_role ?? 'media') === 'media').reduce((sum, f) => sum + f.size_bytes, 0),
     })
     .select('id')
     .single()
@@ -108,8 +133,14 @@ export async function POST(req: Request) {
 
   const recording_id = rec.id as string
 
+  // No media at creation → setup-before-media. Return the bare project; the
+  // wizard redirects to the status page where "Add recording" attaches files.
+  if (files.length === 0) {
+    return NextResponse.json({ recording_id, status: 'awaiting_media' as const }, { status: 201 })
+  }
+
   // Each file: storage_path = <org_id>/<recording_id>/<original_filename>.
-  const fileRows = body.files.map((f, i) => ({
+  const fileRows = files.map((f, i) => ({
     recording_id,
     org_id,
     original_filename: f.original_filename,
@@ -170,8 +201,14 @@ function validate(body: Partial<CreateBody>): { ok: true } | { ok: false; error:
   if (!body.setup_inputs || typeof body.setup_inputs !== 'object') {
     return { ok: false, error: 'setup_inputs object is required (may be {})' }
   }
-  if (!Array.isArray(body.files) || body.files.length === 0) {
-    return { ok: false, error: 'files[] is required and must be non-empty' }
+  if (body.confidentiality_class && !VALID_CONFIDENTIALITY.has(body.confidentiality_class)) {
+    return { ok: false, error: `confidentiality_class must be one of: ${Array.from(VALID_CONFIDENTIALITY).join(', ')}` }
+  }
+  // Setup-before-media: files are optional. An empty/absent files[] creates the
+  // project in 'awaiting_media'. When files ARE present, every per-file rule below
+  // (incl. ≥1 media) still applies.
+  if (!body.files || body.files.length === 0) {
+    return { ok: true }
   }
   if (body.files.length > MAX_FILES_PER_RECORDING) {
     return { ok: false, error: `at most ${MAX_FILES_PER_RECORDING} files per recording` }
@@ -233,6 +270,7 @@ function requireSupabaseUrl(): string {
 // Filter ?status= passes through to the recordings.status enum.
 
 const LIST_VALID_STATUSES: ReadonlySet<string> = new Set([
+  'draft', 'awaiting_media',
   'uploading', 'queued', 'extracting', 'transcribing', 'transcribed',
   'analyzing', 'rendering', 'complete', 'failed', 'cancelled',
 ])
