@@ -1643,3 +1643,13 @@ From owner testing (RC dataset). Three builds:
 **Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. **NOT applied / unverified vs DB** — owner applies `sql/117` (needs 114). Specs TAXONOMY.md §3/§4 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
 
 **Apply (owner)**: `supabase db query --linked --file sql/117_taxonomy_pending_multifield.sql`
+
+## 2026-06-07 — Dimensions: auto-classify on selection (no "Classify" button)
+
+**Why**: Owner — picking a field checkbox should instantly update the display; pressing a separate "Classify" button is dopey. Themes already re-derive instantly on selection; Dimensions had a blocking button for an unclassified selection.
+
+**What changed** (`components/analyze/TaxonomyModule.tsx`): a guarded effect auto-runs the classifier when the selected field-set loads unclassified (`classifiedRows === 0`), tracked in a `useRef<Set>` per field-key so a selection with no taggable text can't loop. The empty-state's manual "Classify «field»" button is gone — instead the tab shows a brief "Classifying…" spinner (then the existing progress screen) and renders dimensions when done; only a failure shows "Try again", and a no-text selection shows "No taggable text found". The drift nudge (new rows on an already-classified selection) stays an explicit button — it's contextual, not selection-blocking, and auto-classifying every sync-drift could surprise.
+
+**Themes**: already instant on field selection (client re-derive) — no change.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.

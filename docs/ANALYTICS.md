@@ -408,8 +408,8 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   `(dataset_id,row_id,field)` in `dataset_row_field_taxonomy` (sql/114) where `field` is the
   combined key of the ANALYZE selection (`taxonomyFieldKey` — sorted ' + '-join; multiple
   open-ends are concatenated like Themes). The GET takes `?fields=`, so changing the selection
-  **re-rolls the view for that field-set** (a new combination needs a one-time classify, since
-  dimensions are precomputed — not instant like themes). (The classifier
+  **re-rolls the view for that field-set** (a new combination is **auto-classified on selection**
+  — a brief "Classifying…" progress, no button — since dimensions are precomputed). (The classifier
   dual-writes the legacy `dataset_row_taxonomy` too, so Charts/Stats `__dim_*`, theme-card chips, and
   the Comments dimension filter keep working). A **drift nudge** (amber banner) appears when
   `rowsWithText > classifiedRows` — "N {field} rows aren't tagged yet · Classify N new rows" → POSTs
@@ -437,9 +437,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
   `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
-  the empty state's **"Classify «field»"** button loops `POST /api/datasets/[datasetId]/taxonomy`
+  an unclassified selection is **auto-classified** (no button) via `POST /api/datasets/[datasetId]/taxonomy`
   (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The
-  classified **field follows the ANALYZE toggle** (passed as `textField`/`fieldLabel`; the old
+  classified **field follows the ANALYZE selection** (passed as `fields`/`fieldLabel`; the old
   "Field to classify" dropdown was removed 2026-06-06), and the prominent **Re-classify** button
   was removed (destructive + expensive — re-classification is deferred to the dataset level).
   `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Auto-classify-on-sync

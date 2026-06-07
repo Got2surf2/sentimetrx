@@ -7,7 +7,7 @@
 // by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
 // here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { AXIS_COLOR, DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
@@ -181,6 +181,12 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
 
   useEffect(() => { void load() }, [load])
 
+  // Auto-classify on selection: when the analyzed field-set isn't classified yet,
+  // run the classifier automatically (no "Classify" button to press). Guarded per
+  // field-key so a selection with no taggable text can't loop. Defined after
+  // runClassifier (below) via a ref so this effect can call it.
+  const autoRef = useRef<Set<string>>(new Set())
+
   // Loop POST chunks until the dataset is fully classified, then refresh the
   // roll-up. Idempotent server-side, so an interrupted run resumes safely.
   const runClassifier = useCallback(async (pendingOnly = false) => {
@@ -224,6 +230,15 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
     }
   }, [datasetId, load, fieldsCsv])
 
+  // Kick auto-classify once per field-selection that loads empty.
+  useEffect(() => {
+    if (!hasField || loading || classifying || !data) return
+    if (data.classifiedRows === 0 && !autoRef.current.has(fieldsCsv)) {
+      autoRef.current.add(fieldsCsv)
+      void runClassifier(false)
+    }
+  }, [data, fieldsCsv, hasField, loading, classifying, runClassifier])
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading dimensions…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load dimensions: {err}</div>
 
@@ -244,22 +259,33 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
   }
 
   if (!data || data.classifiedRows === 0) {
+    // No "Classify" button — picking a field auto-classifies (see the effect above).
+    // This screen only shows the brief gap / terminal states.
     return (
       <div style={{ padding: 40, maxWidth: 560 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No dimensions yet</h2>
-        <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-          {hasField
-            ? <>These open-ended field{selFields.length > 1 ? 's' : ''} haven’t been sorted into dimensions yet. Run the classifier to tag <strong>{fieldLabel || 'the selected field(s)'}</strong> by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets. Tags are saved per field-combination, so this is a one-time pass for this selection — not re-run every time you open the tab.</>
-            : <>First pick an open-ended field to analyze — the <strong>Liked Most / Liked Least</strong> toggle at the top (you can select more than one) — then run the classifier to tag it by service, food, drinks, ambiance, and more.</>}
-        </p>
-        <button
-          onClick={() => runClassifier(false)}
-          disabled={!hasField}
-          style={{ background: hasField ? ORANGE : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: hasField ? 'pointer' : 'not-allowed' }}
-        >
-          {hasField ? `Classify ${fieldLabel || 'this selection'}` : 'Pick a field above first'}
-        </button>
-        {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: 14 }}>Classification failed: {classifyErr}</p>}
+        {!hasField ? (
+          <>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Pick a field to analyze</h2>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
+              Choose an open-ended field — the <strong>Liked Most / Liked Least</strong> toggle at the top (you can select more than one) — and its dimensions appear automatically.
+            </p>
+          </>
+        ) : classifyErr ? (
+          <>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Couldn’t classify</h2>
+            <p style={{ color: RED, fontSize: 13, marginBottom: 16 }}>Classification failed: {classifyErr}</p>
+            <button onClick={() => runClassifier(false)}
+              style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              Try again
+            </button>
+          </>
+        ) : autoRef.current.has(fieldsCsv) ? (
+          <p style={{ fontSize: 14, color: SLATE }}>No taggable text found in <strong>{fieldLabel || 'this selection'}</strong>.</p>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 24 }}>
+            <LottieLoader size={90} message={`Classifying ${fieldLabel || 'dimensions'}…`} />
+          </div>
+        )}
       </div>
     )
   }

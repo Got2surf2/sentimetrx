@@ -110,11 +110,14 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 ## 4. Surfaces
 
 - **In-app Dimensions view** (user-facing label **"Dimensions"**; internal code/routes/keys stay `taxonomy` — friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions"). As of 2026-06-04 it lives as a **sub-tab inside TextMine** (`TextMineModule` renders `<TaxonomyModule>` when `subTab==='dimensions'`, shown when `taxonomyEnabled` is true = `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`: Google Reviews; **OR org capability** (`orgTaxonomyEnabled` in `lib/resolveOrg` — the explicit per-org `ModuleFeatures.taxonomy` toggle OR a restaurant `primaryIndustries` value, auto-enabled); **OR per-dataset** (`datasets.taxonomy_enabled`, sql/109 — an "Apply Dimensions" checkbox at upload or a Schema-tab toggle, for admin/one-off datasets). Threaded as `taxonomyEnabled` to TextMine/Charts/Stats; the classify route is org-gated (not source-gated) so it works on any dataset. Exempt from the theme-model lock); the standalone top-level tab was retired (the `/analyze/[datasetId]/taxonomy` route still resolves but is unlinked). `TaxonomyModule.tsx` is self-contained and fed by
-  `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
-  when a dataset is unclassified the empty state offers a single **"Classify «field»"**
-  button that loops `POST /api/datasets/[datasetId]/taxonomy` (`{ cursor, textField }` body
-  → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row chunks, `core` overlay,
-  org-gated like the GET) with a live progress bar until `done`. Keyword-tier → no AI cost;
+  `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Auto-classification** (no button,
+  2026-06-07): when the selected field-set isn't classified yet the tab **classifies it
+  automatically** (a guarded effect, once per field-key, fires `runClassifier`) — picking a
+  field just shows a brief "Classifying…" progress then the dimensions, like Themes' instant
+  update (only failures show a "Try again"). It loops `POST /api/datasets/[datasetId]/taxonomy`
+  (`{ cursor, textFields }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
+  10K-row chunks, `core` overlay, org-gated like the GET) with a live progress bar until
+  `done`. Keyword-tier → no AI cost;
   tags are **saved per (row, field-key)** in `dataset_row_field_taxonomy` (idempotent) so the
   tab reads them back — classification is a one-time pass per selection, never re-run on view.
   **Multi-field & reactive** (no separate picker, as of 2026-06-07): the view follows the
@@ -125,8 +128,9 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   tab **refetches when the selection changes**, so Dimensions reacts to the open-end set like
   themes. POST passes `textFields[]` to `classifyDatasetKeyword`, which concatenates them (' . '
   separator) and stores under the combined key. **Unlike themes (instant client re-derive),
-  each new field combination needs a one-time classify** (the keyword dict is too slow client-
-  side) — a new combo shows the empty "Classify this selection" state until run. The old
+  each new field combination is classified once** (the keyword dict is too slow client-side to
+  re-derive live) — but this is **automatic**: selecting a new combo auto-runs the classify
+  (brief "Classifying…" spinner) rather than waiting on a button press. The old
   redundant "Field to classify" dropdown is retired.
   **Reconciled denominator**: the GET returns `rowsWithText` (`dataset_rows_with_text_count`
   RPC = rows with text in this field) and the header reads "**N rows with text · X% tagged**"
