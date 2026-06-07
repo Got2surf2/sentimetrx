@@ -170,7 +170,12 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
   var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
-  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).sort(asc2)
+  // Themes (__themes__) and Dimensions (__dim_*) are DERIVED categories, not schema
+  // columns \u2014 pull them out of raw "Categorical" into their own groups so the picker
+  // doesn't bury 8 synthetic fields among the real categoricals.
+  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' && f.field !== '__themes__' && !isDimField(f.field) }).sort(asc2)
+  var themeFields = coreFields.filter(function(f) { return f.field === '__themes__' })
+  var dimFields   = coreFields.filter(function(f) { return isDimField(f.field) }).sort(asc2)
   var dateFields = coreFields.filter(function(f) { return f.type === 'date' }).sort(asc2)
   var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc2)
 
@@ -178,6 +183,8 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
     <>
       <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Themes" icon={'\u2728'} color="#0EA5E9" fields={themeFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Dimensions" icon={'\ud83c\udff7'} color="#e8622a" fields={dimFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} />

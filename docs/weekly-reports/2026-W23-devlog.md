@@ -1574,3 +1574,13 @@ From owner testing (RC dataset). Three builds:
 **Charts finding (item 3, investigated, NOT built)**: dimensions DO appear in Charts but (a) merged into the generic "Categorical" picker group (not a distinct "Dimensions" group), (b) labeled with `DIM_AXIS_LABEL` (Touchpoint/Attribute/…) vs the Dimensions tab's `AXIS_LABEL` (Staff & food attributes/…) — same axes, different names → recognition lag, (c) the `taxonomy_*` aggregate RPCs (sql/105/106) still read the **legacy** `dataset_row_taxonomy` (field-agnostic), and (d) top-30 cap vs the tab's 40. That's why "categories seem oddly structured." Proposed fix (separate, owner to greenlight): group dim fields under a "Dimensions" header in the chart picker + unify the label set; optionally per-field-ize the chart RPCs.
 
 **Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4/§4a + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts: Themes + Dimensions get their own picker groups
+
+**Why**: Owner — dimensions and themes are both *derived* categories, so they shouldn't be buried in the raw "Categorical" field group (which is what made the chart "categories seem oddly structured"). Investigation confirmed BOTH `__themes__` and the 7 `__dim_*` fields were merged into "Categorical".
+
+**What changed** (`components/analyze/ChartsModule.tsx`, `ChartFieldGroups`): "Categorical" now excludes `__themes__` and `__dim_*`; added two new collapsible groups — **Themes** (✨, sky) and **Dimensions** (🏷, orange) — rendered right after Categorical. `ChartCollapsibleGroup` already no-ops on empty, so they only appear when present. No change to chart wiring/aggregates.
+
+**Still open (logged, not built)**: (1) **label mismatch** — the Dimensions group uses short labels (`Touchpoint/Attribute/…`, `DIM_AXIS_LABEL`) while the Dimensions tab uses verbose ones (`Staff & food attributes/…`, `AXIS_LABEL`); pick one for consistency. (2) Chart dimension aggregates still read the **legacy** `dataset_row_taxonomy` (field-agnostic) — charts reflect the last-classified field, not per-field like the tab; per-field chart aggregates would need the `tax_*` RPCs to take a `field` param.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
