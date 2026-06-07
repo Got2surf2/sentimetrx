@@ -422,8 +422,8 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (cards mirror TextMine's: text + meta chips + Show-more + a rating-coloured left bar + a 1–4
   column grid selector; each comment also shows its other axis·sub tag chips — hovering a chip
   highlights the span of the comment that triggered that dimension) (breadcrumb header + scrollable list + Export CSV + per-comment
-  Copy) via `GET …/taxonomy/rows` (`?axis=` whole-axis, `?axis=&sub=`, or `?alert=`), matched-evidence quotes
-  highlighted. (Inline panel reuses the same UX as TextMine comments but not the
+  Copy) via `GET …/taxonomy/rows` (`?axis=` whole-axis, `?axis=&sub=`, or `?alert=`, **`?field=`** to scope to the analyzed open-end), matched-evidence quotes
+  highlighted. The displayed comment text is the **classified field's value (`data[field]`)**, not a heuristic `pickText` pick, so the shown text matches the chips + evidence (prevents a different column showing next to another field's tags). (Inline panel reuses the same UX as TextMine comments but not the
   theme-coupled `CommentsPanel`; it's driven by the tag-filtered endpoint.) The evidence
   highlight **expands to whole-word boundaries** (stored evidence is a fixed-width char
   window, so the `<mark>` snaps out to full words rather than cutting mid-word).

@@ -1555,3 +1555,11 @@ Owner applied sql/114 and tested per-field live. Four fixes:
 4. **Pixel-jump on chip hover fixed** — the evidence `<mark>` was adding padding/border/font-weight, so hovering a chip re-highlighted text → reflow → cursor bounced off the chip (flicker loop). Mark is now layout-neutral (background + inset box-shadow underline only).
 
 **Files**: `components/analyze/TaxonomyModule.tsx`, `sql/114_dataset_row_field_taxonomy.sql`. **Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. Specs TAXONOMY.md §3/§4/§4a updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Dimensions drill: show the classified field's text (fix phantom false-positive)
+
+**Why**: Owner saw a comment "Delicious food and Brynan is a great server!" tagged `product:chicken` with no "chicken" in it and no evidence highlight. Trace ruled out a classifier/dictionary bug (matcher is word-boundary strict; `product:chicken` only fires on the literal "chicken"; no "bryan"/menu-item keyword exists). Root cause: the per-field drill returns chips/evidence for the **classified field** (e.g. "Review"), but the comment card rendered a **different** column via `pickText()` — so the Review field's "chicken" tag showed next to another column's text. Chips were already field-scoped (per-field table); only the displayed text was wrong.
+
+**What changed** (`app/api/datasets/[datasetId]/taxonomy/rows/route.ts`): the drill comment text now prefers **`data[field]`** (the classified/drilled field), falling back to `pickText` only when no field is scoped or the cell is empty. Shown text == tagged field == where evidence highlights → the "false positive" resolves (it was a display mismatch). Rating/date stay row-level.
+
+**Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.

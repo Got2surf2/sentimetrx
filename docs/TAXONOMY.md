@@ -155,7 +155,13 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   fed by `GET /api/datasets/[datasetId]/taxonomy/rows` (`?axis=` for the whole axis,
   `?axis=&sub=` for a sub, or `?alert=`,
   org-gated; axis-only uses `.neq(col,'{}')` for any non-empty tag, sub uses `.contains()` on the GIN-indexed axis array → joins `dataset_rows_flat` for
-  text; returns matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
+  text. **The displayed comment text is the classified field's value (`data[field]`), not a
+  heuristic `pickText` pick** — so the shown text == the field the chips were derived from ==
+  where the evidence highlights. (Before this, a row's *other* open-ended column could be shown
+  next to chips/evidence from the classified field, reading as a false positive — e.g. a
+  Review tagged `product:chicken` displayed beside a different column with no "chicken".)
+  `pickText` is the fallback only when no field is scoped / the cell is empty. Returns
+  matched-evidence quotes the UI bolds, **plus every other (axis, sub) tag on
   the row, each with its own evidence** so each comment shows what else it hit. The
   **chip for the picked dimension/sub-dimension is highlighted** (an axis-only "read all"
   drill highlights *every* sub of that dimension; a severity drill highlights the

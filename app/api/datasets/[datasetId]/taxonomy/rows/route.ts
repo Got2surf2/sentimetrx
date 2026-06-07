@@ -124,8 +124,15 @@ export async function GET(req: Request, props: Params) {
 
   const comments = (tax ?? []).map(t => {
     const data = byId[t.row_id] ?? {}
+    // Show the text of the FIELD that was classified (the per-field drill), not a
+    // heuristic pick — otherwise a row's other open-ended column can be displayed
+    // while the chips/evidence come from the classified field, which reads as a
+    // false positive (e.g. a "Review" tagged product:chicken shown next to a
+    // different column with no "chicken"). Fall back to pickText only when no
+    // field is scoped or that cell is empty.
+    const fieldText = field ? String((data as Record<string, unknown>)[field] ?? '').trim() : ''
     return {
-      text:     pickText(data),
+      text:     fieldText || pickText(data),
       rating:   (data.rating as number) ?? null,
       date:     (data.review_date as string) || (data.date as string) || null,
       evidence: collectEvidence(t.assertions, axis, sub, alert),
