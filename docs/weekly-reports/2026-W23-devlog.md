@@ -1563,3 +1563,14 @@ Owner applied sql/114 and tested per-field live. Four fixes:
 **What changed** (`app/api/datasets/[datasetId]/taxonomy/rows/route.ts`): the drill comment text now prefers **`data[field]`** (the classified/drilled field), falling back to `pickText` only when no field is scoped or the cell is empty. Shown text == tagged field == where evidence highlights → the "false positive" resolves (it was a display mismatch). Rating/date stay row-level.
 
 **Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Dimensions: phantom-converge, collapse-to-pills, min-35 floor (+ Charts finding)
+
+From owner testing (RC dataset). Three builds:
+1. **Phantom "N rows aren't tagged" converges now**: `classifyPendingRows` (`lib/taxonomyClassify.ts`) no longer skips rows the pending RPC hands it that come back empty after the JS strip (unicode-whitespace edge cases the SQL emptiness test misses) — it writes a tagless row. So clicking "Classify N new rows" drives the nudge to 0 instead of looping. No data cleanup needed (answers owner's "just clean them out?" — no).
+2. **Collapse-to-pills on sub-select** (`TaxonomyModule.tsx`): picking a sub-dimension collapses the card grid into a compact sub-pill row right under the dimension (with "⊞ All sub-dimensions" to expand back), above the comments — switch subs / re-drill without closing. Card grid returns null while a sub is selected.
+3. **Min-mentions floor** `MIN_SUB_COUNT = 35`: sub-dimensions surface only at count ≥ 35 (cards + collapsed pills) — the Themes-signal-cutoff analog. Severity alerts exempt (low-count food-safety/pests still matters).
+
+**Charts finding (item 3, investigated, NOT built)**: dimensions DO appear in Charts but (a) merged into the generic "Categorical" picker group (not a distinct "Dimensions" group), (b) labeled with `DIM_AXIS_LABEL` (Touchpoint/Attribute/…) vs the Dimensions tab's `AXIS_LABEL` (Staff & food attributes/…) — same axes, different names → recognition lag, (c) the `taxonomy_*` aggregate RPCs (sql/105/106) still read the **legacy** `dataset_row_taxonomy` (field-agnostic), and (d) top-30 cap vs the tab's 40. That's why "categories seem oddly structured." Proposed fix (separate, owner to greenlight): group dim fields under a "Dimensions" header in the chart picker + unify the label set; optionally per-field-ize the chart RPCs.
+
+**Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4/§4a + ANALYTICS.md updated. ALL LOCAL on main, not pushed.

@@ -35,6 +35,10 @@ const GREEN = '#059669', AMBER = '#D97706', RED = '#DC2626', SLATE = '#8FA3AE'
 // in the axis-pill row (red, status not navigation) and opens its alert sub-cards.
 const SEVERITY = '__severity__'
 
+// Min mentions for a sub-dimension to surface (same noise-floor idea as Themes' signal
+// cutoff). Severity alerts are exempt — a low-count food-safety/pests flag still matters.
+const MIN_SUB_COUNT = 35
+
 // Red→green ramp (0..1), mirrors TextMine's CommentsPanel rating colouring.
 function rampColor(pct: number): string {
   if (pct <= 0.5) { const g = Math.round(80 + pct * 2 * 120); return `rgb(220,${g},40)` }
@@ -337,6 +341,46 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
         </div>
       </div>
 
+      {/* Sub-dimension selected → collapse the cards into a compact pill row right
+          under the dimension, so the user can switch sub-dimensions (and re-drill)
+          without closing the comments. Card grid below returns null in this state. */}
+      {filterAxis && filterAxis !== SEVERITY && filterSub && (() => {
+        const focus = data.axes.find(x => x.axis === filterAxis)
+        const c = AXIS_COLOR[filterAxis as Axis] || SLATE
+        const subs = data.subs.filter(s => s.axis === filterAxis && s.count >= MIN_SUB_COUNT)
+          .sort((x, y) => (y.rate - x.rate) || (y.count - x.count))
+        return (
+          <div style={{ marginBottom: 16, padding: '12px 14px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ width: 9, height: 9, borderRadius: 5, background: c, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{focus?.label || filterAxis}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: 'uppercase', letterSpacing: 1 }}>· sub-dimension</span>
+              <button onClick={() => { setFilterSub(''); setDrill(null) }}
+                title="Back to all sub-dimension cards"
+                style={{ marginLeft: 'auto', background: 'transparent', border: 'none', fontSize: 12, fontWeight: 700, color: TEAL, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ⊞ All sub-dimensions
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {subs.map(s => {
+                const sActive = filterSub === s.sub
+                const qs = `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`
+                return (
+                  <button key={s.sub}
+                    onClick={() => { if (sActive) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', focus?.label || filterAxis, s.sub] }) } }}
+                    title={`${dimSubLabel(s.sub)} — ${s.count.toLocaleString()} review${s.count === 1 ? '' : 's'}`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: 1.3, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (sActive ? c : '#e2e8f0'), background: sActive ? c + '14' : '#fff', color: NAVY }}>
+                    {sActive && <span style={{ width: 6, height: 6, borderRadius: 3, background: c, flexShrink: 0 }} />}
+                    <span style={{ fontWeight: 700 }}>{dimSubLabel(s.sub)}</span>
+                    <span style={{ color: SLATE }}>{s.count.toLocaleString()}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Inline comments panel — driven by the filter above or by clicking a sub-topic / alert. */}
       {drill && (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: 24, overflow: 'hidden' }}>
@@ -496,8 +540,12 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           )
         }
 
+        // A sub-dimension is selected → shown as the compact pill row above the
+        // comments; don't also render the full card grid here.
+        if (filterSub) return null
+
         const sorted = [...data.subs].sort((x, y) => (y.rate - x.rate) || (y.count - x.count))
-        const list = sorted.filter(s => s.axis === filterAxis)
+        const list = sorted.filter(s => s.axis === filterAxis && s.count >= MIN_SUB_COUNT)
         const focus = data.axes.find(x => x.axis === filterAxis)
         return (
           <div>
@@ -524,7 +572,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
             </div>
 
             {list.length === 0 ? (
-              <p style={{ fontSize: 13, color: SLATE }}>No sub-dimensions surfaced for this dimension.</p>
+              <p style={{ fontSize: 13, color: SLATE }}>No sub-dimensions with at least {MIN_SUB_COUNT} mentions in this dimension.</p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
                 {list.map(s => {

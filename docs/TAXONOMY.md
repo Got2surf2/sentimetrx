@@ -138,7 +138,11 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `rowsWithText` count and the pending RPC use the **same "has real text" test as the
   classifier** — `regexp_replace(field, '[[:space:][:cntrl:]]+', '')` non-empty — so
   whitespace/control-only rows (which the classifier writes no row for) don't show as
-  perpetually-pending phantoms in the nudge.
+  perpetually-pending phantoms in the nudge. As a belt-and-suspenders, `classifyPendingRows`
+  now **writes a (tagless) row for every row the pending RPC hands it** — even ones that come
+  back empty after the classifier's JS strip (unicode-whitespace edge cases the SQL test
+  doesn't catch) — so clicking "Classify N new rows" always **converges the nudge to 0**
+  instead of looping. No data cleanup needed.
   **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
   axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
   picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top
@@ -240,12 +244,16 @@ cards** below. A pill is the collapsed form of its cards.
   taxonomy-side data (description, keywords, co-occurs, items, 95% CI, top/bottom box)
   — those are additive later if a backend feed is added; the layout leaves room.
 - **Grid states**: **no dimension selected** → **pills only** (a one-line prompt, no
-  cards) — the initial view is just the L1 chips; **dimension selected** → the sub-cards
-  for that axis (sorted **rate% desc**, count tiebreak). Selecting a dimension pill also
-  **closes any open comments panel** (`setDrill(null)`) so you land on the sub-cards, not
-  a stale drill. The **axis-level drill** ("read every comment tagged anywhere on the
-  dimension") is a **"Read all comments"** header link on the focused grid (the pill itself
-  only filters). Clicking a sub-card focuses its axis + opens its comments.
+  cards) — the initial view is just the L1 chips; **dimension selected, no sub** → the
+  sub-cards for that axis (sorted **rate% desc**, count tiebreak); **sub selected** → the
+  cards **collapse to a compact sub-dimension pill row** right under the dimension (with
+  "⊞ All sub-dimensions" to expand back), above the comments — so the user can **switch
+  sub-dimensions / re-drill without closing**. Selecting a dimension pill also **closes any
+  open comments panel** (`setDrill(null)`). The **axis-level drill** is a **"Read all
+  comments"** header link on the focused grid.
+- **Min-mentions floor**: sub-dimensions surface only at **count ≥ `MIN_SUB_COUNT` (35)** —
+  the Dimensions analog of the Themes signal cutoff (cards *and* the collapsed pill row).
+  **Severity alerts are exempt** (a low-count food-safety/pests flag still matters).
   *(The comment-text evidence highlight is layout-neutral — background + box-shadow underline,
   no padding/border/weight — so hovering a chip never reflows the text / bounces the cursor.)*
 - **Retire**: the "By axis" horizontal-bar column, the "Top sub-topics" list column,

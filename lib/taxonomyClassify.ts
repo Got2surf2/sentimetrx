@@ -167,7 +167,11 @@ export async function classifyPendingRows(opts: {
     const upserts: Record<string, unknown>[] = []
     for (const row of rows) {
       const text = String(row.data?.[textField] ?? '').replace(CONTROL_CHARS, '').trim()
-      if (!text) continue  // RPC already excludes these, but guard anyway
+      // NB: do NOT skip empties here. The pending RPC already filtered to rows the
+      // SQL considers "has text"; a few may be empty after the classifier's JS
+      // strip (unicode whitespace etc.). Skipping them left those rows pending
+      // FOREVER (the "N rows aren't tagged" nudge could never clear). Writing a
+      // (tagless) row converges: classifyByKeyword('') just returns no assertions.
       const { assertions } = classifyByKeyword(text, dict)
       upserts.push({
         org_id: orgId, dataset_id: datasetId, row_id: row.id,
