@@ -1712,3 +1712,13 @@ Verified: `tsc --noEmit` clean; 361 unit tests pass. Migration NOT yet applied t
 - `RecordingWizardClient`: a "Project documents (optional)" uploader above the form → calls §4.1d → shows a suggestion panel (counts) → **Apply suggestions** fills only EMPTY fields (non-destructive) and stamps `setup_provenance` per field; fields show a "✨ from {file}" hint. `setup_provenance` now sent on create (route + CreateBody updated).
 - Deck *persistence* stays on the add-recording slides path (AddRecordingClient) so the pipeline vision-reads it — avoids a second storage/role. PPTX/DOCX (convert-to-PDF) is a noted follow-up.
 - Spec RECORDINGS.md §4.1d + §5.2. Verified: tsc clean, 361 unit tests. Migration sql/118 (phase 1) already live; no new migration. NOT pushed.
+
+### Town Hall: Coverage-page improvements (owner review) (2026-06-07)
+
+Four owner items from reviewing the NOWOCATS Meeting 2 Coverage page (all in `ReportClient.tsx`):
+1. **"Coverage (3)" was confusing.** The badge = `coverage_report.flagged_count` (verified) — the same number as the card's "3 pairs need review". Made the Coverage tab badge an amber **"{n} to review"** pill, and the Flagged-for-review section now states it's the same count as that badge + the card alert.
+2. **Per-topic density** now **sorted by frequency DESC** (was unordered) with a **per-topic sentiment dot** overlaid from `analysis_summary.topic_summaries` (+ legend).
+3. **Long quiet stretches** (`per_minute_gaps`) are now **overlaid as hatched bands** on the meeting timeline (behind the blocks), not only listed.
+4. **Direct path to flagged pairs**: a "Review {n} flagged →" button on Coverage jumps to the Q&A tab pre-filtered to a new **"⚠ Needs review {n}"** chip (one-shot, cleared on manual tab change).
+
+Spec RECORDINGS.md §5.4. tsc clean, 361 unit tests. NOT pushed. Remaining backlog: audio player in the edit pane + the missing Meeting-2 audio bug (audio cluster, next).

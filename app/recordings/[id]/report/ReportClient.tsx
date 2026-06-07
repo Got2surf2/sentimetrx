@@ -63,6 +63,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as Tab) : 'coverage')
+  // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
+  // Cleared whenever the user picks a tab manually (see TabBar onChange).
+  const [reviewFlagged, setReviewFlagged] = useState(false)
 
   // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
   // replaces individual rows in place, so we keep state here and rebuild
@@ -116,7 +119,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
       <TabBar
         tab={tab}
-        onChange={setTab}
+        onChange={(t) => { setReviewFlagged(false); setTab(t) }}
         counts={{
           qa: qaPairs.length,
           actions: actionItems.length,
@@ -125,9 +128,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
-        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} />}
+        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
         {tab === 'export' && (
           <ExportTab
@@ -202,8 +205,11 @@ function TabBar({
   onChange: (t: Tab) => void
   counts: { qa: number; actions: number; coverage: number }
 }) {
-  const tabs: Array<{ key: Tab; label: string; badge?: number }> = [
-    { key: 'coverage',   label: 'Coverage',     badge: counts.coverage },
+  // 'warn' tone = the badge is a count of pairs needing review (same number as the
+  // card's "N pairs need review" pill) → render amber so it reads as an alert, not
+  // a neutral item count.
+  const tabs: Array<{ key: Tab; label: string; badge?: number; tone?: 'warn' }> = [
+    { key: 'coverage',   label: 'Coverage',     badge: counts.coverage, tone: 'warn' },
     { key: 'qa',         label: 'Q&A',          badge: counts.qa },
     { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'transcript', label: 'Transcript' },
@@ -225,7 +231,16 @@ function TabBar({
           >
             {t.label}
             {typeof t.badge === 'number' && t.badge > 0 && (
-              <span className="ml-2 text-xs text-gray-400">{t.badge}</span>
+              t.tone === 'warn' ? (
+                <span
+                  className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 align-middle"
+                  title={`${t.badge} pair${t.badge === 1 ? '' : 's'} need review`}
+                >
+                  {t.badge} to review
+                </span>
+              ) : (
+                <span className="ml-2 text-xs text-gray-400">{t.badge}</span>
+              )
             )}
           </button>
         )
@@ -236,15 +251,18 @@ function TabBar({
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
+function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
   onReplaced: (e: RecordingExtractionRow) => void
   onPlay: PlayHandler
+  initialFlagged?: boolean
 }) {
   const router = useRouter()
   // Typology filter — all pairs show by default; chips narrow to one typology.
+  // A 'flagged' pseudo-filter shows only pairs needing review (the Coverage tab's
+  // "Review these →" deep-links here with it pre-selected).
   const TYPOLOGY_ORDER = ['ask', 'clarification', 'complaint', 'commentary'] as const
   const typeCounts = useMemo(() => {
     const m = new Map<string, number>()
@@ -254,11 +272,14 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
     }
     return m
   }, [extractions])
-  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const flaggedCount = useMemo(() => extractions.filter(e => e.flagged_for_review).length, [extractions])
+  const [typeFilter, setTypeFilter] = useState<string>(initialFlagged && flaggedCount > 0 ? 'flagged' : 'all')
   const filtered = useMemo(
     () => typeFilter === 'all'
       ? extractions
-      : extractions.filter(e => ((e.payload as QaPairPayload)?.question_typology || 'ask') === typeFilter),
+      : typeFilter === 'flagged'
+        ? extractions.filter(e => e.flagged_for_review)
+        : extractions.filter(e => ((e.payload as QaPairPayload)?.question_typology || 'ask') === typeFilter),
     [extractions, typeFilter],
   )
   const grouped = useMemo(() => groupByTopic(filtered, agenda), [filtered, agenda])
@@ -307,7 +328,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
         </button>
       </div>
 
-      {typeCounts.size > 1 && (
+      {(typeCounts.size > 1 || flaggedCount > 0) && (
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-gray-400 mr-0.5">Type:</span>
           {(['all', ...TYPOLOGY_ORDER.filter(t => typeCounts.has(t))] as string[]).map(t => {
@@ -324,6 +345,16 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay }: {
               </button>
             )
           })}
+          {flaggedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setTypeFilter('flagged')}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${typeFilter === 'flagged' ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'}`}
+              title="Pairs the curator flagged for human review"
+            >
+              ⚠ Needs review <span className={typeFilter === 'flagged' ? 'text-amber-100' : 'text-amber-500'}>{flaggedCount}</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -880,7 +911,15 @@ function ActionSourceModal({ description, trace, segments, onClose }: {
 
 // ── Coverage tab ─────────────────────────────────────────────────────────────
 
-function CoverageTab({ recording, extractions, transcript }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null }) {
+// Sentiment → dot color for the per-topic overlay.
+const SENTIMENT_DOT: Record<string, { color: string; label: string }> = {
+  positive: { color: '#16A34A', label: 'positive' },
+  neutral:  { color: '#9CA3AF', label: 'neutral' },
+  negative: { color: '#DC2626', label: 'negative' },
+  mixed:    { color: '#F59E0B', label: 'mixed' },
+}
+
+function CoverageTab({ recording, extractions, transcript, onReviewFlagged }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; onReviewFlagged: () => void }) {
   const qaPairs = useMemo(
     () => extractions.filter(e => e.unit_type === 'qa_pair'),
     [extractions],
@@ -902,6 +941,13 @@ function CoverageTab({ recording, extractions, transcript }: { recording: Record
   if (qaPairs.length === 0) return <EmptyState label="No Q&A pairs to analyze yet." />
 
   const maxTopicCount = Math.max(1, ...cr.per_topic.map(t => t.count))
+  // Per-topic density, ordered by frequency (most-discussed first), with the
+  // synthesis pass's per-topic sentiment overlaid (matched by topic name).
+  const topicSentiment = new Map<string, string>()
+  for (const ts of recording.analysis_summary?.topic_summaries ?? []) {
+    if (ts.topic) topicSentiment.set(ts.topic.trim().toLowerCase(), ts.sentiment)
+  }
+  const sortedTopics = [...cr.per_topic].sort((a, b) => b.count - a.count)
   const histMax = Math.max(1, ...cr.confidence_histogram.map(x => x.count))
   const durationSec = recording.source_duration_sec && recording.source_duration_sec > 0
     ? recording.source_duration_sec
@@ -921,7 +967,24 @@ function CoverageTab({ recording, extractions, transcript }: { recording: Record
           Meeting timeline <span className="text-gray-400 text-sm font-normal">· {timed.length} Q&amp;A across {formatDuration(durationSec)}</span>
         </h2>
         <div className="relative">
-          <div className="relative bg-gray-100 rounded" style={{ height: barHeight(laneCount) }}>
+          <div className="relative bg-gray-100 rounded overflow-hidden" style={{ height: barHeight(laneCount) }}>
+            {/* Long quiet stretches (≥5min, no extraction) shaded behind the blocks. */}
+            {cr.per_minute_gaps.map((g, i) => {
+              const left = (g.start_sec / durationSec) * 100
+              const w = ((g.end_sec - g.start_sec) / durationSec) * 100
+              return (
+                <div
+                  key={`gap-${i}`}
+                  className="absolute inset-y-0"
+                  style={{
+                    left: `${left}%`,
+                    width: `${w}%`,
+                    backgroundImage: 'repeating-linear-gradient(45deg, rgba(148,163,184,0.28) 0, rgba(148,163,184,0.28) 6px, transparent 6px, transparent 12px)',
+                  }}
+                  title={`Quiet stretch · ${formatTime(g.start_sec)}–${formatTime(g.end_sec)} (${formatDuration(g.end_sec - g.start_sec)} with no extracted pair)`}
+                />
+              )
+            })}
             {timed.map((p, i) => {
               const start = p.start_sec as number
               const end = p.end_sec ?? start
@@ -967,25 +1030,42 @@ function CoverageTab({ recording, extractions, transcript }: { recording: Record
           </div>
         </div>
         <div className="text-xs text-gray-500 mt-1">
-          Each block is a Q&amp;A pair, placed + sized by when it occurred — <span className="font-semibold" style={{ color: '#16A34A' }}>green</span> = clean, <span className="font-semibold" style={{ color: '#F59E0B' }}>amber</span> = flagged for review. Click a block to read its transcript; blank gaps = no extraction.
+          Each block is a Q&amp;A pair, placed + sized by when it occurred — <span className="font-semibold" style={{ color: '#16A34A' }}>green</span> = clean, <span className="font-semibold" style={{ color: '#F59E0B' }}>amber</span> = flagged for review. Click a block to read its transcript. <span className="text-gray-400">▥</span> hatched bands = long quiet stretches (≥5 min, no extraction).
         </div>
       </section>
 
       <section>
         <h2 className="text-base font-bold text-gray-900 mb-2">Per-topic density</h2>
         <ul className="space-y-1">
-          {cr.per_topic.map(t => (
-            <li key={t.topic} className="flex items-center gap-3 text-sm">
-              <span className={`w-48 truncate ${t.flagged ? 'text-yellow-700' : 'text-gray-700'}`}>
-                {t.flagged ? '⚠ ' : ''}{t.topic}
-              </span>
-              <div className="flex-1 h-2 bg-gray-100 rounded">
-                <div className="h-full rounded" style={{ width: `${(t.count / maxTopicCount) * 100}%`, backgroundColor: t.flagged ? '#F59E0B' : HERMES }} />
-              </div>
-              <span className="w-10 text-right text-gray-600">{t.count}</span>
-            </li>
-          ))}
+          {sortedTopics.map(t => {
+            const sentiment = topicSentiment.get(t.topic.trim().toLowerCase())
+            const dot = sentiment ? SENTIMENT_DOT[sentiment] : null
+            return (
+              <li key={t.topic} className="flex items-center gap-3 text-sm">
+                <span className={`w-48 truncate flex items-center gap-1.5 ${t.flagged ? 'text-yellow-700' : 'text-gray-700'}`}>
+                  {dot && (
+                    <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dot.color }} title={`Sentiment: ${dot.label}`} />
+                  )}
+                  <span className="truncate">{t.flagged ? '⚠ ' : ''}{t.topic}</span>
+                </span>
+                <div className="flex-1 h-2 bg-gray-100 rounded">
+                  <div className="h-full rounded" style={{ width: `${(t.count / maxTopicCount) * 100}%`, backgroundColor: t.flagged ? '#F59E0B' : HERMES }} />
+                </div>
+                <span className="w-10 text-right text-gray-600">{t.count}</span>
+              </li>
+            )
+          })}
         </ul>
+        {topicSentiment.size > 0 && (
+          <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400">
+            <span>Dot = topic sentiment:</span>
+            {(['positive', 'neutral', 'negative', 'mixed'] as const).map(s => (
+              <span key={s} className="inline-flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: SENTIMENT_DOT[s].color }} />{s}
+              </span>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -1012,9 +1092,19 @@ function CoverageTab({ recording, extractions, transcript }: { recording: Record
         {cr.flagged_count === 0 ? (
           <p className="text-sm text-gray-500">Nothing flagged — every extracted pair passed the curator.</p>
         ) : (
-          <p className="text-sm text-gray-700">
-            {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} flagged for review — shown with a yellow background and a flag reason on the Q&amp;A tab (filter by typology to find them).
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-gray-700">
+              {cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} the curator flagged for review — the same {cr.flagged_count} behind the <span className="font-medium">&ldquo;{cr.flagged_count} to review&rdquo;</span> badge on the Coverage tab and the <span className="font-medium">&ldquo;{cr.flagged_count} pair{cr.flagged_count === 1 ? '' : 's'} need review&rdquo;</span> alert on the project card.
+            </p>
+            <button
+              type="button"
+              onClick={onReviewFlagged}
+              className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-semibold text-white whitespace-nowrap"
+              style={{ backgroundColor: '#F59E0B' }}
+            >
+              Review {cr.flagged_count} flagged →
+            </button>
+          </div>
         )}
       </section>
 
