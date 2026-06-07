@@ -746,6 +746,112 @@ function EditLayer({ label, verbatim, ai, value, onChange, rows }: {
   )
 }
 
+// ── Segment audio player ─────────────────────────────────────────────────────
+// Plays just this pair's [start_sec, end_sec] slice of the stitched meeting audio
+// so a reviewer can listen while correcting the text. Clamps playback to the
+// segment, with replay / scrub-within-segment / speed. Signed URL via §4.12.
+function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
+  recordingId: string
+  startSec: number | null
+  endSec: number | null
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [url, setUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [pos, setPos] = useState(startSec ?? 0)
+  const [end, setEnd] = useState<number>(endSec ?? 0)
+  const [rate, setRate] = useState(1)
+
+  const start = startSec ?? 0
+  const hasWindow = typeof endSec === 'number' && endSec > start
+  const effEnd = end > start ? end : start + 1
+  const dur = Math.max(1, effEnd - start)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setError(null)
+    fetch(`/api/recordings/${recordingId}/audio`)
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d?.error || `audio ${r.status}`); return d })
+      .then(d => { if (!cancelled) { setUrl(d.url as string); setLoading(false) } })
+      .catch(e => { if (!cancelled) { setError(e instanceof Error ? e.message : 'audio unavailable'); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [recordingId])
+
+  const onLoaded = () => {
+    const a = audioRef.current; if (!a) return
+    if (!hasWindow) setEnd(a.duration || start + 1)   // no end timestamp → play to end of file
+    a.currentTime = start; setPos(start)
+  }
+  const onTime = () => {
+    const a = audioRef.current; if (!a) return
+    setPos(a.currentTime)
+    if (a.currentTime >= effEnd) { a.pause(); setPlaying(false) }
+  }
+  const toggle = () => {
+    const a = audioRef.current; if (!a) return
+    if (a.paused) {
+      if (a.currentTime < start || a.currentTime >= effEnd) a.currentTime = start
+      a.playbackRate = rate; void a.play(); setPlaying(true)
+    } else { a.pause(); setPlaying(false) }
+  }
+  const replay = () => { const a = audioRef.current; if (!a) return; a.currentTime = start; a.playbackRate = rate; void a.play(); setPlaying(true) }
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audioRef.current; if (!a) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+    a.currentTime = start + frac * dur; setPos(a.currentTime)
+  }
+  const cycleRate = () => {
+    const next = rate === 1 ? 1.25 : rate === 1.25 ? 1.5 : rate === 1.5 ? 2 : 1
+    setRate(next); if (audioRef.current) audioRef.current.playbackRate = next
+  }
+
+  const frac = Math.min(1, Math.max(0, (pos - start) / dur))
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
+        <LottieLoader size={22} /> Loading meeting audio…
+      </div>
+    )
+  }
+  if (error || !url) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
+        Audio not available for this meeting{error ? ` (${error})` : ''}.
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+      <audio ref={audioRef} src={url} preload="metadata" onLoadedMetadata={onLoaded} onTimeUpdate={onTime} onEnded={() => setPlaying(false)} className="hidden" />
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={toggle}
+          className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm" style={{ background: HERMES }}
+          title={playing ? 'Pause' : 'Play this answer'}>
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <button type="button" onClick={replay} className="shrink-0 text-gray-500 hover:text-gray-800 text-sm" title="Replay from the start of this answer">↺</button>
+        <div className="flex-1">
+          <div className="h-2 bg-gray-200 rounded-full cursor-pointer relative" onClick={seek}>
+            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${frac * 100}%`, background: HERMES }} />
+            <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white border-2 shadow" style={{ left: `${frac * 100}%`, borderColor: HERMES }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-400 font-mono mt-1">
+            <span>{formatTime(pos)}</span>
+            <span>{formatTime(effEnd)}</span>
+          </div>
+        </div>
+        <button type="button" onClick={cycleRate} className="shrink-0 text-[11px] font-semibold text-gray-500 hover:text-gray-800 w-9 text-center" title="Playback speed">{rate}×</button>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1">Listen to the meeting audio for this answer while you correct the text{hasWindow ? '' : ' (no timestamp on this pair — plays the full meeting)'}.</p>
+    </div>
+  )
+}
+
 // ── Edit modal: the 3-layer Q&A editor (§3.5d) ───────────────────────────────
 // Verbatim (locked, the record of truth) and the AI polished version are shown
 // read-only; the editable box is what becomes "of record for display". Saving
@@ -793,6 +899,9 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
       <div className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-base font-bold text-gray-900 mb-1">Edit this Q&amp;A for display</h2>
         <p className="text-xs text-gray-500 mb-4">Your edit becomes the version shown in the report, link, PDF, and deck. The verbatim and AI versions are kept — use “Revert to AI” to undo.</p>
+        <div className="mb-4">
+          <SegmentAudioPlayer recordingId={recordingId} startSec={extraction.start_sec} endSec={extraction.end_sec} />
+        </div>
         <div className="space-y-5">
           <EditLayer label="Question" verbatim={payload.question} ai={aiQ} value={editQ} onChange={setEditQ} rows={2} />
           <EditLayer label="Response" verbatim={payload.answer} ai={aiA} value={editA} onChange={setEditA} rows={5} />

@@ -1722,3 +1722,11 @@ Four owner items from reviewing the NOWOCATS Meeting 2 Coverage page (all in `Re
 4. **Direct path to flagged pairs**: a "Review {n} flagged →" button on Coverage jumps to the Q&A tab pre-filtered to a new **"⚠ Needs review {n}"** chip (one-shot, cleared on manual tab change).
 
 Spec RECORDINGS.md §5.4. tsc clean, 361 unit tests. NOT pushed. Remaining backlog: audio player in the edit pane + the missing Meeting-2 audio bug (audio cluster, next).
+
+### Town Hall: edit-pane audio player + "play segment" cross-org bug fix (2026-06-07)
+
+**Bug (item 6 — "play segment can't find the audio"):** traced read-only against prod — NOWOCATS Meeting 2's `stitched.mp3` is present and intact. Root cause: `GET /api/recordings/[id]/audio` paired the recording strictly with the **caller's** org and built the storage path from it, with **no platform-admin bypass** (the status/report routes have one). The recording is in org *Arjun Pilots* (`05fcdb2a`); the owner views it from the *Datanautix* admin org (`b72e9ee6`) → `(id, org_id)` mismatch → 404 "audio not available". Fix: use `getUserContext` + admin-org bypass, and build the signed path from the **recording's** org. No regeneration needed — the audio was never lost.
+
+**Item 5 — audio in the edit pane:** new `SegmentAudioPlayer` in `ReportClient.tsx`, embedded at the top of the Q&A edit modal. Fetches the signed URL (§4.12), plays only the pair's `[start_sec,end_sec]` slice (clamped), with play/pause, replay-segment, scrub-within-segment, and 1×–2× speed. Pairs without a timestamp play the full meeting. LottieLoader while the URL loads. So a reviewer listens to the source while correcting the text.
+
+Spec RECORDINGS.md §4.12 + §3.5d. tsc clean, 361 unit tests. **This completes the 6-item Coverage/audio backlog.** NOT pushed.

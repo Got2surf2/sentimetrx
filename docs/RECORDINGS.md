@@ -564,6 +564,8 @@ A reviewer hand-edits via the report's Q&A card **✎ Edit** pill → a modal sh
 
 **Audit trail:** every edit also stamps `edited_at`, `edited_by` (the user id) and `edited_by_name` (their display name at edit time) into the payload; all three clear together when the pair is fully reverted to AI. The report card shows "edited by {name} · {date}" next to the **Human-edited** badge.
 
+**Listen-while-editing:** the edit modal embeds a `SegmentAudioPlayer` (added 2026-06-07) scoped to the pair's `[start_sec, end_sec]` slice of the stitched audio (signed URL via §4.12) — play/pause, replay-segment, scrub-within-segment, and a 1×/1.25×/1.5×/2× speed toggle. Playback clamps to the segment; pairs without a timestamp play the full meeting. So the reviewer hears the source while correcting the transcription.
+
 ### 3.6 Coverage report
 
 After the analytical pass, compute:
@@ -839,7 +841,7 @@ Cost: `scope='all'` ≈ ~$1 (Opus + Sonnet on the full transcript, no ASR). `sco
 
 ### 4.12 `GET /api/recordings/[id]/audio` — signed URL for the stitched audio
 
-**Auth:** session cookie. Same-tenant `(id, org_id)` pair. Mints a short-TTL (1h) signed URL for `<org_id>/<recording_id>/audio/stitched.mp3` in the `recordings` bucket and returns `{ url, expires_in }`. Consumed by the report's `AudioModal` (§ 5.4). The TUS-uploaded source files are never exposed — only the canonical stitched mp3. Returns 404 if the object isn't present yet.
+**Auth:** session cookie. Loads the recording org-scoped, **with a platform-admin (admin-org) bypass** matching the status/report routes — a non-admin still pairs `(id, org_id)` so a bare id can't cross tenants. The signed URL path is built from the **recording's** org, not the caller's. (Bug fixed 2026-06-07: the route previously paired strictly on the caller's org and built the path from it, so a platform admin viewing another org's recording got a 404 "audio not available" even though `stitched.mp3` was present — that's why "play segment" failed on Arjun Pilots' NOWOCATS Meeting 2 viewed from the Datanautix admin org.) Mints a short-TTL (1h) signed URL for `<rec_org>/<recording_id>/audio/stitched.mp3` and returns `{ url, expires_in }`. Consumed by the report's segment players (§ 5.4, §3.5d). The TUS-uploaded source files are never exposed — only the canonical stitched mp3. Returns 404 if the object isn't present yet.
 
 ### 4.13 `POST /api/recordings/[id]/export/pptx` — PowerPoint deck (built 2026-06)
 

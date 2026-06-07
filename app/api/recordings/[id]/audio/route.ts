@@ -6,7 +6,8 @@
 // stitched mp3 at <org_id>/<recording_id>/audio/stitched.mp3 is exposed.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getUserContext } from '@/lib/userContext'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,29 +19,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!recording_id) return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
 
   const supabase = await createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('org_id')
-    .eq('id', user.id)
-    .single()
-  const org_id = userRow?.org_id as string | undefined
-  if (!org_id) return NextResponse.json({ error: 'org not found' }, { status: 403 })
+  const uc = await getUserContext(supabase)
+  if (!uc) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
 
-  // Pair (id, org_id) — bare id lookup with service role is a cross-tenant leak.
-  const { data: rec, error: rErr } = await service
-    .from('recordings')
-    .select('id, org_id')
-    .eq('id', recording_id)
-    .eq('org_id', org_id)
-    .single()
+  // Load the recording org-scoped — but platform admins (admin org) can reach any
+  // org's recording, matching the status/report routes. A non-admin still pairs
+  // (id, org_id) so a bare id can't cross tenants.
+  let recQ = service.from('recordings').select('id, org_id').eq('id', recording_id)
+  if (!uc.isAdminOrg) recQ = recQ.eq('org_id', uc.orgId)
+  const { data: rec, error: rErr } = await recQ.single()
   if (rErr || !rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const path = `${org_id}/${recording_id}/audio/stitched.mp3`
+  // Build the storage path from the RECORDING's org, not the caller's — otherwise
+  // an admin viewing another org's recording signs a path that doesn't exist.
+  const path = `${rec.org_id as string}/${recording_id}/audio/stitched.mp3`
   const { data: signed, error: sErr } = await service.storage
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_URL_TTL_SEC)
