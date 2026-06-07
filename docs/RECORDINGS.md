@@ -330,6 +330,45 @@ The schema config on the virtual recording dataset declares the appropriate `pri
 
 A recording dataset is a normal `datasets` row with `source='recording'`. It is added to a `collections` row the same way any other dataset is. This spec adds the missing `POST /api/collections/[id]/members` endpoint (see § 4.4) so the analyst can grow an existing collection by one click after the recording report is ready.
 
+### 2.8 Project setup, attribution & config versioning (sql/118, 2026-06)
+
+A Town Hall project can be **set up before the audio/video exists**. Two lifecycle states sit ahead of the upload pipeline:
+
+| status | meaning |
+|---|---|
+| `draft` | project being set up; not yet confirmed (reserved for autosave) |
+| `awaiting_media` | setup confirmed; no recording attached yet — the project waits for the "Add recording" action, which moves it to `uploading` and the normal pipeline takes over |
+
+Both are stable wait states, excluded from `recordings_status_active_idx` alongside `transcribed` and the terminal states.
+
+**Attribution + intake columns on `recordings`:**
+
+| column | type | notes |
+|---|---|---|
+| `analysis_org` | `text NOT NULL DEFAULT 'Datanautix'` | The org performing the analysis (consulting brand). Printed on report/deck. Distinct from `brand_tag` (the **client** brand). |
+| `analysts` | `jsonb` `[{name, member_id?}]` | Analyst(s) from `analysis_org`. `member_id` set when picked from the org roster, absent for free-text names. |
+| `objectives` | `jsonb` `{summary, questions:[]}` | Meeting objectives — AI-proposed from the uploaded deck/briefs at setup, then editable. **Injected into the synthesis pass** so the report answers what the client wanted to know. |
+| `setup_provenance` | `jsonb` `{agenda?,panel?,glossary?,objectives?}` | Source-document filename each pre-filled setup field came from. `{}` for hand-typed fields. |
+| `confidentiality_class` | `text` CHECK | `public \| internal \| client_confidential` (default) `\| restricted`. Stamped on exports. |
+| `signoff` | `jsonb` `{approved_by, approved_by_member_id?, approved_at, note?}` | Analyst sign-off; NULL until the report is approved for distribution. |
+| `analyzed_config_version` | `int` | The `recording_config_versions.version_number` whose snapshot produced the current `analysis_summary`. Drives the "Config vN" footer stamp. |
+
+**`recording_config_versions`** — config snapshot history for traceability. A row is written on **every analysis run** (`source='analysis'`) and whenever the user clicks **"Save version"** (`source='manual'`):
+
+| column | type | notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `recording_id` | uuid FK | parent recording |
+| `org_id` | uuid | denormalized; pairs with `id` on service-role reads |
+| `version_number` | int | 1-based, monotonic per recording (`UNIQUE(recording_id, version_number)`) |
+| `snapshot` | jsonb | full project config at snapshot time (`RecordingConfigSnapshot` in `lib/recordings/types.ts`) — name/session_type/setup_inputs/meeting_profile/presentation_outline/brand+agent/analysis_org/analysts/objectives/confidentiality_class |
+| `source` | text CHECK | `manual \| analysis` |
+| `change_note` | text | optional note on a manual save |
+| `created_by` | uuid | |
+| `created_at` | timestamptz | |
+
+RLS enabled with the standard org-scoped read policy.
+
 ---
 
 ## 3. Pipeline

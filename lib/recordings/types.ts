@@ -17,6 +17,8 @@ export type AsrStrategy = 'auto' | 'whisper' | 'deepgram' | 'hybrid'
 export type AsrVendor = 'whisper' | 'deepgram' | 'hybrid'
 
 export type RecordingStatus =
+  | 'draft'              // project being set up; no media attached yet (setup-before-media)
+  | 'awaiting_media'     // setup confirmed; awaiting the "Add recording" upload
   | 'uploading'
   | 'queued'
   | 'extracting'
@@ -71,6 +73,46 @@ export type SetupInputs =
   | InterviewSetupInputs
   | LectureSetupInputs
 
+// ── Analysis attribution + intake (sql/118) ──────────────────────────────────
+
+// An analyst from the analysis_org. member_id is set when the analyst is an app
+// user (picked from the org roster), absent when the name was typed free-text.
+export interface Analyst {
+  name: string
+  member_id?: string | null
+}
+
+// Meeting objectives — why this town hall is being analyzed. AI-proposed from the
+// uploaded deck/briefs at setup, then editable. Also injected into the synthesis
+// pass so the report answers what the client actually wanted to know.
+export interface MeetingObjectives {
+  summary: string
+  questions: string[]        // specific "questions we want answered"
+}
+
+// Which uploaded document each pre-filled setup field came from. Empty for fields
+// the user typed by hand. Keyed by the setup field name.
+export interface SetupProvenance {
+  agenda?: string            // source document filename
+  panel?: string
+  glossary?: string
+  objectives?: string
+}
+
+export type ConfidentialityClass =
+  | 'public'
+  | 'internal'
+  | 'client_confidential'
+  | 'restricted'
+
+// Analyst sign-off — set once a reviewer approves the report for distribution.
+export interface Signoff {
+  approved_by: string
+  approved_by_member_id?: string | null
+  approved_at: string        // ISO
+  note?: string | null
+}
+
 // ── DB rows ──────────────────────────────────────────────────────────────────
 
 export interface RecordingRow {
@@ -114,6 +156,16 @@ export interface RecordingRow {
   // catalog seeds this meeting's spelling correction. Both nullable.
   brand_tag: string | null
   underlying_agent_id: string | null
+
+  // Analysis attribution + intake (sql/118). analysis_org defaults to 'Datanautix'.
+  analysis_org: string
+  analysts: Analyst[]
+  objectives: MeetingObjectives | null
+  setup_provenance: SetupProvenance
+  confidentiality_class: ConfidentialityClass
+  signoff: Signoff | null
+  // The config version_number whose snapshot produced the current analysis_summary.
+  analyzed_config_version: number | null
 
   share_token: string | null
   share_enabled: boolean
@@ -384,4 +436,43 @@ export interface RecordingAnalysisSummary {
   decisions: Array<{ decision: string; topic?: string | null }>
   generated_at: string                               // ISO
   model: string                                      // e.g. 'claude-sonnet-4-6'
+}
+
+// ── Config version history (sql/118) ─────────────────────────────────────────
+//
+// A point-in-time snapshot of the project configuration. One row is written on
+// every analysis run (source='analysis') and whenever the user clicks "Save
+// version" (source='manual'). The recording's analyzed_config_version stamps
+// which snapshot produced the live analysis_summary, so any deliverable traces
+// back to the exact config that made it.
+
+// The subset of the recording config that's captured in a version snapshot.
+// Excludes pipeline state, costs, and share settings (not part of "the config").
+export interface RecordingConfigSnapshot {
+  name: string
+  session_type: SessionType
+  meeting_date: string | null
+  location: string | null
+  language: string
+  setup_inputs: SetupInputs | Record<string, unknown>
+  meeting_profile: MeetingProfile | null
+  presentation_outline: PresentationOutline | null
+  brand_tag: string | null
+  underlying_agent_id: string | null
+  analysis_org: string
+  analysts: Analyst[]
+  objectives: MeetingObjectives | null
+  confidentiality_class: ConfidentialityClass
+}
+
+export interface RecordingConfigVersionRow {
+  id: string
+  recording_id: string
+  org_id: string
+  version_number: number
+  snapshot: RecordingConfigSnapshot
+  source: 'manual' | 'analysis'
+  change_note: string | null
+  created_by: string | null
+  created_at: string
 }
