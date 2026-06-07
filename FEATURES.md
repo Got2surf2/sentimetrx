@@ -302,12 +302,13 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Run history logged to `entity_catalog_refresh` (before/after counts, sample size, schema-field selection)
 - See `docs/ANALYTICS.md § Entity Discovery & Catalog`
 
-### Per-Row Taxonomy (admin pilot)
-- 7-axis ABSA classifier (touchpoint, attribute, product, beverage, ambiance, context, outcome) with severity flag {normal, alert, crisis}
-- Closed-vocab structured-output prompt via Claude Haiku; per-row assertions stored in `dataset_row_taxonomy`
-- Admin-only side-by-side viewer at `/admin/taxonomy-pilot/[datasetId]` — verbatim · legacy tags · structured assertions
-- Driving use case: Ruth's Chris Steak House CX-tagging-replacement pilot (2026-05-27)
-- See `docs/DATA_SOURCES.md § 14 Per-Row Taxonomy`
+### Dimensions (taxonomy)
+- 7-axis ABSA classifier (touchpoint, attribute, product, beverage, ambiance, context, outcome) with severity flag {normal, alert, crisis}; closed-vocab keyword tier (no AI cost), per-row assertions
+- **In-app "Dimensions" sub-tab in TextMine** (shipped 2026-06-07): Entities-style axis pills → theme-card-family sub-dimension cards (★ rating + pos/neg sentiment + % of dimension); ⚠ Severity as an 8th pill opening alert cards; drill into the comments behind any sub-dimension; min-35 floor on sub-dimensions
+- **Per-field & multi-field, reactive**: classifies the selected open-end(s) (combined, like Themes), stored per `(row, field-key)` in `dataset_row_field_taxonomy`; selecting fields **auto-classifies** and the whole view updates (no button). The classifier dual-writes the legacy `dataset_row_taxonomy` so older consumers keep working
+- **Charts/Stats integration**: dimensions are synthetic `__dim_*` categorical fields in their own picker group; chart aggregates are per-field + filter-aware (view-level)
+- Admin side-by-side pilot viewer at `/admin/taxonomy-pilot/[datasetId]`; originated as the Ruth's Chris CX-tagging-replacement pilot (2026-05-27)
+- See `docs/TAXONOMY.md` (module spec), `docs/ANALYTICS.md`, `docs/DATA_SOURCES.md § 14`
 
 ### Full-Text Search (TextMine SearchPanel)
 - Two modes: plain `tsvector` full-text or AI-augmented synonym expansion + Claude re-rank
