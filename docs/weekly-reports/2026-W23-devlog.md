@@ -1653,3 +1653,11 @@ From owner testing (RC dataset). Three builds:
 **Themes**: already instant on field selection (client re-derive) — no change.
 
 **Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Dimensions overhaul SHIPPED to main
+
+Owner pushed the full Dimensions arc to `origin/main` from their machine (verified commits) and applied migrations `114–117` to prod. Shipped in this batch: the redesigned Dimensions tab (axis pills → sub-dimension cards → comment drill; Severity-as-pill; min-35; collapse-to-pills; "rows with text · % tagged"); per-field + multi-field + **auto-classify-on-selection** (dual-write keeps legacy consumers working); Charts Themes/Dimensions picker groups with short-label/verbose-hover; per-field + filter-aware chart dimension aggregates; the classified-field drill-text fix; and the favorite-star async-hydration fix.
+
+**Spec sync (this commit)**: updated the top-level `SPEC.md` (taxonomy section + Database Tables: legacy `dataset_row_taxonomy` vs per-field `dataset_row_field_taxonomy`) and `FEATURES.md` ("admin pilot" → shipped **Dimensions** feature) to match the now-live state. Module specs (`TAXONOMY.md` §3/§4/§4a, `ANALYTICS.md`, `DATA_SOURCES.md`) were kept current per-commit throughout.
+
+**Open follow-ups** (not built): dataset-card "N unclassified" nudge; auto-classify-on-upload for CSV/study; a `schema_migrations` ledger; an optional Charts field-selector; retiring legacy `dataset_row_taxonomy` once all consumers are per-field.
