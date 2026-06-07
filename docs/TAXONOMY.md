@@ -39,11 +39,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 - **Two tables, dual-written** (per-field landed 2026-06-06):
   - **`dataset_row_taxonomy`** (sql/088) — the **legacy single classification per row**,
-    UNIQUE `(dataset_id,row_id)`. Read by everything *except* the Dimensions tab:
-    Charts/Stats `__dim_*` fields (`tax_*` RPCs, sql/105/106), the theme-card / Theme-cloud
-    **Dimension chips** (`theme_dimension_counts`, sql/111), the Comments **dimension filter**
-    (`get_rows_by_filters`, sql/113), the Datanautix deck, and the admin pilot viewer. Last
-    classified field wins (field-agnostic), as before.
+    UNIQUE `(dataset_id,row_id)`. Still read by the theme-card / Theme-cloud **Dimension chips**
+    (`theme_dimension_counts`, sql/111), the Comments **dimension filter** (`get_rows_by_filters`,
+    sql/113), the Datanautix deck, and the admin pilot viewer (last classified field wins,
+    field-agnostic). **Charts/Stats `__dim_*` aggregates moved to per-field** as of `sql/115`
+    (the `tax_*` RPCs now read `dataset_row_field_taxonomy` for the dataset's primary classified
+    field, legacy fallback) — so charts match the Dimensions tab.
   - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, adds a
     `field` column so each open-ended field (e.g. a survey's Liked Most vs Liked Least) carries
     its own tags. Read by the **Dimensions tab**, which passes the ANALYZE field so the view

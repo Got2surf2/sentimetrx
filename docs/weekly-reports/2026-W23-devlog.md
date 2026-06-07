@@ -1595,3 +1595,15 @@ From owner testing (RC dataset). Three builds:
 - `components/analyze/ChartsModule.tsx` — the picker shows the short `DIM_AXIS_LABEL` (field `.label`) but the field item's hover `title` is the verbose `DIM_AXIS_LABEL_LONG[axis]`.
 
 **Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts). Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts dimensions go per-field (sql/115, per-field-first)
+
+**Why**: Owner — chart dimensions should be field-level (view-level) like the Dimensions tab, not whole-dataset off the legacy table. Chose per-field first (filters later). Charts is a separate page from TextMine with NO shared analyzed-field state, so rather than add a field selector, the RPCs auto-resolve the field.
+
+**What changed** (`sql/115_taxonomy_aggregates_per_field.sql` — owner re-runs; requires 114): the 4 taxonomy aggregate RPCs (`taxonomy_sub_counts/group_stats/crosstab/date_series`) now read **`dataset_row_field_taxonomy`** for the dataset's **primary classified field** (new helper `taxonomy_primary_field` = the field with the most tagged rows), falling back to legacy `dataset_row_taxonomy` when a dataset has no per-field rows. **Signatures unchanged** (field resolved inside) → the `/aggregate` route and ChartsModule need NO changes; re-running the migration is the whole change. CREATE OR REPLACE only (no DROP).
+
+**Open follow-up**: chart dimensions don't yet honor the view's **active filters** (whole-dataset for the primary field). That's the "filters" half — would pass the filtered row-id set to the RPCs (`p_row_ids`) per the `get_rows_by_filters` precedent.
+
+**Verify**: no app/TS change (SQL only) — typecheck/tests unaffected (461 pass as of last run). **NOT applied / unverified vs DB** (no DB access here) — owner applies `sql/115`. Specs TAXONOMY.md §3 + ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+**Apply (owner)**: `supabase db query --linked --file sql/115_taxonomy_aggregates_per_field.sql`
