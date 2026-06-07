@@ -37,13 +37,25 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 3. Persistence + roll-up
 
-- **Table** `dataset_row_taxonomy` (sql/088): per-axis `text[]` columns + `alert_tags`
-  + `assertions` jsonb + `raw_legacy_tags`. RLS enabled, org-scoped SELECT
-  (`dataset_row_taxonomy_org_read`); writes are service-role only. UNIQUE
-  `(dataset_id,row_id)`; GIN indexes on every axis array.
+- **Two tables, dual-written** (per-field landed 2026-06-06):
+  - **`dataset_row_taxonomy`** (sql/088) — the **legacy single classification per row**,
+    UNIQUE `(dataset_id,row_id)`. Read by everything *except* the Dimensions tab:
+    Charts/Stats `__dim_*` fields (`tax_*` RPCs, sql/105/106), the theme-card / Theme-cloud
+    **Dimension chips** (`theme_dimension_counts`, sql/111), the Comments **dimension filter**
+    (`get_rows_by_filters`, sql/113), the Datanautix deck, and the admin pilot viewer. Last
+    classified field wins (field-agnostic), as before.
+  - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, adds a
+    `field` column so each open-ended field (e.g. a survey's Liked Most vs Liked Least) carries
+    its own tags. Read by the **Dimensions tab**, which passes the ANALYZE field so the view
+    **reacts to the Liked Most / Liked Least toggle** like TextMine themes. Same RLS pattern
+    (org-scoped SELECT, service-role writes), same GIN indexes per axis.
+  - The classifier **`dualUpsert`s** every classified row into both (base row → legacy;
+    base + `field` → per-field), so existing consumers keep working unchanged while the
+    Dimensions tab gets per-field reactivity. The new table is additive — the migration never
+    touches the live `dataset_row_taxonomy`, so the running prod app is unaffected.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
   pages a dataset's rows, runs the keyword tier, projects assertions into the axis
-  columns, upserts idempotently. Pairs `(dataset_id, org_id)` on every write
+  columns, `dualUpsert`s idempotently. Pairs `(dataset_id, org_id)` on every write
   (multi-tenancy invariant). **Strips NUL/C0/surrogate chars** from text — Postgres
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
@@ -97,26 +109,31 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   button that loops `POST /api/datasets/[datasetId]/taxonomy` (`{ cursor, textField }` body
   → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row chunks, `core` overlay,
   org-gated like the GET) with a live progress bar until `done`. Keyword-tier → no AI cost;
-  tags are **saved per row** in `dataset_row_taxonomy` (idempotent on `(dataset_id,row_id)`)
-  so the tab just reads them back — classification is a one-time pass, never re-run on view.
-  **Field follows ANALYZE** (no separate picker, as of 2026-06-06): the classified field is
-  the parent TextMine **ANALYZE** selection (`effectiveFields[0]` — e.g. Liked Most), passed
-  in as `textField`/`fieldLabel` props. This retires the old redundant "Field to classify"
-  dropdown and guarantees the classified field == the field being themed (so the "rows with
-  text" base reconciles with the metric strip). The POST passes it through to
-  `classifyDatasetKeyword`'s `textField` (a JSONB key lookup — an unknown field yields no
-  matches, never an error). `detectTextFields` still runs server-side (GET returns
-  `textFields[]`/`defaultField`) but the UI no longer renders a picker.
+  tags are **saved per row+field** in `dataset_row_field_taxonomy` (idempotent) so the tab
+  reads them back — classification is a one-time pass, never re-run on view.
+  **Per-field & reactive** (no separate picker, as of 2026-06-06): the view is scoped to the
+  parent TextMine **ANALYZE** selection (`effectiveFields[0]` — e.g. Liked Most), passed in as
+  `textField`/`fieldLabel`. The GET takes `?field=` and the tab **refetches when you toggle
+  Liked Most ↔ Liked Least**, so Dimensions reacts to the open-end like themes do (each field
+  has its own tags in `dataset_row_field_taxonomy`). This retires the old redundant
+  "Field to classify" dropdown. The POST passes the field through to `classifyDatasetKeyword`'s
+  `textField` (a JSONB key lookup — unknown field ⇒ no matches, never an error).
+  **Reconciled denominator**: the GET returns `rowsWithText` (`dataset_rows_with_text_count`
+  RPC = rows with text in this field) and the header reads "**N rows with text · X% tagged**"
+  (X = `withSignal/rowsWithText`) — so it lines up with the metric strip's "records" instead
+  of the old misleading "N reviews classified · 50% with a signal" (which counted blank rows).
+  `detectTextFields` still runs server-side but the UI no longer renders a picker.
   **No prominent Re-classify** (removed 2026-06-06): re-classification overwrites saved tags
   and is expensive, so it is *not* a header button. Keeping new data tagged belongs at the
   dataset level — auto-classify-on-sync already does this for previously-classified Google
   Reviews datasets (`classifyPendingRows`); extending it to CSV/study uploads + a
   "N unclassified rows" dataset-card nudge is the planned model (see §6).
-  **Drift nudge (in-tab)**: the GET now returns `totalRows` (dataset row_count); when
-  `totalRows > classifiedRows` the populated view shows a contextual amber banner —
-  "N rows added since this was last classified" + a **"Classify N new rows"** button that
-  POSTs `{ pendingOnly: true, textField }` → `classifyPendingRows` (tags ONLY the untagged
-  rows, non-destructive). This is the drift-triggered, in-context replacement for the old
+  **Drift nudge (in-tab)**: when `rowsWithText > classifiedRows` (rows with text in this field
+  that aren't tagged yet) the populated view shows a contextual amber banner —
+  "N {field} rows aren't tagged yet" + a **"Classify N new rows"** button that POSTs
+  `{ pendingOnly: true, textField }` → `classifyPendingRows` (per-field pending RPC
+  `dataset_rows_pending_field_taxonomy`; tags ONLY the untagged rows, non-destructive,
+  dual-writes both tables). This is the drift-triggered, in-context replacement for the old
   always-present Re-classify button (a dataset-card version is the follow-up).
   **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
   axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);

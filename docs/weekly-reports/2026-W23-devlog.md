@@ -1528,3 +1528,20 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Known follow-ups surfaced by owner testing (NOT yet addressed — see next)**: (1) Dimensions is NOT field-reactive — switching the ANALYZE open-end doesn't change it, because it reads persisted per-row tags (one classification), not re-derived per field like TextMine. (2) "reviews classified" (all rows incl. blanks) reads higher than "records" (rows with text) — denominator still needs the agreed relabel/align. Both point to a taxonomy field-model decision (classify all open-ends dataset-level vs per-field reactive).
 
 **Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: per-field & reactive (dual-write new table)
+
+**Why**: Owner testing exposed two linked issues: (1) switching the ANALYZE open-end (Liked Most ↔ Least) didn't change Dimensions — it read one field-agnostic classification; (2) "reviews classified" (all rows incl. blanks) read higher than "records" (rows with text). Both stem from the single-classification-per-row model. Owner chose **per-field, reactive**, with the **dual-write** approach to avoid breaking the ~8 other consumers that read the legacy table.
+
+**What changed**:
+- **`sql/114`** (NEW, additive — owner applies to prod): `dataset_row_field_taxonomy` keyed `(dataset_id,row_id,field)` (mirror of 088 + `field`, RLS + org SELECT + GIN indexes). Plus RPCs `dataset_rows_pending_field_taxonomy` (per-field pending) and `dataset_rows_with_text_count` (the reconciling denominator).
+- **`lib/taxonomyClassify.ts`** — new `dualUpsert`: every classified row written to BOTH the legacy `dataset_row_taxonomy` (base, `(dataset_id,row_id)` — keeps Charts/Stats `__dim_*`, theme-card chips, Comments dimension filter, deck, admin viewer working unchanged) AND `dataset_row_field_taxonomy` (base + `field`). `classifyPendingRows` now uses the per-field pending RPC.
+- **`lib/taxonomyRollup.ts`** — `computeTaxonomyRollup` takes `field`, reads the per-field table filtered by it.
+- **`app/api/datasets/[id]/taxonomy/route.ts`** — GET takes `?field=`, returns `rowsWithText` (denominator) + `field`; POST/pendingOnly unchanged. **rows route** drill scoped by `?field=`.
+- **`components/analyze/TaxonomyModule.tsx`** — passes the ANALYZE field to GET + drill; **refetches on field change** (reactive); header now "N rows with text · X% tagged" (reconciles with the metric strip); drift nudge based on `rowsWithText - classifiedRows`.
+- **`lib/reviewSync.ts`** — auto-classify guard still reads the legacy table (the historical opt-in record); `classifyPendingRows` dual-writes so it backfills the per-field table over syncs.
+- **`scripts/taxonomy-classify.ts`** — rollup call passes `field`. **Test** `classifyPendingRows.test.ts` updated for dual-write.
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); **461 tests pass**. **NOT applied to prod / not verified against the DB** — I have no DB access in this container (no Supabase CLI, no creds). Owner applies `sql/114` then re-classifies per field to populate the new table. Specs TAXONOMY.md §3/§4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
+
+**Apply command (owner, local)**: `supabase db query --linked --file sql/114_dataset_row_field_taxonomy.sql`

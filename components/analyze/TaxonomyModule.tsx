@@ -23,7 +23,9 @@ interface Rollup {
   alertRows: number
   textFields: TextField[]
   defaultField: string | null
-  totalRows: number | null  // dataset row count — for drift detection (rows added since classify)
+  totalRows: number | null     // dataset row count
+  rowsWithText: number         // rows with text in the analyzed field — the reconciling denominator
+  field: string                // the field this rollup was computed for
 }
 
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
@@ -117,12 +119,13 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     if (!drill) { setDrillData(null); return }
     let alive = true
     setDrillLoading(true); setDrillData(null); setExpanded(new Set())
-    fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}`)
+    const fieldQs = textField ? `&field=${encodeURIComponent(textField)}` : ''
+    fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}${fieldQs}`)
       .then(r => r.json())
       .then(d => { if (alive) { setDrillData({ count: d.count ?? 0, comments: d.comments ?? [] }); setDrillLoading(false) } })
       .catch(() => { if (alive) { setDrillData({ count: 0, comments: [] }); setDrillLoading(false) } })
     return () => { alive = false }
-  }, [drill, datasetId])
+  }, [drill, datasetId, textField])
 
   // Download the open modal's comments as a CSV (rating, date, comment, evidence).
   const exportCsv = useCallback(() => {
@@ -149,7 +152,9 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/datasets/${datasetId}/taxonomy`)
+      // Per-field: pass the ANALYZE field so the rollup reacts to the toggle.
+      const qs = textField ? `?field=${encodeURIComponent(textField)}` : ''
+      const r = await fetch(`/api/datasets/${datasetId}/taxonomy${qs}`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
       const j: Rollup = await r.json()
       setData(j)
@@ -159,7 +164,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
     } finally {
       setLoading(false)
     }
-  }, [datasetId])
+  }, [datasetId, textField])
 
   useEffect(() => { void load() }, [load])
 
@@ -256,8 +261,9 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Dimensions</h2>
         <div style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
-          <strong style={{ color: NAVY }}>{data.classifiedRows.toLocaleString()}</strong> reviews classified
-          {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}% with a signal
+          {fieldLabel && <>Field: <strong style={{ color: NAVY }}>{fieldLabel}</strong> · </>}
+          <strong style={{ color: NAVY }}>{(data.rowsWithText || data.classifiedRows).toLocaleString()}</strong> rows with text
+          {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.rowsWithText || data.classifiedRows))}% tagged
           {data.overallAvgRating != null && <> · <span style={{ color: ratingColor(data.overallAvgRating) || NAVY, fontWeight: 700 }}>★ {data.overallAvgRating.toFixed(1)}</span> avg rating</>}
           {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
         </div>
@@ -267,12 +273,14 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           Classifies just the NEW rows (non-destructive); this is the contextual,
           drift-triggered replacement for the old always-present Re-classify button. */}
       {(() => {
-        const pending = Math.max(0, (data.totalRows ?? 0) - data.classifiedRows)
+        // Pending = rows WITH TEXT in this field that don't have tags yet (the
+        // actionable count — blank rows are never classifiable, so exclude them).
+        const pending = Math.max(0, (data.rowsWithText || 0) - data.classifiedRows)
         if (pending <= 0 || !textField) return null
         return (
           <div style={{ marginBottom: 20, padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: '#92400e' }}>
-              ⚠ <strong>{pending.toLocaleString()}</strong> row{pending === 1 ? '' : 's'} added since this was last classified — their dimensions aren’t tagged yet.
+              ⚠ <strong>{pending.toLocaleString()}</strong> {fieldLabel || ''} row{pending === 1 ? '' : 's'} aren’t tagged yet (new since the last classify).
             </span>
             <button
               onClick={() => runClassifier(true)}

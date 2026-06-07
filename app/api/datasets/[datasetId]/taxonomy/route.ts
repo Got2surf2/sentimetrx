@@ -92,19 +92,35 @@ async function gateDataset(datasetId: string, select: string) {
   return { dataset: dataset as any }
 }
 
-export async function GET(_req: Request, props: Params) {
+export async function GET(req: Request, props: Params) {
   const { datasetId } = await props.params
   const gate = await gateDataset(datasetId, 'org_id, row_count')
   if (gate.error) return gate.error
+  const orgId = gate.dataset.org_id as string
+  const totalRows = (gate.dataset.row_count as number) ?? null
+
+  // Dimensions are per open-ended field — the client passes the ANALYZE field so
+  // the rollup reacts to the Liked Most / Liked Least toggle.
+  const field = (new URL(req.url).searchParams.get('field') || '').trim()
 
   const service = createServiceRoleClient()
-  const [rollup, fields] = await Promise.all([
-    computeTaxonomyRollup({ service, datasetId, orgId: gate.dataset.org_id as string }),
-    detectTextFields(service, datasetId),
+  const fields = await detectTextFields(service, datasetId)
+
+  // No field selected → nothing to roll up; the UI shows the "pick a field" state.
+  if (!field) {
+    return NextResponse.json({
+      classifiedRows: 0, withSignal: 0, overallAvgRating: null, axes: [], subs: [], alerts: [], alertRows: 0,
+      ...fields, totalRows, rowsWithText: 0, field: '',
+    })
+  }
+
+  const [rollup, rwt] = await Promise.all([
+    computeTaxonomyRollup({ service, datasetId, orgId, field }),
+    service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_field: field }),
   ])
-  // totalRows lets the tab detect drift (rows added since the last classify) and
-  // surface a contextual "classify the new rows" nudge — not a permanent button.
-  return NextResponse.json({ ...rollup, ...fields, totalRows: (gate.dataset.row_count as number) ?? null })
+  // rowsWithText = the reconciling denominator (rows with text in THIS field) — the
+  // header reads "N rows with text · X% tagged" so it lines up with the metric strip.
+  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText: Number(rwt.data ?? 0), field })
 }
 
 export async function POST(req: Request, props: Params) {

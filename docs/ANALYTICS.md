@@ -398,13 +398,18 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
   `components/analyze/TaxonomyModule.tsx`: a **Themes-scale header** (an `<h2>` + a one-line stat
-  summary — reviews classified · % with a signal · ★ avg rating · flagged — replacing the old chunky
-  KPI cards), then a **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`):
+  summary — **N rows with text · X% tagged** · ★ avg rating · flagged — replacing the old chunky
+  KPI cards and the misleading "reviews classified / % with a signal" denominator), then a
+  **pills + cards** layout (display redesigned 2026-06-06 — `TAXONOMY.md §4a`):
   the 7 axes are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green
   ramp from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
   ★ rating + pos/neg sentiment bar + the sub's **share of its dimension** `sub.count/axis.count` /
-  count; all %s rounded). A **drift nudge** (amber banner) appears when the GET's `totalRows` exceeds
-  `classifiedRows` — "N rows added since last classified · Classify N new rows" → POSTs
+  count; all %s rounded). The view is now **per-field & reactive**: tags are stored per
+  `(dataset_id,row_id,field)` in `dataset_row_field_taxonomy` (sql/114) and the GET takes `?field=`,
+  so toggling Liked Most ↔ Liked Least **re-rolls the view for that field** (the classifier
+  dual-writes the legacy `dataset_row_taxonomy` too, so Charts/Stats `__dim_*`, theme-card chips, and
+  the Comments dimension filter keep working). A **drift nudge** (amber banner) appears when
+  `rowsWithText > classifiedRows` — "N {field} rows aren't tagged yet · Classify N new rows" → POSTs
   `{ pendingOnly: true }` (`classifyPendingRows`, tags only untagged rows). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
   alert) now rides on the ⚠ Severity pill, not a KPI card; the per-type alert counts are *per type*, so
   they can sum to MORE than `alertRows` when a review hits more than one (Cheddar's: 79

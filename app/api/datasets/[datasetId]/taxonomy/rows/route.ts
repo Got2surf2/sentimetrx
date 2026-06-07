@@ -82,14 +82,18 @@ export async function GET(req: Request, props: Params) {
   const axis  = (url.searchParams.get('axis')  || '').trim()
   const sub   = (url.searchParams.get('sub')   || '').trim()
   const alert = (url.searchParams.get('alert') || '').trim()
+  const field = (url.searchParams.get('field') || '').trim()
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '100', 10) || 100, 1), 200)
 
   const service = createServiceRoleClient()
   let q = service
-    .from('dataset_row_taxonomy')
+    .from('dataset_row_field_taxonomy')
     .select('row_id, assertions', { count: 'exact' })
     .eq('dataset_id', datasetId)
     .eq('org_id', orgIdForRead)
+  // Scope to the analyzed field's tags (per-field Dimensions). Older callers
+  // without a field still work (returns across fields) but the UI always sends it.
+  if (field) q = q.eq('field', field)
 
   let label: string
   if (alert) {
