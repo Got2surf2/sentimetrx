@@ -42,6 +42,7 @@ import type {
   RecordingTopicSummary,
   RecordingTopicExchange,
   EntityMap,
+  MeetingObjectives,
 } from '@/lib/recordings/types'
 import { glossaryFromEntities } from '@/lib/recordings/entities'
 import { tightenSpansFromTranscript } from '@/lib/recordings/transcriptRoles'
@@ -66,6 +67,8 @@ export interface AnalyzeInput {
   topicScopedTo?: string
   /** §3.5b confirmed entity map — its canonicals seed the polish glossary. */
   entity_map?: EntityMap | null
+  /** §2.8 meeting objectives — steer the synthesis pass to answer them. */
+  objectives?: MeetingObjectives | null
 }
 
 export interface AnalyzeResult {
@@ -337,7 +340,7 @@ async function synthesizeQa(
 
   let resp
   try {
-    const { system, userPrompt } = buildQaSynthesisPrompt({ setup, pairs, topics, instructions: input.instructions })
+    const { system, userPrompt } = buildQaSynthesisPrompt({ setup, pairs, topics, instructions: input.instructions, objectives: input.objectives })
     resp = await callAI({
       tier: 'advanced',
       modelOverride: SONNET_MODEL,

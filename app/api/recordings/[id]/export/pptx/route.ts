@@ -29,7 +29,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, analysis_summary, proceedings_summary, meeting_profile, source_duration_sec')
+    .select('id, org_id, name, meeting_date, location, status, analysis_summary, proceedings_summary, meeting_profile, source_duration_sec, analysis_org, analysts, objectives, confidentiality_class, signoff, analyzed_config_version')
     .eq('id', recording_id)
     .single()
   // 404 (not 403) on cross-org so we don't confirm the row exists. THE gate.
@@ -47,10 +47,17 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     .eq('org_id', rec.org_id)
     .order('sort_order', { ascending: true })
 
+  const r = rec as Record<string, any>
   const buf = await buildRecordingDeck({
     name: rec.name,
     meeting_date: rec.meeting_date,
     location: rec.location,
+    analysis_org: r.analysis_org ?? null,
+    analysts: (r.analysts ?? []) as Array<{ name: string }>,
+    objectives: (r.objectives ?? null) as { summary: string; questions: string[] } | null,
+    confidentiality_class: r.confidentiality_class ?? null,
+    signoff: (r.signoff ?? null) as { approved_by: string; approved_at?: string | null } | null,
+    config_version: (r.analyzed_config_version ?? null) as number | null,
     analysis_summary: (rec.analysis_summary ?? null) as any,
     proceedings_summary: (rec.proceedings_summary ?? null) as any,
     meeting_profile: (rec.meeting_profile ?? null) as any,

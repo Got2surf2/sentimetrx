@@ -34,6 +34,13 @@ export interface RecordingForPdf {
   analysis_summary: unknown
   entity_map: unknown
   source_duration_sec: number | null
+  // Attribution (§2.8) — optional; rendered in the PDF header when present.
+  analysis_org?: string | null
+  analysts?: Array<{ name: string }>
+  objectives?: { summary: string; questions: string[] } | null
+  confidentiality_class?: string | null
+  signoff?: { approved_by: string; approved_at?: string | null } | null
+  analyzed_config_version?: number | null
 }
 
 // Common Chrome/Chromium locations for local dev (macOS + Linux).
@@ -94,6 +101,12 @@ export async function renderRecordingReportPdf(
     entityMap: (rec.entity_map ?? null) as EntityMap | null,
     includeTranscript,
     source_duration_sec: rec.source_duration_sec ?? null,
+    analysis_org: rec.analysis_org ?? null,
+    analysts: rec.analysts ?? [],
+    objectives: rec.objectives ?? null,
+    confidentiality_class: rec.confidentiality_class ?? null,
+    signoff: rec.signoff ?? null,
+    config_version: rec.analyzed_config_version ?? null,
   })
 
   const puppeteer = (await import('puppeteer-core')).default

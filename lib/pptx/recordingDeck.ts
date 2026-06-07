@@ -42,6 +42,13 @@ export interface RecordingDeckInput {
   name: string
   meeting_date: string | null
   location: string | null
+  // Analysis attribution + intake (§2.8) — printed on the title slide / footer.
+  analysis_org?: string | null            // consulting brand, default Datanautix
+  analysts?: Array<{ name: string }>      // analyst names
+  objectives?: { summary: string; questions: string[] } | null
+  confidentiality_class?: string | null   // public | internal | client_confidential | restricted
+  signoff?: { approved_by: string; approved_at?: string | null } | null
+  config_version?: number | null          // analyzed_config_version, for the provenance stamp
   analysis_summary: RecordingAnalysisSummary | null
   proceedings_summary?: ProceedingsSummary | null   // presentation overview (meeting tool)
   meeting_profile?: MeetingProfile | null
@@ -72,10 +79,10 @@ function logoRight(slide: any) {
   )
 }
 
-function footer(slide: any, pptx: any, name: string) {
+function footer(slide: any, pptx: any, name: string, classification = 'Proprietary and Confidential') {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal, transparency: 62 }, line: { width: 0 } })
   slide.addText('datanautix.com  ·  ' + name, { x: PAD, y: FY - 0.04, w: W * 0.5, h: 0.3, fontSize: 12, color: DN.slate, valign: 'middle', wrap: false })
-  slide.addText('Proprietary and Confidential', { x: W * 0.5 - PAD, y: FY - 0.04, w: W * 0.5, h: 0.3, fontSize: 12, color: DN.slate, valign: 'middle', align: 'right', wrap: false })
+  slide.addText(classification, { x: W * 0.5 - PAD, y: FY - 0.04, w: W * 0.5, h: 0.3, fontSize: 12, color: DN.slate, valign: 'middle', align: 'right', wrap: false })
 }
 
 function kpiCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, valColor = DN.navy) {
@@ -139,6 +146,14 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   pptx.title = `${input.name} — Q&A Session Report`
 
   const name = input.name || 'Q&A Session'
+  // Attribution / distribution (§2.8) for the title slide + footer.
+  const CONF_LABEL: Record<string, string> = {
+    public: 'Public', internal: 'Internal — Not for Distribution',
+    client_confidential: 'Confidential — Client Only', restricted: 'Restricted',
+  }
+  const classification = CONF_LABEL[input.confidentiality_class ?? ''] ?? 'Proprietary and Confidential'
+  const analystStr = (input.analysts ?? []).map(a => a.name).filter(Boolean).join(', ')
+  const preparedBy = `Prepared by ${analystStr ? analystStr + '  ·  ' : ''}${input.analysis_org || 'Datanautix'}${input.config_version != null ? `  ·  Config v${input.config_version}` : ''}`
   const summary = input.analysis_summary
   const proceedings = input.proceedings_summary || null
   const hasPresentation = !!proceedings && (!!proceedings.overview || (proceedings.items?.length ?? 0) > 0)
@@ -203,8 +218,21 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     input.location || null,
   ].filter(Boolean).join('  ·  ')
   if (metaBits) s1.addText(metaBits, { x: PAD, y: 3.6, w: W - PAD * 2, h: 0.5, fontSize: 14, color: DN.slate })
+  s1.addText(preparedBy, { x: PAD, y: 4.05, w: W - PAD * 2, h: 0.4, fontSize: 12, color: DN.tealLight, valign: 'middle' })
   if (summary?.headline) {
-    s1.addText(summary.headline, { x: PAD, y: 4.5, w: W - PAD * 2, h: 1.0, fontSize: 14, color: DN.slate, valign: 'top', wrap: true })
+    s1.addText(summary.headline, { x: PAD, y: 4.55, w: W - PAD * 2, h: 1.0, fontSize: 14, color: DN.slate, valign: 'top', wrap: true })
+  }
+  // Objectives (§2.8) — what the analysis set out to answer.
+  if (input.objectives?.summary) {
+    s1.addText('OBJECTIVE', { x: PAD, y: 5.65, w: W - PAD * 2, h: 0.24, fontSize: 11, bold: true, color: DN.slate, charSpacing: 1.0 })
+    s1.addText(trunc(input.objectives.summary, 220), { x: PAD, y: 5.92, w: W - PAD * 2, h: 0.55, fontSize: 12, italic: true, color: DN.slate, valign: 'top', wrap: true })
+  }
+  // Sign-off stamp (bottom-left, opposite the wordmark).
+  if (input.signoff?.approved_by) {
+    s1.addText(
+      `Reviewed & approved by ${input.signoff.approved_by}${input.signoff.approved_at ? ' · ' + new Date(input.signoff.approved_at).toLocaleDateString() : ''}`,
+      { x: PAD, y: H - 0.8, w: W - 3.2, h: 0.5, fontSize: 11, color: DN.green, valign: 'middle' },
+    )
   }
   s1.addText(
     [
@@ -239,7 +267,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
         ly += 0.42
       }
     }
-    footer(ov, pptx, name)
+    footer(ov, pptx, name, classification)
 
     // Detail slides: 2 item cards per slide.
     for (let i = 0; i < items.length; i += 2) {
@@ -268,7 +296,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
           }
         }
       }
-      footer(s, pptx, name)
+      footer(s, pptx, name, classification)
     }
   }
 
@@ -294,7 +322,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     kpiCard(s, pptx, PAD + (kpiW + 0.3) * 2, kpiY, kpiW, 1.2, String(actionItems.length), 'Action Items')
     kpiCard(s, pptx, PAD + (kpiW + 0.3) * 3, kpiY, kpiW, 1.2, cap(summary.sentiment_overall), 'Overall Tone', sentColor(summary.sentiment_overall))
 
-    footer(s, pptx, name)
+    footer(s, pptx, name, classification)
   }
 
   // ── Slide 3: Sentiment overview ──
@@ -339,7 +367,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
         lx += cardW + 0.3
       }
 
-      footer(s, pptx, name)
+      footer(s, pptx, name, classification)
     }
   }
 
@@ -377,7 +405,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
       s.addText(t.label, { x: PAD + (t.pct / 100) * barW - 0.4, y: axisY, w: 0.8, h: 0.22, fontSize: 9, color: DN.slate, align: 'center' })
     }
     s.addText('Each block is a Q&A pair, placed + sized by when it occurred in the meeting.', { x: PAD, y: axisY + 0.35, w: W - PAD * 2, h: 0.3, fontSize: 10, italic: true, color: DN.slate })
-    footer(s, pptx, name)
+    footer(s, pptx, name, classification)
   }
 
   // ── Slide 4+: Conversation themes (2 cards / slide) ──
@@ -427,7 +455,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
       }
     }
 
-    footer(s, pptx, name)
+    footer(s, pptx, name, classification)
   }
 
   // ── Slide: Action items & decisions ──
@@ -482,7 +510,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     // keep colH referenced for layout intent
     void colH
 
-    footer(s, pptx, name)
+    footer(s, pptx, name, classification)
   }
 
   // ── Section divider: Appendix ──
@@ -540,7 +568,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     s.addText('RESPONSE' + (qa.panelist_name ? '  ·  ' + qa.panelist_name : ''), { x: PAD + 0.25, y: aY + 0.12, w: W - PAD * 2 - 0.5, h: 0.3, fontSize: 12, bold: true, color: DN.orange, charSpacing: 1 })
     s.addText(qAnswer, { x: PAD + 0.25, y: aY + 0.45, w: W - PAD * 2 - 0.5, h: aH - 0.6, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.1 })
 
-    footer(s, pptx, name)
+    footer(s, pptx, name, classification)
   })
 
   const raw = await pptx.write({ outputType: 'nodebuffer' })

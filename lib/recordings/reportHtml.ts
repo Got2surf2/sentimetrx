@@ -68,6 +68,13 @@ export interface TownHallReportInput {
   includeTranscript: boolean
   /** Meeting length — anchors the timeline bar; falls back to last pair end. */
   source_duration_sec?: number | null
+  /** Analysis attribution (§2.8) — printed in the header when present. */
+  analysis_org?: string | null
+  analysts?: Array<{ name: string }>
+  objectives?: { summary: string; questions: string[] } | null
+  confidentiality_class?: string | null
+  signoff?: { approved_by: string; approved_at?: string | null } | null
+  config_version?: number | null
 }
 
 // One Q&A card — mirrors the /th page's question/response block.
@@ -136,6 +143,21 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
   }
 
   const meta = [fmtDate(input.meeting_date), input.location].filter(Boolean).join('  ·  ')
+  // Attribution line (§2.8): prepared-by + analysis org + config version + sign-off.
+  const CONF_LABEL: Record<string, string> = {
+    public: 'Public', internal: 'Internal — Not for Distribution',
+    client_confidential: 'Confidential — Client Only', restricted: 'Restricted',
+  }
+  const analystStr = (input.analysts ?? []).map(a => a.name).filter(Boolean).join(', ')
+  const preparedBits = [
+    `Prepared by ${analystStr ? esc(analystStr) + ' · ' : ''}${esc(input.analysis_org || 'Datanautix')}`,
+    input.config_version != null ? `Config v${input.config_version}` : null,
+    input.signoff?.approved_by ? `Approved by ${esc(input.signoff.approved_by)}${input.signoff.approved_at ? ' on ' + fmtDate(input.signoff.approved_at) : ''}` : null,
+    input.confidentiality_class ? (CONF_LABEL[input.confidentiality_class] ?? null) : null,
+  ].filter(Boolean).join('  ·  ')
+  const objHtml = (input.objectives?.summary || (input.objectives?.questions?.length ?? 0) > 0)
+    ? `<div class="objectives"><div class="label">Objectives</div>${input.objectives?.summary ? `<p style="margin:0 0 4px">${esc(input.objectives.summary)}</p>` : ''}${(input.objectives?.questions?.length ?? 0) > 0 ? `<ul style="margin:0;padding-left:18px">${input.objectives!.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}</div>`
+    : ''
 
   const topics = order
     .map(topic => {
@@ -184,7 +206,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.spk{display:inline-block;font-weight:700;color:${MUTE};margin-right:6px}` +
     `.foot{margin-top:34px;padding-top:14px;border-top:1px solid ${LINE};text-align:center;font-size:11px;color:${FAINT}}` +
     `</style></head><body><div class="wrap">` +
-    `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}</header>` +
+    `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}</header>` +
     overview +
     timeline +
     `<section>${topics}</section>` +

@@ -11,6 +11,7 @@ import { start } from 'workflow/api'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { analyzeRecordingWorkflow } from '@/workflows/recordings'
 import { sanitizeEntityMap } from '@/lib/recordings/entities'
+import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
 import type { PhaseMap } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
@@ -93,6 +94,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .eq('id', recording_id)
       .eq('org_id', org_id)
     if (updErr) return NextResponse.json({ error: `setup update failed: ${updErr.message}` }, { status: 500 })
+  }
+
+  // Snapshot the config this analysis runs against (after the gate edits above),
+  // and stamp the version onto the recording so the deliverable traces to it.
+  // Non-fatal: a snapshot failure shouldn't block analysis.
+  try {
+    const { version_number } = await snapshotConfigVersion(service, recording_id, org_id, {
+      source: 'analysis',
+      createdBy: user.id,
+    })
+    await service.from('recordings').update({ analyzed_config_version: version_number }).eq('id', recording_id).eq('org_id', org_id)
+  } catch (e) {
+    console.error({ at: 'recordings.analyze', msg: 'config snapshot failed', err: (e as Error)?.message })
   }
 
   const run = await start(analyzeRecordingWorkflow, [recording_id, org_id, instructions])

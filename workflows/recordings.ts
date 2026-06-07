@@ -204,6 +204,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     transcript: qaSegments.length > 0 ? qaSegments : transcript.segments,
     instructions,
     entity_map: rec.entity_map,
+    objectives: rec.objectives,
   })
 
   await mirrorExtractionsToDataset({

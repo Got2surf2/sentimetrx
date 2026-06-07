@@ -23,6 +23,7 @@ import type {
   TranscriptSegment,
   QaSetupInputs,
   EntityMap,
+  Signoff,
 } from '@/lib/recordings/types'
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
@@ -133,18 +134,25 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
         {tab === 'export' && (
-          <ExportTab
-            recordingId={recordingId}
-            recordingName={data.recording.name}
-            status={data.recording.status}
-            isOwner={data.isOwner}
-            initialShareEnabled={data.recording.share_enabled}
-            initialShareToken={data.recording.share_token}
-            initialShareVerbatim={data.recording.share_verbatim}
-            agents={data.agents}
-            initialBrandTag={data.recording.brand_tag}
-            initialAgentId={data.recording.underlying_agent_id}
-          />
+          <div className="space-y-6">
+            <ExportTab
+              recordingId={recordingId}
+              recordingName={data.recording.name}
+              status={data.recording.status}
+              isOwner={data.isOwner}
+              initialShareEnabled={data.recording.share_enabled}
+              initialShareToken={data.recording.share_token}
+              initialShareVerbatim={data.recording.share_verbatim}
+              agents={data.agents}
+              initialBrandTag={data.recording.brand_tag}
+              initialAgentId={data.recording.underlying_agent_id}
+            />
+            <VersionSignoffPanel
+              recordingId={recordingId}
+              signoff={data.recording.signoff}
+              analyzedVersion={data.recording.analyzed_config_version}
+            />
+          </div>
         )}
       </div>
 
@@ -162,30 +170,69 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
+const CONFIDENTIALITY_PILL: Record<string, { label: string; cls: string }> = {
+  public:               { label: 'Public', cls: 'bg-green-100 text-green-700' },
+  internal:             { label: 'Internal', cls: 'bg-gray-100 text-gray-600' },
+  client_confidential:  { label: 'Client confidential', cls: 'bg-amber-100 text-amber-700' },
+  restricted:           { label: 'Restricted', cls: 'bg-red-100 text-red-700' },
+}
+
 function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recording: RecordingRow; qaPairCount: number; analyticsDatasetId: string | null }) {
+  const analystNames = (recording.analysts ?? []).map(a => a.name).filter(Boolean).join(', ')
+  const conf = CONFIDENTIALITY_PILL[recording.confidentiality_class] ?? CONFIDENTIALITY_PILL.client_confidential
+  const objectives = recording.objectives
+  const signoff = recording.signoff
   return (
-    <header className="flex items-baseline justify-between">
-      <div>
-        <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-2">{recording.name}</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {recording.meeting_date ?? 'No date'}
-          {recording.location ? ` · ${recording.location}` : ''}
-          {' · '}
-          {qaPairCount} Q&amp;A pair{qaPairCount === 1 ? '' : 's'}
-          {recording.source_duration_sec ? ` · ${formatDuration(recording.source_duration_sec)} audio` : ''}
-          {recording.asr_vendor_chosen ? ` · transcribed by ${recording.asr_vendor_chosen}` : ''}
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        {analyticsDatasetId && (
-          <Link href={`/analyze/${analyticsDatasetId}`} className="text-xs text-gray-500 hover:text-orange-600 underline">
-            Open in Analytics ↗
-          </Link>
+    <div>
+      <header className="flex items-baseline justify-between">
+        <div>
+          <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
+          <h1 className="text-2xl font-bold text-gray-900 mt-2">{recording.name}</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {recording.meeting_date ?? 'No date'}
+            {recording.location ? ` · ${recording.location}` : ''}
+            {' · '}
+            {qaPairCount} Q&amp;A pair{qaPairCount === 1 ? '' : 's'}
+            {recording.source_duration_sec ? ` · ${formatDuration(recording.source_duration_sec)} audio` : ''}
+            {recording.asr_vendor_chosen ? ` · transcribed by ${recording.asr_vendor_chosen}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {analyticsDatasetId && (
+            <Link href={`/analyze/${analyticsDatasetId}`} className="text-xs text-gray-500 hover:text-orange-600 underline">
+              Open in Analytics ↗
+            </Link>
+          )}
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${conf.cls}`} title="Distribution classification">{conf.label}</span>
+          <StatusBadge status={recording.status} />
+        </div>
+      </header>
+
+      {/* Attribution + config-version provenance (§2.8) */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+        <span>Prepared by <span className="text-gray-700 font-medium">{analystNames || '—'}</span> · {recording.analysis_org || 'Datanautix'}</span>
+        {recording.analyzed_config_version != null && (
+          <span className="text-gray-400">· Config v{recording.analyzed_config_version}{recording.completed_at ? ` · analyzed ${new Date(recording.completed_at).toLocaleDateString()}` : ''}</span>
         )}
-        <StatusBadge status={recording.status} />
+        {signoff?.approved_by && (
+          <span className="inline-flex items-center gap-1 text-green-700" title={signoff.note || undefined}>
+            · ✓ Approved by {signoff.approved_by}{signoff.approved_at ? ` on ${new Date(signoff.approved_at).toLocaleDateString()}` : ''}
+          </span>
+        )}
       </div>
-    </header>
+
+      {(objectives?.summary || (objectives?.questions?.length ?? 0) > 0) && (
+        <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+          <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Objectives</div>
+          {objectives?.summary && <p className="text-sm text-gray-700">{objectives.summary}</p>}
+          {(objectives?.questions?.length ?? 0) > 0 && (
+            <ul className="mt-1.5 list-disc list-inside text-sm text-gray-600 space-y-0.5">
+              {objectives!.questions.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1387,6 +1434,134 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
           </li>
         ))}
       </ol>
+    </div>
+  )
+}
+
+// ── Config versions + sign-off (§2.8) ────────────────────────────────────────
+
+interface ConfigVersion {
+  version_number: number
+  source: 'manual' | 'analysis'
+  change_note: string | null
+  created_at: string
+  created_by_name: string | null
+}
+
+function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
+  recordingId: string
+  signoff: Signoff | null
+  analyzedVersion: number | null
+}) {
+  const router = useRouter()
+  const [versions, setVersions] = useState<ConfigVersion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [signNote, setSignNote] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/versions`)
+      const d = await r.json().catch(() => ({}))
+      if (r.ok) setVersions((d.versions ?? []) as ConfigVersion[])
+    } finally { setLoading(false) }
+  }, [recordingId])
+  useEffect(() => { load() }, [load])
+
+  const saveVersion = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ change_note: note.trim() || undefined }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Save failed (${r.status})`)
+      setNote('')
+      await load()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed') } finally { setBusy(false) }
+  }
+
+  const approve = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/signoff`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: signNote.trim() || undefined }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Approve failed (${r.status})`)
+      router.refresh()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Approve failed') } finally { setBusy(false) }
+  }
+  const revoke = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/signoff`, { method: 'DELETE' })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d?.error || `Revoke failed (${r.status})`) }
+      router.refresh()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Revoke failed') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
+      <div>
+        <h3 className="font-semibold text-gray-900 text-sm">Review sign-off</h3>
+        {signoff?.approved_by ? (
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <p className="text-sm text-green-700">
+              ✓ Approved by <span className="font-medium">{signoff.approved_by}</span>
+              {signoff.approved_at ? ` on ${new Date(signoff.approved_at).toLocaleString()}` : ''}
+              {signoff.note ? <span className="block text-xs text-gray-500 mt-0.5">“{signoff.note}”</span> : null}
+            </p>
+            <button type="button" onClick={revoke} disabled={busy}
+              className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">Revoke</button>
+          </div>
+        ) : (
+          <div className="mt-2 flex items-center gap-2">
+            <input type="text" value={signNote} onChange={e => setSignNote(e.target.value)} placeholder="Optional note (e.g. reviewed against the recording)"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} disabled={busy} />
+            <button type="button" onClick={approve} disabled={busy}
+              className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: '#0d9488' }}>
+              Mark reviewed &amp; approved
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-100 pt-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 text-sm">Config versions</h3>
+          <span className="text-xs text-gray-400">{analyzedVersion != null ? `Analysis ran on v${analyzedVersion}` : 'Not analyzed yet'}</span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1 mb-2">A snapshot is saved automatically each time you run the analysis; save one manually to checkpoint a setup change.</p>
+        <div className="flex items-center gap-2 mb-3">
+          <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="What changed? (optional)"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} disabled={busy} />
+          <button type="button" onClick={saveVersion} disabled={busy}
+            className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>Save version</button>
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400"><LottieLoader size={20} /> Loading…</div>
+        ) : versions.length === 0 ? (
+          <p className="text-sm text-gray-400">No versions yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 text-sm">
+            {versions.map(v => (
+              <li key={v.version_number} className="py-2 flex items-center gap-3">
+                <span className="font-mono text-xs font-semibold text-gray-700 w-10">v{v.version_number}</span>
+                <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${v.source === 'analysis' ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{v.source === 'analysis' ? 'analysis' : 'manual'}</span>
+                {analyzedVersion === v.version_number && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">live</span>}
+                <span className="text-gray-500 text-xs flex-1 truncate">{v.change_note || <span className="text-gray-400">—</span>}</span>
+                <span className="text-gray-400 text-xs whitespace-nowrap">{v.created_by_name ? `${v.created_by_name} · ` : ''}{new Date(v.created_at).toLocaleDateString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
     </div>
   )
 }

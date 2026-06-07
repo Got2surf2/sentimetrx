@@ -14,6 +14,7 @@
 
 import type {
   QaSetupInputs,
+  MeetingObjectives,
   TranscriptSegment,
   QaPairPayload,
   QuestionTypology,
@@ -219,16 +220,27 @@ export function buildQaSynthesisPrompt(opts: {
   pairs: SynthesisInputPair[]
   topics: string[]              // the distinct curated topic strings, for exact-match labels
   instructions?: string
+  objectives?: MeetingObjectives | null   // §2.8 — what the client wants this report to answer
 }): { system: string; userPrompt: string } {
   const agenda = opts.setup.agenda.map((t, i) => `  ${i + 1}. ${t}`).join('\n')
   const topicList = opts.topics.map(t => `  - ${t}`).join('\n')
+
+  // Objectives steer emphasis only — the model must still ground everything in
+  // the pairs and never invent facts to satisfy an objective.
+  const objLines = [
+    opts.objectives?.summary?.trim() ? `  - ${opts.objectives.summary.trim()}` : null,
+    ...(opts.objectives?.questions ?? []).map(q => q.trim()).filter(Boolean).map(q => `  - ${q}`),
+  ].filter(Boolean).join('\n')
+  const objectivesBlock = objLines
+    ? `\n\nANALYSIS OBJECTIVES — what the client wants this report to answer. Address these in the executive_summary and topic summaries WHERE the curated pairs support it. Never invent facts, commitments, or sentiment to satisfy an objective; if the meeting didn't cover one, simply don't claim it did.\n${objLines}`
+    : ''
 
   const system = `You are a neutral minutes-taker producing a factual record of a recorded Q&A session (town hall / public forum). You are given the curated, publishable audience Q&A pairs already grouped into topics. Write the summary layer that sits on top of them.
 
 VOICE — CRITICAL: This document may be shared with the meeting's organizer/client (e.g. the county/agency). Write strictly NEUTRAL, DESCRIPTIVE, FACTUAL prose — like official meeting minutes. NO opinion, NO spin, NO editorializing, NO dramatic or persuasive framing. Do NOT characterize the meeting or any topic with loaded words (avoid "threats", "crisis", "dominates", "looms", "nears", "concerns mount", "frustration", "tensions", "pressed hard"). Simply state what was asked and what was answered. If a sentiment was expressed, attribute it to the speaker factually ("a resident said the road was unsafe") rather than asserting it as the report's own conclusion.
 
 AGENDA (context only):
-${agenda || '  (none provided)'}
+${agenda || '  (none provided)'}${objectivesBlock}
 
 TOPICS present in the curated set — use these EXACT strings as topic labels, one summary per topic:
 ${topicList || '  (none)'}

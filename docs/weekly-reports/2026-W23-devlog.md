@@ -1730,3 +1730,16 @@ Spec RECORDINGS.md §5.4. tsc clean, 361 unit tests. NOT pushed. Remaining backl
 **Item 5 — audio in the edit pane:** new `SegmentAudioPlayer` in `ReportClient.tsx`, embedded at the top of the Q&A edit modal. Fetches the signed URL (§4.12), plays only the pair's `[start_sec,end_sec]` slice (clamped), with play/pause, replay-segment, scrub-within-segment, and 1×–2× speed. Pairs without a timestamp play the full meeting. LottieLoader while the URL loads. So a reviewer listens to the source while correcting the text.
 
 Spec RECORDINGS.md §4.12 + §3.5d. tsc clean, 361 unit tests. **This completes the 6-item Coverage/audio backlog.** NOT pushed.
+
+### Town Hall: phases 4 + 5 — config versioning + export attribution / sign-off / objectives→synthesis (2026-06-07)
+
+**Phase 4 — config version history.** `lib/recordings/configVersion.ts` (`buildSnapshot` + `snapshotConfigVersion`, dedupes an unchanged config via canonical stringify). The analyze route (§4.2b) snapshots the config it runs against (source='analysis', after gate edits) and stamps `recordings.analyzed_config_version`. New `GET/POST /api/recordings/[id]/versions` (§4.16) — list + manual "Save version". Report Export tab gains a **VersionSignoffPanel** (Save version + version list w/ live marker + who/when/note).
+
+**Phase 5 — attribution, sign-off, confidentiality, objectives→synthesis.**
+- Report **header** shows Prepared by {analysts} · {analysis_org} · Config v{n} · analyzed {date}, a confidentiality pill, the ✓ Approved-by stamp, and an Objectives box.
+- New `POST/DELETE /api/recordings/[id]/signoff` (§4.17) → `recordings.signoff`; panel button drives it (router.refresh to reflect).
+- **Deck** (`recordingDeck.ts`): title slide prints prepared-by + Config v{n} + OBJECTIVE block + sign-off line; footer right = confidentiality label (e.g. "Confidential — Client Only") instead of fixed "Proprietary and Confidential". Threaded via the export route select.
+- **PDF** (`reportHtml.ts`/`reportPdf.ts`): same attribution line + objectives box in the header; pdf + send routes select the new columns.
+- **Objectives steer synthesis**: threaded `analyzeRecording → synthesizeQa → buildQaSynthesisPrompt` as an "ANALYSIS OBJECTIVES" block (grounded — never invent to satisfy).
+
+Spec RECORDINGS.md §2.8/§3.5/§4.13/§4.16/§4.17/§5.4. tsc clean, 361 unit tests. Deck title-slide layout verified by coordinate math (no overlaps); not pixel-rendered (standalone server-only harness env issue). **Completes the 5-phase Town Hall setup overhaul.** NOT pushed.
