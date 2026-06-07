@@ -663,6 +663,12 @@ Companion to §4.1 for the setup-before-media flow. Adds media (and an optional 
 
 **Guards:** same-tenant `(id, org_id)` pair; **409** if the project is not in `awaiting_media`/`draft` (media already attached); same per-file validation as §4.1 (≥1 media, ≤20 files, ≤20GB, ≤1 PDF deck). If a slide deck is attached and the project has a `meeting_profile`, the route sets `meeting_profile.has_slides=true` so the vision/presentation pass runs.
 
+### 4.1d `POST /api/recordings/extract-setup` — propose setup fields from a document
+
+Setup-before-media doc ingestion. The wizard (§5.2) uploads the deck that *will* be presented and gets back proposed setup fields to confirm. **Multipart** `file` (PDF, ≤50MB) → `{ proposal: { objectives:{summary,questions[]}, agenda[], panel[], glossary[] }, source: <filename> }`.
+
+**Stateless:** the PDF is uploaded to a temp path under `<org>/_setup-extract/<uuid>/`, rendered to page PNGs + read with Claude vision in one pass (`lib/recordings/setupExtract.ts`, reusing the slide-vision rails), then **all temp objects are deleted**. Nothing is persisted to a recording — the analyst confirms the proposal in the wizard (it pre-fills only empty fields, recording `setup_provenance`), and the deck itself is attached later with the recording as a `slides` file. v1 is PDF-only (PPTX/DOCX → convert-to-PDF first, future). The prompt is grounded — it proposes only what's on the slides, empty when unsure.
+
 ### 4.2 `POST /api/recordings/[id]/process` — start the pipeline
 
 Called after all files report `upload_status='uploaded'`. Transitions `uploading → queued` and starts `processRecordingWorkflow`, which runs extract → transcribe and **pauses at `status='transcribed'`** (Gate 1). It does **not** run the analysis pass. Idempotent: accepts `status='uploading'` or `'failed'` (restart from the beginning); any other status returns `{ already_running: true }`.
@@ -853,7 +859,9 @@ Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit 
 
 ### 5.2 Project setup wizard — `/recordings/new` (setup-before-media, 2026-06)
 
-The wizard sets up the **project**, not the upload — a Town Hall can be configured before the audio/video exists. It's a pure two-column form (no file pane); media is attached later on the status page (§5.3a).
+The wizard sets up the **project**, not the upload — a Town Hall can be configured before the audio/video exists. It's a pure two-column form (no media pane); media is attached later on the status page (§5.3a).
+
+**Project documents (optional, doc-ingest):** above the form, an optional uploader takes the deck that will be presented (PDF). It POSTs to §4.1d and shows proposed **objectives / agenda / panel / glossary**; **Apply suggestions** fills only the *empty* fields (never overwriting the analyst's edits) and tags each populated field with a "✨ from {filename}" provenance hint (persisted in `setup_provenance`). The deck itself isn't stored here — it's attached with the recording (§5.3a) so the pipeline vision-reads it. Since the info exists pre-meeting, this is part of initial setup, but the same deck can also be added later at the add-recording step.
 
 ```
 ┌──────────────────────────┬──────────────────────────────────┐

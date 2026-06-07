@@ -62,6 +62,7 @@ interface CreateBody {
   analysts?: Analyst[]
   objectives?: MeetingObjectives | null
   confidentiality_class?: ConfidentialityClass
+  setup_provenance?: Record<string, string>   // which uploaded doc each pre-filled field came from
   // Optional now: a project can be created WITHOUT media (setup-before-media). An
   // empty/absent files[] creates the project in 'awaiting_media' — media is
   // attached later via POST /api/recordings/[id]/files (§4.1c).
@@ -121,6 +122,7 @@ export async function POST(req: Request) {
       ...(Array.isArray(body.analysts) && body.analysts.length ? { analysts: body.analysts } : {}),
       ...(body.objectives ? { objectives: body.objectives } : {}),
       ...(body.confidentiality_class ? { confidentiality_class: body.confidentiality_class } : {}),
+      ...(body.setup_provenance && Object.keys(body.setup_provenance).length ? { setup_provenance: body.setup_provenance } : {}),
       status: hasMedia ? 'uploading' : 'awaiting_media',
       // Only media files count toward the source byte total; slides are tiny.
       source_size_bytes: files.filter(f => (f.file_role ?? 'media') === 'media').reduce((sum, f) => sum + f.size_bytes, 0),

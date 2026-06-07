@@ -1702,3 +1702,13 @@ Verified: `tsc --noEmit` clean; 361 unit tests pass. Migration NOT yet applied t
 - `RecordingWizardClient.tsx` rewritten as a setup-only form (no file pane) + new Objectives / Analysis-org / Analysts (datalist of org members, pick-or-type → member_id) / Confidentiality fields; creates the project and redirects to the status page. `new/page.tsx` now also fetches org members.
 - NEW `AddRecordingClient.tsx` — the file-upload pane (audio/video + optional deck) + TUS + process, shown by `StatusClient.tsx` for draft/awaiting_media (polling skipped for those). List card gains draft/awaiting_media styles + correct lifecycle "Uploaded" step.
 - Spec RECORDINGS.md §4.1/§4.1c/§3.5d/§5.2/§5.3a. Verified: tsc clean, 361 unit tests pass. sql/118 already applied to prod (phase 1). Remaining: phases 3 (doc-ingest pre-fill) / 4 (versioning) / 5 (export attribution); then the 6-item Coverage/audio backlog.
+
+### Town Hall: setup-time document ingestion (pre-fill from the deck) (2026-06-07)
+
+**Why** (owner): the deck/briefs exist before the meeting, so the optional docs belong in initial setup — upload the deck and have it extract the setup info (objectives/agenda/panel/glossary), kept optional and addable later.
+
+- NEW `lib/recordings/setupExtract.ts` — `extractSetupFromPdf` renders a PDF to page PNGs (reusing the slide-vision rails: `renderPdfToPng` + signed URLs + Sonnet vision) and returns one grounded `{objectives,agenda,panel,glossary}` proposal. Capped at 25 pages; "only what's on the slides, empty when unsure."
+- NEW `POST /api/recordings/extract-setup` (§4.1d) — multipart PDF (≤50MB), **stateless**: temp-upload under `<org>/_setup-extract/<uuid>/`, extract, then delete all temp objects. Persists nothing.
+- `RecordingWizardClient`: a "Project documents (optional)" uploader above the form → calls §4.1d → shows a suggestion panel (counts) → **Apply suggestions** fills only EMPTY fields (non-destructive) and stamps `setup_provenance` per field; fields show a "✨ from {file}" hint. `setup_provenance` now sent on create (route + CreateBody updated).
+- Deck *persistence* stays on the add-recording slides path (AddRecordingClient) so the pipeline vision-reads it — avoids a second storage/role. PPTX/DOCX (convert-to-PDF) is a noted follow-up.
+- Spec RECORDINGS.md §4.1d + §5.2. Verified: tsc clean, 361 unit tests. Migration sql/118 (phase 1) already live; no new migration. NOT pushed.
