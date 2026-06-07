@@ -149,7 +149,18 @@ export default function ReportClient({ data }: { data: ReportData }) {
               initialBrandTag={data.recording.brand_tag}
               initialAgentId={data.recording.underlying_agent_id}
             />
-            <ProjectDetailsPanel recordingId={recordingId} recording={data.recording} />
+            <Link
+              href={`/recordings/${recordingId}/setup`}
+              className="block bg-white border border-gray-200 rounded-2xl p-5 hover:border-orange-300 hover:bg-orange-50/30 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-gray-900 text-sm">Project setup</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Edit the meeting details, panel, agenda, names, objectives, and attribution. Re-run the analysis afterward to apply agenda/panel/objective changes.</p>
+                </div>
+                <span className="shrink-0 text-sm font-semibold text-orange-600">Edit setup →</span>
+              </div>
+            </Link>
             <VersionSignoffPanel
               recordingId={recordingId}
               signoff={data.recording.signoff}
@@ -201,6 +212,9 @@ function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recordin
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href={`/recordings/${recording.id}/setup`} className="text-xs text-gray-500 hover:text-orange-600 underline">
+            Edit setup ⚙
+          </Link>
           {analyticsDatasetId && (
             <Link href={`/analyze/${analyticsDatasetId}`} className="text-xs text-gray-500 hover:text-orange-600 underline">
               Open in Analytics ↗
@@ -1593,97 +1607,6 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
           </li>
         ))}
       </ol>
-    </div>
-  )
-}
-
-// ── Project details editor (§2.8 backfill) ───────────────────────────────────
-// Lets an already-created town hall get the attribution + objectives the setup
-// wizard now captures (older recordings predate those fields). PATCHes the new
-// columns, then refreshes so the header/exports pick them up.
-const CONF_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'client_confidential', label: 'Client confidential' },
-  { value: 'internal', label: 'Internal' },
-  { value: 'restricted', label: 'Restricted' },
-  { value: 'public', label: 'Public' },
-]
-
-function ProjectDetailsPanel({ recordingId, recording }: { recordingId: string; recording: RecordingRow }) {
-  const router = useRouter()
-  const [analysisOrg, setAnalysisOrg] = useState(recording.analysis_org || 'Datanautix')
-  const [analysts, setAnalysts] = useState((recording.analysts ?? []).map(a => a.name).join('\n'))
-  const [confidentiality, setConfidentiality] = useState<string>(recording.confidentiality_class || 'client_confidential')
-  const [objSummary, setObjSummary] = useState(recording.objectives?.summary || '')
-  const [objQuestions, setObjQuestions] = useState((recording.objectives?.questions ?? []).join('\n'))
-  const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const save = async () => {
-    setBusy(true); setErr(null); setSaved(false)
-    const questions = objQuestions.split('\n').map(s => s.trim()).filter(Boolean)
-    const summary = objSummary.trim()
-    try {
-      const res = await fetch(`/api/recordings/${recordingId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          analysis_org: analysisOrg.trim() || 'Datanautix',
-          analysts: analysts.split('\n').map(s => s.trim()).filter(Boolean).map(name => ({ name })),
-          confidentiality_class: confidentiality,
-          objectives: (summary || questions.length) ? { summary, questions } : null,
-        }),
-      })
-      const d = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
-      setSaved(true)
-      router.refresh()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed') } finally { setBusy(false) }
-  }
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
-      <div>
-        <h3 className="font-semibold text-gray-900 text-sm">Project details</h3>
-        <p className="text-xs text-gray-500 mt-0.5">Attribution + objectives that print on the report, deck, and PDF. Edit them here for a town hall created before these fields existed.</p>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block">
-          <span className="block text-xs font-semibold text-gray-600 mb-1">Analysis performed by</span>
-          <input type="text" value={analysisOrg} onChange={e => setAnalysisOrg(e.target.value)} disabled={busy}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-        </label>
-        <label className="block">
-          <span className="block text-xs font-semibold text-gray-600 mb-1">Confidentiality</span>
-          <select value={confidentiality} onChange={e => setConfidentiality(e.target.value)} disabled={busy}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }}>
-            {CONF_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-      </div>
-      <label className="block">
-        <span className="block text-xs font-semibold text-gray-600 mb-1">Analyst(s) <span className="font-normal text-gray-400">— one per line</span></span>
-        <textarea value={analysts} onChange={e => setAnalysts(e.target.value)} disabled={busy} rows={2}
-          placeholder={'Arjun Patel\nSanjay Patel'} className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-      </label>
-      <label className="block">
-        <span className="block text-xs font-semibold text-gray-600 mb-1">Objectives summary</span>
-        <textarea value={objSummary} onChange={e => setObjSummary(e.target.value)} disabled={busy} rows={2}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-      </label>
-      <label className="block">
-        <span className="block text-xs font-semibold text-gray-600 mb-1">Questions we want answered <span className="font-normal text-gray-400">— one per line</span></span>
-        <textarea value={objQuestions} onChange={e => setObjQuestions(e.target.value)} disabled={busy} rows={2}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-      </label>
-      {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={save} disabled={busy}
-          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>
-          {busy ? 'Saving…' : 'Save details'}
-        </button>
-        {saved && <span className="text-sm text-green-700">Saved ✓</span>}
-        <span className="text-xs text-gray-400">Re-run the analysis afterward to feed updated objectives into the synthesis.</span>
-      </div>
     </div>
   )
 }

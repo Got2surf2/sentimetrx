@@ -175,10 +175,16 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
 
   return (
     <div className="space-y-6">
-      <header>
-        <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-2">{name}</h1>
-        <p className="text-sm text-gray-500 mt-1">Recording {recordingId.slice(0, 8)}…</p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <Link href="/recordings" className="text-xs text-gray-500 hover:text-gray-700">← Town Hall</Link>
+          <h1 className="text-2xl font-bold text-gray-900 mt-2">{name}</h1>
+          <p className="text-sm text-gray-500 mt-1">Recording {recordingId.slice(0, 8)}…</p>
+        </div>
+        <Link
+          href={`/recordings/${recordingId}/setup`}
+          className="shrink-0 mt-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >⚙ Edit setup</Link>
       </header>
 
       {isSetup ? (
