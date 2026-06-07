@@ -322,6 +322,40 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     patch.underlying_agent_id = agentId
   }
 
+  // §2.8 backfill — let an already-created recording get the attribution + intake
+  // fields the setup wizard now captures (so older town halls aren't stuck).
+  if ('analysis_org' in body) {
+    patch.analysis_org = (typeof body.analysis_org === 'string' && body.analysis_org.trim()) ? body.analysis_org.trim() : 'Datanautix'
+  }
+  if ('analysts' in body) {
+    const arr = Array.isArray(body.analysts) ? body.analysts : []
+    patch.analysts = arr
+      .map((a: unknown) => {
+        const o = (a ?? {}) as Record<string, unknown>
+        const name = typeof o.name === 'string' ? o.name.trim() : ''
+        const memberId = typeof o.member_id === 'string' && o.member_id ? o.member_id : undefined
+        return name ? { name, ...(memberId ? { member_id: memberId } : {}) } : null
+      })
+      .filter(Boolean)
+  }
+  if ('objectives' in body) {
+    const o = body.objectives
+    if (o && typeof o === 'object') {
+      const summary = typeof (o as any).summary === 'string' ? (o as any).summary.trim() : ''
+      const questions = Array.isArray((o as any).questions) ? (o as any).questions.map((q: unknown) => typeof q === 'string' ? q.trim() : '').filter(Boolean) : []
+      patch.objectives = (summary || questions.length) ? { summary, questions } : null
+    } else {
+      patch.objectives = null
+    }
+  }
+  if ('confidentiality_class' in body) {
+    const valid = ['public', 'internal', 'client_confidential', 'restricted']
+    if (!valid.includes(body.confidentiality_class)) {
+      return NextResponse.json({ error: `confidentiality_class must be one of: ${valid.join(', ')}` }, { status: 400 })
+    }
+    patch.confidentiality_class = body.confidentiality_class
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
   }

@@ -147,6 +147,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
               initialBrandTag={data.recording.brand_tag}
               initialAgentId={data.recording.underlying_agent_id}
             />
+            <ProjectDetailsPanel recordingId={recordingId} recording={data.recording} />
             <VersionSignoffPanel
               recordingId={recordingId}
               signoff={data.recording.signoff}
@@ -877,24 +878,45 @@ function SegmentAudioPlayer({ recordingId, startSec, endSec }: {
       <audio ref={audioRef} src={url} preload="metadata" onLoadedMetadata={onLoaded} onTimeUpdate={onTime} onEnded={() => setPlaying(false)} className="hidden" />
       <div className="flex items-center gap-3">
         <button type="button" onClick={toggle}
-          className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm" style={{ background: HERMES }}
-          title={playing ? 'Pause' : 'Play this answer'}>
-          {playing ? '❚❚' : '▶'}
+          className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm hover:brightness-95 transition" style={{ background: HERMES }}
+          title={playing ? 'Pause' : 'Play this answer'} aria-label={playing ? 'Pause' : 'Play'}>
+          {playing ? (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <rect x="2.5" y="2" width="3.6" height="12" rx="1.4" />
+              <rect x="9.9" y="2" width="3.6" height="12" rx="1.4" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M4 2.6c0-.86.94-1.39 1.67-.94l8.2 5.4a1.1 1.1 0 0 1 0 1.88l-8.2 5.4A1.1 1.1 0 0 1 4 13.4V2.6z" />
+            </svg>
+          )}
         </button>
-        <button type="button" onClick={replay} className="shrink-0 text-gray-500 hover:text-gray-800 text-sm" title="Replay from the start of this answer">↺</button>
+        <button type="button" onClick={replay}
+          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-200/60 transition" title="Replay from the start of this answer" aria-label="Replay">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2.5 8a5.5 5.5 0 1 0 1.7-3.98" />
+            <path d="M2.2 2.6V5.2H4.8" />
+          </svg>
+        </button>
         <div className="flex-1">
           <div className="h-2 bg-gray-200 rounded-full cursor-pointer relative" onClick={seek}>
-            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${frac * 100}%`, background: HERMES }} />
+            <div className="absolute inset-y-0 left-0 rounded-l-full" style={{ width: `${frac * 100}%`, background: HERMES }} />
             <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white border-2 shadow" style={{ left: `${frac * 100}%`, borderColor: HERMES }} />
+            {/* End-of-segment marker — the clip stops here (the answer's end in the transcript). */}
+            {hasWindow && <div className="absolute -top-1 -bottom-1 right-0 w-[2px] bg-gray-500 rounded" title={`Segment ends at ${formatTime(effEnd)}`} />}
           </div>
           <div className="flex justify-between text-[10px] text-gray-400 font-mono mt-1">
             <span>{formatTime(pos)}</span>
-            <span>{formatTime(effEnd)}</span>
+            <span>{formatTime(effEnd)}{hasWindow ? ' (end)' : ''}</span>
           </div>
         </div>
-        <button type="button" onClick={cycleRate} className="shrink-0 text-[11px] font-semibold text-gray-500 hover:text-gray-800 w-9 text-center" title="Playback speed">{rate}×</button>
+        <button type="button" onClick={cycleRate} className="shrink-0 text-[11px] font-semibold text-gray-500 hover:text-gray-900 w-9 text-center" title="Playback speed">{rate}×</button>
       </div>
-      <p className="text-[10px] text-gray-400 mt-1">Listen to the meeting audio for this answer while you correct the text{hasWindow ? '' : ' (no timestamp on this pair — plays the full meeting)'}.</p>
+      <p className="text-[10px] text-gray-400 mt-1">
+        {hasWindow
+          ? `Plays this answer's segment (${formatTime(start)}–${formatTime(effEnd)}, ${formatDuration(effEnd - start)}) and stops at its end. Drag to scrub within it.`
+          : 'No timestamp on this pair — plays the full meeting.'}
+      </p>
     </div>
   )
 }
@@ -1434,6 +1456,97 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
           </li>
         ))}
       </ol>
+    </div>
+  )
+}
+
+// ── Project details editor (§2.8 backfill) ───────────────────────────────────
+// Lets an already-created town hall get the attribution + objectives the setup
+// wizard now captures (older recordings predate those fields). PATCHes the new
+// columns, then refreshes so the header/exports pick them up.
+const CONF_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'client_confidential', label: 'Client confidential' },
+  { value: 'internal', label: 'Internal' },
+  { value: 'restricted', label: 'Restricted' },
+  { value: 'public', label: 'Public' },
+]
+
+function ProjectDetailsPanel({ recordingId, recording }: { recordingId: string; recording: RecordingRow }) {
+  const router = useRouter()
+  const [analysisOrg, setAnalysisOrg] = useState(recording.analysis_org || 'Datanautix')
+  const [analysts, setAnalysts] = useState((recording.analysts ?? []).map(a => a.name).join('\n'))
+  const [confidentiality, setConfidentiality] = useState<string>(recording.confidentiality_class || 'client_confidential')
+  const [objSummary, setObjSummary] = useState(recording.objectives?.summary || '')
+  const [objQuestions, setObjQuestions] = useState((recording.objectives?.questions ?? []).join('\n'))
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const save = async () => {
+    setBusy(true); setErr(null); setSaved(false)
+    const questions = objQuestions.split('\n').map(s => s.trim()).filter(Boolean)
+    const summary = objSummary.trim()
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysis_org: analysisOrg.trim() || 'Datanautix',
+          analysts: analysts.split('\n').map(s => s.trim()).filter(Boolean).map(name => ({ name })),
+          confidentiality_class: confidentiality,
+          objectives: (summary || questions.length) ? { summary, questions } : null,
+        }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
+      setSaved(true)
+      router.refresh()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+      <div>
+        <h3 className="font-semibold text-gray-900 text-sm">Project details</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Attribution + objectives that print on the report, deck, and PDF. Edit them here for a town hall created before these fields existed.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold text-gray-600 mb-1">Analysis performed by</span>
+          <input type="text" value={analysisOrg} onChange={e => setAnalysisOrg(e.target.value)} disabled={busy}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold text-gray-600 mb-1">Confidentiality</span>
+          <select value={confidentiality} onChange={e => setConfidentiality(e.target.value)} disabled={busy}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }}>
+            {CONF_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <label className="block">
+        <span className="block text-xs font-semibold text-gray-600 mb-1">Analyst(s) <span className="font-normal text-gray-400">— one per line</span></span>
+        <textarea value={analysts} onChange={e => setAnalysts(e.target.value)} disabled={busy} rows={2}
+          placeholder={'Arjun Patel\nSanjay Patel'} className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+      </label>
+      <label className="block">
+        <span className="block text-xs font-semibold text-gray-600 mb-1">Objectives summary</span>
+        <textarea value={objSummary} onChange={e => setObjSummary(e.target.value)} disabled={busy} rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+      </label>
+      <label className="block">
+        <span className="block text-xs font-semibold text-gray-600 mb-1">Questions we want answered <span className="font-normal text-gray-400">— one per line</span></span>
+        <textarea value={objQuestions} onChange={e => setObjQuestions(e.target.value)} disabled={busy} rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+      </label>
+      {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={save} disabled={busy}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>
+          {busy ? 'Saving…' : 'Save details'}
+        </button>
+        {saved && <span className="text-sm text-green-700">Saved ✓</span>}
+        <span className="text-xs text-gray-400">Re-run the analysis afterward to feed updated objectives into the synthesis.</span>
+      </div>
     </div>
   )
 }

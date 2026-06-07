@@ -1743,3 +1743,12 @@ Spec RECORDINGS.md §4.12 + §3.5d. tsc clean, 361 unit tests. **This completes 
 - **Objectives steer synthesis**: threaded `analyzeRecording → synthesizeQa → buildQaSynthesisPrompt` as an "ANALYSIS OBJECTIVES" block (grounded — never invent to satisfy).
 
 Spec RECORDINGS.md §2.8/§3.5/§4.13/§4.16/§4.17/§5.4. tsc clean, 361 unit tests. Deck title-slide layout verified by coordinate math (no overlaps); not pixel-rendered (standalone server-only harness env issue). **Completes the 5-phase Town Hall setup overhaul.** NOT pushed.
+
+### Town Hall: segment-end marking, nicer player icons, project-details backfill (2026-06-07)
+
+From owner review of the edit-pane player + an existing-recording gap:
+- **Segment end marking**: the edit-pane `SegmentAudioPlayer` now shows a visible end cap on the scrubber + an "{mm:ss} (end)" label and a caption ("Plays this answer's segment X–Y and stops at its end"); playback already clamps to `end_sec`. Makes the transcript-segment boundary explicit.
+- **Play/pause icons**: replaced the cramped `▶`/`❚❚` text glyphs with proper SVG icons (triangle play; two well-spaced rounded bars; SVG replay) on a slightly larger button.
+- **Backfill an existing town hall**: previously no way to set the new §2.8 attribution/objectives on a recording created before those fields. Extended `PATCH /api/recordings/[id]` (§4.3b) to accept `analysis_org/analysts/objectives/confidentiality_class` (sanitized/validated), and added a **ProjectDetailsPanel** to the report Export tab (analysis org, analyst names, confidentiality, objectives summary/questions) → PATCH → router.refresh. Re-run analysis afterward to feed updated objectives into synthesis.
+
+Spec RECORDINGS.md §3.5d/§4.3b/§5.4. tsc clean, 361 unit tests. NOT pushed.
