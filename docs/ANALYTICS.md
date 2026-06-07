@@ -410,7 +410,7 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   dual-writes the legacy `dataset_row_taxonomy` too, so Charts/Stats `__dim_*`, theme-card chips, and
   the Comments dimension filter keep working). A **drift nudge** (amber banner) appears when
   `rowsWithText > classifiedRows` — "N {field} rows aren't tagged yet · Classify N new rows" → POSTs
-  `{ pendingOnly: true }` (`classifyPendingRows`, tags only untagged rows). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
+  `{ pendingOnly: true }` (`classifyPendingRows`, tags only untagged rows; the drift count uses the classifier's whitespace/control-stripping emptiness test so blank rows aren't perpetual phantoms). **Initial view = pills only** (no sub-cards until a dimension is picked); selecting a dimension pill closes any open comments panel. The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
   alert) now rides on the ⚠ Severity pill, not a KPI card; the per-type alert counts are *per type*, so
   they can sum to MORE than `alertRows` when a review hits more than one (Cheddar's: 79
   food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity is an 8th red pill** in the

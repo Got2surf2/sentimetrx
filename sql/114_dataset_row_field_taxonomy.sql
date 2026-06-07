@@ -93,7 +93,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
       ON t.dataset_id = f.dataset_id AND t.row_id = f.id AND t.field = p_field
    WHERE f.dataset_id = p_dataset_id
      AND t.row_id IS NULL
-     AND COALESCE(btrim(f.data ->> p_field), '') <> ''
+     -- "Has real text" must match the keyword classifier, which strips control
+     -- chars + whitespace before deciding a row is empty. A plain btrim (spaces
+     -- only) counts tab/newline/control-only rows as text → they'd be "pending"
+     -- forever (the classifier writes no row for them). Strip all whitespace +
+     -- control chars and check what's left.
+     AND COALESCE(regexp_replace(f.data ->> p_field, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
    ORDER BY f.row_index
    LIMIT p_limit;
 $$;
@@ -109,7 +114,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT count(*)
     FROM dataset_rows_flat f
    WHERE f.dataset_id = p_dataset_id
-     AND COALESCE(btrim(f.data ->> p_field), '') <> '';
+     -- Same "has real text" test as the classifier (strip whitespace + control),
+     -- so this denominator == rows the classifier actually tags. Avoids a
+     -- perpetual "N rows aren't tagged" drift nudge for whitespace-only rows.
+     AND COALESCE(regexp_replace(f.data ->> p_field, '[[:space:][:cntrl:]]+', '', 'g'), '') <> '';
 $$;
 
 COMMIT;

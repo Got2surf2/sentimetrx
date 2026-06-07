@@ -134,7 +134,11 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `{ pendingOnly: true, textField }` → `classifyPendingRows` (per-field pending RPC
   `dataset_rows_pending_field_taxonomy`; tags ONLY the untagged rows, non-destructive,
   dual-writes both tables). This is the drift-triggered, in-context replacement for the old
-  always-present Re-classify button (a dataset-card version is the follow-up).
+  always-present Re-classify button (a dataset-card version is the follow-up). Both the
+  `rowsWithText` count and the pending RPC use the **same "has real text" test as the
+  classifier** — `regexp_replace(field, '[[:space:][:cntrl:]]+', '')` non-empty — so
+  whitespace/control-only rows (which the classifier writes no row for) don't show as
+  perpetually-pending phantoms in the nudge.
   **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
   axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
   picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top
@@ -229,14 +233,15 @@ cards** below. A pill is the collapsed form of its cards.
   (rating, sentiment, share, count) and **skip** the theme-card sections with no
   taxonomy-side data (description, keywords, co-occurs, items, 95% CI, top/bottom box)
   — those are additive later if a backend feed is added; the layout leaves room.
-- **Grid states**: **no axis selected** → cards for the top sub-buckets **across all
-  axes** (axis-colored dots = wayfinding) as the default landing; **axis selected** →
-  grid filtered to that axis's subs. Default sort **by rate% desc** (count as tiebreak);
-  the all-axes landing caps at the **top 24** sub-buckets. The **axis-level drill**
-  ("read every comment tagged anywhere on Touchpoint") is preserved as a
-  **"Read all comments on this dimension"** header link on the focused grid (the axis
-  pill itself only filters — it no longer auto-opens the panel). Clicking a card also
-  focuses its axis (so the comment panel's per-tag highlight + breadcrumb stay in sync).
+- **Grid states**: **no dimension selected** → **pills only** (a one-line prompt, no
+  cards) — the initial view is just the L1 chips; **dimension selected** → the sub-cards
+  for that axis (sorted **rate% desc**, count tiebreak). Selecting a dimension pill also
+  **closes any open comments panel** (`setDrill(null)`) so you land on the sub-cards, not
+  a stale drill. The **axis-level drill** ("read every comment tagged anywhere on the
+  dimension") is a **"Read all comments"** header link on the focused grid (the pill itself
+  only filters). Clicking a sub-card focuses its axis + opens its comments.
+  *(The comment-text evidence highlight is layout-neutral — background + box-shadow underline,
+  no padding/border/weight — so hovering a chip never reflows the text / bounces the cursor.)*
 - **Retire**: the "By axis" horizontal-bar column, the "Top sub-topics" list column,
   and the sub-dimension pill row — all folded into pills (axis) + cards (sub).
 - **Refactor (done)**: the 7 axis colors now live in a single `AXIS_COLOR` map in

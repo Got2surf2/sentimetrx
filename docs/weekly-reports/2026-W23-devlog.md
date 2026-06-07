@@ -1545,3 +1545,13 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); **461 tests pass**. **NOT applied to prod / not verified against the DB** — I have no DB access in this container (no Supabase CLI, no creds). Owner applies `sql/114` then re-classifies per field to populate the new table. Specs TAXONOMY.md §3/§4 + ANALYTICS.md + DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
 
 **Apply command (owner, local)**: `supabase db query --linked --file sql/114_dataset_row_field_taxonomy.sql`
+
+## 2026-06-06 — Dimensions: 4 fixes from owner testing (per-field live)
+
+Owner applied sql/114 and tested per-field live. Four fixes:
+1. **Phantom "N rows aren't tagged" drift nudge** right after a full classify — `rowsWithText`/pending RPCs used `btrim` (spaces only), so whitespace/control/tab/newline-only rows counted as "text" but the classifier writes no row for them → perpetually pending. Both RPCs in **sql/114** now use the classifier's test: `regexp_replace(field,'[[:space:][:cntrl:]]+','')` non-empty. **Owner re-runs sql/114** (CREATE OR REPLACE — idempotent) + reload; no re-classify needed (the 4 drop out of the denominator).
+2. **Initial view now shows pills only** — no sub-dimension cards until a dimension pill is picked (was showing a top-24 all-axes grid). Prompt: "Pick a dimension above…".
+3. **Selecting a dimension pill closes the comments panel** (`setDrill(null)` on axis-pill click) so you land on the sub-cards, not a stale drill.
+4. **Pixel-jump on chip hover fixed** — the evidence `<mark>` was adding padding/border/font-weight, so hovering a chip re-highlighted text → reflow → cursor bounced off the chip (flicker loop). Mark is now layout-neutral (background + inset box-shadow underline only).
+
+**Files**: `components/analyze/TaxonomyModule.tsx`, `sql/114_dataset_row_field_taxonomy.sql`. **Verify**: typecheck-clean (only the CampaignDetailClient xlsx-stub artifacts); 461 tests pass. Specs TAXONOMY.md §3/§4/§4a updated. ALL LOCAL on main, not pushed.

@@ -82,7 +82,11 @@ function highlight(text: string, phrases: string[]): Array<string | ReactElement
     while (e < text.length && isWord(text[e])) e++
     if (s < last) s = last                              // don't backtrack into already-emitted text
     if (s > last) out.push(text.slice(last, s))
-    if (e > s) out.push(<mark key={s} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 3px', borderRadius: 3, borderBottom: '2px solid #f59e0b', fontWeight: 600 }}>{text.slice(s, e)}</mark>)
+    // Layout-NEUTRAL highlight: background + box-shadow underline only — no
+    // padding / border-width / font-weight, so toggling the highlight (e.g. when
+    // hovering a dimension chip) never changes text metrics → no reflow / no
+    // pixel-jump that would bounce the cursor off the chip being hovered.
+    if (e > s) out.push(<mark key={s} style={{ background: '#fef3c7', color: '#92400e', borderRadius: 2, boxShadow: 'inset 0 -2px 0 #f59e0b' }}>{text.slice(s, e)}</mark>)
     last = e
     if (re.lastIndex < e) re.lastIndex = e              // skip past the expanded word so the next match can't overlap it
     if (m.index === re.lastIndex) re.lastIndex++
@@ -308,7 +312,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
             const c = AXIS_COLOR[a.axis as Axis] || SLATE
             return (
               <button key={a.axis}
-                onClick={() => { if (active) { setFilterAxis(''); setFilterSub('') } else { setFilterAxis(a.axis); setFilterSub('') } }}
+                onClick={() => { setDrill(null); if (active) { setFilterAxis(''); setFilterSub('') } else { setFilterAxis(a.axis); setFilterSub('') } }}
                 title={`${a.label} — ${Math.round(a.rate)}% of classified reviews${a.avgRating != null ? ` · ★ ${a.avgRating.toFixed(1)}` : ''}`}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, lineHeight: 1.3, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (active ? c : '#e2e8f0'), background: active ? c + '14' : '#fff', color: NAVY }}>
                 <span style={{ width: 8, height: 8, borderRadius: 4, background: c, flexShrink: 0 }} />
@@ -482,9 +486,19 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           )
         }
 
+        // Initial state: no dimension picked → show ONLY the pills above, with a
+        // prompt here. Sub-dimension cards appear once a dimension pill is selected.
+        if (!filterAxis) {
+          return (
+            <div style={{ padding: '20px 2px', fontSize: 13, color: SLATE }}>
+              Pick a dimension above to explore its sub-dimensions.
+            </div>
+          )
+        }
+
         const sorted = [...data.subs].sort((x, y) => (y.rate - x.rate) || (y.count - x.count))
-        const list = filterAxis ? sorted.filter(s => s.axis === filterAxis) : sorted.slice(0, 24)
-        const focus = filterAxis ? data.axes.find(x => x.axis === filterAxis) : null
+        const list = sorted.filter(s => s.axis === filterAxis)
+        const focus = data.axes.find(x => x.axis === filterAxis)
         return (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
