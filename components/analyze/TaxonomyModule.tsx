@@ -132,7 +132,9 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
     if (!drill) { setDrillData(null); return }
     let alive = true
     setDrillLoading(true); setDrillData(null); setExpanded(new Set())
-    const fieldQs = hasField ? `&fields=${encodeURIComponent(fieldsCsv)}` : ''
+    // Repeated `fields=` params (not a CSV) — open-ended field NAMES are survey
+    // question text and can contain commas, which a CSV param would shred.
+    const fieldQs = hasField ? '&' + selFields.map(f => `fields=${encodeURIComponent(f)}`).join('&') : ''
     fetch(`/api/datasets/${datasetId}/taxonomy/rows?${drill.qs}${fieldQs}`)
       .then(r => r.json())
       .then(d => { if (alive) { setDrillData({ count: d.count ?? 0, comments: d.comments ?? [] }); setDrillLoading(false) } })
@@ -166,7 +168,8 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
     setLoading(true)
     try {
       // Per-field: pass the ANALYZE field so the rollup reacts to the toggle.
-      const qs = hasField ? `?fields=${encodeURIComponent(fieldsCsv)}` : ''
+      // Repeated `fields=` params (not a CSV) — field names can contain commas.
+      const qs = hasField ? '?' + selFields.map(f => `fields=${encodeURIComponent(f)}`).join('&') : ''
       const r = await fetch(`/api/datasets/${datasetId}/taxonomy${qs}`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
       const j: Rollup = await r.json()

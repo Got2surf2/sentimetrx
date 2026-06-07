@@ -84,10 +84,11 @@ export async function GET(req: Request, props: Params) {
   const sub   = (url.searchParams.get('sub')   || '').trim()
   const alert = (url.searchParams.get('alert') || '').trim()
   // The analyzed field SET (one or more), → the canonical combined key the tags are
-  // stored under. (?field= single accepted for back-compat.)
-  const fieldsParam = (url.searchParams.get('fields') || '').trim()
-  const selFields = fieldsParam
-    ? fieldsParam.split(',').map(s => s.trim()).filter(Boolean)
+  // stored under. Repeated `fields=` params, NOT a CSV — field names can contain
+  // commas (survey question text). (?field= single accepted for back-compat.)
+  const multiFields = url.searchParams.getAll('fields').map(s => s.trim()).filter(Boolean)
+  const selFields = multiFields.length
+    ? multiFields
     : (url.searchParams.get('field') ? [(url.searchParams.get('field') as string).trim()].filter(Boolean) : [])
   const fieldKey = taxonomyFieldKey(selFields)
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '100', 10) || 100, 1), 200)

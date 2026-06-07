@@ -105,9 +105,12 @@ export async function GET(req: Request, props: Params) {
   // canonical combined key the per-field rows are stored under. (?field= single is
   // still accepted for back-compat.)
   const url = new URL(req.url)
-  const fieldsParam = (url.searchParams.get('fields') || '').trim()
-  const selFields = fieldsParam
-    ? fieldsParam.split(',').map(s => s.trim()).filter(Boolean)
+  // Repeated `fields=` params, NOT a CSV — open-ended field names are survey
+  // question text and can themselves contain commas (e.g. "What, if anything,
+  // did you like LEAST…?"), which a comma-split would shred into bogus fields.
+  const multiFields = url.searchParams.getAll('fields').map(s => s.trim()).filter(Boolean)
+  const selFields = multiFields.length
+    ? multiFields
     : (url.searchParams.get('field') ? [(url.searchParams.get('field') as string).trim()].filter(Boolean) : [])
   const fieldKey = taxonomyFieldKey(selFields)
 

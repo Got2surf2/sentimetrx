@@ -1661,3 +1661,11 @@ Owner pushed the full Dimensions arc to `origin/main` from their machine (verifi
 **Spec sync (this commit)**: updated the top-level `SPEC.md` (taxonomy section + Database Tables: legacy `dataset_row_taxonomy` vs per-field `dataset_row_field_taxonomy`) and `FEATURES.md` ("admin pilot" → shipped **Dimensions** feature) to match the now-live state. Module specs (`TAXONOMY.md` §3/§4/§4a, `ANALYTICS.md`, `DATA_SOURCES.md`) were kept current per-commit throughout.
 
 **Open follow-ups** (not built): dataset-card "N unclassified" nudge; auto-classify-on-upload for CSV/study; a `schema_migrations` ledger; an optional Charts field-selector; retiring legacy `dataset_row_taxonomy` once all consumers are per-field.
+
+### Fix: Dimensions "no taggable text" on comma-containing field names (2026-06-07)
+
+**Bug** (reported on Carabbas GSS): the *Liked Most* open-end showed Dimensions but *Liked Least* did not — selecting it ran the classifier, then said "No taggable text found," and the classifier re-fired on every selection change.
+
+**Root cause**: the Dimensions tab passed the analyzed open-ended field SET to the rollup/drill GET routes as a **single comma-joined `?fields=` param**, and the routes **split it on commas** to reconstruct the per-field key. Open-ended field names are survey question text and can contain commas — *Liked Least* is literally `What, if anything, did you like LEAST about your recent experience?`. The CSV split shredded it into three bogus fields → the reconstructed key never matched the stored `field` → the rollup read 0 rows → "no taggable text" → auto-classify looped. (`Liked Most` has no comma, so it round-tripped fine. The POST classifier was never affected — it sends `textFields` as a JSON array — so tags were generated and saved correctly under the right key the whole time; only the GET read was broken.)
+
+**Fix**: pass each field as a **repeated `fields=` query param** (immune to commas / any char) instead of a CSV, and read them server-side with `searchParams.getAll('fields')`. Touched `components/analyze/TaxonomyModule.tsx` (rollup + drill fetches) and both GET routes (`taxonomy/route.ts`, `taxonomy/rows/route.ts`). `?field=` single-value back-compat retained. Verified against prod data: the LEAST key already had 11,420 stored rows (3,822 with signal); the fix makes the GET resolve that exact key. tsc clean.
