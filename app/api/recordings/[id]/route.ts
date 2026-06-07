@@ -356,6 +356,33 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     patch.confidentiality_class = body.confidentiality_class
   }
 
+  // Edit-anytime: the rest of the setup fields, so the unified Setup editor can
+  // change them at any lifecycle stage. setup_inputs / meeting_profile are
+  // analysis-shaping — saving them does NOT re-extract; the UI surfaces a
+  // "re-analyze to apply" prompt via the config-version drift check.
+  if ('meeting_date' in body) {
+    patch.meeting_date = (typeof body.meeting_date === 'string' && body.meeting_date.trim()) ? body.meeting_date.trim() : null
+  }
+  if ('location' in body) {
+    patch.location = (typeof body.location === 'string' && body.location.trim()) ? body.location.trim() : null
+  }
+  if ('language' in body) {
+    patch.language = (typeof body.language === 'string' && body.language.trim()) ? body.language.trim() : 'en'
+  }
+  if ('setup_inputs' in body) {
+    if (!body.setup_inputs || typeof body.setup_inputs !== 'object' || Array.isArray(body.setup_inputs)) {
+      return NextResponse.json({ error: 'setup_inputs must be an object' }, { status: 400 })
+    }
+    patch.setup_inputs = body.setup_inputs
+  }
+  if ('meeting_profile' in body) {
+    const mp = body.meeting_profile
+    if (mp !== null && (typeof mp !== 'object' || Array.isArray(mp))) {
+      return NextResponse.json({ error: 'meeting_profile must be an object or null' }, { status: 400 })
+    }
+    patch.meeting_profile = mp
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
   }

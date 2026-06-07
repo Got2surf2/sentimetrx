@@ -192,7 +192,7 @@ export interface RecordingFileRow {
   audio_storage_path: string | null
   sort_order: number
   upload_status: 'pending' | 'uploaded' | 'extracted' | 'failed'
-  file_role: 'media' | 'slides'      // sql/097 — 'slides' skips the ffmpeg pipeline
+  file_role: 'media' | 'slides' | 'document'  // sql/097 + sql/119 — 'slides'/'document' skip the ffmpeg pipeline; 'document' = brief/reference
   created_at: string
 }
 
