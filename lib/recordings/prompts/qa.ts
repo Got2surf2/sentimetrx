@@ -285,6 +285,32 @@ ${pairBlock}`
   return { system, userPrompt }
 }
 
+// ── Presentation-scope classification prompt (Sonnet 4.6) — § 3.5e ───────────
+//
+// Labels each audience question as pertaining to the presentation ('in_scope')
+// or outside it ('out_of_scope'), grounded in a summary of what was presented.
+export function buildScopeClassifyPrompt(opts: {
+  presentationContext: string
+  questions: string[]
+}): { system: string; userPrompt: string } {
+  const system = `You classify each audience question from a town-hall Q&A as pertaining to the PRESENTATION given at the meeting ("in_scope") or outside it ("out_of_scope").
+
+You are given (1) a summary of what was presented and (2) a numbered list of questions.
+
+- in_scope = the question is about a topic, figure, claim, plan, or detail the presentation covered — including follow-ups, challenges, or requests to clarify presented material.
+- out_of_scope = the question is about something the presentation did NOT cover: a different agenda item, a general/administrative matter, or an unrelated/off-topic concern.
+
+Judge ONLY against the presentation summary provided. When a question is ambiguous, choose in_scope only if it plausibly relates to presented material; otherwise out_of_scope. Do NOT invent presentation content.
+
+Return ONLY a single JSON object, no prose, no markdown fences:
+{ "scopes": [ { "index": <int>, "scope": "in_scope" | "out_of_scope" } ] }
+exactly one entry per question, referenced by its [index].`
+
+  const qBlock = opts.questions.map((q, i) => `[${i}] ${q}`).join('\n')
+  const userPrompt = `WHAT WAS PRESENTED:\n${opts.presentationContext.trim()}\n\nQUESTIONS:\n${qBlock}`
+  return { system, userPrompt }
+}
+
 // ── Entity-extraction prompt (Sonnet 4.6) — § 3.5b ──────────────────────────
 //
 // Runs after transcription. Pulls the proper nouns mentioned in the meeting and

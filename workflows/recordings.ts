@@ -38,6 +38,7 @@ import type {
   RecordingStatus,
   QaSetupInputs,
   TranscriptSegment,
+  PresentationOutline,
 } from '@/lib/recordings/types'
 
 // Phase 1 — ingest through transcription, then PAUSE at 'transcribed'. The
@@ -196,6 +197,12 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
   // Scope Q&A extraction to the qa phase(s); fall back to the whole transcript
   // when there's no phase map (legacy / single-phase).
   const qaSegments = slicePhaseSegments(transcript.segments, rec.phase_map, ['qa'])
+  // §3.5e — when the meeting had a presentation, build a summary of what was
+  // presented (slide outline preferred, else the presentation-phase transcript)
+  // so the analyzer can classify each Q&A pair in/out of the presentation's scope.
+  const presentationContext = hasPresentationPhase(profile)
+    ? buildPresentationContext(rec.presentation_outline, slicePhaseSegments(transcript.segments, rec.phase_map, ['presentation']))
+    : undefined
   const analysis = await analyzeRecording({
     recording_id,
     org_id,
@@ -205,6 +212,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     instructions,
     entity_map: rec.entity_map,
     objectives: rec.objectives,
+    presentationContext,
   })
 
   await mirrorExtractionsToDataset({
@@ -251,6 +259,26 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     .eq('id', recording_id)
     .eq('org_id', org_id)
   if (error) throw new FatalError(`recordings post-analyze write failed: ${error.message}`)
+}
+
+// §3.5e — concise summary of what was presented, for scope classification.
+// Prefers the slide outline (titles + key points + figures); falls back to the
+// presentation-phase transcript text. Truncated to keep the classify prompt bounded.
+function buildPresentationContext(outline: PresentationOutline | null | undefined, presSegments: TranscriptSegment[]): string {
+  if (outline?.slides?.length) {
+    const lines: string[] = []
+    for (const s of outline.slides) {
+      const bits: string[] = []
+      if (s.title) bits.push(s.title)
+      if (s.key_points?.length) bits.push(s.key_points.join('; '))
+      if (s.figures?.length) bits.push(s.figures.map(f => `${f.label}: ${f.value}`).join('; '))
+      const line = bits.filter(Boolean).join(' — ')
+      if (line) lines.push(`• ${line}`)
+    }
+    const text = lines.join('\n').trim()
+    if (text) return text.slice(0, 8000)
+  }
+  return presSegments.map(s => s.text).join(' ').trim().slice(0, 6000)
 }
 
 function lastSegmentEnd(segments: TranscriptSegment[]): number {

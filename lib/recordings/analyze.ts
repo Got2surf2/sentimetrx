@@ -22,6 +22,7 @@ import {
   buildQaCuratorPrompt,
   buildQaSynthesisPrompt,
   buildQaPolishPrompt,
+  buildScopeClassifyPrompt,
   VALID_TYPOLOGIES,
   VALID_SENTIMENTS,
   type ExtractionDraft,
@@ -69,6 +70,10 @@ export interface AnalyzeInput {
   entity_map?: EntityMap | null
   /** §2.8 meeting objectives — steer the synthesis pass to answer them. */
   objectives?: MeetingObjectives | null
+  /** §3.5e — what was presented (slide outline / presentation transcript), so
+   *  each Q&A pair can be auto-classified in/out of the presentation's scope.
+   *  Absent → no scope classification (no presentation, or none captured). */
+  presentationContext?: string
 }
 
 export interface AnalyzeResult {
@@ -247,13 +252,66 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
     })
   }
 
+  // ── Presentation-scope classification (§3.5e) ─────────────────────────────
+  // When the meeting had a presentation, label each pair as pertaining to it
+  // ('in_scope') or outside it ('out_of_scope'), grounded in what was presented
+  // (input.presentationContext). Pre-fills the reviewer's manual flag. Non-fatal.
+  let scopeCents = 0
+  if (qaPairs.length > 0 && (input.presentationContext ?? '').trim()) {
+    scopeCents = await classifyPresentationScope(input, qaPairs, input.presentationContext as string)
+  }
+
   const total_cost_cents =
     centsFromUsage(opusResp.usage) +
     centsFromUsageMaybe(curatorReviews.size > 0) +
     synthesisCents +
-    polishCents
+    polishCents +
+    scopeCents
 
   return { extractions, total_cost_cents, analysis_summary }
+}
+
+// ── Pass: presentation-scope classification ─────────────────────────────────
+//
+// One Sonnet call. Given a summary of what was presented + the questions,
+// labels each pair in_scope / out_of_scope. Mutates qaPairs' payloads in place
+// (same refs as `extractions`). Returns cost cents; 0 + no-op on any failure.
+async function classifyPresentationScope(
+  input: AnalyzeInput,
+  qaPairs: NewExtraction[],
+  presentationContext: string,
+): Promise<number> {
+  try {
+    const { system, userPrompt } = buildScopeClassifyPrompt({
+      presentationContext,
+      questions: qaPairs.map(e => (e.payload as QaPairPayload).question),
+    })
+    const resp = await callAI({
+      tier: 'advanced',
+      modelOverride: SONNET_MODEL,
+      maxTokens: 2000,
+      timeoutMs: 180000,
+      system: [{ type: 'text', text: system, cache: true }],
+      messages: [{ role: 'user', content: userPrompt }],
+      usage: { org_id: input.org_id, resource_type: 'recording', resource_id: input.recording_id, event_type: 'recording_scope' },
+    })
+    const obj = parseJsonObject(resp.text)
+    const scopes = Array.isArray(obj?.scopes) ? (obj!.scopes as Array<Record<string, unknown>>) : []
+    const byIndex = new Map<number, 'in_scope' | 'out_of_scope'>()
+    for (const s of scopes) {
+      const idx = typeof s.index === 'number' ? s.index : Number(s.index)
+      const v = s.scope
+      if (Number.isInteger(idx) && (v === 'in_scope' || v === 'out_of_scope')) byIndex.set(idx, v)
+    }
+    qaPairs.forEach((e, i) => {
+      const scope = byIndex.get(i)
+      if (scope) (e.payload as QaPairPayload).presentation_scope = scope
+    })
+    return centsFromUsage(resp.usage)
+  } catch (e) {
+    console.error({ at: 'recordings.scope', msg: 'scope classification failed', err: (e as Error)?.message })
+    return 0
+  }
 }
 
 // ── Pass 4 polish ──────────────────────────────────────────────────────────
