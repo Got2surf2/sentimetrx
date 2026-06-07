@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
-import { classifyDatasetKeyword } from '@/lib/taxonomyClassify'
+import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClassify'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const dynamic     = 'force-dynamic'
@@ -94,7 +94,7 @@ async function gateDataset(datasetId: string, select: string) {
 
 export async function GET(_req: Request, props: Params) {
   const { datasetId } = await props.params
-  const gate = await gateDataset(datasetId, 'org_id')
+  const gate = await gateDataset(datasetId, 'org_id, row_count')
   if (gate.error) return gate.error
 
   const service = createServiceRoleClient()
@@ -102,7 +102,9 @@ export async function GET(_req: Request, props: Params) {
     computeTaxonomyRollup({ service, datasetId, orgId: gate.dataset.org_id as string }),
     detectTextFields(service, datasetId),
   ])
-  return NextResponse.json({ ...rollup, ...fields })
+  // totalRows lets the tab detect drift (rows added since the last classify) and
+  // surface a contextual "classify the new rows" nudge — not a permanent button.
+  return NextResponse.json({ ...rollup, ...fields, totalRows: (gate.dataset.row_count as number) ?? null })
 }
 
 export async function POST(req: Request, props: Params) {
@@ -120,6 +122,18 @@ export async function POST(req: Request, props: Params) {
     ? body.textField.trim() : 'review_text'
 
   const service = createServiceRoleClient()
+
+  // Drift nudge: classify ONLY the rows that lack a taxonomy entry (new since the
+  // last classify). Non-destructive — existing tags are untouched — so it's safe
+  // to surface contextually when rows have been added. One call drains up to 10K
+  // pending rows; the client loops on hasMore.
+  if (body?.pendingOnly) {
+    const p = await classifyPendingRows({
+      service, datasetId, orgId: dataset.org_id as string, brand: 'core', textField, maxRows: CHUNK,
+    })
+    return NextResponse.json({ classifiedThisCall: p.classified, done: !p.hasMore, pendingOnly: true })
+  }
+
   const r = await classifyDatasetKeyword({
     service, datasetId, orgId: dataset.org_id as string,
     brand: 'core', textField, offset: cursor, limit: CHUNK,

@@ -403,7 +403,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   the 7 axes are **Entities-style pills** (identity dot + mention-rate% + ★ avg-rating badge, red→green
   ramp from `data->>rating`), and the sub-buckets render as **theme-card-family cards** (axis dot +
   ★ rating + pos/neg sentiment bar + the sub's **share of its dimension** `sub.count/axis.count` /
-  count; all %s rounded). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
+  count; all %s rounded). A **drift nudge** (amber banner) appears when the GET's `totalRows` exceeds
+  `classifiedRows` — "N rows added since last classified · Classify N new rows" → POSTs
+  `{ pendingOnly: true }` (`classifyPendingRows`, tags only untagged rows). The **flagged-review count** (`alertRows` = distinct reviews with ≥1 severity
   alert) now rides on the ⚠ Severity pill, not a KPI card; the per-type alert counts are *per type*, so
   they can sum to MORE than `alertRows` when a review hits more than one (Cheddar's: 79
   food safety + 40 pests across 118 flagged reviews — 1 review hit both). **Severity is an 8th red pill** in the

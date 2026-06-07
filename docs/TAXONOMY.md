@@ -112,6 +112,12 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   dataset level — auto-classify-on-sync already does this for previously-classified Google
   Reviews datasets (`classifyPendingRows`); extending it to CSV/study uploads + a
   "N unclassified rows" dataset-card nudge is the planned model (see §6).
+  **Drift nudge (in-tab)**: the GET now returns `totalRows` (dataset row_count); when
+  `totalRows > classifiedRows` the populated view shows a contextual amber banner —
+  "N rows added since this was last classified" + a **"Classify N new rows"** button that
+  POSTs `{ pendingOnly: true, textField }` → `classifyPendingRows` (tags ONLY the untagged
+  rows, non-destructive). This is the drift-triggered, in-context replacement for the old
+  always-present Re-classify button (a dataset-card version is the follow-up).
   **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
   axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
   picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top

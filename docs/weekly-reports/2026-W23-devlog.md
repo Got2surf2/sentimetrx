@@ -1516,3 +1516,15 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **Model note (answering owner's question)**: classification is **saved per row** in `dataset_row_taxonomy` (idempotent), not re-run on view. Auto-classify-on-sync today covers **only** previously-classified Google Reviews datasets (`lib/reviewSync.ts` → `classifyPendingRows`); CSV/study uploads do NOT auto-classify. The right model (owner-endorsed): taxonomy-on ⇒ auto-classify future uploads + a dataset-card "N unclassified rows" nudge. Scoped, **not built yet** (TAXONOMY.md §4/§6).
 
 **Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No backend change this commit. Specs TAXONOMY.md §4/§4a, ANALYTICS.md, DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: contextual drift nudge (classify only new rows)
+
+**Why**: Re-classify was removed as a permanent button; the safe replacement is a drift-triggered, non-destructive "classify the new rows" action surfaced only when rows have been added since the last classify.
+
+**What changed**:
+- **`app/api/datasets/[datasetId]/taxonomy/route.ts`** — GET returns `totalRows` (dataset row_count) for drift detection. POST accepts `{ pendingOnly: true }` → `classifyPendingRows` (tags only untagged rows, idempotent/non-destructive, 10K/call, client loops on `done:false`).
+- **`components/analyze/TaxonomyModule.tsx`** — `runClassifier(pendingOnly?)` now branches (full vs pending-only loop). Populated view shows an amber drift banner when `totalRows > classifiedRows`: "N rows added since last classified" + "Classify N new rows" (pending-only). Empty-state Classify fixed to `() => runClassifier(false)` (was passing the click event as the pendingOnly arg).
+
+**Known follow-ups surfaced by owner testing (NOT yet addressed — see next)**: (1) Dimensions is NOT field-reactive — switching the ANALYZE open-end doesn't change it, because it reads persisted per-row tags (one classification), not re-derived per field like TextMine. (2) "reviews classified" (all rows incl. blanks) reads higher than "records" (rows with text) — denominator still needs the agreed relabel/align. Both point to a taxonomy field-model decision (classify all open-ends dataset-level vs per-field reactive).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Specs TAXONOMY.md §4 updated. ALL LOCAL on main, not pushed.

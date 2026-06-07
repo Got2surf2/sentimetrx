@@ -23,6 +23,7 @@ interface Rollup {
   alertRows: number
   textFields: TextField[]
   defaultField: string | null
+  totalRows: number | null  // dataset row count — for drift detection (rows added since classify)
 }
 
 const TEAL = '#0F7173', ORANGE = '#e8622a', NAVY = '#0D2B45'
@@ -164,23 +165,38 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
 
   // Loop POST chunks until the dataset is fully classified, then refresh the
   // roll-up. Idempotent server-side, so an interrupted run resumes safely.
-  const runClassifier = useCallback(async () => {
+  const runClassifier = useCallback(async (pendingOnly = false) => {
     setClassifying(true)
     setClassifyErr(null)
     setProgress({ scanned: 0, total: null })
     try {
-      let cursor = 0
-      for (;;) {
-        const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cursor, textField: textField || undefined }),
-        })
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
-        const j = await r.json()
-        setProgress({ scanned: j.nextCursor, total: j.totalRows ?? null })
-        if (j.done || j.nextCursor <= cursor) break  // done, or no forward progress (safety)
-        cursor = j.nextCursor
+      if (pendingOnly) {
+        // Drift fix: classify only the new (untagged) rows. Non-destructive —
+        // existing tags untouched. Loops until the pending queue is drained.
+        for (let guard = 0; guard < 200; guard++) {
+          const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pendingOnly: true, textField: textField || undefined }),
+          })
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
+          const j = await r.json()
+          if (j.done) break
+        }
+      } else {
+        let cursor = 0
+        for (;;) {
+          const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cursor, textField: textField || undefined }),
+          })
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
+          const j = await r.json()
+          setProgress({ scanned: j.nextCursor, total: j.totalRows ?? null })
+          if (j.done || j.nextCursor <= cursor) break  // done, or no forward progress (safety)
+          cursor = j.nextCursor
+        }
       }
       await load()
     } catch (e: any) {
@@ -219,7 +235,7 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
             : <>First pick an open-ended field to analyze — the <strong>Liked Most / Liked Least</strong> toggle at the top — then run the classifier to tag it by service, food, drinks, ambiance, and more.</>}
         </p>
         <button
-          onClick={runClassifier}
+          onClick={() => runClassifier(false)}
           disabled={!textField}
           style={{ background: textField ? ORANGE : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: textField ? 'pointer' : 'not-allowed' }}
         >
@@ -246,6 +262,27 @@ export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { d
           {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
         </div>
       </div>
+
+      {/* Drift nudge — only shown when rows have been added since the last classify.
+          Classifies just the NEW rows (non-destructive); this is the contextual,
+          drift-triggered replacement for the old always-present Re-classify button. */}
+      {(() => {
+        const pending = Math.max(0, (data.totalRows ?? 0) - data.classifiedRows)
+        if (pending <= 0 || !textField) return null
+        return (
+          <div style={{ marginBottom: 20, padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#92400e' }}>
+              ⚠ <strong>{pending.toLocaleString()}</strong> row{pending === 1 ? '' : 's'} added since this was last classified — their dimensions aren’t tagged yet.
+            </span>
+            <button
+              onClick={() => runClassifier(true)}
+              title={`Classify only the new rows on ${fieldLabel || textField} (existing tags are untouched)`}
+              style={{ marginLeft: 'auto', background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Classify {pending.toLocaleString()} new row{pending === 1 ? '' : 's'}
+            </button>
+          </div>
+        )
+      })()}
 
       {/* Dimension axis pills (Entities-style: identity dot + label + mention-rate% + ★ rating).
           Pick one to focus the sub-dimension cards below; pick again to clear. */}
