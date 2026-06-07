@@ -22,6 +22,19 @@ export const DIM_AXIS_LABEL: Record<Axis, string> = {
   outcome:    'Outcome',
 }
 
+// Verbose, customer-facing axis names. Single source of truth: the Dimensions tab
+// pills/cards use these (taxonomyRollup re-exports this as AXIS_LABEL), and the
+// chart picker shows the short DIM_AXIS_LABEL with THIS as the hover tooltip.
+export const DIM_AXIS_LABEL_LONG: Record<Axis, string> = {
+  touchpoint: 'Service — who served you',
+  attribute:  'Staff & food attributes',
+  product:    'Food — what they ate',
+  beverage:   'Drinks — bar & wine',
+  ambiance:   'Room — ambiance & décor',
+  context:    'Occasion — when & why',
+  outcome:    'Outcome — will they return',
+}
+
 // Per-axis identity color — the single source of truth for axis dots/chips
 // everywhere Dimensions render: the Dimensions view (TaxonomyModule) pills +
 // cards, and the theme-card / Theme-cloud "Dimensions" chip rows. Import this

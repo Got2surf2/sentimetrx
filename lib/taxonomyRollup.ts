@@ -6,19 +6,14 @@
 // adds the org-scoped paged read.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
 
 export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 export type Axis = typeof AXES[number]
 
-export const AXIS_LABEL: Record<Axis, string> = {
-  touchpoint: 'Service — who served you',
-  attribute:  'Staff & food attributes',
-  product:    'Food — what they ate',
-  beverage:   'Drinks — bar & wine',
-  ambiance:   'Room — ambiance & décor',
-  context:    'Occasion — when & why',
-  outcome:    'Outcome — will they return',
-}
+// Verbose axis labels — single source lives in lib/dimensionFields.ts so the tab,
+// the rollup, and the chart hover never drift.
+export const AXIS_LABEL: Record<Axis, string> = DIM_AXIS_LABEL_LONG
 
 export interface TaxonomyRow {
   axis_touchpoint: string[]; axis_attribute: string[]; axis_product: string[]

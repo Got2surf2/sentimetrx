@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
-import { axisOfDimField, isDimField, dimVirtualFields } from '@/lib/dimensionFields'
+import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -140,6 +140,10 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
         <div style={{ padding: '0 12px 8px' }}>
           {fields.map(function(f) {
             var isAssigned = Object.values(currentConfig).includes(f.field)
+            // Dimension fields show the short label (Touchpoint…) but hover the
+            // verbose, customer-facing name (Service — who served you…).
+            var dimAx = axisOfDimField(f.field)
+            var hoverTitle = dimAx ? DIM_AXIS_LABEL_LONG[dimAx] : fl(f)
             return (
               <div key={f.field}
                 draggable={true}
@@ -150,7 +154,7 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
                 }}
                 onDragEnd={function() { _chartDrag = null }}
                 style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
-                title={fl(f)}>
+                title={hoverTitle}>
                 {isAssigned && '\u2713 '}{fl(f)}
               </div>
             )

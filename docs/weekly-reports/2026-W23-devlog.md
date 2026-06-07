@@ -1584,3 +1584,14 @@ From owner testing (RC dataset). Three builds:
 **Still open (logged, not built)**: (1) **label mismatch** — the Dimensions group uses short labels (`Touchpoint/Attribute/…`, `DIM_AXIS_LABEL`) while the Dimensions tab uses verbose ones (`Staff & food attributes/…`, `AXIS_LABEL`); pick one for consistency. (2) Chart dimension aggregates still read the **legacy** `dataset_row_taxonomy` (field-agnostic) — charts reflect the last-classified field, not per-field like the tab; per-field chart aggregates would need the `tax_*` RPCs to take a `field` param.
 
 **Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No migration. Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
+
+## 2026-06-07 — Charts dim labels: short label + verbose hover (single source)
+
+**Why**: Owner — chart Dimensions group should show the short axis names (Touchpoint…) with the full customer-facing name on hover, and stop the label drift between Charts (DIM_AXIS_LABEL) and the Dimensions tab (AXIS_LABEL).
+
+**What changed**:
+- `lib/dimensionFields.ts` — new `DIM_AXIS_LABEL_LONG` (verbose names) as the single source.
+- `lib/taxonomyRollup.ts` — `AXIS_LABEL` now re-exports `DIM_AXIS_LABEL_LONG` (the tab pills/cards use it) so tab + charts share one set.
+- `components/analyze/ChartsModule.tsx` — the picker shows the short `DIM_AXIS_LABEL` (field `.label`) but the field item's hover `title` is the verbose `DIM_AXIS_LABEL_LONG[axis]`.
+
+**Verify**: typecheck-clean (only CampaignDetailClient xlsx-stub artifacts). Spec ANALYTICS.md updated. ALL LOCAL on main, not pushed.
