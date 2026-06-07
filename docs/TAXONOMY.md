@@ -93,18 +93,25 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 - **In-app Dimensions view** (user-facing label **"Dimensions"**; internal code/routes/keys stay `taxonomy` — friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions"). As of 2026-06-04 it lives as a **sub-tab inside TextMine** (`TextMineModule` renders `<TaxonomyModule>` when `subTab==='dimensions'`, shown when `taxonomyEnabled` is true = `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`: Google Reviews; **OR org capability** (`orgTaxonomyEnabled` in `lib/resolveOrg` — the explicit per-org `ModuleFeatures.taxonomy` toggle OR a restaurant `primaryIndustries` value, auto-enabled); **OR per-dataset** (`datasets.taxonomy_enabled`, sql/109 — an "Apply Dimensions" checkbox at upload or a Schema-tab toggle, for admin/one-off datasets). Threaded as `taxonomyEnabled` to TextMine/Charts/Stats; the classify route is org-gated (not source-gated) so it works on any dataset. Exempt from the theme-model lock); the standalone top-level tab was retired (the `/analyze/[datasetId]/taxonomy` route still resolves but is unlinked). `TaxonomyModule.tsx` is self-contained and fed by
   `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Self-serve classification**:
-  the empty state offers a **"Classify this dataset"** button (and the populated view a
-  **"Re-classify"** control); both loop `POST /api/datasets/[datasetId]/taxonomy`
-  (`{ cursor, textField }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
-  10K-row chunks, `core` overlay, org-gated like the GET) with a live progress bar until
-  `done`. Keyword-tier → no AI cost; idempotent so an interrupted run resumes.
-  **Field picker**: the text column isn't hardcoded — the `GET` response carries
-  `textFields[]` + a recommended `defaultField`, detected by `detectTextFields` (samples
-  ~25 rows; a column qualifies when its values are mostly multi-word strings ≥12 chars;
-  labels from `schema_config` when present; defaults to `review_text`). The tab renders a
-  **"Field to classify"** dropdown so a survey dataset can classify `comment`/`feedback`
-  instead of `review_text`. The POST passes the pick through to `classifyDatasetKeyword`'s
-  `textField` (a JSONB key lookup — an unknown field yields no matches, never an error).
+  when a dataset is unclassified the empty state offers a single **"Classify «field»"**
+  button that loops `POST /api/datasets/[datasetId]/taxonomy` (`{ cursor, textField }` body
+  → `{ classifiedThisCall, nextCursor, done, totalRows }`, 10K-row chunks, `core` overlay,
+  org-gated like the GET) with a live progress bar until `done`. Keyword-tier → no AI cost;
+  tags are **saved per row** in `dataset_row_taxonomy` (idempotent on `(dataset_id,row_id)`)
+  so the tab just reads them back — classification is a one-time pass, never re-run on view.
+  **Field follows ANALYZE** (no separate picker, as of 2026-06-06): the classified field is
+  the parent TextMine **ANALYZE** selection (`effectiveFields[0]` — e.g. Liked Most), passed
+  in as `textField`/`fieldLabel` props. This retires the old redundant "Field to classify"
+  dropdown and guarantees the classified field == the field being themed (so the "rows with
+  text" base reconciles with the metric strip). The POST passes it through to
+  `classifyDatasetKeyword`'s `textField` (a JSONB key lookup — an unknown field yields no
+  matches, never an error). `detectTextFields` still runs server-side (GET returns
+  `textFields[]`/`defaultField`) but the UI no longer renders a picker.
+  **No prominent Re-classify** (removed 2026-06-06): re-classification overwrites saved tags
+  and is expensive, so it is *not* a header button. Keeping new data tagged belongs at the
+  dataset level — auto-classify-on-sync already does this for previously-classified Google
+  Reviews datasets (`classifyPendingRows`); extending it to CSV/study uploads + a
+  "N unclassified rows" dataset-card nudge is the planned model (see §6).
   **Pills + cards + comment drill-down** (display redesigned 2026-06-06 — see §4a): the 7
   axes render as **Entities-style pills** (identity dot + mention-rate% + ★ rating badge);
   picking one **focuses** the sub-dimension grid below to that axis (no axis picked = the top
@@ -155,9 +162,11 @@ sub-dimension pill row with one coherent surface that borrows two patterns
 already in the product: **Entities-style pills** on top, **theme-card-family
 cards** below. A pill is the collapsed form of its cards.
 
-- **Keep as-is**: the KPI row; the inline comment drill panel
-  (`GET …/taxonomy/rows`); the self-serve Classify / Re-classify controls + field
-  picker. **Severity** is promoted to an 8th pill in the axis-pill row (kept **red** —
+- **Keep as-is**: the inline comment drill panel (`GET …/taxonomy/rows`); the
+  first-run **Classify** control on the empty state. The field picker and the prominent
+  **Re-classify** button were **removed** 2026-06-06 — the classified field follows the
+  ANALYZE toggle, and re-classification is deferred to the dataset level (see §4).
+  **Severity** is promoted to an 8th pill in the axis-pill row (kept **red** —
   status, not navigation; via the `SEVERITY='__severity__'` sentinel `filterAxis`),
   showing the total flagged-review count; selecting it **opens its alert sub-types as
   red cards** (food safety / pests → ⚠ tag + the matching attribute sub's ★ rating +
@@ -165,10 +174,10 @@ cards** below. A pill is the collapsed form of its cards.
   separate severity-pill row is gone.
 - **Header** matches the Themes view's scale (not chunky KPI cards): an `<h2>`
   "Dimensions" (20px/800) + a **one-line stat summary** ("N reviews classified · X% with
-  a signal · ★ Y avg rating · Z flagged"), with the field picker + Re-classify aligned
-  right. The old big centered KPI cards were removed (they clashed with the TextMine
-  sub-tab chrome); the **flagged count moved onto the ⚠ Severity pill**, so it isn't a
-  KPI anymore.
+  a signal · ★ Y avg rating · Z flagged"). No right-aligned controls — the field picker and
+  Re-classify were removed (2026-06-06). The old big centered KPI cards were removed (they
+  clashed with the TextMine sub-tab chrome); the **flagged count moved onto the ⚠ Severity
+  pill**, so it isn't a KPI anymore.
 - **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
   `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
   (% of classified reviews touching the axis, **rounded, no decimals**) + a red→green

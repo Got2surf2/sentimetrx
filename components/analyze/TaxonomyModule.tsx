@@ -88,7 +88,7 @@ function highlight(text: string, phrases: string[]): Array<string | ReactElement
   return out
 }
 
-export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
+export default function TaxonomyModule({ datasetId, textField, fieldLabel }: { datasetId: string; textField?: string | null; fieldLabel?: string | null }) {
   const [data, setData] = useState<Rollup | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,7 +97,8 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
   const [classifying, setClassifying] = useState(false)
   const [progress, setProgress] = useState<{ scanned: number; total: number | null }>({ scanned: 0, total: null })
   const [classifyErr, setClassifyErr] = useState<string | null>(null)
-  const [field, setField] = useState('')  // which column to classify (user pick)
+  // The field to classify follows the parent's ANALYZE selection (Liked Most /
+  // Liked Least) — there's no separate field picker here anymore.
 
   // Drill-down: clicking a sub-topic / alert opens the comments behind it.
   const [drill, setDrill] = useState<{ qs: string; crumbs: string[] } | null>(null)
@@ -151,7 +152,6 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
       const j: Rollup = await r.json()
       setData(j)
-      setField(prev => prev || j.defaultField || '')
       setErr(null)
     } catch (e: any) {
       setErr(String(e.message || e))
@@ -174,7 +174,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
         const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cursor, textField: field || undefined }),
+          body: JSON.stringify({ cursor, textField: textField || undefined }),
         })
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
         const j = await r.json()
@@ -188,21 +188,7 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
     } finally {
       setClassifying(false)
     }
-  }, [datasetId, load, field])
-
-  // Reusable text-field picker (empty state + re-classify). Hidden when no
-  // candidate text columns were detected (POST then falls back to review_text).
-  const fieldPicker = (compact: boolean) =>
-    data && data.textFields && data.textFields.length > 0 ? (
-      <select
-        value={field}
-        onChange={e => setField(e.target.value)}
-        aria-label="Field to classify"
-        style={{ fontSize: compact ? 13 : 16, padding: compact ? '0 10px' : '9px 12px', height: compact ? 34 : undefined, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: NAVY, fontWeight: compact ? 700 : 500, minWidth: compact ? 0 : 280 }}
-      >
-        {data.textFields.map(f => <option key={f.field} value={f.field}>{f.label}</option>)}
-      </select>
-    ) : null
+  }, [datasetId, load, textField])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading dimensions…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load dimensions: {err}</div>
@@ -228,20 +214,16 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
       <div style={{ padding: 40, maxWidth: 560 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>No dimensions yet</h2>
         <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-          This dataset hasn’t been sorted into dimensions yet. Run the classifier to tag every row by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets.
+          {textField
+            ? <>This dataset hasn’t been sorted into dimensions yet. Run the classifier to tag <strong>{fieldLabel || textField}</strong> by service, food, drinks, ambiance, and more — then this tab fills with mention rates, sentiment, and severity alerts. It’s free (no AI) and takes a few minutes on large datasets. The tags are saved on each row, so this is a one-time pass — not re-run every time you open the tab.</>
+            : <>First pick an open-ended field to analyze — the <strong>Liked Most / Liked Least</strong> toggle at the top — then run the classifier to tag it by service, food, drinks, ambiance, and more.</>}
         </p>
-        {data && data.textFields && data.textFields.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 6 }}>Field to classify</label>
-            {fieldPicker(false)}
-            <p style={{ fontSize: 12, color: SLATE, marginTop: 6 }}>The column holding the written feedback — e.g. the review or comment text.</p>
-          </div>
-        )}
         <button
           onClick={runClassifier}
-          style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+          disabled={!textField}
+          style={{ background: textField ? ORANGE : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 22px', fontSize: 15, fontWeight: 700, cursor: textField ? 'pointer' : 'not-allowed' }}
         >
-          Classify this dataset
+          {textField ? `Classify ${fieldLabel || 'this dataset'}` : 'Pick a field above first'}
         </button>
         {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: 14 }}>Classification failed: {classifyErr}</p>}
       </div>
@@ -250,31 +232,20 @@ export default function TaxonomyModule({ datasetId }: { datasetId: string }) {
 
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
-      {/* Header — matches the Themes view's scale: an h2 + a one-line stat summary,
-          with the field picker + Re-classify aligned right. (No chunky KPI cards — the
-          flagged count now lives on the ⚠ Severity pill below.) */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <div style={{ minWidth: 0 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Dimensions</h2>
-          <div style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
-            <strong style={{ color: NAVY }}>{data.classifiedRows.toLocaleString()}</strong> reviews classified
-            {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}% with a signal
-            {data.overallAvgRating != null && <> · <span style={{ color: ratingColor(data.overallAvgRating) || NAVY, fontWeight: 700 }}>★ {data.overallAvgRating.toFixed(1)}</span> avg rating</>}
-            {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
-          {fieldPicker(true)}
-          <button
-            onClick={runClassifier}
-            title="Re-run the classifier (on the selected field) to pick up newly synced rows"
-            style={{ background: '#fff', color: NAVY, border: '1px solid #e2e8f0', borderRadius: 8, height: 34, padding: '0 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-          >
-            Re-classify
-          </button>
+      {/* Header — matches the Themes view's scale: an h2 + a one-line stat summary.
+          No field picker (follows the ANALYZE toggle) and no Re-classify here —
+          re-classification is destructive + expensive, so it's not a prominent
+          button; new-data classification belongs at the dataset level (see note).
+          (No chunky KPI cards — the flagged count now lives on the ⚠ Severity pill.) */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Dimensions</h2>
+        <div style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
+          <strong style={{ color: NAVY }}>{data.classifiedRows.toLocaleString()}</strong> reviews classified
+          {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.classifiedRows))}% with a signal
+          {data.overallAvgRating != null && <> · <span style={{ color: ratingColor(data.overallAvgRating) || NAVY, fontWeight: 700 }}>★ {data.overallAvgRating.toFixed(1)}</span> avg rating</>}
+          {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
         </div>
       </div>
-      {classifyErr && <p style={{ color: RED, fontSize: 13, marginTop: -8, marginBottom: 16 }}>Classification failed: {classifyErr}</p>}
 
       {/* Dimension axis pills (Entities-style: identity dot + label + mention-rate% + ★ rating).
           Pick one to focus the sub-dimension cards below; pick again to clear. */}

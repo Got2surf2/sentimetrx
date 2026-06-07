@@ -427,11 +427,14 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
   `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
-  **"Classify this dataset"** / **"Re-classify"** buttons loop `POST /api/datasets/[datasetId]/taxonomy`
-  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The text
-  column is **user-selectable** via a "Field to classify" dropdown (GET returns detected `textFields[]`
-  + `defaultField` = `review_text` when present), so survey datasets can target `comment`/`feedback`.
-  `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Still not wired into the upload/ingest path (auto-classify-on-sync is roadmap).
+  the empty state's **"Classify «field»"** button loops `POST /api/datasets/[datasetId]/taxonomy`
+  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The
+  classified **field follows the ANALYZE toggle** (passed as `textField`/`fieldLabel`; the old
+  "Field to classify" dropdown was removed 2026-06-06), and the prominent **Re-classify** button
+  was removed (destructive + expensive — re-classification is deferred to the dataset level).
+  `scripts/taxonomy-classify.ts` remains for brand-tuned (`rc`/`chuys`) runs. Auto-classify-on-sync
+  runs for previously-classified Google Reviews datasets only; CSV/study upload auto-classify + a
+  dataset-card "N unclassified" nudge are the planned model (TAXONOMY.md §4/§6).
 - **Vendor benchmark.** For datasets with legacy vendor labels, the classifier reproduces
   ~90% of the vendor's topics at higher coverage and far higher alert precision (see
   `docs/TAXONOMY.md` for the critical-category audit). The in-app vendor-vs-us side-by-side

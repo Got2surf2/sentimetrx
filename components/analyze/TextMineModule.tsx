@@ -2643,7 +2643,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ DIMENSIONS TAB ═══ (self-contained module — fetches dataset_row_taxonomy itself) */}
             {subTab === 'dimensions' && (
               <div style={{ flex: 1, minHeight: 0 }}>
-                <TaxonomyModule datasetId={datasetId} />
+                <TaxonomyModule datasetId={datasetId} textField={effectiveFields[0] || null} fieldLabel={effectiveFields[0] ? fieldLabel(effectiveFields[0]) : null} />
               </div>
             )}
 

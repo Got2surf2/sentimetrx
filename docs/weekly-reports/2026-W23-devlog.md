@@ -1504,3 +1504,15 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 **What changed** (`components/ui/FavoriteStar.tsx`): added `useEffect(() => setFavorited(initialFavorited), [initialFavorited])` to re-sync when the parent hydrates/changes the prop. Shared component (bots/surveys/datasets/campaigns/townhall/recordings) — all benefit; parents that hydrate synchronously just re-set the same value (no-op).
 
 **Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts remain); 461 tests pass. No backend change. ALL LOCAL on main, not pushed.
+
+## 2026-06-06 — Dimensions: field follows ANALYZE; remove field picker + prominent Re-classify
+
+**Why**: Owner: the Dimensions tab had its own "Field to classify" dropdown, redundant with the top **ANALYZE** toggle (Liked Most / Liked Least). And a prominent **Re-classify** button is dangerous (overwrites saved tags, expensive) — re-classification should be a dataset-level, drift-triggered action, not a header button.
+
+**What changed**:
+- **`components/analyze/TaxonomyModule.tsx`** — now takes `textField`/`fieldLabel` props; classification uses the parent's ANALYZE field. Removed the internal `field` state, the `fieldPicker` dropdown (header + empty state), and the prominent **Re-classify** button. Empty state shows a single first-run **"Classify «field»"** (disabled until a field is selected). Header is just the h2 + the reconciled summary line (no right-aligned controls). Side benefit: the classified field now always == the themed field, so the "rows with text" base reconciles with the metric strip (the deferred denominator question gets easier).
+- **`components/analyze/TextMineModule.tsx`** — passes `textField={effectiveFields[0]}` + `fieldLabel` to `<TaxonomyModule>`.
+
+**Model note (answering owner's question)**: classification is **saved per row** in `dataset_row_taxonomy` (idempotent), not re-run on view. Auto-classify-on-sync today covers **only** previously-classified Google Reviews datasets (`lib/reviewSync.ts` → `classifyPendingRows`); CSV/study uploads do NOT auto-classify. The right model (owner-endorsed): taxonomy-on ⇒ auto-classify future uploads + a dataset-card "N unclassified rows" nudge. Scoped, **not built yet** (TAXONOMY.md §4/§6).
+
+**Verify**: typecheck-clean (only the unrelated CampaignDetailClient xlsx-stub artifacts); 461 tests pass. No backend change this commit. Specs TAXONOMY.md §4/§4a, ANALYTICS.md, DATA_SOURCES.md updated. ALL LOCAL on main, not pushed.
