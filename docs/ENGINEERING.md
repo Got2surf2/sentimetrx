@@ -70,6 +70,13 @@ service-role import.
 - **`main` is protected.** Push directly only via owner override in
   emergencies (log the override reason in the next devlog).
 - **All other changes** go via PR. Even single-line fixes.
+- **AI-agent sessions are an owner-directed exception** (see `CLAUDE.md`
+  → "Branch policy"): Claude Code sessions commit **directly to local
+  `main`** (no feature branch) so the owner can test locally without
+  branch juggling. The protection above still holds for the *remote* —
+  the **owner-authorized push is the review gate** (the owner diff-reads
+  before authorizing the push, satisfying the solo-founder self-review
+  requirement; pushes still never use `--force` or `--no-verify`).
 - **PR requirements:**
   - Linked spec or issue (`SPEC.md`, `docs/FEATURES.md`, or
     a `docs/specs/*.md`)

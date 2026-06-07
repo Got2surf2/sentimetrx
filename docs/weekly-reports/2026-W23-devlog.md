@@ -1492,3 +1492,7 @@ Owner's preference. "Dimensions" reads as analytical structure you can pivot/tre
 - Severity-as-a-dimension-pill (built in the prior commit) confirmed in place — selecting it expands its alert sub-cards.
 
 **Verify**: changed file typecheck-clean (only the 2 untouched `CampaignDetailClient.tsx` xlsx-stub artifacts remain — env can't install the CDN-pinned `xlsx`); 461 tests pass. No backend change. Specs `TAXONOMY.md §4/§4a` + `ANALYTICS.md` updated. ALL LOCAL, not pushed.
+
+## 2026-06-06 — Policy: AI-agent sessions work directly on `main`
+
+**Why**: Owner wants Claude Code sessions to commit straight to `main` (no feature-branch juggling) so local testing is friction-free. Recorded as a permanent **Branch policy** in `CLAUDE.md` (project + a parent-level `/home/user/CLAUDE.md`), and reconciled `docs/ENGINEERING.md §2` so the formal Branch & review policy isn't contradicted — documented as an owner-directed exception where the **owner-authorized push is the review gate** (diff-read before push = the solo-founder self-review). Pushing still requires explicit authorization; no `--force`/`--no-verify`.
