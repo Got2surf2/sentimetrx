@@ -47,3 +47,11 @@
 **What changed**: one-line fix in `normCDF` — erf argument is now `|z|/√2` (`Math.abs(z) / Math.SQRT2`). Statistics-module p-values for the three affected tests are now correct (will read as larger/more-conservative than before the fix). Updated the statsUtils unit test to pin standard z-table reference values (Φ(1)=0.8413, Φ(1.96)=0.975, Φ(2.576)=0.995) as a regression guard.
 
 **Verify**: `npx vitest run statsUtils` 27/27; full suite 546 pass. Local-only.
+
+## 2026-06-08 — Agent-route org-scoping gate tests (Tests-score Batch 3)
+
+**Why**: W23 governance flagged Tests=5/10 with "route handlers largely untested", and the human-review checklist called out bare service-role agent lookups (`bots/[id]/route.ts:70,94,96`). Every past CRITICAL finding was a service-role `id` lookup missing its `org_id` pairing — so route-gate tests lift Tests *and* reinforce Security.
+
+**What changed**: new `tests/integration/bot-routes-gate.test.ts` (13 tests) covering the agent API routes — `bots/[id]` GET/PATCH/DELETE, `entities` GET/POST, `questions` GET, `conversations` GET, `knowledge` GET. Asserts the multi-tenancy gate only: 401 (no auth / no org), cross-org 404 (or 403 for conversations) for non-admins, agent-not-found 404, and admin bypass. Exercises both auth shapes in the codebase — `getCallerOrgContext` (entities/questions) and `getAuthUser`+users (bots/[id]/conversations/knowledge). Supabase boundary + AI/embeddings/usage/audit libs mocked. Added to the TESTING.md layout. Coverage over lib+app/api: lines 15.58%→15.91% (the early-return gate paths); the existing 15/10/17/15 floor already sits below.
+
+**Verify**: `npx vitest run bot-routes-gate` 13/13; full suite 559 pass. Local-only.
