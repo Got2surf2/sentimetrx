@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 4: waveform + room-tuned audio + keep live transcript
+
+**Why**: Owner feedback after first successful local test — wants a waveform + more professional visuals, asked whether a gain knob helps quality, and wants the live transcript kept to compare against the post-processed one.
+
+**What changed**: (1) **Waveform** — refactored the Web Audio graph so the `AudioContext`+`MediaStreamSourceNode` are built once in `start()` (an `AnalyserNode` drives a canvas waveform; the captions worklet reuses the same source). Split teardown: `stopCaptions` (WS only, so a captions failure keeps the meter) vs `teardownAudio` (graph + rAF). (2) **Gain answer = AGC** — `getUserMedia` now requests `autoGainControl:true`, `echoCancellation:false`, `noiseSuppression:false`, mono: automatic gain is the right lever (a manual slider would only affect captions, not the saved file, and risks baking in clipping); echo/noise off preserves multiple voices around a table. (3) **Keep live transcript** — full real-time transcript persisted on Stop to `recordings.live_transcript` via new `POST /api/recordings/[id]/live-transcript`; the summary route no longer writes that column (it would truncate). Enables live-vs-final comparison; the comparison *view* is the next step.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. Waveform/AGC need an in-browser ear/eye check.
+
+
 ## 2026-06-07 — Fix: Permissions-Policy blocked the mic on the live page
 
 **Why**: Owner's local test: mic stayed blocked on `/live` even after granting OS/browser permission. Root cause was **our** code, not the environment — `next.config.js` baseline security header sent `Permissions-Policy: ... microphone=() ...` on every route, which hard-blocks `getUserMedia` for all origins (incl. self) → `NotAllowedError`. Nothing used the mic before, so it was correctly locked.

@@ -64,6 +64,11 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const drawingRef = useRef(false)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const finalsRef = useRef<string[]>([])           // mirror of `finals` readable inside the summary interval
   const lastSummarizedLenRef = useRef(0)
@@ -80,6 +85,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     if (el) el.scrollTop = el.scrollHeight
   }, [finals, interim])
 
+  // Close just the Deepgram socket — leaves the audio graph (waveform) running,
+  // so a captions failure doesn't kill the meter.
   const stopCaptions = useCallback(() => {
     try {
       const ws = wsRef.current
@@ -87,18 +94,74 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       ws?.close()
     } catch { /* ignore */ }
     wsRef.current = null
+  }, [])
+
+  // Tear down the Web Audio graph + waveform loop.
+  const teardownAudio = useCallback(() => {
+    drawingRef.current = false
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    try { sourceRef.current?.disconnect() } catch { /* ignore */ }
+    sourceRef.current = null
+    analyserRef.current = null
     audioCtxRef.current?.close().catch(() => {})
     audioCtxRef.current = null
   }, [])
+
+  // Draw the live input waveform to the canvas (real "it's listening" feedback).
+  const drawWaveform = useCallback(() => {
+    const analyser = analyserRef.current
+    const canvas = canvasRef.current
+    if (analyser && canvas) {
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        const w = canvas.width, h = canvas.height
+        const buf = new Uint8Array(analyser.fftSize)
+        analyser.getByteTimeDomainData(buf)
+        ctx.clearRect(0, 0, w, h)
+        ctx.lineWidth = 2
+        ctx.strokeStyle = HERMES
+        ctx.beginPath()
+        const slice = w / buf.length
+        let x = 0
+        for (let i = 0; i < buf.length; i++) {
+          const y = (buf[i] / 255) * h
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+          x += slice
+        }
+        ctx.stroke()
+      }
+    }
+    if (drawingRef.current) rafRef.current = requestAnimationFrame(drawWaveform)
+  }, [])
+
+  // Build the shared Web Audio graph (waveform + the source captions reuse).
+  // Non-essential — a failure here must not stop recording.
+  const startAudioGraph = useCallback((stream: MediaStream) => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const audioCtx = new Ctx()
+      audioCtxRef.current = audioCtx
+      void audioCtx.resume()
+      const source = audioCtx.createMediaStreamSource(stream)
+      sourceRef.current = source
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 2048
+      source.connect(analyser)
+      analyserRef.current = analyser
+      drawingRef.current = true
+      rafRef.current = requestAnimationFrame(drawWaveform)
+    } catch { /* waveform is non-essential */ }
+  }, [drawWaveform])
 
   // Tear down everything if the user navigates away mid-recording.
   useEffect(() => {
     return () => {
       stopTimer()
       stopCaptions()
+      teardownAudio()
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
-  }, [stopTimer, stopCaptions])
+  }, [stopTimer, stopCaptions, teardownAudio])
 
   // Ask the server for a rolling summary — throttled: only when the transcript
   // has grown meaningfully since the last one (or we have none yet). Best-effort.
@@ -137,7 +200,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
   // Open the Deepgram live WS and pipe 16-bit PCM from the mic. Best-effort:
   // any failure sets captionsError but leaves the recording running.
-  const startCaptions = useCallback(async (stream: MediaStream) => {
+  const startCaptions = useCallback(async () => {
     let token: string
     try {
       const r = await fetch(`/api/recordings/${recordingId}/live-token`, { method: 'POST' })
@@ -150,9 +213,9 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     }
 
     try {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      const audioCtx = new Ctx()
-      audioCtxRef.current = audioCtx
+      const audioCtx = audioCtxRef.current
+      const source = sourceRef.current
+      if (!audioCtx || !source) { setCaptionsError('Live captions unavailable — recording continues normally.'); return }
       await audioCtx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
 
       const params = new URLSearchParams({
@@ -185,7 +248,6 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       }
       ws.onerror = () => setCaptionsError('Live captions dropped — recording continues normally.')
 
-      const source = audioCtx.createMediaStreamSource(stream)
       const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet')
       node.port.onmessage = (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer) }
       // Route through a muted gain to keep the graph pulling without audible playback.
@@ -258,9 +320,20 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
   // Normal Stop: assemble the in-memory chunks and process.
   const finalize = useCallback(async () => {
+    // Persist the FULL live transcript (untruncated) before processing, so the
+    // real-time ASR can later be compared against the post-processed transcript.
+    // Best-effort — never block the recording handoff on it.
+    const liveText = finalsRef.current.join(' ').trim()
+    if (liveText) {
+      try {
+        await fetch(`/api/recordings/${recordingId}/live-transcript`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcript: liveText }),
+        })
+      } catch { /* best-effort */ }
+    }
     const blob = new Blob(chunksRef.current, { type: mimeRef.current })
     await uploadAndProcess(blob, mimeRef.current)
-  }, [uploadAndProcess])
+  }, [uploadAndProcess, recordingId])
 
   // Recover audio persisted by an interrupted prior session.
   const recoverPending = useCallback(async () => {
@@ -296,7 +369,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('requesting')
     let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Tuned for a shared room mic: keep automatic gain (handles quiet/loud
+      // speakers without manual fiddling) but turn off echo cancellation +
+      // noise suppression, which are tuned for single-speaker calls and can
+      // swallow other voices around a table.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
+      })
     } catch (e) {
       setError(
         e instanceof DOMException && e.name === 'NotAllowedError'
@@ -335,18 +414,20 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('recording')
     timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
 
-    void startCaptions(stream) // best-effort; does not block recording
-  }, [finalize, startCaptions])
+    startAudioGraph(stream)    // waveform + the source captions reuse
+    void startCaptions()       // best-effort; does not block recording
+  }, [finalize, startCaptions, startAudioGraph])
 
   const stop = useCallback(() => {
     stopTimer()
     stopCaptions()
+    teardownAudio()
     const recorder = recorderRef.current
     if (recorder && recorder.state !== 'inactive') {
       recorder.stop() // fires a final ondataavailable then onstop → finalize()
     }
     streamRef.current?.getTracks().forEach(t => t.stop())
-  }, [stopTimer, stopCaptions])
+  }, [stopTimer, stopCaptions, teardownAudio])
 
   return (
     <div>
@@ -400,6 +481,11 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
               <span className="text-sm font-semibold tracking-wide">RECORDING</span>
             </div>
             <div className="mt-3 text-4xl font-mono font-bold text-gray-900 tabular-nums">{formatElapsed(elapsedSec)}</div>
+
+            {/* Live input waveform — real signal feedback (check placement/level). */}
+            <div className="mt-5 rounded-xl bg-gray-900 px-3 py-2">
+              <canvas ref={canvasRef} width={1200} height={72} className="w-full h-16 block" />
+            </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3 text-left">
               {/* Live transcript */}

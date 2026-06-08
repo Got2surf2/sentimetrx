@@ -92,12 +92,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     decisions: strArr(parsed.decisions),
   }
 
-  // Persist the snapshot so Stop can show an instant provisional recap while the
-  // batch pipeline runs (and the transcript survives a tab crash). Best-effort —
-  // a write failure must not fail the summary the client is waiting on.
+  // Persist the rolling summary so Stop can show an instant provisional recap
+  // while the batch pipeline runs. Best-effort — a write failure must not fail
+  // the summary the client is waiting on. (The full live transcript is persisted
+  // separately on Stop via /live-transcript for live-vs-final comparison.)
   await service
     .from('recordings')
-    .update({ live_summary: summary, live_transcript: transcript })
+    .update({ live_summary: summary })
     .eq('id', recording_id)
     .eq('org_id', org_id)
 
