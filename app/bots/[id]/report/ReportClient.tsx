@@ -17,6 +17,25 @@ const INK = '#111827'
 const MUTE = '#6b7280'
 const DOT_COLOR: Record<string, string> = { green: '#059669', amber: '#D97706', red: '#DC2626', idle: '#9CA3AF' }
 
+// Plain-English reason for the health dot's colour — mirrors the thresholds in
+// computeHealth (lib/agentStudy.ts) using the counts the report already has, so
+// hovering the dot says exactly why it's red/amber/green/idle.
+function healthTitle(h: { dot: string; openQuestions: number; conversations30d: number; conversations7d: number }): string {
+  const open = h.openQuestions, c30 = h.conversations30d
+  const q = (n: number) => `${n} question${n === 1 ? '' : 's'}`
+  const conv = (n: number) => `${n} conversation${n === 1 ? '' : 's'}`
+  switch (h.dot) {
+    case 'idle':
+      return 'Idle — no conversations in the last 14 days (or none at all in the last 30). The agent is dormant.'
+    case 'red':
+      return `Needs attention — ${q(open)} open (unanswered), which is both ≥10 and more than 25% of the ${conv(c30)} in the last 30 days. Work the queue down on the Questions page to clear it.`
+    case 'amber':
+      return `Quiet — active earlier but no conversations in the last 7 days (${conv(c30)} in the last 30).`
+    default:
+      return `Healthy — recently active, and the open-question backlog (${open}) is in check relative to ${conv(c30)} in the last 30 days.`
+  }
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -169,7 +188,7 @@ export default function ReportClient() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/bots')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: MUTE }}>&larr; Agents</button>
         <div style={{ flex: 1, minWidth: 200, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ width: 12, height: 12, borderRadius: '50%', background: DOT_COLOR[s.health.dot], display: 'inline-block', flexShrink: 0 }} title={'Health: ' + s.health.dot} />
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: DOT_COLOR[s.health.dot], display: 'inline-block', flexShrink: 0, cursor: 'help' }} title={healthTitle(s.health)} />
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: INK }}>{s.bot.name} — Agent Study</h1>
             <p style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>{fmtDate(s.range.first)} – {fmtDate(s.range.last)} · {s.range.activeDays} active days · last active {fmtRel(s.health.lastActiveAt)}</p>

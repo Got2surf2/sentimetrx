@@ -17,6 +17,20 @@ const INK = '#111827'
 const MUTE = '#6b7280'
 const DOT_COLOR: Record<string, string> = { green: '#059669', amber: '#D97706', red: '#DC2626', idle: '#9CA3AF' }
 
+// Plain-English reason for the health dot — mirrors computeHealth's thresholds
+// (lib/agentStudy.ts) so hovering the dot says exactly why it's that colour.
+function healthTitle(h: { dot: string; openQuestions: number; conversations30d: number }): string {
+  const open = h.openQuestions, c30 = h.conversations30d
+  const q = (n: number) => `${n} question${n === 1 ? '' : 's'}`
+  const conv = (n: number) => `${n} conversation${n === 1 ? '' : 's'}`
+  switch (h.dot) {
+    case 'idle': return 'Idle — no conversations in the last 14 days (or none at all in the last 30). The agent is dormant.'
+    case 'red': return `Needs attention — ${q(open)} open (unanswered), which is both ≥10 and more than 25% of the ${conv(c30)} in the last 30 days. Work the queue down on the Questions page to clear it.`
+    case 'amber': return `Quiet — active earlier but no conversations in the last 7 days (${conv(c30)} in the last 30).`
+    default: return `Healthy — recently active, and the open-question backlog (${open}) is in check relative to ${conv(c30)} in the last 30 days.`
+  }
+}
+
 // Datanautix wordmark (data = teal, nautix = orange) — the company brand on
 // exported/shared reports, per the deck-export branding rule in CLAUDE.md.
 const DN_WORDMARK = '<span style="font-weight:800;font-size:17px;letter-spacing:-0.3px;white-space:nowrap;flex-shrink:0">'
@@ -69,7 +83,7 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
   parts.push(
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px">'
     + '<div style="display:flex;align-items:center;gap:10px;min-width:0">'
-    + '<span style="width:12px;height:12px;border-radius:50%;background:' + (DOT_COLOR[s.health.dot] || DOT_COLOR.idle) + ';flex-shrink:0"></span>'
+    + '<span title="' + esc(healthTitle(s.health)) + '" style="width:12px;height:12px;border-radius:50%;background:' + (DOT_COLOR[s.health.dot] || DOT_COLOR.idle) + ';flex-shrink:0;cursor:help"></span>'
     + '<div><h1 style="font-size:22px;font-weight:700;color:' + INK + ';margin:0">' + esc(s.bot.name) + ' — Agent Study</h1>'
     + '<p style="font-size:12px;color:' + MUTE + ';margin:2px 0 0">' + fmtDate(s.range.first) + ' – ' + fmtDate(s.range.last)
     + ' · ' + s.range.activeDays + ' active days · last active ' + fmtRel(s.health.lastActiveAt) + '</p></div></div>'
