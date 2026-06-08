@@ -6,6 +6,10 @@
 -- inherit the table's existing RLS. The authoritative report still comes from
 -- the batch pipeline (analysis_summary), NOT from these.
 
+BEGIN;
+
 ALTER TABLE recordings
   ADD COLUMN IF NOT EXISTS live_summary jsonb,
   ADD COLUMN IF NOT EXISTS live_transcript text;
+
+COMMIT;
