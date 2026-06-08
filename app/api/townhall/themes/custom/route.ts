@@ -7,6 +7,16 @@ export async function POST(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Resolve the caller's org + admin status. The insert below is gated to the
+  // owning org (or a platform admin) — without this a logged-in user from any
+  // org could push a custom question into another tenant's town hall by id.
+  const { data: userData } = await supabase
+    .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const callerOrg = (userData as any)?.org_id as string | null
+  if (!callerOrg && !isAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   let body: { session_id: string; label: string; question: string; response_target?: number }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -22,6 +32,9 @@ export async function POST(req: NextRequest) {
   // 'manual' (the value town_hall_topics_source_check accepts).
   const { data: hall } = await db.from('town_halls').select('id, org_id').eq('id', session_id).maybeSingle()
   if (hall) {
+    if (!isAdmin && (hall as any).org_id !== callerOrg) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     const { data, error } = await db
       .from('town_hall_topics')
       .insert({
@@ -39,6 +52,16 @@ export async function POST(req: NextRequest) {
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
+  }
+
+  // Legacy townhall_themes has no org_id of its own — it scopes through its
+  // parent townhall_sessions row. Gate the caller's org via that session
+  // before inserting (404 on a missing or cross-org session).
+  const { data: session } = await db
+    .from('townhall_sessions').select('org_id').eq('id', session_id).maybeSingle()
+  if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (session as any).org_id !== callerOrg) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const { data, error } = await db

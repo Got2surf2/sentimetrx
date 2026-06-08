@@ -131,3 +131,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Tests: `recordings-routes.test.ts` (list asserts org-only scope, no `created_by`; DELETE 403 reframed to cross-org defensive) + `export-org-gate.test.ts` (same-org non-creator CAN now enable sharing → 200). `docs/RECORDINGS.md` §4.7/4.7a/4.8 updated.
 
 **Verify**: `npx vitest run recordings-routes export-org-gate recording-transfer-gate` 45/45; full suite 617 pass; `tsc --noEmit` clean. Local-only. Fixes Arjun's access (he's the org owner); also fixes any future transfer-into-org case for all members.
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 4: core-entity mutations (+ 3rd cross-org write fix)
+
+**Why**: Continue the Phase-1 sweep over the core-entity mutation routes (studies, collections, campaigns, team, town-hall session/topic creation). Audited 7 routes; 6 were already correctly gated, 1 was a genuine cross-org write hole.
+
+**What changed**:
+- **FIX** `app/api/townhall/themes/custom/route.ts` (owner authorized) — the facilitator "push a custom question" route was the same class as the two themes/[id]+duplicate holes fixed earlier today: it looked up `town_halls` by bare `session_id` and inserted a `town_hall_topics` row into *that hall's* org with no caller-org check, and the legacy `townhall_themes` branch had no org filter at all — so any logged-in user could inject a custom question into any tenant's live town hall by id. Now resolves the caller's `org_id`+`is_admin_org`, gates the new-substrate branch on `hall.org_id === callerOrg || isAdmin` and the legacy branch on the parent `townhall_sessions.org_id` (404 otherwise; admin bypass preserved).
+- New `tests/integration/core-entity-routes-gate.test.ts` (30 tests) over studies/[id] PATCH+DELETE, collections/[id] GET+DELETE, campaigns/[id]/clone, campaigns/[id]/respondents GET+POST+DELETE, settings/team PATCH+DELETE, townhall/sessions POST, townhall/themes/custom POST. Records `.eq()`/`.insert()` to assert org-paired lookups + that creates land in the caller org (themes/custom + sessions POST).
+- **Confirmed with owner**: `studies/[id]` is intentionally gated on per-user `created_by` (only the creator or a platform admin may edit/delete), NOT org-scoped — so its tests assert the `created_by` contract. Not a cross-org leak (created_by is the auth user id); the org-colleague-can't-edit behavior is by design.
+- The other 5 routes (collections, campaigns clone + respondents, settings/team, townhall/sessions POST) **verified correctly gated** — no new vulns.
+- Docs: TESTING.md layout + TOWNHALL.md Auth Model ("Cross-org write fix #2").
+
+**Verify**: `npx vitest run core-entity-routes-gate` 30/30; full suite 647 pass; `tsc --noEmit` clean. Local-only — themes/custom is a behavior change to a live route; first prod exercise is the next facilitator "add custom question" action after deploy (admin bypass preserved so the Datanautix admin org is unaffected).
+
+**Phase 1 running total**: ~22 of ~80 mutating service-role routes now gate-tested. **3 cross-org write vulns found + fixed** (themes/[id], sessions/[id]/duplicate, themes/custom — all the same bare-id-insert/update class).
