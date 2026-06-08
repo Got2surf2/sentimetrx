@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 2b: Deepgram live captions
+
+**Why**: The headline of the continuous transcriber — on-screen captions as people speak. Tees the existing mic capture into Deepgram's live WS so the facilitator sees text in real time; the saved file still drives the authoritative post-meeting report.
+
+**What changed**: New `public/worklets/pcm16-worklet.js` (AudioWorklet: Float32 → 16-bit linear PCM in ~43ms chunks). `LiveClient.tsx` opens `wss://api.deepgram.com/v1/listen` (nova-3, interim_results, sample_rate = the AudioContext's actual rate) authenticated with the piece-1 short-lived token via the `['bearer', token]` WebSocket subprotocol (browsers can't set Authorization headers; verified against Deepgram's Sec-WebSocket-Protocol docs). Mic is tee'd: MediaRecorder for the saved file + AudioContext→worklet→WS for captions, routed through a muted gain so the graph pulls without playback. Captions are **best-effort** — token/socket failure shows a notice and recording continues. `page.tsx` now passes the recording's language. RECORDINGS.md §15 piece-2b row updated.
+
+**Verify**: tsc clean (cache-cleared), 472 tests pass. **Local-only**, not pushed. Live WS path needs a real mic exercise in the browser (not unit-testable). Next: piece 3 — persist finalized segments + rolling-summary panel.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 2: capture backbone
 
 **Why**: Continuing the continuous in-person transcriber. Piece 2 is the record→upload→process backbone so a meeting captured in the browser flows into the *existing* batch pipeline and produces the normal report. Deepgram live captions (piece 2b) layer on top next; building the backbone first makes them independently verifiable.

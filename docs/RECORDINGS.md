@@ -1293,7 +1293,7 @@ A real-time front-end that runs *in front of* the existing batch pipeline rather
 |---|---|---|
 | 1 — short-lived Deepgram token mint | **Code complete (2026-06-07)** | `lib/asr/deepgram.ts` `grantDeepgramToken()` + `POST /api/recordings/[id]/live-token`. Org-gated, rejects terminal-status recordings. |
 | 2 — capture backbone (mic → MediaRecorder → upload → process handoff) | **Code complete (2026-06-07)** | `app/recordings/[id]/live/{page,LiveClient}.tsx`; shared `lib/recordings/tusUpload.ts` (AddRecordingClient refactored onto it); "Record live" entry on the setup screen (`StatusClient`). MVP records to one Blob and uploads on Stop, then attach→ack→process exactly as the upload flow. |
-| 2b — Deepgram live captions (AudioWorklet PCM → live WS via the piece-1 token) | Pending (next) | layers onto `LiveClient.tsx` |
+| 2b — Deepgram live captions (AudioWorklet PCM → live WS via the piece-1 token) | **Code complete (2026-06-07)** | `public/worklets/pcm16-worklet.js` (Float32→linear16) + `LiveClient.tsx` tees the mic into an `AudioContext`→worklet→`wss://api.deepgram.com/v1/listen` (nova-3, interim_results). Browser auth = `['bearer', <grant token>]` subprotocol. **Best-effort**: token/WS failure shows a notice but never interrupts recording. |
 | 3 — incremental segment append + rolling summary panel | Pending | `POST /api/recordings/[id]/segments`, `POST /api/recordings/[id]/live-summary` |
 
 > **Deferred hardening:** continuous resumable upload *during* the meeting (crash durability + zero upload-wait at Stop). The MVP uploads the assembled Blob on Stop — fine for a ~1hr meeting (~tens of MB), but a tab crash loses the audio. Revisit if meeting length / reliability demands it.

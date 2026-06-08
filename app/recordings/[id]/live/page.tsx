@@ -21,7 +21,7 @@ export default async function RecordingLivePage(props: { params: Promise<{ id: s
 
   const { data: rec } = await supabase
     .from('recordings')
-    .select('id, name, status')
+    .select('id, name, status, language')
     .eq('id', params.id)
     .single()
   if (!rec) notFound()
@@ -43,7 +43,7 @@ export default async function RecordingLivePage(props: { params: Promise<{ id: s
         currentPage="recordings"
       />
       <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
-        <LiveClient recordingId={params.id} name={rec.name as string} />
+        <LiveClient recordingId={params.id} name={rec.name as string} language={(rec.language as string) || 'en'} />
       </main>
     </div>
   )

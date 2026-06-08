@@ -2,14 +2,16 @@
 
 // app/recordings/[id]/live/LiveClient.tsx
 //
-// Live in-person capture (§ 15), piece 2 — the capture backbone. Records the
-// room mic with MediaRecorder, and on Stop assembles one audio file, uploads it
-// via the shared TUS path, then hands off to the existing pipeline (attach →
-// ack → process). The recorded file is the authoritative source — the same
-// high-quality batch transcription + analysis the wizard produces runs on it.
+// Live in-person capture (§ 15). Records the room mic with MediaRecorder, and
+// on Stop assembles one audio file, uploads it via the shared TUS path, then
+// hands off to the existing pipeline (attach → ack → process). The recorded
+// file is the authoritative source — the same high-quality batch transcription
+// + analysis the wizard produces runs on it.
 //
-// Deepgram live captions stream on top of this same mic capture (next piece);
-// the captured file here is what the post-meeting report is built from.
+// Piece 2b: the same mic stream is tee'd into an AudioWorklet → Deepgram live
+// WS (auth'd with a short-lived token) for on-screen captions. Captions are
+// best-effort — if the token or socket fails, recording continues unaffected.
+// The streamed transcript is a convenience layer only; never the deliverable.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -26,79 +28,120 @@ interface AttachResponse {
   files: Array<{ id: string; original_filename: string; storage_path: string; upload_url: string }>
 }
 
-export default function LiveClient({ recordingId, name }: { recordingId: string; name: string }) {
+export default function LiveClient({ recordingId, name, language }: { recordingId: string; name: string; language: string }) {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('idle')
   const [elapsedSec, setElapsedSec] = useState(0)
   const [uploadPct, setUploadPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  // Captions (best-effort).
+  const [finals, setFinals] = useState<string[]>([])
+  const [interim, setInterim] = useState('')
+  const [captionsError, setCaptionsError] = useState<string | null>(null)
+
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const mimeRef = useRef<string>('audio/webm')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const transcriptRef = useRef<HTMLDivElement | null>(null)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
   }, [])
 
-  // Tear down the mic + timer if the user navigates away mid-recording.
+  // Auto-scroll the transcript to the newest line.
+  useEffect(() => {
+    const el = transcriptRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [finals, interim])
+
+  const stopCaptions = useCallback(() => {
+    try {
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
+      ws?.close()
+    } catch { /* ignore */ }
+    wsRef.current = null
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+  }, [])
+
+  // Tear down everything if the user navigates away mid-recording.
   useEffect(() => {
     return () => {
       stopTimer()
+      stopCaptions()
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
-  }, [stopTimer])
+  }, [stopTimer, stopCaptions])
 
-  const start = useCallback(async () => {
-    setError(null)
-    setPhase('requesting')
-    let stream: MediaStream
+  // Open the Deepgram live WS and pipe 16-bit PCM from the mic. Best-effort:
+  // any failure sets captionsError but leaves the recording running.
+  const startCaptions = useCallback(async (stream: MediaStream) => {
+    let token: string
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch (e) {
-      setError(
-        e instanceof DOMException && e.name === 'NotAllowedError'
-          ? 'Microphone access was denied. Allow the mic for this site and try again.'
-          : 'Could not access a microphone on this device.',
-      )
-      setPhase('error')
-      return
-    }
-    streamRef.current = stream
-
-    const mime = pickMimeType()
-    mimeRef.current = fileMeta(mime).mime
-    chunksRef.current = []
-    let recorder: MediaRecorder
-    try {
-      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const r = await fetch(`/api/recordings/${recordingId}/live-token`, { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok || !j.access_token) throw new Error(j.error || 'no token')
+      token = j.access_token as string
     } catch {
-      stream.getTracks().forEach(t => t.stop())
-      setError('This browser cannot record audio (MediaRecorder unsupported).')
-      setPhase('error')
+      setCaptionsError('Live captions unavailable — recording continues normally.')
       return
     }
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
-    recorder.onstop = () => { void finalize() }
-    recorderRef.current = recorder
-    // Timeslice so chunks flush periodically rather than buffering one giant blob.
-    recorder.start(5000)
 
-    setElapsedSec(0)
-    setPhase('recording')
-    timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
-  }, [])
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const audioCtx = new Ctx()
+      audioCtxRef.current = audioCtx
+      await audioCtx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
 
-  const stop = useCallback(() => {
-    stopTimer()
-    const recorder = recorderRef.current
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop() // fires a final ondataavailable then onstop → finalize()
+      const params = new URLSearchParams({
+        model: 'nova-3',
+        language: language || 'en',
+        encoding: 'linear16',
+        sample_rate: String(Math.round(audioCtx.sampleRate)),
+        channels: '1',
+        interim_results: 'true',
+        punctuate: 'true',
+        smart_format: 'true',
+      })
+      const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['bearer', token])
+      ws.binaryType = 'arraybuffer'
+      wsRef.current = ws
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data as string)
+          const text: string = msg?.channel?.alternatives?.[0]?.transcript ?? ''
+          if (!text) return
+          if (msg.is_final) {
+            setFinals(prev => [...prev, text])
+            setInterim('')
+          } else {
+            setInterim(text)
+          }
+        } catch { /* non-JSON keepalive */ }
+      }
+      ws.onerror = () => setCaptionsError('Live captions dropped — recording continues normally.')
+
+      const source = audioCtx.createMediaStreamSource(stream)
+      const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet')
+      node.port.onmessage = (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer) }
+      // Route through a muted gain to keep the graph pulling without audible playback.
+      const sink = audioCtx.createGain()
+      sink.gain.value = 0
+      source.connect(node)
+      node.connect(sink)
+      sink.connect(audioCtx.destination)
+    } catch {
+      setCaptionsError('Live captions unavailable — recording continues normally.')
+      stopCaptions()
     }
-    streamRef.current?.getTracks().forEach(t => t.stop())
-  }, [stopTimer])
+  }, [recordingId, language, stopCaptions])
 
   // Assemble the recording and run it through the existing pipeline.
   const finalize = useCallback(async () => {
@@ -153,6 +196,60 @@ export default function LiveClient({ recordingId, name }: { recordingId: string;
     }
   }, [recordingId, router])
 
+  const start = useCallback(async () => {
+    setError(null)
+    setCaptionsError(null)
+    setFinals([])
+    setInterim('')
+    setPhase('requesting')
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (e) {
+      setError(
+        e instanceof DOMException && e.name === 'NotAllowedError'
+          ? 'Microphone access was denied. Allow the mic for this site and try again.'
+          : 'Could not access a microphone on this device.',
+      )
+      setPhase('error')
+      return
+    }
+    streamRef.current = stream
+
+    const mime = pickMimeType()
+    mimeRef.current = fileMeta(mime).mime
+    chunksRef.current = []
+    let recorder: MediaRecorder
+    try {
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    } catch {
+      stream.getTracks().forEach(t => t.stop())
+      setError('This browser cannot record audio (MediaRecorder unsupported).')
+      setPhase('error')
+      return
+    }
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.onstop = () => { void finalize() }
+    recorderRef.current = recorder
+    recorder.start(5000) // timeslice so chunks flush periodically
+
+    setElapsedSec(0)
+    setPhase('recording')
+    timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
+
+    void startCaptions(stream) // best-effort; does not block recording
+  }, [finalize, startCaptions])
+
+  const stop = useCallback(() => {
+    stopTimer()
+    stopCaptions()
+    const recorder = recorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop() // fires a final ondataavailable then onstop → finalize()
+    }
+    streamRef.current?.getTracks().forEach(t => t.stop())
+  }, [stopTimer, stopCaptions])
+
   return (
     <div>
       <header className="mb-6">
@@ -167,8 +264,8 @@ export default function LiveClient({ recordingId, name }: { recordingId: string;
             <div className="text-5xl mb-4">🎙️</div>
             <h2 className="font-semibold text-gray-900">Record this meeting live</h2>
             <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-              Keep this tab open and in the foreground while recording. When you stop, we save the audio and
-              run the same transcription and analysis the upload flow uses.
+              Keep this tab open and in the foreground while recording. You&apos;ll see live captions as people
+              speak; when you stop, we save the audio and run the same transcription and analysis the upload flow uses.
             </p>
             {error && (
               <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
@@ -191,8 +288,25 @@ export default function LiveClient({ recordingId, name }: { recordingId: string;
               <span className="inline-block w-3 h-3 rounded-full bg-red-600 animate-pulse" />
               <span className="text-sm font-semibold tracking-wide">RECORDING</span>
             </div>
-            <div className="mt-4 text-4xl font-mono font-bold text-gray-900 tabular-nums">{formatElapsed(elapsedSec)}</div>
-            <p className="text-xs text-gray-400 mt-2">Audio is being captured. Keep this tab open.</p>
+            <div className="mt-3 text-4xl font-mono font-bold text-gray-900 tabular-nums">{formatElapsed(elapsedSec)}</div>
+
+            <div
+              ref={transcriptRef}
+              className="mt-6 text-left bg-gray-50 border border-gray-200 rounded-xl p-4 h-64 overflow-y-auto text-sm leading-relaxed"
+            >
+              {finals.length === 0 && !interim ? (
+                <p className="text-gray-400 italic">{captionsError ? captionsError : 'Listening… captions will appear here as people speak.'}</p>
+              ) : (
+                <>
+                  {finals.map((line, i) => <span key={i} className="text-gray-800">{line} </span>)}
+                  {interim && <span className="text-gray-400">{interim}</span>}
+                </>
+              )}
+            </div>
+            {captionsError && finals.length > 0 && (
+              <p className="mt-2 text-xs text-amber-600">{captionsError}</p>
+            )}
+
             <button
               type="button"
               onClick={stop}
