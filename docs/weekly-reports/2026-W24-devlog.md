@@ -191,3 +191,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run dataset-query-routes-gate` 19/19; full suite 726 pass; `rm tsconfig.tsbuildinfo && tsc --noEmit` clean. Local-only — three behavior changes to live read routes; admin-org bypass preserved so the Datanautix admin org is unaffected.
 
 **Phase 1 running total**: ~51 of ~140 mutating/read service-role routes now gate-tested (the real denominator is ~140, not the ~80 I'd been quoting). **6 cross-org vulns found + fixed total** (3 write in batches 1–4, 3 read in batch 8).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 9: agent (bot) action + study routes
+
+**Why**: Cover the agent action/study routes not already in bot-routes-gate — conversation→dataset sync, KB entity extract/edit/delete, question triage, conversation review, Agent Study PDF/PPTX exports, and ask-ana (AI Q&A over a dataset).
+
+**What changed**: new `tests/integration/bot-action-routes-gate.test.ts` (21 tests) over bots POST/import (create), bots/[id]/{analyze, entities/extract, entities/[entityId] PATCH+DELETE, questions/[questionId] PATCH, conversations/[sessionId]/review, study/pdf, study/pptx}, and ask-ana. Asserts 401 (no auth / no org) + 404 cross-org on the agent org gate (ask-ana 403 on the body datasetId). **All verified correctly gated — no new vulns.** Every [id] route resolves the caller org via getCallerOrgContext and gates the agent's org_id before any service-role read/write; entity/question rows are additionally paired by scope/bot_id; create routes write into the caller's own org. Heavy libs (botEntityExtraction, agentStudy, pptx renderer, entityFilter) mocked.
+
+**Verify**: `npx vitest run bot-action-routes-gate` 21/21; full suite pass; tsc clean. Local-only.
+
+**Phase 1 running total**: ~61 of ~140 mutating/read service-role routes now gate-tested. 6 cross-org vulns found + fixed (none new in batch 9).
