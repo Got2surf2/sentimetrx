@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live captions: grant-key blocker found + DEEPGRAM_GRANT_KEY
+
+**Why**: Before asking for a manual real-mic test, verified the live-WS auth server-side (mint a grant token + open Deepgram live WS from Node). Found a real blocker: the env `DEEPGRAM_API_KEY` is valid for **streaming** (raw-key Token auth opens the WS, clean 1000 close) but `/v1/auth/grant` returns **403 Insufficient permissions** — it can't mint browser tokens (Deepgram needs a Member+ key). Can't ship the raw key to the browser, so short-lived tokens are required → a grant-capable key is required.
+
+**What changed**: `grantDeepgramToken` now prefers `DEEPGRAM_GRANT_KEY` and falls back to `DEEPGRAM_API_KEY`, so the (scoped, working) batch key need not change — drop a Member+ key into `DEEPGRAM_GRANT_KEY`. 403 now throws an actionable message. RECORDINGS.md §15 carries the blocker + the still-UNVERIFIED `['bearer', token]` browser subprotocol (couldn't grant a token to test it; re-run the check once the key is set).
+
+**Verify**: tsc clean. Server-side probes confirmed key-valid-for-listen / forbidden-for-grant. **Local-only**, not pushed. **Action on user**: create a Member+ Deepgram key → set `DEEPGRAM_GRANT_KEY`. Then I re-run grant+Bearer WS verification.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 3: rolling summary panel
 
 **Why**: The "where do the live summaries show up" answer — a side panel next to the live transcript that refreshes a running summary as the meeting unfolds (topics / open questions / decisions), for facilitator situational awareness. Convenience layer; the authoritative report is still the post-meeting batch pass.

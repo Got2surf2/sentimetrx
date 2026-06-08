@@ -28,8 +28,11 @@ export interface DeepgramGrant {
  * Default TTL 30s, max 3600s (Deepgram). We use 60s — ample to connect.
  */
 export async function grantDeepgramToken(ttlSeconds = 60): Promise<DeepgramGrant> {
-  const apiKey = process.env.DEEPGRAM_API_KEY
-  if (!apiKey) throw new Error('DEEPGRAM_API_KEY is required to grant a live token')
+  // The grant endpoint requires a Member+ Deepgram key. Prefer a dedicated
+  // DEEPGRAM_GRANT_KEY so the (possibly scoped, listen-only) batch key in
+  // DEEPGRAM_API_KEY can stay as-is; fall back to it if no dedicated key is set.
+  const apiKey = process.env.DEEPGRAM_GRANT_KEY || process.env.DEEPGRAM_API_KEY
+  if (!apiKey) throw new Error('DEEPGRAM_GRANT_KEY or DEEPGRAM_API_KEY is required to grant a live token')
 
   const res = await fetch(DEEPGRAM_GRANT_URL, {
     method: 'POST',
@@ -42,6 +45,9 @@ export async function grantDeepgramToken(ttlSeconds = 60): Promise<DeepgramGrant
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
+    if (res.status === 403) {
+      throw new Error('Deepgram grant forbidden — the key lacks token-grant permission. Set DEEPGRAM_GRANT_KEY to a Member+ Deepgram key.')
+    }
     throw new Error(`Deepgram grant ${res.status}: ${errText.slice(0, 500)}`)
   }
 
