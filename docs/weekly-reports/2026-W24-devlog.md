@@ -201,3 +201,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run bot-action-routes-gate` 21/21; full suite pass; tsc clean. Local-only.
 
 **Phase 1 running total**: ~61 of ~140 mutating/read service-role routes now gate-tested. 6 cross-org vulns found + fixed (none new in batch 9).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 10: Town Hall (recordings) + PulseIQ routes
+
+**Why**: Cover the recordings/townhall routes not already in recordings-routes.test.ts (which gate-tests 10 of them). Remaining: the live-capture, report-export, sign-off, version, and setup-extract routes plus the PulseIQ `townhall_sessions/[id]` CRUD + analyze.
+
+**What changed**: new `tests/integration/recordings-townhall-routes-gate.test.ts` (33 tests) over recordings/[id]/{files, live-summary, live-token, live-transcript, report/pdf, report/send, signoff POST+DELETE, versions GET+POST}, recordings/extract-setup, townhall/sessions/[id] GET/PATCH/DELETE, townhall/sessions/[id]/analyze. Asserts 401 (no auth), 403 (extract-setup no recordings feature), and 404 cross-org — paired id+org_id lookups (404 on null) plus dedicated cross-org-row tests for the JS `org_id !==` routes (report/pdf, report/send, townhall/sessions/[id], analyze). **All verified correctly gated — no new vulns.** Heavy/external libs (deepgram, reportPdf/puppeteer, reportEmail/resend, setupExtract/vision, ai, townHallAdapter) mocked.
+
+**Verify**: `npx vitest run recordings-townhall-routes-gate` 33/33; full suite 780 pass; tsc clean. Local-only.
+
+**Phase 1 running total**: ~72 of ~140 mutating/read service-role routes now gate-tested. 6 cross-org vulns found + fixed (none new in batch 10).
