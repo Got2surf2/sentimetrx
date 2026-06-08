@@ -87,3 +87,15 @@
 Proposed fix for both: fetch the caller's org (sibling routes already do) and require `row.org_id === callerOrg || isAdmin`, returning 404 otherwise — then add the secure-behavior tests. Not applied yet; surfaced to owner.
 
 **Verify**: `npx vitest run social-comment-routes-gate` 18/18; full suite 593 pass. Local-only.
+
+## 2026-06-08 — FIX the two cross-org town-hall write holes (owner authorized)
+
+**Why**: The Phase-1 gate campaign surfaced two genuine cross-org write vulnerabilities (see the batch-1 entry above). Owner authorized fixing both now, strictly same-org with a platform-admin bypass.
+
+**What changed**:
+- `app/api/townhall/themes/[id]/route.ts` — now resolves the caller's `org_id`+`is_admin_org` after auth. The new-substrate `town_hall_topics` branch requires `topic.org_id === callerOrg || isAdmin` (404 otherwise) before the update. The legacy `townhall_themes` branch (no `org_id` column) now fetches the row joined to `townhall_sessions(org_id)` and gates on the parent session's org — previously it was a bare-id update with no org filter.
+- `app/api/townhall/sessions/[id]/duplicate/route.ts` — resolves caller org+admin and requires `source.org_id === callerOrg || isAdmin` (404 otherwise) before duplicating.
+- `tests/integration/townhall-mutation-gate.test.ts` (10 tests) — asserts the secure contract for both: 401 no-auth, 401 no-org, cross-org non-admin → 404 (both substrates for themes), owning-org allowed, admin bypass allowed.
+- `docs/TOWNHALL.md` Auth Model — documented the fix.
+
+**Verify**: `npx vitest run townhall-mutation-gate` 10/10; full suite 603 pass; `tsc --noEmit` clean. Local-only — these are behavior changes to live routes; first prod exercise is whatever town-hall moderation flow the owner runs after deploy (admin bypass preserved so the Datanautix admin org is unaffected).

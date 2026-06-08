@@ -436,6 +436,8 @@ When editing an active/paused session:
 
 Route handlers in `app/api/townhall/sessions/[id]/*` use the inline helper `gateSessionAccess` (defined at the top of `sessions/[id]/route.ts`). It looks up the caller's `users.org_id` + `organizations.is_admin_org`, then verifies the session's `org_id` matches (or admin-org bypass). This is one of four parallel `gate*Access` helpers across the codebase queued for extraction to `lib/auth/gate.ts` — see `docs/SECURITY.md` Open TBD #11.
 
+> **Cross-org write fix (2026-06-08):** two mutating routes authenticated the caller but skipped the org check entirely. `POST /api/townhall/themes/[id]` (topic moderation — approve/dismiss/pause/close/reopen) fetched the topic by bare id and paired the UPDATE with the topic's *own* `org_id` (tautological), with the legacy `townhall_themes` fallback having no org filter at all — so any logged-in user could moderate any tenant's topics by id (CRITICAL). `POST /api/townhall/sessions/[id]/duplicate` fetched the source session by bare id with no caller-org check (MEDIUM). Both now resolve the caller's `org_id`+`is_admin_org` and require `row.org_id === callerOrg || isAdmin`, returning 404 otherwise (legacy `townhall_themes` gates through its parent session's `org_id`). Regression coverage: `tests/integration/townhall-mutation-gate.test.ts`.
+
 The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api/townhall/live/[sessionId]`) intentionally have no auth — they return only aggregate or per-participant data validated against `session.status='active'`.
 
 ---

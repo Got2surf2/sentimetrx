@@ -9,6 +9,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Resolve the caller's org + admin status. Every mutation below is gated to
+  // the owning org (or a platform admin) — without this a logged-in user from
+  // any org could moderate another tenant's town-hall topics by id.
+  const { data: userData } = await supabase
+    .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const callerOrg = (userData as any)?.org_id as string | null
+  if (!callerOrg && !isAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   let body: { action: string; response_target?: number; question?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -60,6 +70,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   // full legacy vocab so the same `updates` object writes to both.
   const { data: topic } = await db.from('town_hall_topics').select('id, town_hall_id, org_id').eq('id', params.id).maybeSingle()
   if (topic) {
+    if (!isAdmin && (topic as any).org_id !== callerOrg) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     const { data, error } = await db
       .from('town_hall_topics')
       .update(updates)
@@ -69,6 +82,20 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
+  }
+
+  // Legacy townhall_themes has no org_id of its own — it scopes through its
+  // parent session. Gate the caller's org via that join before mutating.
+  const { data: theme } = await db
+    .from('townhall_themes')
+    .select('id, townhall_sessions(org_id)')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!theme) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const themeRel = (theme as any).townhall_sessions
+  const themeOrg = Array.isArray(themeRel) ? themeRel[0]?.org_id : themeRel?.org_id
+  if (!isAdmin && themeOrg !== callerOrg) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const { data, error } = await db
