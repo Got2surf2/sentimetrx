@@ -175,11 +175,13 @@ describe('GET /api/recordings (list)', () => {
     expect(await status(await get('http://t/api/recordings?status=bogus'))).toBe(400)
   })
 
-  it('regular user is scoped to own org AND own user', async () => {
+  it('regular user is scoped to own org, org-wide (NOT restricted to created_by)', async () => {
     ctx.userCtx = userCtx()
     await get('http://t/api/recordings')
     expect(ctx.eq['recordings']).toContainEqual(['org_id', 'orgA'])
-    expect(ctx.eq['recordings']).toContainEqual(['created_by', 'u1'])
+    // Org-wide visibility: a recording transferred into the org must be visible
+    // to its members regardless of who created it, so NO created_by filter.
+    expect((ctx.eq['recordings'] ?? []).some(([c]) => c === 'created_by')).toBe(false)
   })
 
   it('platform-admin (admin-org) is unscoped unless an org filter is passed', async () => {
@@ -225,8 +227,11 @@ describe('DELETE /api/recordings/[id]', () => {
     expect(ctx.eq['recordings']).toContainEqual(['org_id', 'orgA'])
   })
 
-  it('403 when a non-owner non-admin tries to delete', async () => {
-    ctx.userCtx = userCtx({ userId: 'u2' })
+  it('403 when the caller is not in the recording\'s org (defensive; org-scoped fetch normally 404s first)', async () => {
+    // Org-wide delete: a same-org member (even a non-creator) is allowed, so the
+    // only block is org mismatch. The fetch is org-scoped for non-admins, so in
+    // prod this 404s; the gate is the belt-and-suspenders check.
+    ctx.userCtx = userCtx({ userId: 'u2', orgId: 'orgB' })
     ctx.results['recordings'] = { single: { data: { id: 'rec_1', org_id: 'orgA', created_by: 'u1', dataset_id: null }, error: null } }
     expect(await status(await byId.DELETE(req(), p))).toBe(403)
   })

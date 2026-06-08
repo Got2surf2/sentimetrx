@@ -138,14 +138,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       .eq('unit_type', 'qa_pair'),   // "Q&A pairs" excludes action_item rows (deck-only)
   ])
 
-  // Don't leak share_token to non-owners. Owners get the share state; everyone
-  // else in the org sees share_enabled but not the raw token.
-  const isOwner = rec.created_by === user.id
+  // Share state is org-wide: any member of the owning org may manage the public
+  // link (§4.7), so they all get the raw token. The fetch above is org-scoped
+  // (id + org_id), so reaching here already means same-org — no cross-tenant leak.
   const share = {
     enabled: rec.share_enabled as boolean,
     expires_at: rec.share_expires_at as string | null,
     verbatim: !!rec.share_verbatim,
-    token: isOwner ? (rec.share_token as string | null) : null,
+    token: rec.share_token as string | null,
   }
 
   return NextResponse.json({
@@ -203,8 +203,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const { data: rec } = await recQ.single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  // Owner, org admin, or platform admin may delete.
-  if (!(uc.isAdminOrg || uc.isAdmin || rec.created_by === uc.userId)) {
+  // Any member of the owning org (or a platform admin) may delete — org-wide,
+  // like datasets/agents. The fetch above is already org-scoped for non-admins,
+  // so reaching here means the recording belongs to the caller's org.
+  if (!(uc.isAdminOrg || rec.org_id === uc.orgId)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
@@ -290,11 +292,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ ok: true, id: recording_id, org_id: toOrg })
   }
 
-  // ── Update branch — owner / org-admin / platform-admin ──
+  // ── Update branch — any org member / platform-admin ──
   // Handles rename and/or the brand/agent link (§3.5c). Letting an existing
   // recording be tagged to a brand + agent after upload means a re-extract can
-  // seed spelling correction from that brand's curated entity catalog.
-  if (!(uc.isAdminOrg || uc.isAdmin || rec.created_by === uc.userId)) {
+  // seed spelling correction from that brand's curated entity catalog. Org-wide,
+  // like datasets/agents — the fetch above is already org-scoped for non-admins.
+  if (!(uc.isAdminOrg || rec.org_id === uc.orgId)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 

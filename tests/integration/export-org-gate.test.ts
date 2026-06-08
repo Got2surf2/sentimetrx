@@ -15,7 +15,7 @@ const ctx = {
   caller: { userId: 'u1', orgId: 'orgA', isAdmin: false } as any,
   rowOrg: 'orgB',          // the resource's owning org (cross-tenant by default)
   recStatus: 'complete',   // recordings.status for the export-route happy path
-  recOwner: 'u1',          // recordings.created_by — the share route is owner-gated
+  recOwner: 'u1',          // recordings.created_by — share/send are org-wide now (creator no longer matters)
 }
 
 vi.mock('@/lib/auth/orgAccess', () => ({ getCallerOrgContext: async () => ctx.caller }))
@@ -137,15 +137,15 @@ describe('recording pptx export — status + content-type', () => {
   })
 })
 
-describe('recording public-share toggle — owner + status gates', () => {
-  it('same-org non-owner cannot enable sharing (403)', async () => {
+describe('recording public-share toggle — org-member + status gates', () => {
+  it('same-org non-creator CAN enable sharing — org-wide, not owner-gated', async () => {
     ctx.rowOrg = 'orgA'
-    ctx.recOwner = 'someone_else'   // caller u1 is in the org but isn't the owner
+    ctx.recOwner = 'someone_else'   // caller u1 is in the org but didn't create it
     const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(200)
   })
 
-  it('owner cannot enable sharing until analysis is complete (409)', async () => {
+  it('a member cannot enable sharing until analysis is complete (409)', async () => {
     ctx.rowOrg = 'orgA'
     ctx.recStatus = 'transcribed'
     const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)

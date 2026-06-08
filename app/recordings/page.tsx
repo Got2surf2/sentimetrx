@@ -1,10 +1,13 @@
 // app/recordings/page.tsx
 //
 // Town Hall home (§ 5.5) — the top-level product landing. Lists past Town Halls
-// (per-org, server-side; scoping mirrors § 4.8: isAdminOrg → all orgs, isAdmin →
-// own org, regular user → created_by=self), a prominent "New Town Hall" CTA, and
-// a materials-guidance panel. Click a row → status (in-progress/failed) or
-// report (complete). Internal slug stays `recordings`; UI label is "Town Hall".
+// (per-org, server-side; scoping mirrors § 4.8: platform-admin org → all orgs,
+// everyone else → all recordings in their own org — same org-wide visibility as
+// datasets/agents/studies, so a recording transferred INTO an org is visible to
+// that org's members regardless of who originally created it), a prominent
+// "New Town Hall" CTA, and a materials-guidance panel. Click a row → status
+// (in-progress/failed) or report (complete). Internal slug stays `recordings`;
+// UI label is "Town Hall".
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -58,12 +61,10 @@ export default async function RecordingsListPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
+  // Org-wide: every member of an org sees all that org's Town Halls (org
+  // isolation is by org_id, like datasets/agents). Platform-admin org sees all.
   if (!ctx.isAdminOrg) {
-    if (ctx.isAdmin) {
-      q = q.eq('org_id', ctx.orgId)
-    } else {
-      q = q.eq('org_id', ctx.orgId).eq('created_by', ctx.userId)
-    }
+    q = q.eq('org_id', ctx.orgId)
   }
 
   const { data, error } = await q
@@ -193,7 +194,7 @@ export default async function RecordingsListPage() {
             <h1 className="text-2xl font-bold text-gray-900">Town Hall</h1>
             <p className="text-sm text-gray-500 mt-1">
               {rows.length === 1 ? '1 Town Hall' : `${rows.length} Town Halls`}
-              {ctx.isAdminOrg ? ' across all orgs' : ctx.isAdmin ? ' in your org' : ' you own'}
+              {ctx.isAdminOrg ? ' across all orgs' : ' in your org'}
             </p>
           </div>
           <Link

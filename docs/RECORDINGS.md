@@ -669,7 +669,7 @@ Companion to § 4.1. Called by the wizard after each TUS upload succeeds; flips 
 
 Companion to §4.1 for the setup-before-media flow. Adds media (and an optional slide deck) to a project sitting in `awaiting_media`/`draft`, then flips it to `uploading`. Same request/response contract as §4.1 (`{ files: [...] }` → `{ recording_id, upload, files }` with the TUS endpoint + per-file storage paths). The "Add recording" pane (§5.3a) then uploads via TUS, acks each file (§4.1a), and calls §4.2.
 
-**Guards:** same-tenant `(id, org_id)` pair; **409** if the project is not in `awaiting_media`/`draft` (media already attached); same per-file validation as §4.1 (≥1 media, ≤20 files, ≤20GB, ≤1 PDF deck). If a slide deck is attached and the project has a `meeting_profile`, the route sets `meeting_profile.has_slides=true` so the vision/presentation pass runs.
+**Guards:** same-tenant `(id, org_id)` pair; accepts `awaiting_media`/`draft` **and `uploading`** — the last is a **recovery state**: a prior attach flipped the project to `uploading` but the upload never completed (browser closed, TUS failed, or a stray/wrong file was dropped), which previously bricked the project (every retry 409'd with no UI path out). On a re-attach from `uploading` the route first **deletes the stale (not-yet-processed) `recording_files` rows** before inserting the fresh set — safe because nothing past `uploading` has run (process() flips it to `queued`, so no file can be `extracted`). **409** only for a project already in/through the pipeline (`queued`+). Same per-file validation as §4.1 (≥1 media, ≤20 files, ≤20GB, ≤1 PDF deck). If a slide deck is attached and the project has a `meeting_profile`, the route sets `meeting_profile.has_slides=true` so the vision/presentation pass runs.
 
 ### 4.1d `POST /api/recordings/extract-setup` — propose setup fields from a document
 
@@ -721,7 +721,7 @@ Drives the status surface (§ 5.3) and the report page header.
 }
 ```
 
-Deliberately omits `recording_transcripts.segments` and `recording_extractions.payload` — those are large and only the report page (server-rendered) needs them. `share.token` is only returned to the recording owner; org members see `share.enabled` but not the raw token.
+Deliberately omits `recording_transcripts.segments` and `recording_extractions.payload` — those are large and only the report page (server-rendered) needs them. `share.token` is returned to any member of the owning org (share management is org-wide, §4.7); the fetch is `id`+`org_id`-scoped so this never crosses tenants.
 
 ### 4.3b `PATCH /api/recordings/[id]` — rename / transfer (built 2026-06-04)
 
@@ -760,13 +760,13 @@ The data-fetch + HTML bake + Chrome render live in the shared `lib/recordings/re
 
 ### 4.7 Enable/disable the public link — `POST /api/recordings/[id]/share` (built 2026-06-04)
 
-Body `{ enabled: boolean, expires_in_days?: number, show_verbatim?: boolean }`. **Owner (or admin-org) only** — sharing publishes outside the org, so a general org member can't toggle it (403). Service-role read pairs `id` with `org_id` (404 cross-org). Mints a 24-char URL-safe token once (`randomBytes(18).base64url`), reused across enable/disable. Refuses to enable until `status='complete'` (409). `share_verbatim` is updated only when `show_verbatim` is present in the body, so toggling the link's enabled state never clobbers the polished/verbatim choice (and vice-versa) — the client sends the current state of the other field. Returns `{ enabled, token, path: '/th/<token>', expires_at, show_verbatim }`. Wired to the report's **Export & Share** tab (owner-only "Enable public link" toggle + copy-link + Polished/Verbatim segmented control).
+Body `{ enabled: boolean, expires_in_days?: number, show_verbatim?: boolean }`. **Any member of the owning org (or admin-org)** — toggling the public link is an org-member action, like publishing a public link for a dataset (`created_by` is not the gate). Service-role read pairs `id` with `org_id` (404 cross-org). Mints a 24-char URL-safe token once (`randomBytes(18).base64url`), reused across enable/disable. Refuses to enable until `status='complete'` (409). `share_verbatim` is updated only when `show_verbatim` is present in the body, so toggling the link's enabled state never clobbers the polished/verbatim choice (and vice-versa) — the client sends the current state of the other field. Returns `{ enabled, token, path: '/th/<token>', expires_at, show_verbatim }`. Wired to the report's **Export & Share** tab (owner-only "Enable public link" toggle + copy-link + Polished/Verbatim segmented control).
 
 The earlier `share_password_hash` idea is deferred; v1 is token-only with optional expiry. Sharing only mints/toggles the link — **emailing it to principals is a separate route** (§4.7a), so the toggle never sends anything by surprise.
 
 ### 4.7a `POST /api/recordings/[id]/report/send` — send to principals (built 2026-06-05)
 
-Emails the report to a typed recipient list — the v1 "send to principals at end of meeting" deliverable. **Owner (or admin-org) only** (same gate as `/share`; sending publishes outside the org → 403 otherwise); service-role read pairs `id` with `org_id` (404 cross-org), 409 until `status='complete'`. CSRF/same-origin via `proxy.ts`.
+Emails the report to a typed recipient list — the v1 "send to principals at end of meeting" deliverable. **Any member of the owning org (or admin-org)** (same gate as `/share`; an org-member action, `created_by` is not the gate); service-role read pairs `id` with `org_id` (404 cross-org), 409 until `status='complete'`. CSRF/same-origin via `proxy.ts`.
 
 **Body** `{ recipients, note?, includeLink?, includePdf?, includeTranscript? }`:
 - `recipients` — array **or** a comma/newline/semicolon-separated string; parsed, lowercased, email-validated, de-duped, capped at **25**. Unparseable addresses come back in `rejected` (not a hard failure unless *none* are valid → 400).
@@ -774,12 +774,19 @@ Emails the report to a typed recipient list — the v1 "send to principals at en
 
 **Email** — Datanautix-branded, since it's a client report deliverable (`lib/recordings/reportEmail.ts → buildReportEmail`: the "datanautix" wordmark — data teal + nautix orange — and a datanautix.com footer, **not** Sentimetrx). Body adapts to what's included (link button / "PDF attached" line / both) with an optional escaped sender note. From `Datanautix <reports@sentimetrx.ai>` (verified `sentimetrx.ai` domain), **reply-to = the sending user** so principals reach a human. Sent per-recipient through the Resend provider (extended with an `attachments` field). Returns `{ ok, sent, failed, rejected, results[] }`. Wired to the report's **Export & Share** tab ("Send to principals" owner-only card: recipients + optional note + include-link / attach-PDF (+ transcript) toggles + per-send result). XLSX export remains the last fast-follow.
 
-### 4.8 `GET /api/recordings` — list (scoped by role)
+### 4.8 `GET /api/recordings` — list (scoped by org)
 
 Scope resolved from the caller's `userContext` (see `lib/userContext.ts`):
 - `isAdminOrg` users: see all recordings across all orgs; `?org_id=X` narrows to one.
-- `isAdmin` (org-level admin) users: see all recordings in their own org.
-- Regular users: see only recordings where `created_by = self`.
+- Everyone else: see **all** recordings in their own org — org-wide visibility, the
+  same as datasets/agents/studies (org isolation is by `org_id`; RLS policy
+  `recordings_org_read` already grants org-wide read). A recording **transferred
+  into** an org is therefore visible to that org's members regardless of who
+  originally created it — `created_by` does NOT scope visibility. (Earlier this
+  list restricted regular users to `created_by = self`, which silently hid
+  transferred recordings from the recipient org — even from its owner — because
+  the per-org "admin" tier was never wired to a per-org role; `isAdmin` in
+  `userContext` equals `is_admin_org`, so that tier was dead for client orgs.)
 
 Pagination via `?limit` (1–100, default 50) + `?offset` (default 0). Filter via `?status=` against the recordings.status enum (`uploading | queued | extracting | transcribing | transcribed | analyzing | rendering | complete | failed | cancelled`); unknown values 400.
 
@@ -918,11 +925,11 @@ The wizard sets up the **project**, not the upload — a Town Hall can be config
 
 ### 5.3 Status surface — `/recordings/[id]/status`
 
-Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll. Polling is likewise skipped for the setup states `draft`/`awaiting_media`.
+Server page hands an initial recording snapshot to `StatusClient.tsx`, which polls `GET /api/recordings/[id]` (§ 4.3) every 3s while the recording is non-terminal and stops once `status ∈ {complete, failed, cancelled}`. It also pauses polling at `status='transcribed'` (a stable wait state — nothing changes until the user acts); the gate's Generate flips status back to `analyzing`, which resumes the poll. Polling is likewise skipped for the setup/recovery states `draft`/`awaiting_media`/`uploading` (these render the Add-recording pane, not the ladder).
 
 #### 5.3a "Add recording" pane (setup-before-media)
 
-When `status ∈ {draft, awaiting_media}`, the status page renders `AddRecordingClient.tsx` instead of the pipeline ladder — the file-drop pane (audio/video, reorder, plus the optional slide-deck PDF when the meeting profile is a community meeting). On **Upload & process** it runs §4.1c (attach) → TUS upload → §4.1a acks → §4.2 (process), then the page re-polls and the ladder takes over. This is the back half of the old combined wizard, lifted into its own component. The drop zone accepts a mix of `video/*`/`audio/*` (stitched in order); a community-meeting deck rides the same TUS flow tagged `file_role='slides'`.
+When `status ∈ {draft, awaiting_media, uploading}`, the status page renders `AddRecordingClient.tsx` instead of the pipeline ladder (`uploading` is included so a page reload while stuck mid-attach surfaces the recovery pane rather than stranding the user on the ladder — pairs with the §4.1c re-attach recovery) — the file-drop pane (audio/video, reorder, plus the optional slide-deck PDF when the meeting profile is a community meeting). On **Upload & process** it runs §4.1c (attach) → TUS upload → §4.1a acks → §4.2 (process), then the page re-polls and the ladder takes over. This is the back half of the old combined wizard, lifted into its own component. The drop zone accepts a mix of `video/*`/`audio/*` (stitched in order); a community-meeting deck rides the same TUS flow tagged `file_role='slides'`.
 
 **Rendered:**
 - Step list — vertical, six rows, Claude-Code-style. Each row: status icon (✓ green for past, ⟳ orange spinning for current, ○ grey for future, ✗ red for failed) + step label + a sub-detail line derived from the § 4.3 payload. Examples:

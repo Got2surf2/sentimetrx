@@ -266,8 +266,9 @@ function requireSupabaseUrl(): string {
 //
 // Scoping per spec:
 //   isAdminOrg=true       → see all recordings; honor optional ?org_id=X filter
-//   isAdmin (org admin)   → see all in own org
-//   regular user          → see only created_by=self
+//   everyone else         → see all recordings in their own org (org-wide, like
+//                           datasets/agents — a recording transferred into the
+//                           org is visible to its members, not just its creator)
 // Pagination via ?limit (1..100, default 50) + ?offset (default 0).
 // Filter ?status= passes through to the recordings.status enum.
 
@@ -309,10 +310,8 @@ export async function GET(req: Request) {
   if (ctx.isAdminOrg) {
     if (orgFilter) q = q.eq('org_id', orgFilter)
     // else: no scope — admin-org sees everything
-  } else if (ctx.isAdmin) {
-    q = q.eq('org_id', ctx.orgId)
   } else {
-    q = q.eq('org_id', ctx.orgId).eq('created_by', ctx.userId)
+    q = q.eq('org_id', ctx.orgId)
   }
   if (statusFilter) q = q.eq('status', statusFilter)
 

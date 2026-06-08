@@ -109,3 +109,25 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run data-source-routes-gate` 14/14; full suite 617 pass. Local-only.
 
 **Phase 1 running total**: ~15 of ~80 mutating service-role routes now gate-tested (social comments 6, agent routes from Batch 3, town-hall 2 [fixed], data sources 5). 2 cross-org write vulns found + fixed so far.
+
+## 2026-06-08 — Town Hall: fix the upload-stuck brick (status='uploading' could never re-attach)
+
+**Why**: Owner hit *"cannot attach media to a project in 'uploading'"* uploading audio to a Town Hall (`NOWOCATS TEST RUN`). Root cause: a prior attach added a file and flipped the recording to `uploading`, but the upload never completed (stray/wrong file). The attach endpoint only accepted `awaiting_media`/`draft`, so every retry 409'd — the recording was permanently bricked with no UI path out.
+
+**What changed**:
+- `app/api/recordings/[id]/files/route.ts` — attach now also accepts `uploading` as a recovery state, and deletes the stale (not-yet-processed) `recording_files` rows before inserting the fresh set. Safe because nothing past `uploading` has run (process() flips it to `queued`), so no file can be `extracted`.
+- `app/recordings/[id]/status/StatusClient.tsx` — `isSetup` now includes `uploading`, so a page reload while stuck shows the "Add recording" pane (recovery) instead of stranding the user on the progress ladder.
+
+**Verify**: `tsc --noEmit` clean; full suite 617 pass. Local-only. The stuck prod recording auto-recovers on the next "Upload & process" (the prod-DB reset was declined by the safety classifier; the code fix clears the stale row itself).
+
+## 2026-06-08 — Town Hall: org-wide visibility (transferred recordings were invisible to the recipient org)
+
+**Why**: Owner transferred `NOWOCATS Meeting 2` to the Arjun Pilots org; Arjun (the org **owner**) couldn't see it on his Town Hall dashboard. The transfer was correct (recording `org_id` = Arjun Pilots, audit-logged). The bug was the list scoping: Town Hall used a 3-tier model (`isAdminOrg` → all orgs, `isAdmin` → own org, regular → `created_by=self`), but `userContext.isAdmin === is_admin_org`, so the middle tier is **dead** for client orgs — every client-org user (even an owner) fell to `created_by=self`. A transferred recording keeps its original creator, so it never matched. RLS policy `recordings_org_read` is already org-wide, so this was purely an app-layer service-role filter, and it diverged from how datasets/agents/studies already work (org-wide for all members).
+
+**What changed** (org-wide, matching the rest of the platform; decided with owner):
+- `app/recordings/page.tsx` + `app/api/recordings/route.ts` (§4.8) — list scoping dropped the `created_by` filter; non-admin-org users see all recordings in their org.
+- `app/api/recordings/[id]/route.ts` — DELETE + PATCH gates changed from `created_by===self` to org-membership (`isAdminOrg || rec.org_id===orgId`); the fetch is already org-scoped. GET detail now returns `share.token` to any org member (share management is org-wide; fetch is id+org_id-scoped so no cross-tenant leak).
+- `app/api/recordings/[id]/share/route.ts` + `report/send/route.ts` — dropped the owner-only gate; any org member (or admin) may toggle the public link / send the report (the existing org check is the gate). Transfer stays platform-admin-only (unchanged).
+- Tests: `recordings-routes.test.ts` (list asserts org-only scope, no `created_by`; DELETE 403 reframed to cross-org defensive) + `export-org-gate.test.ts` (same-org non-creator CAN now enable sharing → 200). `docs/RECORDINGS.md` §4.7/4.7a/4.8 updated.
+
+**Verify**: `npx vitest run recordings-routes export-org-gate recording-transfer-gate` 45/45; full suite 617 pass; `tsc --noEmit` clean. Local-only. Fixes Arjun's access (he's the org owner); also fixes any future transfer-into-org case for all members.

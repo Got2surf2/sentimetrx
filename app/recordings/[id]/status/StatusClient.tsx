@@ -140,7 +140,11 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
   const isPaused = status === 'transcribed'
   // Setup-before-media: the project exists but no recording is attached. Show the
   // "Add recording" pane; nothing to poll until the user uploads + processes.
-  const isSetup = status === 'draft' || status === 'awaiting_media'
+  // 'uploading' is included for recovery — if a prior attach flipped the project
+  // to 'uploading' but the upload never finished, a page reload would otherwise
+  // strand the user on the ladder with no way to re-add. The attach endpoint
+  // clears the stale rows on re-attach, so re-adding here is safe.
+  const isSetup = status === 'draft' || status === 'awaiting_media' || status === 'uploading'
 
   const fetchStatus = useCallback(async () => {
     try {

@@ -36,13 +36,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('id', recording_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
+  // Org-wide: any member of the owning org (or a platform admin) may change the
+  // share state — like publishing a public link for a dataset. The org check
+  // above is the gate. 404 (not 403) on cross-org so we don't confirm the row.
   if (!isAdmin && rec.org_id !== orgId) return NextResponse.json({ error: 'not found' }, { status: 404 })
-
-  // Only the owner (or admin) may change the share state — sharing publishes the
-  // report outside the org, so it's not a general org-member action.
-  if (!isAdmin && rec.created_by !== userId) {
-    return NextResponse.json({ error: 'only the recording owner can change sharing' }, { status: 403 })
-  }
 
   let body: { enabled?: boolean; expires_in_days?: number; show_verbatim?: boolean } = {}
   try { body = await req.json() } catch { /* empty body → treat as no-op */ }

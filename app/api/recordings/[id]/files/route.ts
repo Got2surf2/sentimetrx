@@ -53,7 +53,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const service = createServiceRoleClient()
 
-  // Same-tenant gate — pair id with org_id, and require an awaiting_media/draft project.
+  // Same-tenant gate — pair id with org_id, and require an attachable project.
   const { data: rec } = await service
     .from('recordings')
     .select('id, status, meeting_profile')
@@ -61,8 +61,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('org_id', org_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  if (rec.status !== 'awaiting_media' && rec.status !== 'draft') {
+  // 'uploading' is included as a recovery state: a prior attach flipped the
+  // project to 'uploading' but the upload never completed (browser closed, the
+  // tus upload failed, or the user dropped the wrong file). Without this the
+  // project is permanently bricked — every retry 409s. Re-attaching from
+  // 'uploading' is safe because nothing past this state has run yet (process()
+  // flips it to 'queued'), so no file row can be 'extracted'.
+  if (rec.status !== 'awaiting_media' && rec.status !== 'draft' && rec.status !== 'uploading') {
     return NextResponse.json({ error: `cannot attach media to a project in '${rec.status}'` }, { status: 409 })
+  }
+  // Clear stale rows from the abandoned attempt before inserting the fresh set,
+  // so we don't accumulate orphan 'pending' rows (none can be processed yet).
+  if (rec.status === 'uploading') {
+    await service.from('recording_files').delete().eq('recording_id', recording_id).eq('org_id', org_id)
   }
   const hasSlides = files.some(f => (f.file_role ?? 'media') === 'slides')
 

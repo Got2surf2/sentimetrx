@@ -64,12 +64,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('id', recording_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
+  // Org-wide: any member of the owning org (or a platform admin) may send. The
+  // org check above is the gate; sending is an org-member action, like sharing a
+  // dataset. 404 (not 403) on cross-org so we don't confirm the row exists.
   if (!isAdmin && rec.org_id !== orgId) return NextResponse.json({ error: 'not found' }, { status: 404 })
-
-  // Owner (or admin) only — sending publishes the report outside the org.
-  if (!isAdmin && rec.created_by !== userId) {
-    return NextResponse.json({ error: 'only the recording owner can send the report' }, { status: 403 })
-  }
 
   if (rec.status !== 'complete') {
     return NextResponse.json({ error: 'Finish analysis before sending — the report is only available once the recording is complete.' }, { status: 409 })
