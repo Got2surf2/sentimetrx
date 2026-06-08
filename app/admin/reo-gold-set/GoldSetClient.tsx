@@ -165,8 +165,8 @@ export default function GoldSetClient() {
                     style={{ ...inputStyle, color: o.severity && o.severity !== 'none' ? RED : SLATE }}>
                     {REO_SEVERITIES.map(s => <option key={s} value={s}>{s === 'none' ? '—' : s}</option>)}
                   </select>
-                  <input value={o.evidence || ''} onChange={e => setObs(i, { evidence: e.target.value })} placeholder="evidence span…"
-                    style={{ ...inputStyle, flex: 1, minWidth: 130 }} />
+                  <textarea value={o.evidence || ''} onChange={e => setObs(i, { evidence: e.target.value })} placeholder="evidence span…" rows={2}
+                    style={{ ...inputStyle, flex: 1, minWidth: 130, fontSize: 10, lineHeight: 1.35, resize: 'vertical', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} />
                   <button onClick={() => removeObs(i)} title="Remove entirely" style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>🗑</button>
                 </div>
                 {/* inline definition so judging is unambiguous */}
