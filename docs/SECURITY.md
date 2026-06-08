@@ -511,6 +511,36 @@ Dependabot becomes the automated layer once item 2 lands. Pen
 test report is filed in `docs/audit/` with the report date in
 the filename.
 
+- **Known accepted advisories (`npm audit`):** 2 **moderate**,
+  0 high / 0 critical (as of 2026-06-08). Both are the same root
+  finding — PostCSS "XSS via unescaped `</style>` in CSS stringify
+  output" — pulled in transitively through `next`. It is a
+  **build-time** dependency (CSS generation), not reachable from
+  request handling, so the practical exposure is nil. **Do NOT run
+  `npm audit fix --force`:** it proposes an absurd `next@9.3.3`
+  downgrade. Posture: monitor and bump when upstream Next ships a
+  PostCSS-clean release.
+
+- **Agent / developer-workspace hardening (Claude Code):** the repo
+  ships defense-in-depth hooks wired in `.claude/settings.json`,
+  scored against `.claude/resources/threat-db.yaml` via
+  `/security-audit`:
+  - `PreToolUse` (`.claude/hooks/security-pretooluse.sh`) refuses
+    catastrophic / exfil-shaped Bash before it runs — reverse shells
+    (`/dev/tcp`, `nc -e`, `mkfifo`+netcat), remote-exec pipes
+    (`curl|sh`, `base64 -d|sh`), fork bombs, recursive-force deletes
+    of `/` `~` `$HOME` `/*`, and reads of private credential material
+    (SSH/AWS/cloud keys). `.env`/`.env.local` reads stay allowed (the
+    dev loop needs them; they are gitignored).
+  - `PostToolUse` (`.claude/hooks/security-posttooluse.sh`) scans tool
+    output for leaked secret-shaped values (Anthropic/OpenAI/GitHub/
+    GitLab/AWS/Slack/Google/Sentry/Stripe tokens, private-key blocks,
+    Supabase service-role JWTs) and alerts the agent so a secret is
+    never echoed onward, committed, or sent off-platform.
+  The hooks guard only the agent — a human in the terminal is
+  unaffected. This closes the "Phase 5 Claude-Code hooks" gap from
+  the 2026-06-08 `/security-audit` (workspace posture B → A).
+
 ---
 
 ## 10. Incident response

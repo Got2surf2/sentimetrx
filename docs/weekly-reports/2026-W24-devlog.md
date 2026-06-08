@@ -1,5 +1,13 @@
 # 2026-W24 — Dev log (Week of Jun 8 to Jun 14)
 
+## 2026-06-08 — Security-audit remediation: Claude Code agent-workspace hardening hooks
+
+**Why**: The 2026-06-08 `/security-audit` scored the workspace 80/100 (Grade B); the only gap was Phase-5 Claude-Code security hooks (0/15) — the harness had no guard against a confused/hijacked agent running catastrophic or exfil-shaped Bash, nor any scanner for secrets surfacing in tool output. This is pure config/agent hardening (defense-in-depth), distinct from the app-level multi-tenancy work (which scores under `/audit-codebase`).
+
+**What changed**: Two new hooks wired in `.claude/settings.json`, modelled on the dangerous-pattern + `secrets:` blocks of `.claude/resources/threat-db.yaml`. (1) `PreToolUse` `security-pretooluse.sh` (matcher `Bash`) blocks reverse shells (`/dev/tcp`, `nc -e`, `mkfifo`+nc), remote-exec pipes (`curl|sh`, `base64 -d|sh`), fork bombs, recursive-force deletes of `/`/`~`/`$HOME`/`/*`, and private-key reads (SSH/AWS/cloud) — exit 2 with a reason fed back to the agent; `.env`/`.env.local` reads stay allowed (gitignored, dev loop needs them). (2) `PostToolUse` `security-posttooluse.sh` (matcher `Bash|Read`) scans output for secret-shaped values (Anthropic/OpenAI/GitHub/GitLab/AWS/Slack/Google/Sentry/Stripe tokens, private-key blocks, Supabase service-role JWTs) and alerts so a secret is never echoed/committed/sent off-platform. Hooks guard only the agent — a human in the terminal is unaffected. Documented in SECURITY.md §9 alongside the PostCSS-advisory posture (2 moderate, build-time-only, do NOT `npm audit fix --force` = absurd next@9.3.3 downgrade). Also pruned 8 stale `~/Documents/GitHub/sentimetrx/...` allowlist entries from the (gitignored) `settings.local.json` — checkout moved to `~/Developer/`.
+
+**Verify**: Both hooks unit-tested via stdin fixtures — 11 dangerous commands blocked + 7 benign allowed (PreToolUse); 6 secret shapes flagged + benign/placeholder/threat-db-self-read passing (PostToolUse). `jq empty` clean on both settings files. Local-only, no app code touched.
+
 ## 2026-06-08 — Add REO gold-set generator (one-off analysis artifact)
 
 **Why**: REO (Restaurant Experience Ontology) taxonomy-robustness work — a human-reviewable gold-set of Ruth's Chris reviews labeled at observation grain (Domain › Aspect + Sentiment) to evaluate/replace the keyword-only Dimensions classifier. Cross-session work; see memory `project_reo_taxonomy_robustness`. Committed here to clear the working tree (its `scripts/` path tripped the devlog hook on a GitHub Desktop commit).
