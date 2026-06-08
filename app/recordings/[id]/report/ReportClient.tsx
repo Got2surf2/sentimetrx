@@ -131,21 +131,26 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      <ReportHeader recording={data.recording} qaPairCount={qaPairs.length} analyticsDatasetId={data.analyticsDatasetId} />
+      {/* Pinned so the title + tab navigation stay reachable while scrolling.
+          Sits just below the fixed TopNav (h-14); below the audio modal (z-50).
+          The TabBar's own border-b is the divider — content scrolls under it. */}
+      <div className="sticky top-14 z-30 bg-gray-50 pt-3 space-y-4">
+        <ReportHeader recording={data.recording} qaPairCount={qaPairs.length} analyticsDatasetId={data.analyticsDatasetId} />
 
-      {data.configDrifted && <DriftBanner recordingId={recordingId} analyzedVersion={data.recording.analyzed_config_version} />}
+        {data.configDrifted && <DriftBanner recordingId={recordingId} analyzedVersion={data.recording.analyzed_config_version} />}
 
-      <TabBar
-        tab={tab}
-        onChange={(t) => { setReviewFlagged(false); setTab(t) }}
-        hasPresentation={hasPresentation}
-        hasLiveTranscript={hasLiveTranscript}
-        counts={{
-          qa: qaPairs.length,
-          actions: actionItems.length,
-          coverage: data.recording.coverage_report?.flagged_count ?? 0,
-        }}
-      />
+        <TabBar
+          tab={tab}
+          onChange={(t) => { setReviewFlagged(false); setTab(t) }}
+          hasPresentation={hasPresentation}
+          hasLiveTranscript={hasLiveTranscript}
+          counts={{
+            qa: qaPairs.length,
+            actions: actionItems.length,
+            coverage: data.recording.coverage_report?.flagged_count ?? 0,
+          }}
+        />
+      </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}

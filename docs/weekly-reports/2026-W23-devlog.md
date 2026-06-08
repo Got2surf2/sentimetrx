@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall report: sticky header + tabs
+
+**Why**: Owner — the title + tab navigation scrolled away; wanted them pinned so nav/info stays reachable.
+
+**What changed** (`ReportClient.tsx`, layout only): wrapped `ReportHeader` + `DriftBanner` + `TabBar` in a `sticky top-14 z-30 bg-gray-50` container so it pins just below the fixed TopNav (h-14) and under the audio modal (z-50). The TabBar's existing border-b is the divider; content scrolls under it.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. (Spec check skipped — cosmetic layout.)
+
+
 ## 2026-06-07 — Town Hall live captions: stop losing the opening + closing
 
 **Why**: Owner compared live vs final on TEST RECORDINGS 2 — live dropped ~8 words at the start ("…you've got some questions… Well,") and ~8 at the end ("On the bottom here, you'll see this little…"). Two real causes in our code: the live captions couldn't start until the Deepgram WS finished connecting (opening lost to the file but not the stream), and on Stop we closed the socket immediately, before Deepgram returned the last `is_final` (closing dropped).
