@@ -2,6 +2,10 @@
 
 Project-specific guidance for Claude Code working in this repo. Personal/global guidelines apply on top of this.
 
+## Queue my messages — don't treat them as interruptions
+
+**When I send a message mid-task, it's work added to your queue, not a signal to stop.** Keep going on the current task to a clean, committable point, then address what I asked — I should be able to leave work for you without derailing you. Act immediately only if I say prioritize/stop, or if my message is a correction / missing info for the task you're already on. Finish the unit, then pick up what I left.
+
 ## Stack
 
 Next.js 16 App Router, TypeScript (strict), React 19, Supabase (Postgres + Auth + Storage with RLS), Anthropic Claude, Vercel (pushes to `main` auto-deploy to production), Resend, DataForSEO.
