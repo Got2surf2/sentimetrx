@@ -156,3 +156,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run external-source-routes-gate` 24/24; full suite 671 pass; `tsc --noEmit` clean. Local-only.
 
 **Phase 1 running total**: ~30 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3+5 = test-only, no new vulns).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 6: dataset lifecycle mutations
+
+**Why**: Continue the Phase-1 sweep over the highest-blast-radius dataset routes — the ones that delete a dataset, wipe + re-import all its rows (`sync?full=true`), trim rows by date, or overwrite the analysis state. A cross-org leak here would let one tenant destroy or corrupt another tenant's dataset.
+
+**What changed**: new `tests/integration/dataset-mutation-routes-gate.test.ts` (19 tests) over `datasets/[datasetId]` GET/PATCH/DELETE, `/state` GET/PUT/PATCH, `/trim` POST, `/sync` POST, `/refresh-schema` POST. Asserts 401 / 401-no-analyze / 403 cross-org (PATCH) / 404 cross-org (GET/DELETE/state/trim/sync/refresh) **before any service-role write**, with `.eq('org_id', callerOrg)` recorded on the GET/DELETE lookups, the DELETE per-creator 403, the state PATCH field-whitelist (`hacker:1` → 400), and admin-bypass on PATCH. **All five route groups verified correctly gated — no new vulns.** Each already resolves the caller org via `getOrgAndCheck` / `getCallerOrgContext` / a users lookup and refuses a cross-org dataset; sync + trim additionally audit cross-org admin destructive ops. Heavy libs (orgAccess, orgTransfer, analyticsCompute, collectionRecompute) mocked. Added to TESTING.md layout.
+
+**Verify**: `npx vitest run dataset-mutation-routes-gate` 19/19; full suite 690 pass; `tsc --noEmit` clean. Local-only.
+
+**Phase 1 running total**: ~35 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3/5/6 = test-only, no new vulns).
