@@ -388,6 +388,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     return () => { cancelled = true }
   }, [recordingId])
 
+  // Warm the worklet script into the HTTP cache on mount so `addModule` is fast
+  // when recording starts — shrinks the brief window before the captions worklet
+  // produces its first frame (the residual opening loss). Best-effort.
+  useEffect(() => {
+    fetch('/worklets/pcm16-worklet.js', { cache: 'force-cache' }).catch(() => {})
+  }, [])
+
   const refreshDevices = useCallback(async () => {
     try {
       const all = await navigator.mediaDevices.enumerateDevices()

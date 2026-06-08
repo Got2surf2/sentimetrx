@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-08 — Town Hall live captions: verified edge fixes + worklet prefetch
+
+**Why**: Checked Test Recording - Live (recorded after the edge-loss fixes). **Closing now matches the batch transcript exactly** (CloseStream-flush works). Opening residual dropped from ~8 words to ~2 ("To these" still missing) — the gap before the captions worklet's first frame, dominated by `addModule` on first use.
+
+**What changed** (`LiveClient.tsx`): prefetch `/worklets/pcm16-worklet.js` into the HTTP cache on mount so `addModule` is fast when recording starts. Cuts the residual opening loss (in dev; prod serves it as a static asset so it's near-zero there). If still noticeable, the deeper fix is pre-warming a reused AudioContext with the module pre-registered.
+
+**Verify**: tsc clean. **Local-only**, not pushed. Quantified against prod data for Test Recording - Live (closing identical, opening ~2 words).
+
+
 ## 2026-06-07 — Town Hall: fix Generate gate race + drop duplicate button
 
 **Why**: Owner clicked "Generate Q&A pairs", it showed Starting… then reverted with nothing happening (needed a second click). Cause: the analyze route returns before the workflow flips `status → analyzing`, and the status page pauses polling at `transcribed`, so the single post-generate refresh raced ahead of the flip and the page stayed at the gate. Also: a redundant second Generate button at the bottom of the panel.
