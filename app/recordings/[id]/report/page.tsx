@@ -11,6 +11,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
+import { isAnalysisConfigDrifted } from '@/lib/recordings/configVersion'
 import ReportClient, { type ReportData } from './ReportClient'
 import type {
   RecordingRow,
@@ -73,6 +74,13 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
   const extractions = (extractionsRes.data ?? []) as unknown as RecordingExtractionRow[]
   const agents = ((agentsRes.data ?? []) as Array<{ id: string; name: string | null }>).map(a => ({ id: a.id, name: a.name || 'Untitled' }))
 
+  // Drift: did the analysis-shaping setup change since the last analysis? → banner.
+  const configDrifted = await isAnalysisConfigDrifted(
+    service, recording.id, recording.org_id,
+    recording as unknown as Record<string, unknown>,
+    recording.analyzed_config_version,
+  )
+
   const data: ReportData = {
     recording,
     files,
@@ -80,6 +88,7 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
     extractions,
     agents,
     isOwner: recording.created_by === ctx.userId,
+    configDrifted,
     // "Open in Analytics" cross-link — only when the dataset mirror exists AND
     // the user actually has Analytics (graceful degradation when it's off).
     analyticsDatasetId: ctx.features.analyze ? (recording.dataset_id ?? null) : null,

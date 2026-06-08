@@ -35,7 +35,7 @@ tests/
 ├── unit/                 # pure functions + mocked-boundary tests
 │   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
 │   ├── components/       # BrandTagInput (first component test — render + onChange + datalist fetch)
-│   ├── recordings/       # coverage (per-topic counting + zero-flag, gap detection, histogram, agenda↔topic casing reconciliation §3.6); analyze (Opus+Sonnet+synthesis parse, flag-merge, sentiment, deterministic counts, overallSentiment, graceful-degrade; callAI mocked); meetingTool (resolveProfile NULL→qa coercion, clampPhases snap/clip, slicePhaseSegments, fallback); brandGlossary (mergeBrandEntities — brand-catalog seeding §3.5c); transcriptRoles (segment→question/answer monotonic split + span tightening de-overlap §3.6 + action-item transcript trace by content-word window); timeline (packLanes overlap staggering + buildTimelineModel geometry)
+│   ├── recordings/       # coverage (per-topic counting + zero-flag, gap detection, histogram, agenda↔topic casing reconciliation §3.6); analyze (Opus+Sonnet+synthesis parse, flag-merge, sentiment, deterministic counts, overallSentiment, graceful-degrade; callAI mocked); meetingTool (resolveProfile NULL→qa coercion, clampPhases snap/clip, slicePhaseSegments, fallback); brandGlossary (mergeBrandEntities — brand-catalog seeding §3.5c); transcriptRoles (segment→question/answer monotonic split + span tightening de-overlap §3.6 + action-item transcript trace by content-word window); timeline (packLanes overlap staggering + buildTimelineModel geometry); configVersion (isAnalysisConfigDrifted — shaping-vs-metadata drift detection §5.4/§5.7)
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts

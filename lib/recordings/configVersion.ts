@@ -92,3 +92,37 @@ export async function snapshotConfigVersion(
   if (insErr) throw new Error(`snapshot insert failed: ${insErr.message}`)
   return { version_number: nextNum, created: true }
 }
+
+// Analysis-SHAPING fields — editing these makes the live analysis stale, so the
+// user should re-run to apply them. Metadata (name/date/location/attribution/
+// brand/agent) is NOT drift; it prints on deliverables without re-extraction.
+const SHAPING_KEYS = ['setup_inputs', 'meeting_profile', 'objectives'] as const
+
+/**
+ * True when the recording's current analysis-shaping config differs from the
+ * snapshot that produced the live analysis (`analyzed_config_version`) — i.e.
+ * the user edited the agenda / panel / glossary / meeting profile / objectives
+ * after analyzing and should re-run to apply it. Returns false when the recording
+ * was never analyzed (nothing to be stale against) or the analyzed snapshot is
+ * missing. `currentRec` must carry the CONFIG_SELECT columns.
+ */
+export async function isAnalysisConfigDrifted(
+  service: SupabaseClient,
+  recordingId: string,
+  orgId: string,
+  currentRec: Record<string, unknown>,
+  analyzedVersion: number | null,
+): Promise<boolean> {
+  if (analyzedVersion == null) return false
+  const { data: ver } = await service
+    .from('recording_config_versions')
+    .select('snapshot')
+    .eq('recording_id', recordingId)
+    .eq('org_id', orgId)
+    .eq('version_number', analyzedVersion)
+    .maybeSingle()
+  if (!ver?.snapshot) return false
+  const current = buildSnapshot(currentRec)
+  const analyzed = ver.snapshot as RecordingConfigSnapshot
+  return SHAPING_KEYS.some(k => canonical(current[k]) !== canonical(analyzed[k]))
+}

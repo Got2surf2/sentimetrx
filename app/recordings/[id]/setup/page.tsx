@@ -10,6 +10,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
 import RecordingSetupForm, { type RecordingSetupInitial } from '@/components/recordings/RecordingSetupForm'
+import { isAnalysisConfigDrifted } from '@/lib/recordings/configVersion'
 import type { RecordingRow, QaSetupInputs } from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
@@ -53,6 +54,13 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
 
   const documents = ((docsRes.data ?? []) as Array<{ id: string; original_filename: string; mime_type: string; size_bytes: number; file_role: 'slides' | 'document' }>)
 
+  // Drift: analysis-shaping setup changed since the last analysis → inform + link.
+  const configDrifted = await isAnalysisConfigDrifted(
+    service, recording.id, recording.org_id,
+    recording as unknown as Record<string, unknown>,
+    recording.analyzed_config_version,
+  )
+
   // Map the row into the form's initial values.
   const su = (recording.setup_inputs ?? {}) as Partial<QaSetupInputs>
   const initial: Partial<RecordingSetupInitial> = {
@@ -92,6 +100,7 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
           agents={agents}
           members={members}
           initial={initial}
+          configDrifted={configDrifted}
         />
       </main>
     </div>

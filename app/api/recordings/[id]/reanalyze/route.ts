@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { reanalyzeRecording, type ReanalyzeScope } from '@/lib/recordings/reanalyze'
+import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +69,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       topic: body.topic?.trim() || undefined,
       instructions,
     })
+
+    // A full re-extract regenerates the whole analysis from the CURRENT config, so
+    // re-snapshot + re-stamp analyzed_config_version — this clears the "setup
+    // changed, re-analyze to apply" drift banner (§5.4/§5.7). Topic-scoped
+    // re-extracts are partial, so they leave the analyzed version as-is.
+    // Best-effort: a snapshot hiccup must not fail the user's re-extract.
+    if (scope === 'all') {
+      try {
+        const { version_number } = await snapshotConfigVersion(service, recording_id, org_id, { source: 'analysis', createdBy: user.id })
+        await service.from('recordings').update({ analyzed_config_version: version_number }).eq('id', recording_id).eq('org_id', org_id)
+      } catch (e) {
+        console.error({ at: 'recordings.reanalyze', msg: 'config snapshot/stamp failed', err: (e as Error)?.message })
+      }
+    }
+
     return NextResponse.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'reanalyze failed'

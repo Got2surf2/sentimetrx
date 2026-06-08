@@ -49,6 +49,7 @@ export interface ReportData {
   extractions: RecordingExtractionRow[]
   agents: Array<{ id: string; name: string }>   // org's agents, for the brand/agent link (§3.5c)
   isOwner: boolean
+  configDrifted: boolean   // analysis-shaping setup changed since the last analysis → drift banner
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
@@ -126,6 +127,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
   return (
     <div className="space-y-6">
       <ReportHeader recording={data.recording} qaPairCount={qaPairs.length} analyticsDatasetId={data.analyticsDatasetId} />
+
+      {data.configDrifted && <DriftBanner recordingId={recordingId} analyzedVersion={data.recording.analyzed_config_version} />}
 
       <TabBar
         tab={tab}
@@ -322,6 +325,61 @@ function TabBar({
         )
       })}
     </nav>
+  )
+}
+
+// ── Drift banner ─────────────────────────────────────────────────────────────
+// Shown when the analysis-shaping setup (agenda/panel/glossary/profile/objectives)
+// changed since the analysis that produced this report. One-click full re-extract
+// (~$1) re-stamps analyzed_config_version, which clears the banner on refresh.
+
+function DriftBanner({ recordingId, analyzedVersion }: { recordingId: string; analyzedVersion: number | null }) {
+  const router = useRouter()
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const reanalyze = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/reanalyze`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'all' }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Re-analyze failed (${r.status})`)
+      router.refresh()   // server recomputes drift (now false) → banner disappears
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Re-analyze failed'); setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-amber-900">Setup changed since the last analysis</h3>
+          <p className="text-xs text-amber-800 mt-0.5">
+            You edited the agenda, panel, names, meeting profile, or objectives after this report was generated
+            {analyzedVersion != null ? ` (Config v${analyzedVersion})` : ''}. Re-analyze to apply your changes — this
+            replaces every Q&amp;A pair (~$1).
+          </p>
+          {err && <p className="text-xs text-red-700 mt-1.5">{err}</p>}
+        </div>
+        {confirming ? (
+          <div className="shrink-0 flex items-center gap-2">
+            <button type="button" onClick={reanalyze} disabled={busy}
+              className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: HERMES }}>
+              {busy ? 'Re-analyzing…' : 'Yes, re-analyze (~$1)'}
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} disabled={busy}
+              className="px-3 py-2 rounded-lg text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50">Cancel</button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setConfirming(true)}
+            className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: HERMES }}>
+            Re-analyze
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

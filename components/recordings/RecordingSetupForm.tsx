@@ -76,13 +76,14 @@ const CONFIDENTIALITY_LABELS: Record<ConfidentialityClass, string> = {
 }
 
 export default function RecordingSetupForm({
-  mode, recordingId, agents = [], members = [], initial,
+  mode, recordingId, agents = [], members = [], initial, configDrifted = false,
 }: {
   mode: 'create' | 'edit'
   recordingId?: string
   agents?: AgentOption[]
   members?: MemberOption[]
   initial?: Partial<RecordingSetupInitial>
+  configDrifted?: boolean   // edit mode — analysis-shaping setup changed since the last analysis
 }) {
   const router = useRouter()
   const isEdit = mode === 'edit'
@@ -317,6 +318,22 @@ export default function RecordingSetupForm({
             : 'Set up the project now — you can add the meeting audio or video later, once it’s available.'}
         </p>
       </header>
+
+      {isEdit && configDrifted && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-amber-900">This setup differs from the last analysis</h3>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Your changes to the agenda, panel, names, meeting profile, or objectives are saved, but the report still
+              reflects the previous analysis. Open the report and re-analyze to apply them.
+            </p>
+          </div>
+          <Link href={`/recordings/${recordingId}/report`}
+            className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>
+            Open report →
+          </Link>
+        </div>
+      )}
 
       {/* Project documents — read the deck to pre-fill setup (optional) */}
       <section className="bg-white border border-gray-200 rounded-2xl p-5">
