@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -15,6 +16,21 @@ export async function POST(req: Request, props: Props) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Cross-org gate: this route reads theme/keyword counts + topical words over
+  // the dataset's rows with the service-role client (RLS-bypassing), so confirm
+  // the caller's org owns the dataset before any read — without this any authed
+  // user could mine another tenant's reviews by id (admin-org bypass preserved).
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  {
+    const svc = createServiceRoleClient()
+    const { data: dsOrg } = await svc.from('datasets').select('org_id').eq('id', params.datasetId).single()
+    if (!dsOrg) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    if (!isAdmin && (dsOrg as { org_id?: string }).org_id !== orgId) {
+      return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    }
+  }
 
   let body: {
     themes: { id: string; keywords: string[] }[]

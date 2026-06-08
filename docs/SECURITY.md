@@ -149,6 +149,8 @@ Reference: the May-2026 CRITICAL findings (six of them, same root
 cause — service-role lookup without `org_id`) are documented in
 `docs/security-review-2026-05-09.md` (the CRITICAL table; all six
 marked ✅ patched). Read it before writing a service-role query.
+
+> **Phase-1 route-gate campaign (June 2026) — additional cross-org holes found + fixed (same root cause).** A systematic sweep of mutating/read service-role routes surfaced six more: three town-hall WRITE holes (`POST /api/townhall/themes/[id]`, `…/sessions/[id]/duplicate`, `…/themes/custom` — moderate/duplicate/inject into any org's town hall by id) and three dataset query-POST READ leaks (`POST /api/datasets/[datasetId]/theme-counts` leaked theme counts + topical words mined from another tenant's review text; `POST /api/datasets/signal-stats-batch` returned per-dataset signal stats for arbitrary ids; `POST /api/datasets/[datasetId]/theme-impact` was latent — read the removed `dataset_rows` table). All now resolve the caller's `org_id`+`is_admin_org` and gate the dataset/topic (404 cross-org; admin-org bypass preserved); `signal-stats-batch` filters the requested ids to caller-owned. Regressions in `tests/integration/{townhall-mutation,core-entity,dataset-query}-routes-gate.test.ts`. ~62 of ~140 mutating/read service-role routes now carry explicit gate tests.
 (Note: `docs/AUDIT_2026_Q1.md` is the *question-bank* audit and
 is unrelated to security findings.)
 

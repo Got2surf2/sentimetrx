@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeSignalStats, type SignalStats } from '@/lib/signalStats'
 
 export const dynamic = 'force-dynamic'
@@ -36,8 +37,23 @@ export async function POST(req: Request) {
   const capped = ids.slice(0, 50)
   const service = createServiceRoleClient()
 
+  // Cross-org gate: computeSignalStats reads each dataset's rows/theme model
+  // with the service-role client, so restrict the batch to ids the caller's
+  // org owns (admin-org bypass = all). Without this any authed user could pull
+  // another tenant's signal stats by posting their dataset ids.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId && !isAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  let ownedIds = capped
+  if (!isAdmin) {
+    const { data: owned } = await service
+      .from('datasets').select('id').in('id', capped).eq('org_id', orgId)
+    const ownedSet = new Set((owned || []).map((d: { id: string }) => d.id))
+    ownedIds = capped.filter(id => ownedSet.has(id))
+  }
+  if (ownedIds.length === 0) return NextResponse.json({ stats: {} })
+
   const results = await Promise.all(
-    capped.map(async (id): Promise<[string, SignalStats | null]> => {
+    ownedIds.map(async (id): Promise<[string, SignalStats | null]> => {
       try {
         const s = await computeSignalStats(service, id)
         return [id, s]

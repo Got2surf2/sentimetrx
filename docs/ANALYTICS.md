@@ -102,6 +102,8 @@ read **lower** than the Themes panel's "responses": the panel counts the
 **union** of currently-active fields (`.some()` non-empty), while `records`
 takes the single largest field — they intentionally use different denominators.
 
+> **Org gate (cross-org READ fix, 2026-06-08):** the body-driven server query routes that read tenant rows with the service-role client — `POST /api/datasets/[datasetId]/theme-counts`, `…/theme-impact`, and the listing-page `POST /api/datasets/signal-stats-batch` — previously authenticated the caller but never checked their org, so any logged-in user could mine another tenant's theme counts / topical words / signal stats by posting their `datasetId`(s). All three now resolve the caller's `org_id`+`is_admin_org` and gate the dataset (404 cross-org; admin-org bypass), and `signal-stats-batch` filters the requested ids to those the caller's org owns. Their already-gated siblings (`aggregate`, `rows`, `comments`, `taxonomy`) were unaffected. See `docs/SECURITY.md` § 2; regression in `tests/integration/dataset-query-routes-gate.test.ts`.
+
 ### Sentiment Scoring (Lexicon-Based, `lib/sentimentLexicon.ts`)
 - `POSITIVE_WORDS`: good, great, excellent, amazing, friendly, clean, helpful, etc.
 - `NEGATIVE_WORDS`: bad, terrible, slow, rude, dirty, expensive, disappointing, etc.

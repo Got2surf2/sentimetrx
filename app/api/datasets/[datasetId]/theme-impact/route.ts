@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { expandLemma } from '@/lib/lemmas'
 import { olsRegression } from '@/lib/statsUtils'
 
@@ -41,6 +42,19 @@ export async function POST(req: Request, props: Props) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Cross-org gate: service-role read of the dataset's rows below — confirm the
+  // caller's org owns the dataset first (admin-org bypass preserved).
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  {
+    const svc = createServiceRoleClient()
+    const { data: dsOrg } = await svc.from('datasets').select('org_id').eq('id', params.datasetId).single()
+    if (!dsOrg) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    if (!isAdmin && (dsOrg as { org_id?: string }).org_id !== orgId) {
+      return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    }
+  }
 
   let body: {
     targetField: string         // numeric field key (e.g. "overall_sat")

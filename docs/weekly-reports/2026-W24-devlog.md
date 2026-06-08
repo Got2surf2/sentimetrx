@@ -176,3 +176,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run entity-enrichment-routes-gate` 17/17; full suite 707 pass; `tsc --noEmit` clean. Local-only.
 
 **Phase 1 running total**: ~43 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3/5/6/7 = test-only, no new vulns).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 8: dataset query-POST routes (+ 3 cross-org READ leaks fixed)
+
+**Why**: The dataset "query POST" routes read tenant rows from a request body (chart aggregates, comment filters, theme counts, regressions, signal stats), so a missing org filter is a cross-org READ leak. Audited 8; 5 were correctly gated, 3 were holes (owner authorized fixing all three).
+
+**Holes found + FIXED**:
+- `app/api/datasets/[datasetId]/theme-counts/route.ts` (LIVE leak) — only `getAuthUser`, then fetched the dataset by bare id and ran `count_theme_matches` / `theme_dimension_counts` + **topical-word extraction** over `dataset_rows_flat`. Any authed user could mine another tenant's theme counts, co-occurrence, dimensions, and **actual topical words from their review text** by id. Now resolves `getCallerOrgContext` and gates `dataset.org_id === callerOrg || isAdmin` (404 else) before any read.
+- `app/api/datasets/signal-stats-batch/route.ts` (LIVE leak) — only `getAuthUser`, then `computeSignalStats` over an arbitrary `ids[]` from the body. Now filters the requested ids to those the caller's org owns (admin = all); cross-org ids drop out → empty stats.
+- `app/api/datasets/[datasetId]/theme-impact/route.ts` (LATENT) — same missing gate, but reads the removed `dataset_rows` table so it currently returns "not enough rows". Gated for defense-in-depth.
+
+**What else changed**: new `tests/integration/dataset-query-routes-gate.test.ts` (19 tests) — regression for the three fixes (401 / 404 cross-org / owning-org allowed / signal-stats ids filtered) plus the five already-gated routes (aggregate, rows GET/POST/DELETE, comments, taxonomy GET/POST, export/html/share). Docs: SECURITY.md § 2 (added the campaign findings to the cross-org reference), ANALYTICS.md (org-gate note on the signal-stats/theme routes), TESTING.md layout. Heavy libs mocked.
+
+**Verify**: `npx vitest run dataset-query-routes-gate` 19/19; full suite 726 pass; `rm tsconfig.tsbuildinfo && tsc --noEmit` clean. Local-only — three behavior changes to live read routes; admin-org bypass preserved so the Datanautix admin org is unaffected.
+
+**Phase 1 running total**: ~51 of ~140 mutating/read service-role routes now gate-tested (the real denominator is ~140, not the ~80 I'd been quoting). **6 cross-org vulns found + fixed total** (3 write in batches 1–4, 3 read in batch 8).
