@@ -265,3 +265,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: `lib/agentExport.pairsSheet` now emits the agent line immediately *before* each user turn as a new **Lead-in (agent said before)** column, and renames Question→**User said** (a one-word reply isn't a question). Shared, so both the workbook's Q&A Pairs tab and the standalone `/conversations/export?shape=pairs` download get it. BOTS.md updated.
 
 **Verify**: tsc clean; lead-in round-trips correctly in the xlsx harness.
+
+## 2026-06-08 — REO gold-set: guided tap-to-judge UI
+
+**Why**: Owner reviewed the 30 seeded reviews (22 approved, 8 edited) but flagged they "may not have tagged correctly" — the edits added a `FoodBeverage>Menu` label whose evidence pointed at the dish itself, not the menu offering. Root cause is task design: a 50-aspect palette with no definitions in front of the labeler makes construction unreliable. Fix is to (a) put definitions inline and (b) shift from *constructing* labels to *judging* proposed ones.
+
+**What changed**: `lib/reoVocabulary.ts` gains `REO_ASPECT_DEF` (one-line definition + example for all ~50 Domain›Aspect pairs, wording chosen to disambiguate Taste/Quality/Preparation and clarify Menu = the offering, not a dish) + `aspectDef()`. `GoldSetClient` reworked to tap-to-judge: each proposed label is a card with a keep/drop (✓/✗) toggle and its definition shown inline; "Save my judgments" persists only kept labels; "All correct" approves as-is. Reset the 8 edited reviews back to pending (gold/note cleared) so they re-surface with the better tooling; the 22 approved are untouched.
+
+**Verify**: `npx tsc --noEmit` exit 0; DB now 22 approved / 8 pending. Local-only (no push).

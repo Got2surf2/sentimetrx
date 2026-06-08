@@ -71,6 +71,84 @@ export function isValidDomainAspect(domain: string, aspect: string): boolean {
   return REO_ASPECTS[domain].includes(aspect)
 }
 
+// One-line definition + tiny example per Domain>Aspect. Shown inline in the
+// review UI so labeling is "does this match the definition?" rather than guessing
+// from a blank palette. Keyed by `${domain}>${aspect}`. The wording deliberately
+// disambiguates the tricky overlaps (Taste vs Quality vs Preparation; Menu = the
+// offering/variety, NOT a specific dish's execution).
+export const REO_ASPECT_DEF: Record<string, string> = {
+  // FoodBeverage — Quality = the food's inherent quality/freshness; Preparation =
+  // what the kitchen DID to it (doneness/temp); Taste = flavor/seasoning judgment.
+  'FoodBeverage>Taste':        'Flavor & seasoning judgment. e.g. "bland", "delicious", "too salty"',
+  'FoodBeverage>Quality':      'Inherent food quality / freshness / cut. e.g. "frozen lobster", "not fresh", "tough cut"',
+  'FoodBeverage>Preparation':  'Cooking execution: doneness, temp, over/undercooked. e.g. "overcooked", "served cold", "raw"',
+  'FoodBeverage>Presentation': 'Plating / visual / how it arrives. e.g. "beautiful plate", "sizzling", "sloppy"',
+  'FoodBeverage>Menu':         'The menu OFFERING/variety/options — NOT one dish. e.g. "few veg options", "no NA drinks", "seasonal menu"',
+  'FoodBeverage>Portion':      'Amount / size of the serving. e.g. "tiny portion", "huge plate"',
+  'FoodBeverage>Desserts':     'Dessert items specifically. e.g. "cheesecake", "bread pudding"',
+  'FoodBeverage>Beverages':    'Drinks: cocktails, wine, beer, coffee. e.g. "watered-down martini", "great wine list"',
+  // Service
+  'Service>Friendliness':      'Warmth / courtesy / attitude. e.g. "rude", "so welcoming", "service is bland"',
+  'Service>Attentiveness':     'Presence / checking in / refills. e.g. "never saw our server", "no water"',
+  'Service>Professionalism':   'Competence / polish / conduct. e.g. "untrained", "unprofessional", "discriminated"',
+  'Service>Knowledge':         'Menu/wine knowledge & recommendations. e.g. "great recommendations", "didn’t know the menu"',
+  'Service>Responsiveness':    'Speed of acting on requests. e.g. "took forever", "drinks were slow"',
+  'Service>Accuracy':          'Order correctness / requests honored. e.g. "wrong dish", "allergy not honored"',
+  'Service>Recovery':          'How a complaint/mistake was HANDLED. e.g. "comped it", "manager argued", "snotty when I complained"',
+  'Service>Management':        'Manager presence / conduct specifically. e.g. "GM visited table", "manager was rude"',
+  // Environment
+  'Environment>Ambiance':      'Overall vibe/atmosphere. e.g. "romantic", "generic", "warm"',
+  'Environment>Cleanliness':   'Cleanliness & smell. e.g. "dirty restroom", "smells moldy"',
+  'Environment>Noise':         'Noise / music volume / acoustics. e.g. "too loud", "couldn’t hear"',
+  'Environment>Comfort':       'Seating comfort, spacing, temperature. e.g. "cramped", "freezing", "comfy booth"',
+  'Environment>Design':        'Decor / look / fit-out. e.g. "nicely decorated", "feels like a sports bar", "needs remodel"',
+  // Operations
+  'Operations>WaitTime':       'Waiting: to be seated, for food, for the check. e.g. "40 min for entree", "slow"',
+  'Operations>Reservations':   'Reservation handling/honoring. e.g. "seated late despite booking", "refused our reso"',
+  'Operations>Ordering':       'Ease/flow of ordering, coursing, takeout flow. e.g. "apps & salad came together", "takeout"',
+  'Operations>Payment':        'Checkout / payment / change. e.g. "didn’t give change", "slow to pay"',
+  'Operations>Capacity':       'Staffing levels / crowding / turnover. e.g. "short staffed", "packed"',
+  // Value
+  'Value>Pricing':             'The price itself cited as grievance/praise. e.g. "$68 ribeye", "overpriced"',
+  'Value>ValueForMoney':       'Worth-it verdict (price vs experience). e.g. "not worth it", "super mid"',
+  'Value>Fees':                'Surcharges / service charges / hidden fees. e.g. "service charge", "hidden fee"',
+  // Access
+  'Access>Parking':            'Parking availability/cost. e.g. "no parking", "valet"',
+  'Access>Transit':            'Public transit / walkability. e.g. "near the train", "hard to reach"',
+  'Access>Safety':             'Neighborhood/area safety, lighting. e.g. "sketchy area", "well-lit lot"',
+  'Access>Convenience':        'Location convenience / hours. e.g. "great location", "closed early"',
+  // Digital
+  'Digital>Website':           'Website experience. e.g. "site wouldn’t load"',
+  'Digital>MobileApp':         'Mobile app experience. e.g. "app crashed"',
+  'Digital>OnlineOrdering':    'Online/app ordering flow. e.g. "online order was wrong"',
+  'Digital>DigitalPayments':   'Digital/contactless payment. e.g. "couldn’t pay by app"',
+  // CustomerRelationship
+  'CustomerRelationship>Recognition':    'Being recognized/made to feel special (esp. first-time/occasion). e.g. "made us feel special", "ignored on our anniversary"',
+  'CustomerRelationship>Loyalty':        'Return/recommend intent. e.g. "won’t be back", "we’ll return"',
+  'CustomerRelationship>Personalization':'Tailored touches to this guest. e.g. "remembered our usual"',
+  'CustomerRelationship>Community':      'Local engagement / events / regulars culture. e.g. "great with locals"',
+  // Brand
+  'Brand>Reputation':          'Overall reputation / recommend-to-others. e.g. "never recommend", "best in town"',
+  'Brand>Trust':               'Trust / fairness / integrity. e.g. "felt discriminated", "honest"',
+  'Brand>Consistency':         'Consistency vs prior visits/locations. e.g. "not the same anymore", "by far the worst location"',
+  'Brand>Identity':            'Brand identity / what it stands for. e.g. "lost its character"',
+  // Occasion (visit context — usually Neutral)
+  'Occasion>EverydayMeal':     'Routine / casual meal',
+  'Occasion>DateNight':        'Date night',
+  'Occasion>FamilyDinner':     'Family meal',
+  'Occasion>BusinessMeeting':  'Business / work meal',
+  'Occasion>Celebration':      'General celebration',
+  'Occasion>Birthday':         'Birthday visit',
+  'Occasion>Anniversary':      'Anniversary visit',
+  'Occasion>GroupEvent':       'Large group / party',
+  'Occasion>QuickLunch':       'Quick lunch',
+  'Occasion>TakeoutOnly':      'Takeout / to-go only',
+}
+
+export function aspectDef(domain: string, aspect: string): string {
+  return REO_ASPECT_DEF[`${domain}>${aspect}`] || ''
+}
+
 // Stable per-domain colors for pills/badges in the review UI.
 export const REO_DOMAIN_COLOR: Record<ReoDomain, string> = {
   FoodBeverage:         '#E8632A', // orange
