@@ -324,7 +324,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
               in one .xlsx (multi-sheet → no CSV variant). */}
           <button onClick={function() { window.location.href = '/api/bots/' + botId + '/workbook?format=xlsx' }}
             disabled={sessions.length === 0}
-            title="One Excel file with four tabs: Summary, Q&A Pairs, Unanswered Questions, and the Full Transcript"
+            title="One Excel file with four tabs: Summary, Q&A Pairs, Low-Confidence Answers, and the Full Transcript"
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50">
             Excel workbook
           </button>

@@ -273,3 +273,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: `lib/reoVocabulary.ts` gains `REO_ASPECT_DEF` (one-line definition + example for all ~50 Domain›Aspect pairs, wording chosen to disambiguate Taste/Quality/Preparation and clarify Menu = the offering, not a dish) + `aspectDef()`. `GoldSetClient` reworked to tap-to-judge: each proposed label is a card with a keep/drop (✓/✗) toggle and its definition shown inline; "Save my judgments" persists only kept labels; "All correct" approves as-is. Reset the 8 edited reviews back to pending (gold/note cleared) so they re-surface with the better tooling; the 22 approved are untouched.
 
 **Verify**: `npx tsc --noEmit` exit 0; DB now 22 approved / 8 pending. Local-only (no push).
+
+### 2026-06-08 (follow-up 2) — "Unanswered" tab was misleading → "Low-Confidence Answers"
+
+**Why**: Owner saw questions that clearly got a reply (in Q&A Pairs) ALSO sitting in the "Unanswered Questions" tab. Verified in `lib/logQuestion.ts`: `kb_miss`/`ai_uncertain` fire on the agent's REPLY being thin/hedged, not on a missing reply; `status='open'` only means untriaged on the Questions page. So "unanswered" was wrong — these all have replies.
+
+**What changed** (owner decisions): (a) renamed the tab **"Low-Confidence Answers"**; (b) **excluded deflects** (`.in('classification', ['kb_miss','ai_uncertain'])`) — off-topic redirects aren't gaps; (c) added an **"Agent replied"** column (assistant line following each flagged question, matched by normalized text) so an answer is visibly present; (d) Summary line relabeled "Low-confidence answers (flagged for review)" and recomputed off the same filtered count so the two tabs reconcile. BOTS.md updated.
+
+**Verify**: tsc clean; reply-lookup matches the following assistant turn by session+normalized message.
