@@ -81,19 +81,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: e instanceof Error ? e.message : 'summary failed' }, { status: 502 })
   }
 
-  const summary = parseJsonObject(resp.text)
-  if (!summary) return NextResponse.json({ error: 'could not parse summary' }, { status: 502 })
+  const parsed = parseJsonObject(resp.text)
+  if (!parsed) return NextResponse.json({ error: 'could not parse summary' }, { status: 502 })
 
-  return NextResponse.json({
-    ok: true,
-    summary: {
-      headline: typeof summary.headline === 'string' ? summary.headline : '',
-      summary: typeof summary.summary === 'string' ? summary.summary : '',
-      topics: strArr(summary.topics),
-      open_questions: strArr(summary.open_questions),
-      decisions: strArr(summary.decisions),
-    },
-  })
+  const summary = {
+    headline: typeof parsed.headline === 'string' ? parsed.headline : '',
+    summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+    topics: strArr(parsed.topics),
+    open_questions: strArr(parsed.open_questions),
+    decisions: strArr(parsed.decisions),
+  }
+
+  // Persist the snapshot so Stop can show an instant provisional recap while the
+  // batch pipeline runs (and the transcript survives a tab crash). Best-effort —
+  // a write failure must not fail the summary the client is waiting on.
+  await service
+    .from('recordings')
+    .update({ live_summary: summary, live_transcript: transcript })
+    .eq('id', recording_id)
+    .eq('org_id', org_id)
+
+  return NextResponse.json({ ok: true, summary })
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | null {

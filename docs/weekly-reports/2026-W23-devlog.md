@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, hardening item 2: persist snapshot → provisional recap
+
+**Why**: So hitting Stop shows something useful immediately (a provisional summary from the live session) while the ~2-4 min batch pipeline runs, and the live transcript survives a tab crash.
+
+**What changed**: `sql/120_recording_live_snapshot.sql` (APPLIED to prod) — `recordings.live_summary jsonb` + `live_transcript text`, additive/nullable, inherit table RLS. The `live-summary` route now persists `{live_summary, live_transcript}` on each refresh (id/org_id paired, best-effort). `GET /api/recordings/[id]` returns `live_summary`. `StatusClient` renders a `ProvisionalRecap` card (headline/summary/topics/open-questions/decisions) for any non-terminal status, superseded by the real report on completion.
+
+**Verify**: tsc clean, 472 tests pass. Migration applied via supabase CLI. **Local-only**, not pushed. Also: live `/live` page renders correctly in-browser (owner screenshot); mic-denied fallback shows as designed. Next: hardening item 1 (continuous upload during meeting).
+
+
 ## 2026-06-07 — Town Hall live captions: auth verified end-to-end
 
 **Why**: Close the last unverified assumption in the live-captions path before the manual real-mic test.

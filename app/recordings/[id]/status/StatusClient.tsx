@@ -74,6 +74,14 @@ interface QaSetupInputs {
   ground_truth_url?: string
 }
 
+interface LiveSummary {
+  headline: string
+  summary: string
+  topics: string[]
+  open_questions: string[]
+  decisions: string[]
+}
+
 interface StatusResponse {
   recording: {
     id: string
@@ -91,6 +99,7 @@ interface StatusResponse {
     dataset_id: string | null
     started_at: string | null
     completed_at: string | null
+    live_summary: LiveSummary | null
   }
   files: FileRow[]
   transcript: TranscriptMeta | null
@@ -210,6 +219,10 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
       <>
       <StepList status={status} data={data} />
 
+      {data?.recording.live_summary && status !== 'complete' && status !== 'failed' && status !== 'cancelled' && (
+        <ProvisionalRecap summary={data.recording.live_summary} />
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {error}
@@ -278,6 +291,48 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
 }
 
 // ── Components ───────────────────────────────────────────────────────────────
+
+// Provisional recap from the live-capture summary, shown while the batch
+// pipeline runs. Superseded by the real report on completion.
+function ProvisionalRecap({ summary }: { summary: LiveSummary }) {
+  const hasBody = summary.summary || summary.topics.length || summary.open_questions.length || summary.decisions.length
+  if (!hasBody && !summary.headline) return null
+  return (
+    <div className="bg-orange-50/60 border border-orange-200 rounded-xl p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold text-orange-700 uppercase tracking-wide">
+        <span>Provisional summary</span>
+        <span className="font-normal normal-case text-gray-400">— from the live session; full report is processing</span>
+      </div>
+      {summary.headline && <p className="mt-2 font-semibold text-gray-900">{summary.headline}</p>}
+      {summary.summary && <p className="mt-1 text-sm text-gray-700">{summary.summary}</p>}
+      {summary.topics.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {summary.topics.map((t, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-orange-200 text-xs text-gray-600">{t}</span>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 grid sm:grid-cols-2 gap-3">
+        {summary.open_questions.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Open questions</div>
+            <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+              {summary.open_questions.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+          </div>
+        )}
+        {summary.decisions.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Decisions / actions</div>
+            <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+              {summary.decisions.map((d, i) => <li key={i}>{d}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 type StepState = 'past' | 'current' | 'future' | 'failed'
 
