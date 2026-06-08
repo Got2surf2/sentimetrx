@@ -281,3 +281,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed** (owner decisions): (a) renamed the tab **"Low-Confidence Answers"**; (b) **excluded deflects** (`.in('classification', ['kb_miss','ai_uncertain'])`) — off-topic redirects aren't gaps; (c) added an **"Agent replied"** column (assistant line following each flagged question, matched by normalized text) so an answer is visibly present; (d) Summary line relabeled "Low-confidence answers (flagged for review)" and recomputed off the same filtered count so the two tabs reconcile. BOTS.md updated.
 
 **Verify**: tsc clean; reply-lookup matches the following assistant turn by session+normalized message.
+
+## 2026-06-08 — REO gold-set: completion screen + fix double-count on re-save
+
+**Why**: Two UX bugs reported reviewing the set: (1) finishing review 30 dead-ended — the last card just stayed, no "done" state; (2) clicking "Save my judgments" on the last review kept incrementing the status count each time.
+
+**What changed**: `GoldSetClient` — counts are now derived (`tally`) from the `reviews` array (the source of truth) instead of a separately-incremented `counts` state, so re-saving the same review just re-sets its status (no double-count). Added a `done` completion screen (shown when no review is left pending) with the final breakdown + "revisit skipped"/"browse from start" actions. Next-pending search now scans the whole list (not just forward), so a review left pending earlier is caught. `goTo()` clears the done state when jumping back in via a dot/prev/next.
+
+**Verify**: `npx tsc --noEmit` exit 0. Local-only (no push).

@@ -26,8 +26,8 @@ const inputStyle: React.CSSProperties = { fontSize: 16, padding: '5px 7px', bord
 
 export default function GoldSetClient() {
   const [reviews, setReviews] = useState<Review[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
   const [idx, setIdx] = useState(0)
+  const [done, setDone] = useState(false)
   const [working, setWorking] = useState<WorkObs[]>([])
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
@@ -39,10 +39,11 @@ export default function GoldSetClient() {
     const res = await fetch('/api/admin/reo-gold-set')
     if (!res.ok) { setErr('Failed to load. Has the gold set been seeded?'); setLoading(false); return }
     const j = await res.json()
-    setReviews(j.reviews || [])
-    setCounts(j.counts || {})
-    const firstPending = (j.reviews || []).findIndex((r: Review) => r.status === 'pending')
-    setIdx(firstPending >= 0 ? firstPending : 0)
+    const list = (j.reviews || []) as Review[]
+    setReviews(list)
+    const firstPending = list.findIndex(r => r.status === 'pending')
+    if (firstPending >= 0) { setIdx(firstPending); setDone(false) }
+    else { setIdx(Math.max(0, list.length - 1)); setDone(list.length > 0) }   // already all reviewed → land on the done screen
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -56,19 +57,16 @@ export default function GoldSetClient() {
     setErr('')
   }, [idx, cur?.id])
 
-  const reviewedCount = (counts.approved || 0) + (counts.edited || 0) + (counts.skipped || 0)
+  // live tally from the source of truth (reviews), so the header + done screen stay exact
+  const tally = reviews.reduce((a: Record<string, number>, r) => { a[r.status] = (a[r.status] || 0) + 1; return a }, {})
+  const reviewedCount = (tally.approved || 0) + (tally.edited || 0) + (tally.skipped || 0)
   const keptCount = working.filter(o => o._keep).length
 
-  function setObs(i: number, patch: Partial<WorkObs>) {
-    setWorking(w => w.map((o, j) => j === i ? { ...o, ...patch } : o))
-  }
-  function changeDomain(i: number, domain: ReoDomain) {
-    setObs(i, { domain, aspect: REO_ASPECTS[domain][0] })
-  }
+  function goTo(j: number) { setDone(false); setIdx(j) }
+  function setObs(i: number, patch: Partial<WorkObs>) { setWorking(w => w.map((o, j) => j === i ? { ...o, ...patch } : o)) }
+  function changeDomain(i: number, domain: ReoDomain) { setObs(i, { domain, aspect: REO_ASPECTS[domain][0] }) }
   function toggleKeep(i: number) { setObs(i, { _keep: !working[i]._keep }) }
-  function addObs() {
-    setWorking(w => [...w, { domain: 'FoodBeverage', aspect: REO_ASPECTS.FoodBeverage[0], sentiment: 'Negative', evidence: '', severity: 'none', _keep: true }])
-  }
+  function addObs() { setWorking(w => [...w, { domain: 'FoodBeverage', aspect: REO_ASPECTS.FoodBeverage[0], sentiment: 'Negative', evidence: '', severity: 'none', _keep: true }]) }
   function removeObs(i: number) { setWorking(w => w.filter((_, j) => j !== i)) }
 
   async function save(status: 'approved' | 'edited' | 'skipped') {
@@ -81,12 +79,13 @@ export default function GoldSetClient() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     if (!res.ok) { const j = await res.json().catch(() => ({})); setErr(j.error || 'Save failed'); setSaving(false); return }
-    const wasPending = cur.status === 'pending'
-    setReviews(rs => rs.map((r, j) => j === idx ? { ...r, status, gold: body.gold ?? null, reviewer_note: note } : r))
-    setCounts(c => ({ ...c, [status]: (c[status] || 0) + 1, pending: Math.max(0, (c.pending || 0) - (wasPending ? 1 : 0)) }))
+    const nextReviews = reviews.map((r, j) => j === idx ? { ...r, status, gold: body.gold ?? null, reviewer_note: note } : r)
+    setReviews(nextReviews)
     setSaving(false)
-    const nextPending = reviews.findIndex((r, j) => j > idx && r.status === 'pending')
-    setIdx(nextPending >= 0 ? nextPending : Math.min(idx + 1, reviews.length - 1))
+    // go to the first review still pending ANYWHERE (handles jumping around); none left → done screen
+    const firstPending = nextReviews.findIndex(r => r.status === 'pending')
+    if (firstPending >= 0) setIdx(firstPending)
+    else setDone(true)
   }
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader message="Loading gold set…" /></div>
@@ -99,6 +98,8 @@ export default function GoldSetClient() {
     </main>
   )
 
+  const btn = (bg: string, color = '#fff'): React.CSSProperties => ({ fontSize: 14, fontWeight: 700, color, background: bg, border: bg === '#fff' ? '1px solid #e2e8f0' : 'none', borderRadius: 10, padding: '9px 16px', cursor: 'pointer' })
+
   return (
     <main className="max-w-4xl mx-auto px-6 pt-24 pb-16">
       {/* Header + progress */}
@@ -110,7 +111,7 @@ export default function GoldSetClient() {
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{reviewedCount} / {reviews.length} reviewed</div>
           <div style={{ fontSize: 12, color: SLATE }}>
-            <span style={{ color: GREEN }}>{counts.approved || 0} approved</span> · {counts.edited || 0} edited · {counts.skipped || 0} skipped
+            <span style={{ color: GREEN }}>{tally.approved || 0} approved</span> · {tally.edited || 0} edited · {tally.skipped || 0} skipped
           </div>
         </div>
       </div>
@@ -118,91 +119,109 @@ export default function GoldSetClient() {
       {/* Progress dots */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 18 }}>
         {reviews.map((r, j) => (
-          <button key={r.id} onClick={() => setIdx(j)} title={`${r.ext_review_id} — ${r.status}`}
+          <button key={r.id} onClick={() => goTo(j)} title={`${r.ext_review_id} — ${r.status}`}
             style={{ width: 18, height: 18, borderRadius: 5, cursor: 'pointer', fontSize: 0,
-              border: j === idx ? `2px solid ${NAVY}` : '1px solid #e2e8f0',
+              border: (!done && j === idx) ? `2px solid ${NAVY}` : '1px solid #e2e8f0',
               background: r.status === 'pending' ? '#fff' : r.status === 'skipped' ? '#e2e8f0' : r.status === 'approved' ? '#bbf7d0' : '#fde68a' }} />
         ))}
       </div>
 
-      {/* Review card */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: HERMES, letterSpacing: 0.4 }}>{cur.ext_review_id}</span>
-          {cur.rating != null && <span style={{ fontSize: 13, color: '#D97706' }}>{'★'.repeat(cur.rating)}{'☆'.repeat(5 - cur.rating)}</span>}
-          <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-            background: cur.status === 'pending' ? '#f1f5f9' : '#ecfdf5', color: cur.status === 'pending' ? SLATE : GREEN }}>{cur.status}</span>
-        </div>
-        <p style={{ fontSize: 15, lineHeight: 1.55, color: '#1e293b', marginBottom: 18, whiteSpace: 'pre-wrap' }}>{cur.review_text}</p>
-
-        {/* Observations — tap to keep/drop */}
-        <div style={{ fontSize: 12, fontWeight: 800, color: SLATE, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-          Labels — keeping {keptCount} of {working.length}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {working.map((o, i) => {
-            const dropped = !o._keep
-            return (
-              <div key={i} style={{ padding: 10, borderRadius: 10, border: '1px solid ' + (dropped ? '#fee2e2' : '#eef2f7'), background: dropped ? '#fef2f2' : '#fafbfc', opacity: dropped ? 0.6 : 1 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {/* keep/drop toggle */}
-                  <button onClick={() => toggleKeep(i)} title={dropped ? 'Rejected — click to keep' : 'Kept — click to drop'}
-                    style={{ width: 30, height: 30, borderRadius: 8, cursor: 'pointer', flexShrink: 0, fontSize: 15, fontWeight: 800,
-                      border: '1px solid ' + (dropped ? '#fca5a5' : '#a7f3d0'), background: dropped ? '#fff' : '#ecfdf5', color: dropped ? RED : GREEN }}>
-                    {dropped ? '✗' : '✓'}
-                  </button>
-                  <span style={{ width: 9, height: 9, borderRadius: 3, background: REO_DOMAIN_COLOR[o.domain] || SLATE, flexShrink: 0, textDecoration: dropped ? 'line-through' : 'none' }} />
-                  <select value={o.domain} onChange={e => changeDomain(i, e.target.value as ReoDomain)} style={{ ...inputStyle, fontWeight: 700 }}>
-                    {REO_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <select value={o.aspect} onChange={e => setObs(i, { aspect: e.target.value })} style={inputStyle}>
-                    {REO_ASPECTS[o.domain].map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                  <select value={o.sentiment} onChange={e => setObs(i, { sentiment: e.target.value as any })} style={{ ...inputStyle, fontWeight: 700, color: sentColor(o.sentiment) }}>
-                    {REO_SENTIMENTS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <select value={o.severity || 'none'} onChange={e => setObs(i, { severity: e.target.value as any })} title="Severity flag"
-                    style={{ ...inputStyle, color: o.severity && o.severity !== 'none' ? RED : SLATE }}>
-                    {REO_SEVERITIES.map(s => <option key={s} value={s}>{s === 'none' ? '—' : s}</option>)}
-                  </select>
-                  <textarea value={o.evidence || ''} onChange={e => setObs(i, { evidence: e.target.value })} placeholder="evidence span…" rows={2}
-                    style={{ ...inputStyle, flex: 1, minWidth: 130, fontSize: 10, lineHeight: 1.35, resize: 'vertical', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} />
-                  <button onClick={() => removeObs(i)} title="Remove entirely" style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>🗑</button>
-                </div>
-                {/* inline definition so judging is unambiguous */}
-                <div style={{ fontSize: 12, color: SLATE, marginTop: 6, marginLeft: 38, fontStyle: 'italic' }}>
-                  {aspectDef(o.domain, o.aspect) || '—'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        <button onClick={addObs} style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: HERMES, background: '#fff', border: `1px dashed ${HERMES}`, borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>+ Add a label I missed</button>
-
-        {/* Guidance note */}
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: SLATE, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Note to guide me (optional)</div>
-          <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
-            placeholder="e.g. 'I wasn’t sure where the dish itself goes' or 'cold service should also be Friendliness'"
-            style={{ ...inputStyle, width: '100%', resize: 'vertical', fontSize: 16 }} />
-        </div>
-
-        {err && <p style={{ color: RED, fontSize: 13, marginTop: 10 }}>{err}</p>}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-          <button disabled={saving} onClick={() => save('approved')}
-            style={{ fontSize: 14, fontWeight: 700, color: '#fff', background: GREEN, border: 'none', borderRadius: 10, padding: '9px 16px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>✓ All correct</button>
-          <button disabled={saving} onClick={() => save('edited')}
-            style={{ fontSize: 14, fontWeight: 700, color: '#fff', background: HERMES, border: 'none', borderRadius: 10, padding: '9px 16px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>Save my judgments</button>
-          <button disabled={saving} onClick={() => save('skipped')}
-            style={{ fontSize: 13, fontWeight: 600, color: SLATE, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 14px', cursor: 'pointer' }}>Not sure — skip</button>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.4 : 1 }}>← Prev</button>
-            <button disabled={idx >= reviews.length - 1} onClick={() => setIdx(i => Math.min(reviews.length - 1, i + 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx >= reviews.length - 1 ? 'default' : 'pointer', opacity: idx >= reviews.length - 1 ? 0.4 : 1 }}>Next →</button>
+      {done ? (
+        /* ---------- Completion screen ---------- */
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '44px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 42, lineHeight: 1 }}>🎉</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginTop: 10 }}>All {reviews.length} reviewed</h2>
+          <p style={{ color: SLATE, fontSize: 14, marginTop: 6 }}>
+            <span style={{ color: GREEN, fontWeight: 700 }}>{tally.approved || 0} approved</span> · {tally.edited || 0} edited · {tally.skipped || 0} skipped
+          </p>
+          <p style={{ color: SLATE, fontSize: 13, marginTop: 16, maxWidth: 460, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+            That’s the whole set. Tell Claude <strong>“I’m done”</strong> and it’ll pull your judgments to lock the labeling standard, then scale to the larger gold set.
+            {(tally.skipped || 0) > 0 && <> You skipped <strong>{tally.skipped}</strong> — worth revisiting those before you hand off.</>}
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
+            {(tally.skipped || 0) > 0 && (
+              <button onClick={() => { const k = reviews.findIndex(r => r.status === 'skipped'); if (k >= 0) goTo(k) }} style={btn(HERMES)}>
+                Revisit skipped ({tally.skipped})
+              </button>
+            )}
+            <button onClick={() => goTo(0)} style={btn('#fff', NAVY)}>Browse from the start</button>
           </div>
         </div>
-      </div>
+      ) : (
+        /* ---------- Review card ---------- */
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: HERMES, letterSpacing: 0.4 }}>{cur.ext_review_id}</span>
+            {cur.rating != null && <span style={{ fontSize: 13, color: '#D97706' }}>{'★'.repeat(cur.rating)}{'☆'.repeat(5 - cur.rating)}</span>}
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+              background: cur.status === 'pending' ? '#f1f5f9' : '#ecfdf5', color: cur.status === 'pending' ? SLATE : GREEN }}>{cur.status}</span>
+          </div>
+          <p style={{ fontSize: 15, lineHeight: 1.55, color: '#1e293b', marginBottom: 18, whiteSpace: 'pre-wrap' }}>{cur.review_text}</p>
+
+          {/* Observations — tap to keep/drop */}
+          <div style={{ fontSize: 12, fontWeight: 800, color: SLATE, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            Labels — keeping {keptCount} of {working.length}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {working.map((o, i) => {
+              const dropped = !o._keep
+              return (
+                <div key={i} style={{ padding: 10, borderRadius: 10, border: '1px solid ' + (dropped ? '#fee2e2' : '#eef2f7'), background: dropped ? '#fef2f2' : '#fafbfc', opacity: dropped ? 0.6 : 1 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => toggleKeep(i)} title={dropped ? 'Rejected — click to keep' : 'Kept — click to drop'}
+                      style={{ width: 30, height: 30, borderRadius: 8, cursor: 'pointer', flexShrink: 0, fontSize: 15, fontWeight: 800,
+                        border: '1px solid ' + (dropped ? '#fca5a5' : '#a7f3d0'), background: dropped ? '#fff' : '#ecfdf5', color: dropped ? RED : GREEN }}>
+                      {dropped ? '✗' : '✓'}
+                    </button>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: REO_DOMAIN_COLOR[o.domain] || SLATE, flexShrink: 0 }} />
+                    <select value={o.domain} onChange={e => changeDomain(i, e.target.value as ReoDomain)} style={{ ...inputStyle, fontWeight: 700 }}>
+                      {REO_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <select value={o.aspect} onChange={e => setObs(i, { aspect: e.target.value })} style={inputStyle}>
+                      {REO_ASPECTS[o.domain].map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <select value={o.sentiment} onChange={e => setObs(i, { sentiment: e.target.value as any })} style={{ ...inputStyle, fontWeight: 700, color: sentColor(o.sentiment) }}>
+                      {REO_SENTIMENTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select value={o.severity || 'none'} onChange={e => setObs(i, { severity: e.target.value as any })} title="Severity flag"
+                      style={{ ...inputStyle, color: o.severity && o.severity !== 'none' ? RED : SLATE }}>
+                      {REO_SEVERITIES.map(s => <option key={s} value={s}>{s === 'none' ? '—' : s}</option>)}
+                    </select>
+                    <textarea value={o.evidence || ''} onChange={e => setObs(i, { evidence: e.target.value })} placeholder="evidence span…" rows={2}
+                      style={{ ...inputStyle, flex: 1, minWidth: 130, fontSize: 10, lineHeight: 1.35, resize: 'vertical', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} />
+                    <button onClick={() => removeObs(i)} title="Remove entirely" style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>🗑</button>
+                  </div>
+                  <div style={{ fontSize: 12, color: SLATE, marginTop: 6, marginLeft: 38, fontStyle: 'italic' }}>
+                    {aspectDef(o.domain, o.aspect) || '—'}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <button onClick={addObs} style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: HERMES, background: '#fff', border: `1px dashed ${HERMES}`, borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>+ Add a label I missed</button>
+
+          {/* Guidance note */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: SLATE, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Note to guide me (optional)</div>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="e.g. 'I wasn’t sure where the dish itself goes' or 'cold service should also be Friendliness'"
+              style={{ ...inputStyle, width: '100%', resize: 'vertical', fontSize: 16 }} />
+          </div>
+
+          {err && <p style={{ color: RED, fontSize: 13, marginTop: 10 }}>{err}</p>}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+            <button disabled={saving} onClick={() => save('approved')} style={{ ...btn(GREEN), opacity: saving ? 0.6 : 1 }}>✓ All correct</button>
+            <button disabled={saving} onClick={() => save('edited')} style={{ ...btn(HERMES), opacity: saving ? 0.6 : 1 }}>Save my judgments</button>
+            <button disabled={saving} onClick={() => save('skipped')} style={{ ...btn('#fff', SLATE), fontWeight: 600, fontSize: 13 }}>Not sure — skip</button>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <button disabled={idx === 0} onClick={() => goTo(Math.max(0, idx - 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.4 : 1 }}>← Prev</button>
+              <button disabled={idx >= reviews.length - 1} onClick={() => goTo(Math.min(reviews.length - 1, idx + 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx >= reviews.length - 1 ? 'default' : 'pointer', opacity: idx >= reviews.length - 1 ? 0.4 : 1 }}>Next →</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
