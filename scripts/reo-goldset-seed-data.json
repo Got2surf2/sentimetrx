@@ -1,0 +1,1188 @@
+[
+ {
+  "ext_review_id": "R01",
+  "rating": 1,
+  "review_text": "Tried to walk in and they \"wouldn't be able to seat us.\" Restaurant wasn't busy and plenty of open reservations on Open Table. Made a reservation and still got refused and told to sit in the bar. Service has been consistently declining at this location and I won't be back.",
+  "proposed": [
+   {
+    "domain": "Operations",
+    "aspect": "Reservations",
+    "sentiment": "Negative",
+    "evidence": "still got refused",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Consistency",
+    "sentiment": "Negative",
+    "evidence": "consistently declining",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Negative",
+    "evidence": "I won't be back",
+    "severity": "none",
+    "note": "old 'outcome:not-recommend' maps here"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R02",
+  "rating": 1,
+  "review_text": "Didn't feel welcomed and the manager named Tammy nitpicked with me about a hat. We were the last guests there. Other guests had on skull hats and plain t-shirts and they were in dress code. I would have tipped but they took my change and didn't give change. Horrible experience won't come back. They ruined our night then tried to make up for it with a free drink, the damage was done.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Negative",
+    "evidence": "nitpicked with me about a hat",
+    "severity": "none",
+    "note": "dress-code enforcement felt unfair"
+   },
+   {
+    "domain": "Service",
+    "aspect": "Management",
+    "sentiment": "Negative",
+    "evidence": "the manager named Tammy",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Operations",
+    "aspect": "Payment",
+    "sentiment": "Negative",
+    "evidence": "took my change and didn't give change",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Negative",
+    "evidence": "make up for it with a free drink",
+    "severity": "none",
+    "note": "recovery attempted but failed"
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Negative",
+    "evidence": "won't come back",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R03",
+  "rating": 1,
+  "review_text": "Steak was cut wrong, tough as leather. Overcooked, not medium rare. Manager was snotty when I pointed it out. I shant return.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "Overcooked, not medium rare",
+    "severity": "none",
+    "note": "doneness miss = Preparation"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "tough as leather",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Negative",
+    "evidence": "Manager was snotty when I pointed it out",
+    "severity": "none",
+    "note": "complaint handling"
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Negative",
+    "evidence": "I shant return",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R04",
+  "rating": 1,
+  "review_text": "Today I had the turkey dinner for Thanksgiving menu. It was equivalent to dog food. The turkey breast was white processed meat. The stuffing was dried out and horrible. The dessert was a joke, a round piece of pumpkin cheesecake the size of a silver dollar. I will never recommend this restaurant to anyone.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "equivalent to dog food",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "stuffing was dried out",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Desserts",
+    "sentiment": "Negative",
+    "evidence": "dessert was a joke",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Portion",
+    "sentiment": "Negative",
+    "evidence": "size of a silver dollar",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Reputation",
+    "sentiment": "Negative",
+    "evidence": "never recommend this restaurant",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R05",
+  "rating": 1,
+  "review_text": "Was there for my fiancee's birthday. She ordered a filet medium well done and the wait staff and manager all argued with her that the filet could not be cooked that way, so the dinner was ruined for her. My salmon was good, then our friend's chicken was bland. Not a great experience for her 1st time and we will probably not visit again.",
+  "proposed": [
+   {
+    "domain": "Occasion",
+    "aspect": "Birthday",
+    "sentiment": "Neutral",
+    "evidence": "my fiancee's birthday",
+    "severity": "none",
+    "note": "visit context"
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Negative",
+    "evidence": "argued with her",
+    "severity": "none",
+    "note": "argued instead of accommodating"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "My salmon was good",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Negative",
+    "evidence": "friend's chicken was bland",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Negative",
+    "evidence": "probably not visit again",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R06",
+  "rating": 1,
+  "review_text": "Completely short staffed, unorganized, steak was overcooked, was never given waters at any point, ordering drinks and waiting for them felt like pulling teeth. We've been to numerous Ruth Chris locations and this is by far the worst.",
+  "proposed": [
+   {
+    "domain": "Operations",
+    "aspect": "Capacity",
+    "sentiment": "Negative",
+    "evidence": "Completely short staffed",
+    "severity": "none",
+    "note": "staffing levels"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "steak was overcooked",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Attentiveness",
+    "sentiment": "Negative",
+    "evidence": "never given waters at any point",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Responsiveness",
+    "sentiment": "Negative",
+    "evidence": "waiting for them felt like pulling teeth",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Consistency",
+    "sentiment": "Negative",
+    "evidence": "by far the worst",
+    "severity": "none",
+    "note": "vs other locations"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R07",
+  "rating": 1,
+  "review_text": "The waiter was rude and acted as if me and my guest didn't belong there. After sending my food back twice, I really had no desire to eat it. A complete waste.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Negative",
+    "evidence": "The waiter was rude",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Negative",
+    "evidence": "acted as if me and my guest didn't belong",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Accuracy",
+    "sentiment": "Negative",
+    "evidence": "sending my food back twice",
+    "severity": "none",
+    "note": "order issues"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R08",
+  "rating": 1,
+  "review_text": "People will play in your face all day when you order take out. $50 for salt and pepper chicken breast and it wasn't even stuffed.",
+  "proposed": [
+   {
+    "domain": "Operations",
+    "aspect": "Ordering",
+    "sentiment": "Negative",
+    "evidence": "when you order take out",
+    "severity": "none",
+    "note": "takeout handling"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "wasn't even stuffed",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "ValueForMoney",
+    "sentiment": "Negative",
+    "evidence": "$50 for salt and pepper chicken breast",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R09",
+  "rating": 1,
+  "review_text": "Plates are hot, and the server says don't touch. But they don't warn you of the splash zone of the butter spitting from the plate. Brand new purse on the seat next to me was ruined.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Negative",
+    "evidence": "they don't warn you",
+    "severity": "none",
+    "note": "failure to warn = service lapse"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Presentation",
+    "sentiment": "Neutral",
+    "evidence": "the butter spitting from the plate",
+    "severity": "none",
+    "note": "sizzling-plate presentation, edge case"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R10",
+  "rating": 1,
+  "review_text": "The manager turned me and my friend away from the bar area because cleavage was shown. But there was a white lady with her cleavage out as well. I felt we were discriminated against and the manager was racist.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Negative",
+    "evidence": "turned me and my friend away",
+    "severity": "crisis",
+    "note": "discrimination claim - escalate/review"
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Trust",
+    "sentiment": "Negative",
+    "evidence": "I felt we were discriminated against",
+    "severity": "crisis",
+    "note": "brand-trust + DEI risk"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R11",
+  "rating": 2,
+  "review_text": "Seated 30 minutes after reservation, entree showed up 40 minutes after salad, $68 ribeye only warm (definitely NOT sizzling). Wife's shrimp was so overcooked they were not edible. Salad and bread were good.",
+  "proposed": [
+   {
+    "domain": "Operations",
+    "aspect": "Reservations",
+    "sentiment": "Negative",
+    "evidence": "Seated 30 minutes after reservation",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Operations",
+    "aspect": "WaitTime",
+    "sentiment": "Negative",
+    "evidence": "entree showed up 40 minutes after salad",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "ribeye only warm",
+    "severity": "none",
+    "note": "temp"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "shrimp was so overcooked",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Positive",
+    "evidence": "Salad and bread were good",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "Pricing",
+    "sentiment": "Negative",
+    "evidence": "$68 ribeye",
+    "severity": "none",
+    "note": "price cited as grievance"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R12",
+  "rating": 2,
+  "review_text": "The food was great! But the service was terrible, hardly ever saw our waiter, and when he did come by it took forever. We bought the 3 course dinner and weren't even offered dessert.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "The food was great",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Attentiveness",
+    "sentiment": "Negative",
+    "evidence": "hardly ever saw our waiter",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Responsiveness",
+    "sentiment": "Negative",
+    "evidence": "it took forever",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Desserts",
+    "sentiment": "Negative",
+    "evidence": "weren't even offered dessert",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R13",
+  "rating": 2,
+  "review_text": "Honestly the place needs to be remodeled. When you enter it smells old and moldy and mothbally. I sat at the bar, ordered my food, and people who sat and ordered after me received their order before me.",
+  "proposed": [
+   {
+    "domain": "Environment",
+    "aspect": "Cleanliness",
+    "sentiment": "Negative",
+    "evidence": "smells old and moldy",
+    "severity": "none",
+    "note": "odor = cleanliness"
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Design",
+    "sentiment": "Negative",
+    "evidence": "needs to be remodeled",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Attentiveness",
+    "sentiment": "Negative",
+    "evidence": "received their order before me",
+    "severity": "none",
+    "note": "served out of order"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R14",
+  "rating": 2,
+  "review_text": "Absolute worst old fashioned and manhattan I have ever had, creamed spinach was watery and gross, service was borderline, steak was good but whole experience was super mid.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Negative",
+    "evidence": "worst old fashioned and manhattan",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "creamed spinach was watery",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Negative",
+    "evidence": "service was borderline",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Positive",
+    "evidence": "steak was good",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "ValueForMoney",
+    "sentiment": "Negative",
+    "evidence": "whole experience was super mid",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R15",
+  "rating": 2,
+  "review_text": "The steak was good, a little underseasoned but cooked nicely. The cocktail was alright, a bit watered down for $25. Potatoes were gritty and dry. The decor made it feel like a cheesy sports bar. Dirty washrooms. Great wait staff though! Probably won't go back as it just was not worth the price.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Positive",
+    "evidence": "cooked nicely",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Negative",
+    "evidence": "a little underseasoned",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Negative",
+    "evidence": "watered down for $25",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "Potatoes were gritty and dry",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Design",
+    "sentiment": "Negative",
+    "evidence": "cheesy sports bar",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Cleanliness",
+    "sentiment": "Negative",
+    "evidence": "Dirty washrooms",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "Great wait staff",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "ValueForMoney",
+    "sentiment": "Negative",
+    "evidence": "not worth the price",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Negative",
+    "evidence": "won't go back",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R16",
+  "rating": 2,
+  "review_text": "At least 4 of a party of 15 had cold hard mashed potatoes that had to be sent back. Another side was offered. The restaurant was not even crowded and no reason for slow cold food. I have been coming here for over 25 years and this was horrible.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "cold hard mashed potatoes",
+    "severity": "none",
+    "note": "temp"
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Positive",
+    "evidence": "Another side was offered",
+    "severity": "none",
+    "note": "recovery handled"
+   },
+   {
+    "domain": "Operations",
+    "aspect": "WaitTime",
+    "sentiment": "Negative",
+    "evidence": "slow cold food",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Consistency",
+    "sentiment": "Negative",
+    "evidence": "over 25 years and this was horrible",
+    "severity": "none",
+    "note": "loyal customer, off night"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R17",
+  "rating": 3,
+  "review_text": "Party of 7 took 2 hours. She told the waiter she is allergic to mushrooms; steak and shrimp came out with truffle on it. Steak was remade with no truffles, but no shrimp. After notifying staff, shrimp came out quick but very undercooked and raw in the middle. Drinks from the bar were average at best.",
+  "proposed": [
+   {
+    "domain": "Operations",
+    "aspect": "WaitTime",
+    "sentiment": "Negative",
+    "evidence": "took 2 hours",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Accuracy",
+    "sentiment": "Negative",
+    "evidence": "came out with truffle on it",
+    "severity": "crisis",
+    "note": "stated allergy not honored - safety"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "undercooked and raw in the middle",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Negative",
+    "evidence": "average at best",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Neutral",
+    "evidence": "Steak was remade",
+    "severity": "none",
+    "note": "partial recovery"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R18",
+  "rating": 3,
+  "review_text": "Espresso Martini was nasty (and taken off the bill). Crab cakes were good but not amazing. Shrimp with filet were super rubbery. Service felt slow in that every time he was by we needed something.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Negative",
+    "evidence": "Espresso Martini was nasty",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Recovery",
+    "sentiment": "Positive",
+    "evidence": "taken off the bill",
+    "severity": "none",
+    "note": "comped"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "Crab cakes were good",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "super rubbery",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Attentiveness",
+    "sentiment": "Negative",
+    "evidence": "Service felt slow",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R19",
+  "rating": 3,
+  "review_text": "Steak is consistently overcooked. Service is bland and seems untrained. Not a great value proposition overall. Atmosphere is generic. Go somewhere else if in Nashville.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "consistently overcooked",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Negative",
+    "evidence": "seems untrained",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "ValueForMoney",
+    "sentiment": "Negative",
+    "evidence": "Not a great value proposition",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Ambiance",
+    "sentiment": "Negative",
+    "evidence": "Atmosphere is generic",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Brand",
+    "aspect": "Consistency",
+    "sentiment": "Negative",
+    "evidence": "consistently overcooked",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R20",
+  "rating": 3,
+  "review_text": "Spicy shrimp was not crispy. Caesar salad was not fresh. Bread pudding had too much alcohol. Steak sandwich was delicious. 6.5/10 Happy Hour. Great atmosphere.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "shrimp was not crispy",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "Caesar salad was not fresh",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Desserts",
+    "sentiment": "Negative",
+    "evidence": "Bread pudding had too much alcohol",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "Steak sandwich was delicious",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Ambiance",
+    "sentiment": "Positive",
+    "evidence": "Great atmosphere",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Value",
+    "aspect": "ValueForMoney",
+    "sentiment": "Neutral",
+    "evidence": "6.5/10 Happy Hour",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R21",
+  "rating": 3,
+  "review_text": "Great service and experience, just not top notch food. Could tell my lobster was from the freezer and had to get my mashed potatoes reheated right after it came out.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "Great service and experience",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "lobster was from the freezer",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Negative",
+    "evidence": "mashed potatoes reheated",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R22",
+  "rating": 5,
+  "review_text": "The cheesecake is very good. It's fresh and with the yogurt and berries on top it's perfect.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Desserts",
+    "sentiment": "Positive",
+    "evidence": "cheesecake is very good",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R23",
+  "rating": 5,
+  "review_text": "JUAN-PIERRE is the best server here at Ruth's Chris.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "best server",
+    "severity": "none",
+    "note": "named-staff praise"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R24",
+  "rating": 5,
+  "review_text": "Service was slowish. Apps and salads were delivered together. Not that big of a deal, overall very enjoyable.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Responsiveness",
+    "sentiment": "Negative",
+    "evidence": "Service was slowish",
+    "severity": "none",
+    "note": "mild"
+   },
+   {
+    "domain": "Operations",
+    "aspect": "Ordering",
+    "sentiment": "Negative",
+    "evidence": "Apps and salads were delivered together",
+    "severity": "none",
+    "note": "coursing/sequence"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "overall very enjoyable",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R25",
+  "rating": 5,
+  "review_text": "The food was good except the mashed potatoes and asparagus were horrible. Everything else was great. The service and atmosphere was outstanding.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Taste",
+    "sentiment": "Positive",
+    "evidence": "The food was good",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Negative",
+    "evidence": "mashed potatoes and asparagus were horrible",
+    "severity": "none",
+    "note": "sides"
+   },
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "service ... was outstanding",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Ambiance",
+    "sentiment": "Positive",
+    "evidence": "atmosphere was outstanding",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R26",
+  "rating": 5,
+  "review_text": "We found the level of service unparalleled. The server was very knowledgeable. The wine selection was excellent quality. The GM visited our table and was very warm and professional.",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Professionalism",
+    "sentiment": "Positive",
+    "evidence": "service unparalleled",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Knowledge",
+    "sentiment": "Positive",
+    "evidence": "server was very knowledgeable",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Positive",
+    "evidence": "wine selection was excellent",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Management",
+    "sentiment": "Positive",
+    "evidence": "GM visited our table",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R27",
+  "rating": 5,
+  "review_text": "The waitress was absolutely amazing! My steak was cooked exactly how I like it. My only complaint would be the lack of non-alcoholic drink choices!",
+  "proposed": [
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "waitress was absolutely amazing",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Positive",
+    "evidence": "cooked exactly how I like it",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Menu",
+    "sentiment": "Negative",
+    "evidence": "lack of non-alcoholic drink choices",
+    "severity": "none",
+    "note": "menu variety / NAB options"
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R28",
+  "rating": 5,
+  "review_text": "Steak came out sizzling, seasoned to perfection. Mashed potatoes, perfect. Asparagus perfect. I chose a Cabernet to pair with my NY strip. The Lacantera location is very nicely decorated, we will visit again.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Positive",
+    "evidence": "seasoned to perfection",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Positive",
+    "evidence": "Mashed potatoes, perfect",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Positive",
+    "evidence": "a Cabernet to pair",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Environment",
+    "aspect": "Design",
+    "sentiment": "Positive",
+    "evidence": "very nicely decorated",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Loyalty",
+    "sentiment": "Positive",
+    "evidence": "we will visit again",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R29",
+  "rating": 5,
+  "review_text": "We spent our 12th wedding anniversary here and it did not disappoint! Steaks were perfectly cooked, our lobster mac and cheese was fantastic, and the carrot cake was incredible! Great service. Even seated us 20 minutes before our reservation.",
+  "proposed": [
+   {
+    "domain": "Occasion",
+    "aspect": "Anniversary",
+    "sentiment": "Neutral",
+    "evidence": "12th wedding anniversary",
+    "severity": "none",
+    "note": "visit context"
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Preparation",
+    "sentiment": "Positive",
+    "evidence": "Steaks were perfectly cooked",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Quality",
+    "sentiment": "Positive",
+    "evidence": "lobster mac and cheese was fantastic",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Desserts",
+    "sentiment": "Positive",
+    "evidence": "carrot cake was incredible",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Friendliness",
+    "sentiment": "Positive",
+    "evidence": "Great service",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Operations",
+    "aspect": "Reservations",
+    "sentiment": "Positive",
+    "evidence": "seated us 20 minutes before our reservation",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ },
+ {
+  "ext_review_id": "R30",
+  "rating": 5,
+  "review_text": "My blueberry lemon drop was executed to perfection. He had the best recommendations, it was my boyfriend's first experience at Ruth Chris and he made his visit extremely enjoyable.",
+  "proposed": [
+   {
+    "domain": "FoodBeverage",
+    "aspect": "Beverages",
+    "sentiment": "Positive",
+    "evidence": "executed to perfection",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "Service",
+    "aspect": "Knowledge",
+    "sentiment": "Positive",
+    "evidence": "best recommendations",
+    "severity": "none",
+    "note": null
+   },
+   {
+    "domain": "CustomerRelationship",
+    "aspect": "Personalization",
+    "sentiment": "Positive",
+    "evidence": "made his visit extremely enjoyable",
+    "severity": "none",
+    "note": null
+   }
+  ]
+ }
+]

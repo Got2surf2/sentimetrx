@@ -65,3 +65,11 @@
 **Verify**: `npx vitest run tests/unit/components` 20/20; full suite 575 pass; coverage gate exit 0. Local-only.
 
 **Tests-score arc (Batches 1–4) summary**: coverage now runs + gates in CI (was invisible); lib+api lines 13.68%→15.91%; +92 unit/integration tests across statsUtils/themeUtils/datasetUtils/contentGuard/entityFilter + agent-route org-scoping gates + 5 component suites; one real correctness bug fixed (normCDF). Addresses all three named W23 Tests drags (no-coverage-in-CI, low ratio, untested handlers/components). Realistic move: 5 → ~7.
+
+## 2026-06-08 — REO gold-set review tooling (Dimensions robustness track)
+
+**Why**: Evaluating the Restaurant Experience Ontology (REO) to make the Dimensions/taxonomy classifier more robust. Owner chose the LEAN CUT (Domain›Aspect+Sentiment; defer the ~150 Concepts + Emotion/Journey). The gate before any classifier work is a labeled gold set — you can't prove REO beats today's keyword-only classifier (LLM tier is dormant, no eval harness) without ground truth. Owner asked for a UI to review/guide the labeling instead of editing a CSV.
+
+**What changed**: `lib/reoVocabulary.ts` (lean REO closed vocab, separate from legacy 7-axis); `sql/121_reo_gold_set.sql` (`reo_gold_review` table, RLS on, admin-only writes — APPLIED to prod); `scripts/seed-reo-goldset.ts` + `reo-goldset-seed-data.json` (30 real Ruth's Chris reviews / 122 proposed observations, seeded into Datanautix admin org); `/admin/reo-gold-set` page + `GoldSetClient` (one-review-at-a-time stepper: fix/add/delete Domain›Aspect›Sentiment, severity flag, guidance notes) + `app/api/admin/reo-gold-set` (requireAdmin, closed-vocab validated, id+org_id paired writes); admin-hub link. Both `proposed` and `gold` stored so the set doubles as the eval harness later.
+
+**Verify**: `npx tsc --noEmit` exit 0; migration applied (`relrowsecurity=true`); seed = 30 reviews/122 obs, all pending. Local-only (no Vercel push). NEXT: owner reviews in the UI; coverage gap = zero Access/Digital examples in steakhouse data (targeted-sample before scaling to ~300–500).

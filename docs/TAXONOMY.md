@@ -323,3 +323,31 @@ false-positives) — frame as **precision**: their alerts get muted, ours get ac
   brand-overlay DB table + promotion governance; taxonomy versioning; the in-app
   vendor-vs-us side-by-side benchmark (needs the vendor-tagged corpus ingested). See
   `docs/TAXONOMY_PRODUCTIZATION_PLAN.md`.
+
+## 7. REO (Restaurant Experience Ontology) — robustness track (2026-06-08)
+
+Evaluation of replacing the legacy 7 flat axes with the REO hierarchy to make the
+Dimensions classifier more robust. **Owner decision: LEAN CUT** — adopt only
+**Domain › Aspect + Sentiment** (10 domains, ~50 aspects); defer the ~150 fine
+Concepts and cut the Emotion(13)/Journey(8) layers to an experimental v2. The lean
+vocabulary lives in `lib/reoVocabulary.ts`, kept separate from the legacy
+`lib/taxonomyVocabulary.ts` (still production) until a migration lands.
+
+**Gold set (the gate before any classifier work).** A labeled gold set is the
+prerequisite for proving REO beats the keyword-only production classifier *before*
+spending on LLM calls. Tooling shipped this session:
+- `sql/121_reo_gold_set.sql` — `reo_gold_review` table (one row/review; `proposed`
+  = draft labels, `gold` = human truth; RLS on, admin-only writes). Applied to prod.
+- `scripts/seed-reo-goldset.ts` + `scripts/reo-goldset-seed-data.json` — seeds 30 real
+  Ruth's Chris reviews / 122 proposed observations (ported from the CSV draft).
+- `/admin/reo-gold-set` (`app/admin/reo-gold-set/*`, API `app/api/admin/reo-gold-set/`)
+  — review UI: step through each review, fix/add/delete Domain›Aspect›Sentiment labels,
+  leave guidance notes; corrections become `gold`. Closed-vocab validated server-side.
+
+**Key mapping rules** (full rulebook = `~/Downloads/REO_goldset_rulebook_v1.md`): old
+`outcome` axis splits → CustomerRelationship›Loyalty + Brand›Reputation; cooked-wrong =
+FoodBeverage›Preparation, delivered-wrong/request-ignored = Service›Accuracy; severity
+kept as a cross-cutting flag (none/alert/crisis) so allergy/discrimination keep escalating.
+**Coverage gap:** steakhouse reviews give zero Access/Digital examples — targeted-sample
+those before scaling the set. Cost to run the LLM tier once REO lands: ~$0.5–2/1k rows
+(Haiku+caching), ~half via Batch API.
