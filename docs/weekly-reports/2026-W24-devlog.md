@@ -166,3 +166,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run dataset-mutation-routes-gate` 19/19; full suite 690 pass; `tsc --noEmit` clean. Local-only.
 
 **Phase 1 running total**: ~35 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3/5/6 = test-only, no new vulns).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 7: dataset entity-catalog + enrichment routes
+
+**Why**: Continue the Phase-1 sweep over the dataset entity-catalog management routes (manual add, edit, hard-delete, reset-discovered, AI discovery) and the enrichment writers (auto-setup overwrites schema, compute writes analytics) — plus the two AI-helper routes (merge-themes, expand-keywords).
+
+**What changed**: new `tests/integration/entity-enrichment-routes-gate.test.ts` (17 tests) over entities GET/POST, entities/[slug] PATCH/DELETE, entities/reset-discovered POST, discover-entities POST, auto-setup POST, compute POST, merge-themes POST, expand-keywords POST. Asserts 401 (no auth / no org) and 404 cross-org, with `.eq('org_id', callerOrg)` recorded on the POST + `[slug]` + reset-discovered lookups (the paired id+org_id service-role pattern). **All routes verified correctly gated — no new vulns.** The data-mutating routes resolve the caller org and refuse a cross-org dataset before any write (paired lookup or JS org check); auto-setup + discover-entities carry explicit documented cross-org gates. merge-themes / expand-keywords are auth-only AI helpers that read no tenant rows — inputs come from the body and the dataset existence check is RLS-bound (merge-themes uses the anon client). Heavy libs (entityFilter, entityDiscovery, ai, analyticsCompute, collectionRecompute, brandRules) mocked. Added to TESTING.md layout.
+
+**Verify**: `npx vitest run entity-enrichment-routes-gate` 17/17; full suite 707 pass; `tsc --noEmit` clean. Local-only.
+
+**Phase 1 running total**: ~43 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3/5/6/7 = test-only, no new vulns).
