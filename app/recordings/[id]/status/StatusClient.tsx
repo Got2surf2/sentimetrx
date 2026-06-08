@@ -7,7 +7,7 @@
 // Routes to the report (/recordings/[id]/report) when status=complete
 // + dataset_id is set. Renders error_message + a Retry button on failed.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -41,6 +41,14 @@ const STEP_LABELS: Record<Status, string> = {
   complete:     'Complete',
   failed:       'Failed',
   cancelled:    'Cancelled',
+}
+
+const HERMES = '#E8632A'
+
+// Short labels for the compact horizontal progress pills.
+const PILL_LABELS: Partial<Record<Status, string>> = {
+  uploading: 'Uploaded', queued: 'Queued', extracting: 'Extract',
+  transcribing: 'Transcribe', analyzing: 'Q&A', complete: 'Complete',
 }
 
 interface FileRow {
@@ -117,6 +125,12 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
   const [data, setData] = useState<StatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
+
+  // The "Generate Q&A" pill scrolls to the panel that holds the review fields.
+  const generatePanelRef = useRef<HTMLDivElement>(null)
+  const scrollToGenerate = useCallback(() => {
+    generatePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   const status = (data?.recording.status ?? initialStatus) as Status
   const name = data?.recording.name ?? initialName
@@ -217,22 +231,30 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         </div>
       ) : (
       <>
+      {/* Compact horizontal status at the top; the full ladder is tucked below. */}
+      <StatusPills status={status} data={data} onGenerate={scrollToGenerate} />
+
       {/* When the transcript is ready, the generate action is the primary thing
-          the user came to do — keep it at the top, above the step ladder. */}
+          the user came to do — keep it at the top. */}
       {status === 'transcribed' && data && (
-        <GeneratePanel
-          recordingId={recordingId}
-          sessionType={data.recording.session_type}
-          setupInputs={data.recording.setup_inputs}
-          meetingProfile={data.recording.meeting_profile}
-          phaseMap={data.recording.phase_map}
-          entityMap={data.recording.entity_map}
-          durationSec={data.recording.source_duration_sec}
-          onStarted={fetchStatus}
-        />
+        <div ref={generatePanelRef}>
+          <GeneratePanel
+            recordingId={recordingId}
+            sessionType={data.recording.session_type}
+            setupInputs={data.recording.setup_inputs}
+            meetingProfile={data.recording.meeting_profile}
+            phaseMap={data.recording.phase_map}
+            entityMap={data.recording.entity_map}
+            durationSec={data.recording.source_duration_sec}
+            onStarted={fetchStatus}
+          />
+        </div>
       )}
 
-      <StepList status={status} data={data} />
+      <details className="group">
+        <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none">Pipeline details</summary>
+        <div className="mt-2"><StepList status={status} data={data} /></div>
+      </details>
 
       {data?.recording.live_summary && status !== 'complete' && status !== 'failed' && status !== 'cancelled' && (
         <ProvisionalRecap summary={data.recording.live_summary} />
@@ -337,6 +359,55 @@ function ProvisionalRecap({ summary }: { summary: LiveSummary }) {
 }
 
 type StepState = 'past' | 'current' | 'future' | 'failed'
+
+// Compact horizontal progress bar. Completed steps fill with the brand color,
+// the active step pulses, pending steps are grey, and the Q&A step becomes a
+// "Generate Q&A" call-to-action when the pipeline is paused at the review gate.
+function StatusPills({ status, data, onGenerate }: { status: Status; data: StatusResponse | null; onGenerate: () => void }) {
+  const failedIdx = (status === 'failed' || status === 'cancelled') ? inferFailedStepIdx(data) : -1
+  // Keep the active step's detail (vendor · words · cost) visible at a glance.
+  const activeStep: Status | null = status === 'transcribed' ? 'transcribing' : (STEPS.includes(status) ? status : null)
+  const activeDetail = activeStep ? computeStepDetail(activeStep, status === 'transcribed' ? 'past' : 'current', data) : null
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {STEPS.map((step, idx) => {
+          const state = computeStepState(step, idx, status, failedIdx)
+          if (step === 'analyzing' && status === 'transcribed') {
+            return (
+              <button
+                key={step}
+                type="button"
+                onClick={onGenerate}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-white ring-2 ring-orange-300 hover:brightness-110 animate-pulse"
+                style={{ backgroundColor: HERMES }}
+                title="Generate the Q&A pairs"
+              >
+                ▶ Generate Q&amp;A
+              </button>
+            )
+          }
+          const base = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap '
+          const cls =
+            state === 'past'   ? 'text-white' :
+            state === 'failed' ? 'bg-red-100 text-red-700' :
+            state === 'current'? 'bg-orange-50 text-orange-700 border border-orange-300' :
+                                 'bg-gray-100 text-gray-400'
+          return (
+            <span key={step} className={base + cls} style={state === 'past' ? { backgroundColor: HERMES } : undefined}>
+              {state === 'past' && <span className="text-[10px]">✓</span>}
+              {state === 'current' && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />}
+              {state === 'failed' && <span className="text-[10px]">✗</span>}
+              {PILL_LABELS[step] ?? STEP_LABELS[step]}
+            </span>
+          )
+        })}
+      </div>
+      {activeDetail && <div className="mt-2 text-xs text-gray-500">{activeDetail}</div>}
+    </div>
+  )
+}
 
 function StepList({ status, data }: { status: Status; data: StatusResponse | null }) {
   const failedStepIdx = status === 'failed' ? inferFailedStepIdx(data) : -1

@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall status page: horizontal progress-pills bar
+
+**Why**: Owner — the tall vertical step ladder ate the whole screen; wanted a compact at-a-glance status (pills/progress bar) with completed in brand color, pending grey, and the generate gate indicated as an action.
+
+**What changed** (`StatusClient.tsx`): new `StatusPills` — a horizontal flex-wrap pills bar at the top. Completed = brand-orange fill + ✓, active = orange outline + pulsing dot, pending = grey, failed = red; the active step's detail (vendor · words · cost) shows beneath. At the `transcribed` gate the "Analyzing Q&A" pill becomes a pulsing **"▶ Generate Q&A"** button that scrolls to the `GeneratePanel`. Reuses the existing `computeStepState`/`computeStepDetail`/`inferFailedStepIdx`. The full `StepList` ladder is kept under a collapsed "Pipeline details" `<details>` (no detail lost). GeneratePanel wrapped in a ref for the scroll target.
+
+**Verify**: tsc clean, 472 tests pass. Browser pixel-check pending (auth-gated) — owner reloads to view. **Local-only**, not pushed.
+
+
 ## 2026-06-07 — Town Hall report: bullet hanging-indent sweep
 
 **Why**: Finish the bullet-wrap fix — the two remaining `list-disc list-inside` lists on the report page (objectives questions + export "more formats") had the same wrap-under-bullet issue.
