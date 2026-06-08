@@ -21,6 +21,7 @@ import { tusUpload } from '@/lib/recordings/tusUpload'
 import { appendLiveChunk, getPendingLive, clearLiveChunks, type PendingLive } from '@/lib/recordings/liveRecovery'
 
 const HERMES = '#E8632A'
+const SARINA_BLUE = '#00B4D8'   // waveform graph color
 
 type Phase = 'idle' | 'requesting' | 'recording' | 'finalizing' | 'error'
 
@@ -124,7 +125,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
         analyser.getByteTimeDomainData(buf)
         ctx.clearRect(0, 0, w, h)
         ctx.lineWidth = 2
-        ctx.strokeStyle = HERMES
+        ctx.strokeStyle = SARINA_BLUE
         ctx.beginPath()
         const slice = w / buf.length
         let x = 0

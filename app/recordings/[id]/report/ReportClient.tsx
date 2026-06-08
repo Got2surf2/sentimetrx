@@ -39,9 +39,10 @@ export interface AudioRequest {
   endSec: number | null
   label: string
   nonce: number
+  extractionId: string | null   // when set, the player shows span-trim controls
 }
 
-type PlayHandler = (startSec: number | null, endSec: number | null, label: string) => void
+type PlayHandler = (startSec: number | null, endSec: number | null, label: string, extractionId?: string | null) => void
 
 export interface ReportData {
   recording: RecordingRow
@@ -118,9 +119,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
   // Audio modal — a single player shared by every "▶ Play" affordance.
   const [audioReq, setAudioReq] = useState<AudioRequest | null>(null)
   const nonceRef = useRef(0)
-  const playAt = useCallback((startSec: number | null, endSec: number | null, label: string) => {
+  const playAt = useCallback((startSec: number | null, endSec: number | null, label: string, extractionId: string | null = null) => {
     nonceRef.current += 1
-    setAudioReq({ startSec: startSec ?? 0, endSec, label, nonce: nonceRef.current })
+    setAudioReq({ startSec: startSec ?? 0, endSec, label, nonce: nonceRef.current, extractionId })
   }, [])
 
   const segments = useMemo(
@@ -194,6 +195,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
           segments={segments}
           req={audioReq}
           onClose={() => setAudioReq(null)}
+          onSpanSaved={replaceExtraction}
         />
       )}
     </div>
@@ -943,15 +945,13 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             )}
           </div>
           <div className="flex gap-2 pt-2">
-            {extraction.start_sec != null && (
-              <button
-                type="button"
-                onClick={() => onPlay(extraction.start_sec, extraction.end_sec, payload.question)}
-                className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
-              >
-                ▶ Play this segment
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onPlay(extraction.start_sec, extraction.end_sec, payload.question, extraction.id)}
+              className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-700 hover:bg-gray-50"
+            >
+              ▶ Play / adjust segment
+            </button>
             {hasPolished && (
               <button
                 type="button"
@@ -1058,6 +1058,51 @@ function EditLayer({ label, verbatim, ai, value, onChange, rows }: {
 // Plays just this pair's [start_sec, end_sec] slice of the stitched meeting audio
 // so a reviewer can listen while correcting the text. Clamps playback to the
 // segment, with replay / scrub-within-segment / speed. Signed URL via §4.12.
+// Shared span-trim state for the two players (edit-pane SegmentAudioPlayer + the
+// Play modal). Mark start/end from a playhead position, then PATCH the new span.
+function useSpanEdit({ recordingId, extractionId, startSec, endSec, onSaved }: {
+  recordingId: string
+  extractionId: string | null
+  startSec: number | null
+  endSec: number | null
+  onSaved?: (e: RecordingExtractionRow) => void
+}) {
+  const origStart = startSec ?? 0
+  const [draftStart, setDraftStart] = useState(origStart)
+  const [draftEnd, setDraftEnd] = useState<number | null>(endSec ?? null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  // Reset drafts when the target pair / its span changes (e.g. the Play modal is
+  // reused for a different pair, or the pair re-renders after a save).
+  useEffect(() => {
+    setDraftStart(startSec ?? 0)
+    setDraftEnd(endSec ?? null)
+    setSaved(false); setErr(null)
+  }, [extractionId, startSec, endSec])
+
+  const changed = draftStart !== origStart || draftEnd !== (endSec ?? null)
+  const markStart = (pos: number) => { const p = Math.round(pos); setSaved(false); setDraftStart(Math.max(0, Math.min(p, (draftEnd ?? p + 1) - 1))) }
+  const markEnd = (pos: number) => { const p = Math.round(pos); setSaved(false); setDraftEnd(Math.max(draftStart + 1, p)) }
+  const reset = () => { setDraftStart(origStart); setDraftEnd(endSec ?? null); setSaved(false); setErr(null) }
+  const save = async () => {
+    if (!extractionId) return
+    setBusy(true); setErr(null); setSaved(false)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extractionId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_sec: draftStart, end_sec: draftEnd }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
+      setSaved(true)
+      onSaved?.(d.extraction as RecordingExtractionRow)
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed') } finally { setBusy(false) }
+  }
+  return { draftStart, draftEnd, busy, err, saved, changed, markStart, markEnd, reset, save }
+}
+
 function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpanSaved }: {
   recordingId: string
   extractionId: string
@@ -1075,18 +1120,15 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
   const [rate, setRate] = useState(1)
 
   // Adjustable bounds — draft until saved. Null end = "to end of file".
-  const origStart = startSec ?? 0
-  const [draftStart, setDraftStart] = useState<number>(origStart)
-  const [draftEnd, setDraftEnd] = useState<number | null>(endSec ?? null)
-  const [spanBusy, setSpanBusy] = useState(false)
-  const [spanErr, setSpanErr] = useState<string | null>(null)
-  const [spanSaved, setSpanSaved] = useState(false)
+  const {
+    draftStart, draftEnd, busy: spanBusy, err: spanErr, saved: spanSaved, changed,
+    markStart, markEnd, reset: resetSpan, save: saveSpan,
+  } = useSpanEdit({ recordingId, extractionId, startSec, endSec, onSaved: onSpanSaved })
 
   const start = draftStart
   const hasWindow = draftEnd != null && draftEnd > start
   const effEnd = hasWindow ? (draftEnd as number) : (audioDur > start ? audioDur : start + 1)
   const dur = Math.max(1, effEnd - start)
-  const changed = draftStart !== origStart || draftEnd !== (endSec ?? null)
 
   useEffect(() => {
     let cancelled = false
@@ -1125,24 +1167,6 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
   const cycleRate = () => {
     const next = rate === 1 ? 1.25 : rate === 1.25 ? 1.5 : rate === 1.5 ? 2 : 1
     setRate(next); if (audioRef.current) audioRef.current.playbackRate = next
-  }
-
-  // Trim: capture the current playhead as the new start / end.
-  const markStart = () => { const p = Math.round(pos); setSpanSaved(false); setDraftStart(Math.max(0, Math.min(p, (draftEnd ?? p + 1) - 1))) }
-  const markEnd = () => { const p = Math.round(pos); setSpanSaved(false); setDraftEnd(Math.max(draftStart + 1, p)) }
-  const resetSpan = () => { setDraftStart(origStart); setDraftEnd(endSec ?? null); setSpanSaved(false); setSpanErr(null) }
-  const saveSpan = async () => {
-    setSpanBusy(true); setSpanErr(null); setSpanSaved(false)
-    try {
-      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extractionId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start_sec: draftStart, end_sec: draftEnd }),
-      })
-      const d = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
-      setSpanSaved(true)
-      onSpanSaved?.(d.extraction as RecordingExtractionRow)
-    } catch (e) { setSpanErr(e instanceof Error ? e.message : 'Save failed') } finally { setSpanBusy(false) }
   }
 
   const frac = Math.min(1, Math.max(0, (pos - start) / dur))
@@ -1206,9 +1230,9 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
         <span className="text-gray-400">Segment</span>
         <span className="font-mono text-gray-700">{formatTime(start)} – {hasWindow ? formatTime(effEnd) : 'end'}</span>
-        <button type="button" onClick={markStart} disabled={spanBusy}
+        <button type="button" onClick={() => markStart(pos)} disabled={spanBusy}
           className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment start to the current playhead">⇤ Set start</button>
-        <button type="button" onClick={markEnd} disabled={spanBusy}
+        <button type="button" onClick={() => markEnd(pos)} disabled={spanBusy}
           className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment end to the current playhead">Set end ⇥</button>
         {changed && (
           <>
@@ -2340,11 +2364,12 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2]
 
-function AudioModal({ recordingId, segments, req, onClose }: {
+function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
   recordingId: string
   segments: TranscriptSegment[]
   req: AudioRequest
   onClose: () => void
+  onSpanSaved?: (e: RecordingExtractionRow) => void
 }) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const activeRef = useRef<HTMLLIElement>(null)
@@ -2354,6 +2379,9 @@ function AudioModal({ recordingId, segments, req, onClose }: {
   const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState(1)
+
+  // Span-trim controls — only when the player was opened for a specific pair.
+  const span = useSpanEdit({ recordingId, extractionId: req.extractionId, startSec: req.startSec, endSec: req.endSec, onSaved: onSpanSaved })
 
   // Fetch the signed URL once per mount.
   useEffect(() => {
@@ -2495,6 +2523,26 @@ function AudioModal({ recordingId, segments, req, onClose }: {
                 ))}
               </div>
             </div>
+
+            {req.extractionId && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 border-t border-gray-100 pt-3">
+                <span className="text-gray-400">Segment</span>
+                <span className="font-mono text-gray-700">{formatTime(span.draftStart)} – {span.draftEnd != null ? formatTime(span.draftEnd) : 'end'}</span>
+                <button type="button" onClick={() => span.markStart(currentTime)} disabled={span.busy}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment start to the current playhead">⇤ Set start</button>
+                <button type="button" onClick={() => span.markEnd(currentTime)} disabled={span.busy}
+                  className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment end to the current playhead">Set end ⇥</button>
+                {span.changed && !span.saved && (
+                  <>
+                    <button type="button" onClick={span.save} disabled={span.busy} className="px-2 py-0.5 rounded text-white font-semibold disabled:opacity-40" style={{ background: HERMES }}>{span.busy ? 'Saving…' : 'Save segment'}</button>
+                    <button type="button" onClick={span.reset} disabled={span.busy} className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40">Reset</button>
+                  </>
+                )}
+                {span.saved && <span className="text-green-700">Saved ✓</span>}
+                {span.err && <span className="text-red-600">{span.err}</span>}
+                <span className="basis-full text-[10px] text-gray-400">Scrub to the real boundary, then “Set start/end” + Save to fix the timestamps.</span>
+              </div>
+            )}
 
             {segments.length > 0 && (
               <ol className="border-t border-gray-100 pt-3 max-h-64 overflow-y-auto divide-y divide-gray-50">

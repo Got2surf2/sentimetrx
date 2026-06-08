@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall: segment trim in the Play modal + Sarina-blue waveform
+
+**Why**: Owner recalled (correctly) that adjusting a snippet's start/end existed — but it was buried in the ✎ Edit pane (gated on `hasPolished`), not in the "▶ Play" modal. Wanted it where you bring up the audio, and ungated. Also: recolor the live waveform to Sarina blue.
+
+**What changed**: Extracted a shared `useSpanEdit` hook (draft start/end, markStart/markEnd from a playhead, PATCH `start_sec`/`end_sec`, reset-on-target-change) and refactored the edit-pane `SegmentAudioPlayer` onto it (no duplicated trim logic). `AudioModal` now takes the extraction id via `AudioRequest.extractionId` (threaded through `playAt`/`PlayHandler`) and renders the trim row — Segment `start – end`, ⇤ Set start / Set end ⇥, Save/Reset, Saved✓ — when opened for a pair; saves propagate via `onSpanSaved → replaceExtraction`. The Q&A card's Play button is relabeled "▶ Play / adjust segment", passes the id, and is **ungated** (was hidden when `start_sec == null`). Live `LiveClient` waveform stroke → `SARINA_BLUE` (#00B4D8).
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. Both need an in-browser look (audio + mic gated).
+
+
 ## 2026-06-07 — Town Hall status page: horizontal progress-pills bar
 
 **Why**: Owner — the tall vertical step ladder ate the whole screen; wanted a compact at-a-glance status (pills/progress bar) with completed in brand color, pending grey, and the generate gate indicated as an action.
