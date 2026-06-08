@@ -146,3 +146,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run core-entity-routes-gate` 30/30; full suite 647 pass; `tsc --noEmit` clean. Local-only — themes/custom is a behavior change to a live route; first prod exercise is the next facilitator "add custom question" action after deploy (admin bypass preserved so the Datanautix admin org is unaffected).
 
 **Phase 1 running total**: ~22 of ~80 mutating service-role routes now gate-tested. **3 cross-org write vulns found + fixed** (themes/[id], sessions/[id]/duplicate, themes/custom — all the same bare-id-insert/update class).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 5: external-ingest sources + social alert rules
+
+**Why**: Continue the Phase-1 sweep over the external-ingest source-creation/download routes (substack, regulations.gov) and the social alert/DM-template rule routes — where a cross-org leak would let one tenant write rows into / trigger paid pulls on another tenant's dataset, or read/mutate another org's alert rules.
+
+**What changed**: new `tests/integration/external-source-routes-gate.test.ts` (24 tests) over substack-sources (create / download-comments / fetch-posts), regulations-sources (create / download-comments / search), social/alerts (GET/POST/PATCH/DELETE), social/dm-templates (GET/POST). Asserts 401 / 403 (no analyze feature or no org) / 404 cross-org, with `.eq('org_id', callerOrg)` recorded on the dataset/rule lookups, `org_id` recorded on the create inserts, and the social/alerts PATCH field-whitelist rejecting an `org_id`-only body (the documented org-escape guard). **All 8 routes verified correctly gated — no new vulns in this batch.** regulations/download-comments already carries an explicit cross-org JS gate (with the attack documented in-comment from a prior fix); admin-bypass path asserted too. External libs (substack, regulations, analyticsCompute) mocked. Added to TESTING.md layout.
+
+**Verify**: `npx vitest run external-source-routes-gate` 24/24; full suite 671 pass; `tsc --noEmit` clean. Local-only.
+
+**Phase 1 running total**: ~30 of ~80 mutating service-role routes now gate-tested. 3 cross-org write vulns found + fixed (all in batches 1–4; batches 3+5 = test-only, no new vulns).
