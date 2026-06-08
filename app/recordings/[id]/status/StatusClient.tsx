@@ -10,7 +10,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import LottieLoader from '@/components/ui/LottieLoader'
 import AddRecordingClient from '../AddRecordingClient'
 import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry } from '@/lib/recordings/types'
 
@@ -251,11 +250,6 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         </div>
       )}
 
-      <details className="group">
-        <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none">Pipeline details</summary>
-        <div className="mt-2"><StepList status={status} data={data} /></div>
-      </details>
-
       {data?.recording.live_summary && status !== 'complete' && status !== 'failed' && status !== 'cancelled' && (
         <ProvisionalRecap summary={data.recording.live_summary} />
       )}
@@ -407,61 +401,6 @@ function StatusPills({ status, data, onGenerate }: { status: Status; data: Statu
       {activeDetail && <div className="mt-2 text-xs text-gray-500">{activeDetail}</div>}
     </div>
   )
-}
-
-function StepList({ status, data }: { status: Status; data: StatusResponse | null }) {
-  const failedStepIdx = status === 'failed' ? inferFailedStepIdx(data) : -1
-
-  return (
-    <ol className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
-      {STEPS.map((step, i) => {
-        const state = computeStepState(step, i, status, failedStepIdx)
-        const detail = computeStepDetail(step, state, data)
-        return (
-          <li key={step} className="flex items-start gap-3 px-4 py-3">
-            <StepIcon state={state} />
-            <div className="flex-1 min-w-0">
-              <div className={
-                'text-sm font-medium ' +
-                (state === 'current' ? 'text-orange-700' :
-                 state === 'failed'  ? 'text-red-700' :
-                 state === 'past'    ? 'text-gray-900' :
-                                       'text-gray-400')
-              }>
-                {STEP_LABELS[step]}
-              </div>
-              {detail && (
-                <div className={`text-xs mt-0.5 ${state === 'current' ? 'text-orange-600' : state === 'failed' ? 'text-red-600' : 'text-gray-500'}`}>
-                  {detail}
-                </div>
-              )}
-            </div>
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
-
-function StepIcon({ state }: { state: StepState }) {
-  if (state === 'past') {
-    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-[10px] font-bold shrink-0">✓</span>
-  }
-  if (state === 'current') {
-    // Keep the 20px slot in flow (so step text stays aligned with the other
-    // rows) but center a larger loader over it.
-    return (
-      <span className="mt-0.5 relative inline-block w-5 h-5 shrink-0">
-        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <LottieLoader size={40} />
-        </span>
-      </span>
-    )
-  }
-  if (state === 'failed') {
-    return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold shrink-0">✗</span>
-  }
-  return <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-gray-200 text-gray-300 text-[10px] shrink-0">○</span>
 }
 
 function computeStepState(step: Status, idx: number, status: Status, failedIdx: number): StepState {

@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall status page: drop the redundant Pipeline details ladder
+
+**Why**: Owner — the pills bar at the top already shows the pipeline, so the collapsed "Pipeline details" vertical ladder was redundant.
+
+**What changed** (`StatusClient.tsx`): removed the `<details>` "Pipeline details" block and the now-unused `StepList` + `StepIcon` components and the `LottieLoader` import. `computeStepState`/`computeStepDetail`/`inferFailedStepIdx`/`STEP_LABELS` stay (used by `StatusPills`).
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed.
+
+
 ## 2026-06-07 — Town Hall report: sticky header + tabs
 
 **Why**: Owner — the title + tab navigation scrolled away; wanted them pinned so nav/info stays reachable.
