@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live captions: auth verified end-to-end
+
+**Why**: Close the last unverified assumption in the live-captions path before the manual real-mic test.
+
+**What changed (no code)**: User set `DEEPGRAM_GRANT_KEY` (Member+ key). Re-ran the server-side probe: `/v1/auth/grant` → HTTP 200, live WS **opens with `Authorization: Bearer <grant token>`** and returns `Results`/`Metadata` (clean 1000 close). Confirms (a) the grant key works and (b) the browser **`['bearer', token]` subprotocol is correct** — my earlier guess held. RECORDINGS.md §15 blocker flipped to resolved; noted `DEEPGRAM_GRANT_KEY` must be set in Vercel env before shipping.
+
+**Verify**: live API probe green. The full live-capture arc (pieces 1/2/2b/3) is now code-complete + auth-verified; only an in-browser real-mic exercise remains (captions render, summary panel). **Local-only**, not pushed.
+
+
 ## 2026-06-07 — Town Hall live captions: grant-key blocker found + DEEPGRAM_GRANT_KEY
 
 **Why**: Before asking for a manual real-mic test, verified the live-WS auth server-side (mint a grant token + open Deepgram live WS from Node). Found a real blocker: the env `DEEPGRAM_API_KEY` is valid for **streaming** (raw-key Token auth opens the WS, clean 1000 close) but `/v1/auth/grant` returns **403 Insufficient permissions** — it can't mint browser tokens (Deepgram needs a Member+ key). Can't ship the raw key to the browser, so short-lived tokens are required → a grant-capable key is required.
