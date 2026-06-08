@@ -14,8 +14,9 @@ Node 22.x. Single repo on `main` — staging is retired.
 
 ## Push policy — NEVER push without explicit user authorization
 
-**Default: commit-only.** Every commit stays local on `main` until the user says **"push"** / "let's push" / similar verbatim.
+**Default: commit-only.** Every commit stays **local** — whether on `main` or **any** other branch — until the user says **"push"** / "let's push" / similar verbatim.
 
+- **This covers EVERY branch, not just `main`.** Do NOT `git push` to a feature branch, a `claude/*` branch, a PR branch, or anything else without the explicit word. Every push to any branch triggers a **Vercel preview build** (which costs build resources), and pushes to `main` trigger a **production deploy**. The user wants zero builds they didn't ask for — so all pushing is gated, period. Open a PR / push a branch only when explicitly told to.
 - Pushes to `main` trigger **Vercel auto-deploy to production**. Each build costs **~$8–10** (grows with the codebase) and goes live to customers immediately. Treat every authorized push as a production release.
 - Even when CI is clean, typecheck passes, and the work feels "done" — **do NOT push** without the explicit word. Assume no until told yes.
 - Do NOT ask "should I push?" at the end of every task — it's noise. Wait for the user to ask for a push.

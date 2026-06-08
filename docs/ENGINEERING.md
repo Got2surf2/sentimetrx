@@ -491,8 +491,15 @@ Constraints:
 
 - **Every push to `main` IS a release.** No "let me try this and
   see" pushes — every commit ends up serving traffic.
-- **Preview deploys** run for every PR. Use them for manual QA
-  before merging.
+- **Pushing is gated on EVERY branch, not just `main`** (CLAUDE.md
+  push policy). No `git push` to a feature / `claude/*` / PR branch
+  without explicit human say-so — each one triggered a Vercel build.
+- **Preview builds are disabled.** `scripts/vercel-ignore-build.sh`
+  is wired as the project's **Ignored Build Step** (Settings → Git):
+  only Production deployments build; every Preview build is skipped
+  (exit 0). So branch/PR pushes no longer burn builds — the only way
+  to deploy is an authorized push to `main`. (Flip the script's
+  per-env logic if preview QA is ever wanted again.)
 - **Rollback:** `vercel rollback <previous-deployment-url>`.
   Instant. Use it instead of a hotfix when the issue is "previous
   version was fine, current is broken."
