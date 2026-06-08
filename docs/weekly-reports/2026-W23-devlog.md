@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, hardening item 1: crash recovery via IndexedDB
+
+**Why**: Don't lose a meeting recording if the tab crashes / is refreshed / accidentally closed before Stop. Chose local IndexedDB recovery over server-side continuous upload — it covers the realistic failure modes with no new server surface, no migration, and no audio gaps (audio is only ~tens of MB/hr, so the Stop-time upload was never the real problem; crash-loss was).
+
+**What changed**: New `lib/recordings/liveRecovery.ts` (IndexedDB store: append/get/clear chunks per recording, all best-effort no-ops if IDB is unavailable). `LiveClient`: each MediaRecorder chunk is mirrored to IDB (serialized to preserve order); `finalize` refactored to a shared `uploadAndProcess(blob, mime)` used by both normal Stop and recovery; on load, `getPendingLive` surfaces an "Unsaved recording found (~N MB)" banner with **Upload & process** / **Discard**; normal Stop + successful recovery clear the store; Start discards stale chunks. Recovery reuses the existing attach→upload→ack→process path (recording is still awaiting_media after a crash, since attach only happens at Stop), so size_bytes is correct.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. The IDB recover-after-crash path needs a real-browser exercise (kill the tab mid-record, reopen). Both deferred hardening items (provisional recap + crash recovery) now done.
+
+
 ## 2026-06-07 — Town Hall live capture, hardening item 2: persist snapshot → provisional recap
 
 **Why**: So hitting Stop shows something useful immediately (a provisional summary from the live session) while the ~2-4 min batch pipeline runs, and the live transcript survives a tab crash.

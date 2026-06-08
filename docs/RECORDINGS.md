@@ -1300,7 +1300,7 @@ A real-time front-end that runs *in front of* the existing batch pipeline rather
 
 > **Hardening item 2 — DONE (2026-06-07).** `sql/120` (applied) adds `recordings.live_summary jsonb` + `live_transcript text`. The `live-summary` route persists each snapshot (id/org_id paired); `GET /api/recordings/[id]` returns `live_summary`; `StatusClient` shows a **provisional recap card** (`ProvisionalRecap`) while the batch pipeline runs (any non-terminal status), superseded by the real report on completion.
 >
-> **Deferred hardening item 1:** continuous resumable upload *during* the meeting (crash durability + zero upload-wait at Stop). The MVP uploads the assembled Blob on Stop — fine for a ~1hr meeting (audio ≈ tens of MB), but a tab crash loses the audio.
+> **Hardening item 1 — DONE (2026-06-07), via local recovery.** Crash durability is delivered by mirroring each MediaRecorder chunk into **IndexedDB** (`lib/recordings/liveRecovery.ts`) as it records. If the tab crashes / is refreshed / closed before Stop, reopening `/live` for that recording detects the chunks and offers **Upload & process** or **Discard**. Normal Stop (or a successful recovery) clears the store; starting fresh discards stale chunks. Chosen over server-side streaming because it covers the realistic failure modes (tab crash/refresh/close) with no new server surface, no migration, and no audio-boundary gaps. Limitation: does NOT survive machine death / a different device / cleared site data — full server-side continuous upload remains a future option if that's needed.
 
 ---
 

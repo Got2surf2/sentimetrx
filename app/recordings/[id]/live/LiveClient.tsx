@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { tusUpload } from '@/lib/recordings/tusUpload'
+import { appendLiveChunk, getPendingLive, clearLiveChunks, type PendingLive } from '@/lib/recordings/liveRecovery'
 
 const HERMES = '#E8632A'
 
@@ -51,6 +52,10 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   // Rolling summary panel (best-effort, throttled by transcript growth).
   const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null)
   const [summarizing, setSummarizing] = useState(false)
+
+  // Crash recovery: audio from an interrupted prior session, if any.
+  const [recovery, setRecovery] = useState<PendingLive | null>(null)
+  const appendQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -195,19 +200,19 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     }
   }, [recordingId, language, stopCaptions])
 
-  // Assemble the recording and run it through the existing pipeline.
-  const finalize = useCallback(async () => {
+  // Upload an assembled audio blob and run it through the existing pipeline.
+  // Shared by a normal Stop and by crash recovery.
+  const uploadAndProcess = useCallback(async (blob: Blob, blobMime: string) => {
     setPhase('finalizing')
     setUploadPct(0)
 
-    const blob = new Blob(chunksRef.current, { type: mimeRef.current })
     if (blob.size === 0) {
       setError('No audio was captured. Please record again.')
       setPhase('error')
       return
     }
 
-    const { ext, mime } = fileMeta(mimeRef.current)
+    const { ext, mime } = fileMeta(blobMime)
     const filename = `live-recording-${recordingId.slice(0, 8)}.${ext}`
 
     try {
@@ -240,6 +245,9 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
       await postJson(`/api/recordings/${recordingId}/process`, {})
 
+      // Audio is safely in the pipeline — drop the local crash-recovery copy.
+      await clearLiveChunks(recordingId)
+
       // 6. Hand off to the status page, which polls the pipeline to the report.
       router.push(`/recordings/${recordingId}/status`)
     } catch (e) {
@@ -248,7 +256,35 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     }
   }, [recordingId, router])
 
+  // Normal Stop: assemble the in-memory chunks and process.
+  const finalize = useCallback(async () => {
+    const blob = new Blob(chunksRef.current, { type: mimeRef.current })
+    await uploadAndProcess(blob, mimeRef.current)
+  }, [uploadAndProcess])
+
+  // Recover audio persisted by an interrupted prior session.
+  const recoverPending = useCallback(async () => {
+    if (!recovery) return
+    const blob = new Blob(recovery.chunks, { type: recovery.mime })
+    await uploadAndProcess(blob, recovery.mime)
+  }, [recovery, uploadAndProcess])
+
+  const discardPending = useCallback(async () => {
+    await clearLiveChunks(recordingId)
+    setRecovery(null)
+  }, [recordingId])
+
+  // On load, surface any audio left by an interrupted session for this recording.
+  useEffect(() => {
+    let cancelled = false
+    getPendingLive(recordingId).then(p => { if (!cancelled && p) setRecovery(p) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [recordingId])
+
   const start = useCallback(async () => {
+    // Starting fresh abandons any unrecovered prior chunks.
+    void clearLiveChunks(recordingId)
+    setRecovery(null)
     setError(null)
     setCaptionsError(null)
     setFinals([])
@@ -284,7 +320,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       setPhase('error')
       return
     }
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.ondataavailable = (e) => {
+      if (!e.data || e.data.size === 0) return
+      chunksRef.current.push(e.data)
+      // Mirror to IndexedDB for crash recovery; serialize to preserve order.
+      const chunk = e.data
+      appendQueueRef.current = appendQueueRef.current.then(() => appendLiveChunk(recordingId, chunk, mimeRef.current))
+    }
     recorder.onstop = () => { void finalize() }
     recorderRef.current = recorder
     recorder.start(5000) // timeslice so chunks flush periodically
@@ -325,6 +367,19 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
             </p>
             {error && (
               <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
+            )}
+            {recovery && (
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4 text-left">
+                <div className="text-sm font-semibold text-amber-900">Unsaved recording found</div>
+                <p className="text-xs text-amber-800 mt-1">
+                  A previous session was interrupted with about {(recovery.bytes / (1024 * 1024)).toFixed(1)} MB of audio captured.
+                  You can upload and process it, or discard it and start fresh.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <button type="button" onClick={recoverPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>Upload &amp; process</button>
+                  <button type="button" onClick={discardPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Discard</button>
+                </div>
+              </div>
             )}
             <button
               type="button"
