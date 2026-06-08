@@ -99,3 +99,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - `docs/TOWNHALL.md` Auth Model — documented the fix.
 
 **Verify**: `npx vitest run townhall-mutation-gate` 10/10; full suite 603 pass; `tsc --noEmit` clean. Local-only — these are behavior changes to live routes; first prod exercise is whatever town-hall moderation flow the owner runs after deploy (admin bypass preserved so the Datanautix admin org is unaffected).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 3: data-source mutations
+
+**Why**: Continue the Phase-1 sweep (org-scoping gate tests on mutating service-role routes). This batch = paid/external data-pull + connection-delete routes, where a cross-org leak would let one tenant trigger another's paid pulls or delete their connected account.
+
+**What changed**: new `tests/integration/data-source-routes-gate.test.ts` (14 tests) over review-sources `[sourceId]` DELETE/PATCH + `/sync`, reddit-sources `/sync` + `/download-thread`, and social/connections `[id]` DELETE. Asserts 401 / 403 (no analyze feature or no org) / 404 cross-org, with `.eq('org_id', callerOrg)` recorded on the source lookup and on the connection delete. **All five routes verified correctly gated — no new vulns in this batch** (unlike the town-hall batch). Heavy pull libs (reviewSync, reddit, analyticsCompute) mocked. Added to TESTING.md layout.
+
+**Verify**: `npx vitest run data-source-routes-gate` 14/14; full suite 617 pass. Local-only.
+
+**Phase 1 running total**: ~15 of ~80 mutating service-role routes now gate-tested (social comments 6, agent routes from Batch 3, town-hall 2 [fixed], data sources 5). 2 cross-org write vulns found + fixed so far.

@@ -73,7 +73,8 @@ tests/
 │   ├── tenant-routes-gate.test.ts     # campaign-send / social-handle / dataset route — 401 + cross-org 404 (mocked)
 │   ├── bot-routes-gate.test.ts        # agent API routes (bots/[id] + entities/questions/conversations/knowledge) — 401 no-auth/no-org, cross-org 404/403, admin bypass; both getCallerOrgContext + getAuthUser auth shapes (mocked)
 │   ├── social-comment-routes-gate.test.ts # social comment actions (delete/hide/reply/ai-reply/dm/bulk) — Phase 1 mutating-route gates; 401 + 404; mock records .eq() calls to ASSERT the lookup is paired with .eq('org_id', callerOrg) (catches a dropped org filter, not just a null result)
-│   └── townhall-mutation-gate.test.ts  # regression for two cross-org write holes fixed 2026-06-08 — POST townhall/themes/[id] (topic moderation) + townhall/sessions/[id]/duplicate; cross-org non-admin → 404 (both substrates), owning-org + admin bypass allowed
+│   ├── townhall-mutation-gate.test.ts  # regression for two cross-org write holes fixed 2026-06-08 — POST townhall/themes/[id] (topic moderation) + townhall/sessions/[id]/duplicate; cross-org non-admin → 404 (both substrates), owning-org + admin bypass allowed
+│   └── data-source-routes-gate.test.ts # Phase 1 — data-source mutations (review-sources DELETE/PATCH/sync, reddit-sources sync + download-thread, social/connections DELETE); 401/403/404 + org-paired lookup (.eq('org_id') recorded). All verified correctly gated
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
 └── loadtest/
