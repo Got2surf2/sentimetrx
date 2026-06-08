@@ -211,3 +211,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run recordings-townhall-routes-gate` 33/33; full suite 780 pass; tsc clean. Local-only.
 
 **Phase 1 running total**: ~72 of ~140 mutating/read service-role routes now gate-tested. 6 cross-org vulns found + fixed (none new in batch 10).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 11: sources + misc tenant routes (Area 1 complete)
+
+**Why**: Finish Area 1 of the campaign (tenant mutations needing gate tests) — the remaining data-source creators, social config/export, study analyze/responses, team/profile/org settings, invites, favorites, and share.
+
+**What changed**: new `tests/integration/sources-misc-routes-gate.test.ts` (28 tests) over review-sources (create + `[sourceId]/locations` + `user-locations`), reddit-sources, social/auto-config + export-dataset, collections/datasets create, studies/[id]/analyze + responses (GET/DELETE), settings/team/disable, org/logo, invite + `[id]` + `[id]/resend`, favorites, share. Asserts 401, cross-org 404, and role/owner 403 — every route validates the id/org_id taken from input against the caller's org (and role where required). **All verified correctly gated — no new vulns.** Notable patterns confirmed: studies/responses gates the study through the RLS user client (404 cross-org); org/logo + invite validate the body `org_id` against the caller's owner-of-that-org; share routes through `gateShareTarget` (403 cross-org); studies/responses DELETE authenticates via `userClient.auth.getUser()` (mocked).
+
+**Verify**: `npx vitest run sources-misc-routes-gate` 28/28; full suite 808 pass; tsc clean. Local-only.
+
+**Phase 1 — Area 1 (tenant mutations) COMPLETE**: ~83 of ~140 mutating/read service-role routes gate-tested across 11 batches. **6 cross-org vulns found + fixed** (3 write, 3 read). Remaining work is two *different* kinds: (a) ~13 `admin/*` routes — assert `requireAdmin`; (b) ~15 genuinely-public participant/webhook routes — no-leak assertions + SECURITY.md notes (not org-gate tests).
