@@ -221,3 +221,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run sources-misc-routes-gate` 28/28; full suite 808 pass; tsc clean. Local-only.
 
 **Phase 1 — Area 1 (tenant mutations) COMPLETE**: ~83 of ~140 mutating/read service-role routes gate-tested across 11 batches. **6 cross-org vulns found + fixed** (3 write, 3 read). Remaining work is two *different* kinds: (a) ~13 `admin/*` routes — assert `requireAdmin`; (b) ~15 genuinely-public participant/webhook routes — no-leak assertions + SECURITY.md notes (not org-gate tests).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 12: admin/* platform-admin gate
+
+**Why**: Close out Area 2 — assert every internal admin/* route rejects a non-admin caller (CLAUDE.md/SECURITY.md: "internal-only routes wrap requireAdmin from day one; URL obscurity is not a defense").
+
+**What changed**: new `tests/integration/admin-routes-gate.test.ts` (46 tests = 23 route+verb combos × {unauthenticated, non-admin authed}) over admin/{agent-tester, bulk-invite, clients, clients/[id], invite-preview, org-snapshots/[orgId], org-snapshots/[orgId]/restore, orgs/[id], orgs/[id]/ai-key, orgs/[id]/features, reo-gold-set, users/[id], users/[id]/features}. Drives the real `requireAdmin()` (which reads `supabase.auth.getUser()` + `organizations.is_admin_org` and returns **404** to hide existence) via the mock; the two inline-gated routes (bulk-invite, invite-preview) reject with 401/403. **Contract asserted: a non-admin caller — authed or not — never gets a 2xx (status ∈ {401,403,404}).** All 23 verified gated. Heavy libs (aiKey, backupS3, orgSnapshot, email, guardrails) mocked.
+
+**Verify**: `npx vitest run admin-routes-gate` 46/46; full suite pass; tsc clean. Local-only.
