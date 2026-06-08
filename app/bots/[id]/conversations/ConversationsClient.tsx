@@ -320,6 +320,14 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
             hrefFor={fmt => '/api/bots/' + botId + '/conversations/export?shape=pairs&format=' + fmt}
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50"
           />
+          {/* Combined client workbook: Summary + Q&A pairs + Unanswered + Transcript
+              in one .xlsx (multi-sheet → no CSV variant). */}
+          <button onClick={function() { window.location.href = '/api/bots/' + botId + '/workbook?format=xlsx' }}
+            disabled={sessions.length === 0}
+            title="One Excel file with four tabs: Summary, Q&A Pairs, Unanswered Questions, and the Full Transcript"
+            className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50">
+            Excel workbook
+          </button>
           <button onClick={function() { router.push('/bots/' + botId + '/report') }}
             style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: '#0F7173', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Report

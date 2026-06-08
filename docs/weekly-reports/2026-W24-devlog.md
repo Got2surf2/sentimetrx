@@ -247,3 +247,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Verify**: `npx vitest run public-routes-noleak` 7/7; full suite pass; tsc clean. Local-only.
 
 **🏁 PHASE 1 ROUTE-GATE CAMPAIGN COMPLETE.** 13 batches: Area 1 (tenant mutations, 11 batches), Area 2 (admin/* gate, batch 12), Area 3 (public surface, batch 13). ~90 of ~140 mutating/read service-role routes now carry explicit gate tests (the rest were already covered by pre-existing suites — recordings-routes, bot-routes, tenant-routes, export-org-gate, etc.). **6 cross-org vulns found + fixed** (3 write, 3 read) — all owner-authorized, all with regression coverage. Every admin route proven to reject non-admins; the public surface catalogued + guard-tested. 13 commits this campaign remain LOCAL (batch 8 carries 3 live security fixes) — surface "N commits ahead, not pushed" to the owner; do not push without the explicit word.
+
+---
+
+## 2026-06-08 — Agent combined client workbook (single .xlsx, 4 tabs)
+
+**Why**: NOWOCATS' client (Sarina agent) wants the conversation data as one Excel file to hand off. The data already existed across separate downloads (Q&A pairs, unanswered questions CSV) but not bundled. Owner picked: Summary + Q&A Pairs + Unanswered + Full Transcript as four tabs, unanswered as the **raw** open-queue list (the Agent Study doesn't already cluster it, and a fresh AI cluster pass was out of scope).
+
+**What changed**: New `GET /api/bots/[id]/workbook?format=xlsx` assembling the four sheets — Summary from the cache-first `getAgentStudy` (no new AI), Q&A Pairs via the shared review-gated pairing, Unanswered from `logged_questions status='open'` (plain-English type labels, PII-redacted by default), Full Transcript one-row-per-turn. Extracted `lib/agentExport.ts` (`loadExportTurns`/`turnsSheet`/`pairsSheet`/`redactPII`) and refactored the existing `/conversations/export` route onto it so the turn-load + pairing + redaction have one implementation. "Excel workbook" button added to the Transcripts page (xlsx-only — multi-sheet). BOTS.md §export updated.
+
+**Verify**: `npx tsc --noEmit` clean (after cache clear); full suite 861 pass / 54 skip; 4-tab xlsx round-trip confirmed via XLSX read-back harness. Local-only — not pushed.
