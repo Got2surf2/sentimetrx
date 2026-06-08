@@ -52,23 +52,30 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
-type Tab = 'qa' | 'actions' | 'coverage' | 'transcript' | 'export'
+type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'transcript' | 'export'
 
 const HERMES = '#E8632A'
 
-const TABS: readonly Tab[] = ['qa', 'actions', 'coverage', 'transcript', 'export']
+const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'transcript', 'export']
 
 export default function ReportClient({ data }: { data: ReportData }) {
+  // Presentation-scope flagging + the Presentation tab are only meaningful when
+  // the meeting had a presentation.
+  const hasPresentation = !!(data.recording.meeting_profile?.phases?.some(p => p.kind === 'presentation')) || !!data.recording.proceedings_summary
+
   // Deep-linkable tab (e.g. the list card's "needs review" pill → ?tab=coverage).
-  // Defaults to coverage, the review hub.
+  // Defaults to coverage, the review hub. ?tab=presentation falls back to coverage
+  // on a meeting with no presentation (the tab isn't shown there).
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as Tab) : 'coverage')
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = tabParam ?? ''
+    if (t === 'presentation' && !hasPresentation) return 'coverage'
+    return (TABS as readonly string[]).includes(t) ? (t as Tab) : 'coverage'
+  })
   // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
   // Cleared whenever the user picks a tab manually (see TabBar onChange).
   const [reviewFlagged, setReviewFlagged] = useState(false)
-  // Presentation-scope flagging is only meaningful when the meeting had a presentation.
-  const hasPresentation = !!(data.recording.meeting_profile?.phases?.some(p => p.kind === 'presentation')) || !!data.recording.proceedings_summary
 
   // Local mutable copy of the extractions — per-card regenerate (§ 4.10)
   // replaces individual rows in place, so we keep state here and rebuild
@@ -123,6 +130,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
       <TabBar
         tab={tab}
         onChange={(t) => { setReviewFlagged(false); setTab(t) }}
+        hasPresentation={hasPresentation}
         counts={{
           qa: qaPairs.length,
           actions: actionItems.length,
@@ -131,6 +139,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
       />
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
+        {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
@@ -263,16 +272,19 @@ function StatusBadge({ status }: { status: string }) {
 // ── Tab bar ──────────────────────────────────────────────────────────────────
 
 function TabBar({
-  tab, onChange, counts,
+  tab, onChange, counts, hasPresentation,
 }: {
   tab: Tab
   onChange: (t: Tab) => void
   counts: { qa: number; actions: number; coverage: number }
+  hasPresentation: boolean
 }) {
   // 'warn' tone = the badge is a count of pairs needing review (same number as the
   // card's "N pairs need review" pill) → render amber so it reads as an alert, not
   // a neutral item count.
   const tabs: Array<{ key: Tab; label: string; badge?: number; tone?: 'warn' }> = [
+    // Presentation leads (the meeting's first half) — only on community meetings.
+    ...(hasPresentation ? [{ key: 'presentation' as Tab, label: 'Presentation' }] : []),
     { key: 'coverage',   label: 'Coverage',     badge: counts.coverage, tone: 'warn' },
     { key: 'qa',         label: 'Q&A',          badge: counts.qa },
     { key: 'actions',    label: 'Action items', badge: counts.actions },
@@ -310,6 +322,85 @@ function TabBar({
         )
       })}
     </nav>
+  )
+}
+
+// ── Presentation tab ─────────────────────────────────────────────────────────
+// On-screen rendering of proceedings_summary — the same content as the deck/PDF
+// "Meeting Overview" slide (lib/pptx/recordingDeck.ts), so the presentation half
+// of a community meeting is as prominent in the report as the Q&A. Only mounted
+// when the meeting had a presentation phase.
+
+function PresentationTab({ recording }: { recording: RecordingRow }) {
+  const proceedings = recording.proceedings_summary
+  const outline = recording.presentation_outline
+
+  if (!proceedings || (!proceedings.overview && (proceedings.items?.length ?? 0) === 0)) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-3xl mb-2">🖥️</div>
+        <h3 className="font-semibold text-gray-900">No presentation summary yet</h3>
+        <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+          This meeting was set up with a presentation, but a summary hasn&apos;t been generated.
+          Re-run the analysis to produce the meeting overview.
+        </p>
+      </div>
+    )
+  }
+
+  const items = proceedings.items ?? []
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-lg font-bold text-gray-900">Presentation overview</h2>
+          {outline?.source_filename && (
+            <span className="shrink-0 text-xs text-gray-400">
+              From {outline.source_filename}{outline.page_count ? ` · ${outline.page_count} slides` : ''}
+            </span>
+          )}
+        </div>
+        {proceedings.overview && (
+          <p className="text-sm text-gray-700 mt-2 leading-relaxed whitespace-pre-line">{proceedings.overview}</p>
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <div className="space-y-4">
+          {items.map((it, i) => (
+            <div key={i} className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-semibold text-gray-900">{it.title}</h3>
+                {it.slide_refs?.length > 0 && (
+                  <span className="shrink-0 text-xs text-gray-400">
+                    {it.slide_refs.length === 1 ? 'Slide' : 'Slides'} {it.slide_refs.join(', ')}
+                  </span>
+                )}
+              </div>
+              {it.presenter && <div className="text-xs text-gray-500 mt-0.5">{it.presenter}</div>}
+              {it.what_was_presented && (
+                <p className="text-sm text-gray-700 mt-2 leading-relaxed whitespace-pre-line">{it.what_was_presented}</p>
+              )}
+              {it.key_figures?.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {it.key_figures.map((f, j) => (
+                    <span key={j} className="inline-flex items-baseline gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-xs">
+                      <span className="text-gray-500">{f.label}</span>
+                      <span className="font-semibold text-gray-900">{f.value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-400">
+        Neutral AI summary of the presentation portion of the meeting{proceedings.model ? ` · ${proceedings.model}` : ''}. The Q&amp;A tab covers the discussion that followed.
+      </p>
+    </div>
   )
 }
 
