@@ -73,3 +73,17 @@
 **What changed**: `lib/reoVocabulary.ts` (lean REO closed vocab, separate from legacy 7-axis); `sql/121_reo_gold_set.sql` (`reo_gold_review` table, RLS on, admin-only writes — APPLIED to prod); `scripts/seed-reo-goldset.ts` + `reo-goldset-seed-data.json` (30 real Ruth's Chris reviews / 122 proposed observations, seeded into Datanautix admin org); `/admin/reo-gold-set` page + `GoldSetClient` (one-review-at-a-time stepper: fix/add/delete Domain›Aspect›Sentiment, severity flag, guidance notes) + `app/api/admin/reo-gold-set` (requireAdmin, closed-vocab validated, id+org_id paired writes); admin-hub link. Both `proposed` and `gold` stored so the set doubles as the eval harness later.
 
 **Verify**: `npx tsc --noEmit` exit 0; migration applied (`relrowsecurity=true`); seed = 30 reviews/122 obs, all pending. Local-only (no Vercel push). NEXT: owner reviews in the UI; coverage gap = zero Access/Digital examples in steakhouse data (targeted-sample before scaling to ~300–500).
+
+## 2026-06-08 — Phase 1 route-gate campaign, batch 1: social-comment actions (+ TWO cross-org vulns found)
+
+**Why**: Enterprise/DD readiness — 187 of 259 API routes use the service-role client (the pattern behind every past CRITICAL), and only ~9 were gate-tested. Phase 1 systematically adds org-scoping gate tests to mutating tenant routes, prioritized by blast radius.
+
+**What changed**: new `tests/integration/social-comment-routes-gate.test.ts` (18 tests) over the 6 social-comment action routes (delete/hide/reply/ai-reply/dm/bulk) — these POST to external platforms on behalf of an org's connected account, so a cross-org leak lets one tenant act on another's social presence. The mock **records `.eq(col, val)` calls** so each test asserts the comment lookup is paired with `.eq('org_id', callerOrg)` — a real check that the org filter is applied, not a simulated null. All 6 verified correctly gated.
+
+**SECURITY FINDINGS (flagged, NOT yet fixed — awaiting owner decision)**: the same read of sibling routes surfaced two genuine cross-org write holes:
+1. **`POST /api/townhall/themes/[id]` — CRITICAL.** Authenticates the user but never checks the caller's org. Fetches the topic by bare id (service role) and pairs the UPDATE with the *topic's own* `org_id` (tautological), and the legacy `townhall_themes` fallback has no org filter at all. Any logged-in user from any org can approve/dismiss/pause/close/reopen another tenant's town-hall topics by id. Textbook violation of the CLAUDE.md "pair id with org_id" invariant.
+2. **`POST /api/townhall/sessions/[id]/duplicate` — MEDIUM.** Fetches the source session by bare id with no caller-org check and inserts a copy into `source.org_id`. A logged-in user can force an unauthorized duplicate row into another tenant's org and confirm a session id exists (the copy lands in the victim org, so no direct data read). Missing org gate.
+
+Proposed fix for both: fetch the caller's org (sibling routes already do) and require `row.org_id === callerOrg || isAdmin`, returning 404 otherwise — then add the secure-behavior tests. Not applied yet; surfaced to owner.
+
+**Verify**: `npx vitest run social-comment-routes-gate` 18/18; full suite 593 pass. Local-only.

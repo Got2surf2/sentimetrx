@@ -71,7 +71,8 @@ tests/
 │   ├── recording-transfer-gate.test.ts # PATCH recording transfer — platform-admin-only 403 gate + RPC/audit orchestration + rename isolation (mocked)
 │   ├── recording-edit-pair-gate.test.ts # PATCH extraction hand-edit (§3.5d) — edited_* write, null-reverts-to-AI, cross-org 404, non-qa_pair 400 (mocked)
 │   ├── tenant-routes-gate.test.ts     # campaign-send / social-handle / dataset route — 401 + cross-org 404 (mocked)
-│   └── bot-routes-gate.test.ts        # agent API routes (bots/[id] + entities/questions/conversations/knowledge) — 401 no-auth/no-org, cross-org 404/403, admin bypass; both getCallerOrgContext + getAuthUser auth shapes (mocked)
+│   ├── bot-routes-gate.test.ts        # agent API routes (bots/[id] + entities/questions/conversations/knowledge) — 401 no-auth/no-org, cross-org 404/403, admin bypass; both getCallerOrgContext + getAuthUser auth shapes (mocked)
+│   └── social-comment-routes-gate.test.ts # social comment actions (delete/hide/reply/ai-reply/dm/bulk) — Phase 1 mutating-route gates; 401 + 404; mock records .eq() calls to ASSERT the lookup is paired with .eq('org_id', callerOrg) (catches a dropped org filter, not just a null result)
 ├── e2e/
 │   └── deck-download.spec.ts # Playwright, env-gated
 └── loadtest/
