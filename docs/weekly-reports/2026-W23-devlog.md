@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live captions: stop losing the opening + closing
+
+**Why**: Owner compared live vs final on TEST RECORDINGS 2 — live dropped ~8 words at the start ("…you've got some questions… Well,") and ~8 at the end ("On the bottom here, you'll see this little…"). Two real causes in our code: the live captions couldn't start until the Deepgram WS finished connecting (opening lost to the file but not the stream), and on Stop we closed the socket immediately, before Deepgram returned the last `is_final` (closing dropped).
+
+**What changed** (`LiveClient.tsx`): (1) **Opening** — moved the PCM worklet creation into `startAudioGraph` so it captures from the instant recording starts; `node.port.onmessage` sends to the WS when open, else buffers into `pcmQueueRef` (cap 250 frames ≈ ~10s); `ws.onopen` flushes the buffer. (2) **Closing** — new `flushAndStopCaptions()` sends `CloseStream` and waits for the socket to close (trailing `is_final` results append via the still-bound `onmessage`) or a 2.5s cap, before teardown. Restructured Stop into an async orchestration: `teardownAudio` → `Promise.all([flushAndStopCaptions, stopRecorder])` → persist the now-complete live transcript → `uploadAndProcess`. Removed `finalize` (folded into `stop`); `recorder.onstop` now resolves `stopRecorder`'s promise. The batch transcript was always complete; this only tightens the live layer.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. Needs an in-browser mic run to confirm the edges are recovered.
+
+
 ## 2026-06-07 — Town Hall: segment trim in the Play modal + Sarina-blue waveform
 
 **Why**: Owner recalled (correctly) that adjusting a snippet's start/end existed — but it was buried in the ✎ Edit pane (gated on `hasPolished`), not in the "▶ Play" modal. Wanted it where you bring up the audio, and ungated. Also: recolor the live waveform to Sarina blue.

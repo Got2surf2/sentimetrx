@@ -22,6 +22,7 @@ import { appendLiveChunk, getPendingLive, clearLiveChunks, type PendingLive } fr
 
 const HERMES = '#E8632A'
 const SARINA_BLUE = '#00B4D8'   // waveform graph color
+const PCM_QUEUE_CAP = 250       // ~10s of opening audio buffered while the WS connects
 
 type Phase = 'idle' | 'requesting' | 'recording' | 'finalizing' | 'error'
 
@@ -80,6 +81,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const lastSummarizedLenRef = useRef(0)
   const summarizingRef = useRef(false)
   const hasSummaryRef = useRef(false)
+  const pcmQueueRef = useRef<ArrayBuffer[]>([])    // opening frames buffered until the WS opens
+  const stopResolverRef = useRef<((blob: Blob) => void) | null>(null)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -140,9 +143,12 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     if (drawingRef.current) rafRef.current = requestAnimationFrame(drawWaveform)
   }, [])
 
-  // Build the shared Web Audio graph (waveform + the source captions reuse).
+  // Build the Web Audio graph: the waveform analyser + the captions worklet.
+  // The worklet is created HERE (not in startCaptions) so it starts capturing PCM
+  // the instant recording begins — frames are buffered until the Deepgram socket
+  // opens, so the opening of the meeting isn't lost to WS-connect latency.
   // Non-essential — a failure here must not stop recording.
-  const startAudioGraph = useCallback((stream: MediaStream) => {
+  const startAudioGraph = useCallback(async (stream: MediaStream) => {
     try {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       const audioCtx = new Ctx()
@@ -156,8 +162,54 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       analyserRef.current = analyser
       drawingRef.current = true
       rafRef.current = requestAnimationFrame(drawWaveform)
+
+      try {
+        await audioCtx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
+        const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet')
+        node.port.onmessage = (e) => {
+          const buf = e.data as ArrayBuffer
+          const ws = wsRef.current
+          if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send(buf) } catch { /* ignore */ } }
+          else { const q = pcmQueueRef.current; q.push(buf); if (q.length > PCM_QUEUE_CAP) q.shift() }
+        }
+        // Route through a muted gain to keep the graph pulling without playback.
+        const sink = audioCtx.createGain()
+        sink.gain.value = 0
+        source.connect(node)
+        node.connect(sink)
+        sink.connect(audioCtx.destination)
+      } catch { /* worklet failed — captions won't stream; waveform still works */ }
     } catch { /* waveform is non-essential */ }
   }, [drawWaveform])
+
+  // Stop the Deepgram socket the RIGHT way: ask it to finalize (CloseStream),
+  // keep onmessage alive so the trailing is_final results are appended to the
+  // transcript, then close. Resolves when the socket closes or after a cap.
+  const flushAndStopCaptions = useCallback(() => new Promise<void>((resolve) => {
+    const ws = wsRef.current
+    wsRef.current = null
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { resolve(); return }
+    let done = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const finish = () => { if (done) return; done = true; if (timer) clearTimeout(timer); try { ws.close() } catch { /* ignore */ } resolve() }
+    ws.onclose = finish
+    timer = setTimeout(finish, 2500)   // cap the flush wait
+    try {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
+    } catch { finish() }
+  }), [])
+
+  // Stop the recorder and resolve with the assembled audio blob (after the final
+  // ondataavailable + onstop fire).
+  const stopRecorder = useCallback(() => new Promise<Blob>((resolve) => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state === 'inactive') {
+      resolve(new Blob(chunksRef.current, { type: mimeRef.current }))
+      return
+    }
+    stopResolverRef.current = resolve
+    recorder.stop()
+  }), [])
 
   // Tear down everything if the user navigates away mid-recording.
   useEffect(() => {
@@ -218,12 +270,9 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       return
     }
 
+    const audioCtx = audioCtxRef.current
+    if (!audioCtx) { setCaptionsError('Live captions unavailable — recording continues normally.'); return }
     try {
-      const audioCtx = audioCtxRef.current
-      const source = sourceRef.current
-      if (!audioCtx || !source) { setCaptionsError('Live captions unavailable — recording continues normally.'); return }
-      await audioCtx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
-
       const params = new URLSearchParams({
         model: 'nova-3',
         language: language || 'en',
@@ -238,6 +287,12 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       ws.binaryType = 'arraybuffer'
       wsRef.current = ws
 
+      // Flush the opening frames buffered by the worklet while we were connecting.
+      ws.onopen = () => {
+        const q = pcmQueueRef.current
+        pcmQueueRef.current = []
+        for (const buf of q) { try { ws.send(buf) } catch { /* ignore */ } }
+      }
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data as string)
@@ -253,20 +308,10 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
         } catch { /* non-JSON keepalive */ }
       }
       ws.onerror = () => setCaptionsError('Live captions dropped — recording continues normally.')
-
-      const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet')
-      node.port.onmessage = (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer) }
-      // Route through a muted gain to keep the graph pulling without audible playback.
-      const sink = audioCtx.createGain()
-      sink.gain.value = 0
-      source.connect(node)
-      node.connect(sink)
-      sink.connect(audioCtx.destination)
     } catch {
       setCaptionsError('Live captions unavailable — recording continues normally.')
-      stopCaptions()
     }
-  }, [recordingId, language, stopCaptions])
+  }, [recordingId, language])
 
   // Upload an assembled audio blob and run it through the existing pipeline.
   // Shared by a normal Stop and by crash recovery.
@@ -324,23 +369,6 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     }
   }, [recordingId, router])
 
-  // Normal Stop: assemble the in-memory chunks and process.
-  const finalize = useCallback(async () => {
-    // Persist the FULL live transcript (untruncated) before processing, so the
-    // real-time ASR can later be compared against the post-processed transcript.
-    // Best-effort — never block the recording handoff on it.
-    const liveText = finalsRef.current.join(' ').trim()
-    if (liveText) {
-      try {
-        await fetch(`/api/recordings/${recordingId}/live-transcript`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcript: liveText }),
-        })
-      } catch { /* best-effort */ }
-    }
-    const blob = new Blob(chunksRef.current, { type: mimeRef.current })
-    await uploadAndProcess(blob, mimeRef.current)
-  }, [uploadAndProcess, recordingId])
-
   // Recover audio persisted by an interrupted prior session.
   const recoverPending = useCallback(async () => {
     if (!recovery) return
@@ -395,6 +423,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setInterim('')
     setLiveSummary(null)
     finalsRef.current = []
+    pcmQueueRef.current = []
     lastSummarizedLenRef.current = 0
     hasSummaryRef.current = false
     setPhase('requesting')
@@ -445,7 +474,12 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       const chunk = e.data
       appendQueueRef.current = appendQueueRef.current.then(() => appendLiveChunk(recordingId, chunk, mimeRef.current))
     }
-    recorder.onstop = () => { void finalize() }
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: mimeRef.current })
+      const resolve = stopResolverRef.current
+      stopResolverRef.current = null
+      resolve?.(blob)
+    }
     recorderRef.current = recorder
     recorder.start(5000) // timeslice so chunks flush periodically
 
@@ -453,20 +487,34 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('recording')
     timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
 
-    startAudioGraph(stream)    // waveform + the source captions reuse
-    void startCaptions()       // best-effort; does not block recording
-  }, [finalize, startCaptions, startAudioGraph, agc, selectedDeviceId, refreshDevices])
+    void startAudioGraph(stream)  // waveform + the buffering captions worklet
+    void startCaptions()          // best-effort; does not block recording
+  }, [startCaptions, startAudioGraph, agc, selectedDeviceId, refreshDevices])
 
-  const stop = useCallback(() => {
+  const stop = useCallback(async () => {
     stopTimer()
-    stopCaptions()
-    teardownAudio()
-    const recorder = recorderRef.current
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop() // fires a final ondataavailable then onstop → finalize()
-    }
+    setPhase('finalizing')
+    teardownAudio()   // stop feeding the worklet + the waveform loop
+
+    // Flush captions (capture the closing words Deepgram returns on CloseStream)
+    // and finalize the recording file — in parallel.
+    const [, blob] = await Promise.all([flushAndStopCaptions(), stopRecorder()])
     streamRef.current?.getTracks().forEach(t => t.stop())
-  }, [stopTimer, stopCaptions, teardownAudio])
+
+    // finalsRef now includes the trailing finals from the flush. Persist the FULL
+    // live transcript (untruncated) before processing, so it can be compared to
+    // the post-processed transcript. Best-effort.
+    const liveText = finalsRef.current.join(' ').trim()
+    if (liveText) {
+      try {
+        await fetch(`/api/recordings/${recordingId}/live-transcript`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcript: liveText }),
+        })
+      } catch { /* best-effort */ }
+    }
+
+    await uploadAndProcess(blob, mimeRef.current)
+  }, [stopTimer, teardownAudio, flushAndStopCaptions, stopRecorder, recordingId, uploadAndProcess])
 
   return (
     <div>
