@@ -1,5 +1,16 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 3: rolling summary panel
+
+**Why**: The "where do the live summaries show up" answer — a side panel next to the live transcript that refreshes a running summary as the meeting unfolds (topics / open questions / decisions), for facilitator situational awareness. Convenience layer; the authoritative report is still the post-meeting batch pass.
+
+**What changed**: New `POST /api/recordings/[id]/live-summary` — org-gated (id/org_id pair), takes the caption-so-far text, runs a fast-tier (Haiku) Claude pass with a strict no-fabrication prompt, returns JSON {headline, summary, topics, open_questions, decisions}, usage-logged as `recording_live_summary`. `LiveClient.tsx` gains the panel + a 45s interval that self-gates on transcript growth (most ticks are cheap no-ops; only calls when the transcript grew ≥500 chars or none yet). Recording view restructured into a transcript (2/3) + summary (1/3) grid.
+
+**Scope decision**: built the rolling-summary half of piece 3; **dropped the segments table** — the summary takes transcript text straight from the client, so no new DB surface / prod migration. Persisting the live transcript + last summary on the recording (for an instant provisional recap at Stop + crash survival) is logged as deferred hardening in RECORDINGS.md §15.
+
+**Verify**: tsc clean (cache-cleared), 472 tests pass. **Local-only**, not pushed. The Claude summary call is exercisable locally; the end-to-end live path still needs a real-mic browser run.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 2b: Deepgram live captions
 
 **Why**: The headline of the continuous transcriber — on-screen captions as people speak. Tees the existing mic capture into Deepgram's live WS so the facilitator sees text in real time; the saved file still drives the authoritative post-meeting report.

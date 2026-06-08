@@ -28,6 +28,14 @@ interface AttachResponse {
   files: Array<{ id: string; original_filename: string; storage_path: string; upload_url: string }>
 }
 
+interface LiveSummary {
+  headline: string
+  summary: string
+  topics: string[]
+  open_questions: string[]
+  decisions: string[]
+}
+
 export default function LiveClient({ recordingId, name, language }: { recordingId: string; name: string; language: string }) {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('idle')
@@ -40,6 +48,10 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const [interim, setInterim] = useState('')
   const [captionsError, setCaptionsError] = useState<string | null>(null)
 
+  // Rolling summary panel (best-effort, throttled by transcript growth).
+  const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null)
+  const [summarizing, setSummarizing] = useState(false)
+
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -48,6 +60,10 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const wsRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
+  const finalsRef = useRef<string[]>([])           // mirror of `finals` readable inside the summary interval
+  const lastSummarizedLenRef = useRef(0)
+  const summarizingRef = useRef(false)
+  const hasSummaryRef = useRef(false)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -78,6 +94,41 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
   }, [stopTimer, stopCaptions])
+
+  // Ask the server for a rolling summary — throttled: only when the transcript
+  // has grown meaningfully since the last one (or we have none yet). Best-effort.
+  const runSummary = useCallback(async () => {
+    if (summarizingRef.current) return
+    const text = finalsRef.current.join(' ').trim()
+    if (text.length < 200) return
+    const grew = text.length - lastSummarizedLenRef.current
+    if (hasSummaryRef.current && grew < 500) return
+
+    summarizingRef.current = true
+    setSummarizing(true)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/live-summary`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcript: text }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok && j.summary) {
+        setLiveSummary(j.summary as LiveSummary)
+        hasSummaryRef.current = true
+        lastSummarizedLenRef.current = text.length
+      }
+    } catch { /* best-effort */ } finally {
+      summarizingRef.current = false
+      setSummarizing(false)
+    }
+  }, [recordingId])
+
+  // While recording, poll for a fresh summary on a cadence; runSummary self-gates
+  // on transcript growth so most ticks are cheap no-ops.
+  useEffect(() => {
+    if (phase !== 'recording') return
+    const id = setInterval(() => { void runSummary() }, 45000)
+    return () => clearInterval(id)
+  }, [phase, runSummary])
 
   // Open the Deepgram live WS and pipe 16-bit PCM from the mic. Best-effort:
   // any failure sets captionsError but leaves the recording running.
@@ -119,7 +170,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
           const text: string = msg?.channel?.alternatives?.[0]?.transcript ?? ''
           if (!text) return
           if (msg.is_final) {
-            setFinals(prev => [...prev, text])
+            finalsRef.current = [...finalsRef.current, text]
+            setFinals(finalsRef.current)
             setInterim('')
           } else {
             setInterim(text)
@@ -201,6 +253,10 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setCaptionsError(null)
     setFinals([])
     setInterim('')
+    setLiveSummary(null)
+    finalsRef.current = []
+    lastSummarizedLenRef.current = 0
+    hasSummaryRef.current = false
     setPhase('requesting')
     let stream: MediaStream
     try {
@@ -290,22 +346,67 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
             </div>
             <div className="mt-3 text-4xl font-mono font-bold text-gray-900 tabular-nums">{formatElapsed(elapsedSec)}</div>
 
-            <div
-              ref={transcriptRef}
-              className="mt-6 text-left bg-gray-50 border border-gray-200 rounded-xl p-4 h-64 overflow-y-auto text-sm leading-relaxed"
-            >
-              {finals.length === 0 && !interim ? (
-                <p className="text-gray-400 italic">{captionsError ? captionsError : 'Listening… captions will appear here as people speak.'}</p>
-              ) : (
-                <>
-                  {finals.map((line, i) => <span key={i} className="text-gray-800">{line} </span>)}
-                  {interim && <span className="text-gray-400">{interim}</span>}
-                </>
-              )}
+            <div className="mt-6 grid gap-4 md:grid-cols-3 text-left">
+              {/* Live transcript */}
+              <div className="md:col-span-2">
+                <div className="text-xs font-semibold text-gray-700 mb-1">Live transcript</div>
+                <div
+                  ref={transcriptRef}
+                  className="bg-gray-50 border border-gray-200 rounded-xl p-4 h-72 overflow-y-auto text-sm leading-relaxed"
+                >
+                  {finals.length === 0 && !interim ? (
+                    <p className="text-gray-400 italic">{captionsError ? captionsError : 'Listening… captions will appear here as people speak.'}</p>
+                  ) : (
+                    <>
+                      {finals.map((line, i) => <span key={i} className="text-gray-800">{line} </span>)}
+                      {interim && <span className="text-gray-400">{interim}</span>}
+                    </>
+                  )}
+                </div>
+                {captionsError && finals.length > 0 && <p className="mt-2 text-xs text-amber-600">{captionsError}</p>}
+              </div>
+
+              {/* Rolling summary */}
+              <div className="md:col-span-1">
+                <div className="text-xs font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                  <span>Live summary</span>
+                  {summarizing && <span className="text-gray-400 font-normal">updating…</span>}
+                </div>
+                <div className="bg-orange-50/50 border border-orange-200 rounded-xl p-4 h-72 overflow-y-auto text-sm">
+                  {liveSummary ? (
+                    <div className="space-y-3">
+                      {liveSummary.headline && <p className="font-semibold text-gray-900">{liveSummary.headline}</p>}
+                      {liveSummary.summary && <p className="text-gray-700">{liveSummary.summary}</p>}
+                      {liveSummary.topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {liveSummary.topics.map((t, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-orange-200 text-xs text-gray-600">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                      {liveSummary.open_questions.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Open questions</div>
+                          <ul className="list-disc list-inside text-gray-700 text-xs space-y-0.5">
+                            {liveSummary.open_questions.map((q, i) => <li key={i}>{q}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {liveSummary.decisions.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Decisions / actions</div>
+                          <ul className="list-disc list-inside text-gray-700 text-xs space-y-0.5">
+                            {liveSummary.decisions.map((d, i) => <li key={i}>{d}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 italic">A running summary appears here a minute or two in.</p>
+                  )}
+                </div>
+              </div>
             </div>
-            {captionsError && finals.length > 0 && (
-              <p className="mt-2 text-xs text-amber-600">{captionsError}</p>
-            )}
 
             <button
               type="button"
