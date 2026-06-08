@@ -34,5 +34,5 @@ jobs:
       - name: SQL migration tx-wrap guard
         run: npm run check:sql-tx
 
-      - name: Unit + integration tests
-        run: npm test
+      - name: Unit + integration tests (with coverage gate)
+        run: npm run test:coverage

@@ -23,7 +23,11 @@ Last reviewed: 2026-05-15.
 - **`npm run typecheck` must pass** before any commit. CI re-runs
   it.
 - **`npm test` must pass.** Unit + integration; mocks at every
-  external boundary (Supabase, Anthropic, Resend, S3).
+  external boundary (Supabase, Anthropic, Resend, S3). CI runs the
+  coverage variant (`npm run test:coverage`), which enforces a
+  ratcheting coverage floor (`coverage.thresholds` in
+  `vitest.config.ts`) — a drop below the floor fails CI. The floor is
+  raised as tests are added; see `docs/TESTING.md`.
 - **`npm run lint` — toolchain migration pending (Next 16).** Next 16
   **removed the `next lint` command**, so the `"lint": "next lint"`
   script is stale and the eslint 8→9 + flat-config migration

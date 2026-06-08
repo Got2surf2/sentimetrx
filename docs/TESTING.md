@@ -23,7 +23,7 @@ npm run check:sql-tx         # fails when a new sql/NNN_*.sql lacks BEGIN/COMMIT
 npm run check:spec-staged    # pre-commit hook target — blocks commits whose staged code maps to an unstaged spec doc
 ```
 
-CI runs `typecheck`, `check:sql-tx`, and `test` on every push and PR.
+CI runs `typecheck`, `check:sql-tx`, and `test:coverage` on every push and PR. The test step runs with v8 coverage so each CI run publishes the coverage table and enforces a **ratcheting floor** (`coverage.thresholds` in `vitest.config.ts`): a regression below the floor fails CI. The floor is set just below the current baseline (~13% lines over `lib/**` + `app/api/**`) and is bumped up as new tests land — per the governance Tests-score progression plan. The thresholds are deliberately a no-regression gate, not a coverage *target*; the target is critical-path coverage, not a headline %.
 
 The repo also installs a local pre-commit hook (`.githooks/pre-commit`, wired up via `core.hooksPath` in the `postinstall` step) that runs `check:spec-staged` against the staging area. It blocks commits where a staged code file maps to a spec doc (per `scripts/specMap.ts`) that isn't also staged. Bypass with `SKIP_SPEC_CHECK=1 git commit ...` when the change is genuinely doc-irrelevant.
 

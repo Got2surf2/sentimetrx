@@ -22,6 +22,15 @@ export default defineConfig({
       reporter: ['text', 'html'],
       include: ['lib/**/*.ts', 'app/api/**/*.ts'],
       exclude: ['**/*.test.*', 'tests/**'],
+      // Ratcheting floor — set just below the current baseline so unrelated
+      // churn doesn't redden CI, but no regression is allowed. Bump these up
+      // as each batch of tests lands (governance Tests-score progression plan).
+      thresholds: {
+        statements: 12,
+        branches: 8,
+        functions: 12,
+        lines: 13,
+      },
     },
   },
 })
