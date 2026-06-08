@@ -261,7 +261,7 @@ function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recordin
           <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Objectives</div>
           {objectives?.summary && <p className="text-sm text-gray-700">{objectives.summary}</p>}
           {(objectives?.questions?.length ?? 0) > 0 && (
-            <ul className="mt-1.5 list-disc list-inside text-sm text-gray-600 space-y-0.5">
+            <ul className="mt-1.5 list-disc list-outside pl-5 text-sm text-gray-600 space-y-0.5">
               {objectives!.questions.map((q, i) => <li key={i}>{q}</li>)}
             </ul>
           )}
@@ -2324,7 +2324,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <p className="text-sm text-gray-500">More formats land in a follow-up:</p>
-      <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
+      <ul className="text-sm text-gray-700 list-disc list-outside pl-5 space-y-1">
         <li>XLSX — structured pairs only (analyst format)</li>
       </ul>
     </div>

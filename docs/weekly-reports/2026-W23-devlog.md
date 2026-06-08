@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall report: bullet hanging-indent sweep
+
+**Why**: Finish the bullet-wrap fix — the two remaining `list-disc list-inside` lists on the report page (objectives questions + export "more formats") had the same wrap-under-bullet issue.
+
+**What changed** (`ReportClient.tsx`, CSS class only): both → `list-disc list-outside pl-5` so wrapped lines hang under the text. No `list-inside` left in the recordings UI.
+
+**Verify**: tsc clean. **Local-only**, not pushed. (Spec check skipped — cosmetic class-only change.)
+
+
 ## 2026-06-07 — Town Hall status page: surface Generate, cost markup, recap bullet wrap
 
 **Why**: Owner feedback on the transcribed-status screen — the "Generate Q&A pairs" button was buried below the step ladder, displayed AI costs read too low, and the recap bullet lists wrapped under the bullet.
