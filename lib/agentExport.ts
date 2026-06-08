@@ -106,12 +106,18 @@ export async function pairsSheet(service: any, botId: string, turns: ExportTurn[
     for (let i = 0; i < ts.length; i++) {
       const t = ts[i]
       if (t.role !== 'user' || t.source === 'greeting' || isLeak(t.content)) continue
+      // The agent line immediately BEFORE this user turn — the lead-in that
+      // gives a short reply like "Yes"/"Ye" its meaning (it's the question the
+      // user was answering). Without it a one-word turn reads as a cryptic
+      // "question."
+      let leadIn = ''
+      for (let j = i - 1; j >= 0; j--) { if (ts[j].role === 'assistant') { leadIn = clean(ts[j].content); break } }
       let answer = ''
       for (let j = i + 1; j < ts.length; j++) { if (ts[j].role === 'assistant') { answer = clean(ts[j].content); break } }
-      rows.push([++pairNo, sid, t.created_at, clean(t.content), answer, t.language])
+      rows.push([++pairNo, sid, t.created_at, leadIn, clean(t.content), answer, t.language])
     }
   }
-  return { name, headers: ['#', 'Session ID', 'Timestamp', 'Question (user)', 'Answer (agent)', 'Language'], rows }
+  return { name, headers: ['#', 'Session ID', 'Timestamp', 'Lead-in (agent said before)', 'User said', 'Answer (agent)', 'Language'], rows }
 }
 
 // PII redaction — email / NA-style phone / US street address. Mirrors the

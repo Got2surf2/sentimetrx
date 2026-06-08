@@ -257,3 +257,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: New `GET /api/bots/[id]/workbook?format=xlsx` assembling the four sheets — Summary from the cache-first `getAgentStudy` (no new AI), Q&A Pairs via the shared review-gated pairing, Unanswered from `logged_questions status='open'` (plain-English type labels, PII-redacted by default), Full Transcript one-row-per-turn. Extracted `lib/agentExport.ts` (`loadExportTurns`/`turnsSheet`/`pairsSheet`/`redactPII`) and refactored the existing `/conversations/export` route onto it so the turn-load + pairing + redaction have one implementation. "Excel workbook" button added to the Transcripts page (xlsx-only — multi-sheet). BOTS.md §export updated.
 
 **Verify**: `npx tsc --noEmit` clean (after cache clear); full suite 861 pass / 54 skip; 4-tab xlsx round-trip confirmed via XLSX read-back harness. Local-only — not pushed.
+
+### 2026-06-08 (follow-up) — Q&A pairs: lead-in column for context
+
+**Why**: Owner reviewing the workbook hit cryptic one-word "questions" (e.g. "Ye") with an answer but no way to tell what was being answered.
+
+**What changed**: `lib/agentExport.pairsSheet` now emits the agent line immediately *before* each user turn as a new **Lead-in (agent said before)** column, and renames Question→**User said** (a one-word reply isn't a question). Shared, so both the workbook's Q&A Pairs tab and the standalone `/conversations/export?shape=pairs` download get it. BOTS.md updated.
+
+**Verify**: tsc clean; lead-in round-trips correctly in the xlsx harness.
