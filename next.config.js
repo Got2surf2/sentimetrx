@@ -26,9 +26,12 @@ const baselineSecurityHeaders = [
   // On cross-origin navigations, send only the origin (no path/query) so
   // share/auth tokens don't leak to third parties via the Referer header.
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  // Disable browser features we don't use; keeps malicious embedded content
-  // from prompting the user for camera/mic/location.
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
+  // Disable browser features we don't use; keeps embedded third-party content
+  // from prompting the user for camera/location. Microphone is allowed for our
+  // OWN origin only (`self`) — the Town Hall live-capture page needs it — while
+  // still blocked for cross-origin iframes. The user still sees the normal mic
+  // permission prompt; `self` only stops the policy from hard-blocking it.
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=(), interest-cohort=()' },
 ]
 
 const noFrameHeaders = [

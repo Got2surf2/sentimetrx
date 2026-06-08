@@ -464,6 +464,23 @@ When adding a new wrapper, place it between `nextConfig` and the
 Sentry wrap unless the wrapper itself documents a Sentry-outside
 requirement.
 
+### Security response headers
+
+`next.config.js → headers()` sends a baseline set on every route (HSTS,
+`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`) plus
+clickjacking headers (`X-Frame-Options`, CSP `frame-ancestors 'none'`) on
+the root + authed path prefixes.
+
+`Permissions-Policy` is `camera=(), microphone=(self), geolocation=(),
+interest-cohort=()`. **`microphone=(self)`** (not `()`) is deliberate: the
+Town Hall live-capture page (`/recordings/[id]/live`) calls `getUserMedia`,
+and `microphone=()` hard-blocks it for *all* origins including ours (→
+`NotAllowedError` regardless of OS/browser permission). `self` permits the
+first-party origin to request the mic (the user still sees the browser
+prompt) while cross-origin iframes remain blocked; camera + geolocation
+stay fully disabled. A change here is build-time — it needs a dev-server
+restart locally and a deploy to reach prod.
+
 ---
 
 ## 12. Release process

@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Fix: Permissions-Policy blocked the mic on the live page
+
+**Why**: Owner's local test: mic stayed blocked on `/live` even after granting OS/browser permission. Root cause was **our** code, not the environment — `next.config.js` baseline security header sent `Permissions-Policy: ... microphone=() ...` on every route, which hard-blocks `getUserMedia` for all origins (incl. self) → `NotAllowedError`. Nothing used the mic before, so it was correctly locked.
+
+**What changed**: `microphone=()` → `microphone=(self)` in the baseline header (`next.config.js`). First-party origin may now request the mic (user still gets the normal permission prompt); cross-origin iframes remain blocked; camera/geolocation stay fully off. Note: a `next.config.js` change requires a dev-server restart to apply, and must ship to prod (the header is build-time). RECORDINGS.md §15 documents it.
+
+**Verify**: header value change only. SECURITY.md doesn't enumerate this header (no spec edit). **Local-only**, not pushed — owner restarts `npm run dev` to pick it up.
+
+
 ## 2026-06-07 — Town Hall live capture, hardening item 1: crash recovery via IndexedDB
 
 **Why**: Don't lose a meeting recording if the tab crashes / is refreshed / accidentally closed before Stop. Chose local IndexedDB recovery over server-side continuous upload — it covers the realistic failure modes with no new server surface, no migration, and no audio gaps (audio is only ~tens of MB/hr, so the Stop-time upload was never the real problem; crash-loss was).
