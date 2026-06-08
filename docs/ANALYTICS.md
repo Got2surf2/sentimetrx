@@ -530,6 +530,7 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 - Matrix operations: Gaussian elimination for regression
 - Effect sizes: Cohen's d, eta-squared, Cramer's V
 - Significance labels: *** p<.001, ** p<.01, * p<.05
+- (Fixed 2026-06-08: `normCDF` applied the erf approximation to `z` instead of `z/√2`, returning Φ(z·√2) and understating two-tailed p-values for `mannWhitneyU`, `tDist2p` at df>100, and `shapiroWilk`. Now correct — those tests read more conservatively than before. The `incompleteBeta` path — t-tests/correlations at df≤100 and ANOVA — was never affected.)
 
 ---
 

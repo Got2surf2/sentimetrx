@@ -91,9 +91,13 @@ export function fDistP(F: number, df1: number, df2: number): number {
 }
 export function chiSqP(c: number, df: number): number { return c <= 0 ? 1 : 1 - incompleteGamma(df / 2, c / 2) }
 export function normCDF(z: number): number {
+  // Standard-normal CDF Φ(z) = ½(1 + erf(z/√2)). The A&S 7.1.26 polynomial
+  // below approximates erf(x); its argument must be |z|/√2, NOT |z| — without
+  // the /√2 this returns Φ(z·√2) and understates two-tailed p-values for every
+  // caller (mannWhitneyU, tDist2p df>100, shapiroWilk). Fixed 2026-06-08.
   var a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911
-  var sg = z < 0 ? -1 : 1; z = Math.abs(z); var t = 1 / (1 + p * z)
-  return 0.5 * (1 + sg * (1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z)))
+  var sg = z < 0 ? -1 : 1; var x = Math.abs(z) / Math.SQRT2; var t = 1 / (1 + p * x)
+  return 0.5 * (1 + sg * (1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x)))
 }
 
 export function probit(p: number): number {

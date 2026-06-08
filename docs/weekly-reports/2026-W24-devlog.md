@@ -39,3 +39,11 @@
 **Finding (flagged, NOT fixed)**: `lib/statsUtils.ts normCDF()` returns Φ(z·√2), not the standard-normal Φ(z) — it applies the A&S erf approximation to `z` without the `/√2` argument scaling (verified: code matches Φ(z·√2) to 5dp; Φ(1.96) returns 0.997 vs 0.975). This understates two-tailed p-values routed through it: `mannWhitneyU`, `tDist2p` for df>100, and `shapiroWilk`. The incompleteBeta path (t-tests/correlations with df≤100, ANOVA) is unaffected. Out of scope for a test-only batch and it changes user-visible stat outputs — surfaced for a separate decision. The normCDF test asserts only scaling-invariant CDF properties (0.5 at 0, symmetry, monotonicity, bounds) so it stays honest.
 
 **Verify**: `npm run test:coverage` → exit 0 at the raised floor; `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Local-only.
+
+## 2026-06-08 — Fix statsUtils.normCDF (was Φ(z·√2), now Φ(z))
+
+**Why**: Batch-2 unit tests surfaced that `lib/statsUtils.ts normCDF()` applied the Abramowitz-Stegun erf approximation to `z` directly instead of `z/√2`, so it returned Φ(z·√2), not the standard-normal Φ(z) — Φ(1.96) gave 0.997 instead of 0.975. This understated two-tailed p-values for every caller routed through it: `mannWhitneyU`, `tDist2p` for df>100, and `shapiroWilk` (normality). The `incompleteBeta` path (t-tests/correlations with df≤100, ANOVA) never touches normCDF and was correct.
+
+**What changed**: one-line fix in `normCDF` — erf argument is now `|z|/√2` (`Math.abs(z) / Math.SQRT2`). Statistics-module p-values for the three affected tests are now correct (will read as larger/more-conservative than before the fix). Updated the statsUtils unit test to pin standard z-table reference values (Φ(1)=0.8413, Φ(1.96)=0.975, Φ(2.576)=0.995) as a regression guard.
+
+**Verify**: `npx vitest run statsUtils` 27/27; full suite 546 pass. Local-only.

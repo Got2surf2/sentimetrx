@@ -114,19 +114,15 @@ describe('statsUtils — group comparison', () => {
 })
 
 describe('statsUtils — distributions & chi-square', () => {
-  it('normCDF is a monotone, symmetric CDF anchored at 0.5', () => {
-    // NOTE (flagged 2026-06-08): normCDF currently returns Φ(z·√2), not the
-    // standard-normal Φ(z) — it applies the A&S erf approximation to z without
-    // the /√2 argument scaling. These assertions check only the CDF invariants
-    // that hold regardless of that scaling; they intentionally do NOT pin
-    // Φ(1.96)=0.975 (the code returns ~0.997). See the separate correctness
-    // finding before relying on normCDF-derived p-values (mannWhitneyU,
-    // tDist2p df>100, shapiroWilk).
+  it('normCDF matches the standard-normal Φ(z)', () => {
+    // Regression guard for the 2026-06-08 fix: normCDF must be Φ(z), not the
+    // previously-shipped Φ(z·√2). Reference values are standard z-table entries.
     expect(normCDF(0)).toBeCloseTo(0.5, 6)
+    expect(normCDF(1)).toBeCloseTo(0.8413, 3)
+    expect(normCDF(1.96)).toBeCloseTo(0.975, 3)
+    expect(normCDF(-1.96)).toBeCloseTo(0.025, 3)
+    expect(normCDF(2.576)).toBeCloseTo(0.995, 3)
     expect(normCDF(-1.5)).toBeCloseTo(1 - normCDF(1.5), 6) // symmetry
-    expect(normCDF(2)).toBeGreaterThan(normCDF(1))          // monotone increasing
-    expect(normCDF(3)).toBeGreaterThan(0)
-    expect(normCDF(3)).toBeLessThan(1)
   })
 
   it('tDist2p / chiSqP edge values', () => {
