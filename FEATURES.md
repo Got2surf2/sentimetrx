@@ -464,7 +464,15 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Upload the presenter's slide deck (PDF) — read by AI vision to seed factual meeting notes
 - Auto-detects the presentation→Q&A transition; boundary is user-reviewable before analysis
 - Deck adds a neutral "Meeting Overview" (what was presented, by whom, key figures) ahead of the Q&A summary
+- **Presentation report tab** — that Meeting Overview is also viewable on-screen in the report (not just the deck/PDF), shown only for meetings that had a presentation
 - Strictly neutral/no-opining voice throughout (shareable with the client/organizer)
+
+### Project setup & editing (edit-anytime)
+- **Set up a project before the media exists** — configure the meeting (name, date, location, panel, agenda, names/terms, objectives, analysis org + analysts, confidentiality) and attach the audio/video later
+- **Unified Setup editor, editable at any lifecycle stage** — the same form powers create (`/recordings/new`) and edit (a "Edit setup" link on the status + report surfaces); metadata changes apply instantly, analysis-shaping changes apply on the next re-analysis
+- **Documents-anytime** — attach the presentation deck (PDF, AI-vision-read) and briefs/reference docs at any stage; uploading a deck also pre-fills the setup fields it can extract (objectives/agenda/panel/names)
+- **Re-analyze drift banner** — if you edit the agenda/panel/objectives after analyzing, the report shows a "setup changed — re-analyze to apply" banner with a one-click re-extract; metadata edits never trigger it
+- **Config version history + sign-off** — every analysis snapshots the config; a "Config vN · analyzed {date}" stamp and an analyst sign-off print on the report/deck/PDF
 
 ### Interactive HTML Reports
 - Embedded Plotly.js charts
