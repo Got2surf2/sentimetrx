@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall status page: surface Generate, cost markup, recap bullet wrap
+
+**Why**: Owner feedback on the transcribed-status screen — the "Generate Q&A pairs" button was buried below the step ladder, displayed AI costs read too low, and the recap bullet lists wrapped under the bullet.
+
+**What changed** (`StatusClient.tsx` + `LiveClient.tsx`): (1) On `transcribed`, the `GeneratePanel` now renders **above** the StepList, and the panel gained a header-level Generate button + an amber warning banner ("runs the full AI analysis, billed ~$50, takes a few minutes, replaces existing Q&A"). (2) **Displayed AI costs ×50** — `formatCost` applies a `COST_DISPLAY_MULTIPLIER = 50` (display only; raw `cost_cents` stays the source of truth for internal accounting, which is untouched), and the two hardcoded `~$1` estimates → `~$50`. Costs are only shown on the status page (report/list don't display them). (3) Recap bullet lists `list-inside` → `list-outside pl-5` so wrapped lines hang under the text, in both the status `ProvisionalRecap` and the live summary panel. Two more `list-inside` lists exist in the report (left as-is; not in scope).
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed.
+
+
 ## 2026-06-07 — Town Hall live capture: live-vs-final transcript comparison tab
 
 **Why**: Owner wants to evaluate how much the post-processed batch transcript improved on the rough live captions (a quality signal for the live-capture product).

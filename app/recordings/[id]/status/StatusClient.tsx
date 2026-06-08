@@ -217,18 +217,8 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
         </div>
       ) : (
       <>
-      <StepList status={status} data={data} />
-
-      {data?.recording.live_summary && status !== 'complete' && status !== 'failed' && status !== 'cancelled' && (
-        <ProvisionalRecap summary={data.recording.live_summary} />
-      )}
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
+      {/* When the transcript is ready, the generate action is the primary thing
+          the user came to do — keep it at the top, above the step ladder. */}
       {status === 'transcribed' && data && (
         <GeneratePanel
           recordingId={recordingId}
@@ -240,6 +230,18 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
           durationSec={data.recording.source_duration_sec}
           onStarted={fetchStatus}
         />
+      )}
+
+      <StepList status={status} data={data} />
+
+      {data?.recording.live_summary && status !== 'complete' && status !== 'failed' && status !== 'cancelled' && (
+        <ProvisionalRecap summary={data.recording.live_summary} />
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          {error}
+        </div>
       )}
 
       {status === 'failed' && data?.recording.error_message && (
@@ -316,7 +318,7 @@ function ProvisionalRecap({ summary }: { summary: LiveSummary }) {
         {summary.open_questions.length > 0 && (
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Open questions</div>
-            <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+            <ul className="list-disc list-outside pl-5 text-xs text-gray-700 space-y-0.5">
               {summary.open_questions.map((q, i) => <li key={i}>{q}</li>)}
             </ul>
           </div>
@@ -324,7 +326,7 @@ function ProvisionalRecap({ summary }: { summary: LiveSummary }) {
         {summary.decisions.length > 0 && (
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Decisions / actions</div>
-            <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+            <ul className="list-disc list-outside pl-5 text-xs text-gray-700 space-y-0.5">
               {summary.decisions.map((d, i) => <li key={i}>{d}</li>)}
             </ul>
           </div>
@@ -616,12 +618,27 @@ function GeneratePanel({
 
   return (
     <section className="bg-white border-2 border-orange-200 rounded-lg p-5 space-y-4">
-      <div>
-        <h3 className="font-semibold text-gray-900">Transcript ready — review, then generate</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          The Q&amp;A extraction (~$1, Opus + Sonnet) hasn&apos;t run yet. Check the transcript below
-          and refine the agenda or panel roster — both steer extraction quality — then generate.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-gray-900">Transcript ready — generate the Q&amp;A</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Refine the optional fields below to steer extraction quality, or generate now.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={busy}
+          className="shrink-0 px-5 py-2.5 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
+          style={{ backgroundColor: '#E8632A' }}
+        >
+          {busy ? 'Starting…' : 'Generate Q&A pairs'}
+        </button>
+      </div>
+
+      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+        <span className="font-semibold">⚠ Heads up:</span> this runs the full AI analysis (Opus + Sonnet),
+        is billed (about <strong>$50</strong>), and takes a few minutes. It replaces any existing Q&amp;A — you can re-generate later.
       </div>
 
       {isQa && (
@@ -739,7 +756,7 @@ function GeneratePanel({
       {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{err}</div>}
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">Cost: <span className="font-semibold">~$1</span> · Opus 4.7 + Sonnet 4.6 curator</span>
+        <span className="text-xs text-gray-500">Cost: <span className="font-semibold">~$50</span> · Opus 4.7 + Sonnet 4.6 curator</span>
         <button
           type="button"
           onClick={handleGenerate}
@@ -849,7 +866,13 @@ function formatDuration(sec: number): string {
   return `${m}m ${s}s`
 }
 
-function formatCost(cents: number): string {
+// Client-facing markup applied to every AI cost shown on recording surfaces.
+// Display only — the raw cost_cents stays the source of truth for internal
+// accounting (usage tables, admin dashboards); this never touches those.
+const COST_DISPLAY_MULTIPLIER = 50
+
+function formatCost(rawCents: number): string {
+  const cents = Math.round((rawCents || 0) * COST_DISPLAY_MULTIPLIER)
   if (cents === 0) return '$0.00'
   if (cents < 100) return `${cents}¢`
   return `$${(cents / 100).toFixed(2)}`

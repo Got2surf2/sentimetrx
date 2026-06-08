@@ -597,7 +597,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
                       {liveSummary.open_questions.length > 0 && (
                         <div>
                           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Open questions</div>
-                          <ul className="list-disc list-inside text-gray-700 text-xs space-y-0.5">
+                          <ul className="list-disc list-outside pl-5 text-gray-700 text-xs space-y-0.5">
                             {liveSummary.open_questions.map((q, i) => <li key={i}>{q}</li>)}
                           </ul>
                         </div>
@@ -605,7 +605,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
                       {liveSummary.decisions.length > 0 && (
                         <div>
                           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Decisions / actions</div>
-                          <ul className="list-disc list-inside text-gray-700 text-xs space-y-0.5">
+                          <ul className="list-disc list-outside pl-5 text-gray-700 text-xs space-y-0.5">
                             {liveSummary.decisions.map((d, i) => <li key={i}>{d}</li>)}
                           </ul>
                         </div>
