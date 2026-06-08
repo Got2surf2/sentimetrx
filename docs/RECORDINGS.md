@@ -1279,4 +1279,21 @@ If by 2026-06-13 the Sandbox/Queues/Deepgram integration isn't solid:
 
 ---
 
-*Last reviewed: 2026-05-30 (Phase 0 substrate landed; Phase 1 code complete, awaiting live PM-1 exercise). Refresh after each phase ships.*
+## 15. Live in-person capture (continuous transcription)
+
+A real-time front-end that runs *in front of* the existing batch pipeline rather than replacing it: during an in-person meeting the browser streams mic audio live for captions + a rolling summary, and at meeting end the **same captured audio** is handed to `processRecordingWorkflow` so the polished report/deck is produced by the unchanged Phase-1 pipeline.
+
+**Transport.** No WebSocket server on Vercel (Fluid Compute). The browser streams audio **directly to Deepgram's live WS** using a short-lived token minted server-side, so our `DEEPGRAM_API_KEY` never reaches the client. The token (`/v1/auth/grant`, ttl 60s, Bearer at connect) is org-scoped by the auth check on the route.
+
+**Audio is captured once and reused.** The live-capture client MUST record the raw mic stream to a local Blob *while* it streams to Deepgram, then upload that Blob as a normal `recording_files` source on stop. The live transcript is a real-time convenience layer; the authoritative transcript + extraction always come from the existing pipeline running on the saved audio (Whisper/hybrid, diarization, entity correction). Never rely on the streamed transcript alone for the deliverable.
+
+| Piece | Status | Where |
+|---|---|---|
+| 1 — short-lived Deepgram token mint | **Code complete (2026-06-07)** | `lib/asr/deepgram.ts` `grantDeepgramToken()` + `POST /api/recordings/[id]/live-token`. Org-gated, rejects terminal-status recordings. |
+| 2 — live capture client (AudioWorklet → Deepgram WS; record local Blob → upload on stop) | Pending | `app/recordings/[id]/live/LiveClient.tsx` |
+| 3 — incremental segment append | Pending | `POST /api/recordings/[id]/segments` |
+| 4 — rolling summary (reuse `analyze.ts` synthesis pass) | Pending | `POST /api/recordings/[id]/live-summary` |
+
+---
+
+*Last reviewed: 2026-06-07 (Phase 0+1 substrate live; live-capture piece 1 — Deepgram token mint — code complete). Refresh after each phase ships.*

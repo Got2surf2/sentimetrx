@@ -11,7 +11,44 @@ import 'server-only'
 import type { AsrVendor, TranscriptSegment } from '@/lib/recordings/types'
 
 const DEEPGRAM_BATCH_URL = 'https://api.deepgram.com/v1/listen'
+const DEEPGRAM_GRANT_URL = 'https://api.deepgram.com/v1/auth/grant'
 const DEEPGRAM_USD_PER_MINUTE = 0.0073
+
+export interface DeepgramGrant {
+  /** Short-lived JWT — connect to the live WS with `Authorization: Bearer <access_token>`. */
+  access_token: string
+  /** Seconds until the JWT expires. Only needs to be valid at WS connect time. */
+  expires_in: number
+}
+
+/**
+ * Mint a short-lived Deepgram token so the browser can stream mic audio
+ * directly to Deepgram's live WS without ever holding our API key. The token
+ * is only checked at connect time; the socket stays open afterward.
+ * Default TTL 30s, max 3600s (Deepgram). We use 60s — ample to connect.
+ */
+export async function grantDeepgramToken(ttlSeconds = 60): Promise<DeepgramGrant> {
+  const apiKey = process.env.DEEPGRAM_API_KEY
+  if (!apiKey) throw new Error('DEEPGRAM_API_KEY is required to grant a live token')
+
+  const res = await fetch(DEEPGRAM_GRANT_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ttl_seconds: ttlSeconds }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    throw new Error(`Deepgram grant ${res.status}: ${errText.slice(0, 500)}`)
+  }
+
+  const data = await res.json() as { access_token?: string; expires_in?: number }
+  if (!data.access_token) throw new Error('Deepgram grant returned no access_token')
+  return { access_token: data.access_token, expires_in: data.expires_in ?? ttlSeconds }
+}
 
 export interface DeepgramResult {
   vendor: AsrVendor              // always 'deepgram' from this adapter

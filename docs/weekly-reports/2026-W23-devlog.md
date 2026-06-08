@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 1: short-lived Deepgram token
+
+**Why**: Scoping a continuous, Zoom-like in-person transcriber. The live front-end streams mic audio straight to Deepgram's live WS; since Vercel has no WS server and the browser must not hold our API key, we mint a short-lived token server-side. This is the de-risking first piece before the capture UI.
+
+**What changed**: `lib/asr/deepgram.ts` gains `grantDeepgramToken(ttl=60)` (`POST /v1/auth/grant`, `Token` auth → `{access_token, expires_in}`; client connects with Bearer, valid only at connect). New route `POST /api/recordings/[id]/live-token` mirrors the `process` route's auth + (id,org_id) pairing, rejects terminal-status recordings, returns the grant. Spec: RECORDINGS.md §15 documents the live-capture arc + the capture-once-reuse-for-batch invariant.
+
+**Verify**: tsc clean. **Local-only**, not pushed. Next: piece 2 (capture client) — record raw mic to a Blob while streaming, upload as a `recording_files` source on stop so the existing batch pipeline produces the authoritative transcript/deck.
+
+
 ## 2026-06-05 — TextMine Compare: % ↔ ★ Rating bar-metric toggle
 
 **Why**: Owner — on the Group Comparison chart, wanted to toggle the bars between the current % view and average rating (the rating was already shown as a number on the right, just not visualized).
