@@ -42,6 +42,7 @@ const CARDS: Card[] = [
   { category: 'quality', icon: '🔍', title: 'Agent Tester',     description: 'Test conversational AI agents in isolation.', href: '/admin/agent-tester' },
   { category: 'quality', icon: '🎲', title: 'Simulators',       description: 'Simulate respondent flows, PulseIQ sessions, and edge cases.', href: '/admin/simulator' },
   { category: 'quality', icon: '🛡',  title: 'Content Guard',    description: 'Test moderation rules and sentiment scoring on sample text.', href: '/admin/content-guard' },
+  { category: 'quality', icon: '🏷', title: 'Dimensions Gold Set', description: 'Review & label the REO taxonomy gold set — the eval harness for the Dimensions classifier.', href: '/admin/reo-gold-set' },
 
   // Reports
   { category: 'reports', icon: '📈', title: 'Governance Trend',   description: 'Weekly audit scores over time — we monitor and improve on a continuous basis.', href: '/admin/governance' },

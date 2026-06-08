@@ -243,12 +243,6 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             >
               Backups
             </Link>
-            <Link
-              href="/admin/reo-gold-set"
-              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 hover:text-orange-600 text-gray-700 font-semibold text-sm transition-all"
-            >
-              🏷️ Dimensions Gold Set
-            </Link>
             <button
               onClick={() => setShowNew(v => !v)}
               className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all text-white"
