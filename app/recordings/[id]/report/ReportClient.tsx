@@ -25,6 +25,7 @@ import type {
   EntityMap,
   Signoff,
 } from '@/lib/recordings/types'
+import TranscriptComparisonTab from './TranscriptComparisonTab'
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
 import { computeCoverage } from '@/lib/recordings/coverage'
@@ -53,16 +54,18 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
-type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'transcript' | 'export'
+type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'transcript' | 'comparison' | 'export'
 
 const HERMES = '#E8632A'
 
-const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'transcript', 'export']
+const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'transcript', 'comparison', 'export']
 
 export default function ReportClient({ data }: { data: ReportData }) {
   // Presentation-scope flagging + the Presentation tab are only meaningful when
   // the meeting had a presentation.
   const hasPresentation = !!(data.recording.meeting_profile?.phases?.some(p => p.kind === 'presentation')) || !!data.recording.proceedings_summary
+  // The live-vs-final comparison tab only exists for live-recorded meetings.
+  const hasLiveTranscript = !!data.recording.live_transcript
 
   // Deep-linkable tab (e.g. the list card's "needs review" pill → ?tab=coverage).
   // Defaults to coverage, the review hub. ?tab=presentation falls back to coverage
@@ -72,6 +75,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
   const [tab, setTab] = useState<Tab>(() => {
     const t = tabParam ?? ''
     if (t === 'presentation' && !hasPresentation) return 'coverage'
+    if (t === 'comparison' && !hasLiveTranscript) return 'coverage'
     return (TABS as readonly string[]).includes(t) ? (t as Tab) : 'coverage'
   })
   // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
@@ -134,6 +138,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         tab={tab}
         onChange={(t) => { setReviewFlagged(false); setTab(t) }}
         hasPresentation={hasPresentation}
+        hasLiveTranscript={hasLiveTranscript}
         counts={{
           qa: qaPairs.length,
           actions: actionItems.length,
@@ -147,6 +152,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
+        {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
             <ExportTab
@@ -275,12 +281,13 @@ function StatusBadge({ status }: { status: string }) {
 // ── Tab bar ──────────────────────────────────────────────────────────────────
 
 function TabBar({
-  tab, onChange, counts, hasPresentation,
+  tab, onChange, counts, hasPresentation, hasLiveTranscript,
 }: {
   tab: Tab
   onChange: (t: Tab) => void
   counts: { qa: number; actions: number; coverage: number }
   hasPresentation: boolean
+  hasLiveTranscript: boolean
 }) {
   // 'warn' tone = the badge is a count of pairs needing review (same number as the
   // card's "N pairs need review" pill) → render amber so it reads as an alert, not
@@ -292,6 +299,7 @@ function TabBar({
     { key: 'qa',         label: 'Q&A',          badge: counts.qa },
     { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'transcript', label: 'Transcript' },
+    ...(hasLiveTranscript ? [{ key: 'comparison' as Tab, label: 'Live vs Final' }] : []),
     { key: 'export',     label: 'Export & Share' },
   ]
   return (

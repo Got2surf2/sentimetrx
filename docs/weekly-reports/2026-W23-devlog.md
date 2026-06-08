@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture: live-vs-final transcript comparison tab
+
+**Why**: Owner wants to evaluate how much the post-processed batch transcript improved on the rough live captions (a quality signal for the live-capture product).
+
+**What changed**: New `app/recordings/[id]/report/TranscriptComparisonTab.tsx` — a "Live vs Final" tab on the report, shown only when `recordings.live_transcript` is set (i.e. the meeting was recorded live). Side-by-side panels (live raw ASR | final post-processed) plus stats: live/final word counts, word delta + %, and an order-independent multiset **word-overlap %** (O(n), no diff library — avoids a dependency and the memory cost of a full LCS on long transcripts). `RecordingRow` type gained `live_transcript`/`live_summary` (sql/120 columns). Wired into `ReportClient` tab system (type, TABS, deep-link guard, TabBar conditional, render). A positional inline word-diff is a possible later enhancement.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. Needs an in-browser look once a real live recording exists.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 5: input device picker + AGC toggle
 
 **Why**: Owner is standardizing on a real mic (RØDE Wireless PRO). A USB class-compliant mic behaves like a normal mic, but `getUserMedia` was grabbing the *system default* with no in-app way to choose or confirm which mic — so the good mic could be silently ignored. They asked for explicit selection + an AGC toggle.

@@ -147,6 +147,12 @@ export interface RecordingRow {
   presentation_outline: PresentationOutline | null
   proceedings_summary: ProceedingsSummary | null
 
+  // Live in-person capture (sql/120). Set only for live-recorded meetings:
+  // the raw real-time ASR transcript + the last rolling summary. Convenience
+  // layer — the authoritative transcript is recording_transcripts.segments.
+  live_transcript: string | null
+  live_summary: { headline: string; summary: string; topics: string[]; open_questions: string[]; decisions: string[] } | null
+
   // Entity-spelling normalization (sql/100). Auto-extracted at the gate, then
   // user-corrected. Feeds the polish glossary + the "Corrected" transcript view.
   entity_map: EntityMap | null
