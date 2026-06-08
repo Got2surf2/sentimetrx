@@ -188,11 +188,24 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
       </header>
 
       {isSetup ? (
-        <AddRecordingClient
-          recordingId={recordingId}
-          showSlides={data?.recording.meeting_profile?.preset_id === 'community_meeting'}
-          onStarted={fetchStatus}
-        />
+        <div className="space-y-4">
+          <Link
+            href={`/recordings/${recordingId}/live`}
+            className="flex items-center justify-between bg-white border-2 border-orange-200 rounded-2xl p-5 hover:border-orange-300 transition-colors"
+          >
+            <div>
+              <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2"><span className="text-lg">🎙️</span> Record live</h2>
+              <p className="text-xs text-gray-500 mt-1">In the room now? Capture the meeting live — we save the audio and process it automatically when you stop.</p>
+            </div>
+            <span className="shrink-0 text-orange-500 text-sm font-semibold">Start →</span>
+          </Link>
+          <div className="text-center text-xs text-gray-400">— or upload a recording —</div>
+          <AddRecordingClient
+            recordingId={recordingId}
+            showSlides={data?.recording.meeting_profile?.preset_id === 'community_meeting'}
+            onStarted={fetchStatus}
+          />
+        </div>
       ) : (
       <>
       <StepList status={status} data={data} />

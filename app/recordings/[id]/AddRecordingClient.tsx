@@ -12,8 +12,8 @@
 //   5. onStarted() → the status page re-polls and shows the ladder
 
 import { useCallback, useMemo, useState } from 'react'
-import * as tus from 'tus-js-client'
 import { createClient } from '@/lib/supabase/client'
+import { tusUpload } from '@/lib/recordings/tusUpload'
 
 const HERMES = '#E8632A'
 
@@ -324,46 +324,36 @@ interface UploadOneArgs {
   onError: (msg: string) => void
 }
 
-function uploadOne(args: UploadOneArgs): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const upload = new tus.Upload(args.file, {
+async function uploadOne(args: UploadOneArgs): Promise<void> {
+  try {
+    await tusUpload({
+      file: args.file,
+      storagePath: args.storagePath,
       endpoint: args.endpoint,
-      retryDelays: [0, 3000, 5000, 10000, 20000],
-      headers: { Authorization: `Bearer ${args.sessionJwt}`, 'x-upsert': 'true' },
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      metadata: {
-        bucketName: args.bucket,
-        objectName: args.storagePath,
-        contentType: args.file.type || 'application/octet-stream',
-        cacheControl: '3600',
-      },
-      chunkSize: 6 * 1024 * 1024,
-      onProgress: (sent, total) => { if (total > 0) args.onProgress(sent / total) },
-      onError: (err) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        args.onError(msg)
-        reject(new Error(`${args.file.name}: ${msg}`))
-      },
-      onSuccess: async () => {
-        try {
-          const r = await fetch(`/api/recordings/${args.recordingId}/files/${args.serverId}/uploaded`, { method: 'POST' })
-          if (!r.ok) {
-            const b = await r.json().catch(() => ({}))
-            const msg = b?.error || `ack ${r.status}`
-            args.onError(msg)
-            reject(new Error(`${args.file.name}: ${msg}`))
-            return
-          }
-          args.onDone()
-          resolve()
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'ack failed'
-          args.onError(msg)
-          reject(new Error(`${args.file.name}: ${msg}`))
-        }
-      },
+      bucket: args.bucket,
+      sessionJwt: args.sessionJwt,
+      contentType: args.file.type || 'application/octet-stream',
+      onProgress: args.onProgress,
     })
-    upload.start()
-  })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    args.onError(msg)
+    throw new Error(`${args.file.name}: ${msg}`)
+  }
+
+  // Storage upload succeeded — ack to flip upload_status → 'uploaded'.
+  try {
+    const r = await fetch(`/api/recordings/${args.recordingId}/files/${args.serverId}/uploaded`, { method: 'POST' })
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}))
+      const msg = b?.error || `ack ${r.status}`
+      args.onError(msg)
+      throw new Error(`${args.file.name}: ${msg}`)
+    }
+    args.onDone()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'ack failed'
+    args.onError(msg)
+    throw err instanceof Error && err.message.startsWith(`${args.file.name}:`) ? err : new Error(`${args.file.name}: ${msg}`)
+  }
 }

@@ -1287,12 +1287,16 @@ A real-time front-end that runs *in front of* the existing batch pipeline rather
 
 **Audio is captured once and reused.** The live-capture client MUST record the raw mic stream to a local Blob *while* it streams to Deepgram, then upload that Blob as a normal `recording_files` source on stop. The live transcript is a real-time convenience layer; the authoritative transcript + extraction always come from the existing pipeline running on the saved audio (Whisper/hybrid, diarization, entity correction). Never rely on the streamed transcript alone for the deliverable.
 
+**Transcription timing (decided 2026-06-07).** The authoritative HQ transcription is a **single pass at meeting end** over the whole file, not chunk-by-chunk — Deepgram speaker labels (S1, S2…) are assigned per request, so per-chunk transcription would fragment diarization. The upload happens during/at the end, but the one transcription pass (~1–2 min/hr) + analysis is all the user waits for; the persisted live summary covers that gap.
+
 | Piece | Status | Where |
 |---|---|---|
 | 1 — short-lived Deepgram token mint | **Code complete (2026-06-07)** | `lib/asr/deepgram.ts` `grantDeepgramToken()` + `POST /api/recordings/[id]/live-token`. Org-gated, rejects terminal-status recordings. |
-| 2 — live capture client (AudioWorklet → Deepgram WS; record local Blob → upload on stop) | Pending | `app/recordings/[id]/live/LiveClient.tsx` |
-| 3 — incremental segment append | Pending | `POST /api/recordings/[id]/segments` |
-| 4 — rolling summary (reuse `analyze.ts` synthesis pass) | Pending | `POST /api/recordings/[id]/live-summary` |
+| 2 — capture backbone (mic → MediaRecorder → upload → process handoff) | **Code complete (2026-06-07)** | `app/recordings/[id]/live/{page,LiveClient}.tsx`; shared `lib/recordings/tusUpload.ts` (AddRecordingClient refactored onto it); "Record live" entry on the setup screen (`StatusClient`). MVP records to one Blob and uploads on Stop, then attach→ack→process exactly as the upload flow. |
+| 2b — Deepgram live captions (AudioWorklet PCM → live WS via the piece-1 token) | Pending (next) | layers onto `LiveClient.tsx` |
+| 3 — incremental segment append + rolling summary panel | Pending | `POST /api/recordings/[id]/segments`, `POST /api/recordings/[id]/live-summary` |
+
+> **Deferred hardening:** continuous resumable upload *during* the meeting (crash durability + zero upload-wait at Stop). The MVP uploads the assembled Blob on Stop — fine for a ~1hr meeting (~tens of MB), but a tab crash loses the audio. Revisit if meeting length / reliability demands it.
 
 ---
 

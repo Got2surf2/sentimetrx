@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 2: capture backbone
+
+**Why**: Continuing the continuous in-person transcriber. Piece 2 is the record→upload→process backbone so a meeting captured in the browser flows into the *existing* batch pipeline and produces the normal report. Deepgram live captions (piece 2b) layer on top next; building the backbone first makes them independently verifiable.
+
+**What changed**: New `/recordings/[id]/live` route — `page.tsx` (auth + setup-state gate) + `LiveClient.tsx` (getUserMedia → MediaRecorder → assemble one Blob on Stop → attach via `/files` → TUS upload → ack → `/process` → redirect to status). Extracted the TUS upload into shared `lib/recordings/tusUpload.ts` and refactored `AddRecordingClient` onto it (no second upload path). "Record live" entry point added to the setup screen (`StatusClient`). Design decision recorded in RECORDINGS.md §15: single end-of-meeting HQ transcription pass (per-chunk would fragment Deepgram diarization); continuous-during-meeting upload deferred as durability hardening (MVP uploads on Stop).
+
+**Verify**: tsc clean (cache-cleared), 472 tests pass. **Local-only**, not pushed. Next: piece 2b — AudioWorklet PCM → Deepgram live WS for on-screen captions.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 1: short-lived Deepgram token
 
 **Why**: Scoping a continuous, Zoom-like in-person transcriber. The live front-end streams mic audio straight to Deepgram's live WS; since Vercel has no WS server and the browser must not hold our API key, we mint a short-lived token server-side. This is the de-risking first piece before the capture UI.
