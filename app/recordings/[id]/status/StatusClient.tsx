@@ -764,19 +764,6 @@ function GeneratePanel({
       </label>
 
       {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{err}</div>}
-
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">Cost: <span className="font-semibold">~$50</span> · Opus 4.7 + Sonnet 4.6 curator</span>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={busy}
-          className="px-4 py-2 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
-          style={{ backgroundColor: '#E8632A' }}
-        >
-          {busy ? 'Starting…' : 'Generate Q&A pairs'}
-        </button>
-      </div>
     </section>
   )
 }

@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall: fix Generate gate race + drop duplicate button
+
+**Why**: Owner clicked "Generate Q&A pairs", it showed Starting… then reverted with nothing happening (needed a second click). Cause: the analyze route returns before the workflow flips `status → analyzing`, and the status page pauses polling at `transcribed`, so the single post-generate refresh raced ahead of the flip and the page stayed at the gate. Also: a redundant second Generate button at the bottom of the panel.
+
+**What changed**: `app/api/recordings/[id]/analyze/route.ts` now sets `status='analyzing'` (+ clears `error_message`) synchronously before returning — mirrors the `process` route's `queued` flip (workflow's own `setStatus('analyzing')` is idempotent). So the gate leaves `transcribed` on the first click and polling resumes. `StatusClient` GeneratePanel: removed the duplicate bottom Generate button + redundant cost line (the header button + warning already cover it).
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed.
+
+
 ## 2026-06-07 — Town Hall status page: drop the redundant Pipeline details ladder
 
 **Why**: Owner — the pills bar at the top already shows the pipeline, so the collapsed "Pipeline details" vertical ladder was redundant.

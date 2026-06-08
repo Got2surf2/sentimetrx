@@ -109,6 +109,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     console.error({ at: 'recordings.analyze', msg: 'config snapshot failed', err: (e as Error)?.message })
   }
 
+  // Flip the status synchronously BEFORE returning so the gate UI leaves the
+  // paused 'transcribed' state immediately and the status page resumes polling.
+  // (The workflow also sets 'analyzing' as its first step — idempotent.) Without
+  // this, the single post-generate status refresh races ahead of the workflow's
+  // flip and the page appears stuck at the gate.
+  await service
+    .from('recordings')
+    .update({ status: 'analyzing', error_message: null })
+    .eq('id', recording_id)
+    .eq('org_id', org_id)
+
   const run = await start(analyzeRecordingWorkflow, [recording_id, org_id, instructions])
 
   return NextResponse.json({ ok: true, status: 'analyzing', run_id: run.runId })
