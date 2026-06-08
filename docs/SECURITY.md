@@ -234,6 +234,34 @@ Supabase auth round-trips; CSRF bypasses are reviewed inline in
 `proxy.ts` PRs. MFA / session-policy enforcement, once
 ratified, will need its own test.
 
+### Public (unauthenticated) surface
+
+A small set of routes is intentionally **unauthenticated** — public
+respondent widgets, inbound webhooks, embeds, and the MCO demo kiosk.
+They are not org-gated; each instead carries a safety mechanism that
+prevents cross-tenant leak or forgery. Catalogued here so a buyer's DD
+(or a future auditor) can see the public surface is bounded and
+deliberate. Guard-contract regressions live in
+`tests/integration/public-routes-noleak.test.ts`.
+
+| Route | Why it's safe to be public |
+| --- | --- |
+| `POST /api/respond` | Survey submission keyed to an unguessable `recipient_guid` + study `status` check; writes only that respondent's own answers. |
+| `POST /api/townhall/chat` | Validated against `session.status='active'` + a participant token; rate-limited; AI output passes `lib/guardrails`. |
+| `GET /api/townhall/join/[sessionId]` | Returns only the public join payload for an `active` session — no cross-session data. |
+| `POST /api/townhall/responses` | Anonymous self-write of demographics, but only **after** the `participant_id` is validated against the session's turns/conversations (404 otherwise); reads no tenant data. |
+| `POST /api/bots/[id]/chat`, `/impression`, `/ui-hints` | The agent widget is public by design; rate-limited; serves only the bot's own public config + its own KB-grounded answers. |
+| `GET /api/campaigns/click` | Open/click tracking keyed to an unguessable `recipient_guid`; records an event, returns a redirect. |
+| `POST /api/campaigns/webhooks/resend` | Verifies the **Svix HMAC** signature against `RESEND_WEBHOOK_SECRET` (constant-time) + timestamp-skew check before trusting any field. |
+| `GET/POST /api/social/webhook` | GET handshake checks `META_WEBHOOK_VERIFY_TOKEN`; POST verifies the **Meta `x-hub-signature-256` HMAC** against `META_APP_SECRET` before touching any org's stored tokens. |
+| `POST /api/mco/handoff` | Demo kiosk "send to phone": stores the caller-supplied conversation snapshot under a random Crockford-base32 code (the code is the pickup capability); 15-min expiry; reads no tenant data. |
+| `POST /api/clarify` | Public survey clarifier; rate-limited + `lib/guardrails`; operates only on the in-flight respondent's own text. |
+| `POST /api/invite/register` | Invite acceptance — validated against the invite's unguessable token + expiry/used checks. |
+| `POST /api/translate-responses` | Translates only caller-supplied body text via AI (no tenant read); rate-limited per IP, 10K-char input cap, short-circuits for English. |
+
+(`POST /api/translate` is **authenticated** — it appears public-shaped but
+requires a logged-in caller and reads no tenant data by id.)
+
 ---
 
 ## 4. Secrets management
