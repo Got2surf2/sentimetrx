@@ -55,3 +55,13 @@
 **What changed**: new `tests/integration/bot-routes-gate.test.ts` (13 tests) covering the agent API routes — `bots/[id]` GET/PATCH/DELETE, `entities` GET/POST, `questions` GET, `conversations` GET, `knowledge` GET. Asserts the multi-tenancy gate only: 401 (no auth / no org), cross-org 404 (or 403 for conversations) for non-admins, agent-not-found 404, and admin bypass. Exercises both auth shapes in the codebase — `getCallerOrgContext` (entities/questions) and `getAuthUser`+users (bots/[id]/conversations/knowledge). Supabase boundary + AI/embeddings/usage/audit libs mocked. Added to the TESTING.md layout. Coverage over lib+app/api: lines 15.58%→15.91% (the early-return gate paths); the existing 15/10/17/15 floor already sits below.
 
 **Verify**: `npx vitest run bot-routes-gate` 13/13; full suite 559 pass. Local-only.
+
+## 2026-06-08 — React component smoke tests, +5 (Tests-score Batch 4)
+
+**Why**: The last untouched W23 Tests finding — "React components remain largely untested" (1 of 97 had a test). These close the named gap and lift the test ratio (the coverage `include` is `lib/**`+`app/api/**`, so component tests intentionally don't move the coverage %; they're a separate lever).
+
+**What changed**: 5 jsdom suites (19 tests) over shared UI, following the existing BrandTagInput pattern — `DatanautixAttribution` (guards the CLAUDE.md brand contract: "Sentimetrx is a Datanautix product", datanautix.com link, both variants), `ModulePlaceholder` (module name, thousands-formatted counts, settings deep-link), `HelpHint` (popover open/toggle/Escape-close), `FavoriteStar` (aria-pressed/label state, optimistic toggle + POST /api/favorites body, failure revert, late-hydration re-sync), `LottieLoader` (optional message + custom size; lottie-web dynamic import stubbed). Component test count 1→6; test files 52→57. Added to the TESTING.md layout.
+
+**Verify**: `npx vitest run tests/unit/components` 20/20; full suite 575 pass; coverage gate exit 0. Local-only.
+
+**Tests-score arc (Batches 1–4) summary**: coverage now runs + gates in CI (was invisible); lib+api lines 13.68%→15.91%; +92 unit/integration tests across statsUtils/themeUtils/datasetUtils/contentGuard/entityFilter + agent-route org-scoping gates + 5 component suites; one real correctness bug fixed (normCDF). Addresses all three named W23 Tests drags (no-coverage-in-CI, low ratio, untested handlers/components). Realistic move: 5 → ~7.
