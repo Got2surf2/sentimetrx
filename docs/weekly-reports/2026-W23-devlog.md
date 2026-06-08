@@ -1,5 +1,14 @@
 # 2026-W23 — Dev log (Week of Jun 1 to Jun 7)
 
+## 2026-06-07 — Town Hall live capture, piece 5: input device picker + AGC toggle
+
+**Why**: Owner is standardizing on a real mic (RØDE Wireless PRO). A USB class-compliant mic behaves like a normal mic, but `getUserMedia` was grabbing the *system default* with no in-app way to choose or confirm which mic — so the good mic could be silently ignored. They asked for explicit selection + an AGC toggle.
+
+**What changed** (`LiveClient.tsx`): a **microphone dropdown** on the idle screen — `enumerateDevices` lists audioinput devices, a `devicechange` listener refreshes the list live when a mic is plugged in, and a "Show device names" button primes permission so real labels appear (labels are hidden until mic access is granted). The selection feeds `getUserMedia({ audio: { deviceId: { exact } } })`; `OverconstrainedError`/`NotFoundError` now surface "pick another mic". An **Automatic gain control** checkbox (default on) replaces the previously-hardcoded `autoGainControl:true` — off suits a pro mic that sets its own levels. After permission is granted, devices re-refresh so labels populate.
+
+**Verify**: tsc clean, 472 tests pass. **Local-only**, not pushed. Needs an in-browser check (plug in a USB mic → it appears in the dropdown → waveform confirms signal). Note for future: stereo per-transmitter capture (e.g. two RØDE TX → separate channels) would give real speaker separation/diarization, but we currently force mono.
+
+
 ## 2026-06-07 — Town Hall live capture, piece 4: waveform + room-tuned audio + keep live transcript
 
 **Why**: Owner feedback after first successful local test — wants a waveform + more professional visuals, asked whether a gain knob helps quality, and wants the live transcript kept to compare against the post-processed one.

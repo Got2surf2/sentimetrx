@@ -44,6 +44,11 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const [uploadPct, setUploadPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  // Input device selection + automatic-gain toggle.
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const [agc, setAgc] = useState(true)
+
   // Captions (best-effort).
   const [finals, setFinals] = useState<string[]>([])
   const [interim, setInterim] = useState('')
@@ -354,6 +359,31 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     return () => { cancelled = true }
   }, [recordingId])
 
+  const refreshDevices = useCallback(async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices()
+      setDevices(all.filter(d => d.kind === 'audioinput'))
+    } catch { /* ignore */ }
+  }, [])
+
+  // Device labels are only exposed after mic permission is granted; this primes
+  // it (brief getUserMedia, immediately stopped) so the dropdown shows real names.
+  const enableDeviceNames = useCallback(async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true })
+      s.getTracks().forEach(t => t.stop())
+      await refreshDevices()
+    } catch { /* denial is handled when the user hits Start */ }
+  }, [refreshDevices])
+
+  // List input devices on load and whenever one is plugged in/out (e.g. a RØDE).
+  useEffect(() => {
+    void refreshDevices()
+    const onChange = () => { void refreshDevices() }
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange)
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', onChange)
+  }, [refreshDevices])
+
   const start = useCallback(async () => {
     // Starting fresh abandons any unrecovered prior chunks.
     void clearLiveChunks(recordingId)
@@ -369,23 +399,31 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('requesting')
     let stream: MediaStream
     try {
-      // Tuned for a shared room mic: keep automatic gain (handles quiet/loud
-      // speakers without manual fiddling) but turn off echo cancellation +
-      // noise suppression, which are tuned for single-speaker calls and can
-      // swallow other voices around a table.
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
-      })
+      // Echo cancellation + noise suppression are tuned for single-speaker calls
+      // and can swallow other voices around a table, so they're off. Automatic
+      // gain is user-toggleable (off suits a pro mic that sets its own levels).
+      const audio: MediaTrackConstraints = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: agc,
+        channelCount: 1,
+      }
+      if (selectedDeviceId) audio.deviceId = { exact: selectedDeviceId }
+      stream = await navigator.mediaDevices.getUserMedia({ audio })
     } catch (e) {
+      const name = e instanceof DOMException ? e.name : ''
       setError(
-        e instanceof DOMException && e.name === 'NotAllowedError'
+        name === 'NotAllowedError'
           ? 'Microphone access was denied. Allow the mic for this site and try again.'
+          : name === 'OverconstrainedError' || name === 'NotFoundError'
+          ? 'The selected microphone is unavailable — pick another and try again.'
           : 'Could not access a microphone on this device.',
       )
       setPhase('error')
       return
     }
     streamRef.current = stream
+    void refreshDevices() // labels are available now permission is granted
 
     const mime = pickMimeType()
     mimeRef.current = fileMeta(mime).mime
@@ -416,7 +454,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
     startAudioGraph(stream)    // waveform + the source captions reuse
     void startCaptions()       // best-effort; does not block recording
-  }, [finalize, startCaptions, startAudioGraph])
+  }, [finalize, startCaptions, startAudioGraph, agc, selectedDeviceId, refreshDevices])
 
   const stop = useCallback(() => {
     stopTimer()
@@ -446,6 +484,37 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
               Keep this tab open and in the foreground while recording. You&apos;ll see live captions as people
               speak; when you stop, we save the audio and run the same transcription and analysis the upload flow uses.
             </p>
+
+            <div className="mt-5 max-w-md mx-auto text-left space-y-3">
+              <div>
+                <label htmlFor="mic-select" className="block text-xs font-semibold text-gray-700 mb-1">Microphone</label>
+                <select
+                  id="mic-select"
+                  value={selectedDeviceId}
+                  onChange={e => setSelectedDeviceId(e.target.value)}
+                  disabled={phase === 'requesting'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">System default</option>
+                  {devices.map((d, i) => (
+                    <option key={d.deviceId || i} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>
+                  ))}
+                </select>
+                {!devices.some(d => d.label) && (
+                  <button type="button" onClick={enableDeviceNames} className="mt-1 text-xs text-orange-600 hover:underline">
+                    Show device names
+                  </button>
+                )}
+              </div>
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={agc} onChange={e => setAgc(e.target.checked)} className="mt-0.5 rounded" />
+                <span>
+                  Automatic gain control
+                  <span className="block text-xs text-gray-400">Recommended for built-in/laptop mics. Turn off for a pro mic (e.g. a RØDE) that sets its own levels.</span>
+                </span>
+              </label>
+            </div>
+
             {error && (
               <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
             )}
