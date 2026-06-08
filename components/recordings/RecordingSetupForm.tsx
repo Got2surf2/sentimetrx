@@ -37,6 +37,16 @@ interface SetupProposal {
 export interface AgentOption { id: string; name: string }
 export interface MemberOption { id: string; name: string }
 
+// A document persisted to the project (edit mode): the presentation deck
+// (file_role='slides', vision-read) or a brief/reference (file_role='document').
+export interface AttachedDoc {
+  id: string
+  original_filename: string
+  mime_type: string
+  size_bytes: number
+  file_role: 'slides' | 'document'
+}
+
 // Initial values for edit mode (create mode falls back to the defaults below).
 export interface RecordingSetupInitial {
   name: string
@@ -55,6 +65,7 @@ export interface RecordingSetupInitial {
   brandTag: string
   underlyingAgentId: string
   asrStrategy: AsrStrategy
+  documents: AttachedDoc[]        // edit mode — docs already attached to the project
 }
 
 const CONFIDENTIALITY_LABELS: Record<ConfidentialityClass, string> = {
@@ -109,6 +120,10 @@ export default function RecordingSetupForm({
   const [docError, setDocError] = useState<string | null>(null)
   const [suggestion, setSuggestion] = useState<{ proposal: SetupProposal; source: string } | null>(null)
   const [provenance, setProvenance] = useState<SetupProvenance>({})
+  // Edit mode — docs persisted to the project (deck + briefs). Create mode can't
+  // persist (no recording yet), so it only pre-fills; the deck attaches later.
+  const [documents, setDocuments] = useState<AttachedDoc[]>(initial?.documents ?? [])
+  const [attachBusy, setAttachBusy] = useState(false)
 
   // ── Submit state ──────────────────────────────────────────────────────────
   const [busy, setBusy] = useState(false)
@@ -164,6 +179,40 @@ export default function RecordingSetupForm({
     if (cleanedGlossary.length === 0 && p.glossary.length) { setGlossary(p.glossary.join('\n')); prov.glossary = src }
     setProvenance(prev => ({ ...prev, ...prov }))
     setSuggestion(null)
+  }
+
+  // ── Persist a document to the project (edit mode only) ──────────────────────
+  // role='slides' → the deck (PDF, vision-read by the pipeline) + also runs the
+  // pre-fill pass. role='document' → a brief/reference, stored only.
+  const attachDoc = async (file: File, role: 'slides' | 'document') => {
+    setDocError(null); setAttachBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('role', role)
+      const r = await fetch(`/api/recordings/${recordingId}/documents`, { method: 'POST', body: fd })
+      const json = await r.json()
+      if (!r.ok) throw new Error(json.error || `couldn't attach the document (${r.status})`)
+      const added = json.file as AttachedDoc
+      // slides is at-most-one — replace any existing deck in the list.
+      setDocuments(prev => [...(role === 'slides' ? prev.filter(d => d.file_role !== 'slides') : prev), added])
+      if (role === 'slides') await handleDoc(file)   // deck → also propose setup fields
+    } catch (e) {
+      setDocError(e instanceof Error ? e.message : 'Attach failed')
+    } finally {
+      setAttachBusy(false)
+    }
+  }
+
+  const removeDoc = async (fileId: string) => {
+    setDocError(null)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/documents/${fileId}`, { method: 'DELETE' })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `remove failed (${r.status})`) }
+      setDocuments(prev => prev.filter(d => d.id !== fileId))
+    } catch (e) {
+      setDocError(e instanceof Error ? e.message : 'Remove failed')
+    }
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -272,21 +321,63 @@ export default function RecordingSetupForm({
       {/* Project documents — read the deck to pre-fill setup (optional) */}
       <section className="bg-white border border-gray-200 rounded-2xl p-5">
         <h2 className="font-semibold text-gray-900 text-sm">Project documents <span className="font-normal text-gray-400">(optional)</span></h2>
-        <p className="text-xs text-gray-500 mt-1 mb-3">
-          Have the deck that will be presented? Upload it (PDF) and we&apos;ll suggest the objectives, agenda, panel, and key
-          names below — you review before saving. The deck itself is attached later, with the recording.
-        </p>
-        <div className="flex items-center gap-3">
-          <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${docBusy ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
-            <span>📄 {docBusy ? 'Reading the deck…' : 'Add a PDF to pre-fill setup'}</span>
-            <input
-              type="file" accept="application/pdf,.pdf" className="hidden"
-              disabled={docBusy || busy}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleDoc(f); e.target.value = '' }}
-            />
-          </label>
-          {docBusy && <LottieLoader size={28} />}
-        </div>
+        {isEdit ? (
+          <>
+            <p className="text-xs text-gray-500 mt-1 mb-3">
+              Attach the presentation deck (PDF) and any briefs or agendas. The deck is vision-read into the meeting
+              overview when you run the analysis; briefs are kept for reference. Attaching a deck also proposes the
+              objectives, agenda, panel, and names below.
+            </p>
+            {documents.length > 0 && (
+              <ul className="mb-3 space-y-1.5">
+                {documents.map(d => (
+                  <li key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <span className="min-w-0 flex items-center gap-2">
+                      <span>{d.file_role === 'slides' ? '📊' : '📎'}</span>
+                      <span className="truncate text-gray-800">{d.original_filename}</span>
+                      <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                        {d.file_role === 'slides' ? 'Presentation deck' : 'Brief'}
+                      </span>
+                    </span>
+                    <button type="button" onClick={() => removeDoc(d.id)} disabled={attachBusy || busy}
+                      className="shrink-0 text-gray-400 hover:text-red-500 disabled:opacity-30 px-1" title="Remove">✕</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${(attachBusy || docBusy) ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
+                <span>📊 {attachBusy ? 'Attaching…' : 'Attach presentation deck (PDF)'}</span>
+                <input type="file" accept="application/pdf,.pdf" className="hidden" disabled={attachBusy || busy}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) attachDoc(f, 'slides'); e.target.value = '' }} />
+              </label>
+              <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${attachBusy ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
+                <span>📎 Attach a brief / document</span>
+                <input type="file" className="hidden" disabled={attachBusy || busy}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) attachDoc(f, 'document'); e.target.value = '' }} />
+              </label>
+              {(attachBusy || docBusy) && <LottieLoader size={28} />}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-gray-500 mt-1 mb-3">
+              Have the deck that will be presented? Upload it (PDF) and we&apos;ll suggest the objectives, agenda, panel, and key
+              names below — you review before saving. The deck itself is attached later, with the recording.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${docBusy ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
+                <span>📄 {docBusy ? 'Reading the deck…' : 'Add a PDF to pre-fill setup'}</span>
+                <input
+                  type="file" accept="application/pdf,.pdf" className="hidden"
+                  disabled={docBusy || busy}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleDoc(f); e.target.value = '' }}
+                />
+              </label>
+              {docBusy && <LottieLoader size={28} />}
+            </div>
+          </>
+        )}
         {docError && <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{docError}</div>}
         {suggestion && (
           <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3">

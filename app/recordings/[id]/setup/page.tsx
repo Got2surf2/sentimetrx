@@ -34,16 +34,24 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
   if (!ctx.isAdminOrg && (recRow as { org_id: string }).org_id !== ctx.orgId) notFound()
   const recording = recRow as unknown as RecordingRow
 
-  // Org agents (brand/agent link) + members (analyst picker) — same as /new.
-  const [agentsRes, membersRes] = await Promise.all([
+  // Org agents (brand/agent link) + members (analyst picker) — same as /new — and
+  // the project documents already attached (deck + briefs) for the documents pane.
+  const [agentsRes, membersRes, docsRes] = await Promise.all([
     service.from('agents').select('id, name').eq('org_id', recording.org_id).order('name'),
     service.from('users').select('id, full_name, email').eq('org_id', recording.org_id).order('full_name'),
+    service.from('recording_files')
+      .select('id, original_filename, mime_type, size_bytes, file_role')
+      .eq('recording_id', recording.id).eq('org_id', recording.org_id)
+      .in('file_role', ['slides', 'document'])
+      .order('sort_order', { ascending: true }),
   ])
   const agents = ((agentsRes.data ?? []) as Array<{ id: string; name: string | null }>)
     .map(a => ({ id: a.id, name: a.name || 'Untitled' }))
   const members = ((membersRes.data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>)
     .map(m => ({ id: m.id, name: (m.full_name?.trim()) || m.email || '' }))
     .filter(m => m.name)
+
+  const documents = ((docsRes.data ?? []) as Array<{ id: string; original_filename: string; mime_type: string; size_bytes: number; file_role: 'slides' | 'document' }>)
 
   // Map the row into the form's initial values.
   const su = (recording.setup_inputs ?? {}) as Partial<QaSetupInputs>
@@ -62,6 +70,7 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
     analysts: (recording.analysts ?? []).map(a => a.name),
     confidentiality: recording.confidentiality_class || 'client_confidential',
     asrStrategy: recording.asr_strategy,
+    documents,
   }
 
   return (

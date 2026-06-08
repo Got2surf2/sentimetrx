@@ -46,6 +46,7 @@ const storageApi = {
     createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.example/x' }, error: null }),
     list: async () => ({ data: [], error: null }),
     remove: async () => ({ data: [], error: null }),
+    upload: async () => ({ data: { path: 'x' }, error: null }),
   }),
 }
 
@@ -78,6 +79,8 @@ import * as audio from '@/app/api/recordings/[id]/audio/route'
 import * as uploaded from '@/app/api/recordings/[id]/files/[fileId]/uploaded/route'
 import * as reanalyze from '@/app/api/recordings/[id]/reanalyze/route'
 import * as regenerate from '@/app/api/recordings/[id]/extractions/[extractionId]/regenerate/route'
+import * as documents from '@/app/api/recordings/[id]/documents/route'
+import * as documentById from '@/app/api/recordings/[id]/documents/[fileId]/route'
 
 const enabled = { analyze: true, recordings: true } as any
 function userCtx(over: Partial<any> = {}) {
@@ -300,5 +303,56 @@ describe('action sub-routes — input validation', () => {
     recFound('complete')
     const res = await regenerate.POST(req({ instructions: 'x'.repeat(2001) }), { params: Promise.resolve({ id: 'rec_1', extractionId: 'ex_1' }) })
     expect(res.status).toBe(400)
+  })
+})
+
+// ── documents endpoints (§4.1e — attach/detach project docs) ──────────────────
+// These use getUserContext (not getAuthUser), like the create route. The 404
+// path returns before any storage call, so it cleanly exercises the org pairing.
+describe('documents endpoints — auth + org scoping', () => {
+  const docReq = (fields: Record<string, string | Blob>, filename = 'deck.pdf') => {
+    const fd = new FormData()
+    for (const [k, v] of Object.entries(fields)) {
+      if (v instanceof Blob) fd.append(k, v, filename); else fd.append(k, v)
+    }
+    return new Request('http://t/api/recordings/rec_1/documents', { method: 'POST', body: fd })
+  }
+  const p = { params: Promise.resolve({ id: 'rec_1' }) }
+  const validForm = () => docReq({ file: new Blob(['%PDF-1.4'], { type: 'application/pdf' }), role: 'slides' })
+
+  it('POST: 401 unauth / 403 feature off / 404 cross-org (id+org_id paired)', async () => {
+    expect(await status(await documents.POST(validForm(), p))).toBe(401)
+
+    ctx.userCtx = userCtx({ features: { analyze: true, recordings: false } })
+    expect(await status(await documents.POST(validForm(), p))).toBe(403)
+
+    ctx.userCtx = userCtx()
+    ctx.results['recordings'] = { single: { data: null, error: null } }
+    expect(await status(await documents.POST(validForm(), p))).toBe(404)
+    expect(ctx.eq['recordings']).toContainEqual(['id', 'rec_1'])
+    expect(ctx.eq['recordings']).toContainEqual(['org_id', 'orgA'])
+  })
+
+  it('POST: 400 on a bad role / non-PDF deck', async () => {
+    ctx.userCtx = userCtx()
+    expect(await status(await documents.POST(docReq({ file: new Blob(['x']), role: 'media' }), p))).toBe(400)
+    expect(await status(await documents.POST(docReq({ file: new Blob(['x'], { type: 'text/plain' }), role: 'slides' }, 'notes.txt'), p))).toBe(400)
+  })
+
+  it('DELETE: 404 cross-org (id+recording_id+org_id paired); refuses media files', async () => {
+    const pf = { params: Promise.resolve({ id: 'rec_1', fileId: 'file_1' }) }
+    expect(await status(await documentById.DELETE(req(), pf))).toBe(401)
+
+    ctx.userCtx = userCtx()
+    ctx.results['recording_files'] = { single: { data: null, error: null } }
+    expect(await status(await documentById.DELETE(req(), pf))).toBe(404)
+    expect(ctx.eq['recording_files']).toContainEqual(['id', 'file_1'])
+    expect(ctx.eq['recording_files']).toContainEqual(['recording_id', 'rec_1'])
+    expect(ctx.eq['recording_files']).toContainEqual(['org_id', 'orgA'])
+
+    // A media file can't be removed via the documents route.
+    ctx.eq = {}
+    ctx.results['recording_files'] = { single: { data: { id: 'file_1', org_id: 'orgA', storage_path: 'p', file_role: 'media' }, error: null } }
+    expect(await status(await documentById.DELETE(req(), pf))).toBe(400)
   })
 })
