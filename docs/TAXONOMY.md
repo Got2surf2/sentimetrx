@@ -351,3 +351,14 @@ kept as a cross-cutting flag (none/alert/crisis) so allergy/discrimination keep 
 **Coverage gap:** steakhouse reviews give zero Access/Digital examples — targeted-sample
 those before scaling the set. Cost to run the LLM tier once REO lands: ~$0.5–2/1k rows
 (Haiku+caching), ~half via Batch API.
+
+**Scale-up (2026-06-08).** Gold set v1 (30, owner-validated) extended to ~520 via
+LLM drafting: `lib/reoExtractor.ts` (Haiku 4.5, cached system prompt encoding the
+validated rules — closed vocab, sentiment-calibration "neutral mention != Positive",
+Menu = offering) + `scripts/draft-reo-goldset.ts` over a sample (~400 general + 120
+Access/Digital-targeted from casual datasets; `scripts/reo-draft-sample.json`). Seeded
+490 distinct reviews / 2,352 observations as `pending` for owner SPOT-CHECK (not full
+re-label) in `/admin/reo-gold-set`. All 10 domains now covered (Access 65, Digital 12).
+Early eval signal: drafts skew Positive (~72%; Neutral only ~4%) — the model over-calls
+neutral mentions despite the prompt rule; the spot-check quantifies it, then few-shot /
+calibration fix. The owner-verified slice = the gold eval set; the rest are silver.

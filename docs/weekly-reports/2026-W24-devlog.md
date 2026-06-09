@@ -313,3 +313,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: Switched the Excel-workbook button to a fetch→blob download (parses Content-Disposition for the filename) and added a full-screen `LottieLoader` "Preparing {Agent}'s Excel file…" overlay while it builds; button label flips to "Preparing…" and disables. Uses the canonical `components/ui/LottieLoader` (no CSS spinner). BOTS.md updated.
 
 **Verify**: tsc clean. Local-only.
+
+## 2026-06-08 — REO gold-set scale-up to ~520 (LLM-drafted, owner spot-check)
+
+**Why**: Gold set v1 (30, owner-validated) proved the draft labels are structurally reliable; the one refined rule is sentiment calibration. To give the eval statistical weight, scale to ~500 via LLM drafting against the validated standard, and close the Access/Digital coverage gap (zero examples in steakhouse data).
+
+**What changed**: `lib/reoExtractor.ts` — REO LLM classifier (Haiku 4.5 fast tier, cached system prompt encoding the validated rules: closed vocab, sentiment calibration "neutral mention != Positive", Menu = offering-not-dish, evidence-required, cooked→Preparation / wrong-item→Accuracy, outcome→Loyalty+Reputation). `scripts/draft-reo-goldset.ts` + `reo-draft-sample.json` (~400 general + 120 Access/Digital-targeted from Olive Garden/Cheddar's/BareBurger). Seeded 490 distinct reviews / 2,352 observations as `pending`. All 10 domains now covered (Access 65, Digital 12). NOTE: run server-only scripts with `node --conditions=react-server --import tsx`.
+
+**Eval signal**: drafts skew Positive (1684/573/88 = ~72% Pos, ~4% Neutral) — model over-calls neutral mentions despite the prompt; owner spot-check quantifies, then few-shot/calibration fix. Owner-verified slice = gold eval set; rest = silver.
+
+**Verify**: smoke test on 2 reviews correct (incl. Access>Parking, Digital>MobileApp); 519 classified / 0 failed; `npx tsc --noEmit` exit 0. Local-only (no push).
