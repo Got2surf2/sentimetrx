@@ -93,6 +93,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const hasSummaryRef = useRef(false)
   const pcmQueueRef = useRef<ArrayBuffer[]>([])    // opening frames buffered until the WS opens
   const stopResolverRef = useRef<((blob: Blob) => void) | null>(null)
+  const recordedStereoRef = useRef(false)          // did this capture deliver 2 channels? → tells the pipeline to trust the split
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -368,7 +369,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       const ack = await fetch(`/api/recordings/${recordingId}/files/${serverFile.id}/uploaded`, { method: 'POST' })
       if (!ack.ok) throw new Error((await ack.json().catch(() => ({}))).error || `upload ack failed (${ack.status})`)
 
-      await postJson(`/api/recordings/${recordingId}/process`, {})
+      await postJson(`/api/recordings/${recordingId}/process`, { stereo_capture: recordedStereoRef.current })
 
       // Audio is safely in the pipeline — drop the local crash-recovery copy.
       await clearLiveChunks(recordingId)
@@ -471,21 +472,31 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setCapturedChannels(typeof gotChannels === 'number' ? gotChannels : null)
     void refreshDevices() // labels are available now permission is granted
 
-    // Software gain boost: record the output of a gain graph instead of the raw
-    // track. Unity gain (1) keeps the raw stream — the zero-risk default. The
-    // graph preserves channel count, so stereo split survives the boost.
+    // Record the output of a WebAudio graph (not the raw track) whenever the
+    // source is stereo OR a gain boost is set. Why for stereo: MediaRecorder only
+    // *inconsistently* preserves a 2-channel track — routing through an explicit
+    // 2-channel MediaStreamAudioDestinationNode GUARANTEES the recorded blob keeps
+    // both mics on separate channels. Unity-gain mono still records the raw stream.
+    const trackStereo = (gotChannels ?? 1) >= 2
+    recordedStereoRef.current = trackStereo
     let recordStream = stream
-    if (micSettings.gain !== 1) {
+    if (trackStereo || micSettings.gain !== 1) {
       try {
         const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
         const gctx = new Ctx()
         gainCtxRef.current = gctx
         const src = gctx.createMediaStreamSource(stream)
-        const g = gctx.createGain(); g.gain.value = micSettings.gain
         const dest = gctx.createMediaStreamDestination()
-        src.connect(g); g.connect(dest)
+        dest.channelCount = trackStereo ? 2 : 1     // force a true 2-channel (or mono) output
+        dest.channelCountMode = 'explicit'
+        if (micSettings.gain !== 1) {
+          const g = gctx.createGain(); g.gain.value = micSettings.gain
+          src.connect(g); g.connect(dest)
+        } else {
+          src.connect(dest)
+        }
         recordStream = dest.stream
-      } catch { /* gain graph failed — record the raw stream */ }
+      } catch { /* graph failed — record the raw stream */ }
     }
 
     const mime = pickMimeType()

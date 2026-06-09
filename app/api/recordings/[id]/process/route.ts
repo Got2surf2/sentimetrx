@@ -13,11 +13,15 @@ import { processRecordingWorkflow } from '@/workflows/recordings'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const recording_id = (await ctx.params).id
   if (!recording_id) {
     return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
   }
+
+  // The live recorder reports whether it captured a deliberate 2-channel split.
+  let stereoCapture = false
+  try { stereoCapture = ((await req.json()) as { stereo_capture?: boolean })?.stereo_capture === true } catch { /* empty body is fine */ }
 
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
@@ -77,7 +81,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { error: updErr } = await service
     .from('recordings')
-    .update({ status: 'queued', error_message: null })
+    .update({ status: 'queued', error_message: null, ...(stereoCapture ? { capture_stereo: true } : {}) })
     .eq('id', recording_id)
     .eq('org_id', org_id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })

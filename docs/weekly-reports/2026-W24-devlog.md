@@ -449,3 +449,15 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - **Auto-tune sweep** (opt-in, instructed): on Start it sequentially opens the mic under each of 4 combos (AGC×noise-suppress; echo-cancel held off), records ~3s each, and `measureCombo` collects peak, clip fraction, and an SNR estimate (10th vs 90th-pct frame RMS). `scoreCombo` = SNR − clipping/level penalties; the winner becomes a Reco (winning toggles + a gain suggestion) shown in the existing Apply card. Intro panel tells the user exactly what to do (keep talking ~15s); running panel shows progress + a Cancel; `cancelAutoRef` aborts and is tripped on unmount. Honest limits documented in-UI: objective metrics only, needs consistent speech, can't see a silent 2nd speaker — monitor + clip playback remain the human check.
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser sweep accuracy + mono downmix need the owner + RØDE. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: fix intermittent stereo (split mics not always recorded as 2 channels)
+
+**Why**: Owner reported the RØDE split was *detected* but only *occasionally* recorded as separate channels. Two independent gaps between "track is 2-channel" and "audio_channels=2":
+
+**What**:
+1. **Recording layer** (LiveClient): MediaRecorder preserves a 2-channel track only inconsistently. When the captured track is stereo we now record the output of a WebAudio graph with an explicit 2-channel MediaStreamAudioDestinationNode (`channelCount=2, channelCountMode='explicit'`), not the raw track — the blob is guaranteed 2-channel. Unity-gain mono still records the raw stream. `recordedStereoRef` carries the intent to the process call.
+2. **Extract layer**: the L−R dual-mono guard is content-dependent and could collapse a genuine 2-mic recording when the channels correlate. The recorder now sets `recordings.capture_stereo` (sql/123) via `POST …/process { stereo_capture:true }`; `extract.ts` (`loadCaptureStereo` → `detectTrueStereo(..., trustStereo)`) preserves stereo whenever the file has ≥2 channels and **skips the guard** for deliberate captures. Uploads keep auto-detect + guard. Still ffprobe-gated, so a truly-mono blob stays mono (no phantom 2nd speaker).
+
+**Verify**: sql/123 applied to prod; typecheck clean; 461 tests pass; live route compiles. Real-device consistency needs the owner + RØDE (record a few times, confirm S1/S2 every time). Local, not pushed.

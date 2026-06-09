@@ -470,6 +470,10 @@ Channel detection is automatic, in `extract.ts`:
 2. For 2-channel sources, measure left-minus-right energy over the first 2 min. **Dual-mono** files (2 channels, identical content — common from phones/cameras) collapse to near-silence and are treated as **mono**, so they never produce a phantom second speaker. Genuine split-mic stereo is preserved (`-ac 2`, 64kbps).
 Any probe failure fails safe to mono. The live-capture client requests `channelCount:{ideal:2}` so a split-mic receiver delivers 2 channels (a mono mic delivers 1); the same auto-detection then runs on the recorded blob.
 
+**Keeping the split consistent (two layers, fixed 2026-06-09).** Two gaps made live stereo intermittent — detected at capture but not always *recorded* as two channels:
+- **Recording layer:** `MediaRecorder` only inconsistently preserves a 2-channel track. The live recorder now, when the track is stereo, records the output of a WebAudio graph with an **explicit 2-channel `MediaStreamAudioDestinationNode`** (`channelCount=2, channelCountMode='explicit'`) instead of the raw track — guaranteeing both mics land on separate channels in the blob (unity-gain mono still records raw).
+- **Extract layer:** the dual-mono guard (step 2) is content-dependent and could collapse a *genuine* 2-mic recording when the channels are correlated. The recorder now sets **`recordings.capture_stereo`** (sql/123) via `POST .../process { stereo_capture:true }` when it captured 2 channels; `extract.ts` then trusts the split — preserves stereo whenever the file has ≥2 channels and **skips the guard**. Uploads (no intent) keep the auto-detect + guard path. If the blob is somehow still mono, ffprobe sees 1 channel and it correctly stays mono (no phantom).
+
 #### Hybrid path
 
 1. Run Deepgram + Whisper concurrently on the stitched audio.

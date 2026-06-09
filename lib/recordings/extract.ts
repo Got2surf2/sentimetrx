@@ -87,6 +87,11 @@ export async function extractRecording(input: ExtractInput): Promise<ExtractResu
     throw new Error(`extract: no recording_files for recording ${input.recording_id}`)
   }
 
+  // Did the live recorder deliberately capture a 2-channel split? If so we trust
+  // the split and skip the dual-mono guard (which can wrongly collapse a genuine
+  // 2-mic recording). Uploads leave this NULL → full auto-detect + guard.
+  const captureStereo = await loadCaptureStereo(service, input)
+
   const stitchedPath = `${input.org_id}/${input.recording_id}/audio/stitched.mp3`
   const stitchedUploadUrl = await freshUploadUrl(service, stitchedPath)
 
@@ -104,7 +109,7 @@ export async function extractRecording(input: ExtractInput): Promise<ExtractResu
       await runOrThrow(sandbox, ['sh', '-c', `curl -fsSL '${shellQuote(f.download_url)}' -o '${local}'`],
         `download ${f.original_filename}`)
 
-      if (stereo === null) stereo = await detectTrueStereo(sandbox, local, f.original_filename)
+      if (stereo === null) stereo = await detectTrueStereo(sandbox, local, f.original_filename, captureStereo)
 
       await runOrThrow(sandbox, ['sh', '-c', `ffmpeg -y -i '${local}' ${audioFlags(stereo)} '${out}'`],
         `ffmpeg ${f.original_filename}`)
@@ -201,6 +206,19 @@ async function loadFilesWithUrls(
     })
   }
   return out
+}
+
+async function loadCaptureStereo(
+  service: ReturnType<typeof createServiceRoleClient>,
+  input: ExtractInput,
+): Promise<boolean> {
+  const { data } = await service
+    .from('recordings')
+    .select('capture_stereo')
+    .eq('id', input.recording_id)
+    .eq('org_id', input.org_id)
+    .single()
+  return (data?.capture_stereo as boolean | null) === true
 }
 
 async function writeBackDbRows(
@@ -351,6 +369,7 @@ async function detectTrueStereo(
   sandbox: InstanceType<typeof Sandbox>,
   path: string,
   label: string,
+  trustStereo: boolean,
 ): Promise<boolean> {
   try {
     const chRes = await runOrThrow(sandbox, [
@@ -359,6 +378,10 @@ async function detectTrueStereo(
     ], `ffprobe channels ${label}`)
     const channels = parseInt(chRes.stdout.trim(), 10)
     if (!Number.isFinite(channels) || channels < 2) return false
+
+    // Deliberate live split-mic capture: the file has ≥2 channels and the client
+    // told us it's a real split — keep stereo, don't second-guess with the guard.
+    if (trustStereo) return true
 
     // volumedetect prints e.g. "mean_volume: -23.4 dB". On a (L-R) downmix a
     // dual-mono file collapses to near-silence (≈ -91 dB); real stereo is loud.
