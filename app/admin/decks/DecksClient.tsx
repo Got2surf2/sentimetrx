@@ -110,6 +110,17 @@ const DECKS: Deck[] = [
     logKey: 'pulseiq-deck',
   },
   {
+    href: '/api/mco-listening-deck',
+    filename: 'MCO-Listening-To-Your-Guests.pptx',
+    title: 'MCO — Listening to Your Guests',
+    subtitle: 'High-level teaser / leave-behind for Orlando International Airport. Recaps the 2015–2020 guest-experience engagement, lays out a world-class "listening" methodology, peer benchmarking, and the agentic MCO Concierge prototype. Appendix carries illustrative sample outputs (clearly labeled) built to swap with real review data.',
+    audience: 'MCO / GOAA — guest-experience & small-business stakeholders, first meeting follow-up',
+    slides: '14 slides + appendix',
+    accent: '#EF8B1E',
+    badge: 'MCO',
+    logKey: 'mco-listening-deck',
+  },
+  {
     href: '/api/nowocats-approach-deck',
     filename: 'NOWOCATS-Engagement-Approach.pptx',
     title: 'NOWOCATS — PM-2 Engagement Approach',
