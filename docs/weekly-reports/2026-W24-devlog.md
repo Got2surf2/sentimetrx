@@ -529,3 +529,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Live reading progress: ONE best-effort Deepgram socket runs across all combos (opened lazily on the first combo's ctx for sample_rate, mono pcm16-worklet attached to each combo stream via a new `onStream` hook on `measureCombo`; survives the per-combo re-opens). Final results bump a spoken-word counter → the running panel highlights the passage **karaoke-style** (read words bold/dark, unread grey) with a progress bar + "N / M words read". Best-effort: no token/socket → sweep still runs, progress just doesn't advance.
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser karaoke needs owner + mic. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: name the L/R channels of a stereo capture
+
+**Why**: With split mics, "Mic 1·L / Mic 2·R" is generic — owner wants to label the channels (e.g. Facilitator / Audience) so the report reads naturally.
+
+**What**: Mic check shows two optional name inputs once a 2-channel device is confirmed (`stereoDevice`). LiveClient holds `channelNames`, sends them with the process call when stereo + non-empty → `POST …/process { channel_labels:[left,right] }` → `recordings.channel_labels` (sql/124, applied). ReportClient TranscriptTab shows the name in place of S1/Mic-label on each line (keeps the L/R mic tag underneath; legend uses names). Unnamed falls back to Mic 1·L / Mic 2·R.
+
+**Verify**: sql/124 applied; typecheck clean; 461 tests pass; live route compiles. Local, not pushed.

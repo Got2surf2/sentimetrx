@@ -149,6 +149,10 @@ export interface RecordingRow {
   // arrived identical (e.g. browser AGC forced mono) and the guard collapsed them.
   capture_stereo: boolean | null
 
+  // Optional names for stereo channels (sql/124), indexed by channel:
+  // [leftName, rightName]. Report shows these instead of Mic 1·L / Mic 2·R.
+  channel_labels: string[] | null
+
   coverage_report: CoverageReport | null
   analysis_summary: RecordingAnalysisSummary | null
 

@@ -57,6 +57,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   })
   const patchMic = useCallback((patch: Partial<MicSettings>) => setMicSettings(s => ({ ...s, ...patch })), [])
 
+  // Optional names for the two stereo channels (Mic check) → report transcript.
+  const [channelNames, setChannelNames] = useState<[string, string]>(['', ''])
+  const setChannelName = useCallback((index: 0 | 1, value: string) =>
+    setChannelNames(n => (index === 0 ? [value, n[1]] : [n[0], value])), [])
+  const channelNamesRef = useRef<[string, string]>(['', ''])
+  channelNamesRef.current = channelNames
+
   // Channels the device actually delivered (1=mono, 2=stereo/split-mic). Drives
   // the on-screen "speakers will be separated" confirmation; the pipeline
   // independently auto-detects the layout from the recorded audio.
@@ -371,7 +378,9 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       const ack = await fetch(`/api/recordings/${recordingId}/files/${serverFile.id}/uploaded`, { method: 'POST' })
       if (!ack.ok) throw new Error((await ack.json().catch(() => ({}))).error || `upload ack failed (${ack.status})`)
 
-      await postJson(`/api/recordings/${recordingId}/process`, { stereo_capture: recordedStereoRef.current })
+      const names = channelNamesRef.current.map(n => n.trim())
+      const channelLabels = recordedStereoRef.current && names.some(Boolean) ? names : undefined
+      await postJson(`/api/recordings/${recordingId}/process`, { stereo_capture: recordedStereoRef.current, channel_labels: channelLabels })
 
       // Audio is safely in the pipeline — drop the local crash-recovery copy.
       await clearLiveChunks(recordingId)
@@ -590,6 +599,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
                 onChange={patchMic}
                 onShowNames={enableDeviceNames}
                 disabled={phase === 'requesting'}
+                channelNames={channelNames}
+                onChannelName={setChannelName}
               />
             </div>
 

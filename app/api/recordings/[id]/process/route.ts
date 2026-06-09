@@ -19,9 +19,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: 'missing recording id' }, { status: 400 })
   }
 
-  // The live recorder reports whether it captured a deliberate 2-channel split.
+  // The live recorder reports whether it captured a deliberate 2-channel split
+  // and optional names for the two channels.
   let stereoCapture = false
-  try { stereoCapture = ((await req.json()) as { stereo_capture?: boolean })?.stereo_capture === true } catch { /* empty body is fine */ }
+  let channelLabels: string[] | null = null
+  try {
+    const body = (await req.json()) as { stereo_capture?: boolean; channel_labels?: unknown }
+    stereoCapture = body?.stereo_capture === true
+    if (Array.isArray(body?.channel_labels)) {
+      const labels = body.channel_labels.slice(0, 2).map(v => String(v ?? '').slice(0, 80))
+      if (labels.some(s => s.trim())) channelLabels = labels
+    }
+  } catch { /* empty body is fine */ }
 
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
@@ -81,7 +90,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { error: updErr } = await service
     .from('recordings')
-    .update({ status: 'queued', error_message: null, ...(stereoCapture ? { capture_stereo: true } : {}) })
+    .update({ status: 'queued', error_message: null, ...(stereoCapture ? { capture_stereo: true } : {}), ...(channelLabels ? { channel_labels: channelLabels } : {}) })
     .eq('id', recording_id)
     .eq('org_id', org_id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })

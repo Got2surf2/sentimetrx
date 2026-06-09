@@ -207,6 +207,7 @@ function scoreCombo(m: ComboMetrics): number {
 
 export default function MicCheck({
   recordingId, language, devices, settings, onChange, onShowNames, disabled,
+  channelNames, onChannelName,
 }: {
   recordingId: string
   language: string
@@ -215,6 +216,8 @@ export default function MicCheck({
   onChange: (patch: Partial<MicSettings>) => void
   onShowNames: () => void
   disabled?: boolean
+  channelNames: [string, string]
+  onChannelName: (index: 0 | 1, value: string) => void
 }) {
   const [testing, setTesting] = useState(false)
   const [channels, setChannels] = useState(1)
@@ -773,6 +776,27 @@ export default function MicCheck({
           </button>
         )}
       </div>
+
+      {/* Name the two mics — shown once a 2-channel device is confirmed. These
+          names appear in the report transcript instead of "Mic 1·L / Mic 2·R". */}
+      {stereoDevice && (
+        <div className="rounded-lg border border-gray-200 p-3">
+          <span className="block text-xs font-semibold text-gray-700">Name the two mics (optional)</span>
+          <p className="text-[11px] text-gray-500 mt-0.5 mb-2">Labels each speaker in the report — e.g. “Facilitator” and “Audience”.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-[11px] text-gray-500 mb-0.5">Left · Mic 1</span>
+              <input type="text" value={channelNames[0]} disabled={disabled} onChange={e => onChannelName(0, e.target.value)}
+                placeholder="e.g. Facilitator" className="w-full border border-gray-300 rounded px-2 py-1.5" style={{ fontSize: '16px' }} />
+            </label>
+            <label className="block">
+              <span className="block text-[11px] text-indigo-600 mb-0.5">Right · Mic 2</span>
+              <input type="text" value={channelNames[1]} disabled={disabled} onChange={e => onChannelName(1, e.target.value)}
+                placeholder="e.g. Audience" className="w-full border border-gray-300 rounded px-2 py-1.5" style={{ fontSize: '16px' }} />
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Post-test recommendation */}
       {reco && !testing && (

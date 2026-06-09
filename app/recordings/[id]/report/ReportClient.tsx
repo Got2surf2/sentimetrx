@@ -161,7 +161,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} onPlay={playAt} />}
+        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
@@ -1708,7 +1708,7 @@ function TimelineExcerptModal({ pair, index, segments, onClose }: {
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; onPlay: PlayHandler }) {
+function TranscriptTab({ transcript, entityMap, extractions, channelLabels, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
@@ -1795,7 +1795,7 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
       )}
       {hasStereo && (
         <p className="text-xs text-gray-500">
-          Stereo mics: <span className="text-gray-800">Mic 1 · L (plain)</span> · <span className="italic text-indigo-700">Mic 2 · R (italic, colored)</span> — each line is colored by its source microphone.
+          Stereo mics: <span className="text-gray-800">{channelLabels?.[0]?.trim() || 'Mic 1 · L'} (plain)</span> · <span className="italic text-indigo-700">{channelLabels?.[1]?.trim() || 'Mic 2 · R'} (italic, colored)</span> — each line is colored by its source microphone.
           {collisions.size > 0 && <> A <span className="underline decoration-wavy decoration-amber-500 underline-offset-2">wavy underline</span> marks where both mics spoke at once (crosstalk) — words there may overlap or garble.</>}
         </p>
       )}
@@ -1810,16 +1810,22 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
             >
               ▶ {formatTime(s.start)}
             </button>
-            {(s.speaker || typeof s.channel === 'number') && (
-              <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">
-                {s.speaker && <span className="text-xs font-semibold text-gray-500">{s.speaker}</span>}
-                {typeof s.channel === 'number' && (
-                  <span className={`text-[10px] font-medium ${s.channel === 0 ? 'text-gray-500' : 'text-indigo-600'}`} title="Source microphone (stereo split)">
-                    {micLabel(s.channel)}
-                  </span>
-                )}
-              </span>
-            )}
+            {(() => {
+              const ch = typeof s.channel === 'number' ? s.channel : null
+              const chName = ch !== null ? channelLabels?.[ch]?.trim() : undefined
+              const primary = chName || s.speaker   // named mic → name; else S1/S2
+              if (!primary && ch === null) return null
+              return (
+                <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">
+                  {primary && <span className={`text-xs font-semibold truncate ${chName ? (ch === 0 ? 'text-gray-700' : 'text-indigo-700') : 'text-gray-500'}`} title={primary}>{primary}</span>}
+                  {ch !== null && (
+                    <span className={`text-[10px] font-medium ${ch === 0 ? 'text-gray-500' : 'text-indigo-600'}`} title="Source microphone (stereo split)">
+                      {micLabel(ch)}
+                    </span>
+                  )}
+                </span>
+              )
+            })()}
             {(() => {
               const role = roles.get(s.start)
               const weight = role === 'question' ? 'font-bold' : role === 'answer' ? 'font-bold italic' : ''
