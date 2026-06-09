@@ -427,3 +427,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Mic test captions (`MicCheck`): refactored single mono caption stream → **per-channel** — for a stereo device it opens TWO Deepgram live streams off the meters' ChannelSplitter (L=output 0, R=output 1), each its own colored lane (matches the report). Mono stays one stream. Caption state re-keyed `{mono|L|R}`.
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser per-mic captions need the owner + RØDE. Local, not pushed. (Note: stereo test = two live Deepgram streams = ~2× the small per-test caption usage.)
+
+---
+
+### 2026-06-09 — Town Hall: Mic check recommends settings after a test
+
+**Why**: Owner wanted the test to not just show levels but tell them what to set — gain + toggles — so a non-technical user gets a one-click correct configuration.
+
+**What** (MicCheck.tsx): the test tracks peak level + whether it ever clipped (refs updated in the meter draw loop). On an explicit "Stop test", `computeReco(maxLevel, clipped, channels, settings)` produces a plain-English recommendation + a suggested MicSettings: clipping → lower gain (or back off hardware); low signal → raise software gain to ~target (with the dB shown); good → say so; echo-cancel/noise-suppress → off for room capture; stereo + AGC → AGC off (fights per-mic levels). An **Apply recommended** button writes the suggested settings via onChange; Dismiss closes it. Metrics read from refs (incl. channelsRef) so stopTest stays identity-stable and a constraint-change re-open/unmount never pops the card.
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser reco accuracy needs the owner + RØDE. Local, not pushed.

@@ -55,6 +55,42 @@ function zoneOf(level: number): Zone {
   return 'good'
 }
 
+interface Reco { messages: string[]; suggested: MicSettings; hasChanges: boolean }
+
+// Turn what the test observed (peak level, whether it clipped, channel count)
+// + the current settings into a concrete recommendation the user can one-click
+// apply. Heuristics, deliberately conservative for room/multi-speaker capture.
+function computeReco(maxLevel: number, clipped: boolean, channels: number, s: MicSettings): Reco {
+  if (maxLevel < 0.02) {
+    return { messages: ['We didn’t pick up much sound — run the test again and speak normally first.'], suggested: s, hasChanges: false }
+  }
+  const messages: string[] = []
+  const suggested: MicSettings = { ...s }
+
+  // Level → gain.
+  if (clipped || maxLevel >= 0.96) {
+    if (s.gain > 1) { suggested.gain = Math.max(1, Math.round(s.gain * 0.7 * 10) / 10); messages.push(`Peaks were clipping — lower software gain to ${gainToDb(suggested.gain)}.`) }
+    else messages.push('Peaks were clipping — lower the mic’s hardware gain (device / RØDE Central) or move back a little.')
+  } else if (maxLevel < 0.2) {
+    const factor = 0.5 / maxLevel
+    suggested.gain = Math.min(4, Math.max(s.gain, Math.round(s.gain * factor * 10) / 10))
+    if (suggested.gain > s.gain) messages.push(`Signal was low — raise software gain to about ${gainToDb(suggested.gain)} (or move closer / raise the mic’s own gain).`)
+    else messages.push('Signal was a little low — move closer or raise the mic’s own gain.')
+  } else {
+    messages.push('Input level looked good.')
+  }
+
+  // Processing — defaults that preserve every voice in a room.
+  if (s.echoCancellation) { suggested.echoCancellation = false; messages.push('Turn OFF echo cancellation — it can swallow other voices around a table.') }
+  if (s.noiseSuppression) { suggested.noiseSuppression = false; messages.push('Turn OFF noise suppression — it can clip quiet speakers (use it only for steady background hum).') }
+  if (channels === 2 && s.agc) { suggested.agc = false; messages.push('With split mics, turn OFF automatic gain control — it fights the per-mic levels; use software gain instead.') }
+  if (channels === 2) messages.push('Stereo split detected — the two mics will be separated as Speaker 1 / Speaker 2.')
+
+  const hasChanges = suggested.gain !== s.gain || suggested.agc !== s.agc
+    || suggested.echoCancellation !== s.echoCancellation || suggested.noiseSuppression !== s.noiseSuppression
+  return { messages, suggested, hasChanges }
+}
+
 export default function MicCheck({
   recordingId, language, devices, settings, onChange, onShowNames, disabled,
 }: {
@@ -86,6 +122,12 @@ export default function MicCheck({
   // HEAR the effect of each toggle/gain change and pick what sounds best. Off by
   // default: monitoring through speakers with an open mic feeds back (headphones).
   const [monitor, setMonitor] = useState(false)
+
+  // Post-test recommendation (settings the test suggests, one-click apply).
+  const [reco, setReco] = useState<Reco | null>(null)
+  const maxLevelRef = useRef(0)        // peak level observed this test
+  const clipRef = useRef(false)        // did it ever clip?
+  const channelsRef = useRef(1)        // captured channel count (stable read for stopTest)
 
   const streamRef = useRef<MediaStream | null>(null)
   const ctxRef = useRef<AudioContext | null>(null)
@@ -131,7 +173,12 @@ export default function MicCheck({
     if (rec && rec.state !== 'inactive') { try { rec.stop() } catch { /* ignore */ } }
   }, [])
 
-  const stopTest = useCallback(() => {
+  const stopTest = useCallback((recommend = false) => {
+    // Snapshot the recommendation from what the test heard, BEFORE resetting —
+    // only on an explicit "Stop test" (not on a constraint-change re-open/unmount).
+    if (recommend) setReco(computeReco(maxLevelRef.current, clipRef.current, channelsRef.current, settingsRef.current))
+    maxLevelRef.current = 0
+    clipRef.current = false
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     stopClip()
     clipRecorderRef.current = null
@@ -168,6 +215,10 @@ export default function MicCheck({
     const r = peak(analysersRef.current.r)
     sm.l = l > sm.l ? l : sm.l * 0.85 + l * 0.15
     sm.r = r > sm.r ? r : sm.r * 0.85 + r * 0.15
+
+    const m = Math.max(sm.l, sm.r)
+    if (m > maxLevelRef.current) maxLevelRef.current = m
+    if (m >= 0.96) clipRef.current = true
 
     frameRef.current = (frameRef.current + 1) % 3   // ~20fps state updates
     if (frameRef.current === 0) {
@@ -243,11 +294,15 @@ export default function MicCheck({
   const startTest = useCallback(async () => {
     setErr(null)
     setCapErr(null)
+    setReco(null)
+    maxLevelRef.current = 0
+    clipRef.current = false
     revokeClip()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(settingsRef.current) })
       streamRef.current = stream
       const ch = stream.getAudioTracks()[0]?.getSettings().channelCount ?? 1
+      channelsRef.current = ch >= 2 ? 2 : 1
       setChannels(ch >= 2 ? 2 : 1)
 
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -357,7 +412,7 @@ export default function MicCheck({
         <span className="text-xs font-semibold text-gray-700">Microphone &amp; mic check</span>
         <button
           type="button"
-          onClick={() => (testing ? stopTest() : startTest())}
+          onClick={() => (testing ? stopTest(true) : startTest())}
           disabled={disabled}
           className={`text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40 ${
             testing ? 'bg-gray-900 text-white hover:bg-black' : 'border border-orange-300 text-orange-700 hover:bg-orange-50'
@@ -389,6 +444,31 @@ export default function MicCheck({
           </button>
         )}
       </div>
+
+      {/* Post-test recommendation */}
+      {reco && !testing && (
+        <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 space-y-2">
+          <div className="text-xs font-semibold text-gray-800">Recommended after the test</div>
+          <ul className="text-[11px] text-gray-700 list-disc pl-4 space-y-0.5">
+            {reco.messages.map((m, i) => <li key={i}>{m}</li>)}
+          </ul>
+          <div className="flex items-center gap-2">
+            {reco.hasChanges && (
+              <button
+                type="button"
+                onClick={() => { onChange(reco.suggested); setReco(null) }}
+                className="text-xs font-semibold rounded-md px-3 py-1.5 text-white"
+                style={{ backgroundColor: '#E8632A' }}
+              >Apply recommended</button>
+            )}
+            <button
+              type="button"
+              onClick={() => setReco(null)}
+              className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50"
+            >Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Live meters */}
       {testing && (
