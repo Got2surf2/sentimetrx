@@ -704,6 +704,10 @@ Edit-anytime document persistence — attach the deck + briefs to a recording at
 
 Inserts a `recording_files` row (`upload_status='uploaded'`, `is_video=false`, `sort_order` after existing) at `<org>/<rec>/<name>` (slides) or `<org>/<rec>/docs/<name>` (documents); returns `{ file }`. **DELETE** detaches one document (storage object + row), org-paired `(id, recording_id, org_id)`, and **refuses media files** (`400` unless `file_role ∈ {slides, document}`). Both org-gate via `getUserContext` + `.eq('org_id', …)` (admin-org may reach any org). Tests in `tests/integration/recordings-routes.test.ts`.
 
+### 4.x `POST /api/recordings/[id]/duplicate` — clone a project's setup
+
+Creates a NEW recording inheriting the source's **setup/config only** — `name` (+ " (Copy)"), `session_type`, `meeting_date`, `location`, `language`, `setup_inputs`, `asr_strategy`, `meeting_profile`, `brand_tag`, `underlying_agent_id`, `analysis_org`, `analysts`, `objectives`, `setup_provenance`, `confidentiality_class`. **Nothing** media/result/share/signoff is copied (no `recording_files` / `recording_transcripts` / `recording_extractions` / `recording_config_versions`, no `dataset_id`, `audio_channels`, `channel_labels`, `analysis_summary`, etc.). Starts at `status='awaiting_media'`. Org-gated via `getUserContext` (admin-org may clone any). Surfaced as **Duplicate** in the recordings-list ⋯ menu (`RecordingsListClient`), which then routes to the copy's status page to add media.
+
 ### 4.2 `POST /api/recordings/[id]/process` — start the pipeline
 
 Called after all files report `upload_status='uploaded'`. Transitions `uploading → queued` and starts `processRecordingWorkflow`, which runs extract → transcribe and **pauses at `status='transcribed'`** (Gate 1). It does **not** run the analysis pass. Idempotent: accepts `status='uploading'` or `'failed'` (restart from the beginning); any other status returns `{ already_running: true }`.

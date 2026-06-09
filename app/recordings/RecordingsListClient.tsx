@@ -160,6 +160,24 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
     }
   }
 
+  // Duplicate the project setup into a fresh recording (no media/results) and
+  // jump to its status page so the user can add new audio.
+  const [duplicating, setDuplicating] = useState(false)
+  async function onDuplicate(r: RecordingCard) {
+    setMenuId(null)
+    setDuplicating(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/recordings/${r.id}/duplicate`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || !d.id) throw new Error(d.error || `Duplicate failed (${res.status})`)
+      router.push(`/recordings/${d.id}/status`)
+    } catch (e: any) {
+      setError(e.message || 'Duplicate failed')
+      setDuplicating(false)
+    }
+  }
+
   async function confirmDelete() {
     if (!target) return
     setDeleting(true)
@@ -241,6 +259,12 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRenameVal(r.name); setRenameId(r.id); setMenuId(null) }}
                         className="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50">
                         Rename
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); void onDuplicate(r) }}
+                        disabled={duplicating}
+                        className="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                        {duplicating ? 'Duplicating…' : 'Duplicate'}
                       </button>
                       {isAdmin && allOrgs.length > 0 && (
                         <button

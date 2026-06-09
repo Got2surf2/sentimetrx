@@ -559,3 +559,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: live page widened max-w-4xl→6xl; the idle screen is now a 2-column grid — left = intro + Start + recovery/error, right = the Mic check panel — instead of a single centered max-w-md stack.
 
 **Verify**: typecheck clean; live route compiles. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Duplicate a project (inherit setup, not media/results)
+
+**Why**: Recurring town halls (same panel/agenda/config) shouldn't be re-set-up each time. Owner wants to duplicate one, inheriting all project setup but starting fresh on media.
+
+**What**: `POST /api/recordings/[id]/duplicate` clones only the setup/config columns (name+" (Copy)", session_type, setup_inputs, meeting_profile, brand/agent, analysts, objectives, confidentiality, etc.) into a new `awaiting_media` recording — no files/transcripts/extractions/config-versions/dataset/analysis/share/signoff. Org-gated via getUserContext. "Duplicate" added to the recordings-list ⋯ menu → routes to the copy's status page to add media.
+
+**Verify**: typecheck clean. (Creates a row → verify via UI, not a prod-mutating script.) Local, not pushed.
