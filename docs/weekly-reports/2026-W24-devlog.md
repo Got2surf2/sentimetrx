@@ -487,3 +487,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Recommendation: stereo → recommend all processing off; mono + low level → suggest AGC *on*.
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: mic-test captions → single multichannel socket (fixes R lane)
+
+**Why**: Owner tested by speaking directly into the right mic and its caption lane stayed blank. Root cause: the test opened one Deepgram live socket per channel; the second (R) silently failed (concurrency/token). 
+
+**What**: Replaced the two-socket per-channel approach with ONE socket using Deepgram `multichannel=true&channels=2`. New `public/worklets/pcm16-stereo-worklet.js` interleaves L/R into int16 PCM (mono input duplicated); MicCheck routes each result to its lane ('L'/'R') by `channel_index`. Caption refs collapsed from a per-key map to a single ws/queue/finals model. One connection = reliable + half the cost. (Live split-window feature dropped per owner — font styling suffices; the deliverable is the batch pass.)
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. Owner to re-test the R lane. Local, not pushed.

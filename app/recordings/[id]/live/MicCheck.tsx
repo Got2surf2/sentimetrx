@@ -250,7 +250,12 @@ export default function MicCheck({
   const tdRef = useRef<{ l: Float32Array<ArrayBuffer>; r: Float32Array<ArrayBuffer> } | null>(null)  // reusable time-domain buffers
   const diffSmoothRef = useRef(1)        // smoothed L−R difference ratio (~0 = identical channels)
   // Per-caption-stream WS + opening-PCM queue + accumulated finals, keyed like `caps`.
-  const capRef = useRef<Record<string, { ws: WebSocket | null; queue: ArrayBuffer[]; finals: string[] }>>({})
+  // ONE Deepgram socket. For stereo we send interleaved 2-ch PCM with
+  // multichannel=true and route results by channel_index → far more reliable
+  // than a socket per channel. finals keyed by lane ('mono' | 'L' | 'R').
+  const capWsRef = useRef<WebSocket | null>(null)
+  const capQueueRef = useRef<ArrayBuffer[]>([])
+  const capFinalsRef = useRef<Record<string, string[]>>({})
   const clipRecorderRef = useRef<MediaRecorder | null>(null)
   const clipChunksRef = useRef<Blob[]>([])
   const clipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -272,14 +277,14 @@ export default function MicCheck({
   }, [])
 
   const stopCaptions = useCallback(() => {
-    for (const k of Object.keys(capRef.current)) {
-      try {
-        const ws = capRef.current[k].ws
-        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
-        ws?.close()
-      } catch { /* ignore */ }
-    }
-    capRef.current = {}
+    try {
+      const ws = capWsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
+      ws?.close()
+    } catch { /* ignore */ }
+    capWsRef.current = null
+    capQueueRef.current = []
+    capFinalsRef.current = {}
   }, [])
 
   const stopClip = useCallback(() => {
@@ -349,13 +354,13 @@ export default function MicCheck({
     rafRef.current = requestAnimationFrame(draw)
   }, [])
 
-  // Open ONE live-caption stream from a node (a single channel) to Deepgram —
-  // same path as the real recorder (token → WS → PCM worklet). `outputIndex` is
-  // the splitter output for a stereo channel; undefined for a mono source.
-  // Entirely best-effort. `key` keys both the WS state and the rendered line.
-  const openCap = useCallback(async (ctx: AudioContext, sourceNode: AudioNode, outputIndex: number | undefined, key: string) => {
-    capRef.current[key] = { ws: null, queue: [], finals: [] }
-    setCaps(prev => ({ ...prev, [key]: { finals: [], interim: '' } }))
+  // Open ONE live-caption socket from `sourceNode`. For stereo we use the
+  // interleaving worklet + Deepgram multichannel and route each result to its
+  // lane ('L'/'R') by channel_index; mono uses the downmix worklet (lane 'mono').
+  // Best-effort — any failure shows a notice but never blocks the mic test.
+  const openCaptions = useCallback(async (ctx: AudioContext, sourceNode: AudioNode, stereo: boolean) => {
+    capFinalsRef.current = stereo ? { L: [], R: [] } : { mono: [] }
+    setCaps(stereo ? { L: { finals: [], interim: '' }, R: { finals: [], interim: '' } } : { mono: { finals: [], interim: '' } })
     let token: string
     try {
       const r = await fetch(`/api/recordings/${recordingId}/live-token`, { method: 'POST' })
@@ -367,29 +372,30 @@ export default function MicCheck({
       return
     }
     try {
-      await ctx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
-      const node = new AudioWorkletNode(ctx, 'pcm16-worklet')
+      const moduleUrl = stereo ? '/worklets/pcm16-stereo-worklet.js' : '/worklets/pcm16-worklet.js'
+      await ctx.audioWorklet.addModule(moduleUrl)
+      const node = new AudioWorkletNode(ctx, stereo ? 'pcm16-stereo-worklet' : 'pcm16-worklet')
       node.port.onmessage = (e) => {
         const buf = e.data as ArrayBuffer
-        const st = capRef.current[key]; if (!st) return
-        if (st.ws && st.ws.readyState === WebSocket.OPEN) { try { st.ws.send(buf) } catch { /* ignore */ } }
-        else { st.queue.push(buf); if (st.queue.length > PCM_QUEUE_CAP) st.queue.shift() }
+        const ws = capWsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send(buf) } catch { /* ignore */ } }
+        else { capQueueRef.current.push(buf); if (capQueueRef.current.length > PCM_QUEUE_CAP) capQueueRef.current.shift() }
       }
       const sink = ctx.createGain(); sink.gain.value = 0
-      if (outputIndex === undefined) sourceNode.connect(node); else sourceNode.connect(node, outputIndex)
-      node.connect(sink); sink.connect(ctx.destination)
+      sourceNode.connect(node); node.connect(sink); sink.connect(ctx.destination)
 
       const params = new URLSearchParams({
         model: 'nova-3', language: language || 'en', encoding: 'linear16',
-        sample_rate: String(Math.round(ctx.sampleRate)), channels: '1',
+        sample_rate: String(Math.round(ctx.sampleRate)),
+        channels: stereo ? '2' : '1',
         interim_results: 'true', punctuate: 'true', smart_format: 'true',
       })
+      if (stereo) params.set('multichannel', 'true')
       const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['bearer', token])
       ws.binaryType = 'arraybuffer'
-      const st0 = capRef.current[key]; if (st0) st0.ws = ws
+      capWsRef.current = ws
       ws.onopen = () => {
-        const st = capRef.current[key]; if (!st) return
-        const q = st.queue; st.queue = []
+        const q = capQueueRef.current; capQueueRef.current = []
         for (const buf of q) { try { ws.send(buf) } catch { /* ignore */ } }
       }
       ws.onmessage = (e) => {
@@ -397,12 +403,16 @@ export default function MicCheck({
           const msg = JSON.parse(e.data as string)
           const text: string = msg?.channel?.alternatives?.[0]?.transcript ?? ''
           if (!text) return
-          const st = capRef.current[key]; if (!st) return
+          // multichannel results carry channel_index: [thisChannel, total].
+          const idx = Array.isArray(msg.channel_index) ? msg.channel_index[0] : 0
+          const key = stereo ? (idx === 1 ? 'R' : 'L') : 'mono'
+          const prevFinals = capFinalsRef.current[key] ?? []
           if (msg.is_final) {
-            st.finals = [...st.finals, text].slice(-30)
-            setCaps(prev => ({ ...prev, [key]: { finals: st.finals, interim: '' } }))
+            const next = [...prevFinals, text].slice(-30)
+            capFinalsRef.current[key] = next
+            setCaps(prev => ({ ...prev, [key]: { finals: next, interim: '' } }))
           } else {
-            setCaps(prev => ({ ...prev, [key]: { finals: st.finals, interim: text } }))
+            setCaps(prev => ({ ...prev, [key]: { finals: prevFinals, interim: text } }))
           }
         } catch { /* keepalive */ }
       }
@@ -461,19 +471,15 @@ export default function MicCheck({
 
       setTesting(true)
       rafRef.current = requestAnimationFrame(draw)
-      // Captions: per-channel for a stereo split (L/R off the meters splitter,
-      // each its own color), else a single mono stream. Best-effort.
-      if (ch >= 2) {
-        void openCap(ctx, splitter, 0, 'L')
-        void openCap(ctx, splitter, 1, 'R')
-      } else {
-        void openCap(ctx, gain, undefined, 'mono')
-      }
+      // Captions: one socket. Stereo → interleaved 2-ch PCM + multichannel,
+      // routed to L/R lanes; mono → downmix. Fed from `gain` (the worklet reads
+      // both channels for stereo). Best-effort.
+      void openCaptions(ctx, gain, ch >= 2)
     } catch {
       setErr('Could not open the microphone to test. Check the OS mic permission and that the device is connected.')
       stopTest()
     }
-  }, [draw, stopTest, openCap, revokeClip])
+  }, [draw, stopTest, openCaptions, revokeClip])
 
   const recordClip = useCallback(() => {
     const dest = destRef.current
