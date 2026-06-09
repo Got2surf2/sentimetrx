@@ -14,7 +14,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { dataResponse, type Sheet } from '@/lib/xlsxExport'
+import { type Sheet } from '@/lib/xlsxExport'
+import { buildStyledWorkbook } from '@/lib/styledWorkbook'
 import { loadExportTurns, turnsSheet, pairsSheet, redactPII, type ExportTurn } from '@/lib/agentExport'
 import { getAgentStudy, type AgentStudy } from '@/lib/agentStudy'
 
@@ -155,6 +156,18 @@ export async function GET(_req: NextRequest, props: Params) {
   ]
 
   const fileBase = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Export'
-  // Always xlsx — a workbook is multi-sheet; CSV would silently drop all but one.
-  return dataResponse('xlsx', fileBase, sheets)
+  // Always xlsx — a workbook is multi-sheet; CSV would drop all but one. Styled
+  // via exceljs (bold/frozen/filtered headers, zebra rows, wrapped text) for a
+  // client-grade deliverable.
+  const buf = await buildStyledWorkbook(sheets)
+  const ab = new ArrayBuffer(buf.byteLength)
+  new Uint8Array(ab).set(buf)
+  const safe = fileBase.replace(/[^a-z0-9-_]/gi, '-').toLowerCase()
+  return new NextResponse(ab, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="' + safe + '.xlsx"',
+    },
+  })
 }

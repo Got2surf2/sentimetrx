@@ -297,3 +297,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: `pairsSheet`/`lowConfidenceSheet` now thread the agent's display name into response column headers (`Sarina said (before)`, `Sarina's answer`) via a `who` param; workbook filename `…_Agent_Export` → `…_Export`. Dropped the `suggested_kb_addition` ("KB note") column from the client-facing Low-Confidence tab — it's an internal team-curation field, near-always empty. New memory `feedback_personify_agent_in_files`.
 
 **Verify**: tsc clean.
+
+### 2026-06-08 (follow-up 4) — client-grade styling (exceljs)
+
+**Why**: Owner wants the workbook to look polished for a client. The SheetJS community build can't write cell styles (bold/fill/border/wrap) — that's a paid feature.
+
+**What changed**: New `lib/styledWorkbook.ts` (exceljs 4.4.0, added dep) takes the same `{name,headers,rows}` Sheet shape and renders bold teal frozen+filterable headers, content-fit column widths, wrapped text, zebra rows; Summary tab styled as a titled cover page (value column left-aligned so numbers line up with text). Workbook route now returns the exceljs buffer instead of the SheetJS `dataResponse`. Scoped to this one deliverable — the other xlsx exports stay on the lightweight SheetJS path. QC'd by rendering a dummy-data sample → PDF → PNG via LibreOffice (header fill, zebra, borders, personified columns all confirmed).
+
+**Verify**: tsc clean; visual render inspected. Local-only.

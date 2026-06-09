@@ -38,6 +38,7 @@
     "@vercel/sandbox": "^2.0.2",
     "@workflow/next": "^4.0.6",
     "emoji-picker-element": "^1.29.1",
+    "exceljs": "^4.4.0",
     "html-to-image": "^1.11.13",
     "isomorphic-dompurify": "^2.26.0",
     "lottie-web": "^5.13.0",
