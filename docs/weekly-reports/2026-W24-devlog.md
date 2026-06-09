@@ -599,3 +599,13 @@ PATCH route accepts `draft`. Orthogonal to signoff.
 Net: a finalized (non-draft) report always carries a named reviewer + timestamp (shown in header, PDF, deck); revoking returns it to draft.
 
 **Verify**: typecheck clean; 461 tests pass; report route compiles. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: rename report "Export & Share" tab → "Reports"
+
+**Why**: Owner wants the deliverables tab called "Reports".
+
+**What**: Relabeled the report tab + its heading from "Export & Share" to "Reports" (internal tab key stays `export`). Spec references updated to match.
+
+**Verify**: typecheck clean; report route compiles. Local, not pushed.

@@ -375,7 +375,7 @@ function TabBar({
     { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'transcript', label: 'Transcript' },
     ...(hasLiveTranscript ? [{ key: 'comparison' as Tab, label: 'Live vs Final' }] : []),
-    { key: 'export',     label: 'Export & Share' },
+    { key: 'export',     label: 'Reports' },
   ]
   return (
     <nav className="flex gap-1 border-b border-gray-200">
@@ -2232,7 +2232,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
   return (
     <div className="space-y-5">
-      <h2 className="text-base font-bold text-gray-900">Export &amp; Share</h2>
+      <h2 className="text-base font-bold text-gray-900">Reports</h2>
 
       {isOwner && (
         <div className="rounded-xl border border-gray-200 p-4">
