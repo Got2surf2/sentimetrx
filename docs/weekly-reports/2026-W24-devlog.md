@@ -415,3 +415,15 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - **Live monitor ("🎧 Listen")**: a monitor GainNode (gain → monitorGain → ctx.destination; 0=muted) routes the processed mic to the speakers so toggling AGC/echo-cancel/noise-suppress/gain is audible in real time. Off by default with a headphones/feedback warning (open mic + speakers = howl). Monitor + gain apply live; AGC/echo/noise re-open the preview (constraintKey effect) preserving monitor state via a ref.
 
 **Verify**: typecheck clean; 461 unit tests pass; live route compiles (307 auth-redirect). In-browser exercise (captions stream, clip playback, monitor A/B, with the RØDE) needs the owner. Local, not pushed. NOTE: live captions in the test consume a little Deepgram live usage per test, and need `DEEPGRAM_GRANT_KEY` in Vercel env on deploy (same gotcha as the live recorder).
+
+---
+
+### 2026-06-09 — Town Hall: color-code the two mics (report transcript + live test)
+
+**Why**: With a stereo split-mic transcript, a flat list of S1/S2 is hard to scan. Color/italicize each line by source mic so the two speakers are separable at a glance — in the report AND in the mic test (so a 2-mic setup can be verified live).
+
+**What**:
+- Report transcript (`TranscriptTab`): when segments carry `channel`, Mic 1·L stays plain dark, Mic 2·R is indigo + italic (layered with the existing Q/A bold/italic role overlay — color is the channel signal so it never clashes with role styling). Added a stereo legend; mic-label tag colored to match.
+- Mic test captions (`MicCheck`): refactored single mono caption stream → **per-channel** — for a stereo device it opens TWO Deepgram live streams off the meters' ChannelSplitter (L=output 0, R=output 1), each its own colored lane (matches the report). Mono stays one stream. Caption state re-keyed `{mono|L|R}`.
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser per-mic captions need the owner + RØDE. Local, not pushed. (Note: stereo test = two live Deepgram streams = ~2× the small per-test caption usage.)

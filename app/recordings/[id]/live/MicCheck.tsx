@@ -73,8 +73,9 @@ export default function MicCheck({
   const [err, setErr] = useState<string | null>(null)
 
   // Live captions during the test (best-effort, mirrors the real recorder path).
-  const [capFinals, setCapFinals] = useState<string[]>([])
-  const [capInterim, setCapInterim] = useState('')
+  // Keyed by source: 'mono' for a single mic, or 'L'/'R' for a stereo split so
+  // each mic's words stream in its own color — a live 2-mic test.
+  const [caps, setCaps] = useState<Record<string, { finals: string[]; interim: string }>>({})
   const [capErr, setCapErr] = useState<string | null>(null)
 
   // Test clip record + playback (local only — never uploaded).
@@ -95,9 +96,8 @@ export default function MicCheck({
   const rafRef = useRef<number | null>(null)
   const smoothRef = useRef<{ l: number; r: number }>({ l: 0, r: 0 })
   const frameRef = useRef(0)
-  const wsRef = useRef<WebSocket | null>(null)
-  const pcmQueueRef = useRef<ArrayBuffer[]>([])
-  const capFinalsRef = useRef<string[]>([])
+  // Per-caption-stream WS + opening-PCM queue + accumulated finals, keyed like `caps`.
+  const capRef = useRef<Record<string, { ws: WebSocket | null; queue: ArrayBuffer[]; finals: string[] }>>({})
   const clipRecorderRef = useRef<MediaRecorder | null>(null)
   const clipChunksRef = useRef<Blob[]>([])
   const clipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,13 +115,14 @@ export default function MicCheck({
   }, [])
 
   const stopCaptions = useCallback(() => {
-    try {
-      const ws = wsRef.current
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
-      ws?.close()
-    } catch { /* ignore */ }
-    wsRef.current = null
-    pcmQueueRef.current = []
+    for (const k of Object.keys(capRef.current)) {
+      try {
+        const ws = capRef.current[k].ws
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
+        ws?.close()
+      } catch { /* ignore */ }
+    }
+    capRef.current = {}
   }, [])
 
   const stopClip = useCallback(() => {
@@ -144,11 +145,9 @@ export default function MicCheck({
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     smoothRef.current = { l: 0, r: 0 }
-    capFinalsRef.current = []
     setLevels({ l: 0, r: 0 })
     setPeakSeen(0)
-    setCapFinals([])
-    setCapInterim('')
+    setCaps({})
     setCapErr(null)
     setClipRecording(false)
     setTesting(false)
@@ -178,9 +177,13 @@ export default function MicCheck({
     rafRef.current = requestAnimationFrame(draw)
   }, [])
 
-  // Stream the preview audio to Deepgram for live captions — same path as the
-  // real recorder (token mint → WS → PCM worklet). Entirely best-effort.
-  const startCaptions = useCallback(async (ctx: AudioContext, source: AudioNode) => {
+  // Open ONE live-caption stream from a node (a single channel) to Deepgram —
+  // same path as the real recorder (token → WS → PCM worklet). `outputIndex` is
+  // the splitter output for a stereo channel; undefined for a mono source.
+  // Entirely best-effort. `key` keys both the WS state and the rendered line.
+  const openCap = useCallback(async (ctx: AudioContext, sourceNode: AudioNode, outputIndex: number | undefined, key: string) => {
+    capRef.current[key] = { ws: null, queue: [], finals: [] }
+    setCaps(prev => ({ ...prev, [key]: { finals: [], interim: '' } }))
     let token: string
     try {
       const r = await fetch(`/api/recordings/${recordingId}/live-token`, { method: 'POST' })
@@ -196,12 +199,13 @@ export default function MicCheck({
       const node = new AudioWorkletNode(ctx, 'pcm16-worklet')
       node.port.onmessage = (e) => {
         const buf = e.data as ArrayBuffer
-        const ws = wsRef.current
-        if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send(buf) } catch { /* ignore */ } }
-        else { const q = pcmQueueRef.current; q.push(buf); if (q.length > PCM_QUEUE_CAP) q.shift() }
+        const st = capRef.current[key]; if (!st) return
+        if (st.ws && st.ws.readyState === WebSocket.OPEN) { try { st.ws.send(buf) } catch { /* ignore */ } }
+        else { st.queue.push(buf); if (st.queue.length > PCM_QUEUE_CAP) st.queue.shift() }
       }
       const sink = ctx.createGain(); sink.gain.value = 0
-      source.connect(node); node.connect(sink); sink.connect(ctx.destination)
+      if (outputIndex === undefined) sourceNode.connect(node); else sourceNode.connect(node, outputIndex)
+      node.connect(sink); sink.connect(ctx.destination)
 
       const params = new URLSearchParams({
         model: 'nova-3', language: language || 'en', encoding: 'linear16',
@@ -210,9 +214,10 @@ export default function MicCheck({
       })
       const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['bearer', token])
       ws.binaryType = 'arraybuffer'
-      wsRef.current = ws
+      const st0 = capRef.current[key]; if (st0) st0.ws = ws
       ws.onopen = () => {
-        const q = pcmQueueRef.current; pcmQueueRef.current = []
+        const st = capRef.current[key]; if (!st) return
+        const q = st.queue; st.queue = []
         for (const buf of q) { try { ws.send(buf) } catch { /* ignore */ } }
       }
       ws.onmessage = (e) => {
@@ -220,11 +225,13 @@ export default function MicCheck({
           const msg = JSON.parse(e.data as string)
           const text: string = msg?.channel?.alternatives?.[0]?.transcript ?? ''
           if (!text) return
+          const st = capRef.current[key]; if (!st) return
           if (msg.is_final) {
-            capFinalsRef.current = [...capFinalsRef.current, text].slice(-30)
-            setCapFinals(capFinalsRef.current)
-            setCapInterim('')
-          } else setCapInterim(text)
+            st.finals = [...st.finals, text].slice(-30)
+            setCaps(prev => ({ ...prev, [key]: { finals: st.finals, interim: '' } }))
+          } else {
+            setCaps(prev => ({ ...prev, [key]: { finals: st.finals, interim: text } }))
+          }
         } catch { /* keepalive */ }
       }
       ws.onerror = () => setCapErr('Live captions dropped — the mic still works.')
@@ -275,12 +282,19 @@ export default function MicCheck({
 
       setTesting(true)
       rafRef.current = requestAnimationFrame(draw)
-      void startCaptions(ctx, gain)   // best-effort live transcription
+      // Captions: per-channel for a stereo split (L/R off the meters splitter,
+      // each its own color), else a single mono stream. Best-effort.
+      if (ch >= 2) {
+        void openCap(ctx, splitter, 0, 'L')
+        void openCap(ctx, splitter, 1, 'R')
+      } else {
+        void openCap(ctx, gain, undefined, 'mono')
+      }
     } catch {
       setErr('Could not open the microphone to test. Check the OS mic permission and that the device is connected.')
       stopTest()
     }
-  }, [draw, stopTest, startCaptions, revokeClip])
+  }, [draw, stopTest, openCap, revokeClip])
 
   const recordClip = useCallback(() => {
     const dest = destRef.current
@@ -334,7 +348,8 @@ export default function MicCheck({
 
   const hasNames = devices.some(d => d.label)
   const lowSignal = testing && peakSeen > 0 && peakSeen < 0.12
-  const captionText = capFinals.join(' ')
+  const capKeys = channels === 2 ? ['L', 'R'] : ['mono']
+  const anyCaption = capKeys.some(k => caps[k]?.finals.length || caps[k]?.interim)
 
   return (
     <div className="rounded-lg border border-gray-200 p-3 space-y-3 text-left">
@@ -406,21 +421,29 @@ export default function MicCheck({
         </div>
       )}
 
-      {/* Live captions during the test */}
+      {/* Live captions during the test — one colored lane per mic for a stereo
+          split (matches the report: Mic 1·L plain, Mic 2·R italic/indigo). */}
       {testing && (
         <div>
-          <div className="text-[11px] font-semibold text-gray-600 mb-1">Live transcription (test)</div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 h-20 overflow-y-auto text-xs leading-relaxed">
-            {captionText || capInterim ? (
-              <>
-                <span className="text-gray-800">{captionText} </span>
-                {capInterim && <span className="text-gray-400">{capInterim}</span>}
-              </>
-            ) : (
+          <div className="text-[11px] font-semibold text-gray-600 mb-1">Live transcription (test){channels === 2 ? ' — per mic' : ''}</div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 h-24 overflow-y-auto text-xs leading-relaxed space-y-1">
+            {!anyCaption ? (
               <span className="text-gray-400 italic">{capErr || 'Say something — captions will appear here.'}</span>
-            )}
+            ) : capKeys.map(k => {
+              const c = caps[k]
+              if (!c || (!c.finals.length && !c.interim)) return null
+              const isR = k === 'R'
+              const tone = isR ? 'text-indigo-700 italic' : 'text-gray-800'
+              const tag = k === 'L' ? 'Mic 1·L' : k === 'R' ? 'Mic 2·R' : ''
+              return (
+                <p key={k} className={tone}>
+                  {tag && <span className="font-mono text-[10px] not-italic mr-1 opacity-70">{tag}</span>}
+                  {c.finals.join(' ')} {c.interim && <span className="opacity-50">{c.interim}</span>}
+                </p>
+              )
+            })}
           </div>
-          {capErr && captionText && <p className="mt-1 text-[11px] text-amber-600">{capErr}</p>}
+          {capErr && anyCaption && <p className="mt-1 text-[11px] text-amber-600">{capErr}</p>}
         </div>
       )}
 

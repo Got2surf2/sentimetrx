@@ -463,6 +463,8 @@ User can override via the wizard:
 
 When the extracted audio is **genuinely stereo** (`recordings.audio_channels = 2` — e.g. a RØDE Wireless PRO receiver in **Split** mode, mic 1 = Left, mic 2 = Right; or any true-stereo upload), `transcribe.ts` swaps `diarize=true` for **`multichannel=true`**. Deepgram then transcribes each channel independently and stamps every utterance with its `channel`, which becomes the speaker — **deterministic per-mic separation instead of voice-signature clustering** (clustering routinely collapses two distinct voices on a single mono mix into one speaker). Each segment carries both `speaker` (`S1`/`S2`) and `channel` (0=L, 1=R); the report shows the source mic ("Mic 1 · L") next to the speaker tag.
 
+**Visualization.** A split-mic transcript is color-coded by source mic in the report (`TranscriptTab`): Mic 1·L plain dark, Mic 2·R indigo + italic, with a legend — layered with the Q/A bold/italic audit overlay (color is the channel signal so it never clashes with role styling). The mic test mirrors this: a stereo device shows two colored caption lanes (L/R), one live Deepgram stream per channel. (Open caveat — overlapping/simultaneous speech across the two mics interleaves in the chronological list; a two-lane time-aligned transcript view is the planned next step.)
+
 Channel detection is automatic, in `extract.ts`:
 1. `ffprobe` the source channel count; `< 2` → mono (`-ac 1`, today's path).
 2. For 2-channel sources, measure left-minus-right energy over the first 2 min. **Dual-mono** files (2 channels, identical content — common from phones/cameras) collapse to near-silence and are treated as **mono**, so they never produce a phantom second speaker. Genuine split-mic stereo is preserved (`-ac 2`, 64kbps).

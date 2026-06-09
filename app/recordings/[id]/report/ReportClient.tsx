@@ -1734,6 +1734,9 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
     return active.filter(s => s.text.toLowerCase().includes(q))
   }, [active, search])
 
+  // True-stereo (split-mic) transcript → color/italicize each line by source mic.
+  const hasStereo = useMemo(() => segments.some(s => typeof s.channel === 'number'), [segments])
+
   if (!transcript) return <EmptyState label="Transcript not available yet." />
 
   return (
@@ -1775,6 +1778,11 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
           Audit overlay: <span className="font-bold text-gray-900">bold</span> = extracted question · <span className="font-bold italic text-gray-900">bold italic</span> = answer · plain = not extracted into a Q&amp;A pair.
         </p>
       )}
+      {hasStereo && (
+        <p className="text-xs text-gray-500">
+          Stereo mics: <span className="text-gray-800">Mic 1 · L (plain)</span> · <span className="italic text-indigo-700">Mic 2 · R (italic, colored)</span> — each line is colored by its source microphone.
+        </p>
+      )}
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
         {filtered.map((s, i) => (
           <li key={i} className="py-2 text-sm flex items-start gap-3 group">
@@ -1790,7 +1798,7 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
               <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">
                 {s.speaker && <span className="text-xs font-semibold text-gray-500">{s.speaker}</span>}
                 {typeof s.channel === 'number' && (
-                  <span className="text-[10px] font-medium text-emerald-600" title="Source microphone (stereo split)">
+                  <span className={`text-[10px] font-medium ${s.channel === 0 ? 'text-gray-500' : 'text-indigo-600'}`} title="Source microphone (stereo split)">
                     {micLabel(s.channel)}
                   </span>
                 )}
@@ -1798,9 +1806,14 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
             )}
             {(() => {
               const role = roles.get(s.start)
-              const cls = role === 'question' ? 'font-bold text-gray-900'
-                : role === 'answer' ? 'font-bold italic text-gray-900'
-                : 'text-gray-800'
+              const weight = role === 'question' ? 'font-bold' : role === 'answer' ? 'font-bold italic' : ''
+              // Stereo split: Mic 1 (L) stays plain dark; Mic 2 (R) is colored +
+              // italic, so the two mics are separable at a glance. Mono = unchanged.
+              const ch = typeof s.channel === 'number' ? s.channel : null
+              const color = ch === null ? (role ? 'text-gray-900' : 'text-gray-800')
+                : ch === 0 ? 'text-gray-800' : 'text-indigo-700'
+              const chItalic = ch !== null && ch !== 0 ? 'italic' : ''
+              const cls = [weight, chItalic, color].filter(Boolean).join(' ')
               return <span className={cls}>{highlight(s.text, search)}</span>
             })()}
           </li>
