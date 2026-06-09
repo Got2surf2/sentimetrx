@@ -63,19 +63,30 @@ const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'tran
 
 export default function ReportClient({ data }: { data: ReportData }) {
   // Draft report (sql/125): unreviewed AI output → watermark + pending-review
-  // banner until someone marks it reviewed. Local state so "Mark as reviewed"
-  // clears it without a reload.
+  // banner. Cleared ONLY by a sign-off (POST /signoff), which captures the
+  // reviewer's name + id + timestamp + optional note. No anonymous finalize.
+  const router = useRouter()
   const [isDraft, setIsDraft] = useState(data.recording.draft)
-  const [finalizing, setFinalizing] = useState(false)
-  const markReviewed = useCallback(async () => {
-    setFinalizing(true)
+  const [signing, setSigning] = useState(false)
+  const [signNote, setSignNote] = useState('')
+  const [signErr, setSignErr] = useState<string | null>(null)
+  const reviewAndSignOff = useCallback(async () => {
+    setSigning(true)
+    setSignErr(null)
     try {
-      const res = await fetch(`/api/recordings/${data.recording.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false }),
+      const res = await fetch(`/api/recordings/${data.recording.id}/signoff`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: signNote.trim() || undefined }),
       })
-      if (res.ok) setIsDraft(false)
-    } finally { setFinalizing(false) }
-  }, [data.recording.id])
+      if (!res.ok) { setSignErr((await res.json().catch(() => ({}))).error || 'Sign-off failed'); return }
+      setIsDraft(false)
+      router.refresh()   // pull the new signoff so the header shows "Approved by …"
+    } catch (e) {
+      setSignErr(e instanceof Error ? e.message : 'Sign-off failed')
+    } finally { setSigning(false) }
+  }, [data.recording.id, signNote, router])
+  // Keep the banner/watermark in sync with the server after a refresh — e.g. a
+  // Revoke from the Export tab's sign-off panel re-flags the report as draft.
+  useEffect(() => { setIsDraft(data.recording.draft) }, [data.recording.draft])
 
   // Presentation-scope flagging + the Presentation tab are only meaningful when
   // the meeting had a presentation.
@@ -150,24 +161,37 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
-      {/* Draft banner — opening "pending human review" statement + Finalize. */}
+      {/* Draft banner — opening "pending human review" statement + the sign-off
+          that finalizes it (captures who reviewed). */}
       {isDraft && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 flex items-start justify-between gap-4">
-          <div className="min-w-0">
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 space-y-2">
+          <div>
             <div className="text-sm font-bold text-amber-900">⚠ DRAFT — pending human review</div>
             <p className="text-xs text-amber-800 mt-0.5">
-              This report was generated automatically and has <strong>not yet been reviewed by a person</strong>. Figures and attributions may change. It will be finalized after review.
+              This report was generated automatically and has <strong>not yet been reviewed by a person</strong>. Figures and attributions may change. Review it against the recording, then <strong>sign off</strong> to finalize — your name and the date are recorded on the report.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={markReviewed}
-            disabled={finalizing}
-            className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: '#E8632A' }}
-          >
-            {finalizing ? 'Saving…' : 'Mark as reviewed'}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              value={signNote}
+              onChange={e => setSignNote(e.target.value)}
+              disabled={signing}
+              placeholder="Optional note (e.g. reviewed against the recording)"
+              className="flex-1 min-w-[200px] border border-amber-300 rounded-lg px-3 py-1.5 bg-white"
+              style={{ fontSize: '16px' }}
+            />
+            <button
+              type="button"
+              onClick={reviewAndSignOff}
+              disabled={signing}
+              className="shrink-0 px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+              style={{ backgroundColor: '#E8632A' }}
+            >
+              {signing ? 'Signing off…' : 'Review complete — sign off & finalize'}
+            </button>
+          </div>
+          {signErr && <p className="text-xs text-red-600">{signErr}</p>}
         </div>
       )}
       {/* Pinned so the title + tab navigation stay reachable while scrolling.
@@ -1958,6 +1982,7 @@ function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
     <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
       <div>
         <h3 className="font-semibold text-gray-900 text-sm">Review sign-off</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Signing off records your name + the date and <strong>finalizes the report</strong> (removes the DRAFT mark). Revoking returns it to draft.</p>
         {signoff?.approved_by ? (
           <div className="mt-2 flex items-start justify-between gap-3">
             <p className="text-sm text-green-700">

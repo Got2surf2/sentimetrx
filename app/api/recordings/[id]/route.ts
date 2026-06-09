@@ -388,10 +388,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     patch.meeting_profile = mp
   }
 
-  // Draft flag (sql/125): "Mark as reviewed" clears it (draft=false). Booleans only.
-  if ('draft' in body) {
-    patch.draft = body.draft === true
-  }
+  // NOTE: `draft` is intentionally NOT settable here. Clearing draft = finalizing
+  // a report, which must capture a reviewer — that happens only via the sign-off
+  // route (POST /signoff sets draft=false; DELETE re-flags it). No anonymous path.
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'nothing to update' }, { status: 400 })

@@ -584,3 +584,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 PATCH route accepts `draft`. Orthogonal to signoff.
 
 **Verify**: sql/125 applied; typecheck clean; 461 tests pass; report route compiles. Visual QC of watermark/PDF/deck = owner. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: enforce review→sign-off to clear draft (capture who)
+
+**Why**: A report shouldn't lose its DRAFT flag anonymously. Owner wants a proactive review/approve/sign-off process that records who reviewed and approved before the report is no longer a draft.
+
+**What**: Reuse the existing sign-off mechanism (`POST/DELETE /api/recordings/[id]/signoff`, which captures approver name + member_id + timestamp + note) as the SINGLE finalize path:
+- POST signoff now also sets `draft=false`; DELETE (revoke) sets `draft=true` (back to draft).
+- Removed the anonymous `draft` handling from the generic PATCH route — no backdoor finalize.
+- ReportClient: replaced the anonymous "Mark as reviewed" button with an inline sign-off in the draft banner (optional note → POST /signoff → captures reviewer, clears draft live + router.refresh for the header "Approved by …"). Added an effect syncing isDraft to server data so a Revoke from the Export panel re-shows the banner/watermark. The Export-tab Review sign-off panel already posts to the same route; added copy noting it finalizes/returns-to-draft.
+
+Net: a finalized (non-draft) report always carries a named reviewer + timestamp (shown in header, PDF, deck); revoking returns it to draft.
+
+**Verify**: typecheck clean; 461 tests pass; report route compiles. Local, not pushed.

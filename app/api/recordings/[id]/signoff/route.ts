@@ -43,7 +43,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     note,
   }
 
-  const { error } = await service.from('recordings').update({ signoff }).eq('id', recording_id).eq('org_id', rec.org_id)
+  // Sign-off IS the finalize step: approving clears the draft flag (removes the
+  // DRAFT watermark / pending-review banner). It's the ONLY path that does so —
+  // so a final report always carries a captured reviewer + timestamp.
+  const { error } = await service.from('recordings').update({ signoff, draft: false }).eq('id', recording_id).eq('org_id', rec.org_id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, signoff })
 }
@@ -60,7 +63,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const rec = await resolveRecording(service, recording_id, uc)
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const { error } = await service.from('recordings').update({ signoff: null }).eq('id', recording_id).eq('org_id', rec.org_id)
+  // Revoking approval returns the report to draft (unreviewed) — the watermark /
+  // banner come back until someone signs off again.
+  const { error } = await service.from('recordings').update({ signoff: null, draft: true }).eq('id', recording_id).eq('org_id', rec.org_id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
