@@ -81,10 +81,17 @@ function computeReco(maxLevel: number, clipped: boolean, channels: number, s: Mi
   }
 
   // Processing — defaults that preserve every voice in a room.
-  if (s.echoCancellation) { suggested.echoCancellation = false; messages.push('Turn OFF echo cancellation — it can swallow other voices around a table.') }
-  if (s.noiseSuppression) { suggested.noiseSuppression = false; messages.push('Turn OFF noise suppression — it can clip quiet speakers (use it only for steady background hum).') }
-  if (channels === 2 && s.agc) { suggested.agc = false; messages.push('With split mics, turn OFF automatic gain control — it fights the per-mic levels; use software gain instead.') }
-  if (channels === 2) messages.push('Stereo split detected — the two mics will be separated as Speaker 1 / Speaker 2.')
+  if (channels === 2) {
+    if (s.agc || s.echoCancellation || s.noiseSuppression) {
+      suggested.agc = false; suggested.echoCancellation = false; suggested.noiseSuppression = false
+      messages.push('Turn OFF all audio processing (AGC / echo / noise) — it merges your two mics into mono.')
+    }
+    messages.push('Stereo split detected — the two mics will be separated as Speaker 1 / Speaker 2.')
+  } else {
+    if (s.echoCancellation) { suggested.echoCancellation = false; messages.push('Turn OFF echo cancellation — it can swallow other voices around a table.') }
+    if (s.noiseSuppression) { suggested.noiseSuppression = false; messages.push('Turn OFF noise suppression — it can clip quiet speakers (use it only for steady background hum).') }
+    if (maxLevel < 0.2 && !s.agc) { suggested.agc = true; messages.push('Single mono mic with a low level — Automatic gain control can even it out.') }
+  }
 
   const hasChanges = suggested.gain !== s.gain || suggested.agc !== s.agc
     || suggested.echoCancellation !== s.echoCancellation || suggested.noiseSuppression !== s.noiseSuppression
@@ -199,6 +206,7 @@ export default function MicCheck({
   const [levels, setLevels] = useState<{ l: number; r: number }>({ l: 0, r: 0 })
   const [peakSeen, setPeakSeen] = useState(0)     // max level observed this test (drives the low-signal hint)
   const [chIdentical, setChIdentical] = useState(false)  // 2 channels but carrying the same audio (dual-mono)
+  const [stereoDevice, setStereoDevice] = useState(false) // a test confirmed this device delivers 2 channels (persists after the test)
   const [err, setErr] = useState<string | null>(null)
 
   // Live captions during the test (best-effort, mirrors the real recorder path).
@@ -419,6 +427,7 @@ export default function MicCheck({
       const ch = stream.getAudioTracks()[0]?.getSettings().channelCount ?? 1
       channelsRef.current = ch >= 2 ? 2 : 1
       setChannels(ch >= 2 ? 2 : 1)
+      if (ch >= 2) setStereoDevice(true)   // remember (drives the always-on processing warning)
 
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       const ctx = new Ctx()
@@ -549,6 +558,9 @@ export default function MicCheck({
   useEffect(() => {
     if (monitorGainRef.current) monitorGainRef.current.gain.value = monitor ? 1 : 0
   }, [monitor])
+
+  // A different device may not be stereo — clear the remembered flag until re-tested.
+  useEffect(() => { setStereoDevice(false) }, [settings.deviceId])
 
   // Re-open the preview when an input-shaping constraint changes mid-test
   // (device / AGC / echo / noise need a fresh getUserMedia to take effect).
@@ -819,13 +831,29 @@ export default function MicCheck({
       </div>
 
       {/* Processing toggles */}
-      <div className="grid grid-cols-1 gap-1.5">
-        <Toggle label="Automatic gain control" hint="Recommended for built-in/laptop mics. Off suits a pro mic (e.g. RØDE) that sets its own levels."
-          checked={settings.agc} disabled={disabled} onChange={v => onChange({ agc: v })} />
-        <Toggle label="Echo cancellation" hint="Off for room/table capture — on can swallow other voices."
-          checked={settings.echoCancellation} disabled={disabled} onChange={v => onChange({ echoCancellation: v })} />
-        <Toggle label="Noise suppression" hint="Off preserves quiet speakers; on cleans steady background noise."
-          checked={settings.noiseSuppression} disabled={disabled} onChange={v => onChange({ noiseSuppression: v })} />
+      <div className="space-y-2">
+        {stereoDevice && (
+          (settings.agc || settings.echoCancellation || settings.noiseSuppression) ? (
+            <div className="rounded-md bg-red-50 border border-red-300 p-2.5">
+              <p className="text-[11px] text-red-800 font-semibold">⚠ Audio processing is ON — and you have 2 microphones.</p>
+              <p className="text-[11px] text-red-700 mt-0.5">
+                The browser runs AGC / echo-cancellation / noise-suppression in <strong>mono</strong> — leaving any of them on <strong>merges your two mics into a single channel</strong>, so you lose per-speaker separation. Turn them all off for stereo.
+              </p>
+              <button type="button" onClick={() => onChange({ agc: false, echoCancellation: false, noiseSuppression: false })}
+                className="mt-1.5 text-[11px] font-semibold rounded-md px-2.5 py-1 text-white" style={{ backgroundColor: '#E8632A' }}>Turn all off for stereo</button>
+            </div>
+          ) : (
+            <p className="text-[11px] text-emerald-700">✓ 2 mics detected — audio processing is off, so both mics stay on separate channels. Keep these off for stereo.</p>
+          )
+        )}
+        <div className="grid grid-cols-1 gap-1.5">
+          <Toggle label="Automatic gain control" hint={stereoDevice ? 'Keep OFF — it forces your 2 mics to mono. For a single mono mic it can even out a quiet/uneven level.' : 'Off by default. For a quiet built-in/laptop mic it evens out the level — but it forces stereo (2 mics) to mono, so leave it off for split mics.'}
+            checked={settings.agc} disabled={disabled} onChange={v => onChange({ agc: v })} />
+          <Toggle label="Echo cancellation" hint="Off for room/table capture — on can swallow other voices (and forces stereo to mono)."
+            checked={settings.echoCancellation} disabled={disabled} onChange={v => onChange({ echoCancellation: v })} />
+          <Toggle label="Noise suppression" hint="Off preserves quiet speakers; on cleans steady background noise (and forces stereo to mono)."
+            checked={settings.noiseSuppression} disabled={disabled} onChange={v => onChange({ noiseSuppression: v })} />
+        </div>
       </div>
     </div>
   )

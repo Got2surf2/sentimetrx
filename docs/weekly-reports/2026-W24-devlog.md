@@ -474,3 +474,16 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Kept the recording-layer fix (force a 2-channel MediaStreamAudioDestinationNode when the track is stereo).
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. Owner to re-test: turn AGC off (or click the new button) → L/R meters and per-mic captions should diverge. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: AGC defaults OFF (stereo-safe) + prominent processing warning
+
+**Why**: Owner confirmed turning AGC off fixed the dual-mono, and flagged that "turning AGC on disables stereo" must not be something a user stumbles onto. Decision: default all processing OFF rather than adaptive on-for-mono/off-for-stereo — the AGC-on-when-stereo failure is silent and catastrophic; AGC-off-when-mono is mild and recoverable (meters + software gain + recommendation). Asymmetric risk → default to the stereo-safe side, and we can't know it's stereo until after a capture anyway, so adaptive still leaves the footgun on the first recording.
+
+**What**:
+- `LiveClient` initial MicSettings: `agc: false` (echo/noise were already off).
+- MicCheck: once a test confirms a 2-channel device (`stereoDevice`, persists after the test, cleared on device change), a prominent banner on the processing controls — RED with "Turn all off for stereo" when any processing is on, GREEN confirmation when off. Toggle hints rewritten to say each forces stereo→mono.
+- Recommendation: stereo → recommend all processing off; mono + low level → suggest AGC *on*.
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. Local, not pushed.

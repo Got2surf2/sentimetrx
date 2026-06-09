@@ -47,11 +47,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const [uploadPct, setUploadPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  // Input device + mic-check settings (controlled by the MicCheck panel). AGC on
-  // by default; echo-cancel / noise-suppress off for room capture; unity gain.
+  // Input device + mic-check settings (controlled by the MicCheck panel). ALL
+  // processing off by default: AGC/echo/noise each force a 2-mic (stereo) capture
+  // to mono, and that failure is silent — so we default to the stereo-safe side
+  // and let the meters + software gain handle a quiet mono mic. See MicCheck.
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [micSettings, setMicSettings] = useState<MicSettings>({
-    deviceId: '', agc: true, echoCancellation: false, noiseSuppression: false, gain: 1,
+    deviceId: '', agc: false, echoCancellation: false, noiseSuppression: false, gain: 1,
   })
   const patchMic = useCallback((patch: Partial<MicSettings>) => setMicSettings(s => ({ ...s, ...patch })), [])
 
