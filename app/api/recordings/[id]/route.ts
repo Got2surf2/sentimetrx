@@ -388,6 +388,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     patch.meeting_profile = mp
   }
 
+  // Draft flag (sql/125): "Mark as reviewed" clears it (draft=false). Booleans only.
+  if ('draft' in body) {
+    patch.draft = body.draft === true
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
   }

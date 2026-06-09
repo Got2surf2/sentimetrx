@@ -153,6 +153,10 @@ export interface RecordingRow {
   // [leftName, rightName]. Report shows these instead of Mic 1·L / Mic 2·R.
   channel_labels: string[] | null
 
+  // Draft report (sql/125): TRUE = unreviewed AI draft → DRAFT watermark +
+  // pending-review banner in the report and exports. Cleared on human review.
+  draft: boolean
+
   coverage_report: CoverageReport | null
   analysis_summary: RecordingAnalysisSummary | null
 

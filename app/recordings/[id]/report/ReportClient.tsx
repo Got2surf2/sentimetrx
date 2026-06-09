@@ -62,6 +62,21 @@ const HERMES = '#E8632A'
 const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'transcript', 'comparison', 'export']
 
 export default function ReportClient({ data }: { data: ReportData }) {
+  // Draft report (sql/125): unreviewed AI output → watermark + pending-review
+  // banner until someone marks it reviewed. Local state so "Mark as reviewed"
+  // clears it without a reload.
+  const [isDraft, setIsDraft] = useState(data.recording.draft)
+  const [finalizing, setFinalizing] = useState(false)
+  const markReviewed = useCallback(async () => {
+    setFinalizing(true)
+    try {
+      const res = await fetch(`/api/recordings/${data.recording.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false }),
+      })
+      if (res.ok) setIsDraft(false)
+    } finally { setFinalizing(false) }
+  }, [data.recording.id])
+
   // Presentation-scope flagging + the Presentation tab are only meaningful when
   // the meeting had a presentation.
   const hasPresentation = !!(data.recording.meeting_profile?.phases?.some(p => p.kind === 'presentation')) || !!data.recording.proceedings_summary
@@ -135,6 +150,26 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
   return (
     <div className="space-y-6">
+      {/* Draft banner — opening "pending human review" statement + Finalize. */}
+      {isDraft && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-amber-900">⚠ DRAFT — pending human review</div>
+            <p className="text-xs text-amber-800 mt-0.5">
+              This report was generated automatically and has <strong>not yet been reviewed by a person</strong>. Figures and attributions may change. It will be finalized after review.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={markReviewed}
+            disabled={finalizing}
+            className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: '#E8632A' }}
+          >
+            {finalizing ? 'Saving…' : 'Mark as reviewed'}
+          </button>
+        </div>
+      )}
       {/* Pinned so the title + tab navigation stay reachable while scrolling.
           Sits just below the fixed TopNav (h-14); below the audio modal (z-50).
           The TabBar's own border-b is the divider — content scrolls under it. */}
@@ -156,7 +191,12 @@ export default function ReportClient({ data }: { data: ReportData }) {
         />
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-2xl p-5">
+      <div className="relative bg-white border border-gray-200 rounded-2xl p-5">
+        {isDraft && (
+          <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden flex items-center justify-center" aria-hidden>
+            <span className="text-[16vw] font-black text-amber-500/15 rotate-[-30deg] select-none whitespace-nowrap tracking-widest">DRAFT</span>
+          </div>
+        )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}

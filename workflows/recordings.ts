@@ -81,12 +81,12 @@ export async function processRecordingWorkflow(recording_id: string, org_id: str
 // sessions (community venting) with no question/answer structure to extract. We
 // still complete the recording (transcript stays the deliverable) and build the
 // presentation summary when a deck phase exists, but skip the expensive Q&A pass.
-export async function analyzeRecordingWorkflow(recording_id: string, org_id: string, instructions?: string, skipQa = false) {
+export async function analyzeRecordingWorkflow(recording_id: string, org_id: string, instructions?: string, skipQa = false, draft = true) {
   "use workflow"
 
   try {
     await setStatus(recording_id, org_id, 'analyzing')
-    await runAnalyze(recording_id, org_id, instructions, skipQa)
+    await runAnalyze(recording_id, org_id, instructions, skipQa, draft)
 
     await setStatus(recording_id, org_id, 'complete')
     await setCompletedAt(recording_id, org_id)
@@ -190,7 +190,7 @@ async function runEntityExtraction(recording_id: string, org_id: string) {
     .eq('id', recording_id).eq('org_id', org_id)
 }
 
-async function runAnalyze(recording_id: string, org_id: string, instructions?: string, skipQa = false) {
+async function runAnalyze(recording_id: string, org_id: string, instructions?: string, skipQa = false, draft = true) {
   "use step"
   const rec = await loadRecording(recording_id, org_id)
   if (!rec) throw new FatalError(`recording ${recording_id} disappeared before analyze`)
@@ -212,6 +212,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
       .update({
         proceedings_summary: proceedings,
         cost_cents: (rec.cost_cents ?? 0) + presCents,
+        draft,
       })
       .eq('id', recording_id)
       .eq('org_id', org_id)
@@ -266,6 +267,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
       analysis_summary: analysis.analysis_summary,
       proceedings_summary: proceedings,
       cost_cents: (rec.cost_cents ?? 0) + analysis.total_cost_cents + presCents,
+      draft,
     })
     .eq('id', recording_id)
     .eq('org_id', org_id)

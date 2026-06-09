@@ -60,7 +60,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // THE gate: pair id with org_id; 404 (not 403) on cross-org.
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, created_by, name, meeting_date, location, status, share_token, share_enabled, share_expires_at, analysis_summary, entity_map, source_duration_sec, analysis_org, analysts, objectives, confidentiality_class, signoff, analyzed_config_version')
+    .select('id, org_id, created_by, name, meeting_date, location, status, share_token, share_enabled, share_expires_at, analysis_summary, entity_map, source_duration_sec, analysis_org, analysts, objectives, confidentiality_class, signoff, analyzed_config_version, draft')
     .eq('id', recording_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })

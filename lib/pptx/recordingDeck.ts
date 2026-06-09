@@ -58,6 +58,9 @@ export interface RecordingDeckInput {
   // available (falls back to verbatim per-pair). Default true — the deck is the
   // client deliverable. Pass false to render the raw verbatim transcript quotes.
   polished?: boolean
+  // Unreviewed AI draft → DRAFT watermark + a "pending human review" note on the
+  // title slide.
+  draft?: boolean
 }
 
 // ── Local slide helpers (copied from the townhall export pattern) ────────────
@@ -211,6 +214,11 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   const s1 = pptx.addSlide()
   bgFill(s1, pptx, DN.navy)
   s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.08, fill: { color: DN.gold }, line: { width: 0 } })
+  // Draft: large faint diagonal watermark behind the title + a top pill.
+  if (input.draft) {
+    s1.addText('DRAFT', { x: 0, y: H / 2 - 1.3, w: W, h: 2.6, fontSize: 140, bold: true, color: DN.gold, transparency: 84, align: 'center', valign: 'middle', rotate: 330 })
+    s1.addText('⚠  DRAFT — PENDING HUMAN REVIEW', { x: PAD, y: 0.55, w: W - PAD * 2, h: 0.4, fontSize: 13, bold: true, color: DN.gold, charSpacing: 1.0, valign: 'middle' })
+  }
   s1.addText(name, { x: PAD, y: 1.7, w: W - PAD * 2, h: 1.2, fontSize: 34, bold: true, color: DN.white, valign: 'middle' })
   s1.addText(reportKind, { x: PAD, y: 2.95, w: W - PAD * 2, h: 0.6, fontSize: 18, color: DN.tealLight })
   const metaBits = [

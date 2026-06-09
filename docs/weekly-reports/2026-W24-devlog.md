@@ -569,3 +569,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: `POST /api/recordings/[id]/duplicate` clones only the setup/config columns (name+" (Copy)", session_type, setup_inputs, meeting_profile, brand/agent, analysts, objectives, confidentiality, etc.) into a new `awaiting_media` recording — no files/transcripts/extractions/config-versions/dataset/analysis/share/signoff. Org-gated via getUserContext. "Duplicate" added to the recordings-list ⋯ menu → routes to the copy's status page to add media.
 
 **Verify**: typecheck clean. (Creates a row → verify via UI, not a prod-mutating script.) Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Draft reports (default on, watermark + pending-review banner)
+
+**Why**: Owner wants an almost-instant AI report that's clearly flagged as not-yet-human-reviewed — big DRAFT watermark + an opening "finalized after review" statement — until a person reviews it.
+
+**What**: `recordings.draft` (sql/125, DEFAULT false so existing reports aren't retroactively marked). Generate gate gets a "Mark as draft (pending human review)" checkbox (default ON) → analyze route `draft` → workflow → `runAnalyze` writes the flag (full + skip-Q&A paths). While draft:
+- ReportClient: opening ⚠ banner + "Mark as reviewed" (PATCH draft:false, clears live) + a large faint diagonal DRAFT watermark over the content.
+- PDF (reportHtml): position:fixed DRAFT watermark (every page) + header statement.
+- Deck (recordingDeck): faint diagonal DRAFT watermark + title-slide pill.
+- Public /th share: banner + watermark for external viewers.
+PATCH route accepts `draft`. Orthogonal to signoff.
+
+**Verify**: sql/125 applied; typecheck clean; 461 tests pass; report route compiles. Visual QC of watermark/PDF/deck = owner. Local, not pushed.

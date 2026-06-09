@@ -41,6 +41,7 @@ export interface RecordingForPdf {
   confidentiality_class?: string | null
   signoff?: { approved_by: string; approved_at?: string | null } | null
   analyzed_config_version?: number | null
+  draft?: boolean | null
 }
 
 // Common Chrome/Chromium locations for local dev (macOS + Linux).
@@ -107,6 +108,7 @@ export async function renderRecordingReportPdf(
     confidentiality_class: rec.confidentiality_class ?? null,
     signoff: rec.signoff ?? null,
     config_version: rec.analyzed_config_version ?? null,
+    draft: rec.draft ?? false,
   })
 
   const puppeteer = (await import('puppeteer-core')).default

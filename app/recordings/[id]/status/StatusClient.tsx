@@ -564,6 +564,9 @@ function GeneratePanel({
   const [busyAction, setBusyAction] = useState<null | 'qa' | 'skip'>(null)
   const busy = busyAction !== null
   const [err, setErr] = useState<string | null>(null)
+  // Draft (default ON): the AI report is marked not-yet-human-reviewed
+  // (DRAFT watermark + pending-review banner) until someone marks it reviewed.
+  const [draft, setDraft] = useState(true)
 
   // Entity-spelling review (§3.5b). Seeded with the auto-extracted candidates;
   // the user fixes canonical spellings / drops noise / adds a missed name.
@@ -588,8 +591,10 @@ function GeneratePanel({
         phase_map?: PhaseMap
         entity_map?: { entities: EntityMapEntry[]; extracted_at: string; reviewed_at?: string | null }
         skip_qa?: boolean
+        draft?: boolean
       } = {
         instructions: instructions.trim() || undefined,
+        draft,
       }
       // Close-out without Q&A: skip the extraction-shaping fields (agenda/panel/
       // entity map) — only the transcript + an optional presentation summary are
@@ -678,6 +683,14 @@ function GeneratePanel({
         is billed (about <strong>$50</strong>), and takes a few minutes. It replaces any existing Q&amp;A — you can re-generate later.
         <span className="block mt-1 text-amber-700">“Finish without Q&amp;A” skips that pass and just closes out the transcript (no Q&amp;A charge).</span>
       </div>
+
+      <label className="flex items-start gap-2 text-sm text-gray-700">
+        <input type="checkbox" checked={draft} onChange={e => setDraft(e.target.checked)} disabled={busy} className="mt-0.5 rounded" />
+        <span>
+          Mark as draft (pending human review)
+          <span className="block text-xs text-gray-400">Recommended. The report shows a DRAFT watermark + a “pending human review” note until someone marks it reviewed. Uncheck only if this is already final.</span>
+        </span>
+      </label>
 
       {isQa && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

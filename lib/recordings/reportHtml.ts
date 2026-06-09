@@ -75,6 +75,8 @@ export interface TownHallReportInput {
   confidentiality_class?: string | null
   signoff?: { approved_by: string; approved_at?: string | null } | null
   config_version?: number | null
+  /** Unreviewed AI draft → DRAFT watermark + opening "pending review" statement. */
+  draft?: boolean | null
 }
 
 // One Q&A card — mirrors the /th page's question/response block.
@@ -180,6 +182,17 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
   const tlModel = buildTimelineModel(pairs, input.source_duration_sec ?? null)
   const timeline = tlModel ? renderTimelineHtml(tlModel, TEAL) : ''
 
+  // Draft watermark + opening statement (position:fixed repeats on every PDF page).
+  const draftCss = input.draft
+    ? `.draft-wm{position:fixed;top:42%;left:0;right:0;text-align:center;font-size:120px;font-weight:900;color:rgba(245,158,11,0.13);transform:rotate(-28deg);pointer-events:none;letter-spacing:10px}`
+      + `.draft-banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin:14px 0 0}`
+      + `.draft-banner .t{font-weight:800;color:#b45309;font-size:13px}.draft-banner .d{color:#92400e;font-size:12px;margin:4px 0 0;line-height:1.5}`
+    : ''
+  const draftWm = input.draft ? `<div class="draft-wm">DRAFT</div>` : ''
+  const draftBanner = input.draft
+    ? `<div class="draft-banner"><div class="t">⚠ DRAFT — pending human review</div><p class="d">This report was generated automatically and has <strong>not yet been reviewed by a person</strong>. Figures and attributions may change. It will be finalized after review.</p></div>`
+    : ''
+
   return (
     `<!doctype html><html><head><meta charset="utf-8"><style>` +
     `@page{margin:14mm 12mm}` +
@@ -205,8 +218,9 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.tx .seg{font-size:13px;line-height:1.55;color:${BODY};margin:0 0 8px}` +
     `.spk{display:inline-block;font-weight:700;color:${MUTE};margin-right:6px}` +
     `.foot{margin-top:34px;padding-top:14px;border-top:1px solid ${LINE};text-align:center;font-size:11px;color:${FAINT}}` +
-    `</style></head><body><div class="wrap">` +
-    `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}</header>` +
+    draftCss +
+    `</style></head><body>` + draftWm + `<div class="wrap">` +
+    `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}${draftBanner}</header>` +
     overview +
     timeline +
     `<section>${topics}</section>` +

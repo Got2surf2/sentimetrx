@@ -31,7 +31,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   const service = createServiceRoleClient()
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary, source_duration_sec')
+    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary, source_duration_sec, draft')
     .eq('share_token', token)
     .maybeSingle()
 
@@ -60,14 +60,26 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   for (const p of pairs) { const t = p.topic || 'Other'; if (!order.includes(t)) order.push(t) }
 
   const meta = [fmtDate(rec.meeting_date), rec.location].filter(Boolean).join('  ·  ')
+  const isDraft = !!(rec as { draft?: boolean }).draft
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="max-w-3xl mx-auto px-5 py-10">
+    <main className="relative min-h-screen bg-slate-50 text-slate-900">
+      {isDraft && (
+        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden flex items-center justify-center" aria-hidden>
+          <span className="text-[18vw] font-black text-amber-500/10 rotate-[-28deg] select-none whitespace-nowrap tracking-widest">DRAFT</span>
+        </div>
+      )}
+      <div className="relative z-10 max-w-3xl mx-auto px-5 py-10">
         <header className="mb-8">
           <div className="text-xs font-semibold tracking-widest text-slate-400 uppercase mb-2">Meeting Q&amp;A Summary</div>
           <h1 className="text-3xl font-bold text-slate-900">{rec.name}</h1>
           {meta && <p className="text-sm text-slate-500 mt-2">{meta}</p>}
+          {isDraft && (
+            <div className="mt-4 rounded-xl bg-amber-50 border border-amber-300 px-4 py-3">
+              <div className="text-sm font-bold text-amber-900">⚠ DRAFT — pending human review</div>
+              <p className="text-xs text-amber-800 mt-0.5">This report was generated automatically and has not yet been reviewed by a person. Figures and attributions may change. It will be finalized after review.</p>
+            </div>
+          )}
         </header>
 
         {summary?.executive_summary && (
