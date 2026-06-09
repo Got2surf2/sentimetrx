@@ -1737,6 +1737,21 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
   // True-stereo (split-mic) transcript → color/italicize each line by source mic.
   const hasStereo = useMemo(() => segments.some(s => typeof s.channel === 'number'), [segments])
 
+  // Speaker collisions: spots where two mics had overlapping speech at the same
+  // time (both channels talking at once → ASR can garble). Keyed by segment start
+  // so the transcript can underline them and explain the garble. Time-swept O(n).
+  const collisions = useMemo(() => {
+    const out = new Set<number>()
+    const segs = segments.filter(s => typeof s.channel === 'number').sort((a, b) => a.start - b.start)
+    const active: TranscriptSegment[] = []
+    for (const s of segs) {
+      for (let k = active.length - 1; k >= 0; k--) if (active[k].end <= s.start) active.splice(k, 1)
+      for (const a of active) if (a.channel !== s.channel) { out.add(a.start); out.add(s.start) }
+      active.push(s)
+    }
+    return out
+  }, [segments])
+
   if (!transcript) return <EmptyState label="Transcript not available yet." />
 
   return (
@@ -1781,6 +1796,7 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
       {hasStereo && (
         <p className="text-xs text-gray-500">
           Stereo mics: <span className="text-gray-800">Mic 1 · L (plain)</span> · <span className="italic text-indigo-700">Mic 2 · R (italic, colored)</span> — each line is colored by its source microphone.
+          {collisions.size > 0 && <> A <span className="underline decoration-wavy decoration-amber-500 underline-offset-2">wavy underline</span> marks where both mics spoke at once (crosstalk) — words there may overlap or garble.</>}
         </p>
       )}
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
@@ -1813,8 +1829,11 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
               const color = ch === null ? (role ? 'text-gray-900' : 'text-gray-800')
                 : ch === 0 ? 'text-gray-800' : 'text-indigo-700'
               const chItalic = ch !== null && ch !== 0 ? 'italic' : ''
-              const cls = [weight, chItalic, color].filter(Boolean).join(' ')
-              return <span className={cls}>{highlight(s.text, search)}</span>
+              // Both mics spoke over each other here → wavy amber underline so the
+              // reader knows any garble is crosstalk, not a transcription error.
+              const collision = collisions.has(s.start)
+              const cls = [weight, chItalic, color, collision ? 'underline decoration-wavy decoration-amber-500 underline-offset-2' : ''].filter(Boolean).join(' ')
+              return <span className={cls} title={collision ? 'Both mics were speaking at once here — words may overlap or garble (crosstalk).' : undefined}>{highlight(s.text, search)}</span>
             })()}
           </li>
         ))}

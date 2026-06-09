@@ -507,3 +507,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: `lib/recordings/readingPassages.ts` — an internal store of ~80-word true-fact paragraphs (octopus hearts, honey never spoiling, Venus days, etc.) + `pickReadingPassage(exclude)` (random, no immediate repeat). MicCheck picks one when the Auto-tune intro opens and shows it in the intro + running panels to read aloud. Add more passages freely.
 
 **Verify**: typecheck clean; 461 tests pass. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: mark speaker-collision (crosstalk) spots in the transcript
+
+**Why**: With two open mics, simultaneous speech is transcribed on both channels and can read as garbled/duplicated. Owner: mark where the collision happens so the reader knows WHY it's garbled.
+
+**What** (ReportClient TranscriptTab): a time-sweep over the per-channel segments (`collisions` useMemo, O(n)) flags segments whose time range overlaps a *different-channel* segment. Those lines get a **wavy amber underline** + a tooltip ("both mics were speaking at once — crosstalk") and a legend line when any exist. Only for stereo transcripts; mono unaffected.
+
+**Verify**: typecheck clean; 461 tests pass. Local, not pushed.
