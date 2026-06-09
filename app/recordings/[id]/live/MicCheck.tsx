@@ -15,7 +15,7 @@
 // The browser CANNOT set a mic's hardware gain (that lives on the device / RØDE
 // Central). The gain slider here is a software boost applied in the audio graph.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { pickReadingPassage } from '@/lib/recordings/readingPassages'
 
 export interface MicSettings {
@@ -144,18 +144,32 @@ const SWEEP: { agc: boolean; noiseSuppression: boolean; label: string }[] = [
   { agc: false, noiseSuppression: true, label: 'Noise suppression' },
   { agc: true, noiseSuppression: true, label: 'Auto gain + noise suppression' },
 ]
-const SWEEP_MS = 3000
+// Per-combo capture is paced so the whole sweep lasts about as long as it takes
+// to read the passage aloud (~150 wpm) — long enough to finish the factoid and
+// to feel thorough, and more audio = a better measurement. Clamped 24–48s total.
+function sweepTiming(passage: string): { perComboMs: number; totalMs: number } {
+  const words = passage ? passage.trim().split(/\s+/).filter(Boolean).length : 70
+  const totalMs = Math.min(48000, Math.max(24000, (words / 150) * 60000))
+  return { perComboMs: Math.round(totalMs / SWEEP.length), totalMs }
+}
 
 // Open a stream under `audio`, measure for `ms`, return signal stats. SNR is
 // estimated from the spread between quiet (10th pct) and loud (90th pct) frames.
-async function measureCombo(audio: MediaTrackConstraints, ms: number, cancelled: () => boolean): Promise<ComboMetrics> {
+async function measureCombo(
+  audio: MediaTrackConstraints,
+  ms: number,
+  cancelled: () => boolean,
+  onStream?: (ctx: AudioContext, source: MediaStreamAudioSourceNode) => Promise<void>,
+): Promise<ComboMetrics> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio })
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
   const ctx = new Ctx()
   try {
     await ctx.resume()
     const an = ctx.createAnalyser(); an.fftSize = 2048
-    ctx.createMediaStreamSource(stream).connect(an)
+    const src = ctx.createMediaStreamSource(stream)
+    src.connect(an)
+    if (onStream) { try { await onStream(ctx, src) } catch { /* captions best-effort */ } }
     const buf = new Float32Array(an.fftSize)
     const frames: number[] = []
     let peak = 0, clip = 0, total = 0
@@ -239,6 +253,12 @@ export default function MicCheck({
   const [autotune, setAutotune] = useState<{ phase: 'idle' | 'intro' | 'running'; idx: number; label: string }>({ phase: 'idle', idx: 0, label: '' })
   const [passage, setPassage] = useState('')   // interesting-facts paragraph to read aloud during the sweep
   const cancelAutoRef = useRef(false)
+  // Live reading progress during the sweep: words spoken so far (karaoke highlight
+  // + progress bar). Counts words from a single best-effort Deepgram socket.
+  const [readCount, setReadCount] = useState(0)
+  const readCountRef = useRef(0)
+  const autoWsRef = useRef<WebSocket | null>(null)
+  const autoQueueRef = useRef<ArrayBuffer[]>([])
 
   const streamRef = useRef<MediaStream | null>(null)
   const ctxRef = useRef<AudioContext | null>(null)
@@ -519,26 +539,87 @@ export default function MicCheck({
     }
   }, [clipMono])
 
-  // Run the sweep: measure each combo, score, recommend the winner.
+  // Close the sweep's reading-progress caption socket.
+  const stopAutoCaptions = useCallback(() => {
+    try {
+      const ws = autoWsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }))
+      ws?.close()
+    } catch { /* ignore */ }
+    autoWsRef.current = null
+    autoQueueRef.current = []
+  }, [])
+
+  // Run the sweep: measure each combo, score, recommend the winner. A single
+  // best-effort Deepgram socket runs across all combos to drive the live reading
+  // progress (karaoke highlight) — words spoken vs the passage length.
   const runAutotune = useCallback(async () => {
     stopTest()
     revokeClip()
     setReco(null)
     cancelAutoRef.current = false
+    readCountRef.current = 0
+    setReadCount(0)
     const base = settingsRef.current
+    const { perComboMs } = sweepTiming(passage)
+
+    // Mint one token up front for the reading-progress captions (best-effort).
+    let capToken: string | null = null
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/live-token`, { method: 'POST' })
+      const j = await r.json()
+      if (r.ok && j.access_token) capToken = j.access_token as string
+    } catch { /* no captions — sweep still works */ }
+
+    // Attached to each combo's stream: opens the WS on first call (needs a ctx
+    // for sample_rate), then streams mono PCM; results bump the word count.
+    const onStream = async (ctx: AudioContext, source: MediaStreamAudioSourceNode) => {
+      if (!capToken) return
+      if (!autoWsRef.current) {
+        const params = new URLSearchParams({
+          model: 'nova-3', language: language || 'en', encoding: 'linear16',
+          sample_rate: String(Math.round(ctx.sampleRate)), channels: '1', punctuate: 'true', smart_format: 'true',
+        })
+        const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['bearer', capToken])
+        ws.binaryType = 'arraybuffer'
+        autoWsRef.current = ws
+        ws.onopen = () => { const q = autoQueueRef.current; autoQueueRef.current = []; for (const b of q) { try { ws.send(b) } catch { /* ignore */ } } }
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data as string)
+            const text: string = msg?.channel?.alternatives?.[0]?.transcript ?? ''
+            if (!text || !msg.is_final) return
+            readCountRef.current += text.trim().split(/\s+/).filter(Boolean).length
+            setReadCount(readCountRef.current)
+          } catch { /* keepalive */ }
+        }
+      }
+      await ctx.audioWorklet.addModule('/worklets/pcm16-worklet.js')
+      const node = new AudioWorkletNode(ctx, 'pcm16-worklet')
+      node.port.onmessage = (e) => {
+        const buf = e.data as ArrayBuffer
+        const ws = autoWsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send(buf) } catch { /* ignore */ } }
+        else { autoQueueRef.current.push(buf); if (autoQueueRef.current.length > PCM_QUEUE_CAP) autoQueueRef.current.shift() }
+      }
+      const sink = ctx.createGain(); sink.gain.value = 0
+      source.connect(node); node.connect(sink); sink.connect(ctx.destination)
+    }
+
     const results: { combo: typeof SWEEP[number]; m: ComboMetrics }[] = []
     for (let i = 0; i < SWEEP.length; i++) {
-      if (cancelAutoRef.current) { setAutotune({ phase: 'idle', idx: 0, label: '' }); return }
+      if (cancelAutoRef.current) { setAutotune({ phase: 'idle', idx: 0, label: '' }); stopAutoCaptions(); return }
       const combo = SWEEP[i]
       setAutotune({ phase: 'running', idx: i, label: combo.label })
       try {
         const m = await measureCombo(
           buildAudioConstraints({ ...base, agc: combo.agc, echoCancellation: false, noiseSuppression: combo.noiseSuppression, gain: 1 }),
-          SWEEP_MS, () => cancelAutoRef.current,
+          perComboMs, () => cancelAutoRef.current, onStream,
         )
         results.push({ combo, m })
       } catch { /* skip a combo that won't open */ }
     }
+    stopAutoCaptions()
     setAutotune({ phase: 'idle', idx: 0, label: '' })
     if (cancelAutoRef.current || results.length === 0) return
 
@@ -555,7 +636,7 @@ export default function MicCheck({
     const hasChanges = suggested.gain !== base.gain || suggested.agc !== base.agc
       || suggested.noiseSuppression !== base.noiseSuppression || suggested.echoCancellation !== base.echoCancellation
     setReco({ messages, suggested, hasChanges })
-  }, [stopTest, revokeClip])
+  }, [stopTest, revokeClip, passage, recordingId, language, stopAutoCaptions])
 
   // Apply gain changes live (no re-open needed).
   useEffect(() => {
@@ -587,8 +668,10 @@ export default function MicCheck({
   useEffect(() => {
     if (disabled && testing) stopTest()
   }, [disabled, testing, stopTest])
-  useEffect(() => () => { cancelAutoRef.current = true; stopTest(); revokeClip() }, [stopTest, revokeClip])
+  useEffect(() => () => { cancelAutoRef.current = true; stopTest(); revokeClip(); stopAutoCaptions() }, [stopTest, revokeClip, stopAutoCaptions])
 
+  const sweepWords = useMemo(() => (passage ? passage.trim().split(/\s+/) : []), [passage])
+  const readProgress = sweepWords.length ? Math.min(1, readCount / sweepWords.length) : 0
   const hasNames = devices.some(d => d.label)
   const lowSignal = testing && peakSeen > 0 && peakSeen < 0.12
   const capKeys = channels === 2 ? ['L', 'R'] : ['mono']
@@ -627,7 +710,7 @@ export default function MicCheck({
         <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3 space-y-2">
           <div className="text-xs font-semibold text-gray-800">Auto-tune — find the clearest settings</div>
           <p className="text-[11px] text-gray-700">
-            We’ll try {SWEEP.length} settings, about {SWEEP_MS / 1000}s each (~{Math.round(SWEEP.length * SWEEP_MS / 1000)}s total), and pick the clearest by signal quality.
+            We’ll try {SWEEP.length} settings while you read the whole paragraph aloud — about {Math.round(sweepTiming(passage).totalMs / 1000)}s total — and pick the clearest by signal quality.
           </p>
           <p className="text-[11px] text-gray-700">
             <strong>What you do:</strong> when you press Start, <strong>read this aloud at your normal volume and distance</strong> until it says done — don’t go quiet between settings. For a 2-mic setup, have the main speaker read it.
@@ -652,7 +735,17 @@ export default function MicCheck({
           </div>
           <p className="text-[11px] text-gray-600">Testing: {autotune.label}</p>
           {passage && (
-            <p className="text-xs text-gray-800 leading-relaxed bg-white border border-indigo-200 rounded-md p-2.5 italic">{passage}</p>
+            <div className="bg-white border border-indigo-200 rounded-md p-2.5">
+              <div className="h-1 bg-indigo-100 rounded mb-2 overflow-hidden">
+                <div className="h-full bg-indigo-500 transition-all" style={{ width: `${readProgress * 100}%` }} />
+              </div>
+              <p className="text-xs leading-relaxed">
+                {sweepWords.map((w, i) => (
+                  <span key={i} className={i < readCount ? 'text-gray-900 font-medium' : 'text-gray-400'}>{w} </span>
+                ))}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-1">{Math.min(readCount, sweepWords.length)} / {sweepWords.length} words read</p>
+            </div>
           )}
           <button type="button" onClick={() => { cancelAutoRef.current = true }} className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50">Cancel</button>
         </div>

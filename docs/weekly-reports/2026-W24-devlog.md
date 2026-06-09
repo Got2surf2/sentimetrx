@@ -517,3 +517,15 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What** (ReportClient TranscriptTab): a time-sweep over the per-channel segments (`collisions` useMemo, O(n)) flags segments whose time range overlaps a *different-channel* segment. Those lines get a **wavy amber underline** + a tooltip ("both mics were speaking at once — crosstalk") and a legend line when any exist. Only for stereo transcripts; mono unaffected.
 
 **Verify**: typecheck clean; 461 tests pass. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Auto-tune paced to the passage + live karaoke reading progress
+
+**Why**: The sweep was a fixed ~12s but the factoid takes ~30s to read — it ended early (owner: "troubled when it ended early!"). And it'd be cool to transcribe + show progress as they read.
+
+**What** (MicCheck):
+- `sweepTiming(passage)` paces per-combo capture so the whole sweep ≈ the read time (~150 wpm, clamped 24–48s total). Longer captures also give better SNR estimates. Intro/copy now passage-based.
+- Live reading progress: ONE best-effort Deepgram socket runs across all combos (opened lazily on the first combo's ctx for sample_rate, mono pcm16-worklet attached to each combo stream via a new `onStream` hook on `measureCombo`; survives the per-combo re-opens). Final results bump a spoken-word counter → the running panel highlights the passage **karaoke-style** (read words bold/dark, unread grey) with a progress bar + "N / M words read". Best-effort: no token/socket → sweep still runs, progress just doesn't advance.
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser karaoke needs owner + mic. Local, not pushed.
