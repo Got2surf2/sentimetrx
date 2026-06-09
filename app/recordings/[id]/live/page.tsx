@@ -42,7 +42,7 @@ export default async function RecordingLivePage(props: { params: Promise<{ id: s
         campaignsEnabled={!!ctx.features.campaigns}
         currentPage="recordings"
       />
-      <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
+      <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
         <LiveClient recordingId={params.id} name={rec.name as string} language={(rec.language as string) || 'en'} />
       </main>
     </div>

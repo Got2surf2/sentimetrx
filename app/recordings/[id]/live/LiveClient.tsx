@@ -582,54 +582,56 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
       <section className="bg-white border-2 border-orange-200 rounded-2xl p-8 text-center">
         {(phase === 'idle' || phase === 'requesting' || phase === 'error') && (
-          <>
-            <div className="text-5xl mb-4">🎙️</div>
-            <h2 className="font-semibold text-gray-900">Record this meeting live</h2>
-            <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-              Keep this tab open and in the foreground while recording. You&apos;ll see live captions as people
-              speak; when you stop, we save the audio and run the same transcription and analysis the upload flow uses.
-            </p>
+          <div className="grid md:grid-cols-2 gap-8 text-left items-start">
+            {/* Left — intro + start */}
+            <div className="flex flex-col">
+              <div className="text-5xl mb-4">🎙️</div>
+              <h2 className="text-xl font-semibold text-gray-900">Record this meeting live</h2>
+              <p className="text-sm text-gray-500 mt-2">
+                Keep this tab open and in the foreground while recording. You&apos;ll see live captions as people
+                speak; when you stop, we save the audio and run the same transcription and analysis the upload flow uses.
+              </p>
 
-            <div className="mt-5 max-w-md mx-auto">
-              <MicCheck
-                recordingId={recordingId}
-                language={language}
-                devices={devices}
-                settings={micSettings}
-                onChange={patchMic}
-                onShowNames={enableDeviceNames}
+              {error && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
+              )}
+              {recovery && (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="text-sm font-semibold text-amber-900">Unsaved recording found</div>
+                  <p className="text-xs text-amber-800 mt-1">
+                    A previous session was interrupted with about {(recovery.bytes / (1024 * 1024)).toFixed(1)} MB of audio captured.
+                    You can upload and process it, or discard it and start fresh.
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button type="button" onClick={recoverPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>Upload &amp; process</button>
+                    <button type="button" onClick={discardPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Discard</button>
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={start}
                 disabled={phase === 'requesting'}
-                channelNames={channelNames}
-                onChannelName={setChannelName}
-              />
+                className="mt-6 px-8 py-3 rounded-lg text-sm font-semibold text-white disabled:opacity-60 self-start"
+                style={{ backgroundColor: HERMES }}
+              >
+                {phase === 'requesting' ? 'Requesting microphone…' : error ? 'Try again' : 'Start recording'}
+              </button>
             </div>
 
-            {error && (
-              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
-            )}
-            {recovery && (
-              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4 text-left">
-                <div className="text-sm font-semibold text-amber-900">Unsaved recording found</div>
-                <p className="text-xs text-amber-800 mt-1">
-                  A previous session was interrupted with about {(recovery.bytes / (1024 * 1024)).toFixed(1)} MB of audio captured.
-                  You can upload and process it, or discard it and start fresh.
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <button type="button" onClick={recoverPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>Upload &amp; process</button>
-                  <button type="button" onClick={discardPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Discard</button>
-                </div>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={start}
+            {/* Right — mic check */}
+            <MicCheck
+              recordingId={recordingId}
+              language={language}
+              devices={devices}
+              settings={micSettings}
+              onChange={patchMic}
+              onShowNames={enableDeviceNames}
               disabled={phase === 'requesting'}
-              className="mt-6 px-8 py-3 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-              style={{ backgroundColor: HERMES }}
-            >
-              {phase === 'requesting' ? 'Requesting microphone…' : error ? 'Try again' : 'Start recording'}
-            </button>
-          </>
+              channelNames={channelNames}
+              onChannelName={setChannelName}
+            />
+          </div>
         )}
 
         {phase === 'recording' && (

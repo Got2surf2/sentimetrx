@@ -549,3 +549,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: MicCheck derives `activeMic` from the live per-channel meters during a test (clearly-louder channel: max>0.1 and |L−R|>0.04). The matching name input pulses an emerald ring + the label shows "🔊 speaking". The naming hint adapts ("speak into a mic" while testing; "press Test microphone" otherwise).
 
 **Verify**: typecheck clean; 461 tests pass. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: full-width record-start layout
+
+**Why**: The live record-start screen wasted horizontal space (everything in a narrow centered column).
+
+**What**: live page widened max-w-4xl→6xl; the idle screen is now a 2-column grid — left = intro + Start + recovery/error, right = the Mic check panel — instead of a single centered max-w-md stack.
+
+**Verify**: typecheck clean; live route compiles. Local, not pushed.
