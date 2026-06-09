@@ -1782,7 +1782,16 @@ function TranscriptTab({ transcript, entityMap, extractions, onPlay }: { transcr
             >
               ▶ {formatTime(s.start)}
             </button>
-            {s.speaker && <span className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5">{s.speaker}</span>}
+            {(s.speaker || typeof s.channel === 'number') && (
+              <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">
+                {s.speaker && <span className="text-xs font-semibold text-gray-500">{s.speaker}</span>}
+                {typeof s.channel === 'number' && (
+                  <span className="text-[10px] font-medium text-emerald-600" title="Source microphone (stereo split)">
+                    {micLabel(s.channel)}
+                  </span>
+                )}
+              </span>
+            )}
             {(() => {
               const role = roles.get(s.start)
               const cls = role === 'question' ? 'font-bold text-gray-900'
@@ -2651,6 +2660,14 @@ function formatTime(sec: number): string {
   const s = Math.floor(sec % 60)
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Source-mic label for a stereo (split-mic) transcript segment. Channel 0 = the
+// Left transmitter, 1 = Right; beyond that just number them.
+function micLabel(channel: number): string {
+  if (channel === 0) return 'Mic 1 · L'
+  if (channel === 1) return 'Mic 2 · R'
+  return `Mic ${channel + 1}`
 }
 
 function formatDuration(sec: number): string {

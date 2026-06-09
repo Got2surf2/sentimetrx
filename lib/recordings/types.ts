@@ -138,6 +138,11 @@ export interface RecordingRow {
   source_size_bytes: number | null
   cost_cents: number
 
+  // Detected channel layout of the extracted audio (sql/122): 1=mono,
+  // 2=true stereo → per-channel speaker separation (split-mic / RØDE).
+  // NULL = not yet extracted. Set by lib/recordings/extract.ts.
+  audio_channels: number | null
+
   coverage_report: CoverageReport | null
   analysis_summary: RecordingAnalysisSummary | null
 
@@ -275,7 +280,8 @@ export interface ProceedingsSummary {
 export interface TranscriptSegment {
   start: number          // seconds
   end: number            // seconds
-  speaker?: string       // 'S1', 'S2', ... when diarization present
+  speaker?: string       // 'S1', 'S2', ... — voice-cluster (mono) or per-channel (stereo)
+  channel?: number       // 0-indexed source channel/mic when audio was true stereo (0=Left, 1=Right)
   text: string
   confidence?: number    // 0..1
   source_file?: string   // original_filename — preserved across stitch for the audio viewer

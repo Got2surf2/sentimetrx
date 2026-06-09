@@ -51,6 +51,11 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
   const [agc, setAgc] = useState(true)
 
+  // Channels the device actually delivered (1=mono, 2=stereo/split-mic). Drives
+  // the on-screen "speakers will be separated" confirmation; the pipeline
+  // independently auto-detects the layout from the recorded audio.
+  const [capturedChannels, setCapturedChannels] = useState<number | null>(null)
+
   // Captions (best-effort).
   const [finals, setFinals] = useState<string[]>([])
   const [interim, setInterim] = useState('')
@@ -439,11 +444,17 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       // Echo cancellation + noise suppression are tuned for single-speaker calls
       // and can swallow other voices around a table, so they're off. Automatic
       // gain is user-toggleable (off suits a pro mic that sets its own levels).
+      //
+      // channelCount: { ideal: 2 } — capture stereo when the device offers it
+      // (e.g. a RØDE receiver in Split mode: mic 1 = Left, mic 2 = Right), so the
+      // pipeline can separate speakers per channel. A mono mic returns 1 channel
+      // and the pipeline auto-detects that. Pinning channelCount to 1 (the old
+      // behavior) collapsed split mics into a single un-separable speaker.
       const audio: MediaTrackConstraints = {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: agc,
-        channelCount: 1,
+        channelCount: { ideal: 2 },
       }
       if (selectedDeviceId) audio.deviceId = { exact: selectedDeviceId }
       stream = await navigator.mediaDevices.getUserMedia({ audio })
@@ -460,6 +471,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
       return
     }
     streamRef.current = stream
+    const gotChannels = stream.getAudioTracks()[0]?.getSettings().channelCount
+    setCapturedChannels(typeof gotChannels === 'number' ? gotChannels : null)
     void refreshDevices() // labels are available now permission is granted
 
     const mime = pickMimeType()
@@ -606,6 +619,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
               <span className="text-sm font-semibold tracking-wide">RECORDING</span>
             </div>
             <div className="mt-3 text-4xl font-mono font-bold text-gray-900 tabular-nums">{formatElapsed(elapsedSec)}</div>
+
+            {capturedChannels === 2 && (
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Stereo — 2 mics detected. Speakers will be separated by channel.
+              </div>
+            )}
 
             {/* Live input waveform — real signal feedback (check placement/level). */}
             <div className="mt-5 rounded-xl bg-gray-900 px-3 py-2">

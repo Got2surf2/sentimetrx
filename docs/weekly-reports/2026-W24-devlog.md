@@ -354,3 +354,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Findings**: (1) draft labels are structurally reliable (~100% Domain›Aspect agreement after definitions) → no dish/product field needed; (2) the one refined rule is sentiment calibration; (3) eval signal — LLM drafts skew Positive (~72%, Neutral ~4%), over-calling neutral mentions.
 
 **Next**: owner spot-checks ~40–60 of the 490 → compute agreement (first REO accuracy number) → fix the Positive-skew (few-shot from the gold slice) → wire the LLM tier into the live classifier path to prove REO beats keyword-only. Commits this arc: 82eaecb0, d3482d3f, 4ac1f13d, 39e8127d (+ this docs commit). Nothing pushed; migration + 520 seeded rows live on the DB only.
+
+---
+
+### 2026-06-09 — Town Hall: stereo per-mic speaker separation (RØDE split)
+
+**Why**: First live town hall with the new RØDE Wireless PRO mics came back with *every* segment tagged S1 — two distinct voices (different genders) collapsed to one speaker. Root cause (verified against the "Test" recording, all 20 segments S1): the live recorder pinned `getUserMedia` to `channelCount:1`, summing both transmitters into a mono mix *before* Deepgram saw it; Deepgram then voice-clusters a 44s mono blend and gives up at one speaker. Diarization ran — it just had nothing to separate. The RØDE RX is a true 2-channel device (Audio MIDI: "2 ch", Front Left/Right) set to Split, so the hardware was doing the right thing; we were throwing the split away.
+
+**What**: Channel-aware path, auto-detected from the audio (no manual flag), serving both live capture and uploads:
+- `extract.ts` ffprobes channel count and, for 2-channel sources, measures L−R energy to reject **dual-mono** (phones/cameras that duplicate one mix across both channels) → only genuine stereo is preserved (`-ac 2` @ 64k); everything else stays mono. Writes `recordings.audio_channels` (sql/122).
+- `deepgram.ts` uses `multichannel=true` when stereo → **channel = speaker** (deterministic per-mic), else `diarize=true` as before. Each segment now carries `channel` (0=L/1=R) alongside `speaker`; utterances sorted by start across channels.
+- `transcribe.ts` switches mode on `audio_channels`; `hybrid.ts` propagates the channel onto the aligned Whisper segment.
+- Live recorder requests `channelCount:{ideal:2}` (RØDE→2ch, laptop mic→1ch), shows a "Stereo — 2 mics detected" badge, and the PCM worklet downmixes to mono so live captions still hear both mics.
+- Report transcript shows the source mic ("Mic 1 · L") next to the speaker tag.
+
+**Verify**: typecheck clean; 458 unit + 3 new hybrid-channel tests pass. End-to-end needs a real 2-channel RØDE capture in a browser (can't be done headless) — owner to do one ~30s two-person test recording and confirm S1 **and** S2 appear. sql/122 applied to prod DB. Commit local, not pushed.

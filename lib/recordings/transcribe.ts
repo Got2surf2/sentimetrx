@@ -32,7 +32,7 @@ const stitchedPath = (org_id: string, recording_id: string) =>
 export interface TranscribeInput {
   recording: Pick<
     RecordingRow,
-    'id' | 'org_id' | 'language' | 'session_type' | 'setup_inputs' | 'asr_strategy'
+    'id' | 'org_id' | 'language' | 'session_type' | 'setup_inputs' | 'asr_strategy' | 'audio_channels'
   >
 }
 
@@ -52,7 +52,9 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
   const service = createServiceRoleClient()
   const path = stitchedPath(recording.org_id, recording.id)
 
-  const dispatched = await dispatchVendor(vendor, recording.language, service, path)
+  // True-stereo source (sql/122) → Deepgram per-channel separation (mic = speaker).
+  const multichannel = (recording.audio_channels ?? 1) >= 2
+  const dispatched = await dispatchVendor(vendor, recording.language, service, path, multichannel)
 
   const word_count = countWords(dispatched.segments)
 
@@ -137,10 +139,13 @@ async function dispatchVendor(
   language: string,
   service: ReturnType<typeof createServiceRoleClient>,
   path: string,
+  multichannel: boolean,
 ): Promise<DispatchedTranscript> {
   const lang = normalizeLang(language)
 
   if (vendor === 'whisper') {
+    // Whisper has no per-channel diarization — speaker separation only comes
+    // from the Deepgram path, so stereo gains nothing here.
     const bytes = await downloadBytes(service, path)
     assertWhisperFits(bytes.byteLength)
     return toDispatched(await transcribeWhisper({ audioBytes: bytes, filename: 'stitched.mp3', language: lang }))
@@ -148,15 +153,15 @@ async function dispatchVendor(
 
   if (vendor === 'deepgram') {
     const url = await signedUrl(service, path)
-    return toDispatched(await transcribeDeepgram({ audioUrl: url, language: lang }))
+    return toDispatched(await transcribeDeepgram({ audioUrl: url, language: lang, multichannel }))
   }
 
-  // hybrid — run both, align text+speakers.
+  // hybrid — run both, align text+speakers (Deepgram carries the per-mic split).
   const [bytes, url] = await Promise.all([downloadBytes(service, path), signedUrl(service, path)])
   assertWhisperFits(bytes.byteLength)
   const [whisper, deepgram] = await Promise.all([
     transcribeWhisper({ audioBytes: bytes, filename: 'stitched.mp3', language: lang }),
-    transcribeDeepgram({ audioUrl: url, language: lang }),
+    transcribeDeepgram({ audioUrl: url, language: lang, multichannel }),
   ])
   return toDispatched(alignHybrid(whisper, deepgram))
 }

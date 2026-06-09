@@ -33,9 +33,20 @@ const SANDBOX_TIMEOUT_MS = 60 * 60 * 1000                // 60min ceiling per ex
 const SNAPSHOT_ID = process.env.FFMPEG_SANDBOX_SNAPSHOT_ID
 const SANDBOX_RUNTIME = 'node24' as const
 
-// Canonical audio target — 16kHz mono mp3 at 32kbps. ~14MB per 60min of speech;
-// fits Whisper's 25MB limit comfortably and is the standard for ASR.
-const FFMPEG_AUDIO_FLAGS = '-vn -ac 1 -ar 16000 -c:a libmp3lame -b:a 32k'
+// Canonical audio target — 16kHz mp3 at 32kbps/channel. Mono ~14MB per 60min of
+// speech (fits Whisper's 25MB limit comfortably); stereo doubles both channels &
+// bitrate so each mic keeps its quality for per-channel speaker separation.
+function audioFlags(stereo: boolean): string {
+  return stereo
+    ? '-vn -ac 2 -ar 16000 -c:a libmp3lame -b:a 64k'
+    : '-vn -ac 1 -ar 16000 -c:a libmp3lame -b:a 32k'
+}
+
+// Below this left-minus-right mean volume (dBFS), the two channels are
+// effectively identical — a "dual-mono" file (common from phones/cameras that
+// fill both channels with the same mix). We collapse those to mono so they don't
+// produce a phantom second speaker. Genuine split-mic stereo sits far above this.
+const DUAL_MONO_DB_THRESHOLD = -50
 
 export interface ExtractInput {
   recording_id: string
@@ -82,6 +93,10 @@ export async function extractRecording(input: ExtractInput): Promise<ExtractResu
   const sandbox = await bootSandbox()
   try {
     const perFile: ExtractedFile[] = []
+    // One channel-layout decision for the whole recording, made from the first
+    // media file (all source files of a meeting share a capture device). 2 = a
+    // genuinely-stereo source → preserve both channels for per-mic separation.
+    let stereo: boolean | null = null
     for (const f of files) {
       const local = `/tmp/in_${f.sort_order}${extOf(f.original_filename)}`
       const out = `/tmp/out_${f.sort_order}.mp3`
@@ -89,7 +104,9 @@ export async function extractRecording(input: ExtractInput): Promise<ExtractResu
       await runOrThrow(sandbox, ['sh', '-c', `curl -fsSL '${shellQuote(f.download_url)}' -o '${local}'`],
         `download ${f.original_filename}`)
 
-      await runOrThrow(sandbox, ['sh', '-c', `ffmpeg -y -i '${local}' ${FFMPEG_AUDIO_FLAGS} '${out}'`],
+      if (stereo === null) stereo = await detectTrueStereo(sandbox, local, f.original_filename)
+
+      await runOrThrow(sandbox, ['sh', '-c', `ffmpeg -y -i '${local}' ${audioFlags(stereo)} '${out}'`],
         `ffmpeg ${f.original_filename}`)
 
       const duration = await probeDurationSec(sandbox, out)
@@ -134,7 +151,8 @@ export async function extractRecording(input: ExtractInput): Promise<ExtractResu
       `--data-binary @/tmp/stitched.mp3 '${shellQuote(stitchedUploadUrl)}'`,
     ], 'upload stitched.mp3')
 
-    await writeBackDbRows(service, input, perFile)
+    const audioChannels = stereo ? 2 : 1
+    await writeBackDbRows(service, input, perFile, audioChannels)
 
     const source_duration_sec = perFile.reduce((sum, f) => sum + f.duration_sec, 0)
     return {
@@ -189,6 +207,7 @@ async function writeBackDbRows(
   service: ReturnType<typeof createServiceRoleClient>,
   input: ExtractInput,
   perFile: ExtractedFile[],
+  audioChannels: number,
 ): Promise<void> {
   for (const f of perFile) {
     const { error } = await service
@@ -206,7 +225,7 @@ async function writeBackDbRows(
   const source_duration_sec = perFile.reduce((sum, f) => sum + f.duration_sec, 0)
   const { error: rErr } = await service
     .from('recordings')
-    .update({ source_duration_sec })
+    .update({ source_duration_sec, audio_channels: audioChannels })
     .eq('id', input.recording_id)
     .eq('org_id', input.org_id)
   if (rErr) throw new Error(`recordings update failed: ${rErr.message}`)
@@ -314,6 +333,45 @@ async function probeDurationSec(
     throw new Error(`ffprobe returned invalid duration for ${path}: "${r.stdout.trim()}"`)
   }
   return Math.round(n)
+}
+
+/**
+ * Decide whether a source is *genuinely* stereo (two distinct channels worth
+ * separating — e.g. a RØDE receiver in Split mode, mic 1 = Left, mic 2 = Right)
+ * vs. mono or "dual-mono" (two channels carrying the same mix).
+ *
+ * Two cheap probes, fail-safe to mono on any error so a probe hiccup can never
+ * fabricate a second speaker:
+ *   1. ffprobe the channel count. < 2 → mono, done.
+ *   2. Measure the left-minus-right energy over the first 2 minutes. If the
+ *      difference is essentially silent, the channels are identical (dual-mono)
+ *      → treat as mono. Otherwise it's real stereo.
+ */
+async function detectTrueStereo(
+  sandbox: InstanceType<typeof Sandbox>,
+  path: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    const chRes = await runOrThrow(sandbox, [
+      'sh', '-c',
+      `ffprobe -v error -select_streams a:0 -show_entries stream=channels -of csv=p=0 '${path}'`,
+    ], `ffprobe channels ${label}`)
+    const channels = parseInt(chRes.stdout.trim(), 10)
+    if (!Number.isFinite(channels) || channels < 2) return false
+
+    // volumedetect prints e.g. "mean_volume: -23.4 dB". On a (L-R) downmix a
+    // dual-mono file collapses to near-silence (≈ -91 dB); real stereo is loud.
+    const diffRes = await runOrThrow(sandbox, [
+      'sh', '-c',
+      `ffmpeg -nostats -t 120 -i '${path}' -af 'pan=mono|c0=0.5*c0-0.5*c1,volumedetect' -f null - 2>&1 | grep mean_volume || true`,
+    ], `stereo-diff ${label}`)
+    const m = diffRes.stdout.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/)
+    if (!m) return true                       // couldn't measure → trust the 2-ch container
+    return parseFloat(m[1]) >= DUAL_MONO_DB_THRESHOLD
+  } catch {
+    return false                              // any probe failure → safe mono path
+  }
 }
 
 // ── Misc ─────────────────────────────────────────────────────────────────────

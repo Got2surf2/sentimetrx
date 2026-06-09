@@ -30,8 +30,13 @@ export interface HybridResult {
 export function alignHybrid(whisper: WhisperResult, deepgram: DeepgramResult): HybridResult {
   const dgSegments = deepgram.segments
   const segments: TranscriptSegment[] = whisper.segments.map(w => {
-    const speaker = bestOverlapSpeaker(w.start, w.end, dgSegments)
-    return speaker !== null ? { ...w, speaker } : w
+    const match = bestOverlapSegment(w.start, w.end, dgSegments)
+    if (!match) return w
+    return {
+      ...w,
+      speaker: match.speaker,
+      ...(typeof match.channel === 'number' ? { channel: match.channel } : {}),
+    }
   })
 
   return {
@@ -47,13 +52,13 @@ export function alignHybrid(whisper: WhisperResult, deepgram: DeepgramResult): H
   }
 }
 
-/** Find the Deepgram speaker label whose utterance overlaps a given window most. */
-function bestOverlapSpeaker(
+/** Find the Deepgram utterance (speaker + source channel) overlapping a window most. */
+function bestOverlapSegment(
   wStart: number,
   wEnd: number,
   dgSegments: TranscriptSegment[],
-): string | null {
-  let bestSpeaker: string | null = null
+): TranscriptSegment | null {
+  let best: TranscriptSegment | null = null
   let bestOverlap = 0
   for (const d of dgSegments) {
     if (d.end < wStart) continue
@@ -62,8 +67,8 @@ function bestOverlapSpeaker(
     const overlap = Math.max(0, Math.min(d.end, wEnd) - Math.max(d.start, wStart))
     if (overlap > bestOverlap) {
       bestOverlap = overlap
-      bestSpeaker = d.speaker
+      best = d
     }
   }
-  return bestSpeaker
+  return best
 }

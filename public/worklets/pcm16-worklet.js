@@ -3,7 +3,12 @@
 // AudioWorklet processor for Town Hall live captions (§ 15, piece 2b). Receives
 // the mic's Float32 audio on the audio thread, accumulates ~43ms chunks, converts
 // to 16-bit little-endian PCM (linear16), and posts the raw buffer to the main
-// thread, which forwards it to Deepgram's live WS. Mono (channel 0) only.
+// thread, which forwards it to Deepgram's live WS.
+//
+// Stereo (split-mic) captures are downmixed to mono HERE so the live caption
+// socket — which is mono and un-diarized, captions only — still hears BOTH mics.
+// Per-channel speaker separation happens later on the authoritative MediaRecorder
+// blob; the live captions are a convenience layer and don't need the split.
 
 class PCM16Worklet extends AudioWorkletProcessor {
   constructor() {
@@ -15,10 +20,21 @@ class PCM16Worklet extends AudioWorkletProcessor {
 
   process(inputs) {
     const input = inputs[0]
-    const channel = input && input[0]
-    if (channel && channel.length) {
-      this._buf.push(new Float32Array(channel))
-      this._count += channel.length
+    const ch0 = input && input[0]
+    if (ch0 && ch0.length) {
+      // Downmix every input channel to a single mono frame (average). For a mono
+      // source this is just a copy of channel 0; for stereo it blends both mics.
+      const n = ch0.length
+      const frame = new Float32Array(n)
+      const chCount = input.length
+      for (let c = 0; c < chCount; c++) {
+        const ch = input[c]
+        for (let i = 0; i < n; i++) frame[i] += ch[i]
+      }
+      if (chCount > 1) for (let i = 0; i < n; i++) frame[i] /= chCount
+
+      this._buf.push(frame)
+      this._count += n
       if (this._count >= this._target) {
         const merged = new Float32Array(this._count)
         let off = 0

@@ -72,6 +72,12 @@ export interface DeepgramInput {
   language: string
   /** Preserved on every segment for the audio viewer when source was a single file. */
   sourceFile?: string
+  /**
+   * True-stereo split-mic source (e.g. RØDE Split: mic 1 = Left, mic 2 = Right).
+   * Transcribe each channel independently and use the channel as the speaker —
+   * deterministic per-mic separation instead of voice-signature clustering.
+   */
+  multichannel?: boolean
 }
 
 export async function transcribeDeepgram(input: DeepgramInput): Promise<DeepgramResult> {
@@ -80,12 +86,19 @@ export async function transcribeDeepgram(input: DeepgramInput): Promise<Deepgram
 
   const params = new URLSearchParams({
     model: 'nova-3',
-    diarize: 'true',
     punctuate: 'true',
     smart_format: 'true',
     utterances: 'true',
     language: input.language || 'en',
   })
+  if (input.multichannel) {
+    // Per-channel transcription → utterance.channel IS the speaker (mic). No
+    // voice-cluster diarization needed; the channel split is authoritative.
+    params.set('multichannel', 'true')
+  } else {
+    // Single mix → fall back to voice-signature diarization.
+    params.set('diarize', 'true')
+  }
 
   const res = await fetch(`${DEEPGRAM_BATCH_URL}?${params.toString()}`, {
     method: 'POST',
@@ -104,16 +117,25 @@ export async function transcribeDeepgram(input: DeepgramInput): Promise<Deepgram
   // Deepgram batch returns the full transcript synchronously for short audio.
   // For very long files it may return a request_id; honor either shape.
   const data = await res.json() as DeepgramBatchResponse
-  const utterances = data.results?.utterances ?? []
+  // With multichannel, utterances come per-channel and may not be globally
+  // time-ordered — sort so the stitched transcript reads chronologically.
+  const utterances = [...(data.results?.utterances ?? [])].sort((a, b) => a.start - b.start)
 
-  const segments: TranscriptSegment[] = utterances.map(u => ({
-    start: u.start,
-    end: u.end,
-    speaker: typeof u.speaker === 'number' ? `S${u.speaker + 1}` : undefined,
-    text: u.transcript.trim(),
-    confidence: u.confidence,
-    ...(input.sourceFile ? { source_file: input.sourceFile, source_offset: u.start } : {}),
-  }))
+  const segments: TranscriptSegment[] = utterances.map(u => {
+    // Stereo: the source channel IS the mic/speaker. Mono: voice-cluster speaker.
+    const speakerIdx = input.multichannel
+      ? (typeof u.channel === 'number' ? u.channel : undefined)
+      : (typeof u.speaker === 'number' ? u.speaker : undefined)
+    return {
+      start: u.start,
+      end: u.end,
+      speaker: speakerIdx !== undefined ? `S${speakerIdx + 1}` : undefined,
+      ...(input.multichannel && typeof u.channel === 'number' ? { channel: u.channel } : {}),
+      text: u.transcript.trim(),
+      confidence: u.confidence,
+      ...(input.sourceFile ? { source_file: input.sourceFile, source_offset: u.start } : {}),
+    }
+  })
 
   const durationSec = data.metadata?.duration ?? null
   const cost_cents = durationSec
@@ -138,6 +160,7 @@ interface DeepgramUtterance {
   confidence: number
   transcript: string
   speaker?: number
+  channel?: number        // 0-indexed source channel — present with multichannel=true
 }
 
 interface DeepgramChannel {
