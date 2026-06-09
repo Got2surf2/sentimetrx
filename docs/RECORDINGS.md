@@ -709,11 +709,14 @@ Called from the review-and-generate gate (§ 5.3) once the pipeline is paused at
 ```json
 {
   "setup_inputs": { /* full edited QaSetupInputs — agenda[], panel[] */ },
-  "instructions": "free-text steer appended to both Opus + Sonnet prompts"
+  "instructions": "free-text steer appended to both Opus + Sonnet prompts",
+  "skip_qa": false
 }
 ```
 
 If `setup_inputs` is present it replaces `recordings.setup_inputs` before analysis (last-minute agenda / panel-roster fixes that steer extraction quality). `instructions` ≤ 4000 chars. **`phase_map` (meeting tool):** for a community meeting, the gate's "Presentation ends at [mm:ss]" control sends an edited two-phase map; the route persists it (`edited_by_user:true`) before the workflow runs, so analysis scopes Q&A to the confirmed Q&A span and summarizes the presentation span. Accepts `status='transcribed'` (first generation) or `'failed'` (retry the analysis pass without re-transcribing); other statuses return `{ already_running }`.
+
+**Q&A extraction is optional — `skip_qa` close-out.** Not every town hall is a Q&A; some are open listening sessions (community members venting, no question/answer structure). When the gate's **"Finish without Q&A"** action sends `skip_qa:true`, `runAnalyze` skips the Opus/Sonnet Q&A pass, the dataset mirror, coverage, and the synthesis summary — the **transcript is the deliverable** — but still builds the presentation summary (`proceedings_summary`) when a deck phase exists. The recording completes normally (`analyzing → complete`); the report opens on the Transcript tab (no Q&A pairs, so the default falls back from Coverage to Transcript). The user can still run full Q&A later (status returns to a re-generable state via the gate). No Q&A billing on this path (only the cheap presentation summary if applicable).
 
 ### 4.3 `GET /api/recordings/[id]` — status + details
 

@@ -369,3 +369,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 - Report transcript shows the source mic ("Mic 1 · L") next to the speaker tag.
 
 **Verify**: typecheck clean; 458 unit + 3 new hybrid-channel tests pass. End-to-end needs a real 2-channel RØDE capture in a browser (can't be done headless) — owner to do one ~30s two-person test recording and confirm S1 **and** S2 appear. sql/122 applied to prod DB. Commit local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Q&A extraction is optional (close out without it)
+
+**Why**: Not every town hall is a Q&A. Some are open listening sessions — community members venting, no question/answer structure — where forcing the Opus/Sonnet Q&A pass produces noise and a ~$50 charge for nothing. Owner wants to close out the recording on the transcript alone and have Q&A labeled optional in the flow.
+
+**What**: `analyzeRecordingWorkflow`/`runAnalyze` gain a `skipQa` flag; the `/analyze` route accepts `skip_qa:true`. Skip path bypasses Q&A extraction + dataset mirror + coverage + synthesis, still builds the presentation summary when a deck phase exists, and completes (analyzing→complete) with the transcript as the deliverable. GeneratePanel reframed: heading now "Transcript ready", copy states Q&A is optional, primary "Generate Q&A pairs" + secondary "Finish without Q&A" (confirm dialog). Report defaults to the Transcript tab when there are no Q&A pairs (was Coverage → empty). Refactored the presentation-summary block into a shared `maybeSummarizePresentation` helper used by both paths.
+
+**Verify**: typecheck clean; 461 unit tests pass. End-to-end (a real transcribed recording → "Finish without Q&A" → report) is a UI/workflow path — owner to spot-check. No schema change. Local, not pushed.

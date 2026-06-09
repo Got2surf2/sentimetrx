@@ -559,7 +559,10 @@ function GeneratePanel({
     (su.panel ?? []).map(p => (p.role ? `${p.name} — ${p.role}` : p.name)).join('\n'),
   )
   const [instructions, setInstructions] = useState('')
-  const [busy, setBusy] = useState(false)
+  // Which action is running, if any — 'qa' = full extraction, 'skip' = close out
+  // with the transcript only. Drives per-button "Starting…" labels.
+  const [busyAction, setBusyAction] = useState<null | 'qa' | 'skip'>(null)
+  const busy = busyAction !== null
   const [err, setErr] = useState<string | null>(null)
 
   // Entity-spelling review (§3.5b). Seeded with the auto-extracted candidates;
@@ -571,8 +574,12 @@ function GeneratePanel({
   const addEntity = () =>
     setEntities(prev => [...prev, { canonical: '', variants: [], type: 'term', mentions: 1 }])
 
-  const handleGenerate = async () => {
-    setBusy(true)
+  const handleGenerate = async (skipQa = false) => {
+    if (skipQa && !window.confirm(
+      'Close out this town hall with the transcript only? No Q&A pairs will be extracted — '
+      + 'good for an open listening session. You can still generate Q&A later.'
+    )) return
+    setBusyAction(skipQa ? 'skip' : 'qa')
     setErr(null)
     try {
       const body: {
@@ -580,18 +587,23 @@ function GeneratePanel({
         instructions?: string
         phase_map?: PhaseMap
         entity_map?: { entities: EntityMapEntry[]; extracted_at: string; reviewed_at?: string | null }
+        skip_qa?: boolean
       } = {
         instructions: instructions.trim() || undefined,
       }
+      // Close-out without Q&A: skip the extraction-shaping fields (agenda/panel/
+      // entity map) — only the transcript + an optional presentation summary are
+      // produced. The phase split is still sent below so a deck summary scopes right.
+      if (skipQa) body.skip_qa = true
       // Persist the reviewed entity map (drop blank canonicals). Always sent so an
       // emptied list clears the map; the server stamps reviewed_at.
-      if (isQa) {
+      if (isQa && !skipQa) {
         body.entity_map = {
           entities: entities.filter(e => e.canonical.trim()),
           extracted_at: entityMap?.extracted_at ?? new Date().toISOString(),
         }
       }
-      if (isQa) {
+      if (isQa && !skipQa) {
         body.setup_inputs = {
           ...su,
           agenda: agenda.split('\n').map(s => s.trim()).filter(Boolean),
@@ -626,7 +638,7 @@ function GeneratePanel({
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'network error')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -634,25 +646,37 @@ function GeneratePanel({
     <section className="bg-white border-2 border-orange-200 rounded-lg p-5 space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="font-semibold text-gray-900">Transcript ready — generate the Q&amp;A</h3>
+          <h3 className="font-semibold text-gray-900">Transcript ready</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Refine the optional fields below to steer extraction quality, or generate now.
+            Q&amp;A extraction is <span className="font-medium text-gray-700">optional</span>. Generate Q&amp;A pairs below,
+            or close out with the transcript only — good for an open listening session with no question/answer structure.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={busy}
-          className="shrink-0 px-5 py-2.5 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
-          style={{ backgroundColor: '#E8632A' }}
-        >
-          {busy ? 'Starting…' : 'Generate Q&A pairs'}
-        </button>
+        <div className="shrink-0 flex flex-col items-stretch gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleGenerate(false)}
+            disabled={busy}
+            className="px-5 py-2.5 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
+            style={{ backgroundColor: '#E8632A' }}
+          >
+            {busyAction === 'qa' ? 'Starting…' : 'Generate Q&A pairs'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGenerate(true)}
+            disabled={busy}
+            className="px-5 py-1.5 text-xs font-medium rounded-lg text-gray-600 border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {busyAction === 'skip' ? 'Finishing…' : 'Finish without Q&A'}
+          </button>
+        </div>
       </div>
 
       <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-        <span className="font-semibold">⚠ Heads up:</span> this runs the full AI analysis (Opus + Sonnet),
+        <span className="font-semibold">⚠ Heads up:</span> generating Q&amp;A runs the full AI analysis (Opus + Sonnet),
         is billed (about <strong>$50</strong>), and takes a few minutes. It replaces any existing Q&amp;A — you can re-generate later.
+        <span className="block mt-1 text-amber-700">“Finish without Q&amp;A” skips that pass and just closes out the transcript (no Q&amp;A charge).</span>
       </div>
 
       {isQa && (

@@ -74,10 +74,14 @@ export default function ReportClient({ data }: { data: ReportData }) {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [tab, setTab] = useState<Tab>(() => {
+    // A Q&A-skipped close-out has no pairs — land on the transcript (the actual
+    // deliverable) instead of an empty Coverage tab.
+    const hasQa = data.extractions.some(e => e.unit_type === 'qa_pair')
+    const fallback: Tab = hasQa ? 'coverage' : 'transcript'
     const t = tabParam ?? ''
-    if (t === 'presentation' && !hasPresentation) return 'coverage'
-    if (t === 'comparison' && !hasLiveTranscript) return 'coverage'
-    return (TABS as readonly string[]).includes(t) ? (t as Tab) : 'coverage'
+    if (t === 'presentation' && !hasPresentation) return fallback
+    if (t === 'comparison' && !hasLiveTranscript) return fallback
+    return (TABS as readonly string[]).includes(t) ? (t as Tab) : fallback
   })
   // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
   // Cleared whenever the user picks a tab manually (see TabBar onChange).

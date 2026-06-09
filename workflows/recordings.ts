@@ -39,6 +39,7 @@ import type {
   QaSetupInputs,
   TranscriptSegment,
   PresentationOutline,
+  ProceedingsSummary,
 } from '@/lib/recordings/types'
 
 // Phase 1 — ingest through transcription, then PAUSE at 'transcribed'. The
@@ -75,12 +76,17 @@ export async function processRecordingWorkflow(recording_id: string, org_id: str
 // Phase 2 — user-triggered analysis. Runs the Opus + Sonnet two-pass on the
 // already-stored transcript. `instructions` is the optional free-text steer the
 // user supplies in the review-and-generate gate (§ 5.3).
-export async function analyzeRecordingWorkflow(recording_id: string, org_id: string, instructions?: string) {
+//
+// `skipQa` = the close-out-without-Q&A path: some town halls are open listening
+// sessions (community venting) with no question/answer structure to extract. We
+// still complete the recording (transcript stays the deliverable) and build the
+// presentation summary when a deck phase exists, but skip the expensive Q&A pass.
+export async function analyzeRecordingWorkflow(recording_id: string, org_id: string, instructions?: string, skipQa = false) {
   "use workflow"
 
   try {
     await setStatus(recording_id, org_id, 'analyzing')
-    await runAnalyze(recording_id, org_id, instructions)
+    await runAnalyze(recording_id, org_id, instructions, skipQa)
 
     await setStatus(recording_id, org_id, 'complete')
     await setCompletedAt(recording_id, org_id)
@@ -184,7 +190,7 @@ async function runEntityExtraction(recording_id: string, org_id: string) {
     .eq('id', recording_id).eq('org_id', org_id)
 }
 
-async function runAnalyze(recording_id: string, org_id: string, instructions?: string) {
+async function runAnalyze(recording_id: string, org_id: string, instructions?: string, skipQa = false) {
   "use step"
   const rec = await loadRecording(recording_id, org_id)
   if (!rec) throw new FatalError(`recording ${recording_id} disappeared before analyze`)
@@ -193,6 +199,25 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
   if (!transcript) throw new FatalError(`transcript for ${recording_id} not found — transcribe stage didn't write?`)
 
   const profile = resolveProfile(rec)
+
+  // Close-out without Q&A (optional extraction). Skip the Opus/Sonnet Q&A pass,
+  // mirror, coverage, and synthesis — the transcript is the deliverable. Still
+  // build the presentation summary when a deck phase exists. Q&A pairs / coverage
+  // / analysis_summary are left as-is (null on a first pass).
+  if (skipQa) {
+    const { proceedings, presCents } = await maybeSummarizePresentation(rec, transcript.segments, profile)
+    const svc = createServiceRoleClient()
+    const { error } = await svc
+      .from('recordings')
+      .update({
+        proceedings_summary: proceedings,
+        cost_cents: (rec.cost_cents ?? 0) + presCents,
+      })
+      .eq('id', recording_id)
+      .eq('org_id', org_id)
+    if (error) throw new FatalError(`recordings close-out write failed: ${error.message}`)
+    return
+  }
 
   // Scope Q&A extraction to the qa phase(s); fall back to the whole transcript
   // when there's no phase map (legacy / single-phase).
@@ -231,21 +256,7 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
   })
 
   // Presentation summary (only when the profile has a presentation phase with content).
-  let proceedings = null
-  let presCents = 0
-  if (hasPresentationPhase(profile)) {
-    const presSegments = slicePhaseSegments(transcript.segments, rec.phase_map, ['presentation'])
-    if (presSegments.length > 0) {
-      const r = await summarizePresentation({
-        recording_id, org_id,
-        setup: rec.setup_inputs as QaSetupInputs,
-        transcript: presSegments,
-        outline: rec.presentation_outline,
-      })
-      proceedings = r.summary
-      presCents = r.cents
-    }
-  }
+  const { proceedings, presCents } = await maybeSummarizePresentation(rec, transcript.segments, profile)
 
   const service = createServiceRoleClient()
   const { error } = await service
@@ -259,6 +270,26 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
     .eq('id', recording_id)
     .eq('org_id', org_id)
   if (error) throw new FatalError(`recordings post-analyze write failed: ${error.message}`)
+}
+
+// Presentation summary (only when the profile has a presentation phase with
+// content). Shared by the full-analysis path and the Q&A-skipped close-out.
+async function maybeSummarizePresentation(
+  rec: RecordingRow,
+  segments: TranscriptSegment[],
+  profile: ReturnType<typeof resolveProfile>,
+): Promise<{ proceedings: ProceedingsSummary | null; presCents: number }> {
+  if (!hasPresentationPhase(profile)) return { proceedings: null, presCents: 0 }
+  const presSegments = slicePhaseSegments(segments, rec.phase_map, ['presentation'])
+  if (presSegments.length === 0) return { proceedings: null, presCents: 0 }
+  const r = await summarizePresentation({
+    recording_id: rec.id,
+    org_id: rec.org_id,
+    setup: rec.setup_inputs as QaSetupInputs,
+    transcript: presSegments,
+    outline: rec.presentation_outline,
+  })
+  return { proceedings: r.summary, presCents: r.cents }
 }
 
 // §3.5e — concise summary of what was presented, for scope classification.

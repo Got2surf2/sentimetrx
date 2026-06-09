@@ -21,6 +21,7 @@ interface Body {
   instructions?: string
   phase_map?: PhaseMap          // user-adjusted phase boundaries from the review gate
   entity_map?: unknown          // user-corrected entity-spelling map from the gate (§3.5b)
+  skip_qa?: boolean             // close out with the transcript only — no Q&A extraction
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -68,6 +69,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (instructions && instructions.length > 4000) {
     return NextResponse.json({ error: 'instructions too long (4000 char max)' }, { status: 400 })
   }
+  const skipQa = body.skip_qa === true
 
   // Persist last-minute setup edits (agenda / panel roster) before analysis so
   // the extraction prompt sees them. Replaces setup_inputs wholesale — the gate
@@ -120,7 +122,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('id', recording_id)
     .eq('org_id', org_id)
 
-  const run = await start(analyzeRecordingWorkflow, [recording_id, org_id, instructions])
+  const run = await start(analyzeRecordingWorkflow, [recording_id, org_id, instructions, skipQa])
 
   return NextResponse.json({ ok: true, status: 'analyzing', run_id: run.runId })
 }
