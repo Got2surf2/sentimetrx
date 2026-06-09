@@ -77,6 +77,16 @@ const nextConfig = {
     '/admin/control-reports':            ['./docs/weekly-reports/*.md'],
     '/admin/control-reports/governance': ['./docs/weekly-reports/*.md'],
     '/admin/control-reports/spec-drift': ['./docs/weekly-reports/*.md'],
+    // @sparticuz/chromium loads its real payload — the brotli-packed Chromium
+    // binary + fonts + swiftshader under bin/ — at runtime via a computed path,
+    // so the static tracer never sees those files and leaves them out of the
+    // serverless function. The function then dies with: input directory
+    // "/var/task/node_modules/@sparticuz/chromium/bin" does not exist. serverExternalPackages
+    // (above) keeps the JS from being relocated; this ships the bin/ assets
+    // alongside it. Needed on EVERY route that renders a PDF with headless Chrome.
+    '/api/recordings/[id]/report/pdf':  ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/api/recordings/[id]/report/send': ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
   },
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,

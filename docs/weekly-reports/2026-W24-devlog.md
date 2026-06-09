@@ -1,5 +1,13 @@
 # 2026-W24 — Dev log (Week of Jun 8 to Jun 14)
 
+## 2026-06-09 — Fix: Town Hall report PDF 500s in prod (Chromium bin/ not traced)
+
+**Why**: Owner reported the Town Hall report **Download PDF** failing in production. Captured the real prod error off the function logs (the route only logs it server-side, returns a generic "PDF render failed"): `The input directory "/var/task/node_modules/@sparticuz/chromium/bin" does not exist`. Confirmed the code path is sound — rendered PDFs locally against both real complete recordings (NOWOCATS TEST RUN + Meeting 2), with and without transcript, all succeeded. The failure was serverless-bundling only.
+
+**What changed**: `next.config.js` `outputFileTracingIncludes` — added `./node_modules/@sparticuz/chromium/bin/**` for the three headless-Chrome PDF routes (`/api/recordings/[id]/report/pdf`, `/api/recordings/[id]/report/send`, `/api/bots/[id]/study/pdf`). `serverExternalPackages` keeps the package's JS from being relocated, but @sparticuz/chromium loads its brotli-packed binary + fonts + swiftshader from `bin/` via a runtime-computed path the static tracer can't follow, so those ~70MB of assets were left out of the function. This ships them. The Agent Study PDF route (same engine) had the identical latent bug — fixed in the same pass.
+
+**Verify**: `node --check next.config.js` clean; local render harness proved the data/HTML/render logic before the change. The fix only takes effect on a prod build/deploy (output tracing is a build-time step — not reproducible locally), so the real confirmation is the owner re-clicking Download PDF after the next deploy. Local-only commit.
+
 ## 2026-06-08 — Security-audit remediation: Claude Code agent-workspace hardening hooks
 
 **Why**: The 2026-06-08 `/security-audit` scored the workspace 80/100 (Grade B); the only gap was Phase-5 Claude-Code security hooks (0/15) — the harness had no guard against a confused/hijacked agent running catastrophic or exfil-shaped Bash, nor any scanner for secrets surfacing in tool output. This is pure config/agent hardening (defense-in-depth), distinct from the app-level multi-tenancy work (which scores under `/audit-codebase`).

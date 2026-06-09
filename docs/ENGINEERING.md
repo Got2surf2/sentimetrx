@@ -560,6 +560,25 @@ outputFileTracingIncludes: {
 If a new admin surface starts reading from `docs/weekly-reports/`,
 add its route here too.
 
+The same hint covers runtime-loaded **native binaries**, not just
+markdown. `@sparticuz/chromium` (headless-Chrome PDF rendering) is
+listed in `serverExternalPackages` so its JS isn't relocated by the
+bundler — but it loads its real payload (the brotli-packed Chromium
+binary + fonts + swiftshader, ~70MB under `bin/`) at request time via
+a computed path the tracer can't follow. Without a trace hint the
+function dies at runtime with `input directory ".../@sparticuz/chromium/bin"
+does not exist`. Every route that renders a PDF with headless Chrome
+needs `'./node_modules/@sparticuz/chromium/bin/**'` traced in:
+
+```js
+'/api/recordings/[id]/report/pdf':  ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/recordings/[id]/report/send': ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
+```
+
+When you add a new headless-Chrome PDF route, add its path here too —
+it works locally (installed Chrome) but 500s in prod without the hint.
+
 ### Claude Code push discipline
 
 Codified in `CLAUDE.md` "Push policy" — committed to the repo so it
