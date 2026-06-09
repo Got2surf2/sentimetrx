@@ -323,3 +323,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **Eval signal**: drafts skew Positive (1684/573/88 = ~72% Pos, ~4% Neutral) — model over-calls neutral mentions despite the prompt; owner spot-check quantifies, then few-shot/calibration fix. Owner-verified slice = gold eval set; rest = silver.
 
 **Verify**: smoke test on 2 reviews correct (incl. Access>Parking, Digital>MobileApp); 519 classified / 0 failed; `npx tsc --noEmit` exit 0. Local-only (no push).
+
+### 2026-06-09 — Public Comments record (make the agent's "I'll capture this" promise real)
+
+**Why**: Owner spotted Sarina telling a resident "I'll make sure this is captured in the official PM-2 record" — but no mechanism backed it. The comment only lived in the raw transcript, and a *statement* (not a question) never hits `logged_questions`, so it's invisible in every gap-based export. Owner chose to build a real capture (option 2) over softening the wording (option 1).
+
+**What changed**: `getAgentStudy` now extracts `publicComments[]` — substantive resident feedback (observation/concern/suggestion about the project), distinct from questions + chit-chat. Folded into the existing `classifyExchanges` pass (new `comment` field on prompt + ExchangeTag) → **zero added AI calls**, full coverage; each entry = `{quote verbatim, focus, sentiment, sessionId, createdAt}`. Cache `STUDY_SCHEMA_VERSION` v4→v5. Surfaced as a new **Public Comments** tab in the agent workbook (2nd tab; Date/Topic/Sentiment/Comment/Session, PII-redacted) + a "Public comments captured" Summary line. No new table/migration — rides the cached study JSONB. Report/deck UI don't render it yet (object-additive, backward-safe).
+
+**Verify**: tsc clean (cache cleared); full suite 861 pass. Live extraction quality not yet eyeballed against real Sarina data — owner to spot-check the tab. Local-only.

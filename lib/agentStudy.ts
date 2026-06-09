@@ -85,6 +85,11 @@ export interface AgentStudy {
     total: number          // count of logged_questions.status='open' — matches the agent card exactly
     open: { question: string; context: string; after: string; classification: string; language: string | null; suggestedKb: string | null; createdAt: string; sessionPairs: number }[]
   }
+  // Substantive resident feedback (observations / concerns / suggestions about
+  // the project), extracted per exchange alongside focus/entity classification.
+  // The "public comment" record — what makes an agent's "I'll capture this for
+  // the record" promise real. Verbatim (lightly cleaned), not paraphrased.
+  publicComments: { quote: string; focus: string | null; sentiment: string | null; sessionId: string; createdAt: string }[]
   insights: {
     commonQuestions: string[]
     patterns: string[]
@@ -315,7 +320,7 @@ async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T, i: n
   return out
 }
 
-interface ExchangeTag { focus: string | null; entities: string[] }
+interface ExchangeTag { focus: string | null; entities: string[]; comment: string | null }
 
 async function classifyExchanges(botId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ExchangeTag[]> {
   const enabled = focuses.filter(f => f.enabled !== false)
@@ -331,8 +336,10 @@ ${catalog ? `Classify each USER question into exactly ONE focus area from this c
 
 Also extract NAMED entities the USER mentions in their question (NOT from the agent's reply) — specific roads, intersections, places, organizations, named things. NOT generic words, sentiments, the agent's own name/website, or any URL. Canonicalize (e.g. "the 429" and "SR 429" -> "SR 429").
 
+Also, if the USER's message states a substantive PUBLIC COMMENT — a first-hand observation, concern, complaint, suggestion, or opinion about the project/area (e.g. "the queue at Kelly Park backs up with no signal", "we need a crosswalk near the school") — set "comment" to the user's verbatim message (lightly cleaned of typos, NOT paraphrased). Set "comment" to null when the message is ONLY a question, a greeting, an acknowledgement, small talk, or context with no opinion/observation worth recording. A message can be both a question AND a comment — if it carries a substantive observation, capture it.
+
 Return ONLY a JSON array, one object per exchange index, no markdown:
-[{"i":0,"focus":"slug_or_null","entities":["Name","Name"]}, ...]`
+[{"i":0,"focus":"slug_or_null","entities":["Name","Name"],"comment":"verbatim_or_null"}, ...]`
     const res = await callAI({ tier: 'fast', maxTokens: 1500, timeoutMs: 40000, system, messages: [{ role: 'user', content: lines }] })
     logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_classify' }, res.usage)
     let parsed: any[] = []
@@ -345,7 +352,8 @@ Return ONLY a JSON array, one object per exchange index, no markdown:
       const p = parsed.find((x: any) => x && x.i === i) || {}
       const slug = typeof p.focus === 'string' && enabled.some(f => f.slug === p.focus) ? p.focus : null
       const ents = Array.isArray(p.entities) ? p.entities.filter((s: any) => typeof s === 'string' && s.trim().length > 1 && !isJunk(s.trim())).slice(0, 6) : []
-      return { focus: slug, entities: ents } as ExchangeTag
+      const comment = typeof p.comment === 'string' && p.comment.trim().length > 3 ? p.comment.trim() : null
+      return { focus: slug, entities: ents, comment } as ExchangeTag
     })
   })
   return results.flat()
@@ -418,7 +426,9 @@ function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string
 //   v3 (2026-06-03): open[].sessionPairs (conversation depth per open question).
 //   v4 (2026-06-05): openQuestions.total (= card's status='open' count); dropped
 //   AI validation of open questions (open[].restated, autoFiltered, filteredExamples).
-const STUDY_SCHEMA_VERSION = 'v4'
+//   v5 (2026-06-09): publicComments[] — substantive resident feedback extracted
+//   in the classify pass (the public-comment record artifact).
+const STUDY_SCHEMA_VERSION = 'v5'
 function cacheKeyFor(pairTotal: number, bot: BotRow): string {
   const h = crypto.createHash('sha1')
   h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
@@ -606,6 +616,24 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const answeredPairs = Math.max(0, totalPairs - openCount)
   const answerRatePct = totalPairs > 0 ? Math.min(100, Math.round((answeredPairs / totalPairs) * 100)) : null
 
+  // ── public comments (resident feedback, from the classify pass) ──
+  // Each exchange whose USER turn carried a substantive observation/concern/
+  // suggestion becomes a record entry. Reuses the focus tag + the live-computed
+  // sentiment — no extra AI call. This is the artifact behind "I'll capture
+  // this for the record."
+  const focusLabel = new Map(enabledFocuses.map(f => [f.slug, f.label] as [string, string]))
+  const publicComments = allExchanges.map((ex, i) => {
+    const c = tags[i].comment
+    if (!c) return null
+    return {
+      quote: c,
+      focus: tags[i].focus ? (focusLabel.get(tags[i].focus!) || tags[i].focus) : null,
+      sentiment: ex.question.sentiment,
+      sessionId: ex.sessionId,
+      createdAt: ex.question.created_at,
+    }
+  }).filter(Boolean) as AgentStudy['publicComments']
+
   // ── narrative insights (AI) ──
   const insights = await computeInsights(botId, bot.name, sessions)
 
@@ -659,6 +687,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     intents: intentsArr,
     languages: languagesArr,
     openQuestions,
+    publicComments,
     insights,
     meta: {
       classifiedExchanges: allExchanges.length,

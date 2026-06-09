@@ -2,12 +2,15 @@
 // GET ?format=xlsx — one combined Excel workbook for an agent, four tabs:
 //   1. Summary            — totals / answer rate / languages / top focus areas
 //                           (from the cached Agent Study, no fresh AI unless stale)
-//   2. Q&A Pairs          — review-gated question→answer pairs (shared with the
+//   2. Public Comments    — substantive resident feedback (observations /
+//                           concerns / suggestions) extracted by the Agent Study;
+//                           the artifact behind "I'll capture this for the record".
+//   3. Q&A Pairs          — review-gated question→answer pairs (shared with the
 //                           conversations export)
-//   3. Low-Confidence     — open logged_questions (kb_miss + ai_uncertain only;
+//   4. Low-Confidence     — open logged_questions (kb_miss + ai_uncertain only;
 //      Answers              deflects excluded), with the agent's actual reply +
 //                           PII-redacted. These got an answer — it was flagged weak.
-//   4. Full Transcript    — one row per turn
+//   5. Full Transcript    — one row per turn
 //
 // Built for handing a client a single self-contained file. Org-member or
 // admin gated (same gate as the conversations export).
@@ -46,6 +49,7 @@ function summarySheet(botName: string, study: AgentStudy | null, lowConfCount: n
   rows.push(['Total Q&A pairs', t.totalPairs])
   rows.push(['Answered pairs', t.answeredPairs])
   rows.push(['Answer rate', t.answerRatePct != null ? t.answerRatePct + '%' : '—'])
+  rows.push(['Public comments captured', study.publicComments.length])
   // The agent DID reply to these — they're flagged low-confidence (thin KB hit
   // or a hedge), awaiting team review. NOT "no answer was given."
   rows.push(['Low-confidence answers (flagged for review)', lowConfCount])
@@ -85,6 +89,24 @@ function buildReplyLookup(turns: ExportTurn[]): (sid: string, userMsg: string) =
     if (idx < 0) return ''
     for (let j = idx + 1; j < ts.length; j++) if (ts[j].role === 'assistant') return (ts[j].content_en || ts[j].content || '').replace(/\s+/g, ' ').trim()
     return ''
+  }
+}
+
+// The public-comment record — substantive resident feedback (not questions)
+// extracted by the Agent Study. This is the artifact behind the agent's
+// "I'll capture this for the record" promise. PII-redacted by default.
+function publicCommentsSheet(study: AgentStudy | null): Sheet {
+  const rows = (study?.publicComments || []).map(c => [
+    (c.createdAt || '').slice(0, 10),
+    c.focus || '',
+    c.sentiment || '',
+    redactPII(c.quote),
+    c.sessionId,
+  ])
+  return {
+    name: 'Public Comments',
+    headers: ['Date', 'Topic', 'Sentiment', 'Comment (resident, verbatim)', 'Session ID'],
+    rows,
   }
 }
 
@@ -150,6 +172,7 @@ export async function GET(_req: NextRequest, props: Params) {
 
   const sheets: Sheet[] = [
     summarySheet(bot.name, study, lowConf.length),
+    publicCommentsSheet(study),
     await pairsSheet(service, params.id, turns, bot.name, 'Q&A Pairs'),
     lowConfidenceSheet(lowConf, turns, bot.name),
     turnsSheet(turns, 'Full Transcript'),
