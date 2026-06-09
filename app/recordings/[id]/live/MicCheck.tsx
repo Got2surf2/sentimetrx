@@ -16,6 +16,7 @@
 // Central). The gain slider here is a software boost applied in the audio graph.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { pickReadingPassage } from '@/lib/recordings/readingPassages'
 
 export interface MicSettings {
   deviceId: string              // '' = system default
@@ -236,6 +237,7 @@ export default function MicCheck({
 
   // Auto-tune sweep state.
   const [autotune, setAutotune] = useState<{ phase: 'idle' | 'intro' | 'running'; idx: number; label: string }>({ phase: 'idle', idx: 0, label: '' })
+  const [passage, setPassage] = useState('')   // interesting-facts paragraph to read aloud during the sweep
   const cancelAutoRef = useRef(false)
 
   const streamRef = useRef<MediaStream | null>(null)
@@ -600,7 +602,7 @@ export default function MicCheck({
           {autotune.phase === 'idle' && !testing && (
             <button
               type="button"
-              onClick={() => setAutotune({ phase: 'intro', idx: 0, label: '' })}
+              onClick={() => { setPassage(p => pickReadingPassage(p)); setAutotune({ phase: 'intro', idx: 0, label: '' }) }}
               disabled={disabled}
               className="text-xs font-semibold rounded-md px-3 py-1 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
             >
@@ -628,8 +630,11 @@ export default function MicCheck({
             We’ll try {SWEEP.length} settings, about {SWEEP_MS / 1000}s each (~{Math.round(SWEEP.length * SWEEP_MS / 1000)}s total), and pick the clearest by signal quality.
           </p>
           <p className="text-[11px] text-gray-700">
-            <strong>What you do:</strong> when you press Start, <strong>keep talking at your normal volume and distance the whole time</strong> — read something aloud, recite, or count slowly. Don’t go quiet until it says done. For a 2-mic setup, have the main speaker talk.
+            <strong>What you do:</strong> when you press Start, <strong>read this aloud at your normal volume and distance</strong> until it says done — don’t go quiet between settings. For a 2-mic setup, have the main speaker read it.
           </p>
+          {passage && (
+            <p className="text-xs text-gray-800 leading-relaxed bg-white border border-indigo-200 rounded-md p-2.5 italic">{passage}</p>
+          )}
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void runAutotune()} className="text-xs font-semibold rounded-md px-3 py-1.5 text-white" style={{ backgroundColor: '#E8632A' }}>Start auto-tune</button>
             <button type="button" onClick={() => setAutotune({ phase: 'idle', idx: 0, label: '' })} className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50">Cancel</button>
@@ -646,6 +651,9 @@ export default function MicCheck({
             <div className="h-full bg-indigo-500 transition-all" style={{ width: `${((autotune.idx + 1) / SWEEP.length) * 100}%` }} />
           </div>
           <p className="text-[11px] text-gray-600">Testing: {autotune.label}</p>
+          {passage && (
+            <p className="text-xs text-gray-800 leading-relaxed bg-white border border-indigo-200 rounded-md p-2.5 italic">{passage}</p>
+          )}
           <button type="button" onClick={() => { cancelAutoRef.current = true }} className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50">Cancel</button>
         </div>
       )}

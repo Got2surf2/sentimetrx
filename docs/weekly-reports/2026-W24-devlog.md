@@ -497,3 +497,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: Replaced the two-socket per-channel approach with ONE socket using Deepgram `multichannel=true&channels=2`. New `public/worklets/pcm16-stereo-worklet.js` interleaves L/R into int16 PCM (mono input duplicated); MicCheck routes each result to its lane ('L'/'R') by `channel_index`. Caption refs collapsed from a per-key map to a single ws/queue/finals model. One connection = reliable + half the cost. (Live split-window feature dropped per owner — font styling suffices; the deliverable is the batch pass.)
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. Owner to re-test the R lane. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Auto-tune shows an interesting-facts passage to read aloud
+
+**Why**: Auto-tune needs ~15s of continuous speech; "keep talking" is awkward. Give the user something genuinely interesting to read, fresh each run.
+
+**What**: `lib/recordings/readingPassages.ts` — an internal store of ~80-word true-fact paragraphs (octopus hearts, honey never spoiling, Venus days, etc.) + `pickReadingPassage(exclude)` (random, no immediate repeat). MicCheck picks one when the Auto-tune intro opens and shows it in the intro + running panels to read aloud. Add more passages freely.
+
+**Verify**: typecheck clean; 461 tests pass. Local, not pushed.
