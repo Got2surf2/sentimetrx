@@ -91,6 +91,98 @@ function computeReco(maxLevel: number, clipped: boolean, channels: number, s: Mi
   return { messages, suggested, hasChanges }
 }
 
+// Encode an AudioBuffer's first channel as a 16-bit PCM WAV blob (for mono
+// playback of a stereo test clip).
+function encodeWavMono(buffer: AudioBuffer): Blob {
+  const sr = buffer.sampleRate
+  const samples = buffer.getChannelData(0)
+  const dataLen = samples.length * 2
+  const ab = new ArrayBuffer(44 + dataLen)
+  const dv = new DataView(ab)
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)) }
+  writeStr(0, 'RIFF'); dv.setUint32(4, 36 + dataLen, true); writeStr(8, 'WAVE')
+  writeStr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true)
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true)
+  writeStr(36, 'data'); dv.setUint32(40, dataLen, true)
+  let off = 44
+  for (let i = 0; i < samples.length; i++) { const s = Math.max(-1, Math.min(1, samples[i])); dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true); off += 2 }
+  return new Blob([ab], { type: 'audio/wav' })
+}
+
+// Downmix a recorded (stereo) clip to a centered-mono WAV object URL.
+async function deriveMonoUrl(blob: Blob): Promise<string> {
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+  const tmp = new Ctx()
+  const decoded = await tmp.decodeAudioData(await blob.arrayBuffer())
+  tmp.close().catch(() => {})
+  const offline = new OfflineAudioContext(1, decoded.length, decoded.sampleRate)
+  const src = offline.createBufferSource()
+  src.buffer = decoded
+  src.connect(offline.destination)   // stereo → 1-ch destination downmixes to mono
+  src.start()
+  const rendered = await offline.startRendering()
+  return URL.createObjectURL(encodeWavMono(rendered))
+}
+
+// ── Auto-tune sweep ──────────────────────────────────────────────────────────
+// Records a few seconds under each meaningful processing combination, measures
+// objective signal stats, and picks the clearest. Echo-cancellation is held OFF
+// (it hurts room/multi-speaker capture); we sweep AGC × noise-suppression.
+
+interface ComboMetrics { peak: number; clipFrac: number; snrDb: number; level: number }
+const SWEEP: { agc: boolean; noiseSuppression: boolean; label: string }[] = [
+  { agc: false, noiseSuppression: false, label: 'No processing' },
+  { agc: true, noiseSuppression: false, label: 'Auto gain' },
+  { agc: false, noiseSuppression: true, label: 'Noise suppression' },
+  { agc: true, noiseSuppression: true, label: 'Auto gain + noise suppression' },
+]
+const SWEEP_MS = 3000
+
+// Open a stream under `audio`, measure for `ms`, return signal stats. SNR is
+// estimated from the spread between quiet (10th pct) and loud (90th pct) frames.
+async function measureCombo(audio: MediaTrackConstraints, ms: number, cancelled: () => boolean): Promise<ComboMetrics> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio })
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+  const ctx = new Ctx()
+  try {
+    await ctx.resume()
+    const an = ctx.createAnalyser(); an.fftSize = 2048
+    ctx.createMediaStreamSource(stream).connect(an)
+    const buf = new Float32Array(an.fftSize)
+    const frames: number[] = []
+    let peak = 0, clip = 0, total = 0
+    const start = performance.now()
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (cancelled()) { resolve(); return }
+        an.getFloatTimeDomainData(buf)
+        let sum = 0
+        for (let i = 0; i < buf.length; i++) { const v = buf[i]; const a = Math.abs(v); sum += v * v; if (a > peak) peak = a; if (a >= 0.98) clip++; total++ }
+        frames.push(Math.sqrt(sum / buf.length))
+        if (performance.now() - start >= ms) resolve()
+        else requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+    frames.sort((a, b) => a - b)
+    const noise = frames[Math.floor(frames.length * 0.1)] ?? 1e-6
+    const speech = frames[Math.floor(frames.length * 0.9)] ?? noise
+    const snrDb = 20 * Math.log10((speech + 1e-9) / (noise + 1e-9))
+    return { peak, clipFrac: clip / Math.max(1, total), snrDb, level: speech }
+  } finally {
+    stream.getTracks().forEach(t => t.stop())
+    ctx.close().catch(() => {})
+  }
+}
+
+function scoreCombo(m: ComboMetrics): number {
+  let s = m.snrDb                 // clarity, higher better
+  if (m.peak >= 0.98) s -= 25     // clipping is near-disqualifying
+  if (m.level < 0.08) s -= 12     // too quiet
+  else if (m.level > 0.92) s -= 6 // too hot
+  return s
+}
+
 export default function MicCheck({
   recordingId, language, devices, settings, onChange, onShowNames, disabled,
 }: {
@@ -116,7 +208,11 @@ export default function MicCheck({
 
   // Test clip record + playback (local only — never uploaded).
   const [clipRecording, setClipRecording] = useState(false)
-  const [clipUrl, setClipUrl] = useState<string | null>(null)
+  const [clipUrl, setClipUrl] = useState<string | null>(null)        // stereo (as recorded)
+  const [clipMono, setClipMono] = useState(false)                    // play the mono downmix instead
+  const [clipMonoUrl, setClipMonoUrl] = useState<string | null>(null)
+  const clipBlobRef = useRef<Blob | null>(null)
+  const clipMonoUrlRef = useRef<string | null>(null)
 
   // Live monitoring — route the processed mic to the speakers so the user can
   // HEAR the effect of each toggle/gain change and pick what sounds best. Off by
@@ -128,6 +224,10 @@ export default function MicCheck({
   const maxLevelRef = useRef(0)        // peak level observed this test
   const clipRef = useRef(false)        // did it ever clip?
   const channelsRef = useRef(1)        // captured channel count (stable read for stopTest)
+
+  // Auto-tune sweep state.
+  const [autotune, setAutotune] = useState<{ phase: 'idle' | 'intro' | 'running'; idx: number; label: string }>({ phase: 'idle', idx: 0, label: '' })
+  const cancelAutoRef = useRef(false)
 
   const streamRef = useRef<MediaStream | null>(null)
   const ctxRef = useRef<AudioContext | null>(null)
@@ -153,7 +253,11 @@ export default function MicCheck({
 
   const revokeClip = useCallback(() => {
     if (clipUrlRef.current) { URL.revokeObjectURL(clipUrlRef.current); clipUrlRef.current = null }
+    if (clipMonoUrlRef.current) { URL.revokeObjectURL(clipMonoUrlRef.current); clipMonoUrlRef.current = null }
+    clipBlobRef.current = null
     setClipUrl(null)
+    setClipMonoUrl(null)
+    setClipMono(false)
   }, [])
 
   const stopCaptions = useCallback(() => {
@@ -361,6 +465,7 @@ export default function MicCheck({
     rec.ondataavailable = (e) => { if (e.data && e.data.size) clipChunksRef.current.push(e.data) }
     rec.onstop = () => {
       const blob = new Blob(clipChunksRef.current, { type: rec.mimeType || 'audio/webm' })
+      clipBlobRef.current = blob
       const url = URL.createObjectURL(blob)
       clipUrlRef.current = url
       setClipUrl(url)
@@ -371,6 +476,58 @@ export default function MicCheck({
     setClipRecording(true)
     clipTimerRef.current = setTimeout(() => stopClip(), CLIP_MAX_MS)
   }, [revokeClip, stopClip])
+
+  // Toggle test-clip playback between stereo (as recorded) and a centered-mono
+  // downmix (derived lazily on first switch to mono).
+  const toggleClipMono = useCallback(async () => {
+    const next = !clipMono
+    setClipMono(next)
+    if (next && !clipMonoUrlRef.current && clipBlobRef.current) {
+      try {
+        const url = await deriveMonoUrl(clipBlobRef.current)
+        clipMonoUrlRef.current = url
+        setClipMonoUrl(url)
+      } catch { setClipMono(false) }
+    }
+  }, [clipMono])
+
+  // Run the sweep: measure each combo, score, recommend the winner.
+  const runAutotune = useCallback(async () => {
+    stopTest()
+    revokeClip()
+    setReco(null)
+    cancelAutoRef.current = false
+    const base = settingsRef.current
+    const results: { combo: typeof SWEEP[number]; m: ComboMetrics }[] = []
+    for (let i = 0; i < SWEEP.length; i++) {
+      if (cancelAutoRef.current) { setAutotune({ phase: 'idle', idx: 0, label: '' }); return }
+      const combo = SWEEP[i]
+      setAutotune({ phase: 'running', idx: i, label: combo.label })
+      try {
+        const m = await measureCombo(
+          buildAudioConstraints({ ...base, agc: combo.agc, echoCancellation: false, noiseSuppression: combo.noiseSuppression, gain: 1 }),
+          SWEEP_MS, () => cancelAutoRef.current,
+        )
+        results.push({ combo, m })
+      } catch { /* skip a combo that won't open */ }
+    }
+    setAutotune({ phase: 'idle', idx: 0, label: '' })
+    if (cancelAutoRef.current || results.length === 0) return
+
+    results.sort((a, b) => scoreCombo(b.m) - scoreCombo(a.m))
+    const win = results[0]
+    const suggested: MicSettings = { ...base, agc: win.combo.agc, echoCancellation: false, noiseSuppression: win.combo.noiseSuppression }
+    const messages: string[] = [`Clearest: ${win.combo.label.toLowerCase()} — SNR ${win.m.snrDb.toFixed(0)} dB${win.m.peak >= 0.98 ? ', but it clipped' : ''}.`]
+    if (win.m.peak >= 0.98) messages.push('It clipped — move back or lower the mic’s hardware gain, then re-run.')
+    else if (win.m.level < 0.2) {
+      suggested.gain = Math.min(4, Math.max(base.gain, Math.round((0.5 / Math.max(0.05, win.m.level)) * base.gain * 10) / 10))
+      if (suggested.gain > base.gain) messages.push(`Raise software gain to about ${gainToDb(suggested.gain)} — the level was low.`)
+    }
+    messages.push('Scored on objective signal (SNR, clipping, level) — confirm with the live monitor too.')
+    const hasChanges = suggested.gain !== base.gain || suggested.agc !== base.agc
+      || suggested.noiseSuppression !== base.noiseSuppression || suggested.echoCancellation !== base.echoCancellation
+    setReco({ messages, suggested, hasChanges })
+  }, [stopTest, revokeClip])
 
   // Apply gain changes live (no re-open needed).
   useEffect(() => {
@@ -399,7 +556,7 @@ export default function MicCheck({
   useEffect(() => {
     if (disabled && testing) stopTest()
   }, [disabled, testing, stopTest])
-  useEffect(() => () => { stopTest(); revokeClip() }, [stopTest, revokeClip])
+  useEffect(() => () => { cancelAutoRef.current = true; stopTest(); revokeClip() }, [stopTest, revokeClip])
 
   const hasNames = devices.some(d => d.label)
   const lowSignal = testing && peakSeen > 0 && peakSeen < 0.12
@@ -408,19 +565,61 @@ export default function MicCheck({
 
   return (
     <div className="rounded-lg border border-gray-200 p-3 space-y-3 text-left">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-gray-700">Microphone &amp; mic check</span>
-        <button
-          type="button"
-          onClick={() => (testing ? stopTest(true) : startTest())}
-          disabled={disabled}
-          className={`text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40 ${
-            testing ? 'bg-gray-900 text-white hover:bg-black' : 'border border-orange-300 text-orange-700 hover:bg-orange-50'
-          }`}
-        >
-          {testing ? 'Stop test' : 'Test microphone'}
-        </button>
+        <div className="flex items-center gap-2">
+          {autotune.phase === 'idle' && !testing && (
+            <button
+              type="button"
+              onClick={() => setAutotune({ phase: 'intro', idx: 0, label: '' })}
+              disabled={disabled}
+              className="text-xs font-semibold rounded-md px-3 py-1 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Auto-tune
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => (testing ? stopTest(true) : startTest())}
+            disabled={disabled || autotune.phase !== 'idle'}
+            className={`text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40 ${
+              testing ? 'bg-gray-900 text-white hover:bg-black' : 'border border-orange-300 text-orange-700 hover:bg-orange-50'
+            }`}
+          >
+            {testing ? 'Stop test' : 'Test microphone'}
+          </button>
+        </div>
       </div>
+
+      {/* Auto-tune: instructions + run + progress */}
+      {autotune.phase === 'intro' && (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3 space-y-2">
+          <div className="text-xs font-semibold text-gray-800">Auto-tune — find the clearest settings</div>
+          <p className="text-[11px] text-gray-700">
+            We’ll try {SWEEP.length} settings, about {SWEEP_MS / 1000}s each (~{Math.round(SWEEP.length * SWEEP_MS / 1000)}s total), and pick the clearest by signal quality.
+          </p>
+          <p className="text-[11px] text-gray-700">
+            <strong>What you do:</strong> when you press Start, <strong>keep talking at your normal volume and distance the whole time</strong> — read something aloud, recite, or count slowly. Don’t go quiet until it says done. For a 2-mic setup, have the main speaker talk.
+          </p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void runAutotune()} className="text-xs font-semibold rounded-md px-3 py-1.5 text-white" style={{ backgroundColor: '#E8632A' }}>Start auto-tune</button>
+            <button type="button" onClick={() => setAutotune({ phase: 'idle', idx: 0, label: '' })} className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50">Cancel</button>
+          </div>
+        </div>
+      )}
+      {autotune.phase === 'running' && (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-800">Auto-tuning… keep talking!</span>
+            <span className="text-[11px] text-gray-500">{autotune.idx + 1} / {SWEEP.length}</span>
+          </div>
+          <div className="h-1.5 bg-indigo-100 rounded overflow-hidden">
+            <div className="h-full bg-indigo-500 transition-all" style={{ width: `${((autotune.idx + 1) / SWEEP.length) * 100}%` }} />
+          </div>
+          <p className="text-[11px] text-gray-600">Testing: {autotune.label}</p>
+          <button type="button" onClick={() => { cancelAutoRef.current = true }} className="text-xs font-medium rounded-md px-3 py-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50">Cancel</button>
+        </div>
+      )}
 
       {/* Device picker */}
       <div>
@@ -551,12 +750,20 @@ export default function MicCheck({
             </button>
             {clipUrl && !clipRecording && (
               // eslint-disable-next-line jsx-a11y/media-has-caption
-              <audio src={clipUrl} controls className="h-8 max-w-[200px]" />
+              <audio src={clipMono && clipMonoUrl ? clipMonoUrl : clipUrl} controls className="h-8 max-w-[200px]" />
+            )}
+            {clipUrl && !clipRecording && channels === 2 && (
+              <div className="flex rounded-md border border-gray-300 overflow-hidden text-[11px]">
+                <button type="button" onClick={() => clipMono && void toggleClipMono()}
+                  className={`px-2 py-1 font-medium ${!clipMono ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Stereo</button>
+                <button type="button" onClick={() => !clipMono && void toggleClipMono()}
+                  className={`px-2 py-1 font-medium ${clipMono ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Mono</button>
+              </div>
             )}
           </div>
           {monitor
             ? <p className="text-[11px] text-amber-700">Monitoring live — <strong>use headphones</strong>, or the speakers will feed back into the mic. Toggle the options below to hear the difference.</p>
-            : <p className="text-[11px] text-gray-400">“Listen” monitors the live mic so you can hear each toggle’s effect (headphones). The test clip plays back with your current device &amp; gain. Not saved.</p>}
+            : <p className="text-[11px] text-gray-400">“Listen” monitors the live mic so you can hear each toggle’s effect (headphones).{channels === 2 ? ' Test-clip playback is stereo (Mic 1 = left ear, Mic 2 = right ear) — switch to Mono for a centered mix.' : ' The test clip plays back with your current device & gain.'} Not saved.</p>}
         </div>
       )}
 

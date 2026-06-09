@@ -437,3 +437,15 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What** (MicCheck.tsx): the test tracks peak level + whether it ever clipped (refs updated in the meter draw loop). On an explicit "Stop test", `computeReco(maxLevel, clipped, channels, settings)` produces a plain-English recommendation + a suggested MicSettings: clipping → lower gain (or back off hardware); low signal → raise software gain to ~target (with the dB shown); good → say so; echo-cancel/noise-suppress → off for room capture; stereo + AGC → AGC off (fights per-mic levels). An **Apply recommended** button writes the suggested settings via onChange; Dismiss closes it. Metrics read from refs (incl. channelsRef) so stopTest stays identity-stable and a constraint-change re-open/unmount never pops the card.
 
 **Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser reco accuracy needs the owner + RØDE. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Mic check — stereo/mono clip playback + Auto-tune sweep
+
+**Why**: Owner wanted (1) a choice of stereo vs mono test-clip playback, and (2) the recommendation to actually *evaluate* setting combinations rather than only heuristically infer them.
+
+**What** (MicCheck.tsx):
+- **Stereo/mono playback toggle**: the test clip records the gain-applied (stereo) stream as before; a Stereo/Mono switch (only shown for a 2-ch source) plays either the original or a mono downmix derived on first switch (`decodeAudioData` → `OfflineAudioContext(1,…)` → `encodeWavMono` → object URL). Both URLs revoked on re-record/stop/unmount.
+- **Auto-tune sweep** (opt-in, instructed): on Start it sequentially opens the mic under each of 4 combos (AGC×noise-suppress; echo-cancel held off), records ~3s each, and `measureCombo` collects peak, clip fraction, and an SNR estimate (10th vs 90th-pct frame RMS). `scoreCombo` = SNR − clipping/level penalties; the winner becomes a Reco (winning toggles + a gain suggestion) shown in the existing Apply card. Intro panel tells the user exactly what to do (keep talking ~15s); running panel shows progress + a Cancel; `cancelAutoRef` aborts and is tripped on unmount. Honest limits documented in-UI: objective metrics only, needs consistent speech, can't see a silent 2nd speaker — monitor + clip playback remain the human check.
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. In-browser sweep accuracy + mono downmix need the owner + RØDE. Local, not pushed.
