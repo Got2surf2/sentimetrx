@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import DOMPurify from 'isomorphic-dompurify'
 import DownloadButton from '@/components/ui/DownloadButton'
+import LottieLoader from '@/components/ui/LottieLoader'
 import { getFlagStyle, isFixedFlag } from '@/lib/flagStyles'
 
 var HERMES = '#E8632A'
@@ -57,6 +58,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   var [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
   var [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
   var [shareIncludeLabels, setShareIncludeLabels] = useState(false)
+  var [workbookLoading, setWorkbookLoading] = useState(false)
 
   // Filters
   var [filterFlag, setFilterFlag] = useState<string>('all')
@@ -166,6 +168,31 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       setTurns(d.turns || [])
     } catch {}
     setTurnsLoading(false)
+  }
+
+  // Fetch the combined workbook as a blob (not a plain navigation) so we can
+  // show the Lottie while the server builds + styles the file — it can take a
+  // few seconds when the Agent Study summary recomputes.
+  async function downloadWorkbook() {
+    if (workbookLoading || sessions.length === 0) return
+    setWorkbookLoading(true)
+    try {
+      var res = await fetch('/api/bots/' + botId + '/workbook?format=xlsx')
+      if (!res.ok) { alert('Could not generate the Excel file. Please try again.'); return }
+      var blob = await res.blob()
+      var cd = res.headers.get('Content-Disposition') || ''
+      var m = cd.match(/filename="?([^"]+)"?/)
+      var filename = m ? m[1] : ((botName || 'agent').replace(/\s+/g, '_') + '_Export.xlsx')
+      var url = URL.createObjectURL(blob)
+      var a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Could not generate the Excel file. Please try again.')
+    } finally {
+      setWorkbookLoading(false)
+    }
   }
 
   async function shareConversation() {
@@ -322,11 +349,11 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
           />
           {/* Combined client workbook: Summary + Q&A pairs + Unanswered + Transcript
               in one .xlsx (multi-sheet → no CSV variant). */}
-          <button onClick={function() { window.location.href = '/api/bots/' + botId + '/workbook?format=xlsx' }}
-            disabled={sessions.length === 0}
+          <button onClick={downloadWorkbook}
+            disabled={sessions.length === 0 || workbookLoading}
             title="One Excel file with four tabs: Summary, Q&A Pairs, Low-Confidence Answers, and the Full Transcript"
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50">
-            Excel workbook
+            {workbookLoading ? 'Preparing…' : 'Excel workbook'}
           </button>
           <button onClick={function() { router.push('/bots/' + botId + '/report') }}
             style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: '#0F7173', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -413,6 +440,15 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
             </div>
           )}
         </>
+      )}
+
+      {/* ═══ EXCEL WORKBOOK BUILDING OVERLAY ═══ */}
+      {workbookLoading && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(2px)' }}>
+          <div style={{ background: 'white', borderRadius: 16, padding: '28px 36px', boxShadow: '0 16px 40px rgba(0,0,0,0.16)' }}>
+            <LottieLoader size={120} message={'Preparing ' + (botName || 'the agent') + "'s Excel file…"} />
+          </div>
+        </div>
       )}
 
       {/* ═══ CONVERSATION MODAL ═══ */}

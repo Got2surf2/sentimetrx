@@ -305,3 +305,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: New `lib/styledWorkbook.ts` (exceljs 4.4.0, added dep) takes the same `{name,headers,rows}` Sheet shape and renders bold teal frozen+filterable headers, content-fit column widths, wrapped text, zebra rows; Summary tab styled as a titled cover page (value column left-aligned so numbers line up with text). Workbook route now returns the exceljs buffer instead of the SheetJS `dataResponse`. Scoped to this one deliverable — the other xlsx exports stay on the lightweight SheetJS path. QC'd by rendering a dummy-data sample → PDF → PNG via LibreOffice (header fill, zebra, borders, personified columns all confirmed).
 
 **Verify**: tsc clean; visual render inspected. Local-only.
+
+### 2026-06-08 (follow-up 5) — Lottie loader on the Excel workbook button
+
+**Why**: The workbook build can take a few seconds (Summary recompute); the button was a plain navigation with no feedback.
+
+**What changed**: Switched the Excel-workbook button to a fetch→blob download (parses Content-Disposition for the filename) and added a full-screen `LottieLoader` "Preparing {Agent}'s Excel file…" overlay while it builds; button label flips to "Preparing…" and disables. Uses the canonical `components/ui/LottieLoader` (no CSS spinner). BOTS.md updated.
+
+**Verify**: tsc clean. Local-only.
