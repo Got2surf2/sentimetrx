@@ -461,3 +461,16 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 2. **Extract layer**: the L−R dual-mono guard is content-dependent and could collapse a genuine 2-mic recording when the channels correlate. The recorder now sets `recordings.capture_stereo` (sql/123) via `POST …/process { stereo_capture:true }`; `extract.ts` (`loadCaptureStereo` → `detectTrueStereo(..., trustStereo)`) preserves stereo whenever the file has ≥2 channels and **skips the guard** for deliberate captures. Uploads keep auto-detect + guard. Still ffprobe-gated, so a truly-mono blob stays mono (no phantom 2nd speaker).
 
 **Verify**: sql/123 applied to prod; typecheck clean; 461 tests pass; live route compiles. Real-device consistency needs the owner + RØDE (record a few times, confirm S1/S2 every time). Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: stereo root cause = browser AGC forces mono; live dual-mono detection
+
+**Why**: Owner's screenshot showed identical L/R meters AND identical transcription on both mics — the two channels carried the same audio. Root cause: Chrome's audio processing module (AGC/echo/noise) runs in MONO; with AGC on (our default), getUserMedia returns a 2-channel track that's one channel duplicated. True stereo needs all processing off.
+
+**What**:
+- **Live dual-mono detection** in MicCheck: the meter draw loop now computes the L−R difference-energy ratio vs signal; when 2 channels + real signal + ratio<0.06 it flags identical channels and shows a warning + one-click "Turn off processing for true stereo" (sets AGC/echo/noise off → constraintKey re-opens the preview). If processing is already off and still identical, it points at the device (RØDE Split).
+- **Corrected yesterday's over-reach**: reverted the `capture_stereo` "skip the dual-mono guard" path — that would let an AGC dual-mono recording through as fake stereo (the exact identical-S1/S2 bug). The guard in extract.ts now ALWAYS runs (keeps distinct channels, collapses identical). `capture_stereo` is kept as a write-only diagnostic (intent vs detected audio_channels) to pinpoint a lost split.
+- Kept the recording-layer fix (force a 2-channel MediaStreamAudioDestinationNode when the track is stereo).
+
+**Verify**: typecheck clean; 461 tests pass; live route compiles. Owner to re-test: turn AGC off (or click the new button) → L/R meters and per-mic captions should diverge. Local, not pushed.

@@ -143,9 +143,10 @@ export interface RecordingRow {
   // NULL = not yet extracted. Set by lib/recordings/extract.ts.
   audio_channels: number | null
 
-  // Intent flag (sql/123): the live recorder captured a deliberate 2-channel
-  // split. extract.ts then trusts the split (preserves stereo, skips the
-  // content-dependent dual-mono guard) when the file truly has ≥2 channels.
+  // Diagnostic (sql/123): the live recorder reported it captured a 2-channel
+  // split. Compare against `audio_channels` (what extract detected) to debug a
+  // lost split — capture_stereo=true but audio_channels=1 means the two channels
+  // arrived identical (e.g. browser AGC forced mono) and the guard collapsed them.
   capture_stereo: boolean | null
 
   coverage_report: CoverageReport | null

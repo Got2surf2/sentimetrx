@@ -198,6 +198,7 @@ export default function MicCheck({
   const [channels, setChannels] = useState(1)
   const [levels, setLevels] = useState<{ l: number; r: number }>({ l: 0, r: 0 })
   const [peakSeen, setPeakSeen] = useState(0)     // max level observed this test (drives the low-signal hint)
+  const [chIdentical, setChIdentical] = useState(false)  // 2 channels but carrying the same audio (dual-mono)
   const [err, setErr] = useState<string | null>(null)
 
   // Live captions during the test (best-effort, mirrors the real recorder path).
@@ -238,6 +239,8 @@ export default function MicCheck({
   const rafRef = useRef<number | null>(null)
   const smoothRef = useRef<{ l: number; r: number }>({ l: 0, r: 0 })
   const frameRef = useRef(0)
+  const tdRef = useRef<{ l: Float32Array<ArrayBuffer>; r: Float32Array<ArrayBuffer> } | null>(null)  // reusable time-domain buffers
+  const diffSmoothRef = useRef(1)        // smoothed L−R difference ratio (~0 = identical channels)
   // Per-caption-stream WS + opening-PCM queue + accumulated finals, keyed like `caps`.
   const capRef = useRef<Record<string, { ws: WebSocket | null; queue: ArrayBuffer[]; finals: string[] }>>({})
   const clipRecorderRef = useRef<MediaRecorder | null>(null)
@@ -298,6 +301,7 @@ export default function MicCheck({
     smoothRef.current = { l: 0, r: 0 }
     setLevels({ l: 0, r: 0 })
     setPeakSeen(0)
+    setChIdentical(false)
     setCaps({})
     setCapErr(null)
     setClipRecording(false)
@@ -305,29 +309,34 @@ export default function MicCheck({
   }, [stopCaptions, stopClip])
 
   const draw = useCallback(() => {
-    const peak = (a: AnalyserNode | null): number => {
-      if (!a) return 0
-      const buf = new Float32Array(a.fftSize)
-      a.getFloatTimeDomainData(buf)
-      let p = 0
-      for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i]); if (v > p) p = v }
-      return p
-    }
+    const aL = analysersRef.current.l, aR = analysersRef.current.r
+    const n = aL?.fftSize ?? aR?.fftSize ?? 0
+    if (n && (!tdRef.current || tdRef.current.l.length !== n)) tdRef.current = { l: new Float32Array(n), r: new Float32Array(n) }
+    const td = tdRef.current
+    // One pass per channel: peak (for the meter) + signal/diff energy (for the
+    // identical-channels check). ~0 difference with real signal = dual-mono.
+    let l = 0, r = 0, sig = 0, diff = 0
+    if (aL && td) { aL.getFloatTimeDomainData(td.l); for (let i = 0; i < n; i++) { const v = td.l[i]; const a = Math.abs(v); if (a > l) l = a; sig += v * v } }
+    if (aR && td) { aR.getFloatTimeDomainData(td.r); for (let i = 0; i < n; i++) { const a = Math.abs(td.r[i]); if (a > r) r = a } }
+    if (aL && aR && td) { for (let i = 0; i < n; i++) { const d = td.l[i] - td.r[i]; diff += d * d } }
+
     // Fast attack, slow decay so the meter reads naturally and brief peaks show.
     const sm = smoothRef.current
-    const l = peak(analysersRef.current.l)
-    const r = peak(analysersRef.current.r)
     sm.l = l > sm.l ? l : sm.l * 0.85 + l * 0.15
     sm.r = r > sm.r ? r : sm.r * 0.85 + r * 0.15
 
     const m = Math.max(sm.l, sm.r)
     if (m > maxLevelRef.current) maxLevelRef.current = m
     if (m >= 0.96) clipRef.current = true
+    if (aL && aR && sig > 1e-5) diffSmoothRef.current = diffSmoothRef.current * 0.9 + Math.sqrt(diff / sig) * 0.1
 
     frameRef.current = (frameRef.current + 1) % 3   // ~20fps state updates
     if (frameRef.current === 0) {
       setLevels({ l: sm.l, r: sm.r })
       setPeakSeen(prev => Math.max(prev, sm.l, sm.r))
+      // Two channels but the same audio on both → dual-mono. Only judge once
+      // there's real signal to compare.
+      setChIdentical(channelsRef.current === 2 && maxLevelRef.current > 0.1 && diffSmoothRef.current < 0.06)
     }
     rafRef.current = requestAnimationFrame(draw)
   }, [])
@@ -399,8 +408,10 @@ export default function MicCheck({
     setErr(null)
     setCapErr(null)
     setReco(null)
+    setChIdentical(false)
     maxLevelRef.current = 0
     clipRef.current = false
+    diffSmoothRef.current = 1
     revokeClip()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(settingsRef.current) })
@@ -686,10 +697,28 @@ export default function MicCheck({
               </div>
             )
           })}
-          {channels === 2 && (
+          {channels === 2 && !chIdentical && (
             <p className="text-[11px] text-emerald-700">
               Stereo detected — speak into one mic at a time: only its channel (L or R) should move. That confirms the split.
             </p>
+          )}
+          {chIdentical && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-2 space-y-1.5">
+              <p className="text-[11px] text-amber-800">
+                Both channels carry the <strong>same</strong> audio — not a real split.{' '}
+                {(settings.agc || settings.echoCancellation || settings.noiseSuppression)
+                  ? 'Browser audio processing forces mono — turn it off for true stereo.'
+                  : 'The device is sending one mix to both channels — check the RØDE is set to Split in RØDE Central.'}
+              </p>
+              {(settings.agc || settings.echoCancellation || settings.noiseSuppression) && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ agc: false, echoCancellation: false, noiseSuppression: false })}
+                  className="text-[11px] font-semibold rounded-md px-2.5 py-1 text-white"
+                  style={{ backgroundColor: '#E8632A' }}
+                >Turn off processing for true stereo</button>
+              )}
+            </div>
           )}
           {lowSignal && (
             <p className="text-[11px] text-amber-700">Signal is low — move closer, speak up, raise the mic&apos;s own gain, or add software gain below.</p>
