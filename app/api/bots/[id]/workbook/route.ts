@@ -63,7 +63,6 @@ interface OpenQ {
   language: string | null
   session_id: string
   user_message: string
-  suggested_kb_addition: string | null
 }
 
 // Build a session→ordered-turns index once, then for each flagged question find
@@ -88,17 +87,17 @@ function buildReplyLookup(turns: ExportTurn[]): (sid: string, userMsg: string) =
   }
 }
 
-function lowConfidenceSheet(rows: OpenQ[], turns: ExportTurn[]): Sheet {
+function lowConfidenceSheet(rows: OpenQ[], turns: ExportTurn[], agentName: string): Sheet {
   const replyAfter = buildReplyLookup(turns)
+  const who = (agentName || 'The agent').trim()
   return {
     name: 'Low-Confidence Answers',
-    headers: ['Date', 'Type', 'Question (user)', 'Agent replied', 'Suggested answer / KB note', 'Language', 'Session ID'],
+    headers: ['Date', 'Type', 'Question (user)', who + "'s answer", 'Language', 'Session ID'],
     rows: rows.map(r => [
       (r.created_at || '').slice(0, 10),
       TYPE_LABEL[r.classification] || r.classification,
       redactPII(r.user_message),
       redactPII(replyAfter(r.session_id, r.user_message)),
-      redactPII(r.suggested_kb_addition || ''),
       r.language || '',
       r.session_id,
     ]),
@@ -138,7 +137,7 @@ export async function GET(_req: NextRequest, props: Params) {
     getAgentStudy(params.id),
     service
       .from('logged_questions')
-      .select('created_at, classification, language, session_id, user_message, suggested_kb_addition')
+      .select('created_at, classification, language, session_id, user_message')
       .eq('bot_id', params.id)
       .eq('org_id', bot.org_id)
       .eq('status', 'open')
@@ -150,12 +149,12 @@ export async function GET(_req: NextRequest, props: Params) {
 
   const sheets: Sheet[] = [
     summarySheet(bot.name, study, lowConf.length),
-    await pairsSheet(service, params.id, turns, 'Q&A Pairs'),
-    lowConfidenceSheet(lowConf, turns),
+    await pairsSheet(service, params.id, turns, bot.name, 'Q&A Pairs'),
+    lowConfidenceSheet(lowConf, turns, bot.name),
     turnsSheet(turns, 'Full Transcript'),
   ]
 
-  const fileBase = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Agent_Export'
+  const fileBase = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Export'
   // Always xlsx — a workbook is multi-sheet; CSV would silently drop all but one.
   return dataResponse('xlsx', fileBase, sheets)
 }

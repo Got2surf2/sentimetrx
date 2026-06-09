@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, props: Params) {
 
   if (shape === 'pairs') {
     const fileBase = safeName + '_QA_Pairs'
-    return dataResponse(format, fileBase, [await pairsSheet(service, params.id, turns)])
+    return dataResponse(format, fileBase, [await pairsSheet(service, params.id, turns, bot.name)])
   }
 
   const fileBase = safeName + '_Conversations'

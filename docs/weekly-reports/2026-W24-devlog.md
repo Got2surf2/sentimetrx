@@ -289,3 +289,11 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: `GoldSetClient` — counts are now derived (`tally`) from the `reviews` array (the source of truth) instead of a separately-incremented `counts` state, so re-saving the same review just re-sets its status (no double-count). Added a `done` completion screen (shown when no review is left pending) with the final breakdown + "revisit skipped"/"browse from start" actions. Next-pending search now scans the whole list (not just forward), so a review left pending earlier is caught. `goTo()` clears the done state when jumping back in via a dot/prev/next.
 
 **Verify**: `npx tsc --noEmit` exit 0. Local-only (no push).
+
+### 2026-06-08 (follow-up 3) — personify export columns + drop internal KB column
+
+**Why**: Owner — generated files should use the agent's NAME, not the word "agent" (the product personifies the tech to feel accessible). Also questioned the "Suggested answer / KB note" column on the Low-Confidence tab.
+
+**What changed**: `pairsSheet`/`lowConfidenceSheet` now thread the agent's display name into response column headers (`Sarina said (before)`, `Sarina's answer`) via a `who` param; workbook filename `…_Agent_Export` → `…_Export`. Dropped the `suggested_kb_addition` ("KB note") column from the client-facing Low-Confidence tab — it's an internal team-curation field, near-always empty. New memory `feedback_personify_agent_in_files`.
+
+**Verify**: tsc clean.

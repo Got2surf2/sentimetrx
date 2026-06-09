@@ -82,7 +82,11 @@ const isLeak = (t: string) => /^greet the user warmly\b/i.test((t || '').trim())
 // human-excluded sessions and auto-flagged troll/bot/duplicate/off-topic ones a
 // human hasn't approved. So this is "every Q&A from the conversations we count
 // as good" — not the raw dump.
-export async function pairsSheet(service: any, botId: string, turns: ExportTurn[], name = 'Q&A Pairs'): Promise<Sheet> {
+export async function pairsSheet(service: any, botId: string, turns: ExportTurn[], agentName: string, name = 'Q&A Pairs'): Promise<Sheet> {
+  // Personify the response columns with the agent's name (e.g. "Sarina's
+  // answer") rather than the generic "agent" — the agents are presented to
+  // users as named people, and exports should keep that voice.
+  const who = (agentName || 'The agent').trim()
   const bySession = new Map<string, ExportTurn[]>()
   for (const t of turns) {
     if (!bySession.has(t.session_id)) bySession.set(t.session_id, [])
@@ -117,7 +121,7 @@ export async function pairsSheet(service: any, botId: string, turns: ExportTurn[
       rows.push([++pairNo, sid, t.created_at, leadIn, clean(t.content), answer, t.language])
     }
   }
-  return { name, headers: ['#', 'Session ID', 'Timestamp', 'Lead-in (agent said before)', 'User said', 'Answer (agent)', 'Language'], rows }
+  return { name, headers: ['#', 'Session ID', 'Timestamp', who + ' said (before)', 'User said', who + "'s answer", 'Language'], rows }
 }
 
 // PII redaction — email / NA-style phone / US street address. Mirrors the
