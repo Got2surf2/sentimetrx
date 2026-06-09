@@ -570,6 +570,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
             <div className="mt-5 max-w-md mx-auto">
               <MicCheck
+                recordingId={recordingId}
+                language={language}
                 devices={devices}
                 settings={micSettings}
                 onChange={patchMic}

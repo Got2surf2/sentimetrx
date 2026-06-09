@@ -402,3 +402,16 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: New admin deck route `app/api/mco-listening-deck/route.ts` (requireAdmin + logDeckDownload), builder `lib/pptx/mcoListeningDeck.ts` (`buildMcoListeningDeck(pptx)` — shared by the route and a local QC harness), and `lib/pptx/mcoLogo.ts` (the MCO sunburst mark base64-inlined as a data URI — the PNG is white-backed/opaque, so it's placed on white co-brand chips; inlined to dodge the public/ file-tracing gotcha on Vercel). 14 main slides + appendix: title → 5yr history → 4 channels → "Listening" methodology (Capture→Understand→Benchmark→Act→Close) → channel map → analytics → two-sided benchmarking → agentic leap → MCO Concierge → two-wins → small-business tie-in → phased path → the ask → close (MCO × datanautix lockup). Appendix carries **clearly-labeled ILLUSTRATIVE** sample outputs (VoG sentiment dashboard + two benchmarking bars), built to swap with real review data when the owner supplies a peer set — no fabricated data presented as real MCO findings. Registered in `app/admin/decks/{DecksClient.tsx,page.tsx}`. QC harness: `scripts/_mco_listening_deck_qc.ts`.
 
 **Verify**: typecheck clean; rendered to PPTX → PDF → PNG (LibreOffice + pdftoppm) and visually inspected all 19 pages; fixed two bottom captions that collided with the footer. Logo renders cleanly on white chips. Local, not pushed. (Note: a concurrent Town Hall session left `MicCheck.tsx` modified in the tree — not part of this commit.)
+
+---
+
+### 2026-06-09 — Town Hall: Mic check becomes a full dress rehearsal (captions + clip + live monitor)
+
+**Why**: Owner wanted the mic test to prove the whole capture chain, not just show meters — hear it, transcribe it, and A/B the processing settings by ear before committing to a meeting.
+
+**What** (extends MicCheck.tsx, same preview graph — every node hangs off one gain stage):
+- **Live captions during the test**: reuses the real recorder's path (POST /live-token → Deepgram WS via `['bearer',token]` → `pcm16-worklet` PCM, opening-frames buffered until ws.onopen). Best-effort; failure shows a notice, mic test continues. MicCheck now takes `recordingId` + `language`.
+- **Record a test clip & play back**: MediaRecorder on a gain-applied MediaStreamDestination → local Blob → object URL → `<audio controls>`. Never uploaded; 30s auto-cap; object URL revoked on restart/stop/unmount.
+- **Live monitor ("🎧 Listen")**: a monitor GainNode (gain → monitorGain → ctx.destination; 0=muted) routes the processed mic to the speakers so toggling AGC/echo-cancel/noise-suppress/gain is audible in real time. Off by default with a headphones/feedback warning (open mic + speakers = howl). Monitor + gain apply live; AGC/echo/noise re-open the preview (constraintKey effect) preserving monitor state via a ref.
+
+**Verify**: typecheck clean; 461 unit tests pass; live route compiles (307 auth-redirect). In-browser exercise (captions stream, clip playback, monitor A/B, with the RØDE) needs the owner. Local, not pushed. NOTE: live captions in the test consume a little Deepgram live usage per test, and need `DEEPGRAM_GRANT_KEY` in Vercel env on deploy (same gotcha as the live recorder).
