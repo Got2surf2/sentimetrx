@@ -19,6 +19,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { tusUpload } from '@/lib/recordings/tusUpload'
 import { appendLiveChunk, getPendingLive, clearLiveChunks, type PendingLive } from '@/lib/recordings/liveRecovery'
+import MicCheck, { buildAudioConstraints, type MicSettings } from './MicCheck'
 
 const HERMES = '#E8632A'
 const SARINA_BLUE = '#00B4D8'   // waveform graph color
@@ -46,10 +47,13 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const [uploadPct, setUploadPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  // Input device selection + automatic-gain toggle.
+  // Input device + mic-check settings (controlled by the MicCheck panel). AGC on
+  // by default; echo-cancel / noise-suppress off for room capture; unity gain.
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
-  const [agc, setAgc] = useState(true)
+  const [micSettings, setMicSettings] = useState<MicSettings>({
+    deviceId: '', agc: true, echoCancellation: false, noiseSuppression: false, gain: 1,
+  })
+  const patchMic = useCallback((patch: Partial<MicSettings>) => setMicSettings(s => ({ ...s, ...patch })), [])
 
   // Channels the device actually delivered (1=mono, 2=stereo/split-mic). Drives
   // the on-screen "speakers will be separated" confirmation; the pipeline
@@ -76,6 +80,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainCtxRef = useRef<AudioContext | null>(null)   // software gain-boost graph feeding MediaRecorder
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -119,6 +124,8 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     analyserRef.current = null
     audioCtxRef.current?.close().catch(() => {})
     audioCtxRef.current = null
+    gainCtxRef.current?.close().catch(() => {})
+    gainCtxRef.current = null
   }, [])
 
   // Draw the live input waveform to the canvas (real "it's listening" feedback).
@@ -441,23 +448,12 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('requesting')
     let stream: MediaStream
     try {
-      // Echo cancellation + noise suppression are tuned for single-speaker calls
-      // and can swallow other voices around a table, so they're off. Automatic
-      // gain is user-toggleable (off suits a pro mic that sets its own levels).
-      //
-      // channelCount: { ideal: 2 } — capture stereo when the device offers it
-      // (e.g. a RØDE receiver in Split mode: mic 1 = Left, mic 2 = Right), so the
-      // pipeline can separate speakers per channel. A mono mic returns 1 channel
-      // and the pipeline auto-detects that. Pinning channelCount to 1 (the old
-      // behavior) collapsed split mics into a single un-separable speaker.
-      const audio: MediaTrackConstraints = {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: agc,
-        channelCount: { ideal: 2 },
-      }
-      if (selectedDeviceId) audio.deviceId = { exact: selectedDeviceId }
-      stream = await navigator.mediaDevices.getUserMedia({ audio })
+      // Constraints come from the Mic check panel (device, AGC, echo-cancel,
+      // noise-suppress). buildAudioConstraints requests channelCount {ideal:2} so
+      // a split-mic receiver (RØDE Split: mic 1 = Left, mic 2 = Right) delivers 2
+      // channels for per-mic separation; a mono mic returns 1 and the pipeline
+      // auto-detects that.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(micSettings) })
     } catch (e) {
       const name = e instanceof DOMException ? e.name : ''
       setError(
@@ -475,14 +471,32 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setCapturedChannels(typeof gotChannels === 'number' ? gotChannels : null)
     void refreshDevices() // labels are available now permission is granted
 
+    // Software gain boost: record the output of a gain graph instead of the raw
+    // track. Unity gain (1) keeps the raw stream — the zero-risk default. The
+    // graph preserves channel count, so stereo split survives the boost.
+    let recordStream = stream
+    if (micSettings.gain !== 1) {
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        const gctx = new Ctx()
+        gainCtxRef.current = gctx
+        const src = gctx.createMediaStreamSource(stream)
+        const g = gctx.createGain(); g.gain.value = micSettings.gain
+        const dest = gctx.createMediaStreamDestination()
+        src.connect(g); g.connect(dest)
+        recordStream = dest.stream
+      } catch { /* gain graph failed — record the raw stream */ }
+    }
+
     const mime = pickMimeType()
     mimeRef.current = fileMeta(mime).mime
     chunksRef.current = []
     let recorder: MediaRecorder
     try {
-      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      recorder = new MediaRecorder(recordStream, mime ? { mimeType: mime } : undefined)
     } catch {
       stream.getTracks().forEach(t => t.stop())
+      gainCtxRef.current?.close().catch(() => {}); gainCtxRef.current = null
       setError('This browser cannot record audio (MediaRecorder unsupported).')
       setPhase('error')
       return
@@ -507,9 +521,9 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
     setPhase('recording')
     timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
 
-    void startAudioGraph(stream)  // waveform + the buffering captions worklet
-    void startCaptions()          // best-effort; does not block recording
-  }, [startCaptions, startAudioGraph, agc, selectedDeviceId, refreshDevices])
+    void startAudioGraph(recordStream)  // waveform + the buffering captions worklet (hears the gain boost too)
+    void startCaptions()                // best-effort; does not block recording
+  }, [startCaptions, startAudioGraph, micSettings, refreshDevices])
 
   const stop = useCallback(async () => {
     stopTimer()
@@ -554,34 +568,14 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
               speak; when you stop, we save the audio and run the same transcription and analysis the upload flow uses.
             </p>
 
-            <div className="mt-5 max-w-md mx-auto text-left space-y-3">
-              <div>
-                <label htmlFor="mic-select" className="block text-xs font-semibold text-gray-700 mb-1">Microphone</label>
-                <select
-                  id="mic-select"
-                  value={selectedDeviceId}
-                  onChange={e => setSelectedDeviceId(e.target.value)}
-                  disabled={phase === 'requesting'}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                >
-                  <option value="">System default</option>
-                  {devices.map((d, i) => (
-                    <option key={d.deviceId || i} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>
-                  ))}
-                </select>
-                {!devices.some(d => d.label) && (
-                  <button type="button" onClick={enableDeviceNames} className="mt-1 text-xs text-orange-600 hover:underline">
-                    Show device names
-                  </button>
-                )}
-              </div>
-              <label className="flex items-start gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={agc} onChange={e => setAgc(e.target.checked)} className="mt-0.5 rounded" />
-                <span>
-                  Automatic gain control
-                  <span className="block text-xs text-gray-400">Recommended for built-in/laptop mics. Turn off for a pro mic (e.g. a RØDE) that sets its own levels.</span>
-                </span>
-              </label>
+            <div className="mt-5 max-w-md mx-auto">
+              <MicCheck
+                devices={devices}
+                settings={micSettings}
+                onChange={patchMic}
+                onShowNames={enableDeviceNames}
+                disabled={phase === 'requesting'}
+              />
             </div>
 
             {error && (

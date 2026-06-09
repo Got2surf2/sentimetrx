@@ -379,3 +379,16 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: `analyzeRecordingWorkflow`/`runAnalyze` gain a `skipQa` flag; the `/analyze` route accepts `skip_qa:true`. Skip path bypasses Q&A extraction + dataset mirror + coverage + synthesis, still builds the presentation summary when a deck phase exists, and completes (analyzing→complete) with the transcript as the deliverable. GeneratePanel reframed: heading now "Transcript ready", copy states Q&A is optional, primary "Generate Q&A pairs" + secondary "Finish without Q&A" (confirm dialog). Report defaults to the Transcript tab when there are no Q&A pairs (was Coverage → empty). Refactored the presentation-summary block into a shared `maybeSummarizePresentation` helper used by both paths.
 
 **Verify**: typecheck clean; 461 unit tests pass. End-to-end (a real transcribed recording → "Finish without Q&A" → report) is a UI/workflow path — owner to spot-check. No schema change. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: Mic check pre-flight panel (self-contained mic test + adjust)
+
+**Why**: Owner wanted mic selection + testing fully inside our tool (no Audio MIDI Setup), with as many in-browser adjustments as the platform allows — so a meeting isn't recorded on a misconfigured/too-quiet mic, and the RØDE stereo split can be confirmed before hitting record.
+
+**What**: New `app/recordings/[id]/live/MicCheck.tsx` (controlled component) replaces the bare dropdown+AGC on the live idle screen:
+- **Test microphone** opens a preview getUserMedia stream → ChannelSplitter → per-channel AnalyserNodes → live **L/R level meters** (single bar for mono), peak-smoothed, with **too-quiet (amber) / good (green) / clipping (red)** zones + guidance. The L/R meters double as in-tool split verification (speak into one mic, only its channel moves).
+- Adjustments the browser exposes: **AGC**, **echo-cancellation**, **noise-suppression** toggles + a **software gain boost** (1×–4×). Gain applies live to the preview; on record, when gain≠1 the recorder records the output of a WebAudio gain graph (unity = raw stream, zero-risk default; graph preserves stereo so the per-mic split survives the boost). Honest note in-UI that hardware gain lives on the device/RØDE Central.
+- `buildAudioConstraints(MicSettings)` centralizes the getUserMedia constraints (device + the three toggles + channelCount ideal:2), shared by the test and the real capture so they're identical. LiveClient now holds one `micSettings` object; added `gainCtxRef` (closed in teardown). Preview auto-restarts on device/toggle change, releases on record start/unmount.
+
+**Verify**: typecheck clean; 461 unit tests pass; live route compiles (307 auth-redirect, no build error). In-browser real-mic exercise (meters move, L/R split, gain audible) needs the owner + RØDE. Local, not pushed.
