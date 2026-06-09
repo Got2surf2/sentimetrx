@@ -352,6 +352,15 @@ kept as a cross-cutting flag (none/alert/crisis) so allergy/discrimination keep 
 those before scaling the set. Cost to run the LLM tier once REO lands: ~$0.5–2/1k rows
 (Haiku+caching), ~half via Batch API.
 
+**Gold set v1 result (owner-validated, 2026-06-08).** The owner reviewed all 30 via a
+guided **tap-to-judge** UI (each Domain›Aspect carries an inline definition, `REO_ASPECT_DEF`).
+Result: after definitions, near-total Domain›Aspect agreement with the draft labels.
+**Decision: keep the lean cut — NO product/dish field.** The early "we might need a
+dish handle" signal was an artifact of missing definitions (Menu was being overloaded for
+the dish); once Menu was defined as "the offering, not a dish," it disappeared. The one
+refined rule is **sentiment calibration** — a neutral *mention* is not Positive ("a Cabernet
+to pair", "good except…" → Neutral) — now an explicit line in the classifier prompt.
+
 **Scale-up (2026-06-08).** Gold set v1 (30, owner-validated) extended to ~520 via
 LLM drafting: `lib/reoExtractor.ts` (Haiku 4.5, cached system prompt encoding the
 validated rules — closed vocab, sentiment-calibration "neutral mention != Positive",

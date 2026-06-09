@@ -331,3 +331,18 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What changed**: `getAgentStudy` now extracts `publicComments[]` — substantive resident feedback (observation/concern/suggestion about the project), distinct from questions + chit-chat. Folded into the existing `classifyExchanges` pass (new `comment` field on prompt + ExchangeTag) → **zero added AI calls**, full coverage; each entry = `{quote verbatim, focus, sentiment, sessionId, createdAt}`. Cache `STUDY_SCHEMA_VERSION` v4→v5. Surfaced as a new **Public Comments** tab in the agent workbook (2nd tab; Date/Topic/Sentiment/Comment/Session, PII-redacted) + a "Public comments captured" Summary line. No new table/migration — rides the cached study JSONB. Report/deck UI don't render it yet (object-additive, backward-safe).
 
 **Verify**: tsc clean (cache cleared); full suite 861 pass. Live extraction quality not yet eyeballed against real Sarina data — owner to spot-check the tab. Local-only.
+
+## 2026-06-09 — REO robustness arc: session wrap + state
+
+**Why**: Consolidating record of the REO (Restaurant Experience Ontology) robustness track for governance/handoff. Goal: make the Dimensions classifier more robust. Diagnosis found production is keyword-only (the `lib/taxonomyExtractor.ts` LLM tier is dormant, no eval harness, fixed-0.85 confidence). Owner chose the LEAN CUT (Domain›Aspect+Sentiment; defer Concepts; Emotion/Journey → experimental v2), restaurant-only for now.
+
+**What now exists (all LOCAL, not pushed)**:
+- `lib/reoVocabulary.ts` — lean REO closed vocab (10 domains, ~50 aspects) + `REO_ASPECT_DEF` inline definitions.
+- `lib/reoExtractor.ts` — Haiku-4.5 REO LLM classifier with validated rules in a cached system prompt (becomes the production classifier once REO ships).
+- `sql/121_reo_gold_set.sql` — `reo_gold_review` (proposed vs gold; RLS; admin-only writes). APPLIED to prod.
+- `/admin/reo-gold-set` — guided tap-to-judge review UI (keep/drop per label, inline definitions, completion screen), under the Quality & Testing hub.
+- Seed/draft scripts → 30 owner-validated + 490 LLM-drafted reviews (2,352 obs) in the DB. All 10 domains covered (Access/Digital gap closed).
+
+**Findings**: (1) draft labels are structurally reliable (~100% Domain›Aspect agreement after definitions) → no dish/product field needed; (2) the one refined rule is sentiment calibration; (3) eval signal — LLM drafts skew Positive (~72%, Neutral ~4%), over-calling neutral mentions.
+
+**Next**: owner spot-checks ~40–60 of the 490 → compute agreement (first REO accuracy number) → fix the Positive-skew (few-shot from the gold slice) → wire the LLM tier into the live classifier path to prove REO beats keyword-only. Commits this arc: 82eaecb0, d3482d3f, 4ac1f13d, 39e8127d (+ this docs commit). Nothing pushed; migration + 520 seeded rows live on the DB only.
