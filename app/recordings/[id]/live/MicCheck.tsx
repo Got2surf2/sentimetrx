@@ -677,6 +677,12 @@ export default function MicCheck({
   const readProgress = sweepWords.length ? Math.min(1, readCount / sweepWords.length) : 0
   const hasNames = devices.some(d => d.label)
   const lowSignal = testing && peakSeen > 0 && peakSeen < 0.12
+  // Which mic is being spoken into right now (the clearly-louder channel) →
+  // highlights the matching name box so the user knows which is which.
+  const activeMic: 0 | 1 | null = testing && channels === 2
+    && Math.max(levels.l, levels.r) > 0.1 && Math.abs(levels.l - levels.r) > 0.04
+    ? (levels.l > levels.r ? 0 : 1)
+    : null
   const capKeys = channels === 2 ? ['L', 'R'] : ['mono']
   const anyCaption = capKeys.some(k => caps[k]?.finals.length || caps[k]?.interim)
 
@@ -782,17 +788,28 @@ export default function MicCheck({
       {stereoDevice && (
         <div className="rounded-lg border border-gray-200 p-3">
           <span className="block text-xs font-semibold text-gray-700">Name the two mics (optional)</span>
-          <p className="text-[11px] text-gray-500 mt-0.5 mb-2">Labels each speaker in the report — e.g. “Facilitator” and “Audience”.</p>
+          <p className="text-[11px] text-gray-500 mt-0.5 mb-2">
+            Labels each speaker in the report — e.g. “Facilitator” and “Audience”.
+            {testing ? ' Speak into a mic and its box will light up, so you know which is which.' : ' Press “Test microphone”, then speak into each mic to see which box lights up.'}
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="block">
-              <span className="block text-[11px] text-gray-500 mb-0.5">Left · Mic 1</span>
+              <span className={`block text-[11px] mb-0.5 ${activeMic === 0 ? 'text-emerald-600 font-semibold' : 'text-gray-500'}`}>
+                Left · Mic 1{activeMic === 0 && ' 🔊 speaking'}
+              </span>
               <input type="text" value={channelNames[0]} disabled={disabled} onChange={e => onChannelName(0, e.target.value)}
-                placeholder="e.g. Facilitator" className="w-full border border-gray-300 rounded px-2 py-1.5" style={{ fontSize: '16px' }} />
+                placeholder="e.g. Facilitator"
+                className={`w-full rounded px-2 py-1.5 border transition-all ${activeMic === 0 ? 'border-emerald-400 ring-2 ring-emerald-300 animate-pulse' : 'border-gray-300'}`}
+                style={{ fontSize: '16px' }} />
             </label>
             <label className="block">
-              <span className="block text-[11px] text-indigo-600 mb-0.5">Right · Mic 2</span>
+              <span className={`block text-[11px] mb-0.5 ${activeMic === 1 ? 'text-emerald-600 font-semibold' : 'text-indigo-600'}`}>
+                Right · Mic 2{activeMic === 1 && ' 🔊 speaking'}
+              </span>
               <input type="text" value={channelNames[1]} disabled={disabled} onChange={e => onChannelName(1, e.target.value)}
-                placeholder="e.g. Audience" className="w-full border border-gray-300 rounded px-2 py-1.5" style={{ fontSize: '16px' }} />
+                placeholder="e.g. Audience"
+                className={`w-full rounded px-2 py-1.5 border transition-all ${activeMic === 1 ? 'border-emerald-400 ring-2 ring-emerald-300 animate-pulse' : 'border-gray-300'}`}
+                style={{ fontSize: '16px' }} />
             </label>
           </div>
         </div>

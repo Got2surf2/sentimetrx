@@ -539,3 +539,13 @@ Proposed fix for both: fetch the caller's org (sibling routes already do) and re
 **What**: Mic check shows two optional name inputs once a 2-channel device is confirmed (`stereoDevice`). LiveClient holds `channelNames`, sends them with the process call when stereo + non-empty → `POST …/process { channel_labels:[left,right] }` → `recordings.channel_labels` (sql/124, applied). ReportClient TranscriptTab shows the name in place of S1/Mic-label on each line (keeps the L/R mic tag underneath; legend uses names). Unnamed falls back to Mic 1·L / Mic 2·R.
 
 **Verify**: sql/124 applied; typecheck clean; 461 tests pass; live route compiles. Local, not pushed.
+
+---
+
+### 2026-06-09 — Town Hall: speak-to-identify the mic when naming channels
+
+**Why**: When naming L/R channels, the user needs to know which physical mic is which. Owner: speak into a mic, pick the louder one, animate its name box.
+
+**What**: MicCheck derives `activeMic` from the live per-channel meters during a test (clearly-louder channel: max>0.1 and |L−R|>0.04). The matching name input pulses an emerald ring + the label shows "🔊 speaking". The naming hint adapts ("speak into a mic" while testing; "press Test microphone" otherwise).
+
+**Verify**: typecheck clean; 461 tests pass. Local, not pushed.
