@@ -6,8 +6,12 @@
 -- name instead of the generic "Mic 1·L / Mic 2·R" on each transcript line.
 -- NULL = unnamed (fall back to the generic mic labels).
 
+BEGIN;
+
 ALTER TABLE recordings
   ADD COLUMN IF NOT EXISTS channel_labels jsonb;
 
 COMMENT ON COLUMN recordings.channel_labels IS
   'Optional names for stereo capture channels, indexed by channel: [leftName, rightName]. Shown in the report transcript in place of Mic 1·L / Mic 2·R. Set by the live capture Mic check.';
+
+COMMIT;

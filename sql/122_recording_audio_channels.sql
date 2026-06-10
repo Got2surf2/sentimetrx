@@ -11,8 +11,12 @@
 -- transcribe.ts reads this to decide Deepgram's `multichannel` mode. NULL means
 -- "not yet extracted" (legacy rows / in-flight) → treated as mono.
 
+BEGIN;
+
 ALTER TABLE recordings
   ADD COLUMN IF NOT EXISTS audio_channels smallint;
 
 COMMENT ON COLUMN recordings.audio_channels IS
   'Detected channel layout of the extracted audio: 1=mono, 2=true stereo (per-channel speaker separation). NULL=not yet extracted. Set by lib/recordings/extract.ts.';
+
+COMMIT;

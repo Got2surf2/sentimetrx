@@ -11,8 +11,12 @@
 -- dependent and can wrongly collapse a genuine 2-mic recording when the two mics
 -- are correlated. NULL/false = uploads & mono → keep the auto-detect + guard path.
 
+BEGIN;
+
 ALTER TABLE recordings
   ADD COLUMN IF NOT EXISTS capture_stereo boolean;
 
 COMMENT ON COLUMN recordings.capture_stereo IS
   'TRUE when the live recorder deliberately captured a 2-channel split-mic source. extract.ts then preserves stereo if the file has ≥2 channels, skipping the dual-mono guard. Set by the live capture client.';
+
+COMMIT;
