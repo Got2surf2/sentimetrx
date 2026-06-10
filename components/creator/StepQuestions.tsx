@@ -618,7 +618,7 @@ function SuggestedQuestionsPanel({
                   } as SurveyQuestion)
                 }}
               >
-                <span className="text-base flex-shrink-0 mt-0.5">\uD83D\uDD18</span>
+                <span className="text-base flex-shrink-0 mt-0.5">{'\uD83D\uDD18'}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800">{sq.q}</div>
                   <div className="text-xs text-gray-400 mt-0.5 truncate">

@@ -10,6 +10,18 @@ import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 const inputCls = 'w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
 const labelCls = 'block text-xs font-semibold text-gray-600 mb-1'
 
+// Ghost-text "accept the suggestion": while a prompt field is empty, pressing Tab
+// materializes the grey placeholder into the box as a real, editable value (so it
+// actually gets saved + used — an empty field is NOT used as the prompt at runtime).
+function acceptOnTab(value: string, suggestion: string | undefined, apply: (v: string) => void) {
+  return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab' && !e.shiftKey && !value.trim() && suggestion?.trim()) {
+      e.preventDefault()
+      apply(suggestion)
+    }
+  }
+}
+
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
 // ── Reusable toggle ──────────────────────────────────────────
@@ -50,6 +62,8 @@ function FollowUpPanel({
     const prev = fu.perResponse?.[score] ?? { prompt: '', clarify: false, useAI: false }
     set({ perResponse: { ...fu.perResponse, [score]: { ...prev, ...patch } } })
   }
+
+  const sharedSuggestion = defaultPrompts?.[3] || "Could you tell us a bit more about that?"
 
   return (
     <div className="border border-gray-200 rounded-2xl overflow-hidden">
@@ -102,10 +116,14 @@ function FollowUpPanel({
                 <textarea
                   value={fu.sharedPrompt}
                   onChange={e => set({ sharedPrompt: e.target.value })}
-                  placeholder={defaultPrompts?.[3] || "Could you tell us a bit more about that?"}
+                  onKeyDown={acceptOnTab(fu.sharedPrompt, sharedSuggestion, v => set({ sharedPrompt: v }))}
+                  placeholder={sharedSuggestion}
                   rows={2}
                   className={inputCls + ' resize-none'}
                 />
+                {!fu.sharedPrompt.trim() && (
+                  <p className="text-xs text-gray-400 mt-1 px-0.5">Press <kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-300 text-[10px] font-mono">Tab</kbd> to use the suggested prompt, then edit it. Left blank, no follow-up prompt is asked.</p>
+                )}
               </div>
               <Toggle value={!!(fu.shareClarify || fu.shareAI)} onChange={v => set({ shareClarify: v, shareAI: v })} label="Enable clarifier follow-up" />
             </div>
@@ -119,10 +137,14 @@ function FollowUpPanel({
                     <textarea
                       value={pr.prompt}
                       onChange={e => setPerResponse(opt.score, { prompt: e.target.value })}
+                      onKeyDown={acceptOnTab(pr.prompt, defaultPrompts?.[opt.score], v => setPerResponse(opt.score, { prompt: v }))}
                       placeholder={defaultPrompts?.[opt.score] || `Follow-up for "${opt.label}" response...`}
                       rows={2}
                       className={inputCls + ' resize-none text-xs'}
                     />
+                    {!pr.prompt.trim() && defaultPrompts?.[opt.score] && (
+                      <p className="text-[11px] text-gray-400 px-0.5">Press <kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-300 text-[10px] font-mono">Tab</kbd> to use the suggested prompt. Left blank, this response gets no follow-up.</p>
+                    )}
                     <Toggle value={!!(pr.clarify || pr.useAI)} onChange={v => setPerResponse(opt.score, { clarify: v, useAI: v })} label="Enable clarifier follow-up" />
                   </div>
                 )

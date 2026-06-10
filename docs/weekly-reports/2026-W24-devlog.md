@@ -621,3 +621,14 @@ Net: a finalized (non-draft) report always carries a named reviewer + timestamp 
 - Storage RLS (sql/091) already authorizes org-prefix writes, so the temp path is covered.
 
 **Verify**: typecheck clean; full suite 864 pass (61 in the two recordings route tests). Local, not pushed. Owner to confirm in-browser with a >4.5 MB deck.
+
+### 2026-06-09 — Surveys: three creator-flow fixes (gating hint, adaptive-follow-up Tab-accept, emoji render)
+
+**Why**: Owner hit three issues building a survey from scratch: (1) couldn't get past the first page; (2) the adaptive follow-up boxes showed grey "suggested" text with no way to adopt it, and it was unclear whether a blank box used that text; (3) `🔘` printed literally in the "Suggested for…" contextual-questions list.
+
+**What**:
+- **(1) StepBasics** — the Next gate (`name && bot_name`) was silent (button just dimmed). Added an inline amber hint naming the missing field ("Add a bot name (under 'Bot name & emoji')…"). No logic change to the gate itself.
+- **(2) StepOpening adaptive follow-up** — the grey text is an HTML placeholder, not a stored default; confirmed in the engine that an empty follow-up prompt is *skipped* (`showLikertFollowUp` early-returns on blank), so the placeholder is never used as the prompt. Added **Tab-to-accept**: focusing an empty prompt box and pressing Tab materializes the suggestion into the box as a real editable value (`acceptOnTab` helper; per-response boxes only fill from a genuine industry default, not the generic fallback) + a discoverability hint under each empty box.
+- **(3) StepQuestions:621** — `🔘` sat in bare JSX text, where `\u` escapes aren't decoded, so React printed it literally. Wrapped as `{'🔘'}` (JS string expression) → renders 🔘.
+
+**Verify**: typecheck clean; full suite 864 pass. SURVEYS.md updated (Basics gate + adaptive-follow-up placeholder/Tab behavior, incl. the Q3/Q4 caveat that blank-but-enabled IS asked empty). Local, not pushed.

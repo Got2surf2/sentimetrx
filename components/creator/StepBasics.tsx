@@ -443,6 +443,15 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
       {/* Multi-language */}
       <LanguageSection draft={draft} updateConfig={updateConfig} onTranslatingChange={onTranslatingChange} />
 
+      {!canNext && (
+        <p className="text-xs text-amber-600 text-right -mb-1">
+          {!draft.name.trim() && !draft.bot_name.trim()
+            ? 'Add a study name and a bot name (under “Bot name & emoji”) to continue.'
+            : !draft.name.trim()
+              ? 'Add a study name to continue.'
+              : 'Add a bot name (under “Bot name & emoji”) to continue.'}
+        </p>
+      )}
       <NavButtons onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Opening" />
     </div>
   )

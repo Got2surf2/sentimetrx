@@ -25,6 +25,10 @@ Survey cards on `/dashboard` (the surveys index) carry a **favorite star** (per-
 | 8 | Closing | Thank-you message, closing card text |
 | 9 | Review | Full config summary, publish or save as draft |
 
+**Step 0 (Basics) gate:** the **Next** button is disabled until both a study name and a bot name are set; an inline hint names whichever field is still missing (the bot name lives under "Bot name & emoji"), so the gate is never silent.
+
+**Adaptive follow-up suggested text (Step 1 Opening):** the grey text in each follow-up prompt box is an HTML placeholder, **not** a stored default — it is cosmetic only. At runtime an empty follow-up prompt is **skipped entirely** (`showLikertFollowUp` returns early when the prompt is blank), so a blank box means "no follow-up for this response," never a follow-up asked with the placeholder text. To adopt a suggestion, focus the (empty) box and press **Tab** — the placeholder is materialized into the box as a real, editable value (per-response boxes only Tab-fill when a genuine industry default exists, not the generic "Follow-up for …" fallback). This same placeholder-is-cosmetic rule holds for the legacy Q3/Q4 boxes (Step 2), except those are *not* skipped when blank — an enabled-but-empty Q3/Q4 is asked with empty text, so leave them disabled rather than blank.
+
 ### Smart Study Wizard
 
 AI-powered generation from:
