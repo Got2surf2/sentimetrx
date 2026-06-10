@@ -609,3 +609,15 @@ Net: a finalized (non-draft) report always carries a named reviewer + timestamp 
 **What**: Relabeled the report tab + its heading from "Export & Share" to "Reports" (internal tab key stays `export`). Spec references updated to match.
 
 **Verify**: typecheck clean; report route compiles. Local, not pushed.
+
+### 2026-06-09 — Town Hall: deck pre-fill upload bypasses Vercel's 4.5 MB body limit
+
+**Why**: Uploading a presentation deck to pre-fill setup at `/recordings/new` failed with `Unexpected token 'R', "Request En"...`. Root cause: the PDF was POSTed *through* the Vercel function, which rejects bodies >4.5 MB with a plain-text `Request Entity Too Large`; the client then `JSON.parse`d that and threw. Decks (image-heavy slides) routinely exceed 4.5 MB, so the feature was unusable for real decks.
+
+**What**: Routed the deck straight to Supabase Storage via TUS (the same path media already uses, 20 GB cap), removing the function-body ceiling.
+- `extract-setup` (§4.1d): new `GET` reserves an org-scoped temp path + TUS endpoint; `POST` now takes `{storage_path, source}` (JSON), re-validates the path is inside the caller's `<org>/_setup-extract/` sandbox, vision-reads, cleans up. Multipart POST dropped (single caller).
+- `documents` (§4.1e, edit-mode attach): added `GET ?role&name` prepare + JSON "already-uploaded" register mode; kept the legacy multipart path for small docs / service-role.
+- Client (`RecordingSetupForm`): `handleDoc`/`attachDoc` now do prepare→TUS→register; added a `readJson` helper so any non-JSON error (incl. a stray 413) surfaces a clear message instead of `Unexpected token` gibberish.
+- Storage RLS (sql/091) already authorizes org-prefix writes, so the temp path is covered.
+
+**Verify**: typecheck clean; full suite 864 pass (61 in the two recordings route tests). Local, not pushed. Owner to confirm in-browser with a >4.5 MB deck.

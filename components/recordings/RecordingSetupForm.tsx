@@ -19,10 +19,61 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { createClient } from '@/lib/supabase/client'
+import { tusUpload } from '@/lib/recordings/tusUpload'
 import { defaultProfile, PRESET_LABELS } from '@/lib/recordings/profiles'
 import type { MeetingPresetId, Analyst, ConfidentialityClass, SetupProvenance, AsrStrategy } from '@/lib/recordings/types'
 
 const HERMES = '#E8632A'
+
+// Read a fetch Response as JSON, but degrade gracefully when the server (or the
+// Vercel proxy) returns non-JSON — e.g. a plain-text "Request Entity Too Large".
+// Without this the browser throws `Unexpected token 'R'…` on res.json().
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text()
+  try {
+    return text ? JSON.parse(text) : {}
+  } catch {
+    const snippet = text.trim().slice(0, 120)
+    if (res.status === 413 || /request entity too large/i.test(snippet)) {
+      throw new Error('That file is too large to upload here. Please try again — if it persists, attach the deck with the recording.')
+    }
+    throw new Error(snippet || `Request failed (${res.status})`)
+  }
+}
+
+// Push a PDF straight to Supabase Storage (bypassing Vercel's 4.5MB function body
+// limit), via a prepare→TUS→register handshake. `prepareUrl` returns the upload
+// target; `register` finalizes once the bytes have landed.
+async function uploadPdfDirect(
+  file: File,
+  prepareUrl: string,
+  register: (storagePath: string) => Promise<Response>,
+): Promise<Record<string, unknown>> {
+  const supabase = createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Could not read your session — try refreshing.')
+
+  const prep = await fetch(prepareUrl)
+  const prepJson = await readJson(prep)
+  if (!prep.ok) throw new Error((prepJson.error as string) || `couldn't prepare the upload (${prep.status})`)
+  const upload = prepJson.upload as { endpoint: string; bucket: string }
+  const storagePath = prepJson.storage_path as string
+
+  await tusUpload({
+    file,
+    storagePath,
+    endpoint: upload.endpoint,
+    bucket: upload.bucket,
+    sessionJwt: session.access_token,
+    contentType: file.type || 'application/octet-stream',
+  })
+
+  const res = await register(storagePath)
+  const json = await readJson(res)
+  if (!res.ok) throw new Error((json.error as string) || `the document couldn't be read (${res.status})`)
+  return json
+}
 
 type SessionType = 'qa'
 
@@ -154,11 +205,15 @@ export default function RecordingSetupForm({
   const handleDoc = async (file: File) => {
     setDocError(null); setSuggestion(null); setDocBusy(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const r = await fetch('/api/recordings/extract-setup', { method: 'POST', body: fd })
-      const json = await r.json()
-      if (!r.ok) throw new Error(json.error || `couldn't read the document (${r.status})`)
+      const json = await uploadPdfDirect(
+        file,
+        '/api/recordings/extract-setup',
+        (storagePath) => fetch('/api/recordings/extract-setup', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ storage_path: storagePath, source: file.name }),
+        }),
+      )
       setSuggestion({ proposal: json.proposal as SetupProposal, source: json.source as string })
     } catch (e) {
       setDocError(e instanceof Error ? e.message : 'Document read failed')
@@ -188,12 +243,15 @@ export default function RecordingSetupForm({
   const attachDoc = async (file: File, role: 'slides' | 'document') => {
     setDocError(null); setAttachBusy(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('role', role)
-      const r = await fetch(`/api/recordings/${recordingId}/documents`, { method: 'POST', body: fd })
-      const json = await r.json()
-      if (!r.ok) throw new Error(json.error || `couldn't attach the document (${r.status})`)
+      const json = await uploadPdfDirect(
+        file,
+        `/api/recordings/${recordingId}/documents?role=${role}&name=${encodeURIComponent(file.name)}`,
+        (storagePath) => fetch(`/api/recordings/${recordingId}/documents`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ storage_path: storagePath, original_filename: file.name, role, mime_type: file.type || 'application/pdf', size_bytes: file.size }),
+        }),
+      )
       const added = json.file as AttachedDoc
       // slides is at-most-one — replace any existing deck in the list.
       setDocuments(prev => [...(role === 'slides' ? prev.filter(d => d.file_role !== 'slides') : prev), added])
