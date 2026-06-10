@@ -374,7 +374,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
   const isDecline = (text: string) => {
     const t = text.toLowerCase().trim()
-    return /^(no|nope|nah|not really|nothing|none|n\/a|na|no thanks|skip|pass|all good|that'?s? (all|it)|i'?m good|nothing else|not at the moment)\.?$/.test(t) || t.length < 5
+    if (!t) return true   // genuinely empty — nothing to clarify
+    // Match actual refusal phrases only. NOT a blanket length cap: terse but
+    // meaningful answers ("cold", "rude", "slow", "loud") are real feedback that
+    // SHOULD earn a clarifier, not be brushed off as a non-answer.
+    return /^(no|nope|nah|not really|nothing|none|n\/a|na|no thanks|skip|pass|all good|that'?s? (all|it)|i'?m good|nothing else|not at the moment)\.?$/.test(t)
   }
 
   // Rules-based acknowledgment that adapts to what the respondent said
@@ -418,8 +422,16 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     return false
   }
 
-  const shouldClarify = (text: string) =>
-    !isDecline(text) && !isQuestionOrOffTopic(text) && text.trim().split(/\s+/).length < 12
+  const shouldClarify = (text: string) => {
+    if (isDecline(text) || isQuestionOrOffTopic(text)) return false
+    // Negative / low-rating answers are where a follow-up matters most — probe them
+    // regardless of length. The AI clarifier decides if the answer is already
+    // detailed enough (it returns SKIP for 3+ specific points), so a long, specific
+    // complaint still gets a deeper question instead of being skipped for being
+    // "long enough". Other answers keep the short-answer heuristic.
+    if (state.current.sentiment === 'negative') return true
+    return text.trim().split(/\s+/).length < 12
+  }
 
   // AI-powered deflection: detects questions/off-topic and generates contextual redirect
   const checkDeflect = async (text: string, questionAsked: string) => {
@@ -532,12 +544,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         showDebugPanel(data._debug)
         state.current.conversationLog.push({ who: 'bot', text: '[AI Thinking] ' + data._debug.join(' | '), ai: true })
       }
-      if (data.question) return data.question
+      // The AI returns a question, or null when it judges the answer complete /
+      // off-topic / unsafe (SKIP). Respect SKIP — do NOT force a keyword clarifier,
+      // or every answer that clears the gate gets nagged with the default prompt.
+      return data.question || null
     } catch {
-      // AI failed -- fall through to keyword matching
+      // AI call FAILED (network / rate-limit / parse error) — degrade to the
+      // keyword default so a transient failure still asks something sensible.
+      return keywordFallback()
     }
-
-    return keywordFallback()
   }
 
   const pickPsychoQuestions = (n = 3) => {

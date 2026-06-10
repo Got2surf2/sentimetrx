@@ -632,3 +632,16 @@ Net: a finalized (non-draft) report always carries a named reviewer + timestamp 
 - **(3) StepQuestions:621** — `🔘` sat in bare JSX text, where `\u` escapes aren't decoded, so React printed it literally. Wrapped as `{'🔘'}` (JS string expression) → renders 🔘.
 
 **Verify**: typecheck clean; full suite 864 pass. SURVEYS.md updated (Basics gate + adaptive-follow-up placeholder/Tab behavior, incl. the Q3/Q4 caveat that blank-but-enabled IS asked empty). Local, not pushed.
+
+### 2026-06-09 — Surveys: AI clarifier didn't fire on a real negative conversation — fixed the gating
+
+**Why**: Owner flagged that the one Bloom (Outback) conversation got no decent clarifying questions despite AI clarify being ON. Traced the live response payload: two prime probe moments were dropped by *rules-based* pre-filters that run before the AI is ever called. (1) "the bloomin onion was burnt and that is what i really went there for" (14 words) — skipped because `shouldClarify` only fired under 12 words. (2) "cold" (4 chars) — misclassified as a *refusal* by `isDecline`'s blanket `length < 5` rule → got a "thanks for taking the time" brush-off. The AI clarifier model was never invoked in either case.
+
+**What** (`components/survey/useSurveyEngine.ts`):
+- `isDecline` — dropped the blanket `length < 5`; now matches refusal *phrases* + empty input only, so terse meaningful answers ("cold", "rude", "slow") route to a clarifier.
+- `shouldClarify` — negative/low-rating answers now probe regardless of length (the AI SKIPs if already detailed); neutral/positive keep the `< 12`-word heuristic.
+- `buildClarify` — now **respects the AI's SKIP** (returns null → no follow-up) instead of always falling back to the keyword default. Keyword default fires only when AI is disabled or the `/api/clarify` call fails. This is what makes relaxing the length gate safe (no nagging). `maxClarifierCount` (2 here) still caps totals — so this conversation would now fire exactly 2 clarifiers (on the burnt-onion answer and on "cold").
+
+Discovered along the way: `/api/clarify` already had a SKIP path ("only SKIP if 3+ specific points"), but `buildClarify` was ignoring it — so the AI's judgment never took effect.
+
+**Verify**: typecheck clean; full suite 864 pass (engine hook has no direct unit tests). SURVEYS.md clarifier section updated. Local, not pushed.

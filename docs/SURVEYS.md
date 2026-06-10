@@ -96,9 +96,14 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 ### Clarifier API (`POST /api/clarify`)
 - Rate limited: 10/min per IP
 - Input: study context, question asked, user answer, sentiment, scores, optional `studyGuid` (public)
-- Output: follow-up question or `null` (skip if answer is sufficient)
+- Output: follow-up question or `null` (`SKIP` when the answer is already detailed — 3+ specific points — or off-topic/unsafe)
 - Rules: max 25 words, no repetition, only probe if vague
 - **Usage accounting**: when `studyGuid` resolves to a study row, the AI call is logged with `resource_type='study'` + `resource_id=studies.id` + `org_id=studies.org_id` (rolls up under the parent study on /admin/usage). Falls back to `resource_type='system'` if the guid is missing or unresolvable.
+
+**Client-side clarifier gating (`useSurveyEngine`).** Two rules-based pre-filters decide whether the clarifier model is called at all; both were tightened after a real Outback/Bloom conversation skipped two obvious probe moments:
+- **`isDecline`** matches refusal *phrases* (no/nope/skip/nothing/…) and genuinely empty input only. It does **not** treat short answers as declines — terse-but-meaningful feedback ("cold", "rude", "slow", "loud") routes to a clarifier instead of a "thanks for taking the time" brush-off. (Previously any answer `< 5` chars was auto-classified as a refusal.)
+- **`shouldClarify`** still skips declines and questions/off-topic input. For **negative / low-rating** answers it now probes **regardless of length** (the AI returns SKIP if the answer is genuinely detailed), so a specific complaint like "the bloomin' onion was burnt and that's what I went there for" earns a deeper follow-up instead of being skipped for being "long enough" (the old `< 12`-word ceiling still applies to neutral/positive answers).
+- **`buildClarify` respects SKIP.** When AI clarify is enabled and the model returns `null` (SKIP), the engine now asks **no** follow-up rather than forcing the keyword default — so relaxing the length gate doesn't make substantive answers naggy. The keyword default fires only when AI is disabled or the `/api/clarify` call actually fails (network/rate-limit/parse). `maxClarifierCount` still caps total clarifiers per session.
 
 ### Deflection (`POST /api/deflect`)
 - Rate limited: 10/min per IP
