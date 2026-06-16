@@ -14,6 +14,7 @@
 
 import type {
   RecordingAnalysisSummary,
+  ProceedingsSummary,
   QaPairPayload,
   RecordingExtractionRow,
   TranscriptSegment,
@@ -60,6 +61,8 @@ export interface TownHallReportInput {
   meeting_date: string | null
   location: string | null
   summary: RecordingAnalysisSummary | null
+  /** Presentation/meeting-notes summary — rendered above the Q&A when present. */
+  proceedings?: ProceedingsSummary | null
   pairs: Array<Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order' | 'start_sec' | 'end_sec'>>
   /** Raw ASR segments + vendor; only used when includeTranscript is true. */
   transcript: { vendor: string; segments: TranscriptSegment[] } | null
@@ -94,6 +97,41 @@ function qaCard(qa: QaPairPayload): string {
     `<p class="a-text">${esc(a)}</p>` +
     `</div>` +
     `</div>`
+  )
+}
+
+// Meeting-notes section — the presentation half of the meeting. Mirrors the
+// in-app PresentationTab (app/recordings/[id]/report/ReportClient.tsx) so the
+// PDF carries both halves of a community meeting, not just the Q&A.
+function proceedingsSection(p: ProceedingsSummary | null | undefined): string {
+  if (!p || (!p.overview && (p.items?.length ?? 0) === 0)) return ''
+  const items = (p.items ?? [])
+    .map(it => {
+      const slideRefs = (it.slide_refs?.length ?? 0) > 0
+        ? `<span class="slideref">${it.slide_refs.length === 1 ? 'Slide' : 'Slides'} ${esc(it.slide_refs.join(', '))}</span>`
+        : ''
+      const figs = (it.key_figures?.length ?? 0) > 0
+        ? `<div class="figs">` +
+          it.key_figures.map(f => `<span class="fig"><span class="fl">${esc(f.label)}</span><span class="fv">${esc(f.value)}</span></span>`).join('') +
+          `</div>`
+        : ''
+      return (
+        `<div class="pitem">` +
+        `<div class="pitem-head"><h3 class="pitem-t">${esc(it.title)}</h3>${slideRefs}</div>` +
+        (it.presenter ? `<div class="pres">${esc(it.presenter)}</div>` : '') +
+        (it.what_was_presented ? `<p class="pwhat">${esc(it.what_was_presented)}</p>` : '') +
+        figs +
+        `</div>`
+      )
+    })
+    .join('')
+  return (
+    `<section class="notes">` +
+    `<h2 class="topic">Meeting Notes</h2>` +
+    (p.overview ? `<p class="notes-ov">${esc(p.overview)}</p>` : '') +
+    items +
+    `<p class="caption" style="margin-top:10px">Neutral AI summary of the presentation portion of the meeting. The Q&amp;A below covers the discussion that followed.</p>` +
+    `</section>`
   )
 }
 
@@ -174,8 +212,12 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     })
     .join('')
 
+  const notes = proceedingsSection(input.proceedings)
+  // Eyebrow reflects scope: both halves present → "Meeting Summary"; Q&A only → legacy label.
+  const eyebrow = notes ? 'Meeting Summary' : 'Meeting Q&amp;A Summary'
+
   const overview = summary?.executive_summary
-    ? `<section class="overview"><h2 class="ov-h">Overview</h2><p class="ov-p">${esc(summary.executive_summary)}</p></section>`
+    ? `<section class="overview"><h2 class="ov-h">${notes ? 'Q&amp;A Overview' : 'Overview'}</h2><p class="ov-p">${esc(summary.executive_summary)}</p></section>`
     : ''
 
   // Meeting timeline summary bar (single brand colour — flagged state is internal).
@@ -207,6 +249,18 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.ov-p{font-size:14px;line-height:1.6;color:${BODY};margin:0;white-space:pre-wrap}` +
     `.topic-block{margin-top:22px}` +
     `.topic{font-size:17px;font-weight:800;color:${INK};border-bottom:1px solid ${LINE};padding-bottom:6px;margin:0 0 14px}` +
+    `.notes{margin:22px 0}` +
+    `.notes-ov{font-size:14px;line-height:1.6;color:${BODY};margin:0 0 14px;white-space:pre-wrap}` +
+    `.pitem{border:1px solid ${LINE};border-radius:12px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}` +
+    `.pitem-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}` +
+    `.pitem-t{font-size:14px;font-weight:700;color:${INK};margin:0}` +
+    `.slideref{font-size:11px;color:${FAINT};white-space:nowrap}` +
+    `.pres{font-size:11px;color:${MUTE};margin-top:2px}` +
+    `.pwhat{font-size:14px;line-height:1.6;color:${BODY};margin:8px 0 0;white-space:pre-wrap}` +
+    `.figs{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}` +
+    `.fig{display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border:1px solid ${LINE};border-radius:8px;background:#f8fafc;font-size:12px}` +
+    `.fig .fl{color:${MUTE}}` +
+    `.fig .fv{font-weight:700;color:${INK}}` +
     `.qa{border:1px solid ${LINE};border-radius:12px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid}` +
     `.q-head{padding:11px 14px;border-bottom:1px solid #f1f5f9}` +
     `.a-body{padding:11px 14px;background:#f8fafc}` +
@@ -220,7 +274,8 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.foot{margin-top:34px;padding-top:14px;border-top:1px solid ${LINE};text-align:center;font-size:11px;color:${FAINT}}` +
     draftCss +
     `</style></head><body>` + draftWm + `<div class="wrap">` +
-    `<header><div class="eyebrow">Meeting Q&amp;A Summary</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}${draftBanner}</header>` +
+    `<header><div class="eyebrow">${eyebrow}</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}${draftBanner}</header>` +
+    notes +
     overview +
     timeline +
     `<section>${topics}</section>` +

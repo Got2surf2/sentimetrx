@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { renderTownHallReportHtml } from './reportHtml'
 import type {
   RecordingAnalysisSummary,
+  ProceedingsSummary,
   RecordingExtractionRow,
   TranscriptSegment,
   EntityMap,
@@ -32,6 +33,7 @@ export interface RecordingForPdf {
   meeting_date: string | null
   location: string | null
   analysis_summary: unknown
+  proceedings_summary?: unknown
   entity_map: unknown
   source_duration_sec: number | null
   // Attribution (§2.8) — optional; rendered in the PDF header when present.
@@ -95,6 +97,7 @@ export async function renderRecordingReportPdf(
     meeting_date: rec.meeting_date,
     location: rec.location,
     summary: (rec.analysis_summary ?? null) as RecordingAnalysisSummary | null,
+    proceedings: (rec.proceedings_summary ?? null) as ProceedingsSummary | null,
     pairs: (extractionsRes.data ?? []) as unknown as Array<
       Pick<RecordingExtractionRow, 'unit_type' | 'topic' | 'payload' | 'sort_order' | 'start_sec' | 'end_sec'>
     >,

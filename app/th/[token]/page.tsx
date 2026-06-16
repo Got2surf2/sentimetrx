@@ -11,7 +11,7 @@
 
 import { notFound } from 'next/navigation'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import type { RecordingAnalysisSummary, QaPairPayload, RecordingExtractionRow } from '@/lib/recordings/types'
+import type { RecordingAnalysisSummary, ProceedingsSummary, QaPairPayload, RecordingExtractionRow } from '@/lib/recordings/types'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
 
@@ -31,7 +31,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   const service = createServiceRoleClient()
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary, source_duration_sec, draft')
+    .select('id, org_id, name, meeting_date, location, status, share_enabled, share_expires_at, share_verbatim, analysis_summary, proceedings_summary, source_duration_sec, draft')
     .eq('share_token', token)
     .maybeSingle()
 
@@ -53,6 +53,8 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   const tlModel = buildTimelineModel(pairs, (rec as { source_duration_sec?: number | null }).source_duration_sec ?? null)
 
   const summary = (rec.analysis_summary ?? null) as RecordingAnalysisSummary | null
+  const proceedings = (rec.proceedings_summary ?? null) as ProceedingsSummary | null
+  const hasNotes = !!(proceedings && (proceedings.overview || (proceedings.items?.length ?? 0) > 0))
 
   // Topic order from the summary, then any extraction topics it didn't cover.
   const order: string[] = []
@@ -71,7 +73,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
       )}
       <div className="relative z-10 max-w-3xl mx-auto px-5 py-10">
         <header className="mb-8">
-          <div className="text-xs font-semibold tracking-widest text-slate-400 uppercase mb-2">Meeting Q&amp;A Summary</div>
+          <div className="text-xs font-semibold tracking-widest text-slate-400 uppercase mb-2">{hasNotes ? 'Meeting Summary' : 'Meeting Q&A Summary'}</div>
           <h1 className="text-3xl font-bold text-slate-900">{rec.name}</h1>
           {meta && <p className="text-sm text-slate-500 mt-2">{meta}</p>}
           {isDraft && (
@@ -82,9 +84,49 @@ export default async function PublicTownHallReport({ params }: { params: Promise
           )}
         </header>
 
+        {hasNotes && proceedings && (
+          <section className="mb-8 rounded-2xl bg-white border border-slate-200 p-5">
+            <h2 className="text-sm font-bold text-slate-700 mb-3">Meeting Notes</h2>
+            {proceedings.overview && (
+              <p className="text-[15px] leading-relaxed text-slate-700 whitespace-pre-line">{proceedings.overview}</p>
+            )}
+            {(proceedings.items?.length ?? 0) > 0 && (
+              <div className="space-y-3 mt-4">
+                {proceedings.items.map((it, i) => (
+                  <div key={i} className="border border-slate-200 rounded-xl p-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h3 className="font-semibold text-slate-900">{it.title}</h3>
+                      {it.slide_refs?.length > 0 && (
+                        <span className="shrink-0 text-xs text-slate-400">
+                          {it.slide_refs.length === 1 ? 'Slide' : 'Slides'} {it.slide_refs.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    {it.presenter && <div className="text-xs text-slate-500 mt-0.5">{it.presenter}</div>}
+                    {it.what_was_presented && (
+                      <p className="text-sm text-slate-700 mt-2 leading-relaxed whitespace-pre-line">{it.what_was_presented}</p>
+                    )}
+                    {it.key_figures?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {it.key_figures.map((f, j) => (
+                          <span key={j} className="inline-flex items-baseline gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                            <span className="text-slate-500">{f.label}</span>
+                            <span className="font-semibold text-slate-900">{f.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400 mt-3">Neutral AI summary of the presentation portion of the meeting. The Q&amp;A below covers the discussion that followed.</p>
+          </section>
+        )}
+
         {summary?.executive_summary && (
           <section className="mb-8 rounded-2xl bg-white border border-slate-200 p-5">
-            <h2 className="text-sm font-bold text-slate-700 mb-2">Overview</h2>
+            <h2 className="text-sm font-bold text-slate-700 mb-2">{hasNotes ? 'Q&A Overview' : 'Overview'}</h2>
             <p className="text-[15px] leading-relaxed text-slate-700 whitespace-pre-wrap">{summary.executive_summary}</p>
           </section>
         )}
