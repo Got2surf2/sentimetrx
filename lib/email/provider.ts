@@ -4,6 +4,7 @@ import 'server-only'
 // Strategy-pattern email provider abstraction for Campaign Manager
 
 import type { EmailProviderType } from '@/lib/types'
+import { recordCreditError, isCreditError } from '@/lib/serviceHealth'
 
 export interface EmailAttachment {
   filename: string
@@ -63,6 +64,8 @@ class ResendProvider implements EmailProvider {
 
     if (!res.ok) {
       const err = await res.text()
+      // Quota/plan-limit failures feed the service-credit monitor (tier-2).
+      if (isCreditError(res.status, err)) void recordCreditError('resend', { code: res.status, message: err.slice(0, 200) })
       throw new Error(`Resend API error: ${err}`)
     }
 

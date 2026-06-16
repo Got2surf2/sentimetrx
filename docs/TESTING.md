@@ -168,6 +168,8 @@ factory is mocked before any module that calls it is imported.
 
 ## Adding a new test
 
+_Pure-logic example: `tests/unit/serviceHealth.test.ts` (added 2026-06-16) covers the service-credit monitor's balance-threshold classification (`statusForBalance`) and out-of-credit detection (`isCreditError`) — see `docs/ENGINEERING.md` §4._
+
 1. Pick the boundary. If you're testing a pure function in `lib/`, write a
    unit test under `tests/unit/`. If you're testing a route handler, write
    an integration test under `tests/integration/` and mock at

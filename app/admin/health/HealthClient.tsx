@@ -29,6 +29,18 @@ interface SentryHealth {
   error: string | null
 }
 
+interface ServiceCredit {
+  service: string
+  display_name: string
+  tier: number
+  balance_usd: number | null
+  status: 'ok' | 'low' | 'critical' | 'error' | 'unknown'
+  checked_at: string | null
+  last_error_at: string | null
+  last_error_code: string | null
+  last_error_msg: string | null
+}
+
 interface Props {
   logoUrl: string
   orgName: string
@@ -40,6 +52,18 @@ interface Props {
   totalResponses24h: number
   totalComplete24h: number
   sentry: SentryHealth
+  serviceCredits: ServiceCredit[]
+}
+
+function relTime(iso: string | null): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  const m = Math.round(ms / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
 }
 
 function StatusDot({ ok }: { ok: boolean }) {
@@ -48,7 +72,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 
 export default function HealthClient({
   logoUrl, orgName, fullName, userEmail,
-  dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry,
+  dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry, serviceCredits,
 }: Props) {
   const platform24hRate = totalResponses24h > 0
     ? Math.round((totalComplete24h / totalResponses24h) * 100)
@@ -157,6 +181,65 @@ export default function HealthClient({
             </div>
           )}
         </div>
+
+        {/* ── Service credits / vendor health ───────────────────────────── */}
+        {(() => {
+          const worst = serviceCredits.some(s => s.status === 'critical' || s.status === 'error') ? 'red'
+            : serviceCredits.some(s => s.status === 'low') ? 'amber' : 'green'
+          const badge = (s: ServiceCredit['status']) => {
+            const map: Record<string, string> = {
+              ok: 'bg-green-100 text-green-700', low: 'bg-amber-100 text-amber-800',
+              critical: 'bg-red-100 text-red-700', error: 'bg-red-100 text-red-700',
+              unknown: 'bg-gray-100 text-gray-500',
+            }
+            return map[s] || map.unknown
+          }
+          return (
+            <div className={'rounded-2xl p-5 border ' +
+              (worst === 'green' ? 'bg-green-50 border-green-200'
+               : worst === 'amber' ? 'bg-amber-50 border-amber-200'
+               : 'bg-red-50 border-red-200')}>
+              <div className="flex items-center gap-3 mb-3">
+                <StatusDot ok={worst === 'green'} />
+                <div>
+                  <p className="text-sm font-bold text-gray-800">Service Credits &amp; Health</p>
+                  <p className="text-xs text-gray-600">
+                    Vendor account balances (polled) + last credit/quota error. Alerts via the service-balance cron (every 6h).
+                  </p>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="grid gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100"
+                  style={{ gridTemplateColumns: '1.4fr 100px 90px 1fr' }}>
+                  <span>Service</span>
+                  <span className="text-right">Balance</span>
+                  <span className="text-center">Status</span>
+                  <span>Last credit error</span>
+                </div>
+                {serviceCredits.map(s => (
+                  <div key={s.service}
+                    className="grid gap-3 px-4 py-2.5 text-xs items-center border-b border-gray-100 last:border-b-0"
+                    style={{ gridTemplateColumns: '1.4fr 100px 90px 1fr' }}>
+                    <span className="text-gray-800 font-medium truncate">{s.display_name}</span>
+                    <span className="text-right text-gray-700 font-semibold">
+                      {s.balance_usd != null ? `$${s.balance_usd.toFixed(2)}`
+                        : s.tier === 1 ? <span className="text-gray-300 font-normal">not configured</span>
+                        : <span className="text-gray-300 font-normal">no balance API</span>}
+                    </span>
+                    <span className="text-center">
+                      <span className={'inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ' + badge(s.status)}>{s.status}</span>
+                    </span>
+                    <span className="text-gray-500 truncate" title={s.last_error_msg || ''}>
+                      {s.last_error_at
+                        ? <>{relTime(s.last_error_at)}{s.last_error_code ? ` · ${s.last_error_code}` : ''}</>
+                        : <span className="text-gray-300">none</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Platform summary */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">

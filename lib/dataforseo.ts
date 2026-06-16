@@ -3,6 +3,8 @@ import 'server-only'
 // lib/dataforseo.ts
 // DataForSEO API client for Google Maps business search and Google Reviews
 
+import { recordCreditError } from '@/lib/serviceHealth'
+
 const BASE = 'https://api.dataforseo.com/v3'
 
 function authHeader(): string {
@@ -19,7 +21,13 @@ async function post(path: string, body: unknown[]): Promise<any> {
     body: JSON.stringify(body),
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${text.slice(0, 200)}`)
+  if (!res.ok) {
+    // HTTP 402 = out of account balance (the Rubio's stall, 2026-06-16).
+    // Surface it to the credit monitor instead of only burying it in a
+    // per-location error_message.
+    if (res.status === 402) void recordCreditError('dataforseo', { code: 402, message: text.slice(0, 200) })
+    throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${text.slice(0, 200)}`)
+  }
   try { return JSON.parse(text) } catch {
     throw new Error(`DataForSEO ${path} returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
   }
@@ -35,6 +43,16 @@ async function get(path: string): Promise<any> {
   try { return JSON.parse(text) } catch {
     throw new Error(`DataForSEO ${path} returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
   }
+}
+
+// Current account balance in USD, for the service-credit monitor (§ /admin/health
+// + service-balance cron). /v3/appendix/user_data returns money.balance for the
+// authed account. Throws on HTTP/parse error (incl. the 402 that means broke).
+export async function getDataForSeoBalance(): Promise<number> {
+  const data = await get('/appendix/user_data')
+  const bal = data?.tasks?.[0]?.result?.[0]?.money?.balance
+  if (typeof bal !== 'number') throw new Error('DataForSEO user_data: no money.balance in response')
+  return bal
 }
 
 // ---------------------------------------------------------------------------

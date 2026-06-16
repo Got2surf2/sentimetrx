@@ -386,6 +386,8 @@ Removes assignments. Omitting `location_ids` clears every assignment for the use
 
 `syncReviewSource(sourceId, service)` does both phases within a single Vercel function invocation, time-bounded to ~45s (under the 60s timeout).
 
+**Out-of-credit signal (added 2026-06-16):** DataForSEO returns **HTTP 402** when the account balance is exhausted; `lib/dataforseo.ts` now reports that to the **service-credit monitor** (`recordCreditError('dataforseo')` → `service_health`) in addition to the per-location `error_message`, so a broke vendor surfaces on `/admin/health` + the alert cron instead of silently stalling a load (this exact case stalled the Rubio's load, 2026-06-16). `getDataForSeoBalance()` (`/v3/appendix/user_data`) is the polled tier-1 balance. See `docs/ENGINEERING.md` §4.
+
 **Phase 1: Check pending tasks (~first 15s)**
 1. Find locations whose `error_message` starts with `pending_task:` → these have a DataforSEO task in flight.
 2. For each (up to `PHASE1_BATCH_SIZE = 10` — deliberately larger than Phase 2 so backlogged queues drain faster; a 29-task backlog took 10 cron cycles at the old batch-of-3 cadence — see the 2026-05-11 Flemings incident note in `lib/reviewSync.ts`):

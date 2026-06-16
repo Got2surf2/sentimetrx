@@ -444,6 +444,7 @@ Estimated additional effort for a UCF Incubator variant: ~3 days on top of the M
 
 ## 14. Status
 
+- **Quota signal (added 2026-06-16):** `lib/places.ts` reports Google Places quota/billing failures (HTTP 429, or 403 with a billing message) to the **service-credit monitor** (`recordCreditError('google_places')` → `service_health`), surfaced on `/admin/health` + the alert cron. Places exposes no balance API (tier-2), so a failed call is the only credit signal. See `docs/ENGINEERING.md` §4.
 - **Design:** drafted 2026-05-21 by Sanjay + Claude (this doc).
 - **Build:** in progress.
   - **Commit 1 LANDED 2026-05-21** — visual shell at `/demo/mco` with the 40/60 landscape layout, mode auto-detection (URL param > UA > default), three deployment modes (home / invenue / kiosk), demo strip with mode switcher + card navigation, four canvas card components (TerminalMap, Restaurants, Parking, LinkCard), chat pane wired to the live AskAna agent (bot_id `920c571b-...`). Cards driven by demo strip (hardcoded data); intent-based hint emission not yet wired. `lib/uiHints.ts` defines the UiHint type union + DeploymentContext. tsc clean.

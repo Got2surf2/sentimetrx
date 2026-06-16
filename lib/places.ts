@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { recordCreditError } from '@/lib/serviceHealth'
+
 // lib/places.ts
 //
 // Restaurant card data for the /demo/mco canvas, with two backends:
@@ -205,7 +207,18 @@ async function fetchOne(placeId: string, apiKey: string): Promise<PlaceCard | nu
       },
       signal: AbortSignal.timeout(5000),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Quota/billing exhaustion (429 RESOURCE_EXHAUSTED, or 403 with a
+      // billing message) feeds the service-credit monitor — Places exposes
+      // no balance API (tier-2), so a failed call is the only signal.
+      if (res.status === 429 || res.status === 403) {
+        const body = await res.text().catch(() => '')
+        if (res.status === 429 || /billing|quota|exhausted|disabled/i.test(body)) {
+          void recordCreditError('google_places', { code: res.status, message: body.slice(0, 200) || `Places HTTP ${res.status}` })
+        }
+      }
+      return null
+    }
     const j: any = await res.json()
     return {
       place_id: placeId,

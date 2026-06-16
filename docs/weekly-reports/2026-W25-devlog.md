@@ -45,3 +45,20 @@
 **Result**: `npm audit` HIGH 14→0 (13 left: 12 moderate, 1 low — build-time chain + a uuid-via-exceljs finding whose only fix is a breaking exceljs downgrade, left accepted). **Verify**: typecheck clean, `npm run build` succeeded (exercises the esbuild/vite + @workflow toolchain incl. /th), 864 tests pass. Local, not pushed.
 
 **Commit note**: staged `package.json` maps to `docs/TESTING.md` in the spec-drift map, but this is a security dependency pin with no test-strategy/spec impact — committed with `SKIP_SPEC_CHECK=1` (SECURITY.md is the doc that actually changed).
+
+## 2026-06-16 — Service-credit monitor: surface "out of credits" for any vendor
+
+**Why**: A DataForSEO HTTP 402 (account out of balance) silently stalled the Rubio's Coastal Grill review load — 81 locations, 0 ingested — buried in per-location `error_message` with nothing surfaced; the download monitor showed "nothing pending". Owner asked for something that proactively shows when any/all paid services are out of credit, so this can't happen unnoticed (esp. before a demo).
+
+**What changed** (built, NOT yet pushed/migrated):
+- `sql/126_service_health.sql` — `service_health` table (one row per vendor), admin-org-only RLS, service-role writes.
+- `lib/serviceHealth.ts` — two-tier model. **Tier 1** (balance API): `probeBalances()` polls DataForSEO (`getDataForSeoBalance` → `/v3/appendix/user_data`), Deepgram, Twilio; `recordBalance()` derives status vs per-service USD thresholds. **Tier 2** (no balance API): `recordCreditError()` captures the last 402/429/credit failure. `statusForBalance` + `isCreditError` are pure (unit-tested). All writes best-effort, never throw.
+- Capture-on-error wired into `lib/dataforseo.ts` (the 402), `lib/ai.ts` (Anthropic/OpenAI), `lib/places.ts` (Places 429/billing-403), `lib/email/provider.ts` (Resend quota).
+- `app/api/cron/service-balance/route.ts` + `vercel.json` (every 6h) — refresh balances, email `CREDITS_ALERT_TO` (fallback `SENTRY_ALERT_TO`) when any service is low/critical/error, throttled to ~once/day per service.
+- `app/admin/health` — new "Service Credits & Health" panel (balance, status badge, last-error-ago); live-probes tier-1 on load.
+- `tests/unit/serviceHealth.test.ts` — 11 cases.
+- Docs: ENGINEERING.md §4 (main writeup) + cross-refs in USAGE_ACCOUNTING / DATA_SOURCES / MCO_AGENT / TESTING.
+
+**Verify**: typecheck clean; `npm run build` succeeds; full suite **875 pass** (864 + 11 new). Local, not pushed.
+
+**Activation (needs owner OK — production writes)**: (1) apply `sql/126` to prod; (2) push (registers cron + page; prod build); (3) set `CREDITS_ALERT_TO`. Until the table exists the page degrades gracefully (all "unknown") and writes no-op.

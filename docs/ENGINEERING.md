@@ -222,6 +222,20 @@ its corresponding entry.
 - **Performance traces:** Sentry performance — **ratified default:
   10% prod sample, 100% on errors.** Revisit if cost > $X/month
   or if signal is too sparse.
+- **Service-credit monitor** (`lib/serviceHealth.ts`, `service_health`
+  table `sql/126`, added 2026-06-16): single source of truth for
+  "are we out of credits on any vendor". Two tiers — **tier 1** polls a
+  balance API (DataForSEO, Deepgram, Twilio) on a 6h cron
+  (`/api/cron/service-balance`) and on `/admin/health` load; **tier 2**
+  has no balance API (Anthropic, OpenAI, Resend, Google Places) so the
+  client error paths call `recordCreditError()` on a 402/429/credit
+  failure (`lib/ai.ts`, `lib/dataforseo.ts`, `lib/places.ts`,
+  `lib/email/provider.ts`). The cron emails `CREDITS_ALERT_TO` (falls
+  back to `SENTRY_ALERT_TO`) when any service is low/critical/error,
+  throttled to ~once/day per service. Built after a DataForSEO HTTP 402
+  silently stalled a review load (Rubio's, 2026-06-16). All monitor
+  writes are best-effort and never throw — they must not break the path
+  they observe.
 
 **How we verify:** spot-check Vercel logs at each quarterly audit
 — look for any interpolated-string log line in a prod handler;

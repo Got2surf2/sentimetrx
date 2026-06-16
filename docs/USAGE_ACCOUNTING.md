@@ -229,6 +229,10 @@ This is fire-and-forget — never blocks the response, never throws.
 
 15 000 ms. Overridden per call where needed — search initial pass 5 s, search re-rank 20 s, PPTX export 38 s, HTML export 45 s, entity-analysis-deck batch 30 s.
 
+### Credit / quota error capture (added 2026-06-16)
+
+When the provider call returns an out-of-credit / quota failure (HTTP 402, or 429/4xx whose message implicates billing/quota — see `isCreditError`), `callAI` records it to the **service-credit monitor** (`recordCreditError('anthropic' | 'openai', …)` → `service_health`). Anthropic/OpenAI expose no balance API, so a failed call is the only credit signal we get; it surfaces on `/admin/health` and triggers the service-balance alert cron. Best-effort and non-blocking — the original error still throws. See `docs/ENGINEERING.md` §4 and `lib/serviceHealth.ts`.
+
 ---
 
 ## 5. The Usage Logger — `lib/usageLog.ts` + `lib/usageRates.ts`

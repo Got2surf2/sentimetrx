@@ -6,6 +6,8 @@ import 'server-only'
 // All AI call sites route through callAI() for consistent behavior.
 // IMPORTANT: Always pass `usage` context so calls are logged for cost tracking.
 
+import { recordCreditError, isCreditError } from '@/lib/serviceHealth'
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type AIProvider = 'anthropic' | 'openai' | 'azure-openai'
@@ -336,6 +338,14 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
       const errData = await response.json()
       errMsg = errData?.error?.message || errMsg
     } catch { /* ignore */ }
+    // Out-of-credit / quota failures feed the service-credit monitor. These
+    // vendors expose no balance API (tier-2), so a failed call is the only
+    // signal we get. anthropic → 'anthropic'; openai/azure → 'openai'.
+    if (isCreditError(response.status, errMsg)) {
+      void recordCreditError(resolved.provider === 'anthropic' ? 'anthropic' : 'openai', {
+        code: response.status, message: errMsg,
+      })
+    }
     const err = new Error(errMsg) as any
     err.status = response.status
     throw err

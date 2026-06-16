@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
+import { probeBalances, getServiceHealthRows } from '@/lib/serviceHealth'
 import HealthClient from './HealthClient'
 
 export const dynamic = 'force-dynamic'
@@ -118,6 +119,14 @@ export default async function HealthPage() {
     }
   }
 
+  // ── Service credits / vendor health ─────────────────────────────────
+  // Live-probe tier-1 balances on load (the balance endpoints are free) so
+  // the admin sees current numbers; then read the full roster (tier-1
+  // balances + tier-2 last-error rows). Both best-effort.
+  try { await probeBalances() } catch {}
+  let serviceCredits: Awaited<ReturnType<typeof getServiceHealthRows>> = []
+  try { serviceCredits = await getServiceHealthRows() } catch {}
+
   return (
     <HealthClient
       logoUrl={orgData?.logo_url || ''}
@@ -129,6 +138,7 @@ export default async function HealthPage() {
       studyHealth={studyHealth}
       totalResponses24h={totalResponses24h || 0}
       totalComplete24h={totalComplete24h || 0}
+      serviceCredits={serviceCredits}
       sentry={{
         dsnSet: sentryDsnSet,
         tokenSet: !!sentryToken,
