@@ -15,6 +15,17 @@
 set -uo pipefail
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
+  # Even on production, skip when the commit range touches ONLY docs/ (markdown
+  # specs + the weekly governance files in docs/weekly-reports/) — a docs-only
+  # merge to main shouldn't trigger a ~$8-10 production deploy. git diff --quiet
+  # exits 0 when the pathspec has NO changes; ":(exclude)docs" = everything but
+  # docs/, so a clean exit means nothing outside docs/ changed. Default to BUILD
+  # if HEAD^ isn't reachable (shallow clone) — never skip a deploy we can't
+  # reason about.
+  if git rev-parse HEAD^ >/dev/null 2>&1 && git diff --quiet HEAD^ HEAD -- . ':(exclude)docs'; then
+    echo "production, but only docs/ changed → skip build"
+    exit 0
+  fi
   echo "production deployment → build"
   exit 1
 fi

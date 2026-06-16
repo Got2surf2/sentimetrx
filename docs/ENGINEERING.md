@@ -504,6 +504,11 @@ Constraints:
   (exit 0). So branch/PR pushes no longer burn builds — the only way
   to deploy is an authorized push to `main`. (Flip the script's
   per-env logic if preview QA is ever wanted again.)
+  - **Docs-only production deploys also skip** (added 2026-06-16): a
+    merge to `main` whose `HEAD^..HEAD` range touches only `docs/`
+    (markdown specs + the weekly governance files) exits 0, so the
+    weekly devlog / spec-drift PRs don't each cost a production build.
+    Defaults to BUILD if `HEAD^` is unreachable (shallow clone).
 - **Rollback:** `vercel rollback <previous-deployment-url>`.
   Instant. Use it instead of a hotfix when the issue is "previous
   version was fine, current is broken."

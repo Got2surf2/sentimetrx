@@ -22,3 +22,13 @@
 - `app/th/[token]/page.tsx` — same Meeting Notes section + conditional eyebrow/heading on the public page (`proceedings_summary` is the neutral summary, safe to share).
 
 **Verify**: typecheck clean; full suite 864 pass; render checks confirmed the section appears (overview, items, "$4.2M" figure chip, "Slides 3, 4", "Meeting Summary"/"Q&A Overview") and falls back correctly with no proceedings. RECORDINGS.md §4.5 + §4.6 updated. Local, not pushed.
+
+## 2026-06-16 — Vercel Ignored Build Step: also skip docs-only production deploys
+
+**Why**: The Ignored Build Step (`scripts/vercel-ignore-build.sh`, added W24) already skips every Preview build — only Production (`main`) builds. But it built *every* production deploy regardless of content, so merging the weekly governance PRs (devlog + spec-drift, which are docs-only) each cost a ~$8-10 production build for zero code change. Owner asked to stop that.
+
+**What changed**:
+- `scripts/vercel-ignore-build.sh` — in the `VERCEL_ENV=production` branch, before building, check whether `HEAD^..HEAD` touches anything outside `docs/` (`git diff --quiet HEAD^ HEAD -- . ':(exclude)docs'`). Docs-only range → exit 0 (skip). Defaults to BUILD when `HEAD^` is unreachable (shallow clone) — never skip a deploy we can't reason about. Preview-skip + the "build all real production code" behavior are unchanged.
+- `docs/ENGINEERING.md` — documented the docs-only production skip under the deploy/preview section.
+
+**Verify**: tested locally — preview→skip (0), production+code→build (1), production+docs-only→skip (0), no-env→skip (0). No dashboard change needed (the Ignored Build Step already points at this script). **Local, not pushed** — and note this only takes effect once pushed to `main`, which is itself one production build.
