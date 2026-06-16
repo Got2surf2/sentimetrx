@@ -261,7 +261,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
     const start = Date.now()
     const res = await fetch('/api/clarify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studyName: studyOrgName || studyName || 'Test Org', studyPurpose: studyConfig?.greeting || 'Collecting feedback', questionAsked: aiQuestion, questionKey: 'q3', answer: text, sentiment: 'neutral', experienceScore: 3, npsScore: 3, priorAnswers: {}, industry: studyConfig?.industry || '' }),
+      body: JSON.stringify({ studyName: studyOrgName || studyName || 'Test Org', studyPurpose: studyConfig?.greeting || 'Collecting feedback', questionAsked: aiQuestion, questionKey: 'q3', answer: text, sentiment: 'neutral', experienceScore: 3, npsScore: 3, priorQA: [], industry: studyConfig?.industry || '' }),
     })
     const data = await res.json()
     return { input: text, output: data.question || null, type: 'clarify', ms: Date.now() - start }
@@ -367,7 +367,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
               sentiment: 'neutral',
               experienceScore: 3,
               npsScore: 3,
-              priorAnswers: {},
+              priorQA: [],
               industry: studyConfig?.industry || '',
             }),
           })

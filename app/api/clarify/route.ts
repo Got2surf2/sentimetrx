@@ -19,7 +19,7 @@ interface ClarifyRequest {
   sentiment:       string
   experienceScore: number
   npsScore:        number
-  priorAnswers:    Record<string, string>
+  priorQA:         Array<{ question: string; answer: string }>
   industry?:       string
   language?:       string
   testing?:        boolean
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const {
     studyName, studyPurpose, questionAsked,
     answer, sentiment, experienceScore, npsScore,
-    priorAnswers, language,
+    priorQA, language,
   } = body
 
   // ── Input guardrail: skip before hitting the API ──────────────────────
@@ -64,9 +64,9 @@ export async function POST(req: NextRequest) {
     } catch { /* swallow; usage logging is best-effort */ }
   }
 
-  const priorContext = Object.entries(priorAnswers)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}: "${v}"`)
+  const priorContext = (priorQA || [])
+    .filter(p => p && p.answer)
+    .map(p => p.question ? `Q: "${p.question}"\n  A: "${p.answer}"` : `- "${p.answer}"`)
     .join('\n')
 
   const systemPrompt = `You are a conversational survey bot conducting a feedback survey on behalf of the organization "${studyName}".
@@ -75,7 +75,7 @@ Your purpose: ${studyPurpose}
 The respondent has:
 - Experience score: ${experienceScore}/5 (${sentiment})
 - NPS score: ${npsScore}/5
-${priorContext ? `- Already said:\n${priorContext}` : ''}
+${priorContext ? `\nThe respondent has ALREADY answered these earlier questions in this same survey — this detail is captured, do NOT ask them to repeat or expand on any of it:\n${priorContext}` : ''}
 
 Your job is to generate ONE short, natural follow-up question that draws out more specific detail from their answer.
 
@@ -85,7 +85,8 @@ Rules:
 - Do not repeat anything already asked
 - Ask only one question -- pick the single most valuable angle
 - Stay strictly on-topic to the survey subject matter
-- Only return SKIP if the answer is very detailed (3+ specific points). Short or vague answers should ALWAYS get a follow-up
+- If the answer only refers back to something already covered in the earlier answers above (e.g. "just the slow pacing I mentioned earlier", "same issue as before"), that detail is ALREADY captured — return exactly: SKIP. Never ask them to re-explain or add more to a point they already made earlier.
+- Only return SKIP if the answer is very detailed (3+ specific points) OR it only restates earlier feedback. Otherwise short or vague answers should get a follow-up
 - If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP
 - Never echo back offensive, harmful, or inappropriate content from the respondent
 - NEVER mention "Datanautix", "sentimetrx", or any platform/tool names — only reference "${studyName}" as the organization

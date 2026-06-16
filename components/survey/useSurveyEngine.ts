@@ -31,6 +31,7 @@ interface State {
   npsScore:        number | null
   npsLabel:        string | null
   answers:         { q1: string; q2: string; q3: string; q4: string }
+  questionsAsked:  Record<string, string>
   clarifyCount:    number
   customAnswers:   Record<string, string | string[]>
   currentQuestion: string
@@ -81,6 +82,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     rating: null, ratingLabel: null, sentiment: null,
     npsScore: null, npsLabel: null,
     answers: { q1: '', q2: '', q3: '', q4: '' },
+    questionsAsked: {},
     clarifyCount: 0,
     customAnswers: {},
     currentQuestion: '',
@@ -516,9 +518,16 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (!config.useAIClarify) return keywordFallback()
 
     try {
-      const priorAnswers: Record<string, string> = {}
-      if (qKey === 'q3' || qKey === 'q4') priorAnswers.q1 = s.answers.q1
-      if (qKey === 'q4') priorAnswers.q3 = s.answers.q3
+      // Send every earlier open-ended Q/A so the AI won't re-probe detail the
+      // respondent already gave under a previous question (e.g. answering "the
+      // slow pacing I mentioned earlier" on the good/bad/ugly question).
+      const order: Array<'q1' | 'q2' | 'q3' | 'q4'> = ['q1', 'q2', 'q3', 'q4']
+      const priorQA: Array<{ question: string; answer: string }> = []
+      for (const k of order) {
+        if (k === qKey) break
+        const a = s.answers[k]
+        if (a) priorQA.push({ question: s.questionsAsked[k] || '', answer: a })
+      }
 
       const res = await fetch('/api/clarify', {
         method: 'POST',
@@ -533,7 +542,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           sentiment:       s.sentiment || 'neutral',
           experienceScore: s.rating || 3,
           npsScore:        s.npsScore || 3,
-          priorAnswers,
+          priorQA,
           language:        activeLang.current !== 'en' ? activeLang.current : undefined,
           testing:         config.testing || undefined,
         }),
@@ -1027,7 +1036,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (v) {
         addMsg('user', v)
-        if (storageKey) state.current.answers[storageKey] = v
+        if (storageKey) {
+          state.current.answers[storageKey] = v
+          state.current.questionsAsked[storageKey] = state.current.currentQuestion
+        }
       }
       savePartialRef.current()
       clearInput()
@@ -1892,6 +1904,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
+    state.current.questionsAsked[qKey] = state.current.currentQuestion
     savePartial()
     clearInput()
     // Smart deflection: if respondent asked a question, redirect and skip clarifier

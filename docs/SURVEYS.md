@@ -95,9 +95,10 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 
 ### Clarifier API (`POST /api/clarify`)
 - Rate limited: 10/min per IP
-- Input: study context, question asked, user answer, sentiment, scores, optional `studyGuid` (public)
-- Output: follow-up question or `null` (`SKIP` when the answer is already detailed — 3+ specific points — or off-topic/unsafe)
-- Rules: max 25 words, no repetition, only probe if vague
+- Input: study context, question asked, user answer, sentiment, scores, optional `studyGuid` (public), and `priorQA` — the **full question+answer text** of every earlier open-ended/rating answer in this same session (in order), so the model can see what the respondent has already told it
+- Output: follow-up question or `null` (`SKIP` when the answer is already detailed — 3+ specific points — OR it only refers back to something already covered in `priorQA`, e.g. "just the slow pacing I mentioned earlier" — or off-topic/unsafe)
+- Rules: max 25 words, no repetition, only probe if vague. The prior Q/A are framed as "already captured — do NOT ask them to repeat or expand on any of it", which kills the repeat-question complaint where a later answer back-references an earlier one
+- **Why `priorQA` (not the old `priorAnswers` map)**: the client previously sent only the bare answer strings keyed `q1`/`q3` with no question text, so the model couldn't tell *what* was asked and would re-probe detail the respondent had already given on a different question. The engine (`useSurveyEngine`) now records each question's prompt text as it's asked (`questionsAsked`) and ships the paired Q+A list.
 - **Usage accounting**: when `studyGuid` resolves to a study row, the AI call is logged with `resource_type='study'` + `resource_id=studies.id` + `org_id=studies.org_id` (rolls up under the parent study on /admin/usage). Falls back to `resource_type='system'` if the guid is missing or unresolvable.
 
 **Client-side clarifier gating (`useSurveyEngine`).** Two rules-based pre-filters decide whether the clarifier model is called at all; both were tightened after a real Outback/Bloom conversation skipped two obvious probe moments:
