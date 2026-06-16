@@ -83,6 +83,8 @@
   },
   "overrides": {
     "undici": "7.27.0",
-    "devalue": "5.8.1"
+    "devalue": "5.8.1",
+    "esbuild": "0.28.1",
+    "vite": "8.0.16"
   }
 }

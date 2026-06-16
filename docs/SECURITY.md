@@ -511,15 +511,21 @@ Dependabot becomes the automated layer once item 2 lands. Pen
 test report is filed in `docs/audit/` with the report date in
 the filename.
 
-- **Known accepted advisories (`npm audit`):** 2 **moderate**,
-  0 high / 0 critical (as of 2026-06-08). Both are the same root
-  finding — PostCSS "XSS via unescaped `</style>` in CSS stringify
-  output" — pulled in transitively through `next`. It is a
-  **build-time** dependency (CSS generation), not reachable from
-  request handling, so the practical exposure is nil. **Do NOT run
-  `npm audit fix --force`:** it proposes an absurd `next@9.3.3`
-  downgrade. Posture: monitor and bump when upstream Next ships a
-  PostCSS-clean release.
+- **Known accepted advisories (`npm audit`):** 12 **moderate**, 1
+  low, 0 high / 0 critical (as of 2026-06-16). The W24 governance
+  audit flagged 13→14 **HIGH** advisories — all `esbuild` (<0.28.1)
+  and `vite` (≤8.0.15) reachable only through the `@workflow/*`
+  build-time DevKit toolchain (Town Hall pipeline), no runtime path.
+  **Remediated 2026-06-16** by pinning `esbuild: 0.28.1` and
+  `vite: 8.0.16` via `package.json` `overrides` (both are in-range
+  for what `@workflow/*` already declares — `^0.28.1` / 8.x — so a
+  non-breaking bump, verified by a clean `npm run build` + 864
+  tests). HIGH count → 0. The residual moderates are the same
+  build-time chain plus a `uuid`-via-`exceljs` finding whose only
+  "fix" is a breaking `exceljs` major downgrade — left accepted.
+  **Do NOT run `npm audit fix --force`:** it proposes an absurd
+  `next@9.3.3` downgrade (and the `exceljs@3.4.0` downgrade above).
+  Posture: manual override pins only; bump when upstream ships clean.
 
 - **Agent / developer-workspace hardening (Claude Code):** the repo
   ships defense-in-depth hooks wired in `.claude/settings.json`,
