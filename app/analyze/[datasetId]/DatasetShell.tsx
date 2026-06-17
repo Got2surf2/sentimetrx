@@ -25,10 +25,11 @@ interface Props {
   orgName: string
   schemaFields: SchemaField[]
   datasetId: string
+  outletCount?: number
   children: React.ReactNode
 }
 
-function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, children }: Props) {
+function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, outletCount, children }: Props) {
   const { filters, setFilters, lockedFilters, setLockedFilters, showFilters, setShowFilters } = useFilters()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoaded, setRowsLoaded] = useState(false)
@@ -180,7 +181,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   return (
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Phase B metric strip — records / signals / theme-fit. Sits between
           the orange header and the filter chips, visible on every tab. */}

@@ -536,6 +536,25 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 
 ---
 
+## Outlet Report (Outlets tab)
+
+> **Added 2026-06-17.** A one-page **per-outlet vs. peer-group** summary for multi-location review brands. Answers "what does *this* location excel at / need to work on, relative to its sibling outlets?" — the building block was missing before (per-location aggregation and taxonomy existed, but nothing compared one outlet to the group).
+
+**Where it lives.** Route `app/analyze/[datasetId]/outlet-report/` (server component + `OutletPicker`/`PrintButton` client bits). Surfaced as the **🏪 Outlets** tab in the `DatasetHeader` tab bar. The tab is **gated**: `sources: ['google_reviews']` **and** `minOutlets: 5` — peer comparison is meaningless below ~5 outlets, so single-location and tiny brands don't see it. The outlet count is computed server-side in `layout.tsx` (a cheap `count` off `review_source_locations` for the dataset's `review_source`, service-role to avoid RLS edge cases) and threaded `layout → DatasetShell → DatasetHeader` as `outletCount`. `minOutlets` is a generic per-tab gate on the `TABS` array, reusable for future count-gated tabs.
+
+**What it shows.** For the selected outlet (dropdown switches via `?outlet=<place_id>`):
+- **Headline KPIs** — avg star rating vs. peer-group average, peer **rank (#N of M)** + percentile, and count of classified reviews. Per-outlet rating + review counts come straight from `dataset_rows_flat.data.{rating,place_id}`.
+- **"Excels at" / "Needs work"** — the taxonomy sub-themes where the outlet's **net-positive rate** (`(pos−neg)/total`) most beats / trails the chain average for that same sub, each with the gap (in points), the rate vs. peers, mention count, and a representative customer quote.
+
+**How the comparison is computed** (`lib/outletReport.ts`, server-only):
+- Outlets are keyed by **`place_id`** — several locations share a name + city, so the human label alone is ambiguous (labels disambiguate by appending the street when name+city collide).
+- Sentiment joins the per-field taxonomy assertions (`dataset_row_field_taxonomy.assertions` — `{axis, sub, polarity, evidence}`) to flat rows on **`dataset_rows_flat.id === dataset_row_field_taxonomy.row_id`** (NOT `row_index`).
+- Stability floors filter noise: a theme needs ≥6 mentions at the outlet, ≥20 across the chain, ≥30% of its mentions opinionated (drops pure-mention subs like `touchpoint:server`), and a ≥8-point gap vs. peers to surface as a strength/weakness.
+- **Quote recovery**: the classifier's `evidence` is a fixed-width window that starts/ends mid-word, so the report locates it inside the full `review_text` and expands to sentence boundaries.
+- **Keyword false-positive guard**: the classifier is 100% keyword-based (uniform 0.85 confidence), so the cleanliness keyword "dirty" false-fires on menu items ("dirty soda", "dirty cherry cola") and the idiom "dirty look(s)". `isNoiseAssertion()` drops those from the Clean axis. This is a report-layer patch; the proper fix is vocabulary-level in the classifier.
+
+---
+
 ## Filters & Breakdown
 
 ### Filter Types
@@ -793,6 +812,8 @@ open-ended / date / id / ignore).
 | `components/analyze/TextMineModule.tsx` | Main shell, 4 sub-tabs (~2.4k lines) |
 | `components/analyze/ChartsModule.tsx` | Chart builder (~2.5k lines) |
 | `components/analyze/StatsModule.tsx` | Statistics (~2.2k lines) |
+| `lib/outletReport.ts` | Per-outlet vs. peer-group compute (rating rank + sub-theme strengths/weaknesses) |
+| `app/analyze/[datasetId]/outlet-report/` | Outlets tab — one-page report (page + OutletPicker + PrintButton) |
 | `components/analyze/ExportModal.tsx` | Export workflow (~1.2k lines) |
 | `components/analyze/FiltersModal.tsx` | Filter UI (~480 lines) |
 | `components/analyze/EntitiesCard.tsx` | Entities card rendered on the Themes sub-tab |

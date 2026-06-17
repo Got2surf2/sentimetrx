@@ -32,20 +32,24 @@ interface Props {
   sessionSaved?: boolean
   onAskAna?: () => void
   askAnaOpen?: boolean
+  outletCount?: number
 }
 
 var HERMES = '#E8632A'
 
-var TABS: { key: string; label: string; icon: string; collapse: number; sources?: string[] }[] = [
+var TABS: { key: string; label: string; icon: string; collapse: number; sources?: string[]; minOutlets?: number }[] = [
   { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD', collapse: 1 },
   { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA', collapse: 2 },
   { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
+  // Per-outlet vs. peer-group summary \u2014 only for multi-location review brands
+  // (peer comparison is meaningless with just a handful of outlets).
+  { key: 'outlet-report', label: 'Outlets', icon: '\uD83C\uDFEA', collapse: 3, sources: ['google_reviews'], minOutlets: 5 },
   // Restaurant 7-axis taxonomy \u2014 only for review datasets where it applies.
   { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen, outletCount = 0 }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -174,7 +178,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           </div>
 
           {/* Module tabs — progressively collapse labels right-to-left */}
-          {TABS.filter(function(tab) { return !tab.sources || tab.sources.indexOf(dataset.source) >= 0 }).map(function(tab) {
+          {TABS.filter(function(tab) {
+            if (tab.sources && tab.sources.indexOf(dataset.source) < 0) return false
+            if (tab.minOutlets && outletCount < tab.minOutlets) return false
+            return true
+          }).map(function(tab) {
             var isActive = activeTab === tab.key
             var href = '/analyze/' + dataset.id + '/' + tab.key
             return (

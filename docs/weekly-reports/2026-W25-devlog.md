@@ -256,3 +256,14 @@
 **Caveat surfaced**: correction direction depends on the entity entry having the correct spelling as `canonical`; a reversed entry would propagate the wrong word. On-screen report Q&A + PPTX deck still only normalize on re-analyze (follow-up if wanted).
 
 **Verify**: typecheck clean. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Analytics: per-outlet "vs. peer group" one-page report (Outlets tab)
+
+**Why**: For a multi-location review brand (e.g. BareBurger — 29 outlets, 14.7k Google reviews, ~7.3k taxonomy-classified) there was no way to ask "what does *this* outlet excel at / need to work on, relative to its sibling outlets?" The pieces existed (per-location rows, 7-axis taxonomy with polarity-tagged assertions, rating per location) but nothing compared one outlet to the group. Needed a demoable one-pager that ranks an outlet against peers and surfaces concrete strength/weakness themes with quotes.
+
+**What changed**:
+- `lib/outletReport.ts` (new, server-only) — `computeOutletReport(datasetId, placeId)`. Outlets keyed by **`place_id`** (same name+city collide). Headline = avg rating vs. chain + percentile/rank from `dataset_rows_flat.data.{rating,place_id}`. Strengths/weaknesses = taxonomy sub-themes where the outlet's net-positive rate (`(pos−neg)/total`) most beats/trails the chain, joining `dataset_row_field_taxonomy.assertions` to flat rows on **`flat.id === taxonomy.row_id`** (not `row_index` — 0 matches on the wrong key). Stability floors (≥6 outlet / ≥20 chain mentions, ≥30% opinionated, ≥8pt gap). Quotes recovered from full `review_text` expanded to sentence boundaries (raw `evidence` is a mid-word window). `isNoiseAssertion()` drops keyword false-positives where "dirty" hits menu items ("dirty soda/cherry cola") or the idiom "dirty look(s)" on the Clean axis — measured 8 dropped / 35 real hygiene complaints kept.
+- `app/analyze/[datasetId]/outlet-report/` (new) — server page + `OutletPicker` (client, `?outlet=` switch) + `PrintButton`. Printable one-pager: KPI row + Excels/Needs-work columns with quotes + method footnote.
+- `app/analyze/[datasetId]/{DatasetHeader,DatasetShell,layout}.tsx` — new **🏪 Outlets** tab, gated `sources:['google_reviews']` + `minOutlets:5` (generic per-tab gate). `layout.tsx` computes `outletCount` via a cheap `review_source_locations` count (service-role) and threads it through the shell.
+
+**Verify**: typecheck clean; compute logic proven against live BareBurger data (Stamford laggard 4.18★ bottom; Dobbs Ferry leader 4.89★ 92nd pct); outlet-count gate validated across all 20 review datasets (BareBurger/Ruth's Chris/Cheddar's show, single-property/tiny datasets hide). Route compiles + auth-redirects. ANALYTICS.md "Outlet Report" section added. Local, unpushed.

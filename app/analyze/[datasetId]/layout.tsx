@@ -2,7 +2,7 @@
 // Shared layout — wraps all dataset module pages in DatasetShell (FilterProvider + header + global filter modal)
 
 import type { ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
@@ -74,6 +74,22 @@ export default async function DatasetLayout(props: Props) {
   const studyName = (dataset as any).studies?.name ?? null
   const schemaFields = (stateRow?.schema_config?.fields || []) as import('@/lib/analyzeTypes').SchemaFieldConfig[]
 
+  // Outlet count for the multi-location report tab (only meaningful for review
+  // brands). Cheap count off review_source_locations; service-role avoids RLS
+  // edge cases since dataset access is already gated above.
+  let outletCount = 0
+  if (dataset.source === 'google_reviews') {
+    const svc = createServiceRoleClient()
+    const { data: src } = await svc.from('review_sources').select('id').eq('dataset_id', dataset.id).maybeSingle()
+    if (src) {
+      const { count } = await svc
+        .from('review_source_locations')
+        .select('id', { count: 'exact', head: true })
+        .eq('review_source_id', src.id)
+      outletCount = count || 0
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <TopNav
@@ -106,6 +122,7 @@ export default async function DatasetLayout(props: Props) {
           orgName={orgData?.name || ''}
           schemaFields={schemaFields}
           datasetId={params.datasetId}
+          outletCount={outletCount}
         >
           {children}
         </DatasetShell>
