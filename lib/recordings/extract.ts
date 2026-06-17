@@ -27,7 +27,7 @@ import 'server-only'
 import { Sandbox } from '@vercel/sandbox'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
+export const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
 const READ_URL_TTL_SEC = 60 * 60                         // 1h covers slow downloads + ffmpeg
 const SANDBOX_TIMEOUT_MS = 60 * 60 * 1000                // 60min ceiling per extract job
 const SNAPSHOT_ID = process.env.FFMPEG_SANDBOX_SNAPSHOT_ID
@@ -233,7 +233,7 @@ async function writeBackDbRows(
 
 // ── Supabase signed URL helpers ──────────────────────────────────────────────
 
-async function freshReadUrl(
+export async function freshReadUrl(
   service: ReturnType<typeof createServiceRoleClient>,
   path: string,
 ): Promise<string> {
@@ -244,7 +244,7 @@ async function freshReadUrl(
   return data.signedUrl
 }
 
-async function freshUploadUrl(
+export async function freshUploadUrl(
   service: ReturnType<typeof createServiceRoleClient>,
   path: string,
 ): Promise<string> {
@@ -286,7 +286,7 @@ sudo cp "$FF" "$FP" /usr/local/bin/
 ffmpeg -version >/dev/null && ffprobe -version >/dev/null
 `.trim()
 
-async function bootSandbox(): Promise<InstanceType<typeof Sandbox>> {
+export async function bootSandbox(): Promise<InstanceType<typeof Sandbox>> {
   const sandbox = SNAPSHOT_ID
     ? await Sandbox.create({
         source: { type: 'snapshot', snapshotId: SNAPSHOT_ID },
@@ -302,7 +302,7 @@ async function bootSandbox(): Promise<InstanceType<typeof Sandbox>> {
   return sandbox
 }
 
-async function runOrThrow(
+export async function runOrThrow(
   sandbox: InstanceType<typeof Sandbox>,
   argv: string[],
   label: string,
@@ -391,6 +391,6 @@ function extOf(filename: string): string {
  * into `sh -c` strings, so we have to neutralize any embedded single quote.
  * Strategy: close the quote, escape the literal, reopen — `'\''`.
  */
-function shellQuote(s: string): string {
+export function shellQuote(s: string): string {
   return s.replace(/'/g, `'\\''`)
 }

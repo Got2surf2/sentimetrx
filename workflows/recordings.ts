@@ -23,6 +23,7 @@ import { FatalError } from 'workflow'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { extractRecording } from '@/lib/recordings/extract'
 import { transcribeRecording } from '@/lib/recordings/transcribe'
+import { transcribeSpan, type SpanVendor } from '@/lib/recordings/transcribeSpan'
 import { analyzeRecording } from '@/lib/recordings/analyze'
 import { mirrorExtractionsToDataset } from '@/lib/recordings/mirror'
 import { computeCoverage } from '@/lib/recordings/coverage'
@@ -120,6 +121,34 @@ export async function retranscribeRecordingWorkflow(recording_id: string, org_id
     await setFailed(recording_id, org_id, message)
     throw err
   }
+}
+
+// Targeted re-transcription of one time span (a flagged "quiet stretch"). Slices
+// the audio, re-runs ASR on just that clip, folds the segments back in. Unlike
+// the full re-transcribe it does NOT clear extractions or re-analyze — the Q&A
+// is preserved; the user can re-analyze separately if they want the recovered
+// speech reflected in the pairs.
+export async function retranscribeSpanWorkflow(
+  recording_id: string, org_id: string, start_sec: number, end_sec: number, vendor: SpanVendor,
+) {
+  "use workflow"
+  try {
+    await setStatus(recording_id, org_id, 'transcribing')
+    await runTranscribeSpan(recording_id, org_id, start_sec, end_sec, vendor)
+    await setStatus(recording_id, org_id, 'complete')
+    await setCompletedAt(recording_id, org_id)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await setFailed(recording_id, org_id, message)
+    throw err
+  }
+}
+
+async function runTranscribeSpan(
+  recording_id: string, org_id: string, start_sec: number, end_sec: number, vendor: SpanVendor,
+) {
+  "use step"
+  await transcribeSpan(recording_id, org_id, start_sec, end_sec, vendor)
 }
 
 // Delete a recording's existing Q&A extractions + their dataset mirror rows so

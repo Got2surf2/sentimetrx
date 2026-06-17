@@ -229,7 +229,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
-        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
+        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
@@ -1507,7 +1507,23 @@ const SENTIMENT_DOT: Record<string, { color: string; label: string }> = {
   mixed:    { color: '#F59E0B', label: 'mixed' },
 }
 
-function CoverageTab({ recording, extractions, transcript, onReviewFlagged }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; onReviewFlagged: () => void }) {
+function CoverageTab({ recording, extractions, transcript, recordingId, canEdit, onPlay, onReviewFlagged }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; recordingId: string; canEdit: boolean; onPlay: PlayHandler; onReviewFlagged: () => void }) {
+  // Targeted re-transcription of a quiet stretch: which gap (by index) is
+  // running, and the chosen ASR vendor (Whisper default — better at faint speech).
+  const [spanBusy, setSpanBusy] = useState<number | null>(null)
+  const [spanVendor, setSpanVendor] = useState<'whisper' | 'deepgram'>('whisper')
+  const retranscribeSpan = async (g: { start_sec: number; end_sec: number }, i: number) => {
+    if (!window.confirm(`Re-transcribe ${formatTime(g.start_sec)}–${formatTime(g.end_sec)} with ${spanVendor}? The recovered speech is folded into the transcript (Q&A is unchanged until you re-analyze).`)) return
+    setSpanBusy(i)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/transcribe-span`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_sec: g.start_sec, end_sec: g.end_sec, vendor: spanVendor }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-transcribe failed (${r.status})`); setSpanBusy(null); return }
+      window.location.href = `/recordings/${recordingId}/status`
+    } catch { alert('Re-transcribe failed'); setSpanBusy(null) }
+  }
   const qaPairs = useMemo(
     () => extractions.filter(e => e.unit_type === 'qa_pair'),
     [extractions],
@@ -1699,12 +1715,35 @@ function CoverageTab({ recording, extractions, transcript, onReviewFlagged }: { 
       {cr.per_minute_gaps.length > 0 && (
         <section>
           <h2 className="text-base font-bold text-gray-900 mb-2">Long quiet stretches</h2>
-          <ul className="text-sm text-gray-700 space-y-1">
+          {canEdit && (
+            <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+              <span>Re-transcribe with</span>
+              <select value={spanVendor} onChange={e => setSpanVendor(e.target.value as 'whisper' | 'deepgram')}
+                className="border border-gray-200 rounded px-2 py-1" style={{ fontSize: '16px' }} disabled={spanBusy !== null}>
+                <option value="whisper">Whisper (best for faint speech)</option>
+                <option value="deepgram">Deepgram</option>
+              </select>
+            </div>
+          )}
+          <ul className="text-sm text-gray-700 space-y-1.5">
             {cr.per_minute_gaps.map((g, i) => (
-              <li key={i}>{formatTime(g.start_sec)} → {formatTime(g.end_sec)} ({formatDuration(g.end_sec - g.start_sec)} with no extracted pair)</li>
+              <li key={i} className="flex items-center gap-3 flex-wrap">
+                <button type="button" onClick={() => onPlay(g.start_sec, g.end_sec, `Quiet ${formatTime(g.start_sec)}–${formatTime(g.end_sec)}`)}
+                  title="Listen to this stretch"
+                  className="font-mono text-gray-700 hover:text-orange-600">
+                  ▶ {formatTime(g.start_sec)} → {formatTime(g.end_sec)}
+                </button>
+                <span className="text-xs text-gray-400">({formatDuration(g.end_sec - g.start_sec)} with no extracted pair)</span>
+                {canEdit && (
+                  <button type="button" onClick={() => retranscribeSpan(g, i)} disabled={spanBusy !== null}
+                    className="text-xs px-2 py-0.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
+                    {spanBusy === i ? 'Starting…' : '↻ Re-transcribe span'}
+                  </button>
+                )}
+              </li>
             ))}
           </ul>
-          <div className="text-xs text-gray-500 mt-1">Stretches ≥ 5 minutes with no extraction. May indicate missed pairs or genuine quiet (panel monologue, technical breaks).</div>
+          <div className="text-xs text-gray-500 mt-1">Stretches ≥ 5 minutes with no extraction. May indicate missed pairs or genuine quiet (panel monologue, technical breaks). Click the time to listen; re-transcribe slices that span, runs a fresh ASR pass, and folds any recovered speech into the transcript.</div>
         </section>
       )}
 

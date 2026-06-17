@@ -198,3 +198,14 @@
 - Brand color fix: header wordmark now uses the canonical palette — **data = Sarina teal `#0F7173`, nautix = Ana orange `#E85A1A`** (was a non-brand `#1FA8A8` teal). Matches `lib/pptx/shared.ts` primaries.
 
 **Verify**: typecheck clean. Letter render confirmed: header/footer rules present, labels larger with spacing, wordmark on-brand. Local, unpushed.
+
+## 2026-06-17 — Town Hall: targeted re-transcription of quiet stretches (listen + tuned ASR pass)
+
+**Why**: Coverage flagged "long quiet stretches" (≥5min, no extracted pair) but they were dead text. NOWOCATS-style low-coverage spans need a way to recover missed speech without a full (destructive) re-transcribe.
+
+**What changed**:
+- **Listen**: coverage quiet stretches are now clickable ▶ time ranges → play that span in the report audio modal (threaded `onPlay` + `recordingId`/`canEdit` into `CoverageTab`).
+- **Re-transcribe span**: per-stretch action + vendor pick (Whisper default — not VAD-gated, better at faint speech; Deepgram alt). `POST /api/recordings/[id]/transcribe-span` → `retranscribeSpanWorkflow`: slices `stitched.mp3` to [start,end] in a Sandbox (ffmpeg `-ss/-t -c copy`), runs ASR on the clip (`lib/recordings/transcribeSpan.ts`), shifts segments to absolute time, merges into `recording_transcripts.segments` (drops overlapping, re-sorts, recomputes word_count). Does NOT clear extractions / re-analyze — Q&A preserved.
+- Exported `extract.ts` Sandbox helpers (`bootSandbox`/`runOrThrow`/`freshReadUrl`/`freshUploadUrl`/`shellQuote`/`BUCKET`) for reuse.
+
+**Verify**: typecheck clean, 875 tests pass. UI + routing verified by types/patterns; the Sandbox+ASR leg only runs deployed (same as extract/transcribe). RECORDINGS.md §5.3 updated. Local, unpushed.
