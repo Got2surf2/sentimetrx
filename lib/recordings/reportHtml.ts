@@ -20,6 +20,7 @@ import type {
   TranscriptSegment,
   EntityMap,
   PanelMember,
+  ActionItemPayload,
 } from '@/lib/recordings/types'
 import { normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
@@ -215,6 +216,23 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     })
     .join('')
 
+  // Action items (own extraction unit) — follow-ups/commitments. Rendered on the
+  // PDF deliverable (the deck shows them too); the public /th link never does.
+  // Uses the human-edit overlay (§3.5d) so corrections show.
+  const actionItems = input.pairs.filter(p => p.unit_type === 'action_item')
+  const actionsHtml = actionItems.length > 0
+    ? `<section class="actions"><h2 class="topic">Action Items</h2>` +
+      actionItems.map(a => {
+        const p = a.payload as ActionItemPayload
+        const desc = p.edited_description || p.description
+        const owner = (p.edited_owner ?? p.owner) || ''
+        const due = (p.edited_due_date ?? p.due_date) || ''
+        const meta = [owner ? `Owner: ${esc(owner)}` : '', due ? `Due: ${esc(due)}` : ''].filter(Boolean).join('  ·  ')
+        return `<div class="aitem"><p class="ai-d">${esc(desc)}</p>${meta ? `<div class="ai-m">${meta}</div>` : ''}</div>`
+      }).join('') +
+      `</section>`
+    : ''
+
   const notes = proceedingsSection(input.proceedings)
   // Eyebrow reflects scope: both halves present → "Meeting Summary"; Q&A only → legacy label.
   const eyebrow = notes ? 'Meeting Summary' : 'Meeting Q&amp;A Summary'
@@ -292,6 +310,10 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.pm{display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border:1px solid ${LINE};border-radius:8px;background:#f8fafc;font-size:12px}` +
     `.pmn{font-weight:700;color:${INK}}` +
     `.pmr{color:${MUTE}}` +
+    `.actions{margin-top:22px}` +
+    `.aitem{border:1px solid ${LINE};border-radius:12px;padding:11px 14px;margin-bottom:10px;page-break-inside:avoid}` +
+    `.ai-d{font-size:14px;color:${INK};margin:0;line-height:1.5}` +
+    `.ai-m{font-size:12px;color:${MUTE};margin-top:5px;font-weight:600}` +
     draftCss +
     `</style></head><body>` + draftWm + `<div class="wrap">` +
     `<header><div class="eyebrow">${eyebrow}</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${panelHtml}${objHtml}${draftBanner}</header>` +
@@ -299,6 +321,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     overview +
     timeline +
     `<section>${topics}</section>` +
+    actionsHtml +
     transcriptSection(input) +
     `</div></body></html>`
   )
