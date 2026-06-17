@@ -106,7 +106,6 @@ export interface RecordingSetupInitial {
   location: string
   language: string
   panel: Array<{ name: string; role: string }>
-  speakers: Array<{ name: string; role: string }>
   agenda: string[]
   glossary: string               // newline-joined
   objectivesSummary: string
@@ -154,11 +153,6 @@ export default function RecordingSetupForm({
   const [panel, setPanel] = useState<Array<{ name: string; role: string }>>(
     initial?.panel?.length ? initial.panel : [{ name: '', role: '' }],
   )
-  // Additional named speakers (moderator/audience/anyone untagged) — populate the
-  // transcript-review reassignment dropdown when diarization gave no labels.
-  const [speakers, setSpeakers] = useState<Array<{ name: string; role: string }>>(
-    initial?.speakers?.length ? initial.speakers : [{ name: '', role: '' }],
-  )
   const [agenda, setAgenda] = useState<string[]>(initial?.agenda?.length ? initial.agenda : [''])
   const [glossary, setGlossary] = useState(initial?.glossary ?? '')
   const [brandTag, setBrandTag] = useState(initial?.brandTag ?? '')
@@ -192,10 +186,6 @@ export default function RecordingSetupForm({
   const cleanedPanel = useMemo(
     () => panel.map(p => ({ name: p.name.trim(), role: p.role.trim() })).filter(p => p.name),
     [panel],
-  )
-  const cleanedSpeakers = useMemo(
-    () => speakers.map(p => ({ name: p.name.trim(), role: p.role.trim() })).filter(p => p.name),
-    [speakers],
   )
   const cleanedAgenda = useMemo(() => agenda.map(a => a.trim()).filter(Boolean), [agenda])
   const cleanedGlossary = useMemo(() => glossary.split('\n').map(s => s.trim()).filter(Boolean), [glossary])
@@ -299,7 +289,6 @@ export default function RecordingSetupForm({
 
     const setup_inputs = {
       panel: cleanedPanel,
-      ...(cleanedSpeakers.length > 0 ? { speakers: cleanedSpeakers } : {}),
       agenda: cleanedAgenda,
       ...(cleanedGlossary.length > 0 ? { glossary: cleanedGlossary } : {}),
     }
@@ -542,34 +531,6 @@ export default function RecordingSetupForm({
               <button type="button" disabled={busy}
                 onClick={() => setPanel(prev => [...prev, { name: '', role: '' }])}
                 className="text-xs text-gray-600 hover:text-orange-600 disabled:opacity-30">+ Add panelist</button>
-            </div>
-          </Field>
-
-          <Field label="Speakers (optional)">
-            <p className="text-xs text-gray-500 mb-1.5">
-              Other people who speak — moderator, audience members, anyone not on the panel. Use this when the
-              recording isn&apos;t split into separate speaker tracks: these names become assignable when you review
-              and correct the transcript.
-            </p>
-            <div className="space-y-2">
-              {speakers.map((p, i) => (
-                <div key={i} className="flex gap-2">
-                  <input type="text" value={p.name}
-                    onChange={e => setSpeakers(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                    placeholder="Name" disabled={busy}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-                  <input type="text" value={p.role}
-                    onChange={e => setSpeakers(prev => prev.map((x, j) => j === i ? { ...x, role: e.target.value } : x))}
-                    placeholder="Role (optional)" disabled={busy}
-                    className="w-32 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
-                  <button type="button" disabled={busy || speakers.length === 1}
-                    onClick={() => setSpeakers(prev => prev.filter((_, j) => j !== i))}
-                    className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-2">✕</button>
-                </div>
-              ))}
-              <button type="button" disabled={busy}
-                onClick={() => setSpeakers(prev => [...prev, { name: '', role: '' }])}
-                className="text-xs text-gray-600 hover:text-orange-600 disabled:opacity-30">+ Add speaker</button>
             </div>
           </Field>
 

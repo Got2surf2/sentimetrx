@@ -67,6 +67,10 @@ export default function ReportClient({ data }: { data: ReportData }) {
   // banner. Cleared ONLY by a sign-off (POST /signoff), which captures the
   // reviewer's name + id + timestamp + optional note. No anonymous finalize.
   const router = useRouter()
+  // Transcript held in state so in-place segment edits (speaker reassignment /
+  // verbatim fixes from the Transcript tab) reflect in the read view and survive
+  // tab switches without a full reload.
+  const [transcript, setTranscript] = useState(data.transcript)
   const [isDraft, setIsDraft] = useState(data.recording.draft)
   const [signing, setSigning] = useState(false)
   const [signNote, setSignNote] = useState('')
@@ -156,8 +160,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
   }, [])
 
   const segments = useMemo(
-    () => (data.transcript?.segments ?? []) as TranscriptSegment[],
-    [data.transcript],
+    () => (transcript?.segments ?? []) as TranscriptSegment[],
+    [transcript],
   )
 
   return (
@@ -226,7 +230,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} rosterSpeakers={rosterSpeakerNames(data.recording.setup_inputs)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
+        {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
@@ -1773,7 +1777,7 @@ function TimelineExcerptModal({ pair, index, segments, onClose }: {
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript, entityMap, extractions, channelLabels, speakerNames, rosterSpeakers, recordingId, canEdit, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; speakerNames: Record<string, string> | null; rosterSpeakers: string[]; recordingId: string; canEdit: boolean; onPlay: PlayHandler }) {
+function TranscriptTab({ transcript, entityMap, extractions, channelLabels, speakerNames, panelSpeakers, extraSpeakers, onSegmentsSaved, recordingId, canEdit, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; speakerNames: Record<string, string> | null; panelSpeakers: string[]; extraSpeakers: string[]; onSegmentsSaved: (segments: TranscriptSegment[]) => void; recordingId: string; canEdit: boolean; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments.
   const segments = useMemo(
@@ -1877,7 +1881,9 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
         segments={segments}
         speakerNames={speakerNames}
         channelLabels={channelLabels}
-        rosterSpeakers={rosterSpeakers}
+        panelSpeakers={panelSpeakers}
+        extraSpeakers={extraSpeakers}
+        onSegmentsSaved={onSegmentsSaved}
         canEdit={canEdit}
         editable={canEdit}
         entityMap={entityMap}
@@ -2753,13 +2759,13 @@ function formatDuration(sec: number): string {
   return `${m}m`
 }
 
-// Names a transcript segment can be reassigned to (setup panel + speakers roster),
-// deduped — surfaced in the edit-mode dropdown when diarization left no labels.
-function rosterSpeakerNames(setupInputs: unknown): string[] {
-  const su = (setupInputs ?? {}) as { panel?: Array<{ name?: string }>; speakers?: Array<{ name?: string }> }
+// Distinct names from a setup roster (panel members or extra speakers) — feed
+// the transcript-review reassignment dropdown.
+function setupNames(setupInputs: unknown, key: 'panel' | 'speakers'): string[] {
+  const arr = ((setupInputs ?? {}) as Record<string, Array<{ name?: string }>>)[key] ?? []
   const out: string[] = []
   const seen = new Set<string>()
-  for (const p of [...(su.panel ?? []), ...(su.speakers ?? [])]) {
+  for (const p of arr) {
     const n = String(p?.name ?? '').trim()
     if (n && !seen.has(n)) { seen.add(n); out.push(n) }
   }

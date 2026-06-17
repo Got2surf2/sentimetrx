@@ -47,10 +47,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (k && v) names[k] = v
   }
 
+  // Extra speakers (moderator/audience/anyone untagged) — managed in the same
+  // transcript-review panel, persisted to setup_inputs.speakers so they survive
+  // reloads and seed the reassignment dropdown. Optional: absent → leave as-is.
+  const hasExtra = Array.isArray(body?.extra_speakers)
+  const extraSpeakers: Array<{ name: string }> = hasExtra
+    ? (body.extra_speakers as unknown[])
+        .map(s => String((s as { name?: unknown })?.name ?? s ?? '').trim().slice(0, 80))
+        .filter((n, i, a) => n && a.indexOf(n) === i)
+        .slice(0, MAX_LABELS)
+        .map(name => ({ name }))
+    : []
+
   const service = createServiceRoleClient()
   const { data: rec, error: rErr } = await service
     .from('recordings')
-    .select('id, org_id, created_by')
+    .select('id, org_id, created_by, setup_inputs')
     .eq('id', recording_id)
     .single()
   if (rErr || !rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
@@ -59,12 +71,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: 'only the recording owner or an admin can rename speakers' }, { status: 403 })
   }
 
+  const update: Record<string, unknown> = {
+    speaker_names: Object.keys(names).length ? names : null,
+  }
+  // Merge extra speakers into setup_inputs (only when the client sent the field).
+  if (hasExtra) {
+    const su = (rec.setup_inputs ?? {}) as Record<string, unknown>
+    update.setup_inputs = { ...su, speakers: extraSpeakers }
+  }
+
   const { error: updErr } = await service
     .from('recordings')
-    .update({ speaker_names: Object.keys(names).length ? names : null })
+    .update(update)
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, names })
+  return NextResponse.json({ ok: true, names, extra_speakers: extraSpeakers.map(s => s.name) })
 }

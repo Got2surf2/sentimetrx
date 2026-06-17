@@ -33,7 +33,9 @@ export default function TranscriptReview({
   onPlay,
   editable = false,
   saveHint,
-  rosterSpeakers = [],
+  panelSpeakers = [],
+  extraSpeakers = [],
+  onSegmentsSaved,
 }: {
   recordingId: string
   segments: TranscriptSegment[]
@@ -45,9 +47,14 @@ export default function TranscriptReview({
   onPlay?: PlayHandler
   editable?: boolean
   saveHint?: string
-  // Predefined names (setup panel + speakers) offered in the reassignment
-  // dropdown — so segments can be assigned even when diarization left no labels.
-  rosterSpeakers?: string[]
+  // Panel members from setup (read-only here) — always offered in the dropdown.
+  panelSpeakers?: string[]
+  // Extra speakers (moderator/audience/untagged) — editable in this panel,
+  // persisted to setup_inputs.speakers. Seeds the editable roster below.
+  extraSpeakers?: string[]
+  // Called after a successful segment save so the parent can refresh its copy
+  // (keeps the read view + remounts consistent).
+  onSegmentsSaved?: (segments: TranscriptSegment[]) => void
 }) {
   // Internal copy so segment edits reflect immediately without a parent refetch.
   const [segments, setSegments] = useState<TranscriptSegment[]>(segmentsProp)
@@ -67,6 +74,10 @@ export default function TranscriptReview({
   const [names, setNames] = useState<Record<string, string>>(speakerNames ?? {})
   const [namesOpen, setNamesOpen] = useState(false)
   const [savingNames, setSavingNames] = useState(false)
+  // Extra speakers (moderator/audience/untagged) managed right here — editable,
+  // persisted to setup_inputs.speakers on save. Panel members come in read-only
+  // via panelSpeakers (set on the setup page).
+  const [extras, setExtras] = useState<string[]>(extraSpeakers)
   const speakerLabels = useMemo(() => {
     const introRe = /\b(?:i['’]?m|i am|my name is|this is|name['’]?s)\s+([A-Z][a-zA-Z'’.-]+(?:\s+[A-Z][a-zA-Z'’.-]+){0,2})/
     const info = new Map<string, { sample: string; start: number; end: number; suggested?: string }>()
@@ -80,9 +91,8 @@ export default function TranscriptReview({
     return [...info.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [segments])
   // Reassignment dropdown options: diarized labels (shown by assigned name when
-  // one exists) + the setup roster names not already covered by a label. Deduped
-  // by display so "Dr. Hatem" doesn't appear twice when it's both a named label
-  // and a roster entry.
+  // one exists) + panel members + the editable extra speakers. Deduped by
+  // display so a name never appears twice across the three sources.
   const assignOptions = useMemo(() => {
     const opts: Array<{ value: string; label: string }> = []
     const seen = new Set<string>()
@@ -91,20 +101,22 @@ export default function TranscriptReview({
       opts.push({ value: label, label: disp })
       seen.add(label); seen.add(disp)
     }
-    for (const raw of rosterSpeakers) {
+    for (const raw of [...panelSpeakers, ...extras]) {
       const n = (raw || '').trim()
       if (!n || seen.has(n)) continue
       opts.push({ value: n, label: n })
       seen.add(n)
     }
     return opts
-  }, [speakerLabels, names, rosterSpeakers])
+  }, [speakerLabels, names, panelSpeakers, extras])
+  // One save persists both the label→name map (speaker_names) and the editable
+  // extra speakers (setup_inputs.speakers).
   const saveNames = async () => {
     setSavingNames(true)
     try {
       await fetch(`/api/recordings/${recordingId}/speaker-names`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names }),
+        body: JSON.stringify({ names, extra_speakers: extras.map(s => s.trim()).filter(Boolean) }),
       })
     } finally { setSavingNames(false) }
   }
@@ -172,10 +184,12 @@ export default function TranscriptReview({
         body: JSON.stringify({ edits }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Save failed (${r.status})`); setSavingSegs(false); return }
-      setSegments(working)
+      const saved = working.map(s => ({ ...s }))
+      setSegments(saved)
       setEditMode(false)
       setDirty(new Set())
       if (saveHint) setSavedNote(true)
+      onSegmentsSaved?.(saved)   // let the parent refresh so the read view / remounts stay in sync
     } catch { alert('Save failed') } finally { setSavingSegs(false) }
   }
 
@@ -205,36 +219,64 @@ export default function TranscriptReview({
 
   return (
     <div className="space-y-3">
-      {canEdit && speakerLabels.length > 0 && (
+      {canEdit && (
         <div className="rounded-xl border border-gray-200 bg-gray-50">
           <button type="button" onClick={() => setNamesOpen(o => !o)}
             className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
-            <span>🎙 Name speakers ({speakerLabels.length})</span>
+            <span>🎙 Speakers ({assignOptions.length})</span>
             <span className="text-gray-400">{namesOpen ? '▲' : '▼'}</span>
           </button>
           {namesOpen && (
-            <div className="px-4 pb-4 space-y-2">
-              <p className="text-xs text-gray-500">Give each diarized speaker a name — applied across the transcript and Q&amp;A. Leave blank to keep the raw label.</p>
-              {speakerLabels.map(([label, info]) => (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-gray-400 w-16 shrink-0 truncate" title={label}>{label}</span>
-                  <input
-                    type="text" value={names[label] ?? ''} placeholder={info.suggested || label}
-                    onChange={e => setNames(prev => ({ ...prev, [label]: e.target.value }))}
-                    className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
-                  {info.suggested && (names[label] ?? '') !== info.suggested && (
-                    <button type="button" title="Use the name they introduced themselves with"
-                      onClick={() => setNames(prev => ({ ...prev, [label]: info.suggested! }))}
-                      className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 shrink-0 whitespace-nowrap">✨ {info.suggested}</button>
-                  )}
-                  <button type="button" title="Play + jump to this point in the transcript"
-                    onClick={() => { onPlay?.(info.start, info.end, info.sample); document.getElementById(`seg-${info.start}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
-                    className="flex-1 min-w-0 text-left text-xs text-gray-500 hover:text-orange-600 truncate">▶ “{info.sample}”</button>
+            <div className="px-4 pb-4 space-y-3">
+              {/* Diarized speakers — name each; applied across the transcript + Q&A. */}
+              {speakerLabels.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500">Name each detected speaker — applied across the transcript and Q&amp;A. Leave blank to keep the raw label.</p>
+                  {speakerLabels.map(([label, info]) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-gray-400 w-16 shrink-0 truncate" title={label}>{label}</span>
+                      <input
+                        type="text" value={names[label] ?? ''} placeholder={info.suggested || label}
+                        onChange={e => setNames(prev => ({ ...prev, [label]: e.target.value }))}
+                        className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                      {info.suggested && (names[label] ?? '') !== info.suggested && (
+                        <button type="button" title="Use the name they introduced themselves with"
+                          onClick={() => setNames(prev => ({ ...prev, [label]: info.suggested! }))}
+                          className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 shrink-0 whitespace-nowrap">✨ {info.suggested}</button>
+                      )}
+                      <button type="button" title="Play + jump to this point in the transcript"
+                        onClick={() => { onPlay?.(info.start, info.end, info.sample); document.getElementById(`seg-${info.start}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+                        className="flex-1 min-w-0 text-left text-xs text-gray-500 hover:text-orange-600 truncate">▶ “{info.sample}”</button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* Other speakers — moderator / audience / anyone the recording didn't
+                  split out. Editable here; assignable in the per-segment dropdown. */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">
+                  Other speakers — moderator, audience, or anyone the recording didn&apos;t separate. Add them here to assign segments to them below.
+                </p>
+                {extras.map((nm, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input type="text" value={nm} placeholder="Name"
+                      onChange={e => setExtras(prev => prev.map((x, j) => j === i ? e.target.value : x))}
+                      className="w-56 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                    <button type="button" onClick={() => setExtras(prev => prev.filter((_, j) => j !== i))}
+                      className="text-gray-400 hover:text-red-500 text-lg leading-none shrink-0">×</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setExtras(prev => [...prev, ''])}
+                  className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">+ Add speaker</button>
+                {panelSpeakers.length > 0 && (
+                  <p className="text-xs text-gray-400">From the panel (set on the project): {panelSpeakers.join(' · ')} — already assignable.</p>
+                )}
+              </div>
+
               <button type="button" onClick={saveNames} disabled={savingNames}
                 className="mt-1 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
-                {savingNames ? 'Saving…' : 'Save names'}
+                {savingNames ? 'Saving…' : 'Save speakers'}
               </button>
             </div>
           )}

@@ -78,19 +78,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       : null,
     speaker_names: (rec.speaker_names ?? null) as Record<string, string> | null,
     channel_labels: (rec.channel_labels ?? null) as string[] | null,
-    roster_speakers: rosterSpeakerNames(rec.setup_inputs),
+    // Panel roster (read-only here, from setup) and the editable extra-speakers
+    // roster (managed in the transcript-review panel). Both feed the dropdown.
+    roster_panel: names(rec.setup_inputs, 'panel'),
+    roster_extra: names(rec.setup_inputs, 'speakers'),
     can_edit: isAdminOrg || rec.created_by === user.id,
   })
 }
 
-// Names a segment can be reassigned to even with no diarization labels: the
-// setup panel roster + the extra speakers roster (moderator/audience/etc.),
-// deduped, blanks dropped.
-function rosterSpeakerNames(setupInputs: unknown): string[] {
-  const su = (setupInputs ?? {}) as { panel?: Array<{ name?: string }>; speakers?: Array<{ name?: string }> }
+function names(setupInputs: unknown, key: 'panel' | 'speakers'): string[] {
+  const arr = ((setupInputs ?? {}) as Record<string, Array<{ name?: string }>>)[key] ?? []
   const out: string[] = []
   const seen = new Set<string>()
-  for (const p of [...(su.panel ?? []), ...(su.speakers ?? [])]) {
+  for (const p of arr) {
     const n = String(p?.name ?? '').trim()
     if (n && !seen.has(n)) { seen.add(n); out.push(n) }
   }

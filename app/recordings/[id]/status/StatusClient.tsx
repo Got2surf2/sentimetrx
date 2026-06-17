@@ -560,7 +560,8 @@ function GateTranscriptReview({ recordingId }: { recordingId: string }) {
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
   const [speakerNames, setSpeakerNames] = useState<Record<string, string> | null>(null)
   const [channelLabels, setChannelLabels] = useState<string[] | null>(null)
-  const [rosterSpeakers, setRosterSpeakers] = useState<string[]>([])
+  const [panelSpeakers, setPanelSpeakers] = useState<string[]>([])
+  const [extraSpeakers, setExtraSpeakers] = useState<string[]>([])
   const [canEdit, setCanEdit] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -577,7 +578,8 @@ function GateTranscriptReview({ recordingId }: { recordingId: string }) {
         setSegments((d.transcript?.segments ?? []) as TranscriptSegment[])
         setSpeakerNames(d.speaker_names ?? null)
         setChannelLabels(d.channel_labels ?? null)
-        setRosterSpeakers(Array.isArray(d.roster_speakers) ? d.roster_speakers : [])
+        setPanelSpeakers(Array.isArray(d.roster_panel) ? d.roster_panel : [])
+        setExtraSpeakers(Array.isArray(d.roster_extra) ? d.roster_extra : [])
         setCanEdit(d.can_edit === true)
         setLoaded(true)
       } catch {
@@ -607,7 +609,9 @@ function GateTranscriptReview({ recordingId }: { recordingId: string }) {
                   segments={segments}
                   speakerNames={speakerNames}
                   channelLabels={channelLabels}
-                  rosterSpeakers={rosterSpeakers}
+                  panelSpeakers={panelSpeakers}
+                  extraSpeakers={extraSpeakers}
+                  onSegmentsSaved={setSegments}
                   canEdit={canEdit}
                   editable
                 />

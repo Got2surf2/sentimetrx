@@ -175,3 +175,15 @@
 - **First-page context** (`reportHtml.ts`): added a **Panel** chip row (name + role from `setup_inputs.panel`) to the header block, alongside the existing date·location, objectives, and Overview summary — all before the Q&A.
 
 **Verify**: typecheck clean. Rendered a 7-page Letter sample with real Chrome (throwaway, removed): header/footer clear of content on dense pages, footer shows local time, page 1 shows panel chips + date/location + summary. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall speakers: consolidate to ONE place + fix reassignment reflection
+
+**Why**: Follow-up feedback — speaker management was in two places (Setup "Speakers" list + the transcript "Name speakers" panel), and edit-mode segment reassignments didn't reflect in the read view / survive tab switches. Single, post-STT place was the ask.
+
+**What changed**:
+- **One place**: removed the Setup-page "Speakers" section (Setup keeps Panel members). The transcript-review panel ("🎙 Speakers") is now the single roster manager: names diarized labels (self-intro seeded) **and** holds an editable extra-speakers roster (moderator/audience/untagged). One "Save speakers" persists both — `POST /speaker-names` extended to take `extra_speakers` → `setup_inputs.speakers`. Panel members flow in read-only (always assignable).
+- **Dropdown roster** = diarized labels + panel members + extra speakers (deduped). `GET /transcript` now returns `roster_panel` + `roster_extra` (was merged `roster_speakers`).
+- **Reflection fix**: `TranscriptReview` calls `onSegmentsSaved(segments)` after a successful PATCH; ReportClient lifts the transcript to state and updates it (read view + tab-switch remounts stay fresh), GateTranscriptReview updates its segments state.
+- `QaSetupInputs.speakers` type retained (now written from the transcript panel, not setup).
+
+**Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.
