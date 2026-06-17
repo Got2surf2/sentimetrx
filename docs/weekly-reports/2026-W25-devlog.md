@@ -187,3 +187,14 @@
 - `QaSetupInputs.speakers` type retained (now written from the transcript panel, not setup).
 
 **Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall PDF polish: section spacing, larger labels, header/footer rules, brand colors
+
+**Why**: Report polish pass — sections (Panel/Objectives) felt cramped with tiny labels; wanted separator rules under the header and above the footer; the header wordmark teal was off-brand.
+
+**What changed** (`reportPdf.ts` + `reportHtml.ts`):
+- Section labels: new `.sec-h` (13px bold caps) for the first-page **Panel**/**Objectives** blocks (the inline Q&A `.label` is untouched), with `20px` top margin so each block has breathing room.
+- Separators: hairline rule under the running header (`border-bottom`) and above the footer (`border-top`).
+- Brand color fix: header wordmark now uses the canonical palette — **data = Sarina teal `#0F7173`, nautix = Ana orange `#E85A1A`** (was a non-brand `#1FA8A8` teal). Matches `lib/pptx/shared.ts` primaries.
+
+**Verify**: typecheck clean. Letter render confirmed: header/footer rules present, labels larger with spacing, wordmark on-brand. Local, unpushed.

@@ -194,12 +194,12 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     input.confidentiality_class ? (CONF_LABEL[input.confidentiality_class] ?? null) : null,
   ].filter(Boolean).join('  ·  ')
   const objHtml = (input.objectives?.summary || (input.objectives?.questions?.length ?? 0) > 0)
-    ? `<div class="objectives"><div class="label">Objectives</div>${input.objectives?.summary ? `<p style="margin:0 0 4px">${esc(input.objectives.summary)}</p>` : ''}${(input.objectives?.questions?.length ?? 0) > 0 ? `<ul style="margin:0;padding-left:18px">${input.objectives!.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}</div>`
+    ? `<div class="objectives"><div class="sec-h">Objectives</div>${input.objectives?.summary ? `<p style="margin:0 0 4px">${esc(input.objectives.summary)}</p>` : ''}${(input.objectives?.questions?.length ?? 0) > 0 ? `<ul style="margin:0;padding-left:18px">${input.objectives!.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}</div>`
     : ''
   // Panel roster — first-page context so readers know who's answering. Chips
   // (name + role), mirrors the presentation key-figure chip style.
   const panelHtml = (input.panel?.length ?? 0) > 0
-    ? `<div class="panel-box"><div class="label">Panel</div><div class="panel-list">${input.panel!.filter(p => p.name).map(p => `<span class="pm"><span class="pmn">${esc(p.name)}</span>${p.role ? `<span class="pmr">${esc(p.role)}</span>` : ''}</span>`).join('')}</div></div>`
+    ? `<div class="panel-box"><div class="sec-h">Panel</div><div class="panel-list">${input.panel!.filter(p => p.name).map(p => `<span class="pm"><span class="pmn">${esc(p.name)}</span>${p.role ? `<span class="pmr">${esc(p.role)}</span>` : ''}</span>`).join('')}</div></div>`
     : ''
 
   const topics = order
@@ -283,7 +283,11 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.caption{font-size:12px;color:${MUTE};margin:0 0 12px}` +
     `.tx .seg{font-size:13px;line-height:1.55;color:${BODY};margin:0 0 8px}` +
     `.spk{display:inline-block;font-weight:700;color:${MUTE};margin-right:6px}` +
-    `.panel-box{margin:14px 0 0}` +
+    // Section label for the first-page context blocks (Panel, Objectives) —
+    // larger than the inline Q&A `.label`, with breathing room above each block.
+    `.sec-h{font-size:13px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;color:${INK};margin:0 0 7px}` +
+    `.objectives{margin:20px 0 0}` +
+    `.panel-box{margin:20px 0 0}` +
     `.panel-list{display:flex;flex-wrap:wrap;gap:6px}` +
     `.pm{display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border:1px solid ${LINE};border-radius:8px;background:#f8fafc;font-size:12px}` +
     `.pmn{font-weight:700;color:${INK}}` +

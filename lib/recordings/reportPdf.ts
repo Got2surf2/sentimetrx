@@ -166,30 +166,34 @@ export async function renderRecordingReportPdf(
 }
 
 const FOOT_FONT = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
-// Datanautix wordmark — data=teal, nautix=orange, per CLAUDE.md (one word, no
-// separator). Reused in the header.
-const DN_WORDMARK = `<span style="font-weight:800;"><span style="color:#1FA8A8">data</span><span style="color:#F07040">nautix</span></span>`
+// Datanautix wordmark — data = Sarina teal, nautix = Ana orange (the brand
+// palette primaries, lib/pptx/shared.ts: DN.teal / DN.orange). One word, no
+// separator, per CLAUDE.md. Reused in the running header.
+const DN_WORDMARK = `<span style="font-weight:800;"><span style="color:#0F7173">data</span><span style="color:#E85A1A">nautix</span></span>`
+const SEP = '#e2e8f0'   // hairline separator under the header / above the footer
 
 function escFooter(s: string): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-// Repeated per-page header for page.pdf() — "powered by datanautix", top-right.
+// Repeated per-page header for page.pdf() — "powered by datanautix", top-right,
+// with a hairline rule beneath it separating the header band from the body.
 // Chromium renders header/footer templates at font-size 0 unless set, so sizes
 // are inline; side padding matches the 1in body margin so it aligns right.
 function pageHeaderTemplate(): string {
   return (
-    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;text-align:right;${FOOT_FONT};">`
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in 5px;text-align:right;`
+    + `border-bottom:1px solid ${SEP};margin:0 0 0;${FOOT_FONT};">`
     + `powered by ${DN_WORDMARK}`
     + `</div>`
   )
 }
 
 // Repeated per-page footer: generated-at timestamp (left) · meeting name
-// (center, ellipsized) · page X of Y (right).
+// (center, ellipsized) · page X of Y (right), with a hairline rule above it.
 function pageFooterTemplate(name: string, timestamp: string): string {
   return (
-    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;${FOOT_FONT};`
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:5px 1in 0;border-top:1px solid ${SEP};${FOOT_FONT};`
     + `display:flex;align-items:center;justify-content:space-between;">`
     + `<span style="white-space:nowrap;">${escFooter(timestamp)}</span>`
     + `<span style="flex:1;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escFooter(name)}</span>`
