@@ -59,17 +59,25 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Admin-only: allow changing org_id (transfer agent to another org)
   // Validates target is an active org, then logs to org_transfers.
   let isTransfer = false
+  let transferFromOrgId: string | null = null
   let resourceSnapshot: { name: string | null } | null = null
   if ('org_id' in body) {
     if (!auth.isAdmin) {
       return NextResponse.json({ error: 'Only admins can transfer agents' }, { status: 403 })
     }
     const service = createServiceRoleClient()
-    const check = await checkTransferTarget(service, auth.orgId, body.org_id)
+    // The "from" org is the AGENT's current org — NOT the caller's (auth.orgId).
+    // Using the caller's org made an admin moving a cross-org agent back into
+    // the admin's own org fail with a false "already in that org" (target ==
+    // caller org), even when the agent lived in a different org.
+    const { data: cur } = await service.from('agents').select('org_id, name').eq('id', params.id).single()
+    transferFromOrgId = (cur as any)?.org_id ?? null
+    const check = await checkTransferTarget(service, transferFromOrgId, body.org_id)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
-    const { data: snap } = await service.from('agents').select('name').eq('id', params.id).single()
-    resourceSnapshot = { name: (snap as any)?.name ?? null }
-    updates.org_id = body.org_id
+    resourceSnapshot = { name: (cur as any)?.name ?? null }
+    // org_id is NOT set on `updates` — the cascading RPC below moves it (plus
+    // all the agent's owned data) atomically. A bare agents.org_id update here
+    // would strand conversations/turns/questions/etc. in the old org.
     isTransfer = true
   }
 
@@ -100,11 +108,16 @@ export async function PATCH(req: NextRequest, props: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (isTransfer) {
+    // Cascade the org move to ALL the agent's owned data (conversations, turns,
+    // logged questions, reviews, change log, impressions, study cache) in one
+    // transaction — sql/127. Repairs already-split agents too (idempotent).
+    const { error: xferErr } = await service.rpc('transfer_agent_org', { p_agent_id: params.id, p_to_org: body.org_id })
+    if (xferErr) return NextResponse.json({ error: 'transfer failed: ' + xferErr.message }, { status: 500 })
     const user = await getAuthUser(supabase)
     await recordOrgTransfer({
       service, resourceType: 'bot', resourceId: params.id,
       resourceName: resourceSnapshot?.name ?? null,
-      fromOrgId: auth.orgId, toOrgId: updates.org_id as string,
+      fromOrgId: transferFromOrgId ?? auth.orgId, toOrgId: body.org_id as string,
       initiatedBy: auth.userId, initiatedByEmail: user?.email || null,
     })
   }

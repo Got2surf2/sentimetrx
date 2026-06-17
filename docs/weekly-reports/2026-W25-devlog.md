@@ -62,3 +62,19 @@
 **Verify**: typecheck clean; `npm run build` succeeds; full suite **875 pass** (864 + 11 new). Local, not pushed.
 
 **Activation (needs owner OK — production writes)**: (1) apply `sql/126` to prod; (2) push (registers cron + page; prod build); (3) set `CREDITS_ALERT_TO`. Until the table exists the page degrades gracefully (all "unknown") and writes no-op.
+
+## 2026-06-17 — Agents: fix cross-org visibility + cascading org-transfer (the Sarina mess)
+
+**Why**: Platform admin (got2surf2, Datanautix admin org) couldn't attach the "Sarina" agent (which lives in *Arjun Pilots*) to a Town Hall, and moving Sarina errored with "Resource is already in that org." Three distinct bugs, all around agent↔org:
+1. **Town Hall agent picker hard org-scoped** — `recordings/new|[id]/setup|[id]/report` listed agents via `.eq('org_id', …)` with no admin override (unlike `/api/bots`, which gives admins all orgs). So a cross-org agent was invisible, and the PATCH agent-link guard rejected it.
+2. **Transfer used the caller's org as "from"** — `app/api/bots/[id]` passed `auth.orgId` (caller = Datanautix) to `checkTransferTarget` instead of the agent's own org, so moving an Arjun-Pilots agent *to* Datanautix compared Datanautix→Datanautix → false "already in that org." (bots was the only transfer route with this bug; recordings/studies/datasets already used the resource's org.)
+3. **Transfer didn't cascade** — it updated only the `agents` row, stranding the agent's conversations/turns/questions/etc. in the old org. Sarina was split: agent in Arjun Pilots, but 77 conversations + 505 turns + 17 questions + 66 impressions in Datanautix → her history was invisible from the new org.
+
+**What changed**:
+- `app/recordings/new|[id]/setup|[id]/report/page.tsx` + `app/api/recordings/[id]/route.ts` — agent picker + PATCH agent-link guard now key off `isAdminOrg` (admins see/link cross-org agents).
+- `app/api/bots/[id]/route.ts` — transfer uses the agent's own org as "from"; calls the new RPC for the move.
+- `sql/127_transfer_agent_org.sql` — `transfer_agent_org(agent_id, to_org)` SECURITY DEFINER RPC: moves the agent + conversations + conversation_turns (via conversation subquery) + logged_questions + conversation_reviews + agent_change_log + agent_impressions + agent_study_cache in one transaction. Idempotent; repairs already-split agents. `bot_knowledge_chunks` (no org_id) follows the bot; `bots`/`bot_change_log` are views.
+
+**Data fix (done in prod)**: applied sql/127 and ran `transfer_agent_org(Sarina, Arjun Pilots)` — consolidated all of Sarina's data into Arjun Pilots (verified: every table now 100% `05fcdb2a`, zero `b72e9ee6`).
+
+**Verify**: typecheck clean. RECORDINGS.md + BOTS.md updated. Code local + unpushed — the picker/transfer fixes need a push to take effect in prod (the data consolidation is already live).

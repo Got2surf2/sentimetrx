@@ -318,9 +318,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if ('underlying_agent_id' in body) {
     const agentId = typeof body.underlying_agent_id === 'string' && body.underlying_agent_id ? body.underlying_agent_id : null
     if (agentId) {
-      // Verify the agent is in this recording's org before linking it.
+      // Verify the agent exists. Admin orgs may link an agent from ANY org
+      // (e.g. a pilot agent living in a client org); non-admins are restricted
+      // to this recording's own org. Mirrors the admin-sees-all agent picker.
       const { data: agent } = await service.from('agents').select('id, org_id').eq('id', agentId).maybeSingle()
-      if (!agent || (agent as { org_id: string }).org_id !== rec.org_id) {
+      if (!agent || (!uc.isAdminOrg && (agent as { org_id: string }).org_id !== rec.org_id)) {
         return NextResponse.json({ error: 'agent not found in this org' }, { status: 400 })
       }
     }

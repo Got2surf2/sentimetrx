@@ -42,7 +42,12 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
   if (!ctx.isAdminOrg && (recRow as { org_id: string }).org_id !== ctx.orgId) notFound()
   const recording = recRow as unknown as RecordingRow
 
-  // 3. Fetch the side rows + the org's agents (for the brand/agent link) in parallel.
+  // 3. Fetch the side rows + agents (for the brand/agent link) in parallel.
+  // Admin orgs may link an agent from ANY org; non-admins see only the
+  // recording's org. Mirrors /new + /setup + /api/bots.
+  const agentQuery = ctx.isAdminOrg
+    ? service.from('agents').select('id, name').order('name')
+    : service.from('agents').select('id, name').eq('org_id', recording.org_id).order('name')
   const [filesRes, transcriptRes, extractionsRes, agentsRes] = await Promise.all([
     service
       .from('recording_files')
@@ -62,11 +67,7 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
       .eq('recording_id', recording.id)
       .eq('org_id', recording.org_id)
       .order('sort_order', { ascending: true }),
-    service
-      .from('agents')
-      .select('id, name')
-      .eq('org_id', recording.org_id)
-      .order('name'),
+    agentQuery,
   ])
 
   const files = (filesRes.data ?? []) as unknown as RecordingFileRow[]

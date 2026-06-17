@@ -1112,7 +1112,7 @@ Returns `{ bots: [...] }` for the caller's org. Each bot includes a live convers
 
 ### `GET / PATCH / DELETE /api/bots/[id]`
 - **PATCH** allowed keys: `name, slug, status, config, system_prompt, personality, knowledge_base, training_urls, review_interval_hours, next_review_at, faq, facts, guardrails, subject, negative_content_mode, opponents, contrast_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference`.
-- **Admin-only:** `org_id` (bot transfer).
+- **Admin-only:** `org_id` (agent transfer). **Cascading + correct "from" (fixed 2026-06-17):** the transfer now (a) uses the **agent's own** current org as the "from" for the same-org guard — previously it used the *caller's* org, so an admin moving a cross-org agent into the admin's own org got a false "Resource is already in that org"; and (b) calls the **`transfer_agent_org(agent_id, to_org)` RPC (sql/127)** which moves the agent **and all its owned data** — conversations, conversation_turns, logged_questions, conversation_reviews, agent_change_log, agent_impressions, agent_study_cache — to the new org in one transaction. A bare `agents.org_id` update used to strand all of that in the old org (the Sarina split: agent in one org, 84 conversations/554 turns/17 questions in another). The RPC is idempotent and **repairs** an already-split agent. `bot_knowledge_chunks` has no `org_id` (bot-scoped) so it follows automatically; `bots`/`bot_change_log` are views and reflect the base-table updates.
 
 ### `GET /api/bots/[id]/knowledge`
 Returns `{ chunks: [...], count }`.

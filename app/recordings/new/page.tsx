@@ -16,13 +16,14 @@ export default async function NewRecordingPage() {
   // Town Hall (recordings) is a standalone top-level product (not under Analyze).
   if (!ctx.features.recordings) redirect('/dashboard')
 
-  // §3.5c — the org's agents, for the optional "link an agent" entity-catalog seed.
+  // §3.5c — agents for the optional "link an agent" entity-catalog seed. Admin
+  // orgs (platform admins) may link an agent from ANY org — e.g. a pilot agent
+  // that lives in a client org — so they're not scoped; non-admins see only
+  // their own org's agents. Mirrors the /api/bots admin-sees-all rule.
   const service = createServiceRoleClient()
-  const { data: agentRows } = await service
-    .from('agents')
-    .select('id, name')
-    .eq('org_id', ctx.orgId)
-    .order('name')
+  let agentQ = service.from('agents').select('id, name').order('name')
+  if (!ctx.isAdminOrg) agentQ = agentQ.eq('org_id', ctx.orgId)
+  const { data: agentRows } = await agentQ
   const agents = (agentRows ?? []).map((a: any) => ({ id: a.id as string, name: (a.name as string) || 'Untitled' }))
 
   // §2.8 — org members for the analyst picker (pick-a-teammate OR free-text).

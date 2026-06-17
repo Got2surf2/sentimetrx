@@ -37,8 +37,13 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
 
   // Org agents (brand/agent link) + members (analyst picker) — same as /new — and
   // the project documents already attached (deck + briefs) for the documents pane.
+  // Admin orgs may link an agent from ANY org (e.g. a pilot agent in a client
+  // org); non-admins see only the recording's org. Mirrors /new + /api/bots.
+  const agentQuery = ctx.isAdminOrg
+    ? service.from('agents').select('id, name').order('name')
+    : service.from('agents').select('id, name').eq('org_id', recording.org_id).order('name')
   const [agentsRes, membersRes, docsRes] = await Promise.all([
-    service.from('agents').select('id, name').eq('org_id', recording.org_id).order('name'),
+    agentQuery,
     service.from('users').select('id, full_name, email').eq('org_id', recording.org_id).order('full_name'),
     service.from('recording_files')
       .select('id, original_filename, mime_type, size_bytes, file_role')
