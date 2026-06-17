@@ -1866,6 +1866,25 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
     } catch { alert('Re-transcribe failed'); setRetBusy(false) }
   }
 
+  // Entity / name-spelling editor (§3.5b) — the fix-it-later path (the primary
+  // editor is the pre-analysis gate). Saves recordings.entity_map; the corrected
+  // transcript view applies on reload, the Q&A on a re-analyze.
+  type Ent = { canonical: string; variants: string[]; type?: string; mentions?: number }
+  const [ents, setEnts] = useState<Ent[]>(() => (entityMap?.entities as Ent[]) ?? [])
+  const [entOpen, setEntOpen] = useState(false)
+  const [savingEnts, setSavingEnts] = useState(false)
+  const saveEnts = async () => {
+    setSavingEnts(true)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/entity-map`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entities: ents.filter(e => e.canonical.trim()) }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || 'Save failed'); setSavingEnts(false); return }
+      window.location.reload()   // re-render the corrected transcript view with the new map
+    } catch { alert('Save failed'); setSavingEnts(false) }
+  }
+
   if (!transcript) return <EmptyState label="Transcript not available yet." />
 
   return (
@@ -1920,6 +1939,35 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
               {retBusy ? 'Starting…' : '↻ Re-transcribe'}
             </button>
           </div>
+        </div>
+      )}
+      {canEdit && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50">
+          <button type="button" onClick={() => setEntOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
+            <span>✎ Correct names &amp; terms ({ents.length})</span>
+            <span className="text-gray-400">{entOpen ? '▲' : '▼'}</span>
+          </button>
+          {entOpen && (
+            <div className="px-4 pb-4 space-y-2">
+              <p className="text-xs text-gray-500">Fix name/term spellings (variant → correct). The corrected transcript view updates on save; the Q&amp;A picks it up on the next re-analyze.</p>
+              {ents.map((e, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input value={e.canonical} placeholder="Correct spelling"
+                    onChange={ev => setEnts(p => p.map((x, j) => j === i ? { ...x, canonical: ev.target.value } : x))}
+                    className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                  <input value={e.variants.join(', ')} placeholder="heard as… (comma-separated)"
+                    onChange={ev => setEnts(p => p.map((x, j) => j === i ? { ...x, variants: ev.target.value.split(',').map(s => s.trim()).filter(Boolean) } : x))}
+                    className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                  <button type="button" onClick={() => setEnts(p => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 text-lg shrink-0 leading-none">×</button>
+                </div>
+              ))}
+              <div className="flex items-center gap-2 pt-1">
+                <button type="button" onClick={() => setEnts(p => [...p, { canonical: '', variants: [] }])} className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">+ Add term</button>
+                <button type="button" onClick={saveEnts} disabled={savingEnts} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{savingEnts ? 'Saving…' : 'Save corrections'}</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div className="flex items-center justify-between gap-3">

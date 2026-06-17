@@ -99,3 +99,13 @@
 - `ReportClient.tsx` (Transcript tab "Name speakers" panel) — sample snippets are now buttons → `onPlay` from that segment + `scrollIntoView` of the `seg-<start>` anchor; self-intro regex over each speaker's lines surfaces a `✨ <name>` chip that one-click-fills the field; input made controlled. Added `id="seg-<start>"` + `scroll-mt-24` to transcript segments.
 
 **Verify**: typecheck clean. RECORDINGS.md §3.4 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall: report-side entity editor + speaker names feed analysis
+
+**Why**: Two follow-ups: (1) the name/term spelling map (§3.5b) was editable only at the pre-analysis gate — needed a fix-it-later editor on the report. (2) Confirmed speaker names weren't used by the Q&A extraction (asker/panelist were content-guessed), so naming a speaker did nothing for attribution.
+
+**What changed**:
+- `POST /api/recordings/[id]/entity-map { entities }` (owner/admin) — saves `recordings.entity_map` post-generation. Report Transcript tab "Correct names & terms" panel (canonical + variants rows, add/remove). Corrected transcript view applies on reload; Q&A on re-analyze.
+- A3: `analyzeRecording` applies `speaker_names` to segments before the prompt (`applySpeakerNames`), so `formatTranscript`'s `speaker:` prefix carries the real name → asker/panelist attribution uses confirmed labels. Threaded via `runAnalyze` + `reanalyzeRecording` (+ select speaker_names).
+
+**Verify**: typecheck clean. RECORDINGS.md updated. Local, unpushed. (Gate-side transcript+speaker review is the next chunk.)

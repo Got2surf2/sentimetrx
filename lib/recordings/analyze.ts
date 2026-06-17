@@ -68,6 +68,9 @@ export interface AnalyzeInput {
   topicScopedTo?: string
   /** §3.5b confirmed entity map — its canonicals seed the polish glossary. */
   entity_map?: EntityMap | null
+  /** Confirmed speaker label → name map (sql/128). Applied to the transcript
+   *  before extraction so the model attributes asker/panelist by real name. */
+  speaker_names?: Record<string, string> | null
   /** §2.8 meeting objectives — steer the synthesis pass to answer them. */
   objectives?: MeetingObjectives | null
   /** §3.5e — what was presented (slide outline / presentation transcript), so
@@ -93,13 +96,23 @@ export async function analyzeRecording(input: AnalyzeInput): Promise<AnalyzeResu
   return analyzeQa(input)
 }
 
+// Map each segment's diarized label to its confirmed human name (sql/128), so
+// the transcript handed to the prompt reads "Dr. Hatem: …" not "Speaker 0: …".
+function applySpeakerNames(segs: TranscriptSegment[], names?: Record<string, string> | null): TranscriptSegment[] {
+  if (!names || Object.keys(names).length === 0) return segs
+  return segs.map(s => (s.speaker && names[s.speaker]) ? { ...s, speaker: names[s.speaker] } : s)
+}
+
 async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
   const setup = input.setup_inputs as QaSetupInputs
+  // Apply confirmed speaker names so the prompt's `speaker:` prefixes carry real
+  // names → the model attributes asker/panelist by name instead of guessing.
+  const transcript = applySpeakerNames(input.transcript, input.speaker_names)
 
   // ── Pass 1: Opus extraction ───────────────────────────────────────────────
   const { system: extractSystem, userPrompt: extractUser } = buildQaExtractionPrompt({
     setup,
-    transcript: input.transcript,
+    transcript,
     instructions: input.instructions,
     topicScopedTo: input.topicScopedTo,
   })
@@ -128,7 +141,7 @@ async function analyzeQa(input: AnalyzeInput): Promise<AnalyzeResult> {
   if (drafts.length > 0) {
     const { system: curatorSystem, userPrompt: curatorUser } = buildQaCuratorPrompt({
       setup,
-      transcript: input.transcript,
+      transcript,
       drafts,
       instructions: input.instructions,
     })

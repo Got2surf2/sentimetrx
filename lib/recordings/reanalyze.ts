@@ -59,12 +59,12 @@ export async function reanalyzeRecording(input: ReanalyzeInput): Promise<Reanaly
   // 1. Load recording + transcript.
   const { data: recRow, error: rErr } = await service
     .from('recordings')
-    .select('id, org_id, name, created_by, session_type, setup_inputs, status, cost_cents, source_duration_sec, dataset_id, entity_map')
+    .select('id, org_id, name, created_by, session_type, setup_inputs, status, cost_cents, source_duration_sec, dataset_id, entity_map, speaker_names')
     .eq('id', input.recording_id)
     .eq('org_id', input.org_id)
     .single()
   if (rErr || !recRow) throw new Error('recording not found')
-  const recording = recRow as unknown as Pick<RecordingRow, 'id' | 'org_id' | 'name' | 'created_by' | 'session_type' | 'setup_inputs' | 'status' | 'cost_cents' | 'source_duration_sec' | 'dataset_id' | 'entity_map'>
+  const recording = recRow as unknown as Pick<RecordingRow, 'id' | 'org_id' | 'name' | 'created_by' | 'session_type' | 'setup_inputs' | 'status' | 'cost_cents' | 'source_duration_sec' | 'dataset_id' | 'entity_map' | 'speaker_names'>
   if (recording.session_type !== 'qa') {
     throw new Error(`reanalyze v1 only supports session_type='qa' (got '${recording.session_type}')`)
   }
@@ -127,6 +127,7 @@ export async function reanalyzeRecording(input: ReanalyzeInput): Promise<Reanaly
     instructions: input.instructions,
     topicScopedTo: input.scope === 'topic' ? input.topic : undefined,
     entity_map: recording.entity_map,
+    speaker_names: recording.speaker_names,
   })
 
   // 4. Mirror new extractions into the dataset (appends).

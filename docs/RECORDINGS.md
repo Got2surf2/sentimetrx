@@ -499,6 +499,10 @@ ASR diarization emits generic labels ("Speaker 0", "S1"). `recordings.speaker_na
 
 **Status-page progress (2026-06-17):** the `StatusClient` step pills sit under a gradient (yellow→orange) **progress bar** filled to completed-steps + half the active step (gently pulsing in flight), and the active-step indicator is a larger amber **ping** dot.
 
+**Speaker names feed analysis (2026-06-17):** `analyzeRecording` applies `speaker_names` to the transcript segments before extraction (`applySpeakerNames` → `formatTranscript`'s `speaker:` prefix carries the real name), so the Q&A asker/panelist come from confirmed labels, not content-guessing. Threaded through `runAnalyze` + `reanalyzeRecording`. So: name speakers → re-analyze → attribution improves. (The pre-analysis **gate** is the intended place to name them so the *first* pass benefits; the report panel is the fix-it-later path.)
+
+**Entity editor on the report (2026-06-17):** the §3.5b name/term spelling map can now be edited *after* generation via `POST /api/recordings/[id]/entity-map` `{ entities }` (owner/admin) — a "Correct names & terms" panel in the report Transcript tab (canonical + variants per row). The corrected transcript view applies on save (reload); the Q&A on the next re-analyze. The primary editor remains the pre-analysis gate.
+
 ### 3.5 Analyze (Claude pass)
 
 Per session_type prompt, defined in `lib/recordings/prompts/{qa,focus_group,general_meeting,interview,lecture}.ts`. Each prompt receives:
