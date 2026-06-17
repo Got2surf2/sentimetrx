@@ -279,3 +279,9 @@
 So PDF, deck, and on-screen all apply the reviewed spelling corrections on read; direction still depends on the entry's canonical being correct.
 
 **Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Docs sync: FEATURES inventory caught up to the Town Hall sweep
+
+**Why**: `FEATURES.md` predated the last few features.
+
+**What changed** (docs only): added to the Town Hall inventory — edit Q&A *and* action items (revertible overlay), resolve "needs review" per-pair (vs report sign-off), and name corrections flowing on-read across report/PDF/deck. Fixed the PDF bullet (it carries action items + optional transcript, more than the Q&A-only public link) + noted the Action Items section. RECORDINGS.md (§3.5d/§4.5/§5.3) + memory were already current per-commit.

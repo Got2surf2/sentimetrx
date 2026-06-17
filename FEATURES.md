@@ -480,11 +480,16 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - **Per-segment correction** — fix verbatim ASR errors inline and reassign a mislabeled segment to a different speaker; an "Auto-fill speakers" button fills unassigned runs bounded by the same speaker
 - **Assignable with zero diarization** — when the audio wasn't split into speakers, assign segments to the named roster by hand
 - **Re-transcribe a quiet stretch** — the coverage report flags long stretches with no Q&A; click to listen, or run a fresh ASR pass (Whisper/Deepgram) on just that span and fold any recovered speech into the transcript (Q&A preserved until re-analyzed)
+- **Edit any extracted item** — hand-edit Q&A pairs *and* action items (description / owner / due); edits are a revertible overlay (the AI + verbatim versions are kept, "Revert to AI" any time)
+- **Resolve "needs review"** — mark a curator-flagged pair reviewed (clears the ⚠ flag), distinct from the report-level draft **sign-off** that finalizes the whole report
+- **Name corrections flow everywhere** — fix a mis-heard name once in "Correct names & terms"; the corrected spelling shows on read across the corrected transcript, the Q&A, action items, and summary — in the on-screen report, the PDF, and the PPTX deck — without a re-analyze
 - The same correction surface runs both at the gate and on the finished report's Transcript tab
 
 ### Recording report PDF
-- Datanautix-branded, US-Letter PDF of the meeting report (same content as the public share link), one-click from the report page; optional full-transcript appendix
+- Datanautix-branded, US-Letter PDF of the meeting report, one-click from the report page; optional full-transcript appendix. Carries more than the public link (action items + optional transcript), which stays Q&A-only
 - **First page leads with context** — meeting name, date, location, panel roster, objectives, and the executive summary before the Q&A
+- **Action Items section** after the Q&A (description / owner / due), reflecting any edits
+- Reviewed name/term corrections are applied on read throughout (Q&A, action items, summary, transcript)
 - Running **header** ("powered by datanautix", Sarina-teal/Ana-orange wordmark) and **footer** (generated-at timestamp in the viewer's local time · meeting name · "Page N of M") on every page, with hairline separator rules
 - Clean pagination — section titles never orphan at a page foot; Q&A cards never split across pages
 
