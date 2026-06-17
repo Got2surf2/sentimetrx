@@ -209,3 +209,14 @@
 - Exported `extract.ts` Sandbox helpers (`bootSandbox`/`runOrThrow`/`freshReadUrl`/`freshUploadUrl`/`shellQuote`/`BUCKET`) for reuse.
 
 **Verify**: typecheck clean, 875 tests pass. UI + routing verified by types/patterns; the Sandbox+ASR leg only runs deployed (same as extract/transcribe). RECORDINGS.md §5.3 updated. Local, unpushed.
+
+## 2026-06-17 — docs refresh + span re-transcribe usage accounting
+
+**Why**: Bring the feature inventory current and close an accounting gap in the new span re-transcribe.
+
+**What changed**:
+- `lib/recordings/transcribeSpan.ts` — log the span ASR charge to `usage_logs` via `logFlatCost` (`recording_transcribe`, `model:'asr:<vendor>:span'`), matching the full transcribe; still also bumps `recordings.cost_cents`. (Was only bumping the recording's cost, escaping `/admin/usage`.)
+- `FEATURES.md` — added "Transcript review & correction (Town Hall)" + "Recording report PDF" capability subsections.
+- `RECORDINGS.md` §5.3 + `USAGE_ACCOUNTING.md` — note the span-retranscribe cost path.
+
+**Verify**: typecheck clean. Docs-only + a 4-line accounting addition. Local, unpushed.

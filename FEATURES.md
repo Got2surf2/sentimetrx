@@ -474,6 +474,20 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - **Re-analyze drift banner** — if you edit the agenda/panel/objectives after analyzing, the report shows a "setup changed — re-analyze to apply" banner with a one-click re-extract; metadata edits never trigger it
 - **Config version history + sign-off** — every analysis snapshots the config; a "Config vN · analyzed {date}" stamp and an analyst sign-off print on the report/deck/PDF
 
+### Transcript review & correction (Town Hall)
+- **Review-and-correct gate** — after transcription the pipeline pauses; a "Review & correct transcript" panel lets the owner fix the transcript *before* the paid Q&A extraction, so corrections feed the first analysis pass
+- **One place for speakers** — a single "Speakers" panel names diarized speakers (auto-suggested from "my name is…" intros) and lets you add extra speakers (moderator/audience/anyone the recording didn't split out); panel members from setup are available too
+- **Per-segment correction** — fix verbatim ASR errors inline and reassign a mislabeled segment to a different speaker; an "Auto-fill speakers" button fills unassigned runs bounded by the same speaker
+- **Assignable with zero diarization** — when the audio wasn't split into speakers, assign segments to the named roster by hand
+- **Re-transcribe a quiet stretch** — the coverage report flags long stretches with no Q&A; click to listen, or run a fresh ASR pass (Whisper/Deepgram) on just that span and fold any recovered speech into the transcript (Q&A preserved until re-analyzed)
+- The same correction surface runs both at the gate and on the finished report's Transcript tab
+
+### Recording report PDF
+- Datanautix-branded, US-Letter PDF of the meeting report (same content as the public share link), one-click from the report page; optional full-transcript appendix
+- **First page leads with context** — meeting name, date, location, panel roster, objectives, and the executive summary before the Q&A
+- Running **header** ("powered by datanautix", Sarina-teal/Ana-orange wordmark) and **footer** (generated-at timestamp in the viewer's local time · meeting name · "Page N of M") on every page, with hairline separator rules
+- Clean pagination — section titles never orphan at a page foot; Q&A cards never split across pages
+
 ### Interactive HTML Reports
 - Embedded Plotly.js charts
 - Responsive design

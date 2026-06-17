@@ -19,6 +19,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { transcribeWhisper } from '@/lib/asr/whisper'
 import { transcribeDeepgram } from '@/lib/asr/deepgram'
 import { bootSandbox, runOrThrow, freshReadUrl, freshUploadUrl, shellQuote, BUCKET } from '@/lib/recordings/extract'
+import { logFlatCost } from '@/lib/usageLog'
 import type { TranscriptSegment } from '@/lib/recordings/types'
 
 export type SpanVendor = 'whisper' | 'deepgram'
@@ -103,10 +104,17 @@ export async function transcribeSpan(
     .eq('org_id', org_id)
   if (updErr) throw new Error(`transcript merge failed: ${updErr.message}`)
 
-  // Accumulate the ASR cost (best-effort) and clean up the temp clip.
+  // Accumulate the ASR cost on the recording AND log it to the usage ledger the
+  // same way the full transcribe does (flat cost, 'recording' resource type), so
+  // span re-transcribes don't escape /admin/usage accounting.
   if (asr.cost_cents) {
     const prior = (rec as { cost_cents?: number }).cost_cents ?? 0
     await service.from('recordings').update({ cost_cents: prior + asr.cost_cents }).eq('id', recording_id).eq('org_id', org_id)
+    logFlatCost(
+      { org_id, resource_type: 'recording', resource_id: recording_id, event_type: 'recording_transcribe' },
+      asr.cost_cents,
+      { model: `asr:${vendor}:span`, provider: vendor },
+    )
   }
   await service.storage.from(BUCKET).remove([spanPath]).catch(() => undefined)
 
