@@ -51,6 +51,7 @@ export interface ReportData {
   extractions: RecordingExtractionRow[]
   agents: Array<{ id: string; name: string }>   // org's agents, for the brand/agent link (§3.5c)
   isOwner: boolean
+  isAdmin: boolean   // admin org — may rename speakers / re-transcribe even when not the owner
   configDrifted: boolean   // analysis-shaping setup changed since the last analysis → drift banner
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
@@ -225,7 +226,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={data.transcript} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
-        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} onPlay={playAt} />}
+        {tab === 'transcript' && <TranscriptTab transcript={data.transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
@@ -1772,7 +1773,7 @@ function TimelineExcerptModal({ pair, index, segments, onClose }: {
 
 // ── Transcript tab ───────────────────────────────────────────────────────────
 
-function TranscriptTab({ transcript, entityMap, extractions, channelLabels, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; onPlay: PlayHandler }) {
+function TranscriptTab({ transcript, entityMap, extractions, channelLabels, speakerNames, recordingId, canEdit, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; speakerNames: Record<string, string> | null; recordingId: string; canEdit: boolean; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
   // above any early return. Null transcript → empty segments + empty filtered.
   const [search, setSearch] = useState('')
@@ -1816,10 +1817,98 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, onPl
     return out
   }, [segments])
 
+  // Speaker naming: distinct diarized labels + a sample line each, editable by
+  // owner/admin → POST /speaker-names. Names are applied live (local state)
+  // and persisted; render prefers a name over the raw label / mic label.
+  const [names, setNames] = useState<Record<string, string>>(speakerNames ?? {})
+  const [namesOpen, setNamesOpen] = useState(false)
+  const [savingNames, setSavingNames] = useState(false)
+  const speakerLabels = useMemo(() => {
+    const seen = new Map<string, string>()   // label → first sample line
+    for (const s of segments) {
+      const lbl = s.speaker ? String(s.speaker) : ''
+      if (lbl && !seen.has(lbl)) seen.set(lbl, (s.text || '').slice(0, 60))
+    }
+    return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [segments])
+  const saveNames = async () => {
+    setSavingNames(true)
+    try {
+      await fetch(`/api/recordings/${recordingId}/speaker-names`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names }),
+      })
+    } finally { setSavingNames(false) }
+  }
+
+  // Re-transcribe: re-run ASR on the stored audio with a chosen strategy, then
+  // re-extract. Overwrites the transcript + Q&A, so it's confirm-gated (Hybrid
+  // is the priciest — both vendors + re-analysis). Sends the recording back
+  // into processing → bounce to the status page.
+  const [retStrategy, setRetStrategy] = useState<'whisper' | 'deepgram' | 'hybrid'>('hybrid')
+  const [retBusy, setRetBusy] = useState(false)
+  const retranscribe = async () => {
+    if (!confirm(`Re-transcribe with ${retStrategy}? This overwrites the transcript and re-runs Q&A extraction (Hybrid = Whisper + Deepgram + re-analysis, a few $). The recording will re-process.`)) return
+    setRetBusy(true)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/retranscribe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: retStrategy }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-transcribe failed (${r.status})`); setRetBusy(false); return }
+      window.location.href = `/recordings/${recordingId}/status`
+    } catch { alert('Re-transcribe failed'); setRetBusy(false) }
+  }
+
   if (!transcript) return <EmptyState label="Transcript not available yet." />
 
   return (
     <div className="space-y-3">
+      {canEdit && speakerLabels.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50">
+          <button type="button" onClick={() => setNamesOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
+            <span>🎙 Name speakers ({speakerLabels.length})</span>
+            <span className="text-gray-400">{namesOpen ? '▲' : '▼'}</span>
+          </button>
+          {namesOpen && (
+            <div className="px-4 pb-4 space-y-2">
+              <p className="text-xs text-gray-500">Give each diarized speaker a name — applied across the transcript and Q&amp;A. Leave blank to keep the raw label.</p>
+              {speakerLabels.map(([label, sample]) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-400 w-24 shrink-0 truncate" title={label}>{label}</span>
+                  <input
+                    type="text" defaultValue={names[label] || ''} placeholder={label}
+                    onChange={e => setNames(prev => ({ ...prev, [label]: e.target.value }))}
+                    className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                  <span className="text-xs text-gray-400 truncate hidden sm:block max-w-[40%]" title={sample}>“{sample}”</span>
+                </div>
+              ))}
+              <button type="button" onClick={saveNames} disabled={savingNames}
+                className="mt-1 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
+                {savingNames ? 'Saving…' : 'Save names'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {canEdit && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-sm font-semibold text-gray-700">Re-transcribe audio</span>
+          <div className="flex items-center gap-2">
+            <select value={retStrategy} onChange={e => setRetStrategy(e.target.value as 'whisper' | 'deepgram' | 'hybrid')}
+              className="text-sm border border-gray-200 rounded px-2 py-1" style={{ fontSize: '16px' }} disabled={retBusy}>
+              <option value="hybrid">Hybrid (Whisper + Deepgram)</option>
+              <option value="whisper">Whisper</option>
+              <option value="deepgram">Deepgram</option>
+            </select>
+            <button type="button" onClick={retranscribe} disabled={retBusy}
+              className="text-sm px-3 py-1.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
+              {retBusy ? 'Starting…' : '↻ Re-transcribe'}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <input
           type="search"
@@ -1876,8 +1965,9 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, onPl
             </button>
             {(() => {
               const ch = typeof s.channel === 'number' ? s.channel : null
+              const named = s.speaker ? names[String(s.speaker)]?.trim() : undefined
               const chName = ch !== null ? channelLabels?.[ch]?.trim() : undefined
-              const primary = chName || s.speaker   // named mic → name; else S1/S2
+              const primary = named || chName || s.speaker   // assigned name → named mic → raw label
               if (!primary && ch === null) return null
               return (
                 <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">

@@ -89,6 +89,7 @@ export default async function RecordingReportPage(props: { params: Promise<{ id:
     extractions,
     agents,
     isOwner: recording.created_by === ctx.userId,
+    isAdmin: ctx.isAdminOrg,
     configDrifted,
     // "Open in Analytics" cross-link — only when the dataset mirror exists AND
     // the user actually has Analytics (graceful degradation when it's off).

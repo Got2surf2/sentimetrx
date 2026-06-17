@@ -97,6 +97,49 @@ export async function analyzeRecordingWorkflow(recording_id: string, org_id: str
   }
 }
 
+// Re-transcribe an already-processed recording with a (possibly new) ASR
+// strategy, then re-extract. The caller sets recordings.asr_strategy +
+// status='transcribing' before starting this; runTranscribe picks up the
+// strategy. Old extractions are cleared first so the re-analyze doesn't
+// duplicate (mirrors reanalyze scope='all', but re-runs the transcript too).
+export async function retranscribeRecordingWorkflow(recording_id: string, org_id: string) {
+  "use workflow"
+
+  try {
+    await setStatus(recording_id, org_id, 'transcribing')
+    await runTranscribe(recording_id, org_id)        // overwrites recording_transcripts
+
+    await runClearExtractions(recording_id, org_id)  // drop prior Q&A + dataset mirror
+    await setStatus(recording_id, org_id, 'analyzing')
+    await runAnalyze(recording_id, org_id)           // re-extract from the new transcript
+
+    await setStatus(recording_id, org_id, 'complete')
+    await setCompletedAt(recording_id, org_id)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await setFailed(recording_id, org_id, message)
+    throw err
+  }
+}
+
+// Delete a recording's existing Q&A extractions + their dataset mirror rows so
+// a re-extract starts clean (used by the re-transcribe workflow).
+async function runClearExtractions(recording_id: string, org_id: string) {
+  "use step"
+  const service = createServiceRoleClient()
+  const { data: rec } = await service.from('recordings').select('dataset_id').eq('id', recording_id).eq('org_id', org_id).single()
+  const { data: ex } = await service.from('recording_extractions').select('id').eq('recording_id', recording_id).eq('org_id', org_id)
+  const ids = ((ex ?? []) as Array<{ id: string }>).map(r => r.id)
+  if (ids.length === 0) return
+  const datasetId = (rec as { dataset_id?: string | null })?.dataset_id ?? null
+  if (datasetId) {
+    for (const id of ids) {
+      await service.from('dataset_rows_flat').delete().eq('dataset_id', datasetId).filter('data->>extraction_id', 'eq', id)
+    }
+  }
+  await service.from('recording_extractions').delete().eq('recording_id', recording_id).eq('org_id', org_id)
+}
+
 // ── Stage steps ──────────────────────────────────────────────────────────────
 
 async function runExtract(recording_id: string, org_id: string) {

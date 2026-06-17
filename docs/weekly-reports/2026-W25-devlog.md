@@ -78,3 +78,14 @@
 **Data fix (done in prod)**: applied sql/127 and ran `transfer_agent_org(Sarina, Arjun Pilots)` — consolidated all of Sarina's data into Arjun Pilots (verified: every table now 100% `05fcdb2a`, zero `b72e9ee6`).
 
 **Verify**: typecheck clean. RECORDINGS.md + BOTS.md updated. Code local + unpushed — the picker/transfer fixes need a push to take effect in prod (the data consolidation is already live).
+
+## 2026-06-17 — Town Hall: re-transcribe action + name diarized speakers
+
+**Why**: (1) Hybrid (Whisper+Deepgram) was selectable only at *create* — no way to re-transcribe an already-processed recording with a different model. (2) Diarized transcripts show generic "Speaker 0/S1" labels with no way to assign real names (the parked attribution gap). Both needed in the report UI.
+
+**What changed**:
+- **Re-transcribe** — `workflows/recordings.ts` `retranscribeRecordingWorkflow` (re-transcribe stored audio with the chosen strategy → clear prior Q&A + dataset mirror → re-analyze → complete; new `runClearExtractions` step). `POST /api/recordings/[id]/retranscribe { strategy }` (owner/admin, settled-state only) persists `asr_strategy`, flips to `transcribing`, starts the workflow. UI: strategy dropdown + confirm in the report **Transcript tab**; bounces to the status page.
+- **Speaker names** — `sql/128` adds `recordings.speaker_names` jsonb (`{label: name}`). `POST /api/recordings/[id]/speaker-names { names }` (owner/admin). Transcript tab gets a "Name speakers" panel (distinct diarized labels + sample line + name input); render precedence `speaker_names[label] → channel_labels[ch] → raw label`. Display-only; raw labels untouched. Distinct from `channel_labels` (stereo per-mic).
+- `lib/recordings/types.ts` (+speaker_names), `app/recordings/[id]/report/page.tsx` (+isAdmin prop), ReportClient (panels + props).
+
+**Verify**: typecheck clean. RECORDINGS.md updated (§3.4 re-transcribe + speaker-names). **Activation**: apply sql/128 to prod (speaker_names column); push (registers the WDK workflow + ships the routes/UI). Local, unpushed.

@@ -152,6 +152,9 @@ export interface RecordingRow {
   // Optional names for stereo channels (sql/124), indexed by channel:
   // [leftName, rightName]. Report shows these instead of Mic 1·L / Mic 2·R.
   channel_labels: string[] | null
+  // Optional map of diarized speaker label ("Speaker 0" / "S1") → human name
+  // (sql/128), for the mono voice-cluster case. Applied in the transcript view.
+  speaker_names: Record<string, string> | null
 
   // Draft report (sql/125): TRUE = unreviewed AI draft → DRAFT watermark +
   // pending-review banner in the report and exports. Cleared on human review.

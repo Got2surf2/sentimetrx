@@ -489,6 +489,14 @@ Any probe failure fails safe to mono. The live-capture client requests `channelC
 
 Write a `recording_transcripts` row with `vendor` + `segments` + `raw_response` + accumulated `cost_cents`. Transition status to `analyzing`.
 
+#### Re-transcribe an existing recording (added 2026-06-17)
+
+`POST /api/recordings/[id]/retranscribe` `{ strategy: 'whisper'|'deepgram'|'hybrid'|'auto' }` re-runs ASR on the **already-stitched audio** with a (possibly new) strategy, then re-extracts. Owner **or** admin org. Only from a settled state (`complete`/`transcribed`/`failed`). It persists `asr_strategy`, flips status to `transcribing`, and starts **`retranscribeRecordingWorkflow`** (WDK, async) which: re-transcribes (overwrites `recording_transcripts`), **clears the prior Q&A + dataset mirror**, then runs the normal analyze → `complete`. The UI control lives in the report **Transcript tab** (strategy dropdown + confirm with the cost note — Hybrid is the priciest, both vendors + re-analysis); on submit the recording re-processes and the page bounces to the status page. This is the supported way to switch a recording to Hybrid after the fact.
+
+#### Speaker names (added 2026-06-17, sql/128)
+
+ASR diarization emits generic labels ("Speaker 0", "S1"). `recordings.speaker_names` (jsonb: `{ label: name }`) maps each to a human name, set via `POST /api/recordings/[id]/speaker-names` `{ names }` (owner/admin). The report **Transcript tab** shows a "Name speakers" panel (distinct diarized labels + a sample line + a name field each, owner/admin only); the transcript view renders `speaker_names[label] → channel_labels[ch] → raw label` in that precedence. Display-only — the raw segment labels are never mutated. Distinct from `channel_labels` (which names the two **stereo** mics by channel index); `speaker_names` covers the **mono** voice-cluster case.
+
 ### 3.5 Analyze (Claude pass)
 
 Per session_type prompt, defined in `lib/recordings/prompts/{qa,focus_group,general_meeting,interview,lecture}.ts`. Each prompt receives:
