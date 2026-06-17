@@ -152,3 +152,15 @@
 - Footer template: dropped the left wordmark; now generated-at timestamp (left, `new Date()` formatted UTC) · meeting name (center, ellipsized) · "Page N of M" (right). Shared `DN_WORDMARK`/`FOOT_FONT`/`escFooter` helpers.
 
 **Verify**: typecheck clean. Rendered a Letter sample with real Chrome (throwaway, removed) — header sits top-right clear of the title, footer shows timestamp/title/page across the band. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall: "Speakers" setup roster → assignable in transcript review (no-diarization path)
+
+**Why**: When a recording isn't split into speaker tracks (no diarization labels), the transcript-review reassignment dropdown had nothing to offer — you couldn't assign segments to anyone. Owner wanted a predefined speaker roster like the panel.
+
+**What changed**:
+- `QaSetupInputs.speakers?: PanelMember[]` (name + role) — new optional roster.
+- `RecordingSetupForm` — new "Speakers (optional)" section mirroring Panel members (name + role rows, add/remove); persisted in `setup_inputs.speakers`. `setup/page.tsx` maps it into the form's initial values.
+- `TranscriptReview` — new `rosterSpeakers` prop; the reassignment dropdown now merges diarized labels + roster names (deduped by display), so segments can be assigned by name with zero diarization. Assigning sets `segment.speaker` to the name directly.
+- Wiring: `GET /transcript` returns `roster_speakers` (panel + speakers names, deduped); `GateTranscriptReview` and the report's `TranscriptTab` pass it through.
+
+**Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.

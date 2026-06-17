@@ -42,7 +42,7 @@ async function resolveCaller(recording_id: string) {
   const service = createServiceRoleClient()
   const { data: rec, error: rErr } = await service
     .from('recordings')
-    .select('id, org_id, created_by, channel_labels, speaker_names')
+    .select('id, org_id, created_by, channel_labels, speaker_names, setup_inputs')
     .eq('id', recording_id)
     .single()
   if (rErr || !rec) return { error: NextResponse.json({ error: 'not found' }, { status: 404 }) }
@@ -78,8 +78,23 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       : null,
     speaker_names: (rec.speaker_names ?? null) as Record<string, string> | null,
     channel_labels: (rec.channel_labels ?? null) as string[] | null,
+    roster_speakers: rosterSpeakerNames(rec.setup_inputs),
     can_edit: isAdminOrg || rec.created_by === user.id,
   })
+}
+
+// Names a segment can be reassigned to even with no diarization labels: the
+// setup panel roster + the extra speakers roster (moderator/audience/etc.),
+// deduped, blanks dropped.
+function rosterSpeakerNames(setupInputs: unknown): string[] {
+  const su = (setupInputs ?? {}) as { panel?: Array<{ name?: string }>; speakers?: Array<{ name?: string }> }
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of [...(su.panel ?? []), ...(su.speakers ?? [])]) {
+    const n = String(p?.name ?? '').trim()
+    if (n && !seen.has(n)) { seen.add(n); out.push(n) }
+  }
+  return out
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {

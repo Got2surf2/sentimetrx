@@ -33,6 +33,7 @@ export default function TranscriptReview({
   onPlay,
   editable = false,
   saveHint,
+  rosterSpeakers = [],
 }: {
   recordingId: string
   segments: TranscriptSegment[]
@@ -44,6 +45,9 @@ export default function TranscriptReview({
   onPlay?: PlayHandler
   editable?: boolean
   saveHint?: string
+  // Predefined names (setup panel + speakers) offered in the reassignment
+  // dropdown — so segments can be assigned even when diarization left no labels.
+  rosterSpeakers?: string[]
 }) {
   // Internal copy so segment edits reflect immediately without a parent refetch.
   const [segments, setSegments] = useState<TranscriptSegment[]>(segmentsProp)
@@ -75,6 +79,26 @@ export default function TranscriptReview({
     }
     return [...info.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [segments])
+  // Reassignment dropdown options: diarized labels (shown by assigned name when
+  // one exists) + the setup roster names not already covered by a label. Deduped
+  // by display so "Dr. Hatem" doesn't appear twice when it's both a named label
+  // and a roster entry.
+  const assignOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = []
+    const seen = new Set<string>()
+    for (const [label] of speakerLabels) {
+      const disp = names[label]?.trim() || label
+      opts.push({ value: label, label: disp })
+      seen.add(label); seen.add(disp)
+    }
+    for (const raw of rosterSpeakers) {
+      const n = (raw || '').trim()
+      if (!n || seen.has(n)) continue
+      opts.push({ value: n, label: n })
+      seen.add(n)
+    }
+    return opts
+  }, [speakerLabels, names, rosterSpeakers])
   const saveNames = async () => {
     setSavingNames(true)
     try {
@@ -317,10 +341,10 @@ export default function TranscriptReview({
                 <select value={s.speaker ?? ''} onChange={e => editSpeaker(idx, e.target.value)}
                   className="w-24 shrink-0 text-xs border border-gray-200 rounded px-1 py-0.5" style={{ fontSize: '16px' }}>
                   <option value="">(unassigned)</option>
-                  {speakerLabels.map(([label]) => (
-                    <option key={label} value={label}>{names[label]?.trim() || label}</option>
+                  {assignOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
-                  {s.speaker && !speakerLabels.some(([l]) => l === s.speaker) && (
+                  {s.speaker && !assignOptions.some(o => o.value === s.speaker) && (
                     <option value={s.speaker}>{s.speaker}</option>
                   )}
                 </select>

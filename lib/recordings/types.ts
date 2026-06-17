@@ -36,6 +36,11 @@ export interface PanelMember { name: string; role?: string }
 
 export interface QaSetupInputs {
   panel: PanelMember[]
+  // Additional named speakers (moderator, audience, anyone not on the panel).
+  // Used to populate the transcript-review reassignment dropdown when
+  // diarization produced no labels to assign segments to. Name + role like the
+  // panel; only the name surfaces as a transcript speaker label.
+  speakers?: PanelMember[]
   agenda: string[]
   ground_truth_url?: string
   // Canonical spellings of names/places/terms in this meeting. Fed to the polish

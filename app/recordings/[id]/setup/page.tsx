@@ -75,6 +75,7 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
     location: recording.location ?? '',
     language: recording.language || 'en',
     panel: (su.panel ?? []).map(p => ({ name: p.name, role: p.role ?? '' })),
+    speakers: (su.speakers ?? []).map(p => ({ name: p.name, role: p.role ?? '' })),
     agenda: su.agenda ?? [],
     glossary: (su.glossary ?? []).join('\n'),
     objectivesSummary: recording.objectives?.summary ?? '',
