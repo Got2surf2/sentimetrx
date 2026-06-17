@@ -137,11 +137,37 @@ export async function renderRecordingReportPdf(
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+      // Margins live here (not CSS @page) so the bottom band is reserved for the
+      // repeated footer. Footer carries the Datanautix wordmark + meeting name +
+      // page X of Y on every page. headerTemplate is emptied to suppress
+      // Chromium's default date/title header.
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: pageFooterTemplate(rec.name || 'Town Hall'),
+      margin: { top: '14mm', bottom: '16mm', left: '12mm', right: '12mm' },
     })
     const fileName = (rec.name || 'Town_Hall').replace(/[^\w.-]+/g, '_') + '_Report.pdf'
     return { buffer: Buffer.from(pdf), fileName }
   } finally {
     await browser.close()
   }
+}
+
+// Repeated per-page footer for page.pdf(). Chromium renders footerTemplate at
+// font-size 0 unless set explicitly, so every size/color is inline. Datanautix
+// wordmark (data=teal, nautix=orange) per CLAUDE.md, meeting name centered, and
+// the built-in pageNumber/totalPages spans on the right.
+function pageFooterTemplate(name: string): string {
+  const safe = String(name)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return (
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 12mm;`
+    + `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;`
+    + `display:flex;align-items:center;justify-content:space-between;">`
+    + `<span style="font-weight:800;white-space:nowrap;">`
+    + `<span style="color:#1FA8A8">data</span><span style="color:#F07040">nautix</span></span>`
+    + `<span style="flex:1;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe}</span>`
+    + `<span style="white-space:nowrap;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>`
+    + `</div>`
+  )
 }

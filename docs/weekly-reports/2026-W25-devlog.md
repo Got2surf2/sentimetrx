@@ -121,3 +121,14 @@
 - `StatusClient.tsx` — `GeneratePanel` gains a collapsible "Review & correct transcript" panel (lazy GET on first open) rendering `<TranscriptReview editable>`. Edits persist to `recording_transcripts` before "Generate Q&A"; `analyzeRecordingWorkflow` re-reads the transcript at run time, so corrections feed the first extraction pass with no extra wiring.
 
 **Verify**: `npm run typecheck` clean. RECORDINGS.md § 5.3 (Gate 1) updated. Local, unpushed. NOWOCATS #2's hand-recovered transcript is safe to edit (in-place, raw_response untouched) but must still not be re-transcribed.
+
+## 2026-06-17 — Town Hall PDF: per-page footer (branding + meeting name + page N of M) + widow-title pagination
+
+**Why**: The exported report PDF had a single footer at the very end of the document and no page numbers; multi-page reports read as unbranded after page 1. Separately, topic section titles could land orphaned at the foot of a page with their content on the next.
+
+**What changed** (PDF only — `reportHtml.ts` + `reportPdf.ts`):
+- Per-page footer via `page.pdf({ displayHeaderFooter, footerTemplate })`: Datanautix wordmark (teal/orange) · meeting name (escaped, centered) · "Page N of M". Emptied `headerTemplate` to suppress Chromium's default header. Removed the old static `<footer class="foot">` + now-orphaned `DN_WORDMARK`/`.foot`.
+- Margins moved from CSS `@page` to the `page.pdf` `margin` option (`14mm` top / `12mm` sides / `16mm` bottom) so the footer band is reserved and margins don't double up; `@page{margin:0}`.
+- Pagination CSS: `h1,.topic,.ov-h{break-after:avoid;page-break-after:avoid}` (heading stays with following content) + `orphans:3;widows:3` on body copy. Existing `break-inside:avoid` on Q&A cards / pitems / overview kept.
+
+**Verify**: typecheck clean. Rendered an 11-page sample locally with real Chrome (throwaway script, since removed) — confirmed footer repeats per page with correct branding/name/page-count, and a topic title ("Right-of-Way Acquisition") moved to the top of the next page with its first card rather than widowing. RECORDINGS.md §4.5 updated. Local, unpushed.

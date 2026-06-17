@@ -32,11 +32,6 @@ const MUTE = '#64748b'
 const FAINT = '#94a3b8'
 const LINE = '#e2e8f0'
 
-// Datanautix wordmark (data = teal, nautix = orange) — the company brand on
-// exported/shared reports, per CLAUDE.md.
-const DN_WORDMARK =
-  '<span style="font-weight:800"><span style="color:#1FA8A8">data</span><span style="color:#F07040">nautix</span></span>'
-
 function esc(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -237,7 +232,10 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
 
   return (
     `<!doctype html><html><head><meta charset="utf-8"><style>` +
-    `@page{margin:14mm 12mm}` +
+    // Page margins are owned by the PDF renderer's `margin` option (it reserves
+    // the bottom band for the repeated footer); keep @page at 0 so they don't
+    // stack. See lib/recordings/reportPdf.ts.
+    `@page{margin:0}` +
     `*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
     `body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:${INK};margin:0;background:#fff;font-size:14px;line-height:1.5}` +
     `.wrap{max-width:720px;margin:0 auto;padding:8px 0 24px}` +
@@ -249,6 +247,12 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.ov-p{font-size:14px;line-height:1.6;color:${BODY};margin:0;white-space:pre-wrap}` +
     `.topic-block{margin-top:22px}` +
     `.topic{font-size:17px;font-weight:800;color:${INK};border-bottom:1px solid ${LINE};padding-bottom:6px;margin:0 0 14px}` +
+    // Keep a section title with the content that follows it — never let a
+    // heading sit alone at the foot of a page (widowed title). `break-after`
+    // for modern Chromium, the legacy alias for older print engines.
+    `h1,.topic,.ov-h{break-after:avoid;page-break-after:avoid}` +
+    // Trim single-line widows/orphans on flowing body copy.
+    `.ov-p,.a-text,.pwhat,.notes-ov,.tx .seg{orphans:3;widows:3}` +
     `.notes{margin:22px 0}` +
     `.notes-ov{font-size:14px;line-height:1.6;color:${BODY};margin:0 0 14px;white-space:pre-wrap}` +
     `.pitem{border:1px solid ${LINE};border-radius:12px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}` +
@@ -271,7 +275,6 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.caption{font-size:12px;color:${MUTE};margin:0 0 12px}` +
     `.tx .seg{font-size:13px;line-height:1.55;color:${BODY};margin:0 0 8px}` +
     `.spk{display:inline-block;font-weight:700;color:${MUTE};margin-right:6px}` +
-    `.foot{margin-top:34px;padding-top:14px;border-top:1px solid ${LINE};text-align:center;font-size:11px;color:${FAINT}}` +
     draftCss +
     `</style></head><body>` + draftWm + `<div class="wrap">` +
     `<header><div class="eyebrow">${eyebrow}</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}${draftBanner}</header>` +
@@ -280,7 +283,6 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     timeline +
     `<section>${topics}</section>` +
     transcriptSection(input) +
-    `<footer class="foot">Prepared by ${DN_WORDMARK}  ·  datanautix.com</footer>` +
     `</div></body></html>`
   )
 }
