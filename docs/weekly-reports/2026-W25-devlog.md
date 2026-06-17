@@ -238,3 +238,11 @@
 **What changed** (`reportHtml.ts`): added an "Action Items" section (after Q&A topics, before the transcript appendix) rendering `action_item` extraction rows — description + owner + due, using the §3.5d edited overlay so corrections show; `page-break-inside:avoid` per item, `.topic` heading for widow control. Always included when present. The input already carried all extractions (it filtered to qa_pair), so no input/route change. The public `/th` link stays Q&A-only (separate React page, unaffected).
 
 **Verify**: typecheck clean. Letter render confirmed the section + edited-owner overlay. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Fix: Coverage tab badge stale after Mark reviewed
+
+**Why**: After ✓ Mark reviewed, the per-pair "Needs review" filter cleared (live state) but the **Coverage tab badge** still read "1 to review" — it was counting the stored `coverage_report.flagged_count` snapshot, which Mark-reviewed doesn't touch.
+
+**What changed** (`ReportClient.tsx`): the Coverage tab badge now counts `qaPairs.filter(flagged_for_review)` from live state, matching the QATab filter + the Coverage body (already live via `computeCoverage`). One-line fix.
+
+**Verify**: typecheck clean. RECORDINGS.md §3.5d note added. Local, unpushed.

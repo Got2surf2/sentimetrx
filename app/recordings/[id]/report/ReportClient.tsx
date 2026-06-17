@@ -215,7 +215,10 @@ export default function ReportClient({ data }: { data: ReportData }) {
           counts={{
             qa: qaPairs.length,
             actions: actionItems.length,
-            coverage: data.recording.coverage_report?.flagged_count ?? 0,
+            // Live count, not the stored coverage_report snapshot — so "Mark
+            // reviewed" (which clears flagged_for_review on the row in state)
+            // updates the badge immediately instead of showing a stale number.
+            coverage: qaPairs.filter(e => e.flagged_for_review).length,
           }}
         />
       </div>
