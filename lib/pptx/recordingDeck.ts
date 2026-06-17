@@ -487,11 +487,16 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
       let ay = colY + 0.42
       for (const ex of actionItems.slice(0, aiCap)) {
         const ai = ex.payload as ActionItemPayload
+        // Prefer the human edit overlay (§3.5d) over the AI values, so corrected
+        // action items export to the deck.
+        const aiDesc = ai.edited_description || ai.description
+        const aiOwner = ai.edited_owner ?? ai.owner
+        const aiDue = ai.edited_due_date ?? ai.due_date
         const rowH = 0.9
         s.addShape(pptx.ShapeType.rect, { x: PAD, y: ay, w: colW, h: rowH, fill: { color: DN.white }, line: { color: DN.divider, width: 1 }, rectRadius: 0.06 })
         s.addShape(pptx.ShapeType.rect, { x: PAD, y: ay, w: 0.05, h: rowH, fill: { color: DN.teal }, line: { width: 0 } })
-        s.addText(truncBoundary(ai.description, 150), { x: PAD + 0.18, y: ay + 0.08, w: colW - 0.32, h: rowH - 0.36, fontSize: 12, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
-        const meta = [ai.owner ? 'Owner: ' + ai.owner : null, ai.due_date ? 'Due: ' + ai.due_date : null].filter(Boolean).join('  ·  ')
+        s.addText(truncBoundary(aiDesc, 150), { x: PAD + 0.18, y: ay + 0.08, w: colW - 0.32, h: rowH - 0.36, fontSize: 12, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
+        const meta = [aiOwner ? 'Owner: ' + aiOwner : null, aiDue ? 'Due: ' + aiDue : null].filter(Boolean).join('  ·  ')
         if (meta) s.addText(meta, { x: PAD + 0.18, y: ay + rowH - 0.26, w: colW - 0.32, h: 0.22, fontSize: 12, bold: true, color: DN.slateDark })
         ay += rowH + 0.12
       }

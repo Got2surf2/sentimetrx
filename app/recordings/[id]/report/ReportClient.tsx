@@ -228,7 +228,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
-        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={data.transcript} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
@@ -901,6 +901,20 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
+  // Resolve a "needs review" flag — the reviewer has looked at (and maybe edited)
+  // the pair. Clears flagged_for_review + flag_reason; mirrors back via onReplaced.
+  const markReviewed = async () => {
+    setReviewing(true)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extraction.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flagged_for_review: false }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) onReplaced(d.extraction as RecordingExtractionRow)
+      else alert(d?.error || 'Could not mark reviewed')
+    } catch { alert('Could not mark reviewed') } finally { setReviewing(false) }
+  }
   // Display-of-record = human edit → AI polish → verbatim (qaDisplay). The toggle
   // reveals the raw spoken text. "Edit" opens the 3-layer editor (modal).
   const edited = isEdited(payload)
@@ -1049,6 +1063,17 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
                 ↻ Regenerate
               </button>
             ) : null}
+            {flagged && (
+              <button
+                type="button"
+                onClick={markReviewed}
+                disabled={reviewing}
+                className="text-xs px-2 py-1 border border-yellow-300 rounded text-yellow-800 bg-yellow-50 hover:bg-yellow-100 disabled:opacity-50 ml-auto"
+                title="Clear the needs-review flag — you've checked (and if needed corrected) this pair"
+              >
+                {reviewing ? 'Saving…' : '✓ Mark reviewed'}
+              </button>
+            )}
           </div>
           {showComposer && (
             <div className="border border-gray-200 rounded p-3 bg-gray-50 space-y-2">
@@ -1409,12 +1434,22 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
 
 // ── Action items tab ─────────────────────────────────────────────────────────
 
-function ActionItemsTab({ extractions, transcript }: { extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null }) {
+// Display layer for an action item: human edit overlay → AI value.
+function aiText(p: ActionItemPayload) {
+  return {
+    description: p.edited_description || p.description,
+    owner: (p.edited_owner ?? p.owner) || '',
+    due_date: (p.edited_due_date ?? p.due_date) || '',
+    isEdited: !!(p.edited_description || p.edited_owner || p.edited_due_date),
+  }
+}
+
+function ActionItemsTab({ extractions, transcript, recordingId, canEdit, onReplaced }: { extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; recordingId: string; canEdit: boolean; onReplaced: (e: RecordingExtractionRow) => void }) {
   const segments = useMemo(() => (transcript?.segments ?? []) as TranscriptSegment[], [transcript])
   // action_item rows carry no timestamps — trace each back to its closest
   // transcript passage so a reviewer can verify where it came from.
   const traces = useMemo(
-    () => extractions.map(e => traceActionItem(segments, (e.payload as ActionItemPayload)?.description ?? '')),
+    () => extractions.map(e => traceActionItem(segments, aiText(e.payload as ActionItemPayload).description)),
     [extractions, segments],
   )
   const [modal, setModal] = useState<{ description: string; trace: NonNullable<ReturnType<typeof traceActionItem>> } | null>(null)
@@ -1426,39 +1461,99 @@ function ActionItemsTab({ extractions, transcript }: { extractions: RecordingExt
         Follow-ups and commitments the synthesis pass pulled from the discussion. These are not Q&amp;A pairs — they also appear in the exported deck, and never on the public Q&amp;A link.
       </p>
       <ul className="space-y-2">
-        {extractions.map((e, i) => {
-          const p = e.payload as ActionItemPayload
-          const trace = traces[i]
-          return (
-            <li key={e.id} className="border border-gray-200 rounded-xl p-4 bg-white">
-              <p className="text-sm text-gray-900">{p.description}</p>
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                {p.related_agenda_item && (
-                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
-                )}
-                {p.owner && (
-                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {p.owner}</span>
-                )}
-                {p.due_date && (
-                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {p.due_date}</span>
-                )}
-                {trace && (
-                  <button
-                    type="button"
-                    onClick={() => setModal({ description: p.description, trace })}
-                    className="px-2 py-0.5 rounded-full text-xs font-medium text-teal-700 border border-teal-200 hover:bg-teal-50 transition-colors"
-                    title="Show the transcript passage this action item came from"
-                  >
-                    ↪ Source · {formatTime(trace.anchorStart)}
-                  </button>
-                )}
-              </div>
-            </li>
-          )
-        })}
+        {extractions.map((e, i) => (
+          <ActionItemRow key={e.id} extraction={e} trace={traces[i]} recordingId={recordingId} canEdit={canEdit} onReplaced={onReplaced}
+            onShowSource={(description, trace) => setModal({ description, trace })} />
+        ))}
       </ul>
       {modal && <ActionSourceModal description={modal.description} trace={modal.trace} segments={segments} onClose={() => setModal(null)} />}
     </div>
+  )
+}
+
+function ActionItemRow({ extraction, trace, recordingId, canEdit, onReplaced, onShowSource }: {
+  extraction: RecordingExtractionRow
+  trace: ReturnType<typeof traceActionItem>
+  recordingId: string
+  canEdit: boolean
+  onReplaced: (e: RecordingExtractionRow) => void
+  onShowSource: (description: string, trace: NonNullable<ReturnType<typeof traceActionItem>>) => void
+}) {
+  const p = extraction.payload as ActionItemPayload
+  const v = aiText(p)
+  const [editing, setEditing] = useState(false)
+  const [desc, setDesc] = useState(v.description)
+  const [owner, setOwner] = useState(v.owner)
+  const [due, setDue] = useState(v.due_date)
+  const [busy, setBusy] = useState(false)
+
+  const patch = async (bodyObj: Record<string, unknown>) => {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/extractions/${extraction.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d?.error || `Save failed (${res.status})`); return }
+      onReplaced(d.extraction as RecordingExtractionRow)
+      setEditing(false)
+    } catch { alert('Save failed') } finally { setBusy(false) }
+  }
+  const save = () => patch({
+    // Only persist an override when it differs from the AI value (else null = revert that field).
+    edited_description: desc.trim() && desc.trim() !== p.description ? desc.trim() : null,
+    edited_owner: owner.trim() && owner.trim() !== (p.owner || '') ? owner.trim() : null,
+    edited_due_date: due.trim() && due.trim() !== (p.due_date || '') ? due.trim() : null,
+  })
+  const revert = () => patch({ edited_description: null, edited_owner: null, edited_due_date: null })
+
+  return (
+    <li className="border border-gray-200 rounded-xl p-4 bg-white">
+      {editing ? (
+        <div className="space-y-2">
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} placeholder="Action item" />
+          <div className="flex gap-2 flex-wrap">
+            <input type="text" value={owner} onChange={e => setOwner(e.target.value)} placeholder="Owner (optional)"
+              className="flex-1 min-w-[8rem] border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+            <input type="text" value={due} onChange={e => setDue(e.target.value)} placeholder="Due (optional)"
+              className="w-40 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => { setDesc(v.description); setOwner(v.owner); setDue(v.due_date); setEditing(false) }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            {v.isEdited && <button type="button" onClick={revert} disabled={busy} className="text-xs text-gray-500 hover:text-red-600 ml-auto">Revert to AI</button>}
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm text-gray-900">{v.description}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            {p.related_agenda_item && (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
+            )}
+            {v.owner && (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {v.owner}</span>
+            )}
+            {v.due_date && (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {v.due_date}</span>
+            )}
+            {v.isEdited && <span className="px-2 py-0.5 rounded-full bg-orange-50 text-xs text-orange-700 border border-orange-200">edited</span>}
+            {trace && (
+              <button type="button" onClick={() => onShowSource(v.description, trace)}
+                className="px-2 py-0.5 rounded-full text-xs font-medium text-teal-700 border border-teal-200 hover:bg-teal-50 transition-colors"
+                title="Show the transcript passage this action item came from">
+                ↪ Source · {formatTime(trace.anchorStart)}
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" onClick={() => { setDesc(v.description); setOwner(v.owner); setDue(v.due_date); setEditing(true) }}
+                className="px-2 py-0.5 rounded-full text-xs font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 ml-auto">✎ Edit</button>
+            )}
+          </div>
+        </>
+      )}
+    </li>
   )
 }
 

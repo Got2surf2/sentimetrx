@@ -375,6 +375,14 @@ export interface ActionItemPayload {
   owner?: string | null
   due_date?: string | null   // ISO date
   related_agenda_item?: string | null
+  // Human-edit overlay (§3.5d, like Q&A pairs) — display prefers these; the AI
+  // values above are left intact so an edit is always revertible.
+  edited_description?: string | null
+  edited_owner?: string | null
+  edited_due_date?: string | null
+  edited_at?: string | null
+  edited_by?: string | null
+  edited_by_name?: string | null
 }
 
 export type ExtractionUnitType = 'qa_pair' | 'quote' | 'action_item'

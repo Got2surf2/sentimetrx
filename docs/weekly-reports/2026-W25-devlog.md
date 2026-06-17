@@ -220,3 +220,13 @@
 - `RECORDINGS.md` §5.3 + `USAGE_ACCOUNTING.md` — note the span-retranscribe cost path.
 
 **Verify**: typecheck clean. Docs-only + a 4-line accounting addition. Local, unpushed.
+
+## 2026-06-17 — Town Hall: editable action items + per-pair "Mark reviewed"
+
+**Why**: Action items were read-only (only Q&A pairs were hand-editable), and a curator-flagged "needs review" pair had no resolve action — the ⚠ flag only cleared on a full re-analyze.
+
+**What changed**:
+- **Editable action items**: `ActionItemPayload` gains a revertible edit overlay (`edited_description/owner/due_date` + audit stamp); `ActionItemRow` has inline edit/save/revert (mirrors the Q&A editor). `PATCH …/extractions/[extractionId]` now handles `action_item` edits (gated per unit type). The PPTX deck prefers the edit overlay so corrections export.
+- **Mark reviewed**: same PATCH accepts `{ flagged_for_review: false }` (clears flag + reason, only ever clears); ✓ Mark reviewed button on flagged Q&A cards. Distinct from the report-level sign-off finalize.
+
+**Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §3.5d updated. Local, unpushed.
