@@ -89,3 +89,13 @@
 - `lib/recordings/types.ts` (+speaker_names), `app/recordings/[id]/report/page.tsx` (+isAdmin prop), ReportClient (panels + props).
 
 **Verify**: typecheck clean. RECORDINGS.md updated (§3.4 re-transcribe + speaker-names). **Activation**: apply sql/128 to prod (speaker_names column); push (registers the WDK workflow + ships the routes/UI). Local, unpushed.
+
+## 2026-06-17 — Town Hall UI polish: status progress bar, prominent active dot, speaker-panel snippet playback + self-intro auto-suggest
+
+**Why**: Owner feedback on the status/report UI — wanted a progress bar for the pipeline steps, a more prominent active-step indicator, and on the speaker-naming panel (a) clickable snippets to listen+read at that point and (b) auto-detection of names when a speaker introduces themselves (diarization often didn't catch "Hi, I'm Tatiana Morales").
+
+**What changed** (UI only, no schema/API):
+- `StatusClient.tsx` — gradient progress bar above the step pills (filled to completed + half-active, pulses in flight); active-step dot upgraded to an amber ping halo + orange core.
+- `ReportClient.tsx` (Transcript tab "Name speakers" panel) — sample snippets are now buttons → `onPlay` from that segment + `scrollIntoView` of the `seg-<start>` anchor; self-intro regex over each speaker's lines surfaces a `✨ <name>` chip that one-click-fills the field; input made controlled. Added `id="seg-<start>"` + `scroll-mt-24` to transcript segments.
+
+**Verify**: typecheck clean. RECORDINGS.md §3.4 updated. Local, unpushed.

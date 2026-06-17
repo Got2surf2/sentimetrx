@@ -1824,12 +1824,18 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
   const [namesOpen, setNamesOpen] = useState(false)
   const [savingNames, setSavingNames] = useState(false)
   const speakerLabels = useMemo(() => {
-    const seen = new Map<string, string>()   // label → first sample line
+    // Self-introduction → suggested name ("Hi, I'm Tatiana Morales" → "Tatiana
+    // Morales"; "my name is Hatem Al-Busena"). Captures 1–3 capitalized words.
+    const introRe = /\b(?:i['’]?m|i am|my name is|this is|name['’]?s)\s+([A-Z][a-zA-Z'’.-]+(?:\s+[A-Z][a-zA-Z'’.-]+){0,2})/
+    const info = new Map<string, { sample: string; start: number; end: number; suggested?: string }>()
     for (const s of segments) {
       const lbl = s.speaker ? String(s.speaker) : ''
-      if (lbl && !seen.has(lbl)) seen.set(lbl, (s.text || '').slice(0, 60))
+      if (!lbl) continue
+      let e = info.get(lbl)
+      if (!e) { e = { sample: (s.text || '').slice(0, 60), start: s.start, end: s.end }; info.set(lbl, e) }
+      if (!e.suggested) { const m = (s.text || '').match(introRe); if (m) e.suggested = m[1].trim() }
     }
-    return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return [...info.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [segments])
   const saveNames = async () => {
     setSavingNames(true)
@@ -1874,14 +1880,21 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
           {namesOpen && (
             <div className="px-4 pb-4 space-y-2">
               <p className="text-xs text-gray-500">Give each diarized speaker a name — applied across the transcript and Q&amp;A. Leave blank to keep the raw label.</p>
-              {speakerLabels.map(([label, sample]) => (
+              {speakerLabels.map(([label, info]) => (
                 <div key={label} className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-gray-400 w-24 shrink-0 truncate" title={label}>{label}</span>
+                  <span className="text-xs font-mono text-gray-400 w-16 shrink-0 truncate" title={label}>{label}</span>
                   <input
-                    type="text" defaultValue={names[label] || ''} placeholder={label}
+                    type="text" value={names[label] ?? ''} placeholder={info.suggested || label}
                     onChange={e => setNames(prev => ({ ...prev, [label]: e.target.value }))}
-                    className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
-                  <span className="text-xs text-gray-400 truncate hidden sm:block max-w-[40%]" title={sample}>“{sample}”</span>
+                    className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
+                  {info.suggested && (names[label] ?? '') !== info.suggested && (
+                    <button type="button" title="Use the name they introduced themselves with"
+                      onClick={() => setNames(prev => ({ ...prev, [label]: info.suggested! }))}
+                      className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 shrink-0 whitespace-nowrap">✨ {info.suggested}</button>
+                  )}
+                  <button type="button" title="Play + jump to this point in the transcript"
+                    onClick={() => { onPlay(info.start, info.end, info.sample); document.getElementById(`seg-${info.start}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+                    className="flex-1 min-w-0 text-left text-xs text-gray-500 hover:text-orange-600 truncate">▶ “{info.sample}”</button>
                 </div>
               ))}
               <button type="button" onClick={saveNames} disabled={savingNames}
@@ -1954,7 +1967,7 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
       )}
       <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
         {filtered.map((s, i) => (
-          <li key={i} className="py-2 text-sm flex items-start gap-3 group">
+          <li key={i} id={`seg-${s.start}`} className="py-2 text-sm flex items-start gap-3 group scroll-mt-24">
             <button
               type="button"
               onClick={() => onPlay(s.start, s.end, s.text.slice(0, 80))}

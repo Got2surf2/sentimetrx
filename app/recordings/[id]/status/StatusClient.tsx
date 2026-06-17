@@ -367,8 +367,20 @@ function StatusPills({ status, data, onGenerate }: { status: Status; data: Statu
   const activeStep: Status | null = status === 'transcribed' ? 'transcribing' : (STEPS.includes(status) ? status : null)
   const activeDetail = activeStep ? computeStepDetail(activeStep, status === 'transcribed' ? 'past' : 'current', data) : null
 
+  // Overall pipeline progress bar: filled to completed steps + half the active
+  // step. Gradient yellow→orange; gently pulses while a step is in flight.
+  const pastCount = STEPS.filter((st, i) => computeStepState(st, i, status, failedIdx) === 'past').length
+  const hasCurrent = STEPS.some((st, i) => computeStepState(st, i, status, failedIdx) === 'current') || status === 'transcribed'
+  const pct = status === 'complete' ? 100 : Math.round(((pastCount + (hasCurrent ? 0.5 : 0)) / STEPS.length) * 100)
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+      <div className="mb-2.5 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${hasCurrent && status !== 'complete' ? 'animate-pulse' : ''}`}
+          style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #F4B740, #E8632A)' }}
+        />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         {STEPS.map((step, idx) => {
           const state = computeStepState(step, idx, status, failedIdx)
@@ -395,7 +407,12 @@ function StatusPills({ status, data, onGenerate }: { status: Status; data: Statu
           return (
             <span key={step} className={base + cls} style={state === 'past' ? { backgroundColor: HERMES } : undefined}>
               {state === 'past' && <span className="text-[10px]">✓</span>}
-              {state === 'current' && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />}
+              {state === 'current' && (
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-80 animate-ping" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-500" />
+                </span>
+              )}
               {state === 'failed' && <span className="text-[10px]">✗</span>}
               {PILL_LABELS[step] ?? STEP_LABELS[step]}
             </span>

@@ -495,7 +495,9 @@ Write a `recording_transcripts` row with `vendor` + `segments` + `raw_response` 
 
 #### Speaker names (added 2026-06-17, sql/128)
 
-ASR diarization emits generic labels ("Speaker 0", "S1"). `recordings.speaker_names` (jsonb: `{ label: name }`) maps each to a human name, set via `POST /api/recordings/[id]/speaker-names` `{ names }` (owner/admin). The report **Transcript tab** shows a "Name speakers" panel (distinct diarized labels + a sample line + a name field each, owner/admin only); the transcript view renders `speaker_names[label] → channel_labels[ch] → raw label` in that precedence. Display-only — the raw segment labels are never mutated. Distinct from `channel_labels` (which names the two **stereo** mics by channel index); `speaker_names` covers the **mono** voice-cluster case.
+ASR diarization emits generic labels ("Speaker 0", "S1"). `recordings.speaker_names` (jsonb: `{ label: name }`) maps each to a human name, set via `POST /api/recordings/[id]/speaker-names` `{ names }` (owner/admin). The report **Transcript tab** shows a "Name speakers" panel (distinct diarized labels + a sample line + a name field each, owner/admin only); the transcript view renders `speaker_names[label] → channel_labels[ch] → raw label` in that precedence. Display-only — the raw segment labels are never mutated. Distinct from `channel_labels` (which names the two **stereo** mics by channel index); `speaker_names` covers the **mono** voice-cluster case. Panel affordances (2026-06-17): each sample snippet is **clickable** → plays the audio from that segment + scrolls the transcript to it (`seg-<start>` anchor); and a `✨` **suggested-name chip** appears when a speaker **self-introduces** ("Hi, I'm Tatiana Morales" / "my name is …", regex over that speaker's lines) — one click fills the field.
+
+**Status-page progress (2026-06-17):** the `StatusClient` step pills sit under a gradient (yellow→orange) **progress bar** filled to completed-steps + half the active step (gently pulsing in flight), and the active-step indicator is a larger amber **ping** dot.
 
 ### 3.5 Analyze (Claude pass)
 
