@@ -18,6 +18,10 @@
 -- follows the agent with no update needed.
 -- ============================================================
 
+-- (Wrapped in BEGIN/COMMIT 2026-06-17 for the CI tx-wrap guard; already applied
+--  to prod — CREATE OR REPLACE makes a re-run a no-op.)
+BEGIN;
+
 CREATE OR REPLACE FUNCTION public.transfer_agent_org(p_agent_id uuid, p_to_org uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -44,3 +48,5 @@ $$;
 GRANT EXECUTE ON FUNCTION public.transfer_agent_org(uuid, uuid) TO service_role;
 
 SELECT 'transfer_agent_org()' AS object, 'ready' AS status;
+
+COMMIT;

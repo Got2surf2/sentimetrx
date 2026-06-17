@@ -285,3 +285,9 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **Why**: `FEATURES.md` predated the last few features.
 
 **What changed** (docs only): added to the Town Hall inventory — edit Q&A *and* action items (revertible overlay), resolve "needs review" per-pair (vs report sign-off), and name corrections flowing on-read across report/PDF/deck. Fixed the PDF bullet (it carries action items + optional transcript, more than the Q&A-only public link) + noted the Action Items section. RECORDINGS.md (§3.5d/§4.5/§5.3) + memory were already current per-commit.
+
+## 2026-06-17 — CI fix: tx-wrap sql/126,127,128 (BEGIN/COMMIT guard)
+
+**Why**: First push of the batch failed CI on `check:sql-tx` — migrations >70 must be wrapped in BEGIN/COMMIT, and the three prior-session migrations weren't (they'd never hit CI while unpushed).
+
+**What changed**: wrapped `sql/126_service_health.sql`, `sql/127_transfer_agent_org.sql`, `sql/128_recording_speaker_names.sql` in `BEGIN; … COMMIT;`. Cosmetic only — all three are already applied to prod and re-run no-op (IF NOT EXISTS / DROP POLICY / CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS). `npm run check:sql-tx` passes.

@@ -1,5 +1,7 @@
 -- 126_service_health.sql
 -- ============================================================
+-- (Wrapped in BEGIN/COMMIT 2026-06-17 for the CI tx-wrap guard; already applied
+--  to prod — re-running is a no-op via IF NOT EXISTS / DROP POLICY guards.)
 -- Platform service-credit / health monitor (one row per external vendor).
 --
 -- Motivation: a DataForSEO HTTP 402 (out of balance) silently stalled a
@@ -16,6 +18,8 @@
 -- Platform-global (about OUR vendor accounts, not customer data) → no org_id.
 -- Visible to the admin org only. Writes go through the service role.
 -- ============================================================
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.service_health (
   service         text PRIMARY KEY,        -- 'dataforseo','deepgram','twilio','anthropic','openai','resend','google_places'
@@ -60,3 +64,5 @@ CREATE POLICY "admin org reads service_health" ON public.service_health
 -- ============================================================
 SELECT 'service_health table' AS object, 'ready' AS status
 UNION ALL SELECT 'RLS + admin-org SELECT policy', 'ready';
+
+COMMIT;

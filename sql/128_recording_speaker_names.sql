@@ -11,9 +11,15 @@
 -- Shape: { "<diarized label>": "<name>", ... } e.g. {"Speaker 0":"Dr. Hatem"}.
 -- ============================================================
 
+-- (Wrapped in BEGIN/COMMIT 2026-06-17 for the CI tx-wrap guard; already applied
+--  to prod — ADD COLUMN IF NOT EXISTS makes a re-run a no-op.)
+BEGIN;
+
 ALTER TABLE public.recordings ADD COLUMN IF NOT EXISTS speaker_names jsonb;
 
 COMMENT ON COLUMN public.recordings.speaker_names IS
   'Map of diarized speaker label (e.g. "Speaker 0" / "S1") -> human name, for the transcript/report. Set via /api/recordings/[id]/speaker-names. Distinct from channel_labels (stereo per-mic names).';
 
 SELECT 'recordings.speaker_names column' AS object, 'ready' AS status;
+
+COMMIT;
