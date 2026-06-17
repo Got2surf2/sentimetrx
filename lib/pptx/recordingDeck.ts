@@ -30,6 +30,7 @@ import type {
   QaSentiment,
 } from '@/lib/recordings/types'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
+import { buildReplacements, normalizeText } from '@/lib/recordings/normalize'
 
 const DN = {
   ...DN_SHARED,
@@ -53,6 +54,7 @@ export interface RecordingDeckInput {
   proceedings_summary?: ProceedingsSummary | null   // presentation overview (meeting tool)
   meeting_profile?: MeetingProfile | null
   extractions: RecordingExtractionRow[]   // qa_pair + action_item, any order
+  entity_map?: unknown                    // reviewed spelling corrections, applied on read
   source_duration_sec?: number | null     // anchors the meeting-timeline slide
   // Use the public-shareable polished question/answer in the appendix when
   // available (falls back to verbatim per-pair). Default true — the deck is the
@@ -158,6 +160,10 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   const analystStr = (input.analysts ?? []).map(a => a.name).filter(Boolean).join(', ')
   const preparedBy = `Prepared by ${analystStr ? analystStr + '  ·  ' : ''}${input.analysis_org || 'Datanautix'}${input.config_version != null ? `  ·  Config v${input.config_version}` : ''}`
   const summary = input.analysis_summary
+  // Reviewed entity-map spelling corrections, applied on read to all AI text so
+  // a post-analysis name fix shows in the deck without a re-analyze (§3.5b).
+  const repl = buildReplacements((input.entity_map ?? null) as Parameters<typeof buildReplacements>[0])
+  const nz = (t: string) => normalizeText(t || '', repl)
   const proceedings = input.proceedings_summary || null
   const hasPresentation = !!proceedings && (!!proceedings.overview || (proceedings.items?.length ?? 0) > 0)
   const reportKind = hasPresentation ? 'Meeting Report' : 'Q&A Session Report'
@@ -182,19 +188,19 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     for (const e of qaPairs) {
       const qa = e.payload as QaPairPayload
       if (!qa.edited_question && !qa.edited_answer && !qa.polished_question && !qa.polished_answer) continue
-      polishByQ.set(normQ(qa.question), { q: displayQuestion(qa), a: displayAnswer(qa) })
+      polishByQ.set(normQ(qa.question), { q: nz(displayQuestion(qa)), a: nz(displayAnswer(qa)) })
     }
   }
   // Resolve a representative exchange to polished text when its verbatim question
   // matches a pair (exact, then prefix-overlap); falls back to the verbatim quote.
   const polishExchange = (ex: { question: string; answer: string }): { question: string; answer: string } => {
-    if (!usePolished) return ex
+    if (!usePolished) return { question: nz(ex.question), answer: nz(ex.answer) }
     const k = normQ(ex.question)
     const hit = polishByQ.get(k)
     if (hit) return { question: hit.q, answer: hit.a }
     const short = k.slice(0, 40)
     for (const [pk, v] of polishByQ) if (pk.startsWith(short) || short.startsWith(pk.slice(0, 40))) return { question: v.q, answer: v.a }
-    return ex
+    return { question: nz(ex.question), answer: nz(ex.answer) }
   }
 
   // Every count the deck prints is derived HERE from the pairs it actually
@@ -228,12 +234,12 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   if (metaBits) s1.addText(metaBits, { x: PAD, y: 3.6, w: W - PAD * 2, h: 0.5, fontSize: 14, color: DN.slate })
   s1.addText(preparedBy, { x: PAD, y: 4.05, w: W - PAD * 2, h: 0.4, fontSize: 12, color: DN.tealLight, valign: 'middle' })
   if (summary?.headline) {
-    s1.addText(summary.headline, { x: PAD, y: 4.55, w: W - PAD * 2, h: 1.0, fontSize: 14, color: DN.slate, valign: 'top', wrap: true })
+    s1.addText(nz(summary.headline), { x: PAD, y: 4.55, w: W - PAD * 2, h: 1.0, fontSize: 14, color: DN.slate, valign: 'top', wrap: true })
   }
   // Objectives (§2.8) — what the analysis set out to answer.
   if (input.objectives?.summary) {
     s1.addText('OBJECTIVE', { x: PAD, y: 5.65, w: W - PAD * 2, h: 0.24, fontSize: 11, bold: true, color: DN.slate, charSpacing: 1.0 })
-    s1.addText(trunc(input.objectives.summary, 220), { x: PAD, y: 5.92, w: W - PAD * 2, h: 0.55, fontSize: 12, italic: true, color: DN.slate, valign: 'top', wrap: true })
+    s1.addText(trunc(nz(input.objectives.summary), 220), { x: PAD, y: 5.92, w: W - PAD * 2, h: 0.55, fontSize: 12, italic: true, color: DN.slate, valign: 'top', wrap: true })
   }
   // Sign-off stamp (bottom-left, opposite the wordmark).
   if (input.signoff?.approved_by) {
@@ -316,9 +322,9 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
     logoRight(s)
 
     if (summary.headline) {
-      s.addText(summary.headline, { x: PAD, y: CY + 0.2, w: W - PAD * 2, h: 0.6, fontSize: 18, bold: true, color: DN.teal, valign: 'middle' })
+      s.addText(nz(summary.headline), { x: PAD, y: CY + 0.2, w: W - PAD * 2, h: 0.6, fontSize: 18, bold: true, color: DN.teal, valign: 'middle' })
     }
-    s.addText(summary.executive_summary, {
+    s.addText(nz(summary.executive_summary), {
       x: PAD, y: CY + 0.95, w: W - PAD * 2, h: 2.6, fontSize: 14, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.15,
     })
 
@@ -443,7 +449,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
 
       // Cap the summary so a long one can't collide with the exchange below;
       // truncBoundary ends it on a sentence so it never reads as cut off.
-      s.addText(truncBoundary(t.summary, 250), { x: cx + 0.2, y: cardY + 1.3, w: cw - 0.4, h: 1.0, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
+      s.addText(truncBoundary(nz(t.summary), 250), { x: cx + 0.2, y: cardY + 1.3, w: cw - 0.4, h: 1.0, fontSize: 12, color: DN.slateDark, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
 
       // One representative Q&A exchange, parties identified.
       const ex = t.representative_exchanges[0]
@@ -489,8 +495,8 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
         const ai = ex.payload as ActionItemPayload
         // Prefer the human edit overlay (§3.5d) over the AI values, so corrected
         // action items export to the deck.
-        const aiDesc = ai.edited_description || ai.description
-        const aiOwner = ai.edited_owner ?? ai.owner
+        const aiDesc = nz(ai.edited_description || ai.description)
+        const aiOwner = nz((ai.edited_owner ?? ai.owner) || '')
         const aiDue = ai.edited_due_date ?? ai.due_date
         const rowH = 0.9
         s.addShape(pptx.ShapeType.rect, { x: PAD, y: ay, w: colW, h: rowH, fill: { color: DN.white }, line: { color: DN.divider, width: 1 }, rectRadius: 0.06 })
@@ -515,7 +521,7 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
         const rowH = 0.78
         s.addShape(pptx.ShapeType.rect, { x: rx, y: dy, w: colW, h: rowH, fill: { color: DN.white }, line: { color: DN.divider, width: 1 }, rectRadius: 0.06 })
         s.addShape(pptx.ShapeType.rect, { x: rx, y: dy, w: 0.05, h: rowH, fill: { color: DN.orange }, line: { width: 0 } })
-        s.addText(truncBoundary(d.decision, 160), { x: rx + 0.18, y: dy + 0.08, w: colW - 0.32, h: rowH - 0.16, fontSize: 12, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
+        s.addText(truncBoundary(nz(d.decision), 160), { x: rx + 0.18, y: dy + 0.08, w: colW - 0.32, h: rowH - 0.16, fontSize: 12, color: DN.ink, valign: 'top', wrap: true, lineSpacingMultiple: 1.0 })
         dy += rowH + 0.12
       }
       if (decisions.length > decCap) s.addText(`+ ${decisions.length - decCap} more`, { x: rx, y: dy, w: colW, h: 0.24, fontSize: 12, italic: true, color: DN.slate })
@@ -551,8 +557,8 @@ export async function buildRecordingDeck(input: RecordingDeckInput): Promise<Uin
   // (`usePolished` computed above, shared with the theme-slide exchanges).
   qaPairs.forEach((ex, idx) => {
     const qa = ex.payload as QaPairPayload
-    const qQuestion = displayQuestion(qa, { verbatim: !usePolished })
-    const qAnswer = displayAnswer(qa, { verbatim: !usePolished })
+    const qQuestion = nz(displayQuestion(qa, { verbatim: !usePolished }))
+    const qAnswer = nz(displayAnswer(qa, { verbatim: !usePolished }))
     const s = pptx.addSlide()
     bgFill(s, pptx)
     hdr(s, pptx, `Appendix — Q&A ${idx + 1} of ${qaPairs.length}`)

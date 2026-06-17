@@ -267,3 +267,15 @@
 - `app/analyze/[datasetId]/{DatasetHeader,DatasetShell,layout}.tsx` — new **🏪 Outlets** tab, gated `sources:['google_reviews']` + `minOutlets:5` (generic per-tab gate). `layout.tsx` computes `outletCount` via a cheap `review_source_locations` count (service-role) and threads it through the shell.
 
 **Verify**: typecheck clean; compute logic proven against live BareBurger data (Stamford laggard 4.18★ bottom; Dobbs Ferry leader 4.89★ 92nd pct); outlet-count gate validated across all 20 review datasets (BareBurger/Ruth's Chris/Cheddar's show, single-property/tiny datasets hide). Route compiles + auth-redirects. ANALYTICS.md "Outlet Report" section added. Local, unpushed.
+
+## 2026-06-17 — Extend entity-correction-on-read to the deck + on-screen report
+
+**Why**: After fixing the PDF to apply entity-map corrections on read, the PPTX deck (client deliverable) and the on-screen report Q&A still showed stale names until re-analyze — inconsistent across the three deliverables.
+
+**What changed**:
+- `recordingDeck.ts` — build `nz` from `entity_map` (threaded via the export route's select) and apply to all AI text: Q&A (polishByQ + appendix + representative exchanges), exec summary, headline, objectives, topic summaries, decisions, action item desc/owner.
+- `ReportClient.tsx` — `reportNz` from `data.recording.entity_map`, threaded to QATab→QACard (shownQuestion/shownAnswer) and ActionItemsTab→ActionItemRow (read-only display).
+
+So PDF, deck, and on-screen all apply the reviewed spelling corrections on read; direction still depends on the entry's canonical being correct.
+
+**Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §4.5 updated. Local, unpushed.

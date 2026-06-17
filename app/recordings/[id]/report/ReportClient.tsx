@@ -28,6 +28,7 @@ import type {
 import TranscriptComparisonTab from './TranscriptComparisonTab'
 import TranscriptReview from '@/components/recordings/TranscriptReview'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
+import { buildReplacements, normalizeText } from '@/lib/recordings/normalize'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import { buildTranscriptRoles, traceActionItem } from '@/lib/recordings/transcriptRoles'
 import { packLanes, laneTop, barHeight, LANE_H } from '@/lib/recordings/timeline'
@@ -128,6 +129,14 @@ export default function ReportClient({ data }: { data: ReportData }) {
   }, [])
 
   const recordingId = data.recording.id
+
+  // Reviewed entity-map spelling corrections, applied on read to the displayed
+  // Q&A + action items (matches the PDF/deck) so a post-analysis name fix shows
+  // here too without a re-analyze. §3.5b.
+  const reportNz = useMemo(() => {
+    const repl = buildReplacements(data.recording.entity_map)
+    return (t: string) => normalizeText(t || '', repl)
+  }, [data.recording.entity_map])
 
   // All Q&A pairs in ONE list. We deliberately no longer split "ask" into a
   // headline tab and everything else into an "Appendix" — clarifications and
@@ -230,8 +239,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
           </div>
         )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} />}
-        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} nz={reportNz} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
@@ -555,7 +564,7 @@ function PresentationTab({ recording }: { recording: RecordingRow }) {
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false, hasPresentation = false }: {
+function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false, hasPresentation = false, nz }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
@@ -563,6 +572,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
   onPlay: PlayHandler
   initialFlagged?: boolean
   hasPresentation?: boolean
+  nz: (t: string) => string
 }) {
   const router = useRouter()
   // Typology filter — all pairs show by default; chips narrow to one typology.
@@ -727,6 +737,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               onReplaced={onReplaced}
               onPlay={onPlay}
               hasPresentation={hasPresentation}
+              nz={nz}
               ordinal={i + 1}
             />
           ))}
@@ -758,6 +769,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
                   onReplaced={onReplaced}
                   onPlay={onPlay}
                   hasPresentation={hasPresentation}
+                  nz={nz}
                 />
               ))}
             </ul>
@@ -873,7 +885,7 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
   )
 }
 
-function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal, hasPresentation = false }: {
+function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal, hasPresentation = false, nz }: {
   recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
@@ -883,6 +895,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   // Sequence number in the "In order" view; omitted in topic view.
   ordinal?: number
   hasPresentation?: boolean
+  nz: (t: string) => string
 }) {
   const payload = extraction.payload as QaPairPayload
   const flagged = extraction.flagged_for_review
@@ -923,8 +936,8 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
   const edited = isEdited(payload)
   const hasPolished = !!(payload.polished_answer || payload.polished_question)
   const [showVerbatim, setShowVerbatim] = useState(false)
-  const shownQuestion = displayQuestion(payload, { verbatim: showVerbatim })
-  const shownAnswer = displayAnswer(payload, { verbatim: showVerbatim })
+  const shownQuestion = nz(displayQuestion(payload, { verbatim: showVerbatim }))
+  const shownAnswer = nz(displayAnswer(payload, { verbatim: showVerbatim }))
 
   const handleRegenerate = async () => {
     setBusy(true)
@@ -1447,7 +1460,7 @@ function aiText(p: ActionItemPayload) {
   }
 }
 
-function ActionItemsTab({ extractions, transcript, recordingId, canEdit, onReplaced }: { extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; recordingId: string; canEdit: boolean; onReplaced: (e: RecordingExtractionRow) => void }) {
+function ActionItemsTab({ extractions, transcript, recordingId, canEdit, onReplaced, nz }: { extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; recordingId: string; canEdit: boolean; onReplaced: (e: RecordingExtractionRow) => void; nz: (t: string) => string }) {
   const segments = useMemo(() => (transcript?.segments ?? []) as TranscriptSegment[], [transcript])
   // action_item rows carry no timestamps — trace each back to its closest
   // transcript passage so a reviewer can verify where it came from.
@@ -1465,7 +1478,7 @@ function ActionItemsTab({ extractions, transcript, recordingId, canEdit, onRepla
       </p>
       <ul className="space-y-2">
         {extractions.map((e, i) => (
-          <ActionItemRow key={e.id} extraction={e} trace={traces[i]} recordingId={recordingId} canEdit={canEdit} onReplaced={onReplaced}
+          <ActionItemRow key={e.id} extraction={e} trace={traces[i]} recordingId={recordingId} canEdit={canEdit} onReplaced={onReplaced} nz={nz}
             onShowSource={(description, trace) => setModal({ description, trace })} />
         ))}
       </ul>
@@ -1474,13 +1487,14 @@ function ActionItemsTab({ extractions, transcript, recordingId, canEdit, onRepla
   )
 }
 
-function ActionItemRow({ extraction, trace, recordingId, canEdit, onReplaced, onShowSource }: {
+function ActionItemRow({ extraction, trace, recordingId, canEdit, onReplaced, onShowSource, nz }: {
   extraction: RecordingExtractionRow
   trace: ReturnType<typeof traceActionItem>
   recordingId: string
   canEdit: boolean
   onReplaced: (e: RecordingExtractionRow) => void
   onShowSource: (description: string, trace: NonNullable<ReturnType<typeof traceActionItem>>) => void
+  nz: (t: string) => string
 }) {
   const p = extraction.payload as ActionItemPayload
   const v = aiText(p)
@@ -1530,13 +1544,13 @@ function ActionItemRow({ extraction, trace, recordingId, canEdit, onReplaced, on
         </div>
       ) : (
         <>
-          <p className="text-sm text-gray-900">{v.description}</p>
+          <p className="text-sm text-gray-900">{nz(v.description)}</p>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             {p.related_agenda_item && (
               <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">{p.related_agenda_item}</span>
             )}
             {v.owner && (
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {v.owner}</span>
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Owner: {nz(v.owner)}</span>
             )}
             {v.due_date && (
               <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">Due: {v.due_date}</span>
