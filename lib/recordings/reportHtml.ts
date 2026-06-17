@@ -22,7 +22,7 @@ import type {
   PanelMember,
   ActionItemPayload,
 } from '@/lib/recordings/types'
-import { normalizeSegments } from '@/lib/recordings/normalize'
+import { normalizeSegments, normalizeText, buildReplacements } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
 
@@ -82,9 +82,12 @@ export interface TownHallReportInput {
 }
 
 // One Q&A card — mirrors the /th page's question/response block.
-function qaCard(qa: QaPairPayload): string {
-  const q = displayQuestion(qa)
-  const a = displayAnswer(qa)
+// `nz` applies the reviewed entity-map spelling corrections (variant→canonical)
+// on read, so the Q&A reflects the same corrected names as the transcript view
+// without needing a re-analyze. Identity when there's no map.
+function qaCard(qa: QaPairPayload, nz: (t: string) => string): string {
+  const q = nz(displayQuestion(qa))
+  const a = nz(displayAnswer(qa))
   return (
     `<div class="qa">` +
     `<div class="q-head">` +
@@ -173,6 +176,12 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
   const pairs = input.pairs.filter(p => p.unit_type === 'qa_pair')
   const summary = input.summary
 
+  // Reviewed entity-map spelling corrections, applied on read to ALL AI text
+  // (Q&A, action items, exec summary) — not just the transcript appendix — so a
+  // post-analysis name fix shows everywhere in the PDF. variant→canonical.
+  const repl = buildReplacements(input.entityMap)
+  const nz = (t: string) => normalizeText(t, repl)
+
   // Topic order from the summary, then any extraction topics it didn't cover.
   const order: string[] = []
   for (const t of summary?.topic_summaries ?? []) if (!order.includes(t.topic)) order.push(t.topic)
@@ -210,7 +219,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
       return (
         `<div class="topic-block">` +
         `<h2 class="topic">${esc(topic)}</h2>` +
-        tPairs.map(p => qaCard(p.payload as QaPairPayload)).join('') +
+        tPairs.map(p => qaCard(p.payload as QaPairPayload, nz)).join('') +
         `</div>`
       )
     })
@@ -224,8 +233,8 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     ? `<section class="actions"><h2 class="topic">Action Items</h2>` +
       actionItems.map(a => {
         const p = a.payload as ActionItemPayload
-        const desc = p.edited_description || p.description
-        const owner = (p.edited_owner ?? p.owner) || ''
+        const desc = nz(p.edited_description || p.description)
+        const owner = nz((p.edited_owner ?? p.owner) || '')
         const due = (p.edited_due_date ?? p.due_date) || ''
         const meta = [owner ? `Owner: ${esc(owner)}` : '', due ? `Due: ${esc(due)}` : ''].filter(Boolean).join('  ·  ')
         return `<div class="aitem"><p class="ai-d">${esc(desc)}</p>${meta ? `<div class="ai-m">${meta}</div>` : ''}</div>`
@@ -238,7 +247,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
   const eyebrow = notes ? 'Meeting Summary' : 'Meeting Q&amp;A Summary'
 
   const overview = summary?.executive_summary
-    ? `<section class="overview"><h2 class="ov-h">${notes ? 'Q&amp;A Overview' : 'Overview'}</h2><p class="ov-p">${esc(summary.executive_summary)}</p></section>`
+    ? `<section class="overview"><h2 class="ov-h">${notes ? 'Q&amp;A Overview' : 'Overview'}</h2><p class="ov-p">${esc(nz(summary.executive_summary))}</p></section>`
     : ''
 
   // Meeting timeline summary bar (single brand colour — flagged state is internal).

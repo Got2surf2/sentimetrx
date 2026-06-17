@@ -246,3 +246,13 @@
 **What changed** (`ReportClient.tsx`): the Coverage tab badge now counts `qaPairs.filter(flagged_for_review)` from live state, matching the QATab filter + the Coverage body (already live via `computeCoverage`). One-line fix.
 
 **Verify**: typecheck clean. RECORDINGS.md §3.5d note added. Local, unpushed.
+
+## 2026-06-17 — Fix: PDF Q&A now applies entity-map spelling corrections (was transcript-only)
+
+**Why**: Reported — the PDF didn't pick up the corrected transcript; "Big Road"/"Vick Road" read as interchanged. Root cause: the entity_map (§3.5b) was applied only to the transcript appendix (`normalizeSegments`); Q&A cards / action items / exec summary rendered polished/verbatim text un-normalized, so a name fixed after analysis stayed stale in the Q&A.
+
+**What changed** (`reportHtml.ts`): build variant→canonical replacements once (`nz`) and apply to all AI text — `qaCard` (q + a), action item description/owner, exec summary — not just the transcript. Verified: a Vick Road↦Big Road map turns all "Big Road" → "Vick Road" across Q&A/action/summary (0 remaining).
+
+**Caveat surfaced**: correction direction depends on the entity entry having the correct spelling as `canonical`; a reversed entry would propagate the wrong word. On-screen report Q&A + PPTX deck still only normalize on re-analyze (follow-up if wanted).
+
+**Verify**: typecheck clean. RECORDINGS.md §4.5 updated. Local, unpushed.
