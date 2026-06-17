@@ -135,7 +135,7 @@ export async function renderRecordingReportPdf(
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'load' })
     const pdf = await page.pdf({
-      format: 'A4',
+      format: 'letter',                 // 8.5 × 11 in
       printBackground: true,
       // Margins live here (not CSS @page) so the bottom band is reserved for the
       // repeated footer. Footer carries the Datanautix wordmark + meeting name +
@@ -144,7 +144,7 @@ export async function renderRecordingReportPdf(
       displayHeaderFooter: true,
       headerTemplate: '<div></div>',
       footerTemplate: pageFooterTemplate(rec.name || 'Town Hall'),
-      margin: { top: '14mm', bottom: '16mm', left: '12mm', right: '12mm' },
+      margin: { top: '14mm', bottom: '16mm', left: '1in', right: '1in' },
     })
     const fileName = (rec.name || 'Town_Hall').replace(/[^\w.-]+/g, '_') + '_Report.pdf'
     return { buffer: Buffer.from(pdf), fileName }
@@ -161,7 +161,7 @@ function pageFooterTemplate(name: string): string {
   const safe = String(name)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   return (
-    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 12mm;`
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;`
     + `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;`
     + `display:flex;align-items:center;justify-content:space-between;">`
     + `<span style="font-weight:800;white-space:nowrap;">`

@@ -132,3 +132,13 @@
 - Pagination CSS: `h1,.topic,.ov-h{break-after:avoid;page-break-after:avoid}` (heading stays with following content) + `orphans:3;widows:3` on body copy. Existing `break-inside:avoid` on Q&A cards / pitems / overview kept.
 
 **Verify**: typecheck clean. Rendered an 11-page sample locally with real Chrome (throwaway script, since removed) — confirmed footer repeats per page with correct branding/name/page-count, and a topic title ("Right-of-Way Acquisition") moved to the top of the next page with its first card rather than widowing. RECORDINGS.md §4.5 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall transcript review: auto-fill same-speaker gaps + PDF Letter/1in margins
+
+**Why**: (1) Assigning speakers segment-by-segment is tedious when diarization drops labels mid-turn; (2) the report PDF should print on US Letter with standard 1" side margins.
+
+**What changed**:
+- `TranscriptReview.tsx` — "⚡ Auto-fill speakers" button in edit mode. Fills runs of unassigned segments bounded on BOTH sides by the SAME identified speaker (safe, no cross-speaker guessing); cross-speaker / unanchored gaps left alone. Stages fills as pending edits (dirty) for review before Save; shows a count / "nothing to fill" note. (Chose same-speaker-bounded over carry-forward per user — avoids mislabeling a new speaker who started unlabeled.)
+- `reportPdf.ts` — `page.pdf` format `a4` → `letter`; left/right margins → `1in` (top `14mm` / bottom `16mm` unchanged); footer template side padding `12mm` → `1in` so it stays aligned with the body.
+
+**Verify**: typecheck clean. Re-rendered a Letter sample with real Chrome (throwaway, removed) — 1" side margins + footer correct. RECORDINGS.md §4.5 + §5.3 updated. Local, unpushed.

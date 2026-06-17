@@ -93,8 +93,9 @@ export default function TranscriptReview({
   const [dirty, setDirty] = useState<Set<number>>(new Set())
   const [savingSegs, setSavingSegs] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
-  const enterEdit = () => { setWorking(segments.map(s => ({ ...s }))); setDirty(new Set()); setSavedNote(false); setView('raw'); setEditMode(true) }
-  const cancelEdit = () => { setEditMode(false); setWorking([]); setDirty(new Set()) }
+  const [fillMsg, setFillMsg] = useState<string | null>(null)
+  const enterEdit = () => { setWorking(segments.map(s => ({ ...s }))); setDirty(new Set()); setSavedNote(false); setFillMsg(null); setView('raw'); setEditMode(true) }
+  const cancelEdit = () => { setEditMode(false); setWorking([]); setDirty(new Set()); setFillMsg(null) }
   const editText = (i: number, text: string) => {
     setWorking(prev => { const next = prev.slice(); next[i] = { ...next[i], text }; return next })
     setDirty(prev => new Set(prev).add(i))
@@ -108,6 +109,34 @@ export default function TranscriptReview({
       return next
     })
     setDirty(prev => new Set(prev).add(i))
+  }
+  // Auto-fill unassigned speaker gaps that are bounded on BOTH sides by the
+  // SAME identified speaker — the safe case, no guessing across a speaker
+  // change. Runs of unassigned segments touching a different speaker (or no
+  // anchor) are left alone. Stages the fills as pending edits to review + save.
+  const autoFillSpeakers = () => {
+    const next = working.slice()
+    const filled: number[] = []
+    let i = 0
+    while (i < next.length) {
+      if (next[i].speaker) { i++; continue }
+      const start = i
+      let j = i
+      while (j < next.length && !next[j].speaker) j++
+      const before = start > 0 ? next[start - 1].speaker : undefined
+      const after = j < next.length ? next[j].speaker : undefined
+      if (before && after && before === after) {
+        for (let k = start; k < j; k++) { next[k] = { ...next[k], speaker: before }; filled.push(k) }
+      }
+      i = j
+    }
+    if (filled.length === 0) {
+      setFillMsg('No same-speaker gaps to fill — every unassigned run is between two different speakers (or has no anchor on one side).')
+      return
+    }
+    setWorking(next)
+    setDirty(prev => { const s = new Set(prev); filled.forEach(k => s.add(k)); return s })
+    setFillMsg(`Filled ${filled.length} segment${filled.length === 1 ? '' : 's'} bounded by the same speaker — review and Save.`)
   }
   const saveSegs = async () => {
     if (dirty.size === 0) { cancelEdit(); return }
@@ -211,6 +240,9 @@ export default function TranscriptReview({
         {editable && canEdit && (
           editMode ? (
             <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={autoFillSpeakers} disabled={savingSegs}
+                title="Fill unassigned segments that sit between two of the same identified speaker"
+                className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">⚡ Auto-fill speakers</button>
               <button type="button" onClick={cancelEdit} disabled={savingSegs}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
               <button type="button" onClick={saveSegs} disabled={savingSegs}
@@ -230,6 +262,9 @@ export default function TranscriptReview({
 
       {savedNote && saveHint && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{saveHint}</p>
+      )}
+      {editMode && fillMsg && (
+        <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{fillMsg}</p>
       )}
       {!editMode && (
         <p className="text-xs text-gray-500">
