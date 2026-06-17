@@ -26,7 +26,7 @@ import type {
   Signoff,
 } from '@/lib/recordings/types'
 import TranscriptComparisonTab from './TranscriptComparisonTab'
-import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
+import TranscriptReview from '@/components/recordings/TranscriptReview'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import { buildTranscriptRoles, traceActionItem } from '@/lib/recordings/transcriptRoles'
@@ -1775,8 +1775,7 @@ function TimelineExcerptModal({ pair, index, segments, onClose }: {
 
 function TranscriptTab({ transcript, entityMap, extractions, channelLabels, speakerNames, recordingId, canEdit, onPlay }: { transcript: RecordingTranscriptRow | null; entityMap: EntityMap | null; extractions: RecordingExtractionRow[]; channelLabels: string[] | null; speakerNames: Record<string, string> | null; recordingId: string; canEdit: boolean; onPlay: PlayHandler }) {
   // Hooks must run in the same order every render — keep useState + useMemo
-  // above any early return. Null transcript → empty segments + empty filtered.
-  const [search, setSearch] = useState('')
+  // above any early return. Null transcript → empty segments.
   const segments = useMemo(
     () => (transcript?.segments ?? []) as TranscriptSegment[],
     [transcript],
@@ -1784,68 +1783,6 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
   // Audit overlay: which segments became an extracted Q&A pair (question vs
   // answer), keyed by segment start. Plain segments weren't extracted.
   const roles = useMemo(() => buildTranscriptRoles(segments, extractions), [segments, extractions])
-  // Corrected view = deterministic variant→canonical from the entity map. Only
-  // meaningful when there's something to replace. The raw ASR is never mutated;
-  // this derives the corrected view on read (the two-transcripts model).
-  const replacements = useMemo(() => buildReplacements(entityMap), [entityMap])
-  const canCorrect = replacements.length > 0
-  const [view, setView] = useState<'corrected' | 'raw'>(canCorrect ? 'corrected' : 'raw')
-  const corrected = useMemo(() => normalizeSegments(segments, entityMap), [segments, entityMap])
-  const active = view === 'corrected' && canCorrect ? corrected : segments
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return active
-    return active.filter(s => s.text.toLowerCase().includes(q))
-  }, [active, search])
-
-  // True-stereo (split-mic) transcript → color/italicize each line by source mic.
-  const hasStereo = useMemo(() => segments.some(s => typeof s.channel === 'number'), [segments])
-
-  // Speaker collisions: spots where two mics had overlapping speech at the same
-  // time (both channels talking at once → ASR can garble). Keyed by segment start
-  // so the transcript can underline them and explain the garble. Time-swept O(n).
-  const collisions = useMemo(() => {
-    const out = new Set<number>()
-    const segs = segments.filter(s => typeof s.channel === 'number').sort((a, b) => a.start - b.start)
-    const active: TranscriptSegment[] = []
-    for (const s of segs) {
-      for (let k = active.length - 1; k >= 0; k--) if (active[k].end <= s.start) active.splice(k, 1)
-      for (const a of active) if (a.channel !== s.channel) { out.add(a.start); out.add(s.start) }
-      active.push(s)
-    }
-    return out
-  }, [segments])
-
-  // Speaker naming: distinct diarized labels + a sample line each, editable by
-  // owner/admin → POST /speaker-names. Names are applied live (local state)
-  // and persisted; render prefers a name over the raw label / mic label.
-  const [names, setNames] = useState<Record<string, string>>(speakerNames ?? {})
-  const [namesOpen, setNamesOpen] = useState(false)
-  const [savingNames, setSavingNames] = useState(false)
-  const speakerLabels = useMemo(() => {
-    // Self-introduction → suggested name ("Hi, I'm Tatiana Morales" → "Tatiana
-    // Morales"; "my name is Hatem Al-Busena"). Captures 1–3 capitalized words.
-    const introRe = /\b(?:i['’]?m|i am|my name is|this is|name['’]?s)\s+([A-Z][a-zA-Z'’.-]+(?:\s+[A-Z][a-zA-Z'’.-]+){0,2})/
-    const info = new Map<string, { sample: string; start: number; end: number; suggested?: string }>()
-    for (const s of segments) {
-      const lbl = s.speaker ? String(s.speaker) : ''
-      if (!lbl) continue
-      let e = info.get(lbl)
-      if (!e) { e = { sample: (s.text || '').slice(0, 60), start: s.start, end: s.end }; info.set(lbl, e) }
-      if (!e.suggested) { const m = (s.text || '').match(introRe); if (m) e.suggested = m[1].trim() }
-    }
-    return [...info.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [segments])
-  const saveNames = async () => {
-    setSavingNames(true)
-    try {
-      await fetch(`/api/recordings/${recordingId}/speaker-names`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names }),
-      })
-    } finally { setSavingNames(false) }
-  }
 
   // Re-transcribe: re-run ASR on the stored audio with a chosen strategy, then
   // re-extract. Overwrites the transcript + Q&A, so it's confirm-gated (Hybrid
@@ -1889,41 +1826,6 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
 
   return (
     <div className="space-y-3">
-      {canEdit && speakerLabels.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-gray-50">
-          <button type="button" onClick={() => setNamesOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
-            <span>🎙 Name speakers ({speakerLabels.length})</span>
-            <span className="text-gray-400">{namesOpen ? '▲' : '▼'}</span>
-          </button>
-          {namesOpen && (
-            <div className="px-4 pb-4 space-y-2">
-              <p className="text-xs text-gray-500">Give each diarized speaker a name — applied across the transcript and Q&amp;A. Leave blank to keep the raw label.</p>
-              {speakerLabels.map(([label, info]) => (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-gray-400 w-16 shrink-0 truncate" title={label}>{label}</span>
-                  <input
-                    type="text" value={names[label] ?? ''} placeholder={info.suggested || label}
-                    onChange={e => setNames(prev => ({ ...prev, [label]: e.target.value }))}
-                    className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
-                  {info.suggested && (names[label] ?? '') !== info.suggested && (
-                    <button type="button" title="Use the name they introduced themselves with"
-                      onClick={() => setNames(prev => ({ ...prev, [label]: info.suggested! }))}
-                      className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 shrink-0 whitespace-nowrap">✨ {info.suggested}</button>
-                  )}
-                  <button type="button" title="Play + jump to this point in the transcript"
-                    onClick={() => { onPlay(info.start, info.end, info.sample); document.getElementById(`seg-${info.start}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
-                    className="flex-1 min-w-0 text-left text-xs text-gray-500 hover:text-orange-600 truncate">▶ “{info.sample}”</button>
-                </div>
-              ))}
-              <button type="button" onClick={saveNames} disabled={savingNames}
-                className="mt-1 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
-                {savingNames ? 'Saving…' : 'Save names'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
       {canEdit && (
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
           <span className="text-sm font-semibold text-gray-700">Re-transcribe audio</span>
@@ -1970,95 +1872,18 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
           )}
         </div>
       )}
-      <div className="flex items-center justify-between gap-3">
-        <input
-          type="search"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search transcript…"
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base"
-          style={{ fontSize: '16px' }}
-        />
-        {canCorrect && (
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0 text-xs">
-            <button
-              type="button"
-              onClick={() => setView('corrected')}
-              className={`px-3 py-2 font-medium ${view === 'corrected' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-            >Corrected</button>
-            <button
-              type="button"
-              onClick={() => setView('raw')}
-              className={`px-3 py-2 font-medium ${view === 'raw' ? 'bg-gray-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-            >Raw</button>
-          </div>
-        )}
-        <div className="text-xs text-gray-500 shrink-0">
-          {filtered.length} / {segments.length} segments
-        </div>
-      </div>
-      <p className="text-xs text-gray-500">
-        {canCorrect && view === 'corrected'
-          ? <>Spelling-corrected view — names normalized to the reviewed spellings. The raw ASR (record of truth, {transcript.vendor}) is unchanged — switch to “Raw” to see it.</>
-          : <>Record of truth — verbatim ASR output ({transcript.vendor}). Never edited by AI.</>}
-      </p>
-      {roles.size > 0 && (
-        <p className="text-xs text-gray-500">
-          Audit overlay: <span className="font-bold text-gray-900">bold</span> = extracted question · <span className="font-bold italic text-gray-900">bold italic</span> = answer · plain = not extracted into a Q&amp;A pair.
-        </p>
-      )}
-      {hasStereo && (
-        <p className="text-xs text-gray-500">
-          Stereo mics: <span className="text-gray-800">{channelLabels?.[0]?.trim() || 'Mic 1 · L'} (plain)</span> · <span className="italic text-indigo-700">{channelLabels?.[1]?.trim() || 'Mic 2 · R'} (italic, colored)</span> — each line is colored by its source microphone.
-          {collisions.size > 0 && <> A <span className="underline decoration-wavy decoration-amber-500 underline-offset-2">wavy underline</span> marks where both mics spoke at once (crosstalk) — words there may overlap or garble.</>}
-        </p>
-      )}
-      <ol className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto pr-2">
-        {filtered.map((s, i) => (
-          <li key={i} id={`seg-${s.start}`} className="py-2 text-sm flex items-start gap-3 group scroll-mt-24">
-            <button
-              type="button"
-              onClick={() => onPlay(s.start, s.end, s.text.slice(0, 80))}
-              title="Play from here"
-              className="font-mono text-xs text-gray-400 hover:text-orange-600 w-14 shrink-0 pt-0.5 text-left"
-            >
-              ▶ {formatTime(s.start)}
-            </button>
-            {(() => {
-              const ch = typeof s.channel === 'number' ? s.channel : null
-              const named = s.speaker ? names[String(s.speaker)]?.trim() : undefined
-              const chName = ch !== null ? channelLabels?.[ch]?.trim() : undefined
-              const primary = named || chName || s.speaker   // assigned name → named mic → raw label
-              if (!primary && ch === null) return null
-              return (
-                <span className="w-20 shrink-0 pt-0.5 flex flex-col gap-0.5">
-                  {primary && <span className={`text-xs font-semibold truncate ${chName ? (ch === 0 ? 'text-gray-700' : 'text-indigo-700') : 'text-gray-500'}`} title={primary}>{primary}</span>}
-                  {ch !== null && (
-                    <span className={`text-[10px] font-medium ${ch === 0 ? 'text-gray-500' : 'text-indigo-600'}`} title="Source microphone (stereo split)">
-                      {micLabel(ch)}
-                    </span>
-                  )}
-                </span>
-              )
-            })()}
-            {(() => {
-              const role = roles.get(s.start)
-              const weight = role === 'question' ? 'font-bold' : role === 'answer' ? 'font-bold italic' : ''
-              // Stereo split: Mic 1 (L) stays plain dark; Mic 2 (R) is colored +
-              // italic, so the two mics are separable at a glance. Mono = unchanged.
-              const ch = typeof s.channel === 'number' ? s.channel : null
-              const color = ch === null ? (role ? 'text-gray-900' : 'text-gray-800')
-                : ch === 0 ? 'text-gray-800' : 'text-indigo-700'
-              const chItalic = ch !== null && ch !== 0 ? 'italic' : ''
-              // Both mics spoke over each other here → wavy amber underline so the
-              // reader knows any garble is crosstalk, not a transcription error.
-              const collision = collisions.has(s.start)
-              const cls = [weight, chItalic, color, collision ? 'underline decoration-wavy decoration-amber-500 underline-offset-2' : ''].filter(Boolean).join(' ')
-              return <span className={cls} title={collision ? 'Both mics were speaking at once here — words may overlap or garble (crosstalk).' : undefined}>{highlight(s.text, search)}</span>
-            })()}
-          </li>
-        ))}
-      </ol>
+      <TranscriptReview
+        recordingId={recordingId}
+        segments={segments}
+        speakerNames={speakerNames}
+        channelLabels={channelLabels}
+        canEdit={canEdit}
+        editable={canEdit}
+        entityMap={entityMap}
+        roles={roles}
+        onPlay={onPlay}
+        saveHint="Transcript saved. Re-run Q&amp;A (↻ Re-transcribe or re-analyze) to apply these edits to the extracted pairs."
+      />
     </div>
   )
 }
@@ -2920,34 +2745,9 @@ function formatTime(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-// Source-mic label for a stereo (split-mic) transcript segment. Channel 0 = the
-// Left transmitter, 1 = Right; beyond that just number them.
-function micLabel(channel: number): string {
-  if (channel === 0) return 'Mic 1 · L'
-  if (channel === 1) return 'Mic 2 · R'
-  return `Mic ${channel + 1}`
-}
-
 function formatDuration(sec: number): string {
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   if (h > 0) return `${h}h ${m}m`
   return `${m}m`
-}
-
-function highlight(text: string, query: string): React.ReactNode {
-  const q = query.trim()
-  if (!q) return text
-  const lower = text.toLowerCase()
-  const ql = q.toLowerCase()
-  const parts: React.ReactNode[] = []
-  let i = 0
-  while (i < text.length) {
-    const idx = lower.indexOf(ql, i)
-    if (idx < 0) { parts.push(text.slice(i)); break }
-    if (idx > i) parts.push(text.slice(i, idx))
-    parts.push(<mark key={idx} className="bg-yellow-200 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>)
-    i = idx + q.length
-  }
-  return parts
 }

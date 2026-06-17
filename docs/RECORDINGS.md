@@ -402,6 +402,13 @@ processRecordingWorkflow:  queued → extracting → transcribing → transcribe
 analyzeRecordingWorkflow:  transcribed → analyzing → complete                 ← user-triggered
 ```
 
+**Transcript review at the gate.** The gate (`GeneratePanel`, `StatusClient.tsx`) carries a collapsible **"Review & correct transcript"** panel that lazily fetches segments via `GET /api/recordings/[id]/transcript` (the polled `GET /[id]` route deliberately omits segments — too big). It renders the shared `components/recordings/TranscriptReview.tsx`, which is the same surface as the report's Transcript tab. The owner/admin can correct three things **before** the paid extraction runs — and because `analyzeRecordingWorkflow` re-reads `recording_transcripts` at run time, all three feed the first analysis pass:
+- **Speaker names** (label → human name) → `recordings.speaker_names` via `POST /speaker-names`. `applySpeakerNames` rewrites the diarized labels before the Opus prompt sees them, so asker/panelist attribution uses the confirmed names.
+- **Verbatim text** (fix ASR word errors) and **speaker reassignment** (a mislabeled segment → a different diarized speaker) → `recording_transcripts.segments` via `PATCH /api/recordings/[id]/transcript` (`{ edits: [{ index, text?, speaker? }] }`; recomputes `word_count`, raw ASR preserved in `raw_response`). Owner/admin only.
+- **Entity spellings** (`recordings.entity_map`) — still its own gate control; feeds the polish pass only (not extraction).
+
+The same `TranscriptReview` (with `editable`) also runs in the report Transcript tab post-analysis; there a save surfaces a "re-run Q&A to apply" hint since extraction has already happened.
+
 Gate 2 (the polished/formatted report + PDF deliverable, § 4.5) is likewise on-demand by design — it is a separate user-invoked export route, never produced automatically as part of the pipeline.
 
 ### 3.2 Upload (browser → Supabase Storage)

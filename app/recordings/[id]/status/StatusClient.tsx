@@ -11,7 +11,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AddRecordingClient from '../AddRecordingClient'
-import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry } from '@/lib/recordings/types'
+import TranscriptReview from '@/components/recordings/TranscriptReview'
+import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry, TranscriptSegment } from '@/lib/recordings/types'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -548,6 +549,72 @@ function inferFailedStepIdx(data: StatusResponse | null): number {
 // pass. Editing here is intentionally lightweight: one topic per line, one
 // "Name — role" per line — full structured editing lives on the report page's
 // re-extract flow once pairs exist.
+// Pre-extraction transcript review (the "full review surface"). Collapsible so
+// it doesn't dominate the gate; lazily fetches segments (GET /transcript) on
+// first open since they're large. Edits persist to recording_transcripts and
+// feed the first Q&A pass — analyzeRecordingWorkflow re-reads the transcript.
+function GateTranscriptReview({ recordingId }: { recordingId: string }) {
+  const [open, setOpen] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [segments, setSegments] = useState<TranscriptSegment[]>([])
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string> | null>(null)
+  const [channelLabels, setChannelLabels] = useState<string[] | null>(null)
+  const [canEdit, setCanEdit] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const toggle = async () => {
+    const next = !open
+    setOpen(next)
+    if (next && !loaded && !loading) {
+      setLoading(true)
+      setErr(null)
+      try {
+        const r = await fetch(`/api/recordings/${recordingId}/transcript`)
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) { setErr(d?.error || `Couldn't load transcript (${r.status})`); return }
+        setSegments((d.transcript?.segments ?? []) as TranscriptSegment[])
+        setSpeakerNames(d.speaker_names ?? null)
+        setChannelLabels(d.channel_labels ?? null)
+        setCanEdit(d.can_edit === true)
+        setLoaded(true)
+      } catch {
+        setErr('Network error loading transcript')
+      } finally {
+        setLoading(false)
+      }
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50">
+      <button type="button" onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
+        <span>📝 Review &amp; correct transcript <span className="font-normal text-gray-500">— fix names, wording, or mislabeled speakers before extraction</span></span>
+        <span className="text-gray-400">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          {loading && <p className="text-sm text-gray-500">Loading transcript…</p>}
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          {loaded && !err && (
+            segments.length === 0
+              ? <p className="text-sm text-gray-500">No transcript segments to review.</p>
+              : <TranscriptReview
+                  recordingId={recordingId}
+                  segments={segments}
+                  speakerNames={speakerNames}
+                  channelLabels={channelLabels}
+                  canEdit={canEdit}
+                  editable
+                />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GeneratePanel({
   recordingId, sessionType, setupInputs, meetingProfile, phaseMap, entityMap, durationSec, onStarted,
 }: {
@@ -700,6 +767,8 @@ function GeneratePanel({
         is billed (about <strong>$50</strong>), and takes a few minutes. It replaces any existing Q&amp;A — you can re-generate later.
         <span className="block mt-1 text-amber-700">“Finish without Q&amp;A” skips that pass and just closes out the transcript (no Q&amp;A charge).</span>
       </div>
+
+      <GateTranscriptReview recordingId={recordingId} />
 
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={draft} onChange={e => setDraft(e.target.checked)} disabled={busy} className="mt-0.5 rounded" />

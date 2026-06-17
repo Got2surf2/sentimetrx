@@ -109,3 +109,15 @@
 - A3: `analyzeRecording` applies `speaker_names` to segments before the prompt (`applySpeakerNames`), so `formatTranscript`'s `speaker:` prefix carries the real name → asker/panelist attribution uses confirmed labels. Threaded via `runAnalyze` + `reanalyzeRecording` (+ select speaker_names).
 
 **Verify**: typecheck clean. RECORDINGS.md updated. Local, unpushed. (Gate-side transcript+speaker review is the next chunk.)
+
+## 2026-06-17 — Town Hall: full transcript review at the gate (shared component) + segment edit API
+
+**Why**: Closing the loop on the previous entry's "next chunk." The transcribed gate let users tweak agenda/panel/entity-spellings/split, but the two corrections that most affect extraction quality — **speaker labels** (asker/panelist attribution) and **verbatim ASR errors** (what gets extracted) — weren't fixable there. They were only correctable post-analysis in the report, which means a wrong transcript shipped into the first (paid) Opus+Sonnet pass. The gate is the right home: correct first, extract once.
+
+**What changed**:
+- `GET+PATCH /api/recordings/[id]/transcript` — GET returns segments + speaker_names + channel_labels + `can_edit` (org-scoped read, admin-org sees all; segments omitted from the polled `GET /[id]` for size). PATCH applies `{ edits: [{ index, text?, speaker? }] }` to `recording_transcripts.segments` in place (raw ASR preserved in `raw_response`), recomputes `word_count`. Owner/admin only.
+- `components/recordings/TranscriptReview.tsx` — extracted the report Transcript-tab segment list + speaker-naming into one shared component; added an `editable` mode (inline verbatim textareas + per-segment speaker-reassignment dropdown, batched save). Keeps the report features (corrected/raw entity toggle, audit overlay `roles`, stereo/crosstalk) as optional props.
+- `ReportClient.tsx` — Transcript tab now renders `<TranscriptReview editable>` (kept the re-transcribe + entity-spelling panels as siblings); a save there shows a "re-run Q&A to apply" hint. Removed the now-orphaned local `micLabel`/`highlight` and the `buildReplacements`/`normalizeSegments` import.
+- `StatusClient.tsx` — `GeneratePanel` gains a collapsible "Review & correct transcript" panel (lazy GET on first open) rendering `<TranscriptReview editable>`. Edits persist to `recording_transcripts` before "Generate Q&A"; `analyzeRecordingWorkflow` re-reads the transcript at run time, so corrections feed the first extraction pass with no extra wiring.
+
+**Verify**: `npm run typecheck` clean. RECORDINGS.md § 5.3 (Gate 1) updated. Local, unpushed. NOWOCATS #2's hand-recovered transcript is safe to edit (in-place, raw_response untouched) but must still not be re-transcribed.
