@@ -134,17 +134,19 @@ export async function renderRecordingReportPdf(
   try {
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'load' })
+    const generatedAt = new Date().toLocaleString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
+    }) + ' UTC'
     const pdf = await page.pdf({
       format: 'letter',                 // 8.5 × 11 in
       printBackground: true,
-      // Margins live here (not CSS @page) so the bottom band is reserved for the
-      // repeated footer. Footer carries the Datanautix wordmark + meeting name +
-      // page X of Y on every page. headerTemplate is emptied to suppress
-      // Chromium's default date/title header.
+      // Margins live here (not CSS @page) so the header/footer bands are reserved
+      // on every page. Header: "powered by datanautix" (top-right). Footer:
+      // generated-at timestamp (left) · meeting name (center) · page X of Y (right).
       displayHeaderFooter: true,
-      headerTemplate: '<div></div>',
-      footerTemplate: pageFooterTemplate(rec.name || 'Town Hall'),
-      margin: { top: '14mm', bottom: '16mm', left: '1in', right: '1in' },
+      headerTemplate: pageHeaderTemplate(),
+      footerTemplate: pageFooterTemplate(rec.name || 'Town Hall', generatedAt),
+      margin: { top: '16mm', bottom: '16mm', left: '1in', right: '1in' },
     })
     const fileName = (rec.name || 'Town_Hall').replace(/[^\w.-]+/g, '_') + '_Report.pdf'
     return { buffer: Buffer.from(pdf), fileName }
@@ -153,20 +155,34 @@ export async function renderRecordingReportPdf(
   }
 }
 
-// Repeated per-page footer for page.pdf(). Chromium renders footerTemplate at
-// font-size 0 unless set explicitly, so every size/color is inline. Datanautix
-// wordmark (data=teal, nautix=orange) per CLAUDE.md, meeting name centered, and
-// the built-in pageNumber/totalPages spans on the right.
-function pageFooterTemplate(name: string): string {
-  const safe = String(name)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const FOOT_FONT = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
+// Datanautix wordmark — data=teal, nautix=orange, per CLAUDE.md (one word, no
+// separator). Reused in the header.
+const DN_WORDMARK = `<span style="font-weight:800;"><span style="color:#1FA8A8">data</span><span style="color:#F07040">nautix</span></span>`
+
+function escFooter(s: string): string {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// Repeated per-page header for page.pdf() — "powered by datanautix", top-right.
+// Chromium renders header/footer templates at font-size 0 unless set, so sizes
+// are inline; side padding matches the 1in body margin so it aligns right.
+function pageHeaderTemplate(): string {
   return (
-    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;`
-    + `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;`
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;text-align:right;${FOOT_FONT};">`
+    + `powered by ${DN_WORDMARK}`
+    + `</div>`
+  )
+}
+
+// Repeated per-page footer: generated-at timestamp (left) · meeting name
+// (center, ellipsized) · page X of Y (right).
+function pageFooterTemplate(name: string, timestamp: string): string {
+  return (
+    `<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 1in;${FOOT_FONT};`
     + `display:flex;align-items:center;justify-content:space-between;">`
-    + `<span style="font-weight:800;white-space:nowrap;">`
-    + `<span style="color:#1FA8A8">data</span><span style="color:#F07040">nautix</span></span>`
-    + `<span style="flex:1;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe}</span>`
+    + `<span style="white-space:nowrap;">${escFooter(timestamp)}</span>`
+    + `<span style="flex:1;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escFooter(name)}</span>`
     + `<span style="white-space:nowrap;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>`
     + `</div>`
   )

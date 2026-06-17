@@ -142,3 +142,13 @@
 - `reportPdf.ts` — `page.pdf` format `a4` → `letter`; left/right margins → `1in` (top `14mm` / bottom `16mm` unchanged); footer template side padding `12mm` → `1in` so it stays aligned with the body.
 
 **Verify**: typecheck clean. Re-rendered a Letter sample with real Chrome (throwaway, removed) — 1" side margins + footer correct. RECORDINGS.md §4.5 + §5.3 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall PDF: running header ("powered by datanautix") + restructured footer
+
+**Why**: Owner wanted Datanautix branding promoted to a top-right page header, and the footer reorganized to timestamp / title / page-number.
+
+**What changed** (`reportPdf.ts` only):
+- Header template (was empty): "powered by datanautix" (wordmark teal/orange), top-right, every page. Top margin 14mm → 16mm to seat it without overlapping content.
+- Footer template: dropped the left wordmark; now generated-at timestamp (left, `new Date()` formatted UTC) · meeting name (center, ellipsized) · "Page N of M" (right). Shared `DN_WORDMARK`/`FOOT_FONT`/`escFooter` helpers.
+
+**Verify**: typecheck clean. Rendered a Letter sample with real Chrome (throwaway, removed) — header sits top-right clear of the title, footer shows timestamp/title/page across the band. RECORDINGS.md §4.5 updated. Local, unpushed.
