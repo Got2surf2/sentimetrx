@@ -32,6 +32,7 @@ export interface RecordingForPdf {
   name: string
   meeting_date: string | null
   location: string | null
+  setup_inputs?: unknown          // panel roster is pulled from here for the first-page context
   analysis_summary: unknown
   proceedings_summary?: unknown
   entity_map: unknown
@@ -64,7 +65,7 @@ function localChromePath(): string | null {
 export async function renderRecordingReportPdf(
   service: SupabaseClient,
   rec: RecordingForPdf,
-  opts: { includeTranscript: boolean },
+  opts: { includeTranscript: boolean; timezone?: string | null },
 ): Promise<{ buffer: Buffer; fileName: string }> {
   const { includeTranscript } = opts
 
@@ -92,10 +93,15 @@ export async function renderRecordingReportPdf(
       }
     : null
 
+  const panel = (((rec.setup_inputs ?? {}) as { panel?: Array<{ name?: string; role?: string }> }).panel ?? [])
+    .filter(p => p?.name)
+    .map(p => ({ name: String(p.name), role: p.role ? String(p.role) : undefined }))
+
   const html = renderTownHallReportHtml({
     name: rec.name,
     meeting_date: rec.meeting_date,
     location: rec.location,
+    panel,
     summary: (rec.analysis_summary ?? null) as RecordingAnalysisSummary | null,
     proceedings: (rec.proceedings_summary ?? null) as ProceedingsSummary | null,
     pairs: (extractionsRes.data ?? []) as unknown as Array<
@@ -134,9 +140,13 @@ export async function renderRecordingReportPdf(
   try {
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'load' })
+    // Generated-at stamp in the viewer's local timezone (passed from the
+    // browser); falls back to the server zone if absent. timeZoneName prints the
+    // abbreviation (e.g. EDT) so there's no ambiguity.
     const generatedAt = new Date().toLocaleString('en-US', {
-      year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
-    }) + ' UTC'
+      year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      timeZoneName: 'short', ...(opts.timezone ? { timeZone: opts.timezone } : {}),
+    })
     const pdf = await page.pdf({
       format: 'letter',                 // 8.5 × 11 in
       printBackground: true,
@@ -146,7 +156,7 @@ export async function renderRecordingReportPdf(
       displayHeaderFooter: true,
       headerTemplate: pageHeaderTemplate(),
       footerTemplate: pageFooterTemplate(rec.name || 'Town Hall', generatedAt),
-      margin: { top: '16mm', bottom: '16mm', left: '1in', right: '1in' },
+      margin: { top: '18mm', bottom: '18mm', left: '1in', right: '1in' },
     })
     const fileName = (rec.name || 'Town_Hall').replace(/[^\w.-]+/g, '_') + '_Report.pdf'
     return { buffer: Buffer.from(pdf), fileName }

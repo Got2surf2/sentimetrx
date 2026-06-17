@@ -23,12 +23,20 @@ import { renderRecordingReportPdf } from '@/lib/recordings/reportPdf'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
+function isValidTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || !tz) return false
+  try { Intl.DateTimeFormat('en-US', { timeZone: tz }); return true } catch { return false }
+}
+
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const recording_id = (await ctx.params).id
   if (!recording_id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
 
   const body = await req.json().catch(() => ({}))
   const includeTranscript = body?.includeTranscript === true
+  // Browser-supplied IANA timezone so the footer's generated-at stamp reads in
+  // the viewer's local time (the server runs UTC). Validated against Intl.
+  const timezone = isValidTimeZone(body?.tz) ? (body.tz as string) : null
 
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
@@ -38,7 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, name, meeting_date, location, status, analysis_summary, proceedings_summary, entity_map, source_duration_sec, analysis_org, analysts, objectives, confidentiality_class, signoff, analyzed_config_version, draft')
+    .select('id, org_id, name, meeting_date, location, setup_inputs, status, analysis_summary, proceedings_summary, entity_map, source_duration_sec, analysis_org, analysts, objectives, confidentiality_class, signoff, analyzed_config_version, draft')
     .eq('id', recording_id)
     .single()
   // 404 (not 403) on cross-org so we don't confirm the row exists. THE gate.
@@ -53,7 +61,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   try {
-    const { buffer, fileName } = await renderRecordingReportPdf(service, rec, { includeTranscript })
+    const { buffer, fileName } = await renderRecordingReportPdf(service, rec, { includeTranscript, timezone })
 
     // Fire-and-forget download log for /admin/decks + DD parity.
     void logDeckDownload('recording-pdf-report', rec.name)

@@ -2169,7 +2169,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
       const res = await fetch(`/api/recordings/${recordingId}/report/pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ includeTranscript }),
+        body: JSON.stringify({ includeTranscript, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))

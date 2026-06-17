@@ -164,3 +164,14 @@
 - Wiring: `GET /transcript` returns `roster_speakers` (panel + speakers names, deduped); `GateTranscriptReview` and the report's `TranscriptTab` pass it through.
 
 **Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.
+
+## 2026-06-17 — Town Hall PDF fixes: no header/footer bleed, local-time stamp, first-page panel context
+
+**Why**: Reported issues on the exported PDF — (1) content bled under the running header/footer on dense pages, (2) the footer timestamp was UTC not the viewer's local time, (3) the first page jumped straight into Q&A with no meeting context.
+
+**What changed**:
+- **Bleed fix** (`reportHtml.ts`): removed the `@page{margin:0}` rule. It overrode the `page.pdf` `margin` option, so content used the full page height while the header/footer still drew in the reserved bands → overlap. Margins are now owned solely by `page.pdf` (`18mm` top/bottom, `1in` sides).
+- **Local time** (`reportPdf.ts` + `report/pdf` route + `ReportClient`): the browser posts its IANA `tz`; the route validates it (Intl) and threads it to the renderer, which stamps the footer in local time with a zone abbrev (e.g. `10:11 AM EDT`). Email path falls back to server zone. `report/send` select also gains `setup_inputs` for parity.
+- **First-page context** (`reportHtml.ts`): added a **Panel** chip row (name + role from `setup_inputs.panel`) to the header block, alongside the existing date·location, objectives, and Overview summary — all before the Q&A.
+
+**Verify**: typecheck clean. Rendered a 7-page Letter sample with real Chrome (throwaway, removed): header/footer clear of content on dense pages, footer shows local time, page 1 shows panel chips + date/location + summary. RECORDINGS.md §4.5 updated. Local, unpushed.

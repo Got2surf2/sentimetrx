@@ -19,6 +19,7 @@ import type {
   RecordingExtractionRow,
   TranscriptSegment,
   EntityMap,
+  PanelMember,
 } from '@/lib/recordings/types'
 import { normalizeSegments } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
@@ -55,6 +56,8 @@ export interface TownHallReportInput {
   name: string
   meeting_date: string | null
   location: string | null
+  /** Panel roster (setup_inputs.panel) — printed on the first page for context. */
+  panel?: PanelMember[]
   summary: RecordingAnalysisSummary | null
   /** Presentation/meeting-notes summary — rendered above the Q&A when present. */
   proceedings?: ProceedingsSummary | null
@@ -193,6 +196,11 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
   const objHtml = (input.objectives?.summary || (input.objectives?.questions?.length ?? 0) > 0)
     ? `<div class="objectives"><div class="label">Objectives</div>${input.objectives?.summary ? `<p style="margin:0 0 4px">${esc(input.objectives.summary)}</p>` : ''}${(input.objectives?.questions?.length ?? 0) > 0 ? `<ul style="margin:0;padding-left:18px">${input.objectives!.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}</div>`
     : ''
+  // Panel roster — first-page context so readers know who's answering. Chips
+  // (name + role), mirrors the presentation key-figure chip style.
+  const panelHtml = (input.panel?.length ?? 0) > 0
+    ? `<div class="panel-box"><div class="label">Panel</div><div class="panel-list">${input.panel!.filter(p => p.name).map(p => `<span class="pm"><span class="pmn">${esc(p.name)}</span>${p.role ? `<span class="pmr">${esc(p.role)}</span>` : ''}</span>`).join('')}</div></div>`
+    : ''
 
   const topics = order
     .map(topic => {
@@ -232,10 +240,10 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
 
   return (
     `<!doctype html><html><head><meta charset="utf-8"><style>` +
-    // Page margins are owned by the PDF renderer's `margin` option (it reserves
-    // the bottom band for the repeated footer); keep @page at 0 so they don't
-    // stack. See lib/recordings/reportPdf.ts.
-    `@page{margin:0}` +
+    // Page margins are owned entirely by the PDF renderer's `margin` option,
+    // which reserves the top/bottom bands for the running header/footer. Do NOT
+    // set an @page margin here — a competing rule (esp. margin:0) makes content
+    // use the full page height and bleed under the header/footer on dense pages.
     `*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
     `body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:${INK};margin:0;background:#fff;font-size:14px;line-height:1.5}` +
     `.wrap{max-width:720px;margin:0 auto;padding:8px 0 24px}` +
@@ -275,9 +283,14 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     `.caption{font-size:12px;color:${MUTE};margin:0 0 12px}` +
     `.tx .seg{font-size:13px;line-height:1.55;color:${BODY};margin:0 0 8px}` +
     `.spk{display:inline-block;font-weight:700;color:${MUTE};margin-right:6px}` +
+    `.panel-box{margin:14px 0 0}` +
+    `.panel-list{display:flex;flex-wrap:wrap;gap:6px}` +
+    `.pm{display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border:1px solid ${LINE};border-radius:8px;background:#f8fafc;font-size:12px}` +
+    `.pmn{font-weight:700;color:${INK}}` +
+    `.pmr{color:${MUTE}}` +
     draftCss +
     `</style></head><body>` + draftWm + `<div class="wrap">` +
-    `<header><div class="eyebrow">${eyebrow}</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${objHtml}${draftBanner}</header>` +
+    `<header><div class="eyebrow">${eyebrow}</div><h1>${esc(input.name)}</h1>${meta ? `<p class="sub">${esc(meta)}</p>` : ''}<p class="sub" style="font-size:11px">${preparedBits}</p>${panelHtml}${objHtml}${draftBanner}</header>` +
     notes +
     overview +
     timeline +
