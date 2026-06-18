@@ -12,6 +12,12 @@
 
 **Verify**: typecheck clean, 875 tests pass. Rendered the PDF locally and eyeballed all 15 pages; fixed two overflow bugs (slide 3 headline wrap, slide 11 quote/footer collision). Local, unpushed. NOTE: prod PDF render depends on Google Fonts being reachable from the serverless function — confirm on first prod download.
 
+## 2026-06-18 — Admin decks: group + filter by audience
+
+**Why**: The decks list grew to 15 in a flat column — hard to scan. Group by audience and let the user filter.
+
+**What changed** (`app/admin/decks/DecksClient.tsx`): decks now render in three sections — **Investor** (5), **Technical & Diligence** (2), **Client & Prospect** (8) — each with a colored heading + count, plus a row of filter pills (All / per-category) to narrow the view. Categorization is a `logKey → DeckCategory` map (`CATEGORY_OF`) with a `'client'` fallback, so adding a deck doesn't force an edit here. Cards unchanged. Typecheck clean; not separately render-verified (admin page needs auth).
+
 ## 2026-06-16 — Surveys: AI clarifier re-asked detail the respondent already gave on an earlier question
 
 **Why**: A tester rated the experience "good", was asked "what could be done better" and answered "the pacing was slow throughout the meal"; later on the "good, bad and the ugly" open-end they said "Just the slow pacing I mentioned earlier" and the clarifier asked them to expand on it — detail they'd already provided. Root cause was not missing data: the client sent earlier answers as a bare `priorAnswers` map keyed `q1`/`q3` with **no question text**, so the model couldn't tell what each answer was responding to, and an over-eager "always follow up on short answers" rule fired on the back-reference.

@@ -4,6 +4,7 @@
 // Investor & strategy deck downloads — one-click PPTX generation.
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 const HERMES = '#E8632A'
 
@@ -188,6 +189,37 @@ const DECKS: Deck[] = [
   },
 ]
 
+// ── Deck taxonomy ─────────────────────────────────────────────────────────────
+// Grouped by audience so the list stays navigable as decks accumulate. Mapped by
+// logKey (not a per-entry field) so adding a deck above doesn't force a touch
+// here — an unmapped deck falls into 'client' and still renders.
+type DeckCategory = 'investor' | 'technical' | 'client'
+
+const CATEGORIES: { key: DeckCategory; label: string; accent: string }[] = [
+  { key: 'investor',  label: 'Investor',              accent: '#00B4D8' },
+  { key: 'technical', label: 'Technical & Diligence', accent: '#0D2B45' },
+  { key: 'client',    label: 'Client & Prospect',     accent: '#E8632A' },
+]
+
+const CATEGORY_OF: Record<string, DeckCategory> = {
+  'pitch-deck': 'investor',
+  'pitch-deck-v2': 'investor',
+  'rollup-deck:short': 'investor',
+  'rollup-deck:long': 'investor',
+  'project-insight-deck': 'investor',
+  'architecture-deck': 'technical',
+  'engineering-reality-deck': 'technical',
+  'restaurant-expansion-deck:darden': 'client',
+  'restaurant-expansion-deck:bloomin': 'client',
+  'pulseiq-deck': 'client',
+  'mco-listening-deck': 'client',
+  'nowocats-approach-deck': 'client',
+  'review-intelligence-deck:full': 'client',
+  'review-intelligence-deck:alerts': 'client',
+  'review-intelligence-deck:capability': 'client',
+}
+const catOf = (d: Deck): DeckCategory => CATEGORY_OF[d.logKey] ?? 'client'
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -218,6 +250,7 @@ export default function DecksClient({
   tableStatus: 'ok' | 'missing' | 'error'
 }) {
   const router = useRouter()
+  const [filter, setFilter] = useState<'all' | DeckCategory>('all')
   // After a download click, give the file a moment to start, then re-query
   // the server component so the "Last downloaded" timestamp updates.
   const onDownload = () => {
@@ -229,23 +262,58 @@ export default function DecksClient({
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Investor &amp; Client Presentations</h1>
         <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-          Server-generated PPTX. Each deck rebuilds on every download — content updates immediately when the underlying route changes.
+          Server-generated PPTX / PDF, grouped by audience. Each deck rebuilds on every download — content updates immediately when the underlying route changes.
         </p>
       </div>
 
       <ActivityStrip totalDownloads={totalDownloads} tableStatus={tableStatus} />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {DECKS.map(deck => (
-          <DeckCard
-            key={deck.href}
-            deck={deck}
-            lastDownloaded={lastDownloaded[deck.logKey]}
-            lastUpdated={lastUpdated[deck.logKey] ?? null}
-            onDownload={onDownload}
-          />
-        ))}
+      {/* Filter by audience */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
+        {([['all', 'All', '#374151', DECKS.length] as const,
+           ...CATEGORIES.map(c => [c.key, c.label, c.accent, DECKS.filter(d => catOf(d) === c.key).length] as const),
+          ]).map(([key, label, accent, n]) => {
+          const active = filter === key
+          return (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${active ? accent : '#e5e7eb'}`,
+                background: active ? accent : 'white', color: active ? 'white' : '#4b5563',
+              }}
+            >
+              {label} <span style={{ opacity: 0.7 }}>{n}</span>
+            </button>
+          )
+        })}
       </div>
+
+      {CATEGORIES.filter(c => filter === 'all' || c.key === filter).map(cat => {
+        const decks = DECKS.filter(d => catOf(d) === cat.key)
+        if (!decks.length) return null
+        return (
+          <section key={cat.key} style={{ marginBottom: 28 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: cat.accent }} />
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: '#111827', textTransform: 'uppercase', letterSpacing: 1.5 }}>{cat.label}</h2>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{decks.length} {decks.length === 1 ? 'deck' : 'decks'}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {decks.map(deck => (
+                <DeckCard
+                  key={deck.href}
+                  deck={deck}
+                  lastDownloaded={lastDownloaded[deck.logKey]}
+                  lastUpdated={lastUpdated[deck.logKey] ?? null}
+                  onDownload={onDownload}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
 
       <div style={{ marginTop: 28, padding: '14px 18px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: HERMES, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>
