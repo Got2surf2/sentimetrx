@@ -1,5 +1,18 @@
 # 2026-W25 — Dev log (Week of Jun 15 to Jun 21)
 
+## 2026-06-18 — Engineering Reality Check deck: bring current + reposition
+
+**Why**: The peer-review deck was anchored to "Mar 1 → ~9 weeks" and listed zero-tests / no-CI / in-memory-rate-limit as the headline gaps — all since resolved — and omitted the Town Hall product. Also needed a sharper positioning: not a consolidation play, but a Claude-spined stack solving real, well-understood problems, with funding used to harden scalability + enterprise usability.
+
+**What changed** (`app/api/engineering-reality-deck/route.ts`, `app/admin/decks/DecksClient.tsx`):
+- **Current numbers** (verified from the repo today): ~16 weeks, 2,428 commits, 903 TS files / ~193K lines, Next.js 16, 126 SQL migrations, 31 spec docs.
+- **Discipline** now reflects reality: 875 tests + CI on every push (`.github/workflows/ci.yml`), RLS + cross-org egress suites, k6 + Playwright load suites, Postgres-backed rate limiter. The three former "big gaps" moved here.
+- **Gaps / Risks / Hardening** reframed to what's actually left — compliance (SOC 2 / GDPR), mutation audit trail, pen-test/SAST, cost-cap enforcement — "investment, not bugs."
+- **What Got Built** adds the Town Hall product (13 modules; dropped per-module line figures rather than fabricate new splits); 4-col grid.
+- **New positioning slide** ("Anyone can build a tool now. We solve real problems."): 20 years across platforms (12 in NLP/NLU), Claude-spined stack, known pain points, real customers; initial funding → scalability + enterprise usability; roll-up demoted to upside. Cover subtitle + admin card updated to match.
+
+**Verify**: typecheck clean. Not standalone-renderable (route's auth import chain needs the Next runtime); eyeball via /admin/decks download. Local, unpushed.
+
 ## 2026-06-18 — Investor deck: founder-origin slide + warm-editorial PDF variant (Anthology Fund)
 
 **Why**: Prepping the Menlo × Anthropic Anthology Fund application. Two needs: (1) the deck should open with the founder's 40-year AI arc (1986 OSU LAIR under Dr. B. Chandrasekaran → Bell Labs → 2000 consumer insights → 2014 consultancy→tech pivot → Claude as the unlock), and (2) a design-forward deck that does NOT read as the default LLM/pptxgenjs chip-grid look, matching datanautix.com's brand.

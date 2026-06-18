@@ -95,10 +95,10 @@ function addTitleSlide(pptx: any) {
   s.addText('DATANAUTIX', { x: 0.8, y: 1.4, w: 11, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 2 })
   s.addText('Engineering Reality Check', { x: 0.8, y: 2.1, w: 11, h: 1.0, fontSize: 40, fontFace: 'Arial', color: DN.white, bold: true })
   s.addShape('rect', { x: 0.8, y: 3.2, w: 4.5, h: 0.04, fill: { color: DN.gold } })
-  s.addText('What we built, how we built it, and what is missing — for peer review', {
+  s.addText('A Claude-spined stack solving real, well-understood problems — an honest engineering peer review', {
     x: 0.8, y: 3.4, w: 11, h: 0.6, fontSize: 16, fontFace: 'Arial', color: DN.sarinaBlue, italic: true,
   })
-  s.addText('Built March 1, 2026 → present  ·  ~9 weeks  ·  1 operator + AI-assisted engineering  ·  on top of 12 years of NLP / NLU domain expertise', {
+  s.addText('Built March 1, 2026 → present  ·  ~16 weeks  ·  1 operator + AI-assisted engineering  ·  on top of 12 years of NLP / NLU domain expertise', {
     x: 0.8, y: 4.3, w: 11, h: 0.6, fontSize: 13, fontFace: 'Arial', color: DN.white, lineSpacing: 20,
   })
   s.addText(`Last updated  ${lastUpdated}     ·     Downloaded  ${downloaded}`, {
@@ -117,15 +117,15 @@ function addTitleSlide(pptx: any) {
 // ── 1. The Frame ───────────────────────────────────────────────────────────
 function slideTheFrame(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, '9 weeks. One operator. AI-assisted.')
+  addHeader(s, '~16 weeks. One operator. AI-assisted.')
   addFooter(s, pg)
 
   // Four big anchor stats
   const stats = [
-    { v: '9 wk',  l: 'Mar 1, 2026 → today' },
-    { v: '1,624', l: 'commits' },
+    { v: '16 wk', l: 'Mar 1 → Jun 18, 2026' },
+    { v: '2,428', l: 'commits' },
     { v: '12 yr', l: 'NLP / NLU practice' },
-    { v: '~83K',  l: 'lines of TypeScript' },
+    { v: '~193K', l: 'lines of TypeScript' },
   ]
   stats.forEach((stat, i) => {
     const x = 0.5 + i * 3.15
@@ -149,50 +149,101 @@ function slideTheFrame(pptx: any, pg: number) {
 `Open by setting the frame clearly. This is NOT a pitch. It's a peer review.
 
 Cover the four anchor stats:
-- ~9 WEEKS: first commit March 1, 2026. So when I say "built recently" — that's what I mean.
-- 1,624 COMMITS: dense work, lots of iteration.
+- ~16 WEEKS: first commit March 1, 2026. So when I say "built recently" — that's what I mean.
+- 2,428 COMMITS: dense work, lots of iteration.
 - 12 YEARS of NLP/NLU: this is the part that matters. The design judgment, the data model, every architectural decision came from that experience — not from AI.
-- ~83K LINES of TypeScript: production scale, not prototype.
+- ~193K LINES of TypeScript across 903 files: production scale, not prototype.
 
 Detail to weave in:
 - Single operator + AI-assisted engineering.
 - Operator-led on every architectural decision, data model, product flow, integration choice, and safety policy.
 - AI implemented ~70-80% of the line code under operator review.
 - Production deployment: Vercel + Supabase, no dedicated DevOps.
-- Stack: Next.js 14 App Router, TypeScript strict, Supabase Postgres + RLS + pgvector, Anthropic Claude, OpenAI embeddings, Sentry, pptxgenjs.
+- Stack: Next.js 16 App Router, React 19, TypeScript strict, Supabase Postgres + RLS + pgvector, Anthropic Claude, OpenAI embeddings, Sentry, pptxgenjs.
 
 LAND THE BOTTOM STRAP: "Read this with that constraint in mind. Disciplines that exist scale to one operator. Gaps need a team."`
+  )
+}
+
+// ── 1b. Positioning (real problems, deep experience, where funding goes) ─────
+function slidePositioning(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Anyone can build a tool now. We solve real problems.', '20 years across platforms → a Claude-spined stack for known, well-understood pain points')
+  addFooter(s, pg)
+
+  // LEFT — THE EDGE (highlighted)
+  s.addShape('rect', { x: 0.5, y: 1.35, w: 5.95, h: 4.1, fill: { color: DN.tealPale }, rectRadius: 0.12 })
+  s.addShape('rect', { x: 0.5, y: 1.35, w: 5.95, h: 0.65, fill: { color: DN.teal }, rectRadius: 0.12 })
+  s.addText('THE EDGE', { x: 0.5, y: 1.35, w: 5.95, h: 0.65, fontFace: 'Arial', fontSize: 15, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 3 })
+  s.addText([
+    bullet('20 years building across data + insights platforms — 12 of them in NLP / NLU', { fontSize: 13, color: DN.navy, bold: true }),
+    bullet('Claude is the spine of the stack — the reasoning core, not a thin wrapper', { fontSize: 13, color: DN.navy }),
+    bullet('We solve real, well-understood problems with known pain points — not a demo in search of a use case', { fontSize: 13, color: DN.navy }),
+    bullet('Already validated by real customers: Globetrotters · JW Marriott · UCF Rosen · MCO · Orlando Magic', { fontSize: 13, color: DN.navy }),
+  ], { x: 0.8, y: 2.2, w: 5.4, h: 3.1, valign: 'top' })
+
+  // RIGHT — WHERE INITIAL FUNDING GOES
+  s.addShape('rect', { x: 6.85, y: 1.35, w: 5.95, h: 4.1, fill: { color: DN.slateCard }, rectRadius: 0.12 })
+  s.addShape('rect', { x: 6.85, y: 1.35, w: 5.95, h: 0.65, fill: { color: DN.navy }, rectRadius: 0.12 })
+  s.addText('WHERE INITIAL FUNDING GOES', { x: 6.85, y: 1.35, w: 5.95, h: 0.65, fontFace: 'Arial', fontSize: 14, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+  s.addText([
+    bullet('Scalability — load + concurrency baselines, per-org cost controls, durable pipelines', { fontSize: 13 }),
+    bullet('Enterprise usability — SOC 2 / GDPR, admin + onboarding, performance, polish', { fontSize: 13 }),
+    bullet('Hardening a working platform against demand that already exists — not funding a search for product-market fit', { fontSize: 13 }),
+  ], { x: 7.15, y: 2.2, w: 5.4, h: 3.1, valign: 'top' })
+
+  // Bottom strap — roll-up as upside, not the whole story
+  s.addShape('rect', { x: 0.5, y: 5.65, w: 12.3, h: 0.7, fill: { color: DN.navy }, rectRadius: 0.08 })
+  s.addText('The large, fragmented market is the upside. Consolidation is one path — not the whole story.', {
+    x: 0.5, y: 5.65, w: 12.3, h: 0.7, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true, italic: true, align: 'center', valign: 'middle',
+  })
+
+  s.addText('Underlying market — VoC / qualitative research / reputation / social listening — is multi-billion-dollar and fragmented; specific figures cited before external use.', {
+    x: 0.5, y: 6.45, w: 12.3, h: 0.35, fontSize: 10, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center',
+  })
+
+  s.addNotes(
+`The positioning slide. Lead with defensibility, not the roll-up.
+
+THE BARRIER COLLAPSED (the header): say it plainly — anyone with an idea can ship a tool now. AI made building cheap. That's exactly why novelty isn't the moat.
+
+THE EDGE (left): our moat is that we're NOT chasing a novel idea. 20 years building across data + insights platforms — 12 specifically in NLP/NLU. Claude is the spine of the stack (the reasoning core, deeply integrated — not a wrapper). And we solve real, well-understood problems with KNOWN pain points — surveys nobody answers, open-ends nobody can read, meetings nobody can mine. Real customers already validate it: Globetrotters, JW Marriott, UCF Rosen, MCO, Orlando Magic. (Reconciles with the "12 yr NLP/NLU" anchor stat: 20 across platforms, 12 in NLP.)
+
+WHERE INITIAL FUNDING GOES (right): this is the use-of-funds in one line — we're not raising to find product-market fit. The platform works and has customers. Initial capital shores it up on two axes: SCALABILITY (load/concurrency baselines, per-org cost caps, durable pipelines) and ENTERPRISE USABILITY (SOC 2 / GDPR, admin + onboarding, performance, polish). It maps directly to the hardening slide later.
+
+THE UPSIDE (bottom strap): the large fragmented market and the AI-led roll-up are real upside — but they're optionality on top of a working product, not the identity. "Consolidation is one path, not the whole story." Full roll-up thesis lives in the Datanautix Roll-up deck for anyone who wants it.`
   )
 }
 
 // ── 2. What Got Built ──────────────────────────────────────────────────────
 function slideWhatGotBuilt(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'What Got Built', '12 modules across customer-facing + platform · 410 TS files · ~83K code lines (sums below)')
+  addHeader(s, 'What Got Built', '13 modules across customer-facing + platform · 903 TS files · ~193K lines')
   addFooter(s, pg)
 
-  type Mod = { name: string; tag: string; lines: string; desc: string; layer: 'customer' | 'infra' }
+  type Mod = { name: string; tag: string; desc: string; layer: 'customer' | 'infra' }
   const modules: Mod[] = [
-    // ── Customer-facing (6) ──
-    { name: 'Sarina',          tag: 'Surveys',         lines: '~11K',  desc: 'Conversational runtime · LLM clarifiers · adaptive flow · 15 question types', layer: 'customer' },
-    { name: 'Ana',             tag: 'Analytics',       lines: '~27K',  desc: 'Text analytics · 13 chart types · stats · PPTX export · 500K-row datasets',   layer: 'customer' },
-    { name: 'Agents',          tag: 'RAG',             lines: '~5.6K', desc: 'Public chat agents · hybrid retrieval · per-turn sentiment + intent',         layer: 'customer' },
-    { name: 'PulseIQ',         tag: 'Live sessions',   lines: '~8K',   desc: 'AI-moderated concurrent conversations · real-time topic detection',            layer: 'customer' },
-    { name: 'Listening',       tag: 'Multi-source',    lines: '~3.5K', desc: 'Meta · Google Reviews · Reddit · Substack · Reg.gov · idempotent ingest',     layer: 'customer' },
-    { name: 'Campaigns',       tag: 'Email orchestration', lines: '~3.4K', desc: 'Resend / SES / SendGrid / SMTP / SMS · merge tags · auto-reminders',     layer: 'customer' },
+    // ── Customer-facing (7) ──
+    { name: 'Sarina',          tag: 'Surveys',          desc: 'Conversational runtime · LLM clarifiers · adaptive flow · 16 languages', layer: 'customer' },
+    { name: 'Ana',             tag: 'Analytics',        desc: 'Text analytics · 13 chart types · stats · PPTX export · 500K-row datasets',   layer: 'customer' },
+    { name: 'Town Hall',       tag: 'Recorded meetings', desc: 'ASR (Whisper/Deepgram) · Opus+Sonnet Q&A extraction · entity clustering · PDF/deck export', layer: 'customer' },
+    { name: 'Agents',          tag: 'RAG',              desc: 'Public chat agents · hybrid retrieval · per-turn sentiment + intent',         layer: 'customer' },
+    { name: 'PulseIQ',         tag: 'Live sessions',    desc: 'AI-moderated concurrent conversations · real-time topic detection',            layer: 'customer' },
+    { name: 'Listening',       tag: 'Multi-source',     desc: 'Meta · Google/Tripadvisor reviews · Reddit · Substack · Reg.gov · idempotent', layer: 'customer' },
+    { name: 'Campaigns',       tag: 'Email + SMS',      desc: 'Resend / SES / SendGrid / SMTP / Twilio · merge tags · auto-reminders',       layer: 'customer' },
     // ── Platform / infrastructure (6) ──
-    { name: 'Service layer',   tag: 'lib/',            lines: '~10K',  desc: 'AI router · embeddings · guardrails · usage logging · ingestion helpers',     layer: 'infra' },
-    { name: 'Admin tooling',   tag: 'Internal',        lines: '~6.7K', desc: 'Org mgmt · usage views · agent tester · simulator · cost estimator',          layer: 'infra' },
-    { name: 'UI / nav primitives', tag: 'Shared',      lines: '~1.9K', desc: 'Top nav · sub-header · Lottie loader · shared components',                    layer: 'infra' },
-    { name: 'Dashboard',       tag: 'Entry surface',   lines: '~1.5K', desc: 'Study cards · sentiment donut · industry filters · response trends',          layer: 'infra' },
-    { name: 'Auth + onboarding', tag: 'PKCE',          lines: '~0.7K', desc: '/auth/callback · invite tokens · login · password reset · magic link',       layer: 'infra' },
-    { name: 'Cron orchestration', tag: '7 jobs',        lines: '~0.6K', desc: '45s budgets · CRON_SECRET-gated · partial-success default',                 layer: 'infra' },
+    { name: 'Service layer',   tag: 'lib/',             desc: 'AI router · embeddings · guardrails · usage logging · ingestion helpers',     layer: 'infra' },
+    { name: 'Admin tooling',   tag: 'Internal',         desc: 'Org mgmt · usage views · agent tester · simulator · cost estimator',          layer: 'infra' },
+    { name: 'UI / nav primitives', tag: 'Shared',       desc: 'Top nav · sub-header · Lottie loader · shared components',                    layer: 'infra' },
+    { name: 'Dashboard',       tag: 'Entry surface',    desc: 'Study cards · sentiment donut · industry filters · response trends',          layer: 'infra' },
+    { name: 'Auth + onboarding', tag: 'PKCE',           desc: '/auth/callback · invite tokens · login · password reset · magic link',       layer: 'infra' },
+    { name: 'Cron orchestration', tag: '9 jobs',        desc: '45s budgets · CRON_SECRET-gated · partial-success default',                  layer: 'infra' },
   ]
 
-  // 4 rows × 3 cols
-  const cols = 3, rows = 4
-  const cardW = (W - 0.5 * 2 - 0.12 * (cols - 1)) / cols   // ~4.09
-  const cardH = (5.85 - 0.12 * (rows - 1)) / rows           // ~1.37
+  // 4 cols × 4 rows (13 cards, 3 empty slots)
+  const cols = 4, rows = 4
+  const cardW = (W - 0.5 * 2 - 0.12 * (cols - 1)) / cols
+  const cardH = (5.85 - 0.12 * (rows - 1)) / rows
   const startX = 0.5
   const startY = 1.2
 
@@ -203,41 +254,33 @@ function slideWhatGotBuilt(pptx: any, pg: number) {
     const accent = m.layer === 'customer' ? DN.sarinaBlue : DN.slate
     s.addShape('rect', { x, y, w: cardW, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.08 })
     s.addShape('rect', { x, y, w: 0.13, h: cardH, fill: { color: accent } })
-    // Single-line module name (larger, bolder)
-    s.addText(m.name, { x: x + 0.25, y: y + 0.15, w: cardW - 1.1, h: 0.48, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
-    s.addText(m.lines, { x: x + cardW - 0.95, y: y + 0.15, w: 0.8, h: 0.48, fontSize: 14, fontFace: 'Arial', color: DN.hermesOrange, bold: true, align: 'right', valign: 'middle' })
-    // Tag only — descriptions live in speaker notes
-    s.addText(m.tag, { x: x + 0.25, y: y + 0.7, w: cardW - 0.4, h: cardH - 0.75, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true, valign: 'top', autoFit: true })
+    s.addText(m.name, { x: x + 0.25, y: y + 0.12, w: cardW - 0.4, h: 0.45, fontSize: 15, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
+    s.addText(m.tag, { x: x + 0.25, y: y + 0.62, w: cardW - 0.4, h: cardH - 0.7, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true, valign: 'top', autoFit: true })
   })
 
-  // Layer legend (small, right side)
+  // Layer legend
   s.addText([
     { text: '■ ', options: { color: DN.sarinaBlue, fontSize: 11 } },
-    { text: 'customer-facing  ~58.5K   ', options: { color: DN.ink, fontSize: 11 } },
+    { text: 'customer-facing (7)     ', options: { color: DN.ink, fontSize: 11 } },
     { text: '■ ', options: { color: DN.slate, fontSize: 11 } },
-    { text: 'platform / infrastructure  ~21.4K', options: { color: DN.ink, fontSize: 11 } },
+    { text: 'platform / infrastructure (6)', options: { color: DN.ink, fontSize: 11 } },
   ], { x: 0.5, y: 6.95, w: 12.3, h: 0.3, fontFace: 'Arial', align: 'center', valign: 'middle' })
 
   s.addNotes(
-`Twelve modules — six customer-facing, six platform/infrastructure. The 83K total is the sum of the two.
+`Thirteen modules — seven customer-facing, six platform/infrastructure. ~193K lines of TypeScript across 903 files total.
 
-CUSTOMER-FACING (~58.5K, sarinaBlue stripe):
-- Sarina (~11K) — Conversational survey runtime. LLM clarifiers. 15 question types. Multi-language.
-- Ana (~27K) — Text analytics. 13 chart types. Hypothesis testing. PPTX export. Handles 500K-row datasets.
-- Agents (~5.6K) — Public chat agents. Hybrid retrieval (cosine + tsv + trigram). Per-turn sentiment + intent.
-- PulseIQ (~8K) — AI-moderated concurrent conversations. Real-time topic detection.
-- Listening (~3.5K) — Meta · Google Reviews · Reddit · Substack · Reg.gov · idempotent ingest.
-- Campaigns (~3.4K) — Resend / SES / SendGrid / SMTP / SMS. Merge tags. Auto-reminders.
+CUSTOMER-FACING (sarinaBlue stripe):
+- Sarina — Conversational survey runtime. LLM clarifiers. 16 languages.
+- Ana — Text analytics. 13 chart types. Hypothesis testing. PPTX export. Handles 500K-row datasets.
+- Town Hall (NEW since the last review, ~19K lines) — recorded in-person meetings: ASR (Whisper/Deepgram), Opus+Sonnet two-pass Q&A extraction, entity clustering, phase detection, PDF + deck export. A full second product.
+- Agents — Public chat agents. Hybrid retrieval (cosine + tsv + trigram). Per-turn sentiment + intent.
+- PulseIQ — AI-moderated concurrent conversations. Real-time topic detection.
+- Listening — Meta · Google/Tripadvisor reviews · Reddit · Substack · Reg.gov · idempotent ingest.
+- Campaigns — Resend / SES / SendGrid / SMTP / Twilio SMS. Merge tags. Auto-reminders.
 
-PLATFORM/INFRA (~21.4K, slate stripe):
-- Service layer (~10K) — AI router · embeddings · guardrails · usage logging · ingestion helpers.
-- Admin tooling (~6.7K) — Org mgmt · usage views · agent tester · simulator · cost estimator.
-- UI / nav primitives (~1.9K) — Top nav · sub-header · Lottie loader.
-- Dashboard (~1.5K) — Study cards · sentiment donut · industry filters.
-- Auth + onboarding (~0.7K) — PKCE flow · /auth/callback · invite tokens · login.
-- Cron orchestration (~0.6K) — 7 scheduled jobs · 45s budgets · CRON_SECRET-gated.
+PLATFORM/INFRA (slate stripe): service layer (AI router, embeddings, guardrails, usage logging), admin tooling, UI/nav primitives, dashboard, auth+onboarding, cron orchestration (9 jobs).
 
-Don't read this aloud. Let them see the surface area. Move on quickly.`
+Don't read this aloud. Let them see the surface area — note Town Hall is a whole new product since the last review. Move on quickly.`
   )
 }
 
@@ -299,13 +342,13 @@ function slideDiscipline(pptx: any, pg: number) {
   // Eight green-stripe chips in a 4×2 grid
   const items = [
     'TypeScript strict',
-    '41 SQL migrations',
-    '16 spec docs kept current',
-    'RLS on every table',
-    'Per-call AI usage logged',
-    'Auth + AI + drift audit trails',
-    'Sentry across server / client / edge',
-    'Lean dep tree — 27 packages',
+    '875 tests · CI on every push',
+    'RLS + cross-org egress suites',
+    'k6 + Playwright load suites',
+    'Postgres-backed rate limiter',
+    '126 SQL migrations',
+    '31 spec docs kept current',
+    'Sentry · usage + audit logging',
   ]
   items.forEach((it, i) => {
     const col = i % 4, row = Math.floor(i / 4)
@@ -315,26 +358,24 @@ function slideDiscipline(pptx: any, pg: number) {
     s.addText(it, { x: x + 0.15, y, w: 2.7, h: 1.7, fontSize: 14, fontFace: 'Arial', color: DN.navy, bold: true, align: 'center', valign: 'middle', autoFit: true })
   })
 
-  s.addText('No file over 3K lines.   ·   What needs to be big is big.', {
+  s.addText('Tests, CI, and a shared-state rate limiter — the gaps from the last review — now exist.', {
     x: 0.5, y: 5.7, w: 12.3, h: 0.5, fontSize: 14, fontFace: 'Arial', color: DN.green, italic: true, bold: true, align: 'center',
   })
 
   s.addNotes(
-`Eight things to mention. Don't read; let the audience scan.
+`Eight things to mention. Don't read; let the audience scan. The headline: the disciplines that were GAPS in the last review now exist.
 
 Detail to weave in:
-- TYPESCRIPT STRICT MODE. Zero compile errors enforced before every commit. Caught dozens of bugs that tests would have caught.
-- 41 VERSIONED SQL MIGRATIONS in sql/. Every schema change is traceable and replayable.
-- 16 SPECIFICATION DOCS in docs/*.md kept current with code (it's a memory rule for the AI).
-- RLS ENABLED ON EVERY TABLE. sql/032_enable_rls_everywhere.sql is idempotent.
-- PER-CALL AI USAGE LOGGED. usage_logs table records input/output/cache tokens per call. Cost-per-org reportable in real time.
-- AUDIT TRAILS: user_logins (every successful auth), bot_conversation_reviews (cron-driven AI self-audit every 4 hr), usage_logs (FinOps).
-- SENTRY on server, client, and edge. Sourcemaps uploaded. Vercel build injects commit count + ISO timestamp.
-- LEAN DEPENDENCY TREE — 27 npm deps total (17 production). Most React/Next apps in this category run 50–150. This is itself a quality signal.
+- TYPESCRIPT STRICT MODE. Zero compile errors enforced before every commit + in CI.
+- 875 AUTOMATED TESTS across 67 files (Vitest), unit + integration with mocks. CI (.github/workflows/ci.yml) runs typecheck + the full suite on every push and PR — green is the merge bar. (This was "zero tests / no CI" last review.)
+- RLS + CROSS-ORG EGRESS SUITES: env-gated suites that hit real Supabase to prove RLS isolation (test:rls) and per-table cross-org egress (test:egress, plus campaign- and dataset-specific egress). Multi-tenancy is tested, not asserted.
+- LOAD SUITES: k6 (tests/loadtest/townhall.k6.js) + Playwright browser load config. Concurrency baselines now have a harness.
+- POSTGRES-BACKED RATE LIMITER. Buckets live in rate_limit_buckets, mutated atomically by the check_rate_limit RPC — shared across cold starts and instances. In-process map only as an outage fallback. (This was "in-memory rate limit" last review.)
+- 126 VERSIONED SQL MIGRATIONS in sql/. Every schema change traceable + replayable.
+- 31 SPECIFICATION DOCS in docs/*.md kept current with code (enforced by a pre-commit spec-drift hook + a memory rule for the AI).
+- SENTRY on server/client/edge; per-call AI usage logged to usage_logs; auth + AI-self-audit trails.
 
-Service-role boundary: server-only key. Auth client for reads, service role for writes after explicit user check. RLS is the last line.
-
-Bottom strap: "No file over 3K lines. What needs to be big is big — PPTX exporter, survey engine, charts module. Everything else is small."`
+Lean dep tree (26 prod deps). Service-role boundary: server-only key, auth client for reads, service role for writes after explicit org check, RLS as the last line — now also covered by the egress suites.`
   )
 }
 
@@ -344,11 +385,11 @@ function slideGaps(pptx: any, pg: number) {
   addHeader(s, "Where it's thin.")
   addFooter(s, pg)
 
-  // Top row — the three big ones in red
+  // Top row — the notable remaining gaps in red
   const big = [
-    'Zero automated tests',
-    'No CI pipeline',
-    'In-memory rate limit',
+    'No SOC 2 / pen-test',
+    'No GDPR export / delete',
+    'Mutation audit trail thin',
   ]
   big.forEach((b, i) => {
     const x = 0.5 + i * 4.2
@@ -359,12 +400,12 @@ function slideGaps(pptx: any, pg: number) {
 
   // Bottom row — smaller gaps as amber chips
   const smaller = [
-    'No GDPR export / delete',
-    'No mutation audit trail',
-    'No load-tested baselines',
+    'Per-org LLM cost cap (logged, not enforced)',
+    'No SAST / dependency scanning',
     'No ADRs',
-    'No SAST scanning',
-    'No per-org LLM cost cap (enforced)',
+    'High-concurrency baselines partial',
+    'Service-role used liberally',
+    'No formal CORS policy',
   ]
   smaller.forEach((sg, i) => {
     const col = i % 3, row = Math.floor(i / 3)
@@ -374,33 +415,32 @@ function slideGaps(pptx: any, pg: number) {
     s.addText(sg, { x: x + 0.15, y, w: 3.7, h: 0.85, fontSize: 12, fontFace: 'Arial', color: '92400E', bold: true, align: 'center', valign: 'middle', autoFit: true })
   })
 
-  s.addText('Tests are the one a team would have caught. Everything else is investment, not bug.', {
+  s.addText('The big three from the last review — tests, CI, rate limiting — are closed. What is left is compliance + observability investment, not bugs.', {
     x: 0.5, y: 5.85, w: 12.3, h: 0.5, fontSize: 13, fontFace: 'Arial', color: DN.navy, italic: true, bold: true, align: 'center',
   })
 
   s.addNotes(
-`Be direct here. This is the credibility-building slide for an engineer reviewer. Don't soft-pedal.
+`Be direct here. The credibility move: the gaps that mattered most last review are gone, and the remaining list is compliance/observability investment — not "a team would have caught this" bugs.
 
-THE THREE BIG ONES (top row, red):
+WHAT CLOSED since last review (say this first): zero tests → 875 tests + CI; no CI → CI on every push/PR; in-memory rate limit → Postgres-backed shared-state limiter; no load baselines → k6 + Playwright suites.
 
-1. ZERO AUTOMATED TESTS. Type checking and manual verification only. Refactor confidence is low; regression risk on big changes is real. This is the gap a team would have caught.
+THE NOTABLE REMAINING ONES (top row, red):
 
-2. NO CI PIPELINE. Local dev + Vercel auto-deploy. tsc passes is the merge bar.
+1. NO SOC 2 / THIRD-PARTY PEN-TEST. Security disciplines exist (RLS, egress suites, guardrails) but no external audit or pen-test yet. The thing an enterprise buyer asks for.
 
-3. IN-MEMORY RATE LIMITING. lib/rateLimit.ts. Buckets reset on cold start. Not production-grade against a sustained attack.
+2. NO GDPR EXPORT / DELETE. Cascade-delete relies on FK ON DELETE CASCADE; no self-serve data export/erasure endpoints. A compliance liability the moment an EU customer signs.
+
+3. MUTATION AUDIT TRAIL THIN. Auth logins + AI self-audit are logged, but no who-changed-what trail on studies / bot configs / campaigns / org membership.
 
 SMALLER GAPS (bottom row, amber):
-
-- No GDPR export/delete endpoints — cascade-delete relies on FK ON DELETE CASCADE; risky if EU customer signs.
-- No mutation audit trail beyond auth + AI. Cannot reconstruct who edited a study, bot config, or campaign.
-- No load-tested concurrency baselines. Patterns sound (HNSW, batching, time budgets) but unverified at scale.
-- No ADRs. Decisions live in commit messages and the operator's head.
+- Per-org LLM cost logged, not enforced — a misbehaving customer could rack up Anthropic spend.
 - No SAST / dependency scanning beyond Vercel defaults.
-- Per-org LLM cost logged, not enforced. A misbehaving customer could rack up Anthropic spend.
+- No ADRs — decisions live in commit messages, specs, and the operator's head.
+- High-concurrency baselines partial — k6 townhall suite exists, but a real large event is still unproven.
+- Service-role used liberally on writes (RLS + egress suites mitigate, but app-layer assertions are thin).
+- No formal CORS policy.
 
-Other items if asked: no formal CORS policy, no design system / Storybook.
-
-CLOSE THE SLIDE on the bottom strap: "Tests are the one a team would have caught. Everything else is investment, not bug." Don't apologize. State it.`
+CLOSE on the bottom strap. Don't apologize — this is now an investment list, not a bug list.`
   )
 }
 
@@ -412,11 +452,11 @@ function slideRisks(pptx: any, pg: number) {
 
   // Just the top 5 risks, ranked, as horizontal bars with severity dot
   const risks: { sev: 'HIGH' | 'MED' | 'LOW'; text: string }[] = [
-    { sev: 'HIGH', text: 'In-memory rate limit under sustained attack' },
-    { sev: 'HIGH', text: 'Concurrent PulseIQ sessions above ~50 — untested' },
-    { sev: 'MED',  text: 'Service-role used liberally — app bugs could leak across orgs' },
-    { sev: 'MED',  text: 'No mutation audit trail on critical tables' },
+    { sev: 'HIGH', text: 'Service-role used liberally — an app bug could leak across orgs' },
+    { sev: 'MED',  text: 'PulseIQ / Town Hall at real-event concurrency — load harness exists, large event unproven' },
     { sev: 'MED',  text: 'GDPR export / delete endpoints not built' },
+    { sev: 'MED',  text: 'No mutation audit trail on critical tables' },
+    { sev: 'MED',  text: 'Per-org LLM cost logged, not enforced' },
   ]
   const sevColor = (s: string) => s === 'HIGH' ? DN.red : s === 'MED' ? DN.amber : DN.green
   const sevBg    = (s: string) => s === 'HIGH' ? 'FEF2F2' : s === 'MED' ? 'FEF3C7' : 'F0FDF4'
@@ -434,24 +474,23 @@ function slideRisks(pptx: any, pg: number) {
   })
 
   s.addNotes(
-`Top 5 on the slide. Walk them honestly — these are the ones that would page someone.
+`Top 5 on the slide. Walk them honestly — these are the ones that would page someone. Note up front that in-memory rate limit and "no regression tests" are off this list since last review — both resolved.
 
 HIGH:
-1. In-memory rate limit under sustained attack. lib/rateLimit.ts; buckets reset on cold start. A determined attacker could exhaust function instances; legitimate traffic gets 429s.
-2. Concurrent PulseIQ sessions above ~50 — untested. Unknown failure modes. Could degrade unpredictably during a real event.
+1. Service-role used liberally on writes. RLS protects reads; an app-layer bug on a service-role write path could leak across orgs. Mitigated by the cross-org egress test suites (test:egress + campaign/dataset egress), but app-layer assertions are still thinner than I'd like.
 
 MED:
-3. Service-role used liberally. App-layer bug could leak data across orgs. RLS protects reads, not service-role writes.
-4. No mutation audit trail. Cannot reconstruct who-changed-what during a dispute or breach.
-5. GDPR export / delete endpoints not built. Compliance liability the moment an EU customer signs.
+2. PulseIQ / Town Hall at real-event concurrency. A k6 load harness exists (tests/loadtest/townhall.k6.js), but a genuine large simultaneous event is still unproven in production.
+3. GDPR export / delete endpoints not built. Compliance liability the moment an EU customer signs.
+4. No mutation audit trail on critical tables. Cannot reconstruct who-changed-what during a dispute or breach (auth + AI-self-audit ARE logged).
+5. Per-org LLM cost logged, not enforced. A misbehaving customer could rack up Anthropic spend before anyone notices.
 
 ALSO IN THE FULL REGISTER (mention only if asked):
-- Per-org LLM cost not capped (logged, not enforced) — MED
-- No regression tests on critical paths — MED
+- No SOC 2 / third-party pen-test yet — MED
 - Cron failures only land in Sentry, no oncall paging — LOW
 - No SAST / dependency scanning — LOW
 
-Don't apologize. Engineers respect honest risk inventories.`
+Don't apologize. Engineers respect honest risk inventories — and several of last review's top risks are now closed.`
   )
 }
 
@@ -511,7 +550,7 @@ AI — ~70-80% of the line code:
 
 NOT AI: design judgment, NOT: data model, NOT: security policy.
 
-THE REFRAME (bottom strap): "AI is a junior engineer at faster cadence. The same disciplines apply — type safety, RLS, audit logs, code review. The disciplines we have. Tests are the gap."
+THE REFRAME (bottom strap): "AI is a junior engineer at faster cadence. The same disciplines apply — type safety, RLS, audit logs, code review, and now 875 tests + CI. The gaps that remain are compliance and observability, not core engineering."
 
 Don't say "fully AI-generated." That cedes the framing. Say "AI-assisted engineering on top of 12 years of domain expertise."`
   )
@@ -523,11 +562,11 @@ function slideHardening(pptx: any, pg: number) {
   addHeader(s, 'What capital buys.')
   addFooter(s, pg)
 
-  // Seven big chips — just the area name. Details in speaker notes.
+  // Six big chips — just the area name. Details in speaker notes.
+  // (Tests + rate-limit hardening already shipped — they're off this list.)
   const items = [
-    { area: 'Tests',            color: DN.sarinaBlue },
-    { area: 'Rate limit',       color: DN.teal },
     { area: 'Compliance',       color: DN.hermesOrange },
+    { area: 'Pen-test / SAST',  color: DN.red },
     { area: 'Audit trail',      color: DN.gold },
     { area: 'AI observability', color: '6D28D9' },
     { area: 'Scalability',      color: DN.green },
@@ -548,25 +587,25 @@ function slideHardening(pptx: any, pg: number) {
   })
 
   s.addNotes(
-`Seven hardening areas. Walk each only if asked — otherwise let the chip grid be the visual and move on.
+`Six hardening areas. Walk each only if asked — otherwise let the chip grid be the visual and move on.
+
+FRAME FIRST: tests + CI and the shared-state rate limiter already shipped (they were on this list last review). What capital buys now is mostly compliance + observability — the enterprise-readiness layer, not core engineering gaps.
 
 DETAIL FOR EACH:
 
-- TESTS: Vitest + Playwright + GitHub Actions CI. ~15 critical-path tests (auth, RLS, admin gating, public endpoints, guardrails). Merge bar = green CI. ~$300K wedge in use-of-funds (combined with load testing).
+- COMPLIANCE: SOC 2 Type II + GDPR export/delete endpoints + formal CORS policy. The enterprise-buyer checklist.
 
-- RATE LIMIT: Vercel KV-backed token bucket replacing in-memory. Per-IP and per-org. Survives cold starts.
-
-- COMPLIANCE: SOC 2 Type II audit + third-party pen-test (~$400K). GDPR export/delete endpoints. CORS policy formalized.
+- PEN-TEST / SAST: third-party penetration test + SAST / dependency scanning (Semgrep / Snyk) in CI beyond Vercel defaults.
 
 - AUDIT TRAIL: Postgres triggers → audit_log table on critical mutations (studies, bots, datasets, org membership).
 
-- AI OBSERVABILITY: LangSmith for traces + LLM-as-judge evals + user-feedback loop wired into bot/survey/PulseIQ. ~$100K (integration + first 12 months hosted).
+- AI OBSERVABILITY: LangSmith for traces + LLM-as-judge evals + user-feedback loop wired into bot/survey/PulseIQ/Town Hall.
 
-- SCALABILITY: k6 / Artillery load suite. Documented baselines per scenario. Per-org LLM cost cap enforcement.
+- SCALABILITY: extend the existing k6 / Playwright load suites to documented baselines per scenario; enforce per-org LLM cost caps.
 
-- OPERATIONS: Vercel Workflows for durable ingestion (replacing budget-aware cron). ADRs in docs/adr/. SAST (Semgrep / Snyk). Storybook for components.
+- OPERATIONS: Vercel Workflows for durable ingestion (the Town Hall pipeline already uses WDK; extend the pattern), ADRs in docs/adr/, oncall paging on cron failures, Storybook for components.
 
-These are the same lines that appear on the rollup deck's use-of-funds slide. Around $0.8M total of the $10M Phase 1 vehicle.`
+These map to the rollup deck's use-of-funds lines. Smaller wedge than last review — the test/CI/rate-limit investment is already made.`
   )
 }
 
@@ -627,6 +666,7 @@ function buildDeck(pptx: any) {
   addTitleSlide(pptx)
   pg = 1
   slideTheFrame(pptx, ++pg)
+  slidePositioning(pptx, ++pg)
   slideWhatGotBuilt(pptx, ++pg)
   slideDecisions(pptx, ++pg)
   slideDiscipline(pptx, ++pg)
