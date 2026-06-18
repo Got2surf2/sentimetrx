@@ -25,12 +25,23 @@ const DECKS: Deck[] = [
     href: '/api/pitch-deck',
     filename: 'Sentimetrx-Pitch-Deck.pptx',
     title: 'Sentimetrx Investor Pitch',
-    subtitle: 'The original product-company narrative — AI-native conversational feedback platform.',
+    subtitle: 'The original product-company narrative — AI-native conversational feedback platform. Editable PPTX. Opens with the “40 Years in the Making” founder-origin slide.',
     audience: 'Early-stage investors · seed / Series A',
-    slides: '14 slides',
+    slides: '15 slides',
     accent: '#00B4D8',
     badge: 'PRODUCT',
     logKey: 'pitch-deck',
+  },
+  {
+    href: '/api/pitch-deck-v2',
+    filename: 'Sentimetrx-Pitch-Deck.pdf',
+    title: 'Sentimetrx Investor Pitch — Editorial (PDF)',
+    subtitle: 'Design-forward warm-editorial variant matching datanautix.com — Fraunces + DM Sans, paper canvas, Ana/Sarina accents. Same narrative + “40 Years” slide as the PPTX. Polished PDF for the application form / sharing (not editable in PowerPoint).',
+    audience: 'Early-stage investors · seed / Series A',
+    slides: '15 slides',
+    accent: '#E85A1A',
+    badge: 'PRODUCT · PDF',
+    logKey: 'pitch-deck-v2',
   },
   {
     href: '/api/rollup-deck?length=short',
@@ -333,7 +344,7 @@ function DeckCard({
             boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
           }}
         >
-          Download .pptx
+          Download .{deck.filename.split('.').pop()}
         </a>
       </div>
     </div>

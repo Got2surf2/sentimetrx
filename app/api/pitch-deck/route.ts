@@ -78,7 +78,54 @@ export async function GET() {
   s1.addShape('rect', { x: 0, y: H - 0.06, w: W, h: 0.06, fill: { color: DN.sarinaBlue } })
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 2: THE PROBLEM
+  // SLIDE 2: 40 YEARS IN THE MAKING (founder origin / why us)
+  // ═══════════════════════════════════════════════════════════════
+  const sOrigin = pptx.addSlide()
+  pg++
+  addHeader(sOrigin, '40 Years in the Making')
+  addFooter(sOrigin, pg)
+  sOrigin.addText('Not an idea du jour. A four-decade arc — and Claude is the unlock.', {
+    x: 0.6, y: 1.25, w: 12, h: 0.5, fontSize: 18, fontFace: 'Arial', color: DN.hermesOrange, bold: true,
+  })
+
+  // Five-milestone timeline. Each card: a colored year band + the beat below.
+  const milestones = [
+    { year: '1986',         label: 'AI research begins',     desc: 'PhD program at Ohio State’s Laboratory for AI Research (LAIR) under Dr. B. Chandrasekaran — a pioneer of medical diagnostic AI.', color: DN.navy },
+    { year: 'Early career', label: 'Bell Labs',              desc: 'Carried machine-reasoning foundations from the lab into industry.', color: DN.teal },
+    { year: '2000',         label: 'Consumer insights',      desc: '25 years as a practitioner and consultant mining customer & guest experience.', color: DN.slate },
+    { year: '2014',         label: 'Consultancy → tech', desc: 'Converted the firm into a software company on NLU/NLP to mine open-ended feedback at scale.', color: DN.gold },
+    { year: 'Today',        label: 'Claude is the unlock',   desc: 'Frontier reasoning over qualitative language, viable in real time (~$0.002/interaction). The vision, finally buildable.', color: DN.sarinaBlue },
+  ]
+  milestones.forEach((m, i) => {
+    const x = 0.4 + i * 2.55
+    // Year band
+    sOrigin.addShape('rect', { x, y: 2.0, w: 2.35, h: 0.85, fill: { color: m.color }, rectRadius: 0.08 })
+    sOrigin.addText(m.year, { x, y: 2.0, w: 2.35, h: 0.85, fontSize: 16, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
+    // Body card
+    sOrigin.addShape('rect', { x, y: 2.95, w: 2.35, h: 3.3, fill: { color: DN.slateLight }, rectRadius: 0.08 })
+    sOrigin.addShape('rect', { x, y: 2.95, w: 2.35, h: 0.12, fill: { color: m.color } })
+    sOrigin.addText(m.label, { x: x + 0.15, y: 3.15, w: 2.05, h: 0.6, fontSize: 13, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'top', autoFit: true })
+    sOrigin.addText(m.desc, { x: x + 0.15, y: 3.75, w: 2.05, h: 2.4, fontSize: 11, fontFace: 'Arial', color: DN.ink, valign: 'top', lineSpacing: 15 })
+  })
+
+  sOrigin.addShape('rect', { x: 0.4, y: 6.5, w: 12.5, h: 0.6, fill: { color: DN.navy }, rectRadius: 0.08 })
+  sOrigin.addText('Patient for 40 years, waiting for the technology to catch up to the idea. With Claude, it finally has.', {
+    x: 0.4, y: 6.5, w: 12.5, h: 0.6, fontSize: 13, fontFace: 'Arial', color: DN.white, italic: true, bold: true, align: 'center', valign: 'middle',
+  })
+  sOrigin.addNotes(
+`The founder-conviction slide. Walk the timeline left to right, ~10 seconds per beat.
+
+1986: "My work in AI began in 1986, in the PhD program at Ohio State's Laboratory for AI Research, under Dr. B. Chandrasekaran — a pioneer of medical diagnostic AI."
+BELL LABS: that foundation carried into an early career at Bell Labs.
+2000: 25 years in consumer insights as a practitioner and consultant.
+2014: converted the consultancy into a software company on NLU/NLP — mining open-ended feedback no team could read by hand.
+TODAY: every capability we scoped over those decades was impossible or unviable until frontier models. Claude is the unlock — possible AND economically viable, in real time.
+
+Land the closing line: "I've been patient for 40 years, waiting for the technology to catch up to the idea. With Claude, it finally has." This is the unfair advantage — we're not learning this problem space; we've lived it since 1986.`
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 3: THE PROBLEM
   // ═══════════════════════════════════════════════════════════════
   const s2 = pptx.addSlide()
   pg++
@@ -118,7 +165,7 @@ The next slide is the insight that changes the picture.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 3: THE INSIGHT
+  // SLIDE 4: THE INSIGHT
   // ═══════════════════════════════════════════════════════════════
   const s3 = pptx.addSlide()
   pg++
@@ -149,7 +196,7 @@ The whole company is one product application of that insight.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 4: THE SOLUTION
+  // SLIDE 5: THE SOLUTION
   // ═══════════════════════════════════════════════════════════════
   const s4 = pptx.addSlide()
   pg++
@@ -192,7 +239,7 @@ CLOSE: "One platform. Survey + outreach + analytics + reporting. That's the diff
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 5: PRODUCT
+  // SLIDE 6: PRODUCT
   // ═══════════════════════════════════════════════════════════════
   const s5 = pptx.addSlide()
   pg++
@@ -230,7 +277,7 @@ The whole stack — collection through reporting — under one login, one bill.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 6: CONVERSATIONAL ADVANTAGE
+  // SLIDE 7: CONVERSATIONAL ADVANTAGE
   // ═══════════════════════════════════════════════════════════════
   const s6 = pptx.addSlide()
   pg++
@@ -272,7 +319,7 @@ This is the slide that makes researchers and CX leaders perk up.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 7: COMPETITIVE LANDSCAPE
+  // SLIDE 8: COMPETITIVE LANDSCAPE
   // ═══════════════════════════════════════════════════════════════
   const s7 = pptx.addSlide()
   pg++
@@ -316,7 +363,7 @@ The point: no incumbent stack does all five well. Procurement teams are sick of 
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 8: AI DEPTH
+  // SLIDE 9: AI DEPTH
   // ═══════════════════════════════════════════════════════════════
   const s8 = pptx.addSlide()
   pg++
@@ -354,7 +401,7 @@ THE PUNCH LINE at the bottom: "We use Claude (Anthropic) across the stack. Deepl
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 9: MARKET OPPORTUNITY
+  // SLIDE 10: MARKET OPPORTUNITY
   // ═══════════════════════════════════════════════════════════════
   const s9 = pptx.addSlide()
   pg++
@@ -404,7 +451,7 @@ Don't quote a number you can't back up. The footnote at the bottom tells the LP 
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 10: CASE STUDIES
+  // SLIDE 11: CASE STUDIES
   // ═══════════════════════════════════════════════════════════════
   const s10 = pptx.addSlide()
   pg++
@@ -444,7 +491,7 @@ Don't paraphrase this. Read the quote.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 11: BUSINESS MODEL
+  // SLIDE 12: BUSINESS MODEL
   // ═══════════════════════════════════════════════════════════════
   const s11 = pptx.addSlide()
   pg++
@@ -480,7 +527,7 @@ THE MARGIN POINT: 85%+ gross margin target. AI inference costs at scale are roug
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 12: GO-TO-MARKET
+  // SLIDE 13: GO-TO-MARKET
   // ═══════════════════════════════════════════════════════════════
   const s12 = pptx.addSlide()
   pg++
@@ -520,7 +567,7 @@ The arc: prove the verticals, scale via partners, become a platform.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 13: WHY NOW
+  // SLIDE 14: WHY NOW
   // ═══════════════════════════════════════════════════════════════
   const s13 = pptx.addSlide()
   pg++
@@ -557,7 +604,7 @@ All five are happening NOW. Not in 18 months. Now.`
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 14: THE ASK
+  // SLIDE 15: THE ASK
   // ═══════════════════════════════════════════════════════════════
   const s14 = pptx.addSlide()
   pg++

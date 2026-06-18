@@ -1,5 +1,17 @@
 # 2026-W25 — Dev log (Week of Jun 15 to Jun 21)
 
+## 2026-06-18 — Investor deck: founder-origin slide + warm-editorial PDF variant (Anthology Fund)
+
+**Why**: Prepping the Menlo × Anthropic Anthology Fund application. Two needs: (1) the deck should open with the founder's 40-year AI arc (1986 OSU LAIR under Dr. B. Chandrasekaran → Bell Labs → 2000 consumer insights → 2014 consultancy→tech pivot → Claude as the unlock), and (2) a design-forward deck that does NOT read as the default LLM/pptxgenjs chip-grid look, matching datanautix.com's brand.
+
+**What changed**:
+- `app/api/pitch-deck/route.ts` — added a "40 Years in the Making" timeline slide as slide 2 (renumbered the subsequent slide-comment banners; deck is now 15 slides).
+- `lib/decks/pitchDeckV2Html.ts` (new) — warm-editorial deck as one HTML string (15 16:9 slides) on the real datanautix.com `:root` tokens: Fraunces serif + DM Sans, paper/cream canvas, Ana orange + Sarina teal, editorial layouts (typographic numbered lists + hairline rules, NOT colored chip-grids), inverse closing "Ask" slide. Market slide keeps qualitative-only framing (no fabricated TAM $).
+- `app/api/pitch-deck-v2/route.ts` (new) — admin route (`requireAdmin` + `logDeckDownload('pitch-deck-v2')`) that renders the HTML → 16:9 PDF via the existing puppeteer-core + @sparticuz/chromium pipeline (mirrors reportPdf.ts). Fonts via Google Fonts + `document.fonts.ready`.
+- `app/admin/decks/DecksClient.tsx` — added the v2 card; download button label now derives from the file extension (.pdf vs .pptx); bumped the classic pitch-deck slide count 14→15.
+
+**Verify**: typecheck clean, 875 tests pass. Rendered the PDF locally and eyeballed all 15 pages; fixed two overflow bugs (slide 3 headline wrap, slide 11 quote/footer collision). Local, unpushed. NOTE: prod PDF render depends on Google Fonts being reachable from the serverless function — confirm on first prod download.
+
 ## 2026-06-16 — Surveys: AI clarifier re-asked detail the respondent already gave on an earlier question
 
 **Why**: A tester rated the experience "good", was asked "what could be done better" and answered "the pacing was slow throughout the meal"; later on the "good, bad and the ugly" open-end they said "Just the slow pacing I mentioned earlier" and the clarifier asked them to expand on it — detail they'd already provided. Root cause was not missing data: the client sent earlier answers as a bare `priorAnswers` map keyed `q1`/`q3` with **no question text**, so the model couldn't tell what each answer was responding to, and an over-eager "always follow up on short answers" rule fired on the back-reference.
