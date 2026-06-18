@@ -334,3 +334,11 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - `ReportClient.tsx` — Coverage tab shows "✓ re-extracted with <vendor>" on a done gap (button hidden, no repeat); amber "Q&A is out of date — Re-run Q&A →" banner across all tabs while `qa_stale` (the link fires `reanalyze scope:'all'`).
 
 **Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.
+
+## 2026-06-18 — Agent Study route: retryable 503 on AI timeout
+
+**Why**: A Sentry `TimeoutError: The operation was aborted due to timeout` on `GET /api/bots/[id]/study` traced to `getAgentStudy`'s two `callAI` passes (`AbortSignal.timeout`, 40s/45s via `lib/ai.ts:332`). When a vendor ran slow the error bubbled out of the un-try/caught route as an unhandled 500, and the report page (`ReportClient.tsx`) showed the generic "Failed to load study."
+
+**What changed**: `app/api/bots/[id]/study/route.ts` wraps `getAgentStudy` in try/catch — a `TimeoutError` (matched by `err.name`) returns a **retryable `503`** with `"Analysis is taking longer than usual. Please try again."`; every other error rethrows unchanged so real failures aren't swallowed. No change to the AI timeouts themselves, no retry added (1 Sentry event so far — not yet worth it). BOTS.md §10 Agent Study note updated.
+
+**Verify**: typecheck clean. Local, unpushed.

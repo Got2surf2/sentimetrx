@@ -23,7 +23,20 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const force = req.nextUrl.searchParams.get('force') === '1'
-  const study = await getAgentStudy(botId, { force })
+  let study
+  try {
+    study = await getAgentStudy(botId, { force })
+  } catch (err) {
+    // getAgentStudy's AI calls use AbortSignal.timeout; a slow vendor surfaces
+    // as a TimeoutError. Return a retryable 503 instead of an unhandled 500.
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      return NextResponse.json(
+        { error: 'Analysis is taking longer than usual. Please try again.' },
+        { status: 503 },
+      )
+    }
+    throw err
+  }
   if (!study) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ study })
 }
