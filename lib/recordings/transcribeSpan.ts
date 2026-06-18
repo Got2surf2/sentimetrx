@@ -20,7 +20,7 @@ import { transcribeWhisper } from '@/lib/asr/whisper'
 import { transcribeDeepgram } from '@/lib/asr/deepgram'
 import { bootSandbox, runOrThrow, freshReadUrl, freshUploadUrl, shellQuote, BUCKET } from '@/lib/recordings/extract'
 import { logFlatCost } from '@/lib/usageLog'
-import type { TranscriptSegment } from '@/lib/recordings/types'
+import type { TranscriptSegment, RespanEntry } from '@/lib/recordings/types'
 
 export type SpanVendor = 'whisper' | 'deepgram'
 
@@ -35,7 +35,7 @@ export async function transcribeSpan(
 
   const { data: rec } = await service
     .from('recordings')
-    .select('id, language, cost_cents')
+    .select('id, language, cost_cents, respan_log')
     .eq('id', recording_id)
     .eq('org_id', org_id)
     .single()
@@ -80,7 +80,7 @@ export async function transcribeSpan(
     ...s,
     start: s.start + start,
     end: s.end + start,
-    source_file: s.source_file ?? 'span re-transcribe',
+    source_file: s.source_file ?? `span re-transcribe (${vendor})`,
   }))
 
   // 4. Merge: drop existing segments overlapping the span, add the new ones,
@@ -103,6 +103,18 @@ export async function transcribeSpan(
     .eq('id', (tr as { id: string }).id)
     .eq('org_id', org_id)
   if (updErr) throw new Error(`transcript merge failed: ${updErr.message}`)
+
+  // Record the span (so the Coverage tab can mark it "already re-extracted" and
+  // not repeat the paid pass) and flag the Q&A as stale: the transcript now
+  // carries recovered speech the existing pairs don't reflect, until re-analyze.
+  const priorLog = ((rec as { respan_log?: RespanEntry[] }).respan_log ?? []) as RespanEntry[]
+  const respan_log: RespanEntry[] = [
+    ...priorLog,
+    { start_sec: start, end_sec: end, vendor, at: new Date().toISOString() },
+  ]
+  await service.from('recordings')
+    .update({ respan_log, qa_stale: true })
+    .eq('id', recording_id).eq('org_id', org_id)
 
   // Accumulate the ASR cost on the recording AND log it to the usage ledger the
   // same way the full transcribe does (flat cost, 'recording' resource type), so

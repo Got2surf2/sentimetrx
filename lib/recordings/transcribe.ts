@@ -97,6 +97,9 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
     .update({
       asr_vendor_chosen: vendor,
       cost_cents: currentCost + dispatched.cost_cents,
+      // A fresh full transcript overwrites everything — any prior span
+      // re-transcribes (sql/129) no longer apply, so clear the log.
+      respan_log: [],
     })
     .eq('id', recording.id)
     .eq('org_id', recording.org_id)

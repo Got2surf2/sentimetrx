@@ -341,6 +341,9 @@ async function runAnalyze(recording_id: string, org_id: string, instructions?: s
       proceedings_summary: proceedings,
       cost_cents: (rec.cost_cents ?? 0) + analysis.total_cost_cents + presCents,
       draft,
+      // Q&A pairs now reflect the current transcript (sql/129) — clear the
+      // "out of date" flag any span re-transcribe set.
+      qa_stale: false,
     })
     .eq('id', recording_id)
     .eq('org_id', org_id)

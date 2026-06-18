@@ -238,6 +238,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
             <span className="text-[16vw] font-black text-amber-500/15 rotate-[-30deg] select-none whitespace-nowrap tracking-widest">DRAFT</span>
           </div>
         )}
+        {data.recording.qa_stale && (
+          <StaleQaBanner recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} />
+        )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} nz={reportNz} />}
@@ -1619,11 +1622,48 @@ const SENTIMENT_DOT: Record<string, { color: string; label: string }> = {
   mixed:    { color: '#F59E0B', label: 'mixed' },
 }
 
+// Shown across all report tabs when a span re-transcribe (sql/129) changed the
+// transcript but the Q&A pairs weren't re-run — so the pairs are out of date.
+// Re-analyzing clears recordings.qa_stale (runAnalyze).
+function StaleQaBanner({ recordingId, canEdit }: { recordingId: string; canEdit: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const rerun = async () => {
+    if (!window.confirm('Re-run Q&A on the updated transcript? This deletes the existing pairs and re-runs Opus + Sonnet (~$1).')) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/recordings/${recordingId}/reanalyze`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'all' }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-analyze failed (${r.status})`); setBusy(false); return }
+      window.location.href = `/recordings/${recordingId}/status`
+    } catch { alert('Re-analyze failed'); setBusy(false) }
+  }
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+      <span className="text-amber-600 text-lg leading-none">⚠</span>
+      <div className="flex-1 text-sm text-amber-900">
+        <span className="font-semibold">Q&amp;A is out of date.</span> The transcript was updated by a span re-transcribe, so the pairs below don&apos;t reflect the recovered speech yet.
+        {canEdit && (
+          <button type="button" onClick={rerun} disabled={busy}
+            className="ml-2 align-baseline text-xs font-medium underline underline-offset-2 text-amber-900 hover:text-amber-700 disabled:opacity-50">
+            {busy ? 'Starting…' : 'Re-run Q&A →'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function CoverageTab({ recording, extractions, transcript, recordingId, canEdit, onPlay, onReviewFlagged }: { recording: RecordingRow; extractions: RecordingExtractionRow[]; transcript: RecordingTranscriptRow | null; recordingId: string; canEdit: boolean; onPlay: PlayHandler; onReviewFlagged: () => void }) {
   // Targeted re-transcription of a quiet stretch: which gap (by index) is
   // running, and the chosen ASR vendor (Whisper default — better at faint speech).
   const [spanBusy, setSpanBusy] = useState<number | null>(null)
   const [spanVendor, setSpanVendor] = useState<'whisper' | 'deepgram'>('whisper')
+  // A gap already re-extracted (sql/129) — matched by time overlap — so we mark
+  // it done (with the vendor) and don't invite repeating the paid pass.
+  const respanFor = (g: { start_sec: number; end_sec: number }) =>
+    (recording.respan_log ?? []).find(r => r.start_sec < g.end_sec && r.end_sec > g.start_sec) ?? null
   const retranscribeSpan = async (g: { start_sec: number; end_sec: number }, i: number) => {
     if (!window.confirm(`Re-transcribe ${formatTime(g.start_sec)}–${formatTime(g.end_sec)} with ${spanVendor}? The recovered speech is folded into the transcript (Q&A is unchanged until you re-analyze).`)) return
     setSpanBusy(i)
@@ -1846,12 +1886,22 @@ function CoverageTab({ recording, extractions, transcript, recordingId, canEdit,
                   ▶ {formatTime(g.start_sec)} → {formatTime(g.end_sec)}
                 </button>
                 <span className="text-xs text-gray-400">({formatDuration(g.end_sec - g.start_sec)} with no extracted pair)</span>
-                {canEdit && (
-                  <button type="button" onClick={() => retranscribeSpan(g, i)} disabled={spanBusy !== null}
-                    className="text-xs px-2 py-0.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
-                    {spanBusy === i ? 'Starting…' : '↻ Re-transcribe span'}
-                  </button>
-                )}
+                {(() => {
+                  const done = respanFor(g)
+                  if (done) {
+                    return (
+                      <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-0.5 font-medium">
+                        ✓ re-extracted with {done.vendor === 'whisper' ? 'Whisper' : 'Deepgram'}
+                      </span>
+                    )
+                  }
+                  return canEdit ? (
+                    <button type="button" onClick={() => retranscribeSpan(g, i)} disabled={spanBusy !== null}
+                      className="text-xs px-2 py-0.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
+                      {spanBusy === i ? 'Starting…' : '↻ Re-transcribe span'}
+                    </button>
+                  ) : null
+                })()}
               </li>
             ))}
           </ul>

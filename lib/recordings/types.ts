@@ -120,6 +120,14 @@ export interface Signoff {
 
 // ── DB rows ──────────────────────────────────────────────────────────────────
 
+// One targeted span re-transcribe (sql/129). `at` is an ISO timestamp.
+export interface RespanEntry {
+  start_sec: number
+  end_sec: number
+  vendor: 'whisper' | 'deepgram'
+  at: string
+}
+
 export interface RecordingRow {
   id: string
   org_id: string
@@ -135,6 +143,13 @@ export interface RecordingRow {
 
   asr_strategy: AsrStrategy
   asr_vendor_chosen: AsrVendor | null
+
+  // Targeted span re-transcribes (sql/129): which quiet stretches were redone,
+  // with which vendor. Reset to [] on a full re-transcribe.
+  respan_log: RespanEntry[]
+  // Transcript changed via a span re-transcribe but Q&A wasn't re-run, so the
+  // pairs are out of date (sql/129). Cleared when the analyze pass runs.
+  qa_stale: boolean
 
   status: RecordingStatus
   error_message: string | null

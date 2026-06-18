@@ -291,3 +291,15 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **Why**: First push of the batch failed CI on `check:sql-tx` — migrations >70 must be wrapped in BEGIN/COMMIT, and the three prior-session migrations weren't (they'd never hit CI while unpushed).
 
 **What changed**: wrapped `sql/126_service_health.sql`, `sql/127_transfer_agent_org.sql`, `sql/128_recording_speaker_names.sql` in `BEGIN; … COMMIT;`. Cosmetic only — all three are already applied to prod and re-run no-op (IF NOT EXISTS / DROP POLICY / CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS). `npm run check:sql-tx` passes.
+
+## 2026-06-18 — Town Hall: correct ASR label mid-re-transcribe + span re-transcribe bookkeeping
+
+**Why**: A Whisper re-transcribe showed "running Deepgram Nova-3" — the live status label read `asr_vendor_chosen`, which is only written when a transcribe *completes*, so on a re-run it showed the *previous* run's vendor. Separately, a span re-transcribe left no trace: the user could repeat the (paid) pass on the same quiet stretch, and there was no persistent signal that the Q&A pairs no longer matched the updated transcript.
+
+**What changed**:
+- `StatusClient.tsx` — the live transcribe label now derives from the in-flight `asr_strategy` (resolving `auto` via the pure `resolveAsrVendor` router), not the completed-run `asr_vendor_chosen`. The `past`-state label still uses `transcript.vendor` (the true vendor). Bugfix only.
+- `sql/129` — `recordings.respan_log jsonb default '[]'` + `recordings.qa_stale boolean default false` (applied to prod 2026-06-18).
+- `transcribeSpan.ts` — appends `{start_sec,end_sec,vendor,at}` to `respan_log`, sets `qa_stale=true`, tags recovered segments `span re-transcribe (<vendor>)`. `transcribe.ts` — full transcribe resets `respan_log=[]`. `runAnalyze` — clears `qa_stale=false` (covers fresh analyze, re-analyze, full re-transcribe).
+- `ReportClient.tsx` — Coverage tab shows "✓ re-extracted with <vendor>" on a done gap (button hidden, no repeat); amber "Q&A is out of date — Re-run Q&A →" banner across all tabs while `qa_stale` (the link fires `reanalyze scope:'all'`).
+
+**Verify**: typecheck clean, 875 tests pass. RECORDINGS.md §5.3 updated. Local, unpushed.

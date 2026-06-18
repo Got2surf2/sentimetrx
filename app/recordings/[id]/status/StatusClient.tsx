@@ -12,7 +12,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AddRecordingClient from '../AddRecordingClient'
 import TranscriptReview from '@/components/recordings/TranscriptReview'
-import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry, TranscriptSegment } from '@/lib/recordings/types'
+import type { MeetingProfile, PhaseMap, MeetingPhase, EntityMap, EntityMapEntry, TranscriptSegment, AsrStrategy, AsrVendor, SessionType } from '@/lib/recordings/types'
+import { resolveAsrVendor } from '@/lib/asr/router'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -95,9 +96,11 @@ interface StatusResponse {
     id: string
     name: string
     session_type: string
+    language: string | null
     setup_inputs: QaSetupInputs | Record<string, unknown> | null
     status: Status
     error_message: string | null
+    asr_strategy: AsrStrategy | null
     asr_vendor_chosen: 'whisper' | 'deepgram' | 'hybrid' | null
     source_duration_sec: number | null
     meeting_profile: MeetingProfile | null
@@ -494,11 +497,23 @@ function computeStepDetail(step: Status, state: StepState, data: StatusResponse 
         return `${transcript.vendor} · ${transcript.word_count?.toLocaleString() ?? '?'} words · ${formatCost(transcript.cost_cents)}`
       }
       if (state === 'current') {
-        const vendor = recording.asr_vendor_chosen
+        // Reflect the IN-FLIGHT run, derived from asr_strategy (→ resolved
+        // vendor). Do NOT read asr_vendor_chosen here — that field is only
+        // written when a transcribe completes (transcribe.ts), so on a
+        // re-transcribe it still holds the *previous* run's vendor, which
+        // mislabeled an in-flight Whisper run as "Deepgram".
+        const strategy = recording.asr_strategy
+        const vendor: AsrVendor =
+          strategy === 'whisper' || strategy === 'deepgram' || strategy === 'hybrid'
+            ? strategy
+            : resolveAsrVendor({
+                session_type: recording.session_type as SessionType,
+                language: recording.language ?? 'en',
+                setup_inputs: (recording.setup_inputs ?? {}) as Record<string, unknown>,
+              })
         if (vendor === 'hybrid') return 'running Whisper + Deepgram in parallel'
         if (vendor === 'whisper') return 'running OpenAI Whisper'
-        if (vendor === 'deepgram') return 'running Deepgram Nova-3 (batch)'
-        return 'resolving ASR vendor + uploading stitched audio'
+        return 'running Deepgram Nova-3 (batch)'
       }
       return null
     }
