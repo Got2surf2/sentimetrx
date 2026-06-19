@@ -4,16 +4,16 @@
 // → PDF (16:9) via app/api/community-feedback-deck. Same warm-editorial design
 // system as the pitch decks (Fraunces + DM Sans, paper/cream, Ana + Sarina).
 //
-// Framed around the value an engagement lead is after — hear from everyone,
-// know what the community thinks, respond fast and stay trusted — with the
-// capabilities woven in as the means: one project knowledge base → three front
-// doors (the Sarina web assistant, the PulseIQ pre-meeting pulse, and the live
-// Town Hall capture) → any-format intake → reach across the whole community
-// (24×7, multilingual, accessible) → an accuracy/error-correction layer →
-// per-meeting notes + Q&A → community-wide synthesis (themes, sentiment,
-// hotspots, coverage) → a closed-loop process where Sarina answers first,
-// escalations are captured back into the KB, and low-confidence answers are
-// flagged for continuous improvement.
+// Structured around the FIVE questions every public-engagement lead has to
+// answer — named up front as the spine, then a solution to each:
+//   1. Did we hear from everyone (representativeness / reach)?
+//   2. Could everyone take part (language access + ADA / Title VI)?
+//   3. Did we hear enough to act (aggregate themes, sentiment, hotspots, coverage)?
+//   4. Will the AI stay neutral and accurate (sourced-only, no advocacy, corrected, flagged)?
+//   5. Can we show the community we listened (report-back + the closed loop)?
+// The foundation (one curated KB behind three channels — Sarina web, PulseIQ
+// pre-meeting, Town Hall live) and any-format intake support the answers; the
+// NOWOCATS slide is the field proof; the value slide recaps the five.
 
 const T = {
   paper: '#FFFDF9', cream: '#FAF6F0', ink: '#1A1714', inkSoft: '#2E2A25',
@@ -21,7 +21,7 @@ const T = {
   sarina: '#2A7A6F', sarinaLight: '#3D9E91', sarinaDark: '#1D5A52', sarinaPale: '#E6F4F2',
   warmLight: '#B8ADA0', warmMid: '#8C7E6E',
 }
-const TOTAL = 16
+const TOTAL = 12
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const wordmark = `<b><span style="color:${T.sarina}">data</span><span style="color:${T.ana}">nautix</span></b>`
@@ -64,110 +64,143 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body title">
       <div class="eyebrow" style="color:${T.sarina}">A new approach</div>
       <h1 class="display" style="font-size:96px">Gathering community feedback.</h1>
-      <p class="lede">One project knowledge base — powering a web assistant, a pre-meeting pulse,
-        and live town-hall capture. Every voice heard; answers in minutes.</p>
+      <p class="lede">The five questions every engagement lead has to answer —
+        and a way to answer all five, on one knowledge base.</p>
       <div class="rule" style="background:${T.ana}"></div>
       <p class="sub">Powered by Sarina + Ana — datanautix.</p>
     </div>
     ${foot()}
   `, 'cream'))
 
-  // 2 — THE CHALLENGE
+  // 2 — THE FIVE QUESTIONS (the pains, named up front — the spine)
   slides.push(slide(`
-    ${rail(++c, '// the challenge')}
+    ${rail(++c, '// what keeps you up at night')}
     <div class="body">
-      <h2 class="head">Public engagement is slow, fragmented, and lossy.</h2>
+      <h2 class="head">Five questions every engagement lead has to answer.</h2>
       ${numList([
-        ['Only a few show up', 'A 7pm meeting hears the loudest voices; most residents never get a say.'],
-        ['Meetings vanish', 'Hours of in-person audio are never mined; notes take weeks to write up.'],
-        ['Questions pile up', 'Community questions land in staff inboxes and wait for a human to reply.'],
-        ['Answers are inconsistent', 'Responses vary by who replies, when, and what they remember.'],
-        ['Nothing compounds', 'A question answered once isn’t reusable the next time it’s asked.'],
+        ['Did we hear from everyone?', 'Or just the loudest voices and the usual faces who show up at a 7pm meeting?'],
+        ['Could everyone take part?', 'In their own language, with accessibility — a Title VI and ADA obligation, not a nicety.'],
+        ['Did we hear enough to act?', 'Enough input, across enough topics and groups, to defend a decision.'],
+        ['Will the AI stay neutral and accurate?', 'No politics, no promises, nothing it can’t source — the first fear about an assistant.'],
+        ['Can we show the community we listened?', 'A “you said, we did” residents can see — what actually makes people feel heard.'],
       ], true)}
-      <p class="aside">The information exists — it just isn’t captured, unified, or reused.</p>
+      <p class="aside">Every public-engagement program lives or dies on these five. Here’s how we answer each.</p>
     </div>
     ${foot()}
   `))
 
-  // 3 — ONE KB, EVERY TOUCHPOINT
+  // 3 — THE FOUNDATION (one KB, three channels)
   slides.push(slide(`
-    ${rail(++c, '// the approach')}
+    ${rail(++c, '// the foundation')}
     <div class="body">
-      <h2 class="head">One knowledge base. Every touchpoint.</h2>
+      <h2 class="head">One knowledge base. Three ways to engage.</h2>
       <div class="flow">
         <div class="flow-col">
           <div class="flow-h" style="color:${T.ana}">Sarina · web</div>
-          <div class="flow-d">An always-on assistant answering community questions, 24×7.</div>
+          <div class="flow-d">An always-on web assistant answering residents in plain language, 24×7 — the first line of response.</div>
         </div>
         <div class="flow-col" style="background:${T.sarinaPale};border-color:${T.sarina}">
           <div class="flow-h" style="color:${T.sarinaDark}">PulseIQ · pre-meeting</div>
-          <div class="flow-d">An interactive pulse so moderators see the top concerns <b>before</b> the meeting starts.</div>
+          <div class="flow-d">An interactive pulse that surfaces the room’s top concerns <b>before</b> the meeting starts.</div>
         </div>
         <div class="flow-col">
           <div class="flow-h" style="color:${T.ana}">Town Hall · live</div>
-          <div class="flow-d">Live meeting audio captured, transcribed, and structured.</div>
+          <div class="flow-d">Live meeting audio captured, transcribed, and structured — within minutes.</div>
         </div>
       </div>
-      <p class="aside">One curated project knowledge base sits behind all three — consistent everywhere.</p>
+      <p class="aside">One curated project knowledge base sits behind all three — so every answer that follows is consistent, everywhere.</p>
     </div>
     ${foot()}
   `, 'cream'))
 
-  // 4 — SARINA
+  // 4 — Q1: DID WE HEAR FROM EVERYONE? (representativeness / reach)
   slides.push(slide(`
-    ${rail(++c, '// the assistant')}
+    ${rail(++c, '// 1 · representativeness')}
     <div class="body">
-      <h2 class="head">Sarina: the project’s front-line assistant.</h2>
+      <h2 class="head">Did we hear from everyone — or just the loud few?</h2>
       ${numList([
-        ['On the project website, 24/7', 'Answers community questions in plain language, grounded in the project KB.'],
-        ['The first line of defense', 'Resolves the common questions instantly — before they ever reach a staff inbox.'],
-        ['Sourced, neutral, on the record', 'Every answer comes from approved project material — no advocacy, no promises, no improvisation.'],
+        ['Participate anytime, from anywhere', 'A 24×7 web assistant and a scannable QR code reach residents who can’t make a 7pm meeting — on their own schedule, from their phone.'],
+        ['Lower the barrier to speak up', 'No sign-up, no meeting room, no waiting for office hours — the people who never attend can finally be heard.'],
+        ['Widen the net', 'Mailed QR codes, the web, and the live room work together to reach well beyond the usual attendees.'],
       ], true)}
-      <p class="aside">Most routine questions never need a human at all.</p>
+      <p class="aside">A more representative picture — because being heard no longer depends on showing up in person.</p>
     </div>
     ${foot()}
   `))
 
-  // 5 — PULSEIQ (pre-meeting pulse)
+  // 5 — Q2: COULD EVERYONE TAKE PART? (language access + ADA / Title VI)
   slides.push(slide(`
-    ${rail(++c, '// the pulse')}
+    ${rail(++c, '// 2 · access for all')}
     <div class="body">
-      <h2 class="head">PulseIQ: the room’s concerns, before the meeting.</h2>
+      <h2 class="head">Can everyone take part — in their language, on their terms?</h2>
       ${numList([
-        ['An interactive pre-meeting pulse', 'Community members weigh in digitally in the days before a town hall — questions, concerns, priorities.'],
-        ['Moderators walk in prepared', 'The top themes are summarized and ranked, so the agenda meets the room where it actually is.'],
-        ['Feeds the same knowledge base', 'What surfaces in the pulse joins the project KB — informing Sarina and the meeting alike.'],
+        ['Every resident, their own language', 'Sarina converses end-to-end in the resident’s language — real bilingual (and beyond) outreach, with no separate translated site or extra staffing.'],
+        ['Plain language, no jargon', 'Technical terms are translated into everyday language, so answers are clear to everyone — not just experts.'],
+        ['Built for Title VI & ADA', 'Language access and clear routing to ADA contacts are first-class — meeting the obligations public agencies are held to.'],
       ], true)}
-      <p class="aside">No more guessing what the community will raise — you already know going in.</p>
+      <p class="aside">Inclusion isn’t a nicety here — it’s a legal obligation, and it’s built in.</p>
     </div>
     ${foot()}
   `, 'cream'))
 
-  // 6 — TOWN HALL LIVE
+  // 6 — Q3: DID WE HEAR ENOUGH TO ACT? (aggregate synthesis)
   slides.push(slide(`
-    ${rail(++c, '// the meeting')}
+    ${rail(++c, '// 3 · did we hear enough?')}
     <div class="body">
-      <h2 class="head">The town hall — captured live.</h2>
+      <h2 class="head">Did we hear enough to act?</h2>
       ${numList([
-        ['Recorded in the room', 'We capture the live community-meeting audio as it happens.'],
-        ['Near-real-time transcription', 'Speech becomes clean, structured text within minutes.'],
-        ['The same knowledge base', 'The transcript is read against the same project KB that powers Sarina.'],
-      ], true)}
-      <p class="aside">Nothing from the meeting is lost — and it’s usable almost immediately.</p>
+        ['The themes residents actually raised', 'Responses across every channel are pooled and clustered into real themes — including the ones nobody thought to ask about.'],
+        ['Where the community leans', 'Sentiment and priorities per topic, with representative quotes drawn from many voices — not a single anecdote.'],
+        ['Where concern concentrates', 'The places and issues mentioned most, mapped — so the hotspots are obvious at a glance.'],
+        ['Coverage you can defend', 'Responses tracked by topic and group — e.g. “50 across 6 priority categories” — so you know what’s settled and what still needs outreach.'],
+      ])}
+      <p class="aside">The evidence an engagement lead needs to say: we gathered sufficient, representative input.</p>
     </div>
     ${foot()}
-  `, 'paper'))
+  `))
 
-  // 7 — ANY FORMAT IN
+  // 7 — Q4: WILL IT STAY NEUTRAL AND ACCURATE? (trust)
+  slides.push(slide(`
+    ${rail(++c, '// 4 · trust')}
+    <div class="body">
+      <h2 class="head">Will it stay neutral — and never say something wrong?</h2>
+      ${numList([
+        ['Sourced, or it doesn’t answer', 'Every reply comes only from approved project material — no improvisation, with the source on the record.'],
+        ['No advocacy, no promises', 'Explicit guardrails: no political positions, no promised outcomes or timelines beyond the published materials.'],
+        ['Corrected for accuracy', 'Names, places, and terms fixed to canonical spelling; transcripts repaired; a human can review before anything is published.'],
+        ['Flagged when unsure', 'When confidence is low, Sarina flags for a human instead of guessing.'],
+      ])}
+      <p class="aside">The first fear about an AI answering residents — answered up front.</p>
+    </div>
+    ${foot()}
+  `, 'cream'))
+
+  // 8 — Q5: CAN WE SHOW THE COMMUNITY WE LISTENED? (report-back + closed loop)
+  slides.push(slide(`
+    ${rail(++c, '// 5 · closing the loop')}
+    <div class="body">
+      <h2 class="head">Can we show the community we listened?</h2>
+      ${numList([
+        ['Sarina answers first', 'Most questions are resolved instantly on the web, from the knowledge base.'],
+        ['Escalate what she can’t', 'Open questions route to the right person — not a shared inbox — and the human’s answer is captured.'],
+        ['Answered from then on', 'That answer folds back into the KB; the next resident who asks gets it automatically.'],
+        ['“You said, we did”', 'The synthesis goes back to residents and decision-makers — visible proof their input shaped the outcome.'],
+      ], true)}
+      <p class="aside">Every interaction makes the knowledge base — and the community’s trust — compound.</p>
+    </div>
+    ${foot()}
+  `))
+
+  // 9 — ANY FORMAT IN (supporting capability)
   const formats = [
     ['Live meeting audio', 'Captured in the room.'],
     ['Uploaded recordings', 'Audio / video files.'],
     ['Documents & PDFs', 'Plans, notices, reports.'],
-    ['Web questions', 'Asked through Sarina.'],
+    ['Web & pulse questions', 'Sarina + PulseIQ.'],
     ['Spreadsheets / CSV', 'Comment exports, lists.'],
   ]
   slides.push(slide(`
-    ${rail(++c, '// intake')}
+    ${rail(++c, '// under the hood · intake')}
     <div class="body">
       <h2 class="head">Any format in — one pipeline.</h2>
       <div class="cols5">
@@ -182,122 +215,7 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `, 'cream'))
 
-  // 8 — HEAR FROM EVERYONE (reach · multilingual · accessible)
-  slides.push(slide(`
-    ${rail(++c, '// the objective')}
-    <div class="body">
-      <h2 class="head">Hear from everyone — not just who shows up.</h2>
-      ${numList([
-        ['Participate anytime, from anywhere', 'A 24×7 web assistant and a scannable QR code mean residents who can’t make a 7pm meeting are still heard — on their own schedule, from their phone.'],
-        ['Everyone in their own language', 'Sarina converses end-to-end in the resident’s language — real bilingual outreach, with no separate translated site or extra staffing.'],
-        ['No jargon, no barriers', 'Plain-language answers, with clear routing to ADA and language-access contacts — engagement that works for the whole community.'],
-      ], true)}
-      <p class="aside">A more representative picture — because being heard no longer depends on showing up in person.</p>
-    </div>
-    ${foot()}
-  `))
-
-  // 9 — ACCURACY / ERROR CORRECTION
-  slides.push(slide(`
-    ${rail(++c, '// accuracy')}
-    <div class="body">
-      <h2 class="head">Accuracy you can trust.</h2>
-      ${numList([
-        ['Entity + name spelling', 'Road names, places, people, and project terms corrected to the canonical spelling.'],
-        ['Speaker attribution', 'Who said what, cleaned up and consolidated across the meeting.'],
-        ['Transcript repair', 'Faint or garbled speech re-checked; quiet stretches re-transcribed.'],
-        ['Human gate review', 'A reviewer can verify and correct before anything is published.'],
-      ])}
-      <p class="aside">The model does the heavy lifting; the corrections make it publishable.</p>
-    </div>
-    ${foot()}
-  `, 'cream'))
-
-  // 10 — NEAR-REAL-TIME OUTPUTS (per-meeting)
-  slides.push(slide(`
-    ${rail(++c, '// outputs')}
-    <div class="body">
-      <h2 class="head">Meeting notes + Q&A, in minutes.</h2>
-      ${numList([
-        ['Structured meeting notes', 'A clean summary of what was presented and decided.'],
-        ['Q&A capture', 'Every question and its answer, extracted and organized.'],
-        ['Action items', 'Follow-ups with owners and dates, ready to circulate.'],
-      ], true)}
-      <p class="aside">Available minutes after the meeting — not weeks later.</p>
-    </div>
-    ${foot()}
-  `))
-
-  // 11 — KNOW WHAT THE COMMUNITY THINKS (aggregate synthesis)
-  slides.push(slide(`
-    ${rail(++c, '// the objective')}
-    <div class="body">
-      <h2 class="head">Know what the whole community thinks — with the evidence to back it.</h2>
-      ${numList([
-        ['The themes residents actually raised', 'Responses across every channel are pooled and clustered into real themes — including the ones nobody thought to ask about.'],
-        ['Where the community leans', 'Sentiment and priorities per topic, with representative quotes drawn from many voices — not a single anecdote.'],
-        ['Where concern concentrates', 'The places and issues mentioned most, mapped — so the hotspots are obvious at a glance.'],
-        ['Proof you heard enough', 'Coverage by topic and group is tracked, so you know what’s settled and what still needs outreach before engagement closes.'],
-      ])}
-      <p class="aside">The synthesis you take to decision-makers — and back to residents: <b>here’s what we heard, here’s what we’ll do.</b></p>
-    </div>
-    ${foot()}
-  `, 'cream'))
-
-  // 12 — THE NEW PROCESS (closed loop)
-  slides.push(slide(`
-    ${rail(++c, '// the process')}
-    <div class="body">
-      <h2 class="head">A new way to engage the community.</h2>
-      ${numList([
-        ['Sarina answers first', 'Most questions are resolved instantly on the web, from the knowledge base.'],
-        ['Escalate the rest', 'Questions Sarina can’t answer route to the right person — not a shared inbox.'],
-        ['Capture the answer', 'The human’s response is folded back into the knowledge base.'],
-        ['Answered from then on', 'The next time it’s asked, Sarina answers it — automatically.'],
-      ], true)}
-      <p class="aside">Highest-quality responses in the shortest time — and the inbox load keeps shrinking.</p>
-    </div>
-    ${foot()}
-  `))
-
-  // 13 — CONFIDENCE + CONTINUOUS IMPROVEMENT
-  slides.push(slide(`
-    ${rail(++c, '// trust + improvement')}
-    <div class="body">
-      <h2 class="head">Confidence-flagged, always improving.</h2>
-      ${numList([
-        ['Low-confidence flags', 'When Sarina isn’t sure, it flags the response for review instead of guessing.'],
-        ['Every human answer teaches it', 'Escalated answers and reviewer corrections feed straight back into the KB.'],
-        ['A knowledge base that compounds', 'Coverage and accuracy climb with every meeting and every question.'],
-      ], true)}
-      <p class="aside">The system gets more capable — and more trustworthy — the more it’s used.</p>
-    </div>
-    ${foot()}
-  `, 'cream'))
-
-  // 14 — THE BENEFIT
-  const benefits = [
-    ['Everyone heard', 'not just who shows up', 'Reach beyond the usual attendees — 24×7, multilingual, on any device.'],
-    ['Answers in minutes', 'not weeks', 'Notes, Q&A, and community-wide synthesis ready right after the meeting.'],
-    ['Evidence', 'not anecdote', 'Defensible themes, sentiment, and coverage across the whole community.'],
-    ['Consistent & neutral', 'one source of truth', 'Every answer sourced from approved material — same message everywhere.'],
-    ['Compounding', 'every interaction', 'Each answer and correction makes the next one faster and better.'],
-  ]
-  slides.push(slide(`
-    ${rail(++c, '// the value')}
-    <div class="body">
-      <h2 class="head">More voices, faster answers — nothing lost.</h2>
-      <div class="cases">
-        ${benefits.map(b => `<div class="case">
-          <div class="case-n" style="color:${T.ana}">${b[0]}</div>
-          <div><div class="case-name">${b[1]}</div><div class="case-d">${b[2]}</div></div>
-        </div>`).join('')}
-      </div>
-    </div>
-    ${foot()}
-  `))
-
-  // 15 — IN PRACTICE (NOWOCATS proof point)
+  // 10 — IN PRACTICE (NOWOCATS proof point)
   slides.push(slide(`
     ${rail(++c, '// in practice')}
     <div class="body">
@@ -311,15 +229,37 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The same approach generalizes to any public-engagement or community program.</p>
     </div>
     ${foot()}
+  `))
+
+  // 11 — THE VALUE (recap mapped to the five questions)
+  const benefits = [
+    ['Everyone heard', 'representative input', 'Beyond the usual attendees — 24×7, by QR, on any device.'],
+    ['Access for all', 'language + ADA', 'Every resident in their own language; built for Title VI and ADA.'],
+    ['Heard enough', 'evidence to act', 'Themes, sentiment, hotspots, and coverage you can defend.'],
+    ['Trusted answers', 'neutral + accurate', 'Sourced only, no advocacy, corrected, flagged when unsure.'],
+    ['They saw we listened', 'the loop closed', 'A “you said, we did” that compounds with every interaction.'],
+  ]
+  slides.push(slide(`
+    ${rail(++c, '// the value')}
+    <div class="body">
+      <h2 class="head">Five questions. Five answers.</h2>
+      <div class="cases">
+        ${benefits.map(b => `<div class="case">
+          <div class="case-n" style="color:${T.ana}">${b[0]}</div>
+          <div><div class="case-name">${b[1]}</div><div class="case-d">${b[2]}</div></div>
+        </div>`).join('')}
+      </div>
+    </div>
+    ${foot()}
   `, 'cream'))
 
-  // 16 — CLOSE
+  // 12 — CLOSE
   slides.push(slide(`
     ${rail(++c, 'A new approach', true)}
     <div class="body center">
       <div class="eyebrow" style="color:${T.anaLight}">Community engagement</div>
-      <h1 class="display" style="font-size:70px;max-width:20ch">A living knowledge base for community engagement.</h1>
-      <p class="lede" style="color:rgba(255,253,249,.8);max-width:38ch">Capture every voice, answer in minutes, and get smarter with every interaction.</p>
+      <h1 class="display" style="font-size:70px;max-width:20ch">Answer all five — on one living knowledge base.</h1>
+      <p class="lede" style="color:rgba(255,253,249,.8);max-width:40ch">Hear from everyone, in any language; know you heard enough; stay trusted; and show the community you listened.</p>
       <p class="closer" style="color:${T.anaLight}">datanautix &nbsp;·&nbsp; sanjay@datanautix.com</p>
     </div>
     ${foot(true)}

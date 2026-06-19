@@ -387,3 +387,16 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - Cream/paper rhythm preserved (two insertions kept parity; only slides 9/10 flipped); comment numbers + `TOTAL` updated; file-header story rewritten around the value arc. NOWOCATS accuracy figure still intentionally omitted.
 
 **Verify**: typecheck clean. QC PDF re-rendered (16 slides, no overflow on the reflowed slides 2/8/11/14). Local, unpushed.
+
+## 2026-06-19 — Community Feedback deck: restructure around the 5 practitioner pains (the spine)
+
+**Why**: The five anxieties an engagement lead actually carries (representativeness, language/accessibility, "did we hear enough", neutrality/accuracy, "did we show them we listened") were the most persuasive content but were scattered/buried mid-deck. Direction: lead with the pains, make them the spine, show we understand each and solve it.
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`, 16→12 slides, near-total slide-sequence rewrite; helpers + CSS unchanged):
+- New slide 2 "Five questions every engagement lead has to answer" names all five pains up front (the thesis).
+- Five solution slides (4–8), each headlined by the practitioner's *question*, kicker numbered `// 1 · representativeness` … `// 5 · closing the loop`: (1) reach/representativeness, (2) language access + Title VI/ADA — now its own slide, (3) aggregate synthesis / "did we hear enough", (4) neutrality + accuracy + confidence (merges old accuracy + confidence + Sarina-neutrality), (5) report-back + closed loop.
+- Per the channel-slide decision: the 3 dedicated Sarina/PulseIQ/Town Hall deep-dives were **folded into** the "One KB, three ways to engage" foundation slide (3); all three pillars still named + described there and act as the heroes within the solution slides.
+- Title + close reframed around answering the five; intake kept as a supporting "under the hood" slide; NOWOCATS proof + value-recap ("Five questions. Five answers.") retained. NOWOCATS accuracy figure still omitted.
+- File rewritten via Write (large exact-match Edit infeasible with smart quotes); `TOTAL`=12; cream/paper rhythm clean (12 = ink close).
+
+**Verify**: typecheck clean. QC PDF re-rendered, all 12 slides eyeballed — no overflow on the 5-item thesis, the two-line-head question slides, or the 5-case value recap. Local, unpushed.
