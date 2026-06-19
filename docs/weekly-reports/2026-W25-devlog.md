@@ -433,3 +433,11 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - Value recap remapped: "Trusted answers" → "Fewer emails in / answered in time"; close lede updated. `TOTAL`=13; cream/paper rhythm clean (13 = ink close).
 
 **Verify**: typecheck clean. QC PDF re-rendered, slides 2/7/8/9 eyeballed (no overflow). Local, unpushed.
+
+## 2026-06-19 — Community deck: foreground response consistency
+
+**Why**: Consistency of responses — every resident gets the same approved answer regardless of who's on shift or what they recall — is a huge value of a single-KB assistant, but it was only an implicit aside on the foundation slide (the old "answers are inconsistent" pain was dropped in the restructure).
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`): slide 9 retitled "One source of truth — consistent, and trusted" (kicker `// consistency + trust`) and now leads with a consistency item — "The same answer, every time… no matter who would have replied, on what shift, or what they remembered" — ahead of sourced / no-advocacy / corrected / flagged. List set `tight` to hold 5 items; dropped the now-redundant aside to avoid overflow.
+
+**Verify**: typecheck clean. QC PDF re-rendered, slide 9 fits (no overflow). Still 13 slides. Local, unpushed.

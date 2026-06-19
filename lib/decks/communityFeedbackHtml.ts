@@ -194,18 +194,18 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 9 — BUILT TO BE TRUSTED (reassurance — not one of the five)
+  // 9 — CONSISTENT & TRUSTED (reassurance — not one of the five)
   slides.push(slide(`
-    ${rail(++c, '// built to be trusted')}
+    ${rail(++c, '// consistency + trust')}
     <div class="body">
-      <h2 class="head">Built to be trusted in front of the public.</h2>
+      <h2 class="head">One source of truth — consistent, and trusted.</h2>
       ${numList([
+        ['The same answer, every time', 'Every resident gets the identical, approved response — no matter who would have replied, on what shift, or what they remembered.'],
         ['Sourced, or it doesn’t answer', 'Every reply comes only from approved project material — no improvisation, with the source on the record.'],
         ['No advocacy, no promises', 'Explicit guardrails: no political positions, no promised outcomes or timelines beyond the published materials.'],
-        ['Corrected for accuracy', 'Names, places, and terms fixed to canonical spelling; transcripts repaired; a human can review before anything is published.'],
+        ['Corrected for accuracy', 'Names, places, and terms fixed to canonical spelling; transcripts repaired; a human can review before publishing.'],
         ['Flagged when unsure', 'When confidence is low, Sarina flags for a human instead of guessing.'],
-      ])}
-      <p class="aside">The questions you’ll get about putting AI in front of residents — answered before they’re asked.</p>
+      ], true)}
     </div>
     ${foot()}
   `, 'cream'))
