@@ -449,3 +449,15 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **What changed** (`lib/decks/communityFeedbackHtml.ts`): NOWOCATS proof slide (11) gains a 5th item "Summaries public the next day" (structured meeting notes + full Q&A cleaned up and posted for the community the next day). Dropped the generalization aside to fit five tight items without overflow.
 
 **Verify**: typecheck clean. QC PDF re-rendered, slide 11 fits. Still 13 slides. Local, unpushed.
+
+## 2026-06-19 — Community deck: final polish + spec catch-up
+
+**Why**: Wrap up the community-deck session and bring SPEC.md current.
+
+**What changed**:
+- `lib/decks/communityFeedbackHtml.ts` — NOWOCATS next-day-summary contrast "not weeks later" → "not several days later" (realistic alternative); slide 12 value-recap kicker → "now you can sleep at night", bookending slide 2's "what keeps you up at night". Copy only.
+- `SPEC.md` — added `community-feedback` and `review-intelligence` to the admin-only deck-routes list (both were missing) and noted the `/admin/decks` index now sorts most-recently-updated first.
+
+Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-everyone · access/Title VI · heard-enough · keep-up-without-drowning-in-email · listened) + a "consistent & trusted" reassurance slide, any-format intake, NOWOCATS proof (incl. next-day public summaries), and the five-questions/five-answers bookend. Open item unchanged: NOWOCATS *accuracy* figure still omitted (no measured data; would need an LLM-judge eval).
+
+**Verify**: typecheck clean; QC PDF renders 13 slides without overflow. All committed locally; **NOT pushed** (≈18 commits ahead — deck rebuild + admin-decks sort + spec/devlog).
