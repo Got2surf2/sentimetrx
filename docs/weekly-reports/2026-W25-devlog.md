@@ -410,3 +410,13 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - `app/admin/decks/page.tsx` — added the three `review-intelligence-deck:*` variants to the `lastUpdated` map (they were missing, so they'd have sorted to the bottom with no date). All 17 decks now carry a last-updated time.
 
 **Verify**: typecheck clean. Sort is on a filtered copy (no mutation of the module-level DECKS). Local, unpushed.
+
+## 2026-06-19 — Community deck: make the staff-email-reduction explicit
+
+**Why**: "Sarina is the first line of defense → deflect questions out of staff inboxes → far fewer emails for the team to answer" was a headline ask in the brief, but the pain-led restructure folded away the slides that carried it, leaving it only implicit. Make the team-side operational win explicit.
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`):
+- Foundation slide (3): Sarina card now reads "…so routine questions are handled on the site, **not in a staff inbox**."
+- Closing-the-loop slide (8): items reworded to name the deflection payoff — "never becoming an email the team has to answer", "not a shared inbox full of repeats", "one reply, not fifty"; aside now "Far fewer emails reach the team — … the inbox load keeps shrinking." Headline + 5-pain spine unchanged.
+
+**Verify**: typecheck clean. QC PDF re-rendered, slides 3 + 8 eyeballed (no overflow). Local, unpushed.

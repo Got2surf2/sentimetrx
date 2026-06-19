@@ -97,7 +97,7 @@ export function buildCommunityFeedbackHtml(): string {
       <div class="flow">
         <div class="flow-col">
           <div class="flow-h" style="color:${T.ana}">Sarina · web</div>
-          <div class="flow-d">An always-on web assistant answering residents in plain language, 24×7 — the first line of response.</div>
+          <div class="flow-d">An always-on web assistant answering residents 24×7 — so routine questions are handled on the site, <b>not in a staff inbox</b>.</div>
         </div>
         <div class="flow-col" style="background:${T.sarinaPale};border-color:${T.sarina}">
           <div class="flow-h" style="color:${T.sarinaDark}">PulseIQ · pre-meeting</div>
@@ -181,12 +181,12 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body">
       <h2 class="head">Can we show the community we listened?</h2>
       ${numList([
-        ['Sarina answers first', 'Most questions are resolved instantly on the web, from the knowledge base.'],
-        ['Escalate what she can’t', 'Open questions route to the right person — not a shared inbox — and the human’s answer is captured.'],
-        ['Answered from then on', 'That answer folds back into the KB; the next resident who asks gets it automatically.'],
+        ['Sarina answers first', 'Most resident questions are resolved instantly on the web — never becoming an email the team has to answer.'],
+        ['Escalate only what she can’t', 'The few genuinely open questions route to the right person — not a shared inbox full of repeats.'],
+        ['Captured, then automatic', 'The human’s answer folds back into the KB; the next resident who asks gets it instantly — one reply, not fifty.'],
         ['“You said, we did”', 'The synthesis goes back to residents and decision-makers — visible proof their input shaped the outcome.'],
       ], true)}
-      <p class="aside">Every interaction makes the knowledge base — and the community’s trust — compound.</p>
+      <p class="aside">Far fewer emails reach the team — and the ones that do teach the system, so the inbox load keeps shrinking.</p>
     </div>
     ${foot()}
   `))
