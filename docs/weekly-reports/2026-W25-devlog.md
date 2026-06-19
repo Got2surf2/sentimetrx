@@ -1,5 +1,15 @@
 # 2026-W25 — Dev log (Week of Jun 15 to Jun 21)
 
+## 2026-06-19 — Community-feedback deck refinements + deck "last updated" fix
+
+**Why**: Generalized the community-engagement deck (was NOWOCATS-specific), wove PulseIQ in, put real NOWOCATS metrics on it, and fixed a wrong "Last updated" date on the decks hub.
+
+**What changed**:
+- `lib/decks/communityFeedbackHtml.ts` — generalized to public/community engagement (NOWOCATS now a single proof slide); slide 3 → "one KB, every touchpoint" (Sarina web · **PulseIQ pre-meeting** · Town Hall live); NOWOCATS slide made accurate: trained on project docs, QR to 37,000+ households, 24×7, **~94% answered confidently** (16 flagged of ~265 real questions), and Town Hall **transcription only — not auto-answering** (no oversell). The 94% was computed from prod (`town_halls(slug='nowocats').bot_id` = 5c468b90; `logged_questions` 16 = 15 ai_uncertain + 1 kb_miss vs ~265 user turns, demo session excluded). Accuracy intentionally omitted (needs an eval — see [[project-community-feedback-deck]]).
+- `lib/deckLastModified.ts` — **bug fix**: was returning last-commit time only, so files committed together (e.g. the v2/v3/community decks in `23642ce7`) shared one timestamp and post-commit edits never moved it. Now returns **max(git commit time, file mtime)** so local edits surface and same-commit files de-bundle; Vercel runtime (no git) still falls back to mtime as before.
+
+**Verify**: typecheck clean; community deck renders (13 pages); per-deck timestamps now differ (community shows its post-commit edit time vs the Anthology commit time). Local, unpushed.
+
 ## 2026-06-19 — Anthology pitch variants + a community-engagement capability deck
 
 **Why**: Iterating the Menlo × Anthropic Anthology pitch into a full + short variant, and adding a public/community-engagement capability deck for the decks hub.

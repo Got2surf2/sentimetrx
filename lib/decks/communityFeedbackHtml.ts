@@ -59,8 +59,8 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body title">
       <div class="eyebrow" style="color:${T.sarina}">A new approach</div>
       <h1 class="display" style="font-size:96px">Gathering community feedback.</h1>
-      <p class="lede">One project knowledge base. A web assistant and a live town hall —
-        capturing every voice and answering in minutes, not weeks.</p>
+      <p class="lede">One project knowledge base — powering a web assistant, a pre-meeting pulse,
+        and live town-hall capture. Every voice heard; answers in minutes.</p>
       <div class="rule" style="background:${T.ana}"></div>
       <p class="sub">Powered by Sarina + Ana — datanautix.</p>
     </div>
@@ -83,28 +83,26 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 3 — ONE KB, TWO FRONT DOORS
+  // 3 — ONE KB, EVERY TOUCHPOINT
   slides.push(slide(`
     ${rail(++c, '// the approach')}
     <div class="body">
-      <h2 class="head">One knowledge base. Two front doors.</h2>
+      <h2 class="head">One knowledge base. Every touchpoint.</h2>
       <div class="flow">
         <div class="flow-col">
           <div class="flow-h" style="color:${T.ana}">Sarina · web</div>
-          <div class="flow-d">A project-site assistant answering community questions in natural language.</div>
+          <div class="flow-d">An always-on assistant answering community questions, 24×7.</div>
         </div>
-        <div class="flow-arrow">←</div>
         <div class="flow-col" style="background:${T.sarinaPale};border-color:${T.sarina}">
-          <div class="flow-h" style="color:${T.sarinaDark}">Project knowledge base</div>
-          <div class="flow-d">Curated, approved project material — the single source of truth.</div>
+          <div class="flow-h" style="color:${T.sarinaDark}">PulseIQ · pre-meeting</div>
+          <div class="flow-d">An interactive pulse so moderators see the top concerns <b>before</b> the meeting starts.</div>
         </div>
-        <div class="flow-arrow">→</div>
         <div class="flow-col">
           <div class="flow-h" style="color:${T.ana}">Town Hall · live</div>
-          <div class="flow-d">Live meeting audio captured and read against the same knowledge.</div>
+          <div class="flow-d">Live meeting audio captured, transcribed, and structured.</div>
         </div>
       </div>
-      <p class="aside">The web assistant and the live meeting draw on the <b>same</b> curated knowledge — consistent answers everywhere.</p>
+      <p class="aside">One curated project knowledge base sits behind all three — consistent everywhere.</p>
     </div>
     ${foot()}
   `, 'cream'))
@@ -252,9 +250,10 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body">
       <h2 class="head">In practice: NOWOCATS.</h2>
       ${numList([
-        ['Community meetings, captured live', 'We recorded NOWOCATS community meetings and produced structured notes + Q&A within minutes.'],
-        ['Names corrected automatically', 'Road and place names (e.g. “Vick Road”) normalized to the canonical spelling across the record.'],
-        ['One project knowledge base', 'The same curated knowledge sits behind the web assistant and the live meeting capture.'],
+        ['Trained on their project docs', 'We trained Sarina on the NOWOCATS project materials — the curated knowledge base.'],
+        ['A QR code to 37,000+ households', 'The team mailed a scannable QR code that opened Sarina — available 24×7.'],
+        ['~94% answered confidently', 'Across ~265 real community questions, Sarina flagged only 16 for a human — ~94% handled with confidence.'],
+        ['Live Q&A, transcribed', 'At the town hall we transcribed the live Q&A and corrected names like “Vick Road” — transcription, not auto-answering.'],
       ], true)}
       <p class="aside">The same approach generalizes to any public-engagement or community program.</p>
     </div>

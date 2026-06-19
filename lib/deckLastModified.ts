@@ -18,27 +18,32 @@ const cache: Record<string, string | null> = {}
 export function deckLastModified(relativePath: string): string | null {
   if (relativePath in cache) return cache[relativePath]
 
-  // 1. Try git log — most accurate when the binary is available.
+  // A deck was "last touched" at the LATER of its last commit and its last file
+  // edit. Using commit-time alone was buggy: files committed together share one
+  // timestamp, and edits made after the last commit (working-doc iteration)
+  // never moved the date. So take max(gitCommitTime, mtime).
+  //   - Locally: surfaces uncommitted edits, and de-bundles same-commit files.
+  //   - On Vercel runtime: git is absent → gitTs is null → mtime (deploy time).
+
+  let gitTs: string | null = null
   try {
     const ts = execSync(
       `git log -1 --format=%cI -- ${JSON.stringify(relativePath)}`,
       { encoding: 'utf-8', cwd: process.cwd(), stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim()
-    if (ts) {
-      cache[relativePath] = ts
-      return ts
-    }
-  } catch { /* git unavailable at runtime, or file untracked — fall through */ }
+    if (ts) gitTs = ts
+  } catch { /* git unavailable, or file untracked */ }
 
-  // 2. Try filesystem mtime.
+  let mtimeTs: string | null = null
   try {
-    const ts = statSync(path.join(process.cwd(), relativePath)).mtime.toISOString()
-    cache[relativePath] = ts
-    return ts
-  } catch { /* fall through */ }
+    mtimeTs = statSync(path.join(process.cwd(), relativePath)).mtime.toISOString()
+  } catch { /* file missing */ }
 
-  // 3. Last resort — build date.
-  const fallback = process.env.NEXT_PUBLIC_BUILD_DATE || null
-  cache[relativePath] = fallback
-  return fallback
+  // ISO-8601 strings sort lexicographically, so string compare = time compare.
+  let best: string | null
+  if (gitTs && mtimeTs) best = gitTs > mtimeTs ? gitTs : mtimeTs
+  else best = gitTs || mtimeTs || process.env.NEXT_PUBLIC_BUILD_DATE || null
+
+  cache[relativePath] = best
+  return best
 }
