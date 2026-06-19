@@ -441,3 +441,11 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **What changed** (`lib/decks/communityFeedbackHtml.ts`): slide 9 retitled "One source of truth — consistent, and trusted" (kicker `// consistency + trust`) and now leads with a consistency item — "The same answer, every time… no matter who would have replied, on what shift, or what they remembered" — ahead of sourced / no-advocacy / corrected / flagged. List set `tight` to hold 5 items; dropped the now-redundant aside to avoid overflow.
 
 **Verify**: typecheck clean. QC PDF re-rendered, slide 9 fits (no overflow). Still 13 slides. Local, unpushed.
+
+## 2026-06-19 — Community deck: NOWOCATS next-day public summaries
+
+**Why**: A strong, concrete proof of the near-real-time turnaround — at NOWOCATS the meeting notes + Q&A were published for public consumption the next day, not after weeks of manual write-up.
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`): NOWOCATS proof slide (11) gains a 5th item "Summaries public the next day" (structured meeting notes + full Q&A cleaned up and posted for the community the next day). Dropped the generalization aside to fit five tight items without overflow.
+
+**Verify**: typecheck clean. QC PDF re-rendered, slide 11 fits. Still 13 slides. Local, unpushed.
