@@ -365,3 +365,11 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **What changed**: `app/api/bots/[id]/study/route.ts` wraps `getAgentStudy` in try/catch — a `TimeoutError` (matched by `err.name`) returns a **retryable `503`** with `"Analysis is taking longer than usual. Please try again."`; every other error rethrows unchanged so real failures aren't swallowed. No change to the AI timeouts themselves, no retry added (1 Sentry event so far — not yet worth it). BOTS.md §10 Agent Study note updated.
 
 **Verify**: typecheck clean. Local, unpushed.
+
+## 2026-06-19 — Community Feedback deck: add PulseIQ as a co-equal pillar
+
+**Why**: Compliance pass against the original brief — the deck must "highlight all that they could do with (1) agents (2) townhalls (3) PulseIQ." Sarina (agents) and Town Hall each had a dedicated deep-dive slide; PulseIQ only had a single column on the "One KB, every touchpoint" slide, leaving it underweighted relative to the other two pillars.
+
+**What changed**: `lib/decks/communityFeedbackHtml.ts` — inserted a new PulseIQ deep-dive slide (the pre-meeting interactive pulse: collects concerns digitally, hands moderators a ranked summary, feeds the same KB) as slide 5, between Sarina (4) and Town Hall (6). `TOTAL` 13→14; flipped the cream/paper variant on slides 6–13 to preserve the alternating rhythm; renumbered slide comments; updated the file-header story comment ("two front doors" → "three front doors"). Accuracy figure on the NOWOCATS slide deliberately left off (no measured accuracy data; repo forbids fabricated stats) — slide stands on the ~94%-confidence claim only.
+
+**Verify**: typecheck clean. QC PDF rendered locally (14 slides, PulseIQ symmetric with the other two pillars). Local, unpushed.

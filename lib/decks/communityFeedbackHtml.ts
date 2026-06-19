@@ -4,8 +4,9 @@
 // → PDF (16:9) via app/api/community-feedback-deck. Same warm-editorial design
 // system as the pitch decks (Fraunces + DM Sans, paper/cream, Ana + Sarina).
 //
-// Story: one project knowledge base → two front doors (the Sarina web assistant
-// + the live Town Hall capture) → any-format intake → an accuracy/error-
+// Story: one project knowledge base → three front doors (the Sarina web
+// assistant, the PulseIQ pre-meeting pulse, and the live Town Hall capture)
+// → any-format intake → an accuracy/error-
 // correction layer → near-real-time meeting notes + Q&A → a closed-loop
 // engagement process where Sarina answers first, escalations are captured back
 // into the KB, and low-confidence answers are flagged for continuous improvement.
@@ -16,7 +17,7 @@ const T = {
   sarina: '#2A7A6F', sarinaLight: '#3D9E91', sarinaDark: '#1D5A52', sarinaPale: '#E6F4F2',
   warmLight: '#B8ADA0', warmMid: '#8C7E6E',
 }
-const TOTAL = 13
+const TOTAL = 14
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const wordmark = `<b><span style="color:${T.sarina}">data</span><span style="color:${T.ana}">nautix</span></b>`
@@ -122,7 +123,22 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 5 — TOWN HALL LIVE
+  // 5 — PULSEIQ (pre-meeting pulse)
+  slides.push(slide(`
+    ${rail(++c, '// the pulse')}
+    <div class="body">
+      <h2 class="head">PulseIQ: the room’s concerns, before the meeting.</h2>
+      ${numList([
+        ['An interactive pre-meeting pulse', 'Community members weigh in digitally in the days before a town hall — questions, concerns, priorities.'],
+        ['Moderators walk in prepared', 'The top themes are summarized and ranked, so the agenda meets the room where it actually is.'],
+        ['Feeds the same knowledge base', 'What surfaces in the pulse joins the project KB — informing Sarina and the meeting alike.'],
+      ], true)}
+      <p class="aside">No more guessing what the community will raise — you already know going in.</p>
+    </div>
+    ${foot()}
+  `, 'cream'))
+
+  // 6 — TOWN HALL LIVE
   slides.push(slide(`
     ${rail(++c, '// the meeting')}
     <div class="body">
@@ -135,9 +151,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Nothing from the meeting is lost — and it’s usable almost immediately.</p>
     </div>
     ${foot()}
-  `, 'cream'))
+  `, 'paper'))
 
-  // 6 — ANY FORMAT IN
+  // 7 — ANY FORMAT IN
   const formats = [
     ['Live meeting audio', 'Captured in the room.'],
     ['Uploaded recordings', 'Audio / video files.'],
@@ -159,9 +175,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Multilingual and multi-source — every input lands in one place, ready to analyze.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 7 — ACCURACY / ERROR CORRECTION
+  // 8 — ACCURACY / ERROR CORRECTION
   slides.push(slide(`
     ${rail(++c, '// accuracy')}
     <div class="body">
@@ -175,9 +191,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The model does the heavy lifting; the corrections make it publishable.</p>
     </div>
     ${foot()}
-  `, 'cream'))
+  `))
 
-  // 8 — NEAR-REAL-TIME OUTPUTS
+  // 9 — NEAR-REAL-TIME OUTPUTS
   slides.push(slide(`
     ${rail(++c, '// outputs')}
     <div class="body">
@@ -190,9 +206,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Available minutes after the meeting — not weeks later.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 9 — THE NEW PROCESS (closed loop)
+  // 10 — THE NEW PROCESS (closed loop)
   slides.push(slide(`
     ${rail(++c, '// the process')}
     <div class="body">
@@ -206,9 +222,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Highest-quality responses in the shortest time — and the inbox load keeps shrinking.</p>
     </div>
     ${foot()}
-  `, 'cream'))
+  `))
 
-  // 10 — CONFIDENCE + CONTINUOUS IMPROVEMENT
+  // 11 — CONFIDENCE + CONTINUOUS IMPROVEMENT
   slides.push(slide(`
     ${rail(++c, '// trust + improvement')}
     <div class="body">
@@ -221,9 +237,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The system gets more capable — and more trustworthy — the more it’s used.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 11 — THE BENEFIT
+  // 12 — THE BENEFIT
   const benefits = [
     ['Minutes', 'to notes & Q&A', 'Meeting output in minutes, not weeks of manual write-up.'],
     ['First-line', 'web answers', 'Common questions resolved before they reach a human.'],
@@ -242,9 +258,9 @@ export function buildCommunityFeedbackHtml(): string {
       </div>
     </div>
     ${foot()}
-  `, 'cream'))
+  `))
 
-  // 12 — IN PRACTICE (NOWOCATS proof point)
+  // 13 — IN PRACTICE (NOWOCATS proof point)
   slides.push(slide(`
     ${rail(++c, '// in practice')}
     <div class="body">
@@ -258,9 +274,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The same approach generalizes to any public-engagement or community program.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 13 — CLOSE
+  // 14 — CLOSE
   slides.push(slide(`
     ${rail(++c, 'A new approach', true)}
     <div class="body center">
