@@ -4,12 +4,16 @@
 // → PDF (16:9) via app/api/community-feedback-deck. Same warm-editorial design
 // system as the pitch decks (Fraunces + DM Sans, paper/cream, Ana + Sarina).
 //
-// Story: one project knowledge base → three front doors (the Sarina web
-// assistant, the PulseIQ pre-meeting pulse, and the live Town Hall capture)
-// → any-format intake → an accuracy/error-
-// correction layer → near-real-time meeting notes + Q&A → a closed-loop
-// engagement process where Sarina answers first, escalations are captured back
-// into the KB, and low-confidence answers are flagged for continuous improvement.
+// Framed around the value an engagement lead is after — hear from everyone,
+// know what the community thinks, respond fast and stay trusted — with the
+// capabilities woven in as the means: one project knowledge base → three front
+// doors (the Sarina web assistant, the PulseIQ pre-meeting pulse, and the live
+// Town Hall capture) → any-format intake → reach across the whole community
+// (24×7, multilingual, accessible) → an accuracy/error-correction layer →
+// per-meeting notes + Q&A → community-wide synthesis (themes, sentiment,
+// hotspots, coverage) → a closed-loop process where Sarina answers first,
+// escalations are captured back into the KB, and low-confidence answers are
+// flagged for continuous improvement.
 
 const T = {
   paper: '#FFFDF9', cream: '#FAF6F0', ink: '#1A1714', inkSoft: '#2E2A25',
@@ -17,7 +21,7 @@ const T = {
   sarina: '#2A7A6F', sarinaLight: '#3D9E91', sarinaDark: '#1D5A52', sarinaPale: '#E6F4F2',
   warmLight: '#B8ADA0', warmMid: '#8C7E6E',
 }
-const TOTAL = 14
+const TOTAL = 16
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const wordmark = `<b><span style="color:${T.sarina}">data</span><span style="color:${T.ana}">nautix</span></b>`
@@ -74,11 +78,12 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body">
       <h2 class="head">Public engagement is slow, fragmented, and lossy.</h2>
       ${numList([
+        ['Only a few show up', 'A 7pm meeting hears the loudest voices; most residents never get a say.'],
         ['Meetings vanish', 'Hours of in-person audio are never mined; notes take weeks to write up.'],
         ['Questions pile up', 'Community questions land in staff inboxes and wait for a human to reply.'],
         ['Answers are inconsistent', 'Responses vary by who replies, when, and what they remember.'],
         ['Nothing compounds', 'A question answered once isn’t reusable the next time it’s asked.'],
-      ])}
+      ], true)}
       <p class="aside">The information exists — it just isn’t captured, unified, or reused.</p>
     </div>
     ${foot()}
@@ -116,7 +121,7 @@ export function buildCommunityFeedbackHtml(): string {
       ${numList([
         ['On the project website, 24/7', 'Answers community questions in plain language, grounded in the project KB.'],
         ['The first line of defense', 'Resolves the common questions instantly — before they ever reach a staff inbox.'],
-        ['Always on-message', 'Every answer is sourced from approved project material — no improvisation.'],
+        ['Sourced, neutral, on the record', 'Every answer comes from approved project material — no advocacy, no promises, no improvisation.'],
       ], true)}
       <p class="aside">Most routine questions never need a human at all.</p>
     </div>
@@ -177,7 +182,22 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `, 'cream'))
 
-  // 8 — ACCURACY / ERROR CORRECTION
+  // 8 — HEAR FROM EVERYONE (reach · multilingual · accessible)
+  slides.push(slide(`
+    ${rail(++c, '// the objective')}
+    <div class="body">
+      <h2 class="head">Hear from everyone — not just who shows up.</h2>
+      ${numList([
+        ['Participate anytime, from anywhere', 'A 24×7 web assistant and a scannable QR code mean residents who can’t make a 7pm meeting are still heard — on their own schedule, from their phone.'],
+        ['Everyone in their own language', 'Sarina converses end-to-end in the resident’s language — real bilingual outreach, with no separate translated site or extra staffing.'],
+        ['No jargon, no barriers', 'Plain-language answers, with clear routing to ADA and language-access contacts — engagement that works for the whole community.'],
+      ], true)}
+      <p class="aside">A more representative picture — because being heard no longer depends on showing up in person.</p>
+    </div>
+    ${foot()}
+  `))
+
+  // 9 — ACCURACY / ERROR CORRECTION
   slides.push(slide(`
     ${rail(++c, '// accuracy')}
     <div class="body">
@@ -191,9 +211,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The model does the heavy lifting; the corrections make it publishable.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 9 — NEAR-REAL-TIME OUTPUTS
+  // 10 — NEAR-REAL-TIME OUTPUTS (per-meeting)
   slides.push(slide(`
     ${rail(++c, '// outputs')}
     <div class="body">
@@ -206,9 +226,25 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Available minutes after the meeting — not weeks later.</p>
     </div>
     ${foot()}
+  `))
+
+  // 11 — KNOW WHAT THE COMMUNITY THINKS (aggregate synthesis)
+  slides.push(slide(`
+    ${rail(++c, '// the objective')}
+    <div class="body">
+      <h2 class="head">Know what the whole community thinks — with the evidence to back it.</h2>
+      ${numList([
+        ['The themes residents actually raised', 'Responses across every channel are pooled and clustered into real themes — including the ones nobody thought to ask about.'],
+        ['Where the community leans', 'Sentiment and priorities per topic, with representative quotes drawn from many voices — not a single anecdote.'],
+        ['Where concern concentrates', 'The places and issues mentioned most, mapped — so the hotspots are obvious at a glance.'],
+        ['Proof you heard enough', 'Coverage by topic and group is tracked, so you know what’s settled and what still needs outreach before engagement closes.'],
+      ])}
+      <p class="aside">The synthesis you take to decision-makers — and back to residents: <b>here’s what we heard, here’s what we’ll do.</b></p>
+    </div>
+    ${foot()}
   `, 'cream'))
 
-  // 10 — THE NEW PROCESS (closed loop)
+  // 12 — THE NEW PROCESS (closed loop)
   slides.push(slide(`
     ${rail(++c, '// the process')}
     <div class="body">
@@ -224,7 +260,7 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 11 — CONFIDENCE + CONTINUOUS IMPROVEMENT
+  // 13 — CONFIDENCE + CONTINUOUS IMPROVEMENT
   slides.push(slide(`
     ${rail(++c, '// trust + improvement')}
     <div class="body">
@@ -239,17 +275,18 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `, 'cream'))
 
-  // 12 — THE BENEFIT
+  // 14 — THE BENEFIT
   const benefits = [
-    ['Minutes', 'to notes & Q&A', 'Meeting output in minutes, not weeks of manual write-up.'],
-    ['First-line', 'web answers', 'Common questions resolved before they reach a human.'],
-    ['One KB', 'consistent everywhere', 'Web, meetings, and follow-ups all on the same message.'],
-    ['Compounding', 'coverage', 'Every answer and correction makes the next one better.'],
+    ['Everyone heard', 'not just who shows up', 'Reach beyond the usual attendees — 24×7, multilingual, on any device.'],
+    ['Answers in minutes', 'not weeks', 'Notes, Q&A, and community-wide synthesis ready right after the meeting.'],
+    ['Evidence', 'not anecdote', 'Defensible themes, sentiment, and coverage across the whole community.'],
+    ['Consistent & neutral', 'one source of truth', 'Every answer sourced from approved material — same message everywhere.'],
+    ['Compounding', 'every interaction', 'Each answer and correction makes the next one faster and better.'],
   ]
   slides.push(slide(`
-    ${rail(++c, '// the benefit')}
+    ${rail(++c, '// the value')}
     <div class="body">
-      <h2 class="head">Faster, consistent — and nothing lost.</h2>
+      <h2 class="head">More voices, faster answers — nothing lost.</h2>
       <div class="cases">
         ${benefits.map(b => `<div class="case">
           <div class="case-n" style="color:${T.ana}">${b[0]}</div>
@@ -260,7 +297,7 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 13 — IN PRACTICE (NOWOCATS proof point)
+  // 15 — IN PRACTICE (NOWOCATS proof point)
   slides.push(slide(`
     ${rail(++c, '// in practice')}
     <div class="body">
@@ -276,7 +313,7 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `, 'cream'))
 
-  // 14 — CLOSE
+  // 16 — CLOSE
   slides.push(slide(`
     ${rail(++c, 'A new approach', true)}
     <div class="body center">
@@ -333,9 +370,9 @@ export function buildCommunityFeedbackHtml(): string {
     .col-t { font-size:17px; font-weight:600; line-height:1.2; }
     .col-d { font-size:13px; color:${T.warmMid}; margin-top:8px; line-height:1.5; }
 
-    .cases { margin-top:24px; }
-    .case { display:flex; gap:28px; align-items:baseline; padding:13px 0; border-top:1px solid ${T.warmLight}; }
-    .case-n { font-family:'Fraunces',serif; font-weight:900; font-size:30px; width:230px; flex-shrink:0; }
+    .cases { margin-top:16px; }
+    .case { display:flex; gap:28px; align-items:baseline; padding:8px 0; border-top:1px solid ${T.warmLight}; }
+    .case-n { font-family:'Fraunces',serif; font-weight:900; font-size:25px; width:230px; flex-shrink:0; line-height:1.05; }
     .case-name { font-size:18px; font-weight:600; } .case-d { font-size:14px; color:${T.warmMid}; margin-top:2px; }
   </style></head><body>${slides.join('')}</body></html>`
 }

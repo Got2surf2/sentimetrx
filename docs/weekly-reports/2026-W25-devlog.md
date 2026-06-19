@@ -373,3 +373,17 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 **What changed**: `lib/decks/communityFeedbackHtml.ts` — inserted a new PulseIQ deep-dive slide (the pre-meeting interactive pulse: collects concerns digitally, hands moderators a ranked summary, feeds the same KB) as slide 5, between Sarina (4) and Town Hall (6). `TOTAL` 13→14; flipped the cream/paper variant on slides 6–13 to preserve the alternating rhythm; renumbered slide comments; updated the file-header story comment ("two front doors" → "three front doors"). Accuracy figure on the NOWOCATS slide deliberately left off (no measured accuracy data; repo forbids fabricated stats) — slide stands on the ~94%-confidence claim only.
 
 **Verify**: typecheck clean. QC PDF rendered locally (14 slides, PulseIQ symmetric with the other two pillars). Local, unpushed.
+
+## 2026-06-19 — Community Feedback deck: reframe around value delivered
+
+**Why**: Per direction, lead with the value an engagement lead is after and weave the capabilities in as the means — and close the gaps a practitioner would notice (representativeness, language access, defensible community-wide synthesis, neutrality). The deck was strong on "how it works" but light on "will it hear everyone, stay neutral, and tell me what the community thinks?"
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`, 14→16 slides):
+- New **objective** slide 8 "Hear from everyone — not just who shows up" (reach: 24×7 + QR; multilingual end-to-end; plain-language + ADA/language-access routing).
+- New **objective** slide 11 "Know what the whole community thinks — with the evidence to back it" (pooled themes incl. emergent; sentiment/priorities; geographic hotspots; coverage/"did we hear enough"; folds in report-back: "here's what we heard, here's what we'll do").
+- Slide 2 (Challenge): added "Only a few show up" to set up representativeness; list set `tight` to fit 5 items.
+- Slide 4 (Sarina): "Always on-message" → "Sourced, neutral, on the record — no advocacy, no promises, no improvisation" (trust for a public/government audience).
+- Slide 14 (Benefits) reframed to the value set: Everyone heard · Answers in minutes · Evidence not anecdote · Consistent & neutral · Compounding; `.cases` CSS tightened (padding 13→8, case-n 30→25px + line-height) to fit 5.
+- Cream/paper rhythm preserved (two insertions kept parity; only slides 9/10 flipped); comment numbers + `TOTAL` updated; file-header story rewritten around the value arc. NOWOCATS accuracy figure still intentionally omitted.
+
+**Verify**: typecheck clean. QC PDF re-rendered (16 slides, no overflow on the reflowed slides 2/8/11/14). Local, unpushed.
