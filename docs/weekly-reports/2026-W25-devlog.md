@@ -420,3 +420,16 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - Closing-the-loop slide (8): items reworded to name the deflection payoff — "never becoming an email the team has to answer", "not a shared inbox full of repeats", "one reply, not fifty"; aside now "Far fewer emails reach the team — … the inbox load keeps shrinking." Headline + 5-pain spine unchanged.
 
 **Verify**: typecheck clean. QC PDF re-rendered, slides 3 + 8 eyeballed (no overflow). Local, unpushed.
+
+## 2026-06-19 — Community deck: email burden becomes a top-5 pain; AI-trust demoted to reassurance
+
+**Why**: "Will the AI stay neutral/accurate?" isn't a pain the client has today — they don't use AI yet — so it shouldn't sit among the five questions they actually ask. The real, current pain is the email load: repetitive questions flooding staff inboxes and the pressure to reply in time. Promote that to the spine and give it its own solution slide instead of burying it on the loop slide.
+
+**What changed** (`lib/decks/communityFeedbackHtml.ts`, 12→13 slides):
+- Slide 2 (the five questions): Q4 "Will the AI stay neutral and accurate?" → "Can we keep up with the questions?" (email flood + timeliness).
+- New solution slide 7 "Can we keep up — without drowning in email?" (Sarina = first line, repetitive Qs never arrive, timely by default, staff handle only the genuinely new). Kicker `// 4 · keeping up`.
+- Slide 8 (closing the loop) reverted to a pure listening/report-back focus (capture → answered-for-everyone → "you said we did" → proof their voice mattered); the email-deflection lines moved to slide 7.
+- The neutral/sourced/accurate/flagged content kept but relocated to a non-numbered reassurance slide 9 "Built to be trusted in front of the public."
+- Value recap remapped: "Trusted answers" → "Fewer emails in / answered in time"; close lede updated. `TOTAL`=13; cream/paper rhythm clean (13 = ink close).
+
+**Verify**: typecheck clean. QC PDF re-rendered, slides 2/7/8/9 eyeballed (no overflow). Local, unpushed.

@@ -9,11 +9,14 @@
 //   1. Did we hear from everyone (representativeness / reach)?
 //   2. Could everyone take part (language access + ADA / Title VI)?
 //   3. Did we hear enough to act (aggregate themes, sentiment, hotspots, coverage)?
-//   4. Will the AI stay neutral and accurate (sourced-only, no advocacy, corrected, flagged)?
+//   4. Can we keep up with the questions (cut the email flood + reply in time)?
 //   5. Can we show the community we listened (report-back + the closed loop)?
-// The foundation (one curated KB behind three channels — Sarina web, PulseIQ
-// pre-meeting, Town Hall live) and any-format intake support the answers; the
-// NOWOCATS slide is the field proof; the value slide recaps the five.
+// "Will the AI stay neutral/accurate?" is deliberately NOT one of the five —
+// they don't use AI today, so it's not a current pain; it lives as a separate
+// "Built to be trusted" reassurance slide. The foundation (one KB behind three
+// channels — Sarina web, PulseIQ pre-meeting, Town Hall live) and any-format
+// intake support the answers; NOWOCATS is the field proof; the value slide
+// recaps the five.
 
 const T = {
   paper: '#FFFDF9', cream: '#FAF6F0', ink: '#1A1714', inkSoft: '#2E2A25',
@@ -21,7 +24,7 @@ const T = {
   sarina: '#2A7A6F', sarinaLight: '#3D9E91', sarinaDark: '#1D5A52', sarinaPale: '#E6F4F2',
   warmLight: '#B8ADA0', warmMid: '#8C7E6E',
 }
-const TOTAL = 12
+const TOTAL = 13
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const wordmark = `<b><span style="color:${T.sarina}">data</span><span style="color:${T.ana}">nautix</span></b>`
@@ -81,7 +84,7 @@ export function buildCommunityFeedbackHtml(): string {
         ['Did we hear from everyone?', 'Or just the loudest voices and the usual faces who show up at a 7pm meeting?'],
         ['Could everyone take part?', 'In their own language, with accessibility — a Title VI and ADA obligation, not a nicety.'],
         ['Did we hear enough to act?', 'Enough input, across enough topics and groups, to defend a decision.'],
-        ['Will the AI stay neutral and accurate?', 'No politics, no promises, nothing it can’t source — the first fear about an assistant.'],
+        ['Can we keep up with the questions?', 'The same questions flood staff inboxes by email — and every resident expects a timely reply.'],
         ['Can we show the community we listened?', 'A “you said, we did” residents can see — what actually makes people feel heard.'],
       ], true)}
       <p class="aside">Every public-engagement program lives or dies on these five. Here’s how we answer each.</p>
@@ -159,18 +162,18 @@ export function buildCommunityFeedbackHtml(): string {
     ${foot()}
   `))
 
-  // 7 — Q4: WILL IT STAY NEUTRAL AND ACCURATE? (trust)
+  // 7 — Q4: CAN WE KEEP UP WITH THE QUESTIONS? (deflect email + timeliness)
   slides.push(slide(`
-    ${rail(++c, '// 4 · trust')}
+    ${rail(++c, '// 4 · keeping up')}
     <div class="body">
-      <h2 class="head">Will it stay neutral — and never say something wrong?</h2>
+      <h2 class="head">Can we keep up — without drowning in email?</h2>
       ${numList([
-        ['Sourced, or it doesn’t answer', 'Every reply comes only from approved project material — no improvisation, with the source on the record.'],
-        ['No advocacy, no promises', 'Explicit guardrails: no political positions, no promised outcomes or timelines beyond the published materials.'],
-        ['Corrected for accuracy', 'Names, places, and terms fixed to canonical spelling; transcripts repaired; a human can review before anything is published.'],
-        ['Flagged when unsure', 'When confidence is low, Sarina flags for a human instead of guessing.'],
-      ])}
-      <p class="aside">The first fear about an AI answering residents — answered up front.</p>
+        ['Sarina is the first line', 'Residents get an instant, sourced answer on the project site, 24×7 — instead of emailing the team and waiting for a reply.'],
+        ['The repetitive questions never arrive', 'The FAQs that flood inboxes are answered automatically — staff never field the fiftieth version of the same question.'],
+        ['Timely by default', 'No reply queue, no after-hours backlog — every resident gets an answer the moment they ask.'],
+        ['Staff handle only the genuinely new', 'Only novel questions escalate to a person, so the team’s time goes where judgment is actually needed.'],
+      ], true)}
+      <p class="aside">Far fewer emails coming in, answered the instant they’re asked — and the load keeps shrinking as the knowledge base learns.</p>
     </div>
     ${foot()}
   `, 'cream'))
@@ -181,17 +184,33 @@ export function buildCommunityFeedbackHtml(): string {
     <div class="body">
       <h2 class="head">Can we show the community we listened?</h2>
       ${numList([
-        ['Sarina answers first', 'Most resident questions are resolved instantly on the web — never becoming an email the team has to answer.'],
-        ['Escalate only what she can’t', 'The few genuinely open questions route to the right person — not a shared inbox full of repeats.'],
-        ['Captured, then automatic', 'The human’s answer folds back into the KB; the next resident who asks gets it instantly — one reply, not fifty.'],
-        ['“You said, we did”', 'The synthesis goes back to residents and decision-makers — visible proof their input shaped the outcome.'],
+        ['Every answer is captured', 'When a question needs a human, that response is recorded into the knowledge base — not lost in a sent folder.'],
+        ['Answered for everyone, next time', 'The captured answer folds back in; the next resident who asks gets it automatically.'],
+        ['“You said, we did”', 'The synthesis — themes, concerns, and how each was addressed — goes back to residents and decision-makers.'],
+        ['Proof their voice mattered', 'Residents can see their input shaped the outcome — the thing that actually builds trust in the process.'],
       ], true)}
-      <p class="aside">Far fewer emails reach the team — and the ones that do teach the system, so the inbox load keeps shrinking.</p>
+      <p class="aside">Closing the loop turns “we collected feedback” into “the community knows it was heard.”</p>
     </div>
     ${foot()}
   `))
 
-  // 9 — ANY FORMAT IN (supporting capability)
+  // 9 — BUILT TO BE TRUSTED (reassurance — not one of the five)
+  slides.push(slide(`
+    ${rail(++c, '// built to be trusted')}
+    <div class="body">
+      <h2 class="head">Built to be trusted in front of the public.</h2>
+      ${numList([
+        ['Sourced, or it doesn’t answer', 'Every reply comes only from approved project material — no improvisation, with the source on the record.'],
+        ['No advocacy, no promises', 'Explicit guardrails: no political positions, no promised outcomes or timelines beyond the published materials.'],
+        ['Corrected for accuracy', 'Names, places, and terms fixed to canonical spelling; transcripts repaired; a human can review before anything is published.'],
+        ['Flagged when unsure', 'When confidence is low, Sarina flags for a human instead of guessing.'],
+      ])}
+      <p class="aside">The questions you’ll get about putting AI in front of residents — answered before they’re asked.</p>
+    </div>
+    ${foot()}
+  `, 'cream'))
+
+  // 10 — ANY FORMAT IN (supporting capability)
   const formats = [
     ['Live meeting audio', 'Captured in the room.'],
     ['Uploaded recordings', 'Audio / video files.'],
@@ -213,9 +232,9 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">Multilingual and multi-source — every input lands in one place, ready to analyze.</p>
     </div>
     ${foot()}
-  `, 'cream'))
+  `))
 
-  // 10 — IN PRACTICE (NOWOCATS proof point)
+  // 11 — IN PRACTICE (NOWOCATS proof point)
   slides.push(slide(`
     ${rail(++c, '// in practice')}
     <div class="body">
@@ -229,14 +248,14 @@ export function buildCommunityFeedbackHtml(): string {
       <p class="aside">The same approach generalizes to any public-engagement or community program.</p>
     </div>
     ${foot()}
-  `))
+  `, 'cream'))
 
-  // 11 — THE VALUE (recap mapped to the five questions)
+  // 12 — THE VALUE (recap mapped to the five questions)
   const benefits = [
     ['Everyone heard', 'representative input', 'Beyond the usual attendees — 24×7, by QR, on any device.'],
     ['Access for all', 'language + ADA', 'Every resident in their own language; built for Title VI and ADA.'],
     ['Heard enough', 'evidence to act', 'Themes, sentiment, hotspots, and coverage you can defend.'],
-    ['Trusted answers', 'neutral + accurate', 'Sourced only, no advocacy, corrected, flagged when unsure.'],
+    ['Fewer emails in', 'answered in time', 'Routine questions handled on the site — staff field only the new.'],
     ['They saw we listened', 'the loop closed', 'A “you said, we did” that compounds with every interaction.'],
   ]
   slides.push(slide(`
@@ -251,15 +270,15 @@ export function buildCommunityFeedbackHtml(): string {
       </div>
     </div>
     ${foot()}
-  `, 'cream'))
+  `, 'paper'))
 
-  // 12 — CLOSE
+  // 13 — CLOSE
   slides.push(slide(`
     ${rail(++c, 'A new approach', true)}
     <div class="body center">
       <div class="eyebrow" style="color:${T.anaLight}">Community engagement</div>
       <h1 class="display" style="font-size:70px;max-width:20ch">Answer all five — on one living knowledge base.</h1>
-      <p class="lede" style="color:rgba(255,253,249,.8);max-width:40ch">Hear from everyone, in any language; know you heard enough; stay trusted; and show the community you listened.</p>
+      <p class="lede" style="color:rgba(255,253,249,.8);max-width:40ch">Hear from everyone, in any language; know you heard enough; handle the questions without the inbox flood; and show the community you listened.</p>
       <p class="closer" style="color:${T.anaLight}">datanautix &nbsp;·&nbsp; sanjay@datanautix.com</p>
     </div>
     ${foot(true)}
