@@ -400,3 +400,13 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 - File rewritten via Write (large exact-match Edit infeasible with smart quotes); `TOTAL`=12; cream/paper rhythm clean (12 = ink close).
 
 **Verify**: typecheck clean. QC PDF re-rendered, all 12 slides eyeballed — no overflow on the 5-item thesis, the two-line-head question slides, or the 5-case value recap. Local, unpushed.
+
+## 2026-06-19 — Admin decks: sort most-recently-updated first
+
+**Why**: Decks rendered in hardcoded array order within each audience group, so a freshly reworked deck stayed buried wherever it sat in the list. Most-recent-first is the intuitive order.
+
+**What changed**:
+- `app/admin/decks/DecksClient.tsx` — each category's decks now `.sort()` by the per-deck "last updated" timestamp (descending; decks with no known timestamp sort last). Also refreshed the community-feedback-deck card metadata to match the rebuilt deck (12 slides; new five-questions subtitle) — it still read "13 slides" with the old description.
+- `app/admin/decks/page.tsx` — added the three `review-intelligence-deck:*` variants to the `lastUpdated` map (they were missing, so they'd have sorted to the bottom with no date). All 17 decks now carry a last-updated time.
+
+**Verify**: typecheck clean. Sort is on a filtered copy (no mutation of the module-level DECKS). Local, unpushed.

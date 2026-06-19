@@ -125,9 +125,9 @@ const DECKS: Deck[] = [
     href: '/api/community-feedback-deck',
     filename: 'Gathering-Community-Feedback.pdf',
     title: 'Gathering Community Feedback — A New Approach',
-    subtitle: 'Capability deck for public/community engagement: one knowledge base → a Sarina web assistant + live town-hall capture, any-format intake, entity/error correction, near-real-time meeting notes + Q&A, and a closed loop (Sarina answers first → escalate → capture answer → confidence-flag → KB compounds). Includes a NOWOCATS proof slide.',
+    subtitle: 'Public/community-engagement capability deck, built around the five questions every engagement lead must answer — representativeness, language access (Title VI/ADA), did-we-hear-enough, neutrality/accuracy, and showing the community you listened. One KB behind three channels (Sarina web · PulseIQ pre-meeting · Town Hall live). Includes a NOWOCATS proof slide.',
     audience: 'Public-sector / engineering & planning firms running community engagement',
-    slides: '13 slides',
+    slides: '12 slides',
     accent: '#2A7A6F',
     badge: 'ENGAGEMENT · PDF',
     logKey: 'community-feedback-deck',
@@ -275,6 +275,13 @@ export default function DecksClient({
 }) {
   const router = useRouter()
   const [filter, setFilter] = useState<'all' | DeckCategory>('all')
+  // Sort key: each deck's "last updated" (source file's last-commit time), so
+  // the most recently reworked deck floats to the top of its group. Decks with
+  // no known timestamp sort last.
+  const recency = (logKey: string) => {
+    const iso = lastUpdated[logKey]
+    return iso ? new Date(iso).getTime() : 0
+  }
   // After a download click, give the file a moment to start, then re-query
   // the server component so the "Last downloaded" timestamp updates.
   const onDownload = () => {
@@ -316,6 +323,7 @@ export default function DecksClient({
 
       {CATEGORIES.filter(c => filter === 'all' || c.key === filter).map(cat => {
         const decks = DECKS.filter(d => catOf(d) === cat.key)
+          .sort((a, b) => recency(b.logKey) - recency(a.logKey))
         if (!decks.length) return null
         return (
           <section key={cat.key} style={{ marginBottom: 28 }}>
