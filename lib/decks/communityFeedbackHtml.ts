@@ -244,7 +244,7 @@ export function buildCommunityFeedbackHtml(): string {
         ['A QR code to 37,000+ households', 'The team mailed a scannable QR code that opened Sarina — available 24×7.'],
         ['~94% answered confidently', 'Across ~265 real community questions, Sarina flagged only 16 for a human — ~94% handled with confidence.'],
         ['Live Q&A, transcribed', 'At the town hall we transcribed the live Q&A and corrected names like “Vick Road” — transcription, not auto-answering.'],
-        ['Summaries public the next day', 'The structured meeting notes and full Q&A were cleaned up and posted for the community to read the very next day — not weeks later.'],
+        ['Summaries public the next day', 'The structured meeting notes and full Q&A were cleaned up and posted for the community to read the very next day — not several days later.'],
       ], true)}
     </div>
     ${foot()}
