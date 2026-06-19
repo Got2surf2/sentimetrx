@@ -259,7 +259,7 @@ export function buildCommunityFeedbackHtml(): string {
     ['They saw we listened', 'the loop closed', 'A “you said, we did” that compounds with every interaction.'],
   ]
   slides.push(slide(`
-    ${rail(++c, '// the value')}
+    ${rail(++c, '// now you can sleep at night')}
     <div class="body">
       <h2 class="head">Five questions. Five answers.</h2>
       <div class="cases">
