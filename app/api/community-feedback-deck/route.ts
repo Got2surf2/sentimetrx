@@ -1,22 +1,12 @@
-// GET /api/pitch-deck-v2 — warm-editorial Sentimetrx investor deck, rendered
-// HTML/CSS → PDF (16:9) with headless Chrome.
-//
-// Deliberately NOT pptxgenjs: this is the design-forward variant that matches
-// datanautix.com's look (Fraunces serif + DM Sans, warm paper canvas, Ana
-// orange + Sarina teal accents, editorial layouts built from typographic lists
-// and hairline rules rather than colored chip-grids). The classic editable
-// pptx lives at /api/pitch-deck; this is the polished PDF to attach/share.
-// Markup lives in lib/decks/pitchDeckV2Html.ts (mirrors reportHtml/reportPdf).
-//
-// Chrome resolution mirrors lib/recordings/reportPdf.ts: @sparticuz/chromium on
-// the Linux serverless runtime, an installed Chrome locally (key off
-// process.platform, NOT process.env.VERCEL — .env.local sets VERCEL=1).
+// GET /api/community-feedback-deck — "Gathering Community Feedback: A New
+// Approach" capability deck, rendered HTML/CSS → PDF (16:9). Same render
+// pipeline as the other warm-editorial PDF decks (reportPdf.ts).
 
 import { NextResponse } from 'next/server'
 import { existsSync } from 'fs'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { logDeckDownload } from '@/lib/auth/logDeckDownload'
-import { buildPitchDeckV2Html } from '@/lib/decks/pitchDeckV2Html'
+import { buildCommunityFeedbackHtml } from '@/lib/decks/communityFeedbackHtml'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,9 +27,9 @@ function localChromePath(): string | null {
 export async function GET() {
   const denied = await requireAdmin()
   if (denied) return denied
-  await logDeckDownload('pitch-deck-v2')
+  await logDeckDownload('community-feedback-deck')
 
-  const html = buildPitchDeckV2Html()
+  const html = buildCommunityFeedbackHtml()
   const puppeteer = (await import('puppeteer-core')).default
   const onServerless = process.platform === 'linux'
 
@@ -60,14 +50,12 @@ export async function GET() {
   try {
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'load' })
-    // 'load' resolves the Google-Fonts stylesheet; fonts.ready then waits for the
-    // actual Fraunces / DM Sans files to finish before we print.
     await page.evaluateHandle('document.fonts.ready')
     const pdf = await page.pdf({ width: '1280px', height: '720px', printBackground: true })
     return new NextResponse(new Uint8Array(Buffer.from(pdf)), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="Sentimetrx-Anthology-Fund.pdf"',
+        'Content-Disposition': 'attachment; filename="Gathering-Community-Feedback.pdf"',
       },
     })
   } finally {

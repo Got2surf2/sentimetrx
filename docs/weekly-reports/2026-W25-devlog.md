@@ -1,5 +1,18 @@
 # 2026-W25 — Dev log (Week of Jun 15 to Jun 21)
 
+## 2026-06-19 — Anthology pitch variants + a community-engagement capability deck
+
+**Why**: Iterating the Menlo × Anthropic Anthology pitch into a full + short variant, and adding a public/community-engagement capability deck for the decks hub.
+
+**What changed**:
+- `lib/decks/pitchDeckV2Html.ts` — the FULL 17-slide warm-editorial Anthology deck (40-year founder arc, incumbents-falling/AI-inflection, sourced CXM market sizing, Claude-as-spine, restaurant vertical, traction, "why we fit Anthology"). Positions in **Consumer AI** (Anthology focus area). Route `/api/pitch-deck-v2` → `Sentimetrx-Anthology-Fund.pdf`.
+- `lib/decks/pitchDeckV3Html.ts` + `app/api/pitch-deck-v3` (NEW) — the SHORT (~12-slide) deck per YC-founder feedback: collect→unify→act architecture, the **data-flywheel moat** ("the model is rented; the data is the moat"), $1M use-of-funds, Claude in the product + in how we build, first-party/always-on framing (implicit Gather differentiation).
+- `lib/decks/communityFeedbackHtml.ts` + `app/api/community-feedback-deck` (NEW) — "Gathering Community Feedback: A New Approach" (13 slides): one KB → Sarina web assistant + live town-hall capture, any-format intake, entity/error correction, near-real-time notes + Q&A, a closed-loop engagement process, confidence-flagging; generalized with a NOWOCATS proof slide.
+- `app/admin/decks/DecksClient.tsx` — cards for the full / short / community decks, grouped by audience.
+- `app/admin/decks/page.tsx` — `lastUpdated` entries for the lib-file decks so cards show dates.
+
+**Verify**: typecheck clean; all three decks render (17 / 12 / 13 pages) via the puppeteer-core + @sparticuz/chromium pipeline. Local, unpushed. NOTE: PDF render depends on Google Fonts reachable from the serverless fn — confirm on first prod download.
+
 ## 2026-06-18 — Engineering Reality Check deck: bring current + reposition
 
 **Why**: The peer-review deck was anchored to "Mar 1 → ~9 weeks" and listed zero-tests / no-CI / in-memory-rate-limit as the headline gaps — all since resolved — and omitted the Town Hall product. Also needed a sharper positioning: not a consolidation play, but a Claude-spined stack solving real, well-understood problems, with funding used to harden scalability + enterprise usability.

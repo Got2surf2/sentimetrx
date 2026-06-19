@@ -53,6 +53,9 @@ export default async function DecksPage() {
   // was last touched, not just the latest deploy time.
   const lastUpdated: Record<string, string | null> = {
     'pitch-deck':                  deckLastModified('app/api/pitch-deck/route.ts'),
+    'pitch-deck-v2':               deckLastModified('lib/decks/pitchDeckV2Html.ts'),
+    'pitch-deck-v3':               deckLastModified('lib/decks/pitchDeckV3Html.ts'),
+    'community-feedback-deck':     deckLastModified('lib/decks/communityFeedbackHtml.ts'),
     'rollup-deck:short':           deckLastModified('app/api/rollup-deck/route.ts'),
     'rollup-deck:long':            deckLastModified('app/api/rollup-deck/route.ts'),
     'project-insight-deck':        deckLastModified('app/api/project-insight-deck/route.ts'),
