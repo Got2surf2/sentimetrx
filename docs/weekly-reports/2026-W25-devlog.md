@@ -461,3 +461,13 @@ So PDF, deck, and on-screen all apply the reviewed spelling corrections on read;
 Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-everyone · access/Title VI · heard-enough · keep-up-without-drowning-in-email · listened) + a "consistent & trusted" reassurance slide, any-format intake, NOWOCATS proof (incl. next-day public summaries), and the five-questions/five-answers bookend. Open item unchanged: NOWOCATS *accuracy* figure still omitted (no measured data; would need an LLM-judge eval).
 
 **Verify**: typecheck clean; QC PDF renders 13 slides without overflow. All committed locally; **NOT pushed** (≈18 commits ahead — deck rebuild + admin-decks sort + spec/devlog).
+
+## 2026-06-20 — Public agent display-config endpoint for external embeds
+
+**Why**: External embeds (the datanautix.com chat widget) hardcoded the agent's name, avatar, greeting, and suggestions, so they drifted from the agent's real config. Expose a read-only public surface so embeds render the agent's identity at runtime — the agent config becomes the single source of truth (requested while wiring the datanautix.com widget to the `datanautix` Branded Agent).
+
+**What changed**:
+- `app/api/bots/[id]/public/route.ts` — new `GET /api/bots/[id]/public`: unauthenticated, CORS-open (same posture as `/chat`), returns ONLY safe display fields (`name`, `avatarLetter`, `subtitle`, `greeting`, `suggestions`, `placeholder`). Requires `agents.status='active'`. Never exposes system prompt, KB, guardrails, or other private config.
+- `docs/BOTS.md` — documented the endpoint in the Agents module overview.
+
+**Verify**: tested locally via dev server against the `datanautix` agent — returns name/avatarLetter/greeting/suggestions/placeholder (HTTP 200). Committed locally; **NOT pushed**.
