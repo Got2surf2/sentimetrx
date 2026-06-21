@@ -30,6 +30,15 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   const [shareLinks,  setShareLinks]  = useState<{ url: string; token: string; expires_at: string; created_at: string; last_accessed_at: string | null }[]>([])
   const [shareLinksLoaded, setShareLinksLoaded] = useState(false)
 
+  // Kiosk mode (?kiosk=1) — unattended shared-tablet link + attract-screen copy
+  const kioskUrl = surveyUrl + '?kiosk=1'
+  const [kioskCopied,   setKioskCopied]   = useState(false)
+  const [kioskQrDataUrl, setKioskQrDataUrl] = useState<string | null>(null)
+  const [kioskHeadline, setKioskHeadline] = useState<string>(initial.config?.kioskAttractHeadline || '')
+  const [kioskSubtext,  setKioskSubtext]  = useState<string>(initial.config?.kioskAttractSubtext || '')
+  const [kioskSaving,   setKioskSaving]   = useState(false)
+  const [kioskSaved,    setKioskSaved]    = useState(false)
+
 
   // Load existing share links
   useEffect(() => {
@@ -46,6 +55,34 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
       .then(url => setQrDataUrl(url))
       .catch(() => {})
   }, [surveyUrl])
+
+  // Kiosk QR — encodes the ?kiosk=1 link
+  useEffect(() => {
+    QRCode.toDataURL(kioskUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#0a1628' } })
+      .then(url => setKioskQrDataUrl(url))
+      .catch(() => {})
+  }, [kioskUrl])
+
+  const handleSaveKioskCopy = async () => {
+    setKioskSaving(true)
+    setError(null)
+    try {
+      const nextConfig = { ...study.config, kioskAttractHeadline: kioskHeadline.trim() || undefined, kioskAttractSubtext: kioskSubtext.trim() || undefined }
+      const res = await fetch(`/api/studies/${study.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: nextConfig }),
+      })
+      if (!res.ok) throw new Error('save failed')
+      setStudy(prev => ({ ...prev, config: nextConfig }))
+      setKioskSaved(true)
+      setTimeout(() => setKioskSaved(false), 2000)
+    } catch {
+      setError('Failed to save kiosk text. Please try again.')
+    } finally {
+      setKioskSaving(false)
+    }
+  }
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(surveyUrl)
@@ -214,6 +251,78 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 <p className="text-gray-500 text-xs">Generating QR code...</p>
               )}
             </div>
+          </div>
+
+          {/* Kiosk mode */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
+            <h2 className="font-semibold text-white mb-1">Kiosk mode</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              For an unattended shared tablet (counter or table-top feedback station). Each guest gets a fresh survey; it auto-returns to a welcome screen between guests. Lock the tablet to this link using its built-in kiosk setting (Fire OS Single-App Mode, Android kiosk, or iPad Guided Access).
+            </p>
+
+            {/* Kiosk link */}
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-gray-300 font-mono truncate">
+                {kioskUrl}
+              </div>
+              <button
+                onClick={async () => { await navigator.clipboard.writeText(kioskUrl); setKioskCopied(true); setTimeout(() => setKioskCopied(false), 2000) }}
+                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
+                  kioskCopied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+              >
+                {kioskCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <a href={kioskUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors inline-block mb-5">
+              Preview kiosk mode in new tab →
+            </a>
+
+            {/* Welcome-screen copy */}
+            <div className="border-t border-gray-200 pt-5">
+              <label className="text-xs font-medium text-gray-500 block mb-1.5">Welcome screen headline</label>
+              <input
+                type="text"
+                value={kioskHeadline}
+                onChange={e => setKioskHeadline(e.target.value)}
+                placeholder="We'd love your feedback"
+                style={{ fontSize: '16px' }}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-gray-200 outline-none mb-3"
+              />
+              <label className="text-xs font-medium text-gray-500 block mb-1.5">Welcome screen sub-text</label>
+              <input
+                type="text"
+                value={kioskSubtext}
+                onChange={e => setKioskSubtext(e.target.value)}
+                placeholder="It only takes a minute — and it's completely anonymous."
+                style={{ fontSize: '16px' }}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-gray-200 outline-none mb-4"
+              />
+              <button
+                onClick={handleSaveKioskCopy}
+                disabled={kioskSaving}
+                className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
+                  kioskSaved ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+              >
+                {kioskSaving ? 'Saving...' : kioskSaved ? 'Saved!' : 'Save welcome screen'}
+              </button>
+            </div>
+
+            {/* Kiosk QR */}
+            {kioskQrDataUrl && (
+              <div className="flex flex-col items-center gap-3 mt-6 pt-5 border-t border-gray-200">
+                <div className="rounded-2xl overflow-hidden p-4" style={{ background: '#0a1628', border: `2px solid ${theme.primaryColor || '#00b4d8'}30` }}>
+                  <img src={kioskQrDataUrl} alt="Kiosk QR code" width={200} height={200} />
+                </div>
+                <button
+                  onClick={() => { const a = document.createElement('a'); a.href = kioskQrDataUrl; a.download = `${study.guid}-kiosk-qrcode.png`; a.click() }}
+                  className="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium transition-all"
+                >
+                  Download kiosk QR code (PNG)
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Share dashboard */}

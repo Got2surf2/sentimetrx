@@ -483,3 +483,13 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `docs/SURVEYS.md` — documented kiosk entry point + lifecycle.
 
 **Verify**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Not yet exercised in a browser — test at `/s/<guid>?kiosk=1` (tap attract → run → confirm auto-reset to attract, and a second run isn't device-blocked). Committed locally; **NOT pushed**.
+
+## 2026-06-21 — Survey kiosk: Publish-page enablement card
+
+**Why**: Kiosk mode was a remember-the-URL-param feature (`?kiosk=1`). Give it a real home so non-technical operators can turn it on per survey.
+
+**What changed**:
+- `app/studies/[id]/deploy/DeployClient.tsx` — new **Kiosk mode** card on the Publish page: the `?kiosk=1` link with copy + "preview in new tab", a dedicated kiosk QR (download), and two inputs (welcome-screen headline / sub-text) that PATCH `study.config.kioskAttractHeadline`/`kioskAttractSubtext` via the existing `/api/studies/[id]` route (`config` already allowed). Inputs use 16px font (iOS no-zoom rule).
+- `docs/SURVEYS.md` — noted the Publish-page card as the enablement point.
+
+**Verify**: typecheck clean; dev server compiles the route and `/s/<x>?kiosk=1` serves 200 (no 500). Full browser click-through (attract → tap → run; normal-mode regression) staged in `scripts/_kiosk_verify.mts` — pending a published survey GUID to run against. Committed locally; **NOT pushed**.

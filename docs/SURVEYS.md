@@ -71,7 +71,7 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - **Kiosk**: `?kiosk=1` (or `?kiosk=true`) — unattended shared-tablet mode (see below)
 
 ### Kiosk mode (`?kiosk=1`)
-For shared tablets (counter/table-top "feedback station"). Same survey, different lifecycle:
+Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kiosk mode** card: copy the `?kiosk=1` link, download a kiosk QR, and set the attract-screen headline/sub-text (saved to `StudyConfig`). For shared tablets (counter/table-top "feedback station"). Same survey, different lifecycle:
 - **Attract screen** between guests (`SurveyWidget` `phase='attract'`) — tap to begin a fresh session. Copy via `StudyConfig.kioskAttractHeadline` / `kioskAttractSubtext`.
 - **Per-guest fresh session** — each run remounts `SurveySession` via a `key`, giving the ref-based engine a clean slate (new `session_id`, fingerprint, answers).
 - **Device lock bypassed** — the one-response-per-device lock (`allowMultipleResponses: false` → `localStorage` `sentimetrx_completed_*`) is neither read nor written in kiosk mode, so guest N+1 isn't blocked by guest N.
