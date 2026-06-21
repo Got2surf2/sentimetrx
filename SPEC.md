@@ -254,6 +254,7 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 - Date: date range picker
 - Global across all tabs (Charts, TextMine, Stats)
 - Value aliases applied to filter labels
+- **Saved Views & Snapshots + relative Periods** — *spec'd, not yet built.* Live **views** (named filter configs reusable across sessions), **snapshots** (a view frozen to aggregates so numbers never move), and relative **periods** (current/last quarter·month·year, QTD, with to-date-aligned comparison vs prior period / same period last year). Date field via a new `SchemaConfig.primaryDateField` (auto-ranked + overridable; date-less datasets gracefully hide period UI). v1 = single datasets, manual snapshots, calendar periods. Full design in `docs/SAVED_VIEWS.md`.
 
 #### Export
 - **PPTX** (`/api/datasets/[datasetId]/export/pptx`): Branded consulting-quality deck with bar charts, theme slides, AI-generated narratives, comment highlights. Caps rows at 10K unfiltered / 30K filtered. Accepts `skipAI` body param — when true, skips AI narratives and comment scoring (uses auto-generated text fallbacks). All text elements use `autoFit: true` to prevent overflow. `maxDuration = 120s`.

@@ -1,5 +1,17 @@
 # 2026-W25 — Dev log (Week of Jun 15 to Jun 21)
 
+## 2026-06-21 — Saved Views / Snapshots / Periods design spec + pitch-deck brand casing
+
+**Why**: Customers doing recurring analysis (e.g. quarterly reviews) need to save the filter state of a dataset and re-open it later, and to filter/compare by relative time ("current quarter", "same period last year") so a saved analysis stays correct as new data lands. Captured the full design before building, resolving the hard edge cases up front (partial-period comparison, timezone, snapshot fidelity vs continuously-syncing sources).
+
+**What changed**:
+- `docs/SAVED_VIEWS.md` (NEW, committed `dbc1888d`) — v1 design for three concepts: **view** (live named filter config), **snapshot** (a view frozen to *aggregates only* — drift-immune vs synced review/Reddit/Substack sources; row-copy deferred), **period** (relative date range, resolved at read time). Key decisions: snapshot = a view frozen at a moment (one mental model, not two); periods stored as intent, resolved client-side into the existing `DateRangeFilter` so `applyFilters()` is unchanged; **to-date alignment** for in-progress periods (QTD vs same-quarter-last-year-to-date — kills the phantom "−90% on day 8"); **org-level timezone**; calendar arithmetic with half-open `[start,end)` boundaries; comparison = offset from primary (rolls forward automatically), one comparison now but modeled for N; "—" instead of a fake delta when the prior window predates the dataset's earliest data. New `SchemaConfig.primaryDateField` (auto-ranked: analytical names > operational, fill rate, value spread; user-overridable) is the date-field default and the "no date → hide period UI" signal. Views get their **own table** (`saved_views`, RLS org-scoped, private-by-default w/ opt-in org visibility) — can't live in the shared org-universal `dataset_state`. Deferred: collections (need per-source canonical date mapping), auto-snapshot-at-period-close, fiscal-year UI, snapshot re-slice.
+- `SPEC.md` — added a "Saved Views & Snapshots + relative Periods (spec'd, not yet built)" note under § Filters pointing to the design doc.
+- `PITCH_DECK.md` (committed `480447c6`) — normalized brand casing `SentimetRx` → `Sentimetrx` (product-naming rule; deck-export Datanautix brand untouched).
+- Cleanup: deleted 8 one-off scratch scripts (`scripts/_*.ts` — NOWOCATS #2 recording-recovery + deck-QC throwaways, work already shipped) rather than commit them.
+
+**Verify**: docs only — no code/behavior change yet. Spec doc + casing fix committed locally, unpushed.
+
 ## 2026-06-19 — Community-feedback deck refinements + deck "last updated" fix
 
 **Why**: Generalized the community-engagement deck (was NOWOCATS-specific), wove PulseIQ in, put real NOWOCATS metrics on it, and fixed a wrong "Last updated" date on the decks hub.
