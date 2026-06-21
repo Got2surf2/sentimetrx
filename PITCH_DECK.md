@@ -1,10 +1,10 @@
-# SentimetRx — Investor Pitch Deck
+# Sentimetrx — Investor Pitch Deck
 
 ---
 
 ## 1. COVER
 
-**SentimetRx**
+**Sentimetrx**
 AI-Powered Conversational Feedback Intelligence
 
 *The first platform that collects, understands, and acts on customer feedback — in one place, in any language.*
@@ -39,7 +39,7 @@ That follow-up is where the insight lives. And until now, it required a human.
 
 ## 4. THE SOLUTION
 
-**SentimetRx replaces static surveys with AI-powered conversations that adapt in real-time.**
+**Sentimetrx replaces static surveys with AI-powered conversations that adapt in real-time.**
 
 A branded AI bot greets respondents by name, asks questions conversationally, detects when answers are vague and asks intelligent follow-ups, handles off-topic questions gracefully, and works in 15 languages — all without any human in the loop.
 
@@ -75,7 +75,7 @@ Then it automatically extracts themes, tests for statistical significance, and g
 >
 > *Insight captured: positive sentiment. That's it.*
 
-**SentimetRx conversation:**
+**Sentimetrx conversation:**
 > Bot: How was your experience? [emoji scale]
 > Respondent: [taps Good — 4 stars]
 > Bot: That's great to hear! What made it good?
@@ -93,7 +93,7 @@ Then it automatically extracts themes, tests for statistical significance, and g
 
 **We compete across three categories — and win because we're the only platform that combines all three.**
 
-|  | Survey Tools | Text Analytics | SentimetRx |
+|  | Survey Tools | Text Analytics | Sentimetrx |
 |--|-------------|---------------|------------|
 | Examples | SurveyMonkey, Qualtrics, Typeform | Thematic, Medallia, MonkeyLearn | — |
 | Collection | Static forms | None (requires data) | AI conversation |
