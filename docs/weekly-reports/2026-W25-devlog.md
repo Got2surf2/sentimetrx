@@ -480,9 +480,10 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 
 **What changed**:
 - `app/api/bots/[id]/public/route.ts` — new `GET /api/bots/[id]/public`: unauthenticated, CORS-open (same posture as `/chat`), returns ONLY safe display fields (`name`, `avatarLetter`, `subtitle`, `greeting`, `suggestions`, `placeholder`). Requires `agents.status='active'`. Never exposes system prompt, KB, guardrails, or other private config.
-- `docs/BOTS.md` — documented the endpoint in the Agents module overview.
+- `docs/BOTS.md` + `SPEC.md` — documented the endpoint in the Agents module overview and the API Routes Summary.
+- **Consumer (separate repo `datanautix-homepage`, local commit `7325bba`, not pushed):** the site chat widget (`js/chat-widget.js` + homepage inline copy) now fetches this endpoint on load and applies name/avatar/greeting/suggestions/placeholder, falling back to bundled defaults if unreachable — rendering as the agent (`Sarina@Datanautix` / 🤖) instead of the old hardcoded "Datanautix Assistant".
 
-**Verify**: tested locally via dev server against the `datanautix` agent — returns name/avatarLetter/greeting/suggestions/placeholder (HTTP 200). Committed locally; **NOT pushed**.
+**Verify**: endpoint tested locally via dev server against the `datanautix` agent — returns name/avatarLetter/greeting/suggestions/placeholder (HTTP 200); widget JS syntax-valid and the contract matches. Committed locally in both repos; **NOT pushed** (the endpoint must deploy to sentimetrx.ai before the live widget picks it up).
 
 ## 2026-06-21 — Survey kiosk mode (`?kiosk=1`) for unattended shared tablets
 
