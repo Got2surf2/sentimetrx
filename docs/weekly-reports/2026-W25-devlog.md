@@ -471,3 +471,15 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `docs/BOTS.md` — documented the endpoint in the Agents module overview.
 
 **Verify**: tested locally via dev server against the `datanautix` agent — returns name/avatarLetter/greeting/suggestions/placeholder (HTTP 200). Committed locally; **NOT pushed**.
+
+## 2026-06-21 — Survey kiosk mode (`?kiosk=1`) for unattended shared tablets
+
+**Why**: Exploring a Ziosk-style "feedback tablet" — a counter/table-top tablet running our existing survey software so guests self-serve feedback (no payment hardware; the checkout tie-in is a receipt-QR / phone-handoff trigger, not us processing cards). The survey's one-response-per-device lock and lack of any reset made a shared tablet unusable for a second guest; kiosk mode fixes that. Owner chose unattended **auto-reset** (vs staff-tapped reset).
+
+**What changed**:
+- `components/survey/SurveyWidget.tsx` — split the engine-driven body into a keyed inner `SurveySession` (remount = clean engine state, since the engine is all refs). Outer shell adds kiosk lifecycle: `phase` attract↔survey, `runKey` remount counter, an `AttractScreen` ("tap to begin") between guests, ×1.15 base font, auto-reset ~7s after the closing card, and a 90s idle-abandon → attract.
+- `components/survey/useSurveyEngine.ts` — new `kiosk` + `onComplete` props. Kiosk: fresh `session_id` per guest (no `sessionStorage` reuse), the per-device lock (`sentimetrx_completed_*`) is neither read (gate bypassed) nor written, and `onComplete` fires at the closing card to drive the reset.
+- `lib/types.ts` — `StudyConfig.kioskAttractHeadline` / `kioskAttractSubtext` (optional attract-screen copy).
+- `docs/SURVEYS.md` — documented kiosk entry point + lifecycle.
+
+**Verify**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Not yet exercised in a browser — test at `/s/<guid>?kiosk=1` (tap attract → run → confirm auto-reset to attract, and a second run isn't device-blocked). Committed locally; **NOT pushed**.

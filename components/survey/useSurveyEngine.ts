@@ -22,6 +22,12 @@ interface Props {
   isLightBg?: boolean
   reducedMotion?: boolean
   onVerboseRequest?: (mode?: 'bypass') => void
+  /** Unattended kiosk mode: bypass the one-response-per-device lock, use a
+   *  fresh session per guest, and never write the "completed" device lock. */
+  kiosk?: boolean
+  /** Fired once the survey reaches its closing card (used to schedule the
+   *  kiosk auto-reset back to the attract screen). */
+  onComplete?: () => void
 }
 
 interface State {
@@ -48,7 +54,7 @@ interface State {
   urlParams:       Record<string, string>
 }
 
-export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest }: Props) {
+export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest, kiosk = false, onComplete }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
 
@@ -100,7 +106,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
   // ── Session ID — persists for this browser tab, new on new visit ──────────
   const sessionId = useRef<string>('')
   if (!sessionId.current) {
-    try {
+    if (kiosk) {
+      // Kiosk: a fresh session per guest. The component remounts between
+      // guests, so a new id here means a new respondent each time — never
+      // reused from sessionStorage.
+      sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+    } else try {
       var existing = sessionStorage.getItem('sentimetrx_session_' + study.guid)
       if (existing) { sessionId.current = existing }
       else {
@@ -175,7 +186,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
   // ── Check device limit — returns true if already completed ────────────────
   const deviceBlocked = useRef<boolean>(false)
-  if (config.allowMultipleResponses === false) {
+  if (config.allowMultipleResponses === false && !kiosk) {
     try {
       var completedKey = 'sentimetrx_completed_' + study.guid
       if (localStorage.getItem(completedKey)) deviceBlocked.current = true
@@ -654,8 +665,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         }),
       })
       if (res.ok) {
-        // Mark device as having completed this survey
-        try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
+        // Mark device as having completed this survey (skipped on kiosk —
+        // a shared tablet must accept the next guest)
+        if (!kiosk) try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
         // Clear session so next survey attempt from same tab gets a fresh session_id
         try { sessionStorage.removeItem('sentimetrx_session_' + study.guid) } catch {}
       } else {
@@ -676,7 +688,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             }),
           })
           if (retry.ok) {
-            try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
+            if (!kiosk) try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
             try { sessionStorage.removeItem('sentimetrx_session_' + study.guid) } catch {}
           } else {
             console.error('Response save retry failed:', retry.status)
@@ -746,7 +758,8 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
     clearInput()
     await submitResponse()
-  }, [addMsg, chatRef, clearInput, config, scrollBottom, showTyping, study])
+    onComplete?.()
+  }, [addMsg, chatRef, clearInput, config, scrollBottom, showTyping, study, onComplete])
 
   const stepDemographics = useCallback(async () => {
     // Get enabled demo fields from config, or default to age/gender/zip

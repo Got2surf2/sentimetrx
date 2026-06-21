@@ -304,6 +304,10 @@ export interface StudyConfig {
   // Accessibility
   surveyFontSize?:    number           // base font size in px for survey widget (default 18)
 
+  // Kiosk mode (?kiosk=1) — unattended tablet attract-screen copy
+  kioskAttractHeadline?: string        // headline on the resting/attract screen between guests
+  kioskAttractSubtext?:  string        // sub-line on the attract screen
+
   // Typing animation duration multiplier (0.5 = default, 0.25 = minimal, 1.0 = deliberate, 2.0 = slow)
   typingSpeed?:       number           // default 0.5
 
