@@ -661,3 +661,12 @@ Wrapped `sql/130_saved_views.sql` in `BEGIN; ... COMMIT;` to satisfy the `check:
 Net: a Manual source's pending tasks now drain on the next cron tick (≤6h) instead of never. UI manual sync unchanged (no opts = full submit+drain). Cost-safe: Manual cron runs never submit.
 
 **Verify**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Committed locally; **NOT pushed**. NOTE for owner: to unstick Tabla *now*, open its downloads and let it sync (or re-trigger) — or wait for the next cron tick once this ships.
+
+## 2026-06-22 — Outlets: Lottie loader on outlet switch
+
+**Why**: Switching outlets in the Outlets report is a server round-trip (the report recomputes server-side from `?outlet=`) — there was no loading feedback, so it looked frozen between outlets.
+
+**What changed**:
+- `app/analyze/[datasetId]/outlet-report/OutletPicker.tsx` — wrap the `router.push(?outlet=…)` in `useTransition`; while `isPending` (stays true until the new outlet's server-rendered report streams in) show a `LottieLoader` overlay and disable the picker. `print:hidden` so it never lands in exports.
+
+**Verify**: typecheck clean; outlet-report route compiles (307) on the live dev server.
