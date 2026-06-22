@@ -115,7 +115,11 @@ Rules:
    belongs to exactly one period — never double-counted.
 3. **Timezone = org-level** (default to the account locale). Everyone viewing a shared
    view sees identical numbers. Boundaries resolve in org TZ; comparisons run against
-   stored UTC timestamps.
+   stored UTC timestamps. **v1 status:** `resolvePeriod` resolves boundaries in **UTC** —
+   there is no org-timezone column yet, and no date library in the stack. `ResolvePeriodOpts`
+   reserves the seam (it already carries `fiscalYearStartMonth`; a `tz` follows the same
+   pattern), so org-TZ is an additive setting, not a rewrite. Track the column + offset math
+   as the retrofit.
 4. **Fiscal year**: the resolver takes `fiscalYearStartMonth` (default `1` = January).
    Quarters/years derive from it. v1 UI is calendar-only; the param is there so the
    fiscal retrofit is a setting, not a rewrite.

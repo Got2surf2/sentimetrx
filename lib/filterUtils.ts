@@ -136,3 +136,103 @@ export function filterSummary(filters: Filters, aliases: Record<string, string>)
     return label
   }).join(' \u00B7 ')
 }
+
+// ---------------------------------------------------------------------------
+// Saved-view PERIODS \u2014 relative date ranges. See docs/SAVED_VIEWS.md \u00A73.
+//
+// resolvePeriod turns a relative spec ("current quarter") into a concrete
+// half-open [startTs, endTs) range using CALENDAR arithmetic (never millisecond
+// math) so month-length and leap differences self-correct. v1 resolves in UTC;
+// the org-timezone boundary is a reserved retrofit \u2014 the opts carry the seam
+// (fiscalYearStartMonth today, a tz later) so it's a setting, not a rewrite.
+// ---------------------------------------------------------------------------
+
+export type PeriodGranularity = 'month' | 'quarter' | 'year'
+// 'current' / 'last' resolve relative to opts.now; { specific } anchors to the
+// period CONTAINING the given ISO date.
+export type PeriodAnchor = 'current' | 'last' | { specific: string }
+
+export interface PeriodPrimary {
+  granularity: PeriodGranularity
+  anchor:      PeriodAnchor
+}
+
+export interface PeriodOffset {
+  unit: PeriodGranularity
+  n:    number          // e.g. { unit: 'year', n: -1 } = "same period last year"
+}
+
+export interface PeriodSpec {
+  field:    string                      // date column the period filters
+  primary:  PeriodPrimary
+  compare?: { offset: PeriodOffset }    // v1: one comparison; shape allows N later
+}
+
+export interface ResolvePeriodOpts {
+  now:                  number          // reference instant (ms since epoch)
+  fiscalYearStartMonth?: number         // 1-12, default 1 (January); v1 UI is calendar-only
+}
+
+export type TsRange = [number, number]  // half-open [start, end)
+
+const GRANULARITY_MONTHS: Record<PeriodGranularity, number> = { month: 1, quarter: 3, year: 12 }
+
+// Absolute month index (year*12 + monthIndex) of the UTC month containing `ms`.
+function utcMonthIndex(ms: number): number {
+  const d = new Date(ms)
+  return d.getUTCFullYear() * 12 + d.getUTCMonth()
+}
+
+// UTC midnight on the 1st of the month at absolute month index `ami`.
+function amiToTs(ami: number): number {
+  const y = Math.floor(ami / 12)
+  const m = ami - y * 12
+  return Date.UTC(y, m, 1)
+}
+
+// Start (absolute month index) + length in months of the `granularity` period
+// that CONTAINS month index `ami`, honoring the fiscal-year start month (1-12).
+function periodBounds(ami: number, granularity: PeriodGranularity, fiscalStartMonth: number): { startAmi: number; months: number } {
+  const months = GRANULARITY_MONTHS[granularity]
+  if (granularity === 'month') return { startAmi: ami, months: 1 }
+  // Shift onto a line whose zero is the fiscal-year start, snap down to the
+  // period boundary, then shift back. (ami is always large+positive, so the
+  // floor is safe even when the fiscal offset is non-zero.)
+  const fOffset = fiscalStartMonth - 1
+  const snapped = Math.floor((ami - fOffset) / months) * months
+  return { startAmi: snapped + fOffset, months: months }
+}
+
+function rangeFromStart(startAmi: number, months: number): TsRange {
+  return [amiToTs(startAmi), amiToTs(startAmi + months)]
+}
+
+export function resolvePeriod(primary: PeriodPrimary, opts: ResolvePeriodOpts): TsRange {
+  const fiscalStart = opts.fiscalYearStartMonth || 1
+  const refMs = (typeof primary.anchor === 'object' && primary.anchor.specific)
+    ? Date.parse(primary.anchor.specific)
+    : opts.now
+  const bounds = periodBounds(utcMonthIndex(refMs), primary.granularity, fiscalStart)
+  let startAmi = bounds.startAmi
+  if (primary.anchor === 'last') startAmi -= bounds.months
+  return rangeFromStart(startAmi, bounds.months)
+}
+
+// Comparison range = the primary period shifted by an offset (NOT an absolute
+// range), so "current quarter vs same quarter last year" rolls forward forever.
+// (To-date alignment for in-progress periods is a render-time concern \u2014 \u00A74.1 \u2014
+// applied on top of these full ranges, not here.)
+export function resolveComparison(primary: PeriodPrimary, offset: PeriodOffset, opts: ResolvePeriodOpts): TsRange {
+  const fiscalStart = opts.fiscalYearStartMonth || 1
+  const primaryRange = resolvePeriod(primary, opts)
+  const startAmi = utcMonthIndex(primaryRange[0])
+  const months = periodBounds(startAmi, primary.granularity, fiscalStart).months
+  return rangeFromStart(startAmi + offset.n * GRANULARITY_MONTHS[offset.unit], months)
+}
+
+// Bridge a resolved half-open period into the existing DateRangeFilter, whose
+// applyFilters branch is INCLUSIVE on both ends ([start, end]). Subtracting 1ms
+// from the exclusive end keeps a boundary-instant row in exactly one period.
+export function periodToDateFilter(range: TsRange, includeBlanks = false): DateRangeFilter {
+  return { type: 'daterange', values: [range[0], range[1] - 1], includeBlanks: includeBlanks }
+}

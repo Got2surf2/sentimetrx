@@ -135,6 +135,7 @@ makes the suite easy to reason about as a unit.
 | Recordings routes | The recordings API routes — 401 unauth, 403 feature-off, 404 cross-org (id+org_id pairing asserted), and input validation (instructions length, scope enum, duplicate filenames, status filter, document role/PDF + media-refusal §4.1e); Supabase + WDK mocked | Route handlers carry the org/feature gates and were shipped untested; the gate contract is the load-bearing part and must not regress |
 | Export org gate | The service-role export routes (`datasets/export/{html,pptx,signals-pptx}`, `townhall/sessions/[id]/export/{pptx,route}`) return 404 when a non-admin requests another org's resource; same-org passes | Exports return an entire org's data; a June-2026 sweep found this class unguarded. The test pins the cross-org 404 so the leak can't reappear |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
+| Saved-view periods | `resolvePeriod`/`resolveComparison` calendar boundaries (month/quarter/year, current/last/specific), half-open `[start,end)`, leap-year self-correction, fiscal-year start, comparison offset; `rankPrimaryDateField` analytical>operational>fill>spread + constant-column drop | Pure date/ranking logic behind Saved Views (`docs/SAVED_VIEWS.md`) — boundary math and default-date selection are easy to get subtly wrong (off-by-one days, operational-date mispick) and feed every period filter |
 
 ## What we deliberately skip
 

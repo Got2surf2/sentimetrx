@@ -506,3 +506,15 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `docs/SURVEYS.md` — noted the Publish-page card as the enablement point.
 
 **Verify**: typecheck clean; dev server compiles the route and `/s/<x>?kiosk=1` serves 200 (no 500). Full browser click-through (attract → tap → run; normal-mode regression) staged in `scripts/_kiosk_verify.mts` — pending a published survey GUID to run against. Committed locally; **NOT pushed**.
+
+## 2026-06-21 — Saved Views: Phase 1 foundation (periods + schema + table)
+
+**Why**: Start building the Saved Views / Snapshots / Periods feature (spec `docs/SAVED_VIEWS.md`). Phase 1 lays the pure, unit-testable foundation before any API/UI: the relative-period resolver, the default-date-field designation, and the `saved_views` table. Build order is periods + views first, comparison later.
+
+**What changed**:
+- `sql/130_saved_views.sql` — new `saved_views` table (views + snapshots via `kind`), RLS enabled. Private-by-default SELECT (`visibility='org' OR created_by=auth.uid()`), creator-only mutation, platform-admin bypass; reuses `touch_updated_at`/`is_platform_admin`/`current_org_id`. Self-contained snapshots: no `source_view_id` FK — `source_view_name` label + nullable `expires_at` (retention clock) instead. **Migration written, NOT yet applied to prod.**
+- `lib/filterUtils.ts` — period types + `resolvePeriod()` / `resolveComparison()` / `periodToDateFilter()`. Calendar arithmetic via absolute-month-index, half-open `[start,end)`, fiscal-year-start aware. **Resolves in UTC for v1** (no org-TZ column / date lib yet); `ResolvePeriodOpts` reserves the seam — see SAVED_VIEWS.md §3 rule 3.
+- `lib/analyzeTypes.ts` — `SchemaConfig.primaryDateField?` (mirrors `primaryTextField`; undefined = no date field = period UI hidden).
+- `lib/datasetUtils.ts` — `rankPrimaryDateField()` (analytical-name > operational > fill-rate > spread > order; drops constant columns) wired into `autoDetectSchema()`. NOTE: the hardcoded template schemas (review/reddit/etc, getXSchema) don't yet set `primaryDateField` — follow-up so those common sources get period UI without a manual override.
+
+**Verify**: `npx vitest run tests/unit/resolvePeriod.test.ts tests/unit/primaryDateField.test.ts` → 17 pass (calendar boundaries, half-open, leap-year self-correction, fiscal start, comparison offset, ranking). `npm run typecheck` clean. Full `npm test` → 892 pass / 54 skip. Committed locally; **NOT pushed**. Migration not applied to prod.

@@ -46,6 +46,10 @@ export interface SchemaFieldConfig {
 export interface SchemaConfig {
   fields:            SchemaFieldConfig[]
   primaryTextField?: string
+  // Default date column for relative-period filtering (saved views; see
+  // docs/SAVED_VIEWS.md §3.1). undefined = dataset has no date field — the
+  // canonical signal that period/comparison UI is hidden for it.
+  primaryDateField?: string
   autoDetected:      boolean
   version:           number
 }

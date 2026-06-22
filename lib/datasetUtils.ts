@@ -128,6 +128,38 @@ export function computeFieldStats(
   return base
 }
 
+// Rank a dataset's date fields to pick the default period axis (primaryDateField),
+// mirroring primaryTextField. Unlike text, the "first" date column is often the
+// wrong one (exported_at/updated_at record when a row was touched, not when the
+// thing happened), so rank: analytical name > operational name, then fill rate,
+// then value spread, then column order. Returns undefined when the dataset has no
+// date field — the canonical "no period" signal. See docs/SAVED_VIEWS.md §3.2.
+const ANALYTICAL_DATE_KEYS = ['submit', 'creat', 'event', 'response', 'respond', 'review', 'publish', 'occur', 'post', 'sent', 'complet', 'collect', 'date']
+const OPERATIONAL_DATE_KEYS = ['updat', 'modif', 'export', 'sync', 'import', 'touch']
+
+export function rankPrimaryDateField(fields: SchemaFieldConfig[]): string | undefined {
+  const dateFields = fields.filter(function(f) { return f.type === 'date' })
+  if (!dateFields.length) return undefined
+  const scored = dateFields.map(function(f, i) {
+    const lname = f.field.toLowerCase()
+    let semantic = 0
+    // Operational checked first: 'updated_at' must not get an analytical boost.
+    if (OPERATIONAL_DATE_KEYS.some(function(k) { return lname.includes(k) })) semantic = -1
+    else if (ANALYTICAL_DATE_KEYS.some(function(k) { return lname.includes(k) })) semantic = 1
+    const fill = typeof f.nonNullCount === 'number' ? f.nonNullCount : 0
+    const spread = Array.isArray(f.values) ? f.values.length : 0
+    return { field: f.field, semantic: semantic, fill: fill, spread: spread, order: i }
+  })
+  // A column with a single distinct value (e.g. imported_at) is useless as a
+  // time axis — drop those unless every candidate is constant.
+  const varied = scored.filter(function(s) { return s.spread > 1 })
+  const pool = varied.length ? varied : scored
+  pool.sort(function(a, b) {
+    return (b.semantic - a.semantic) || (b.fill - a.fill) || (b.spread - a.spread) || (a.order - b.order)
+  })
+  return pool[0].field
+}
+
 // All scans below use the full passed-in `rows` array — not a head slice.
 // The previous 200-row cap caused the same bias as Insights: on data ordered
 // by region/group/member (e.g. collection rows concatenated by member), the
@@ -157,7 +189,7 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
   })
 
   const firstOpenEnded = fields.find(function(f) { return f.type === 'open-ended' })
-  return { fields, primaryTextField: firstOpenEnded?.field, autoDetected: true, version: 1 }
+  return { fields, primaryTextField: firstOpenEnded?.field, primaryDateField: rankPrimaryDateField(fields), autoDetected: true, version: 1 }
 }
 
 // Enrich a schema built without rows (e.g. study schema) with stats once rows arrive
