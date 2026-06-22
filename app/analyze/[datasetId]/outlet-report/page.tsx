@@ -117,6 +117,20 @@ export default async function OutletReportPage(props: {
               </div>
             </div>
 
+            {/* No Dimensions classification yet → the theme comparison has nothing
+                to compare. Show guidance instead of empty "0 analyzed / no themes"
+                (which reads as broken). A classified-but-average outlet still falls
+                through to the normal "no themes materially ahead/behind" copy below. */}
+            {s.classifiedReviews === 0 ? (
+            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-5 text-center">
+              <p className="text-sm font-semibold text-gray-700">Theme comparison isn’t available yet</p>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                This dataset hasn’t been classified into service Dimensions, so there are no themes to compare against peers.
+                Open <span className="font-medium text-gray-700">TextMine → Dimensions</span> and run classification (a quick keyword pass), then reload this report.
+              </p>
+            </div>
+            ) : (
+            <>
             {/* Strengths / weaknesses */}
             <div className="mt-6 grid grid-cols-2 gap-5">
               <div>
@@ -145,6 +159,8 @@ export default async function OutletReportPage(props: {
               reviews tagged across service dimensions (service, food, experience, atmosphere, loyalty). “pts” = percentage-point difference in net-positive
               rate between this outlet and the peer-group average for that theme.
             </p>
+            </>
+            )}
           </div>
         )}
       </div>

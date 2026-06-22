@@ -731,3 +731,14 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `docs/BOTS.md` — noted the `/bots` agents-list **name search box**, and the agent **LINK FORMAT** rule (plain URLs, no bare-domain markdown; `lib/chatCore.ts`).
 
 (ANALYTICS.md was already updated in-range for the Outlets move + Saved Views; datasets-list search isn't mapped to a module spec in `specMap`.)
+
+## 2026-06-22 — Outlets: diagnose "comparison broken" → missing classification + empty-state fix
+
+**Why**: Outlet report for Rubio's showed "Reviews analyzed: 0 / no themes" and looked broken. Investigated the comparison logic — it's correct; the dataset had **zero taxonomy assertions** (field + legacy tables both empty) despite `taxonomy_enabled=true`. The peer theme comparison is built from those assertions, so with none there's nothing to compare. (The "−0 vs peers" was a mobile text-wrap of the correct `(-0.53).toFixed(2)`, not a bug.)
+
+**What changed**:
+- **Data backfill** (prod): ran the keyword Dimensions classifier over Rubio's (`d4e53aec`, org `b72e9ee6`) via a one-off script (`classifyDatasetKeyword`, textField `review_text`) — 5,749 rows classified, 3,395 with ≥1 assertion. Now the outlet theme comparison has data. (Keyword-only, no AI cost; idempotent upsert. Script deleted after running.)
+- `app/analyze/[datasetId]/outlet-report/page.tsx` — empty-state: when `classifiedReviews === 0` the report now shows a "run Dimensions classification" callout instead of "0 analyzed" + the two dashed "no themes" boxes (which read as broken). A classified-but-average outlet still falls through to the normal "no themes materially ahead/behind" copy.
+- `docs/ANALYTICS.md` — documented the empty-state + the taxonomy-assertion dependency.
+
+**Verify**: fresh `tsc --noEmit` clean (note: stale tsbuildinfo masked a mid-edit JSX error — rm'd it and re-checked); outlet-report route recompiles clean on the dev server; full suite 931. Committed locally; **NOT pushed**.
