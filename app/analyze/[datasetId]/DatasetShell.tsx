@@ -11,6 +11,7 @@ import FiltersModal from '@/components/analyze/FiltersModal'
 import AskAnaPanel from '@/components/analyze/AskAnaPanel'
 import DatasetHeader from './DatasetHeader'
 import DatasetMetricStrip from '@/components/analyze/DatasetMetricStrip'
+import ViewsBar from '@/components/analyze/ViewsBar'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
@@ -186,6 +187,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, outle
       {/* Phase B metric strip — records / signals / theme-fit. Sits between
           the orange header and the filter chips, visible on every tab. */}
       <DatasetMetricStrip datasetId={dataset.id} />
+
+      {/* Saved Views switcher — save/load named filter configs (docs/SAVED_VIEWS.md) */}
+      <ViewsBar datasetId={datasetId} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {

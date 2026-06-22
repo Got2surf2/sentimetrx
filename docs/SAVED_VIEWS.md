@@ -348,6 +348,10 @@ so a record is **never silently destroyed**.
 (GET/PATCH/DELETE), shared `views/gate.ts` (caller → dataset-org gate, returns the dataset's
 `org_id` so saved_views pairs `id`+`org_id` and still works for admins). `FilterProvider` gained
 `activeView` / `loadView` / `clearActiveView` / `isViewDirty` (the §5.1 dirty flag, via
-`serializedFiltersEqual`). Snapshot default TTL = 30 days. Remaining: Phase 3 UI, Phase 4 comparison.
+`serializedFiltersEqual`). Snapshot default TTL = 30 days. `sql/130_saved_views.sql` applied to prod
+(RLS coverage passes). **Phase 3a:** `components/analyze/ViewsBar.tsx` — a dedicated views switcher
+mounted in `DatasetShell` (save/load/rename/share/delete a named filter config, "(modified)" indicator,
+graceful 404 recovery). Remaining: Phase 3b (relative-period picker gated on `primaryDateField`, snapshot
+freeze + frozen render, `SchemaEditor` date-field override), Phase 4 (comparison two-series + to-date).
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.

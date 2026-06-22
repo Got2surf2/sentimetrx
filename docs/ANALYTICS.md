@@ -573,7 +573,9 @@ API: `/api/datasets/[datasetId]/views` (views CRUD, snapshot CRD + `expires_at` 
 `FilterContext` exposes `loadView` / `activeView` / `isViewDirty` (live filters diverged from the
 loaded view — via `serializedFiltersEqual()`). Relative **periods** resolve client-side through
 `resolvePeriod()` into the existing `DateRangeFilter`; the default date axis is
-`SchemaConfig.primaryDateField`. _Status: Phases 1–2 (foundation + API/context) built; UI + comparison pending._
+`SchemaConfig.primaryDateField`. The `ViewsBar` switcher (`components/analyze/ViewsBar.tsx`) is mounted in
+`DatasetShell` between the metric strip and filter chips. _Status: foundation + API/context + views UI built;
+period picker, snapshot freeze, and comparison pending._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")

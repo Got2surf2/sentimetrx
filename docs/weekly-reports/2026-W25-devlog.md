@@ -531,3 +531,14 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `components/analyze/FilterContext.tsx` — `activeView` / `loadView` / `clearActiveView` / `isViewDirty`. Dirty = live filters diverged from the loaded view's stored config (SAVED_VIEWS.md §5.1).
 
 **Verify**: `tests/integration/saved-views-routes.test.ts` (24) pins gating (401/404 cross-org, 403 non-creator, id+org_id pairing), snapshot default TTL, snapshot immutability, graceful 404. `tests/unit/serializedFiltersEqual.test.ts` (10) pins the dirty diff. typecheck clean; full `npm test` 922 pass. Committed locally; **NOT pushed**. `sql/130` still not applied to prod (mocked tests don't need it; live API verification will).
+
+## 2026-06-21 — Saved Views: Phase 3a (Views switcher UI) + sql/130 applied to prod
+
+**Why**: Surface the views half of the feature so users can save a filter config and come back to it. Dedicated bar (per product decision) rather than burying it in the filters modal.
+
+**What changed**:
+- **Applied `sql/130_saved_views.sql` to the linked prod DB** — table + RLS live; `npm run test:rls` (4) passes (new table has a SELECT policy, isolation holds).
+- `components/analyze/ViewsBar.tsx` — dedicated Saved Views switcher: lists the dataset's views, loads one into the shared FilterContext, saves the current filters as a new view (or "Save as new"), updates the active view when dirty, and per-view rename / org-share toggle / delete. Shows the active view name + "(modified)" off `isViewDirty`. A 404 on any item op (deleted out from under you) drops the active view and refreshes with a notice (§6 graceful recovery). Inline-styled via the `T` palette; name inputs at 16px (iOS no-zoom).
+- `app/analyze/[datasetId]/DatasetShell.tsx` — mounts `<ViewsBar>` between the metric strip and the filter chips (inside FilterProvider).
+
+**Verify**: typecheck clean. Live dev server (existing :3000): `GET /api/datasets/<id>/views` → 401 (gate compiles), `/analyze/<id>` → 307 to login (DatasetShell+ViewsBar compile; a build error would 500). No analyze-module compile errors in the dev log. **Manual click-through (save → reload → modified → delete) against an authed session still pending** — no RTL component test (the load-bearing logic — dirty diff, route gating — is already unit/integration-tested). Committed locally; **NOT pushed**. Phase 3b next: period picker + snapshot freeze + SchemaEditor date-field override.
