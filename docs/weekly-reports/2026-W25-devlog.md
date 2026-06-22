@@ -765,3 +765,12 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `page.tsx` — h1 = location (city/state); subtitle = `address · N reviews` (was the redundant city/state). Brand stays only in the uppercase eyebrow.
 
 **Verify**: fresh `tsc --noEmit` clean (cleared tsbuildinfo); outlet-report recompiles clean on the dev server; full suite 931. Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Outlets: smarter location-name (keep the locator, drop the brand dupe)
+
+**Why**: The prior "h1 = city/state" fix overcorrected — for brands whose `location_name` carries the real locator (e.g. "Tabla Indian Restaurant **Lake Nona**"), city/state ("Orlando, Florida") threw away the "Lake Nona" signal, so you couldn't tell which location it was.
+
+**What changed**:
+- `lib/outletReport.ts` — `resolveLocationName()`: use `location_name` for the h1 when it has location-specific words *beyond the brand* (brand tokens from the dataset name + a generic-words stoplist removed); fall back to "City, State" only when `location_name` is just the brand (the Rubio's dupe case). So Tabla → "Tabla Indian Restaurant Lake Nona", Rubio's → "Redlands, California"; the address subtitle still uniquely identifies either way.
+
+**Verify**: `tsc --noEmit` exit 0 (caught + fixed two implicit-any/Set typing errors — the earlier "CLEAN" was a pipe masking tsc's exit code); route recompiles clean; full suite 931. Committed locally; **NOT pushed**.

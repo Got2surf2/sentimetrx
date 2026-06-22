@@ -97,6 +97,24 @@ function humanize(sub: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+// Generic words that don't help identify WHICH location.
+const GENERIC_NAME_WORDS = new Set(['restaurant', 'restaurants', 'grill', 'grille', 'cafe', 'bar', 'kitchen', 'the', 'llc', 'inc', 'co', 'company', 'and', 'bistro', 'eatery', 'house', 'reviews', 'review'])
+
+// Display name for an outlet's h1. Prefer location_name when it carries
+// location-specific words beyond the brand (e.g. "… Lake Nona") — that's the
+// clearest "which location" signal. Fall back to "City, State" only when
+// location_name is just the brand (e.g. "Rubio's Coastal Grill"), which would
+// otherwise dupe the brand eyebrow.
+function resolveLocationName(rawName: string, city: string, state: string, brandTokens: Set<string>): string {
+  const cityState = [city, state].filter(Boolean).join(', ')
+  const ln = (rawName || '').trim()
+  if (ln) {
+    const extra = ln.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !brandTokens.has(w) && !GENERIC_NAME_WORDS.has(w))
+    if (extra.length > 0) return ln
+  }
+  return cityState || ln || 'Outlet'
+}
+
 function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
 // A theme matches a review if any of its keywords appears as a whole word.
@@ -218,6 +236,8 @@ function buildNarrative(opts: {
 export async function computeOutletReport(datasetId: string, selectedPlaceId?: string): Promise<OutletReport> {
   const sb = createServiceRoleClient()
   const { data: ds } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
+  const brand: string = ds?.name || 'Brand'
+  const brandTokens = new Set<string>(brand.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2))
   const { data: stateRow } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
   const themeModel: { id?: string; label: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []
   const themeMatchers = themeModel
@@ -348,7 +368,7 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
     // Location name (h1) is the city/state — NOT the brand (location_name is the
     // brand for these review sets, which dupes the brand eyebrow). Address goes
     // to the subtitle.
-    const locName = [target.city, target.state].filter(Boolean).join(', ') || target.name
+    const locName = resolveLocationName(target.name, target.city, target.state, brandTokens)
 
     // Monthly avg-rating trend: this outlet vs the whole network. One pass over
     // flat rows (review_date → YYYY-MM), keep the last 24 months that have data.
@@ -383,5 +403,5 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
     }
   }
 
-  return { brand: ds?.name || 'Brand', outlets: options, selected }
+  return { brand, outlets: options, selected }
 }
