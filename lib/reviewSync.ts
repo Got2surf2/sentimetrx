@@ -68,7 +68,13 @@ function isTransientError(err: any): boolean {
 export async function syncReviewSource(
   sourceId: string,
   service: SupabaseClient,
+  opts: { drainOnly?: boolean } = {},
 ): Promise<SyncResult> {
+  // drainOnly: run Phase 1 (retrieve already-submitted DataForSEO tasks — cost
+  // already incurred) but skip Phase 2/3, which submit NEW paid tasks. Used by
+  // the cron for Manual sources so their pending tasks still get drained in the
+  // background without auto-submitting new downloads.
+  const drainOnly = opts.drainOnly === true
   const result: SyncResult = {
     synced: 0, total: 0, locations_synced: 0, locations_remaining: 0,
     locations_errored: 0, locations_submitted: 0, errors: [],
@@ -181,7 +187,7 @@ export async function syncReviewSource(
     .is('error_message', null)
     .limit(BATCH_SIZE)
 
-  if (unsyncedLocs && unsyncedLocs.length > 0) {
+  if (!drainOnly && unsyncedLocs && unsyncedLocs.length > 0) {
     for (const loc of unsyncedLocs) {
       if (Date.now() - startTime > TIME_BUDGET_MS) break
       // Monthly cap reached — stop submitting new download tasks. Any
@@ -231,7 +237,7 @@ export async function syncReviewSource(
   // against last_review_id / last_review_date so only genuinely new
   // reviews are inserted.
   const refreshCutoff = new Date(Date.now() - REFRESH_STALE_MS).toISOString()
-  if (Date.now() - startTime < TIME_BUDGET_MS) {
+  if (!drainOnly && Date.now() - startTime < TIME_BUDGET_MS) {
     const { data: staleLocs } = await service
       .from('review_source_locations')
       .select('*')
@@ -461,10 +467,15 @@ async function updateSourceTimestamps(service: SupabaseClient, source: any, hasP
   // next_sync_at pushed 168h out, tasks would have taken ~10 weeks to
   // drain at the old BATCH_SIZE=3 / 1-call-per-week cadence.
   let nextSync: string
-  if (source.sync_frequency_hours <= 0) {
-    nextSync = new Date('2999-01-01').toISOString()
-  } else if (hasPending) {
+  if (hasPending) {
+    // Drain already-submitted (already-paid) tasks promptly — checked FIRST so
+    // it applies to Manual sources too. Without this, a Manual source with
+    // pending tasks parked next_sync_at at 2999 and the cron never drained them
+    // (the cron now picks up due Manual sources in drain-only mode).
     nextSync = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  } else if (source.sync_frequency_hours <= 0) {
+    // Manual mode, nothing pending — don't schedule a future auto-sync.
+    nextSync = new Date('2999-01-01').toISOString()
   } else {
     nextSync = new Date(Date.now() + source.sync_frequency_hours * 3600 * 1000).toISOString()
   }

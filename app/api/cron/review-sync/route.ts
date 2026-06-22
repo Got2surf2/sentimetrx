@@ -21,13 +21,15 @@ export async function GET(req: NextRequest) {
   const now = new Date().toISOString()
 
   // Find active sources due for sync. sync_frequency_hours = 0 means manual
-  // mode — don't pick those up automatically (their next_sync_at is also
-  // pushed far out, but the explicit filter is belt-and-suspenders).
+  // mode: it's normally parked at next_sync_at = 2999 so it never matches here,
+  // EXCEPT when it has pending (already-submitted, already-paid) DataForSEO
+  // tasks — updateSourceTimestamps then short-circuits it to ~5min so the cron
+  // drains those tasks. We run such Manual sources in drain-only mode below, so
+  // they retrieve pending results but never submit (incur cost on) new ones.
   const { data: dueSources, error } = await service
     .from('review_sources')
-    .select('id, brand_name')
+    .select('id, brand_name, sync_frequency_hours')
     .eq('status', 'active')
-    .gt('sync_frequency_hours', 0)
     .lte('next_sync_at', now)
     .order('next_sync_at', { ascending: true })
     .limit(5) // Process up to 5 per run to stay within timeout
@@ -46,7 +48,10 @@ export async function GET(req: NextRequest) {
 
   for (const source of dueSources) {
     try {
-      const result = await syncReviewSource(source.id, service)
+      // Manual sources (sync_frequency_hours <= 0) only reach here when they
+      // have pending tasks — drain those without submitting new paid downloads.
+      const drainOnly = (source.sync_frequency_hours ?? 0) <= 0
+      const result = await syncReviewSource(source.id, service, { drainOnly })
       results.push({
         brand: source.brand_name,
         synced: result.synced,

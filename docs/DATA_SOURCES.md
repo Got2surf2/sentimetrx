@@ -410,6 +410,8 @@ Removes assignments. Omitting `location_ids` clears every assignment for the use
 
 Phase 1's `checkReviewTask` is platform-agnostic — it picks the right review parser by inspecting `ref.getPath` (`…/tripadvisor/…` → Tripadvisor parser), so old pending task refs keep working without a schema change.
 
+**Scheduling & Manual-source drain (`updateSourceTimestamps`).** After each run, `next_sync_at` is set by priority: **(1)** if any tasks are still pending → `now + 5min` (drain them promptly — checked *first*, so it applies to Manual sources too); **(2)** else if `sync_frequency_hours <= 0` (Manual) → parked at `2999` (no auto-sync); **(3)** else `now + sync_frequency_hours`. The cron selects all active sources with `next_sync_at <= now` (no longer excludes Manual) and runs Manual ones (`sync_frequency_hours <= 0`) in **`drainOnly` mode** — `syncReviewSource(id, service, { drainOnly: true })` runs Phase 1 only, skipping the cost-incurring Phase 2/3 submits. This closes a gotcha where a Manual source left mid-download (tasks submitted, page closed) stranded its already-paid pending tasks at `2999` forever; they now drain on the next cron tick. The UI's manual sync route still calls `syncReviewSource` with no opts (full submit+drain).
+
 **Returns:** `{ synced, total, locations_synced, locations_remaining, locations_errored, locations_submitted, errors, expected_reviews, with_comments, without_comments, pending_locations, processing_location, limit_reached }` for UI/cron telemetry. `limit_reached` is `true` when the org's monthly cap stopped task submission.
 
 ### Download limits & accounting
