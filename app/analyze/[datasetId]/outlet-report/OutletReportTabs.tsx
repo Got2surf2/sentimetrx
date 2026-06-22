@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { OutletReport, ThemeDelta, ComparisonBlock, TrendPoint } from '@/lib/outletReport'
-import type { OutletLever, PredictorModel } from '@/lib/outletPredictor'
+import type { OutletLever, OutletSummary, PredictorModel } from '@/lib/outletPredictor'
 
 type Sel = NonNullable<OutletReport['selected']>
 
@@ -15,8 +15,9 @@ function locOnly(label: string): string {
   return i >= 0 ? label.slice(i + 3) : label
 }
 
-// One prioritized lever: theme, projected ★ lift, a guest quote of what to fix,
-// and the peer to learn from.
+// One driver theme this location's unhappy (1–3★) guests cite, the over-
+// representation that makes it a real driver, a verbatim quote, and the peer
+// that handles it best.
 function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
   return (
     <div className="rounded-lg border border-gray-200 p-4">
@@ -25,22 +26,20 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-[11px] font-bold text-white">{rank}</span>
           <span className="text-sm font-semibold text-gray-900">{l.theme}</span>
         </div>
-        <span className="shrink-0 text-sm font-bold text-emerald-600">+{l.lift.toFixed(2)}★ potential</span>
+        <span className="shrink-0 text-sm font-bold text-rose-600">cited in {pct1(l.shareInBad)} of 1–3★ reviews here</span>
       </div>
       <div className="mt-1.5 text-xs text-gray-500">
-        <span className="font-medium text-gray-700">{pct1(l.outletNegRate)}</span> of reviews here flag this negatively
-        {' · '}peer median <span className="font-medium text-gray-700">{pct1(l.peerMedian)}</span>
-        {' · '}each negative ≈ <span className="font-medium text-gray-700">{l.drag.toFixed(1)}★</span> lower
+        Brand-wide this theme is <span className="font-medium text-gray-700">{l.brandLift.toFixed(1)}×</span> more common in unhappy reviews than happy ones — a genuine driver of low ratings, not just a loud topic.
       </div>
       {l.quote && (
-        <p className="mt-2 border-l-2 border-amber-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
+        <p className="mt-2 border-l-2 border-rose-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
       )}
       {l.exemplar && (
         <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50/70 px-2.5 py-1.5 text-xs text-emerald-800">
           <span aria-hidden className="mt-px">★</span>
           <span>
-            <span className="font-semibold">Learn from {locOnly(l.exemplar.label)}</span> — {l.exemplar.rating != null ? `${l.exemplar.rating.toFixed(1)}★, ` : ''}
-            only {pct1(l.exemplar.negRate)} of its reviews flag this. Worth a call to compare how they run it.
+            <span className="font-semibold">Learn from {locOnly(l.exemplar.label)}</span> — a {pct1(l.exemplar.lowRate)} 1–3★ rate
+            {l.exemplar.rating != null ? ` (${l.exemplar.rating.toFixed(1)}★)` : ''}; this complaint barely shows up there. Worth a call to compare how they run it.
           </span>
         </div>
       )}
@@ -48,39 +47,43 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
   )
 }
 
-function ActionPlan({ levers, model, s }: { levers: OutletLever[]; model: PredictorModel; s: Sel }) {
-  if (!levers.length) {
+function ActionPlan({ levers, summary, model, s }: { levers: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; s: Sel }) {
+  if (!summary) {
     return (
-      <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center">
-        <p className="text-sm font-semibold text-emerald-800">This location is at or above the peer median on every measured theme.</p>
-        <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-emerald-700/80">
-          There’s no theme where guests complain materially more than at peer outlets. Hold the line and share what’s working —
-          this is a location others should learn from.
-        </p>
+      <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+        Not enough rated reviews at this location to build a plan.
       </div>
     )
   }
-  // Upper-bound: summed per-theme lifts overlap (a single bad review hits several
-  // themes), so the de-biased drag is per-theme but the total still over-counts.
-  const totalLift = levers.reduce((sum, l) => sum + l.lift, 0)
+  const atPar = summary.gapToTarget <= 0.01
+  const showLevers = levers.length > 0 && summary.lowCount >= 5
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-gray-50 p-5">
-        <h2 className="text-sm font-bold text-gray-700">Highest-impact things to work on here</h2>
+      <div className={`rounded-lg p-5 ${atPar ? 'bg-emerald-50/60' : 'bg-gray-50'}`}>
+        <h2 className="text-sm font-bold text-gray-700">Recovering this location’s unhappy guests</h2>
         <p className="mt-1 text-sm leading-relaxed text-gray-600">
-          Ranked by modeled effect on {s.name}’s star rating, relative to its {s.outletCount - 1} peer outlets. Closing every gap below
-          to the peer median is an upper bound of roughly <span className="font-semibold text-gray-800">+{totalLift.toFixed(2)}★</span> —
-          treat it as direction and priority, not a guarantee.
+          <span className="font-semibold text-gray-900">{pct1(summary.lowRate)}</span> of {s.name}’s reviews are 1–3★
+          ({summary.lowCount.toLocaleString()} of {s.reviews.toLocaleString()}) — versus about{' '}
+          <span className="font-semibold text-gray-900">{pct1(model.targetLowRate)}</span> at the brand’s best-run outlets.{' '}
+          {atPar
+            ? 'This location already runs among your best — hold the line and share what’s working.'
+            : 'Closing that gap to your best operators is the opportunity; the themes below are what its unhappy guests cite most.'}
         </p>
       </div>
-      <div className="space-y-2.5">
-        {levers.map((l, i) => <LeverCard key={l.theme} l={l} rank={i + 1} />)}
-      </div>
+      {showLevers ? (
+        <>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">What this location’s unhappy guests cite most</h3>
+          <div className="space-y-2.5">
+            {levers.map((l, i) => <LeverCard key={l.theme} l={l} rank={i + 1} />)}
+          </div>
+        </>
+      ) : !atPar ? (
+        <p className="rounded-lg border border-dashed border-gray-200 p-4 text-xs text-gray-500">
+          This location’s 1–3★ reviews don’t concentrate on any one brand-wide driver theme — they’re diffuse. Work the operational basics; the brand drivers (order accuracy, brand experience) are where to look first.
+        </p>
+      ) : null}
       <p className="mt-2 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-        Impact estimated by a de-biased model (ridge regression of star rating on theme-negative mentions, so co-occurring
-        complaints don’t double-count; explains {Math.round(model.r2 * 100)}% of rating variance across {model.population.toLocaleString()} reviews).
-        Each theme’s “potential” = how far this outlet’s negative-mention rate sits above the peer median × that theme’s modeled ★-drag.
-        Associational, not causal — a prioritization signal.
+        “Drivers” are themes that show up disproportionately in 1–3★ reviews vs 4–5★ reviews across the brand (an over-representation multiple, not bare frequency — so loud-but-neutral topics don’t mislead). Quotes are from this location’s own 1–3★ reviews. Computed from {model.population.toLocaleString()} rated reviews. Associational — a prioritization signal that benchmarks this outlet against its peers, not a guaranteed star change.
       </p>
     </div>
   )
@@ -186,7 +189,7 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
 
 type Tab = 'action' | 'summary' | 'themes' | 'dimensions'
 
-export default function OutletReportTabs({ selected: s, levers, model }: { selected: Sel; levers: OutletLever[]; model: PredictorModel }) {
+export default function OutletReportTabs({ selected: s, levers, summary, model }: { selected: Sel; levers: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel }) {
   const [tab, setTab] = useState<Tab>('action')
   const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
@@ -210,7 +213,7 @@ export default function OutletReportTabs({ selected: s, levers, model }: { selec
 
       <div className="mt-5">
         {/* ACTION PLAN */}
-        {tab === 'action' && <ActionPlan levers={levers} model={model} s={s} />}
+        {tab === 'action' && <ActionPlan levers={levers} summary={summary} model={model} s={s} />}
 
         {/* THEMES */}
         {tab === 'themes' && (

@@ -1,10 +1,11 @@
 // app/analyze/[datasetId]/improvement-plan/page.tsx
 //
-// Brand-level "guest experience improvement plan" — the executive summary that
-// ranks the themes most dragging guest sentiment across ALL outlets, quantifies
-// the lift from bringing laggards to the peer median, and pinpoints which
-// outlets to start with. This is the "why you need us" artifact. Reached via a
-// button on the Leaderboard (NOT a new tab). See lib/outletPredictor.ts.
+// Brand-level "recover your 1–3★ guests" plan — the executive summary that
+// frames the opportunity as the spread in low-rated (1–3★) review rates across
+// outlets, names the themes that genuinely drive unhappy guests (over-
+// represented in bad vs good reviews), and pinpoints which outlets to start with
+// and which to learn from. The "why you need us" artifact. Reached via a button
+// on the Leaderboard (NOT a new tab). See lib/outletPredictor.ts.
 
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -16,8 +17,7 @@ import PrintButton from '../outlet-report/PrintButton'
 export const dynamic = 'force-dynamic'
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
-// Brand label cleanup — exemplar/outlet labels carry the brand prefix; the brand
-// is already the eyebrow, so show just the location half.
+const pct0 = (n: number) => `${Math.round(n * 100)}%`
 function locOnly(label: string): string {
   const i = label.indexOf(' — ')
   return i >= 0 ? label.slice(i + 3) : label
@@ -39,15 +39,27 @@ export default async function ImprovementPlanPage(props: {
 
   const p = await computeOutletPredictor(datasetId)
   const brand = ds.name || 'Brand'
-  const top = p.brandLevers[0]
-  const hotlist = p.outletSummaries.filter((o) => o.topLever).slice(0, 10)
+  const m = p.model
+  const drivers = p.brandLevers
+  const nonDrivers = p.drivers.filter((d) => !d.isDriver && d.nBad >= 20)
+  const worst = p.outletSummaries[0]
+  const best = p.exemplars[0]
+  const hotlist = p.outletSummaries.slice(0, 10)
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
         <div className="mb-4 flex items-center justify-between print:hidden">
           <Link href={`/analyze/${datasetId}/outlet-leaderboard`} className="text-sm font-medium text-gray-500 hover:text-gray-700">← Back to Leaderboard</Link>
-          <PrintButton />
+          <div className="flex items-center gap-3">
+            <a
+              href={`/api/datasets/${datasetId}/improvement-plan-deck`}
+              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+            >
+              Export deck
+            </a>
+            <PrintButton />
+          </div>
         </div>
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
@@ -56,75 +68,73 @@ export default async function ImprovementPlanPage(props: {
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">{brand}</div>
             <h1 className="mt-1 text-2xl font-bold text-gray-900">Guest experience improvement plan</h1>
             <div className="text-sm text-gray-500">
-              {p.outletSummaries.length} outlets · {p.model.population.toLocaleString()} reviews analyzed · brand average {p.model.chainAvg.toFixed(2)}★
+              {p.outletSummaries.length} outlets · {m.population.toLocaleString()} reviews analyzed · brand average {m.chainAvg.toFixed(2)}★
             </div>
           </div>
 
-          {!p.available || !top ? (
+          {!p.available || !worst ? (
             <div className="mt-8 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-500">
               Not enough rated, themed reviews across outlets to build a plan yet.
             </div>
           ) : (
             <>
-              {/* Executive summary */}
+              {/* The opportunity — the 1–3★ rate and its spread */}
               <div className="mt-6 rounded-lg bg-gray-50 p-5">
                 <h2 className="text-sm font-bold text-gray-700">The opportunity</h2>
                 <p className="mt-1 text-sm leading-relaxed text-gray-700">
-                  Across {p.outletSummaries.length} {brand} locations, the single biggest lever on guest sentiment is{' '}
-                  <span className="font-semibold text-gray-900">{top.theme}</span> — each negative mention costs about{' '}
-                  <span className="font-semibold">{top.drag.toFixed(1)}★</span>, and{' '}
-                  <span className="font-semibold">{top.outletsAboveMedian}</span> outlets sit below the peer median on it. The plan below ranks
-                  every lever by modeled impact and names exactly which outlets to start with — and which sister locations already do it well.
+                  <span className="font-semibold text-gray-900">{pct1(m.lowRate)}</span> of {brand}’s reviews are 1–3★
+                  ({m.lowCount.toLocaleString()} of {m.population.toLocaleString()}) — but that ranges from{' '}
+                  <span className="font-semibold text-emerald-700">{pct1(m.bestLowRate)}</span> at your best outlet
+                  {best ? ` (${locOnly(best.label)})` : ''} to{' '}
+                  <span className="font-semibold text-rose-700">{pct1(m.worstLowRate)}</span> at your worst
+                  {worst ? ` (${locOnly(worst.label)})` : ''}. That spread is operational inconsistency you can close.
+                  If every outlet matched your best-run quarter (~{pct1(m.targetLowRate)}), the brand’s 1–3★ rate would fall to about{' '}
+                  <span className="font-semibold text-gray-900">{pct1(m.projectedLowRate)}</span>.
                 </p>
               </div>
 
-              {/* Brand levers */}
-              <h2 className="mt-7 text-sm font-bold text-gray-700">Where the brand should focus — levers by modeled impact</h2>
+              {/* What drives unhappy guests */}
+              <h2 className="mt-7 text-sm font-bold text-gray-700">What drives your unhappy guests</h2>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Themes that appear disproportionately in 1–3★ reviews vs 4–5★ reviews — the real drivers of low ratings, not just the loudest topics.
+              </p>
               <div className="mt-2 space-y-2.5">
-                {p.brandLevers.map((l, i) => (
-                  <div key={l.theme} className="rounded-lg border border-gray-200 p-4">
+                {drivers.map((d, i) => (
+                  <div key={d.theme} className="rounded-lg border border-gray-200 p-4">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-baseline gap-2">
                         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-[11px] font-bold text-white">{i + 1}</span>
-                        <span className="text-sm font-semibold text-gray-900">{l.theme}</span>
+                        <span className="text-sm font-semibold text-gray-900">{d.theme}</span>
                       </div>
-                      <span className="shrink-0 text-xs text-gray-500">
-                        ≈ <span className="font-semibold text-emerald-600">+{l.chainLift.toFixed(3)}★</span> brand-wide if all → peer median
-                      </span>
+                      <span className="shrink-0 text-sm font-bold text-rose-600">{d.lift.toFixed(1)}× more likely in 1–3★ reviews</span>
                     </div>
                     <div className="mt-1.5 text-xs text-gray-500">
-                      Each negative mention ≈ <span className="font-medium text-gray-700">{l.drag.toFixed(1)}★</span> lower ·
-                      peer median <span className="font-medium text-gray-700">{pct1(l.peerMedian)}</span> ·
-                      <span className="font-medium text-gray-700"> {l.outletsAboveMedian}</span> outlets above it
+                      Cited in <span className="font-medium text-gray-700">{pct0(d.pBad)}</span> of 1–3★ reviews vs{' '}
+                      <span className="font-medium text-gray-700">{pct0(d.pGood)}</span> of 4–5★ reviews · {d.nBad} unhappy mentions
                     </div>
-                    {l.topOutlets.length > 0 && (
-                      <div className="mt-2 text-xs text-gray-500">
-                        <span className="font-medium text-gray-600">Start with:</span>{' '}
-                        {l.topOutlets.map((o, k) => (
-                          <span key={o.placeId}>
-                            {k > 0 ? ', ' : ''}
-                            <Link href={`/analyze/${datasetId}/outlet-report?outlet=${o.placeId}`} className="text-gray-700 underline decoration-gray-300 hover:decoration-gray-500">
-                              {locOnly(o.label)}
-                            </Link>{' '}
-                            <span className="text-gray-400">({pct1(o.negRate)})</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
+                {drivers.length === 0 && (
+                  <p className="rounded-lg border border-dashed border-gray-200 p-4 text-xs text-gray-500">No single theme is over-represented among unhappy guests — dissatisfaction is diffuse across topics.</p>
+                )}
               </div>
+              {nonDrivers.length > 0 && (
+                <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
+                  Discussed about equally by happy and unhappy guests — loud topics, not differentiators:{' '}
+                  {nonDrivers.map((d) => `${d.theme} (${d.lift.toFixed(1)}×)`).join(', ')}.
+                </p>
+              )}
 
-              {/* Where to start — outlet hot-list */}
-              <h2 className="mt-7 text-sm font-bold text-gray-700">Where to start — outlets with the most to gain</h2>
+              {/* Where to start — outlet hot-list by 1–3★ rate */}
+              <h2 className="mt-7 text-sm font-bold text-gray-700">Where to start — outlets with the highest 1–3★ rate</h2>
               <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-400">
                       <th className="px-3 py-2 font-semibold">Location</th>
+                      <th className="px-3 py-2 text-right font-semibold">1–3★ rate</th>
                       <th className="px-3 py-2 text-right font-semibold">Rating</th>
-                      <th className="px-3 py-2 font-semibold">Biggest lever</th>
-                      <th className="px-3 py-2 text-right font-semibold">Potential</th>
+                      <th className="px-3 py-2 font-semibold">Their unhappy guests cite</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -136,26 +146,38 @@ export default async function ImprovementPlanPage(props: {
                           </Link>
                           <span className="ml-1 text-xs text-gray-400">· {o.reviews} reviews</span>
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          <span className="font-semibold text-gray-900">{o.rating != null ? o.rating.toFixed(2) : '—'}</span>
-                          <span className={`ml-1 text-xs ${o.ratingDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {o.ratingDelta >= 0 ? '+' : ''}{o.ratingDelta.toFixed(2)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-700">{o.topLever?.theme}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-emerald-600">+{o.topLever?.lift.toFixed(2)}★</td>
+                        <td className="px-3 py-2 text-right font-semibold text-rose-600">{pct1(o.lowRate)}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{o.rating != null ? `${o.rating.toFixed(2)}★` : '—'}</td>
+                        <td className="px-3 py-2 text-gray-700">{o.topDriver ? o.topDriver.theme : <span className="text-gray-400">diffuse</span>}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
+              {/* Learn from — best operators */}
+              {p.exemplars.length > 0 && (
+                <>
+                  <h2 className="mt-7 text-sm font-bold text-gray-700">Who already does it well</h2>
+                  <p className="mt-0.5 text-xs text-gray-500">Your best operators — lowest 1–3★ rates at real review volume. Their playbook is the fastest fix for the laggards.</p>
+                  <div className="mt-2 grid grid-cols-3 gap-3">
+                    {p.exemplars.map((e) => (
+                      <div key={e.placeId} className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                        <div className="text-sm font-semibold text-gray-900">{locOnly(e.label)}</div>
+                        <div className="mt-1 text-xs text-emerald-800">
+                          <span className="font-bold">{pct1(e.lowRate)}</span> 1–3★{e.rating != null ? ` · ${e.rating.toFixed(2)}★` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <p className="mt-6 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-                Levers ranked by a de-biased model (ridge regression of star rating on theme-negative mentions, so co-occurring complaints
-                don’t double-count; explains {Math.round(p.model.r2 * 100)}% of rating variance across {p.model.population.toLocaleString()} reviews).
-                Brand-wide “potential” = the volume-weighted star lift if every outlet’s negative-mention rate on a theme dropped to the peer
-                median × that theme’s modeled ★-drag. Per-outlet potential is the same gap × drag for that location. Associational, not causal —
-                a prioritization signal, not a guaranteed star change.
+                Low-rated = 1–3★. A theme’s “driver” strength is its over-representation: P(theme | 1–3★) ÷ P(theme | 4–5★), which controls for base
+                rate so a frequently-discussed-but-neutral topic doesn’t mislead. Outlet 1–3★ rates and the best-quartile target are straight counts.
+                Computed from {m.population.toLocaleString()} rated reviews across {p.outletSummaries.length} outlets. Associational — a prioritization signal
+                that benchmarks outlets against their own peers, not a guaranteed star change.
               </p>
             </>
           )}

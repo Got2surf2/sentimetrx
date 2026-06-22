@@ -285,7 +285,8 @@ type Scan = {
   flat: any[]
   labelFor: (o: Outlet) => string
   themeLabels: string[]       // ordered theme labels (matchers) for the predictor
-  reviewMatrix: PredReview[]  // per rated text-review: theme-negative flag vector
+  reviewMatrix: PredReview[]  // per rated text-review: theme-membership vector
+  lowExamples: PredExample[]  // one 1–3★ quote per (outlet, theme)
 }
 
 // One pass over a dataset's flat rows + taxonomy assertions, building the
@@ -332,6 +333,8 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   const themeChain = new Map<string, Acc>()
   const themeLabels = themeMatchers.map((tm) => tm.label)
   const reviewMatrix: PredReview[] = []
+  const lowExamples: PredExample[] = []
+  const lowSeen = new Set<string>()
 
   // Pass over flat rows: rating + review counts, AND theme matching/sentiment.
   for (const r of flat) {
@@ -347,16 +350,27 @@ async function scanDataset(datasetId: string): Promise<Scan> {
       if (text.trim()) {
         const { pos, neg } = lexiconScore(text)
         const polarity = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neutral'
+        const isLow = !!rt && rt <= 3
         let matchedAny = false
-        // Per-review theme-negative flag vector for the predictor (whole-review
-        // polarity, same convention as the leaderboard). Only the negative
-        // signal drives the model — never score on bare theme presence.
-        const negFlags = new Array(themeMatchers.length).fill(false)
+        // Per-review theme-membership vector for the predictor (bare keyword
+        // presence, same matchers as the leaderboard). The 1–3★ vs 4–5★ split
+        // supplies the sentiment — the predictor measures over-representation of
+        // each theme among low-rated reviews, not bare presence alone.
+        const themeFlags = new Array(themeMatchers.length).fill(false)
         for (let ti = 0; ti < themeMatchers.length; ti++) {
           const tm = themeMatchers[ti]
           if (!tm.re.test(text)) continue
           matchedAny = true
-          if (polarity === 'neg') negFlags[ti] = true
+          themeFlags[ti] = true
+          // Capture one representative quote per (outlet, theme) from a 1–3★
+          // review — "what unhappy guests said", for the Action Plan.
+          if (isLow) {
+            const k = `${o.placeId}|${tm.label}`
+            if (!lowSeen.has(k)) {
+              const q = extractSentence({ full: text, ev: text })
+              if (q) { lowSeen.add(k); lowExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
+            }
+          }
           const key = tm.label
           const cu = themeChain.get(key) || (themeChain.set(key, newAcc()), themeChain.get(key)!)
           const ou = o.themeSubs.get(key) || (o.themeSubs.set(key, newAcc()), o.themeSubs.get(key)!)
@@ -365,7 +379,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           else if (polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg) ou.exNeg = { full: text, ev: text } }
         }
         if (matchedAny) o.themeMatched++
-        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, neg: negFlags })
+        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, themes: themeFlags })
       }
     }
   }
@@ -408,7 +422,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     themeAvailable: themeMatchers.length > 0,
     dimAvailable: tax.length > 0,
     flat, labelFor,
-    themeLabels, reviewMatrix,
+    themeLabels, reviewMatrix, lowExamples,
   }
 }
 
@@ -545,17 +559,9 @@ export async function computeOutletLeaderboard(datasetId: string): Promise<Outle
   return buildLeaderboard(await scanDataset(datasetId))
 }
 
-// Theme-driven "biggest levers" predictor (per-outlet actions + brand levers).
+// Theme-driven "recover your 1–3★ guests" predictor (per-outlet actions + brand
+// drivers). Example quotes come from 1–3★ reviews captured during the scan.
 function buildPredictorFromScan(scan: Scan): OutletPredictor {
-  // Negative example quote per (outlet, theme), recovered from the scan's
-  // accumulators — "what to fix" in a guest's own words.
-  const examples: PredExample[] = []
-  for (const o of scan.outlets) {
-    for (const [theme, acc] of o.themeSubs) {
-      const quote = extractSentence(acc.exNeg)
-      if (quote) examples.push({ placeId: o.placeId, theme, quote })
-    }
-  }
   return buildPredictor({
     themeLabels: scan.themeLabels,
     reviews: scan.reviewMatrix,
@@ -563,7 +569,7 @@ function buildPredictorFromScan(scan: Scan): OutletPredictor {
       placeId: o.placeId, label: scan.labelFor(o), reviews: o.reviews,
       rating: o.ratingN ? o.ratingSum / o.ratingN : null,
     })),
-    examples,
+    examples: scan.lowExamples,
   })
 }
 
