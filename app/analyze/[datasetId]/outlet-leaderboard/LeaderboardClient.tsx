@@ -6,13 +6,15 @@ import type { OutletLeaderboard, LeaderItem, LeaderRow } from '@/lib/outletRepor
 function netPct(n: number) { const v = Math.round(n * 100); return `${v >= 0 ? '+' : ''}${v}%` }
 
 function LeaderLine({ r, chainNet }: { r: LeaderRow; chainNet: number }) {
-  const above = r.net >= chainNet
+  // Bold figure = gap vs the chain average in points (so color and sign agree —
+  // red is genuinely below chain). Grey = the outlet's own net-positive rate.
+  const v = Math.round((r.net - chainNet) * 100)
   return (
     <div className="flex items-baseline justify-between gap-2 py-1">
       <span className="truncate text-xs text-gray-700">{r.label}</span>
       <span className="flex shrink-0 items-baseline gap-2">
-        <span className={`text-xs font-semibold ${above ? 'text-emerald-600' : 'text-rose-600'}`}>{netPct(r.net)}</span>
-        <span className="text-[10px] text-gray-400">{r.n}{r.rating != null ? ` · ${r.rating.toFixed(1)}★` : ''}</span>
+        <span className={`text-xs font-semibold ${v >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{v >= 0 ? '+' : ''}{v} pts</span>
+        <span className="text-[10px] text-gray-400">{netPct(r.net)} net · {r.n}{r.rating != null ? ` · ${r.rating.toFixed(1)}★` : ''}</span>
       </span>
     </div>
   )
@@ -82,7 +84,7 @@ export default function LeaderboardClient({ lb }: { lb: OutletLeaderboard }) {
         </section>
       )}
       <p className="mt-6 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-        For each theme/dimension, outlets are ranked by net-positive rate (pos − neg)/total among reviews that mention it. Only outlets with ≥6 such mentions are ranked, and only items carrying real chain-wide opinion appear. Default shows {lb.defaultK} per side; drag the slider to show more or fewer.
+        For each theme/dimension, outlets are ranked by net-positive rate (pos − neg)/total among reviews that mention it. The **bold figure is the gap vs the chain average** in points (green = above, red = below); the grey figure is the outlet&apos;s own net-positive rate, mentions, and avg ★. Only outlets with ≥6 such mentions are ranked, and only items carrying real chain-wide opinion appear. Default shows {lb.defaultK} per side; drag the slider to show more or fewer.
       </p>
     </div>
   )
