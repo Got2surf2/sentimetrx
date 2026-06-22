@@ -329,12 +329,15 @@ When the env vars are not set, each test calls `test.skip(...)` and the
 suite reports the reason inline.
 
 - `deck-download.spec.ts` — admin → investor decks → downloads a real pptx.
-- `saved-views.spec.ts` — Saved Views: asserts the ViewsBar renders on the workspace, then
-  drives a view+snapshot CRUD round-trip through the authed API (auth cookie → route →
-  service-role + RLS → linked DB): create/list/rename a view, freeze a snapshot (asserts the
-  30-day default TTL), confirm snapshot content-immutability (PATCH name → 400) but
-  retention mutability (PATCH `expires_at` → 200), a clean 404 on a missing item, and deletes
-  every row it created (names are `_e2e_*` + timestamp).
+- `saved-views.spec.ts` — Saved Views (single test on purpose: one login, then everything
+  rides that authed context — repeated sign-ins trip auth rate-limiting). Asserts the ViewsBar
+  renders on the workspace, then drives a view+snapshot CRUD round-trip through the authed API
+  (auth cookie → route → service-role + RLS → linked DB): create/list/rename a view, freeze a
+  snapshot (asserts the 30-day default TTL), confirm snapshot content-immutability (PATCH name
+  → 400) but retention mutability (PATCH `expires_at` → 200), a clean 404 on a missing item, and
+  deletes every row it created (names are `_e2e_*` + timestamp). Mutating verbs set an `Origin`
+  header to satisfy the `proxy.ts` CSRF guard (the browser UI sends it automatically). Verified
+  green 2026-06-22 against a live dataset.
 
 ## Load testing (Town Hall)
 

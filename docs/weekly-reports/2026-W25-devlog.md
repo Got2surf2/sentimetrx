@@ -599,3 +599,12 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 **Verify**: `tests/unit/comparison.test.ts` (6) pins alignment (full/in-progress/short-month cap) + delta rules (none/new/±%). typecheck clean; full `npm test` 929 pass; live dev server `/analyze/<id>` → 307 (compiles), no analyze-module errors. Authed click-through pending. Committed locally; **NOT pushed**.
 
 **Saved Views feature: all planned phases now built** (foundation → API → views UI → period picker → snapshot freeze/render → date-axis override → headline comparison + env-gated e2e). Open follow-ups: per-chart two-series render; per-view non-primary date-axis override; authed browser/e2e run against real creds.
+
+## 2026-06-22 — Saved Views e2e: run green against a live dataset
+
+**Why**: Close the verification gap — the Saved Views UI had only been compile/typecheck-verified. Ran the env-gated Playwright e2e against a real `google_reviews` dataset (Rubio's, 10.5k rows).
+
+**What changed**:
+- `tests/e2e/saved-views.spec.ts` — merged the two tests into one (a single login; repeated sign-ins were tripping Supabase auth rate-limiting). Mutating verbs now send an `Origin` header to satisfy the `proxy.ts` CSRF guard (`page.request` omits it; the real browser UI sends it) — without it, POST/PATCH/DELETE returned 403.
+
+**Verify**: `npm run test:e2e -- tests/e2e/saved-views.spec.ts` → **1 passed** against the live app + linked DB: real Supabase login → ViewsBar renders on the workspace → create/list/rename view → freeze snapshot (30d TTL) → snapshot immutability (400) → keep (200) → clean 404 → delete both (cleanup). The full Saved Views stack (auth → CSRF → route → service-role + RLS → prod DB) is now exercised end-to-end. Committed locally; **NOT pushed**.
