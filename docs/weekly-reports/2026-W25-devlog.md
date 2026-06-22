@@ -742,3 +742,15 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `docs/ANALYTICS.md` — documented the empty-state + the taxonomy-assertion dependency.
 
 **Verify**: fresh `tsc --noEmit` clean (note: stale tsbuildinfo masked a mid-edit JSX error — rm'd it and re-checked); outlet-report route recompiles clean on the dev server; full suite 931. Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Outlets: themes + dimensions comparison, tabbed, with a narrative summary
+
+**Why**: The outlet report only compared on the 7-axis Dimensions taxonomy and (confusingly) labelled those "themes" — it never used the dataset's actual theme model. Add a real Themes comparison alongside Dimensions, tabbed, plus a plain-English "how this location compares to the network" summary.
+
+**What changed**:
+- `lib/outletReport.ts` — added a **Themes** comparison engine parallel to Dimensions: per outlet, match reviews to the theme model's keywords (whole-word regex) + `lexiconScore` sentiment → net-positive per theme vs chain. Restructured `selected` into `{ themes, dimensions }` `ComparisonBlock`s (`available` + `analyzedReviews` + strengths/weaknesses) and added a deterministic `narrative` (no AI; built from rank/rating + top deltas). Shared `buildDeltas` for both axes.
+- `app/analyze/[datasetId]/outlet-report/OutletReportTabs.tsx` (new, client) — tabbed view: **Themes** (default) · **Dimensions** · **Summary**. Dimensions tab shows the "requires classification" message when no taxonomy; each axis shows excels/needs-work + a method footnote.
+- `app/analyze/[datasetId]/outlet-report/page.tsx` — KPI row trimmed to Star Rating + Peer Rank; renders `<OutletReportTabs>`. Moved `ThemeCard`/`pts` into the client component.
+- `docs/ANALYTICS.md` — documented the two-axis tabbed structure + narrative.
+
+**Verify**: fresh `tsc --noEmit` clean (rm'd tsbuildinfo to avoid the stale-cache trap); outlet-report route recompiles clean on the dev server (no syntax error in newest log entries — the lingering one was a stale append-only entry); full suite 931. Rubio's now has both a 7-theme comparison and (post-backfill) the dimensions comparison. Committed locally; **NOT pushed**.

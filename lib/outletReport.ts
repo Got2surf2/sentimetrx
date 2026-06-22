@@ -1,26 +1,30 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { lexiconScore } from '@/lib/themeUtils'
 
 // Per-outlet "vs peers" summary report.
 //
 // For a multi-location brand (one dataset, many outlets), compare a single
-// outlet to the rest of its outlets ("peers") on two axes:
-//   1. Headline star rating  — per-outlet avg vs chain avg + percentile rank.
-//   2. Sub-theme sentiment    — for each taxonomy sub (e.g. attribute:speed),
-//      the outlet's net-positive rate vs the chain's, surfacing where the
-//      outlet EXCELS (beats peers) and NEEDS WORK (trails peers).
+// outlet to the rest of its outlets ("peers") on:
+//   1. Headline star rating — per-outlet avg vs chain avg + percentile rank.
+//   2. THEMES — the dataset's theme model (TextMine). For each theme, match the
+//      outlet's reviews by keyword, score sentiment per matched review, and
+//      compare the outlet's net-positive rate to the chain's.
+//   3. DIMENSIONS — the fixed 7-axis restaurant taxonomy. For each taxonomy sub
+//      (e.g. attribute:speed), the outlet's net-positive rate vs the chain's,
+//      from the per-field taxonomy assertions ({ axis, sub, polarity, evidence }).
+// Both comparisons surface where the outlet EXCELS (beats peers) and NEEDS WORK.
 //
 // Outlets are keyed by Google place_id (several share the same name + city, so
-// the human name alone is ambiguous). Sentiment comes from the per-field
-// taxonomy assertions ({ axis, sub, polarity, evidence }) joined to flat rows
-// by dataset_rows_flat.id === dataset_row_field_taxonomy.row_id.
+// the human name alone is ambiguous). Taxonomy assertions join to flat rows by
+// dataset_rows_flat.id === dataset_row_field_taxonomy.row_id.
 
 const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 
 // Stability floors: ignore thin samples that would produce noisy deltas.
-const MIN_SUB_N_OUTLET = 6   // assertions for this sub at this outlet
-const MIN_SUB_N_CHAIN = 20   // assertions for this sub across all outlets
-const MIN_POLAR_SHARE = 0.3  // sub must carry real opinion, not pure mentions
+const MIN_N_OUTLET = 6    // matched reviews/assertions for this item at this outlet
+const MIN_N_CHAIN = 20    // across all outlets
+const MIN_POLAR_SHARE = 0.3  // item must carry real opinion, not pure mentions
 const DELTA_THRESHOLD = 0.08 // min gap vs peers to count as a strength/weakness
 
 export type OutletOption = { placeId: string; label: string; sublabel: string; reviews: number }
@@ -33,8 +37,16 @@ export type ThemeDelta = {
   outletNet: number   // (pos - neg) / total for this outlet
   chainNet: number
   delta: number       // outletNet - chainNet
-  n: number           // assertions for this sub at this outlet
+  n: number           // matched reviews/assertions for this item at this outlet
   quote: string | null
+}
+
+// One comparison axis (themes or dimensions).
+export type ComparisonBlock = {
+  available: boolean       // is the underlying data present at all?
+  analyzedReviews: number  // # of THIS outlet's reviews that matched ≥1 item
+  strengths: ThemeDelta[]
+  weaknesses: ThemeDelta[]
 }
 
 export type OutletReport = {
@@ -51,9 +63,9 @@ export type OutletReport = {
     percentile: number   // 0-100, share of outlets this one beats on rating
     rank: number         // 1 = best
     outletCount: number
-    classifiedReviews: number
-    strengths: ThemeDelta[]
-    weaknesses: ThemeDelta[]
+    narrative: string
+    themes: ComparisonBlock
+    dimensions: ComparisonBlock
   } | null
 }
 
@@ -62,10 +74,9 @@ type Acc = { pos: number; neg: number; total: number; exPos: Example | null; exN
 const newAcc = (): Acc => ({ pos: 0, neg: 0, total: 0, exPos: null, exNeg: null })
 const net = (a: Acc) => (a.total ? (a.pos - a.neg) / a.total : 0)
 
-// The classifier is purely keyword-based, so the cleanliness keyword "dirty"
-// false-fires on menu items ("dirty soda", "dirty cherry cola", "dirty orange
-// soda") and the idiom "dirty look(s)". Drop those from the Clean axis so a
-// menu name doesn't read as a hygiene complaint. (Proper fix is vocabulary-level.)
+// The taxonomy classifier is purely keyword-based, so the cleanliness keyword
+// "dirty" false-fires on menu items ("dirty soda", "dirty cherry cola") and the
+// idiom "dirty look(s)". Drop those from the Clean axis. (Proper fix is vocab-level.)
 const DIRTY_NOISE = /dirty\s+(soda|cola|cherry|orange|martini|chai|lemonade|fries|drink|water|horchata)|dirty\s+looks?/i
 function isNoiseAssertion(a: any): boolean {
   return a?.sub === 'clean' && a?.polarity === 'neg' && DIRTY_NOISE.test(a?.evidence || '')
@@ -81,27 +92,32 @@ function humanize(sub: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+
+// A theme matches a review if any of its keywords appears as a whole word.
+function themeMatcher(keywords: string[]): RegExp | null {
+  const kws = (keywords || []).map((k) => String(k || '').trim()).filter(Boolean).map(escapeRe)
+  if (!kws.length) return null
+  return new RegExp('\\b(' + kws.join('|') + ')\\b', 'i')
+}
+
 // The classifier's `evidence` is a fixed-width window that starts/ends
 // mid-word. Recover a readable full sentence: locate the evidence inside the
-// original review and expand out to sentence boundaries.
+// original review and expand out to sentence boundaries. (Themes pass the whole
+// review as evidence, so this just clamps to the first sentence.)
 function extractSentence(ex: Example | null): string | null {
   if (!ex) return null
   const full = (ex.full || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   const ev = (ex.ev || '').replace(/\s+/g, ' ').trim()
   if (!full) return ev || null
-
-  // Locate the evidence (trim a few chars off each end since the window may
-  // begin/end mid-word, which can break an exact match).
   const core = ev.length > 12 ? ev.slice(3, -3) : ev
   let i = full.toLowerCase().indexOf(core.toLowerCase())
   if (i < 0) i = full.toLowerCase().indexOf(ev.toLowerCase())
   if (i < 0) {
-    // Couldn't locate — fall back to the first sentence of the review.
     const first = full.split(/(?<=[.!?])\s/)[0] || full
     return clamp(first)
   }
   const end = i + core.length
-  // Expand left to the start of the sentence, right to its terminator.
   let start = 0
   for (let p = i - 1; p > 0; p--) {
     if (/[.!?]/.test(full[p]) && /\s/.test(full[p + 1] || ' ')) { start = p + 2; break }
@@ -119,9 +135,7 @@ function clamp(s: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1)
 }
 
-async function pageAll(
-  table: string, cols: string, datasetId: string,
-): Promise<any[]> {
+async function pageAll(table: string, cols: string, datasetId: string): Promise<any[]> {
   const sb = createServiceRoleClient()
   const out: any[] = []
   const size = 1000
@@ -137,9 +151,73 @@ async function pageAll(
   return out
 }
 
+// Build strengths/weaknesses from a per-outlet + chain map of net-positive Accs.
+function buildDeltas(
+  outletSubs: Map<string, Acc>, chain: Map<string, Acc>,
+  labelOf: (key: string) => { axis: string; sub: string; label: string; category: string },
+): { strengths: ThemeDelta[]; weaknesses: ThemeDelta[] } {
+  const deltas = [...outletSubs.entries()]
+    .filter(([key, o]) => {
+      const c = chain.get(key)
+      if (!c) return false
+      if (o.total < MIN_N_OUTLET || c.total < MIN_N_CHAIN) return false
+      if ((c.pos + c.neg) / c.total < MIN_POLAR_SHARE) return false
+      return true
+    })
+    .map(([key, o]) => {
+      const meta = labelOf(key)
+      const oNet = net(o)
+      const cNet = net(chain.get(key)!)
+      return {
+        ...meta, outletNet: oNet, chainNet: cNet, delta: oNet - cNet, n: o.total,
+        quote: null as string | null, _exPos: o.exPos, _exNeg: o.exNeg,
+      } as ThemeDelta & { _exPos: Example | null; _exNeg: Example | null }
+    })
+  const strengths = deltas
+    .filter((d) => d.delta >= DELTA_THRESHOLD && d.outletNet > 0)
+    .sort((a, b) => b.delta - a.delta).slice(0, 4)
+    .map((d) => ({ ...d, quote: extractSentence((d as any)._exPos) }))
+    .map(({ _exPos, _exNeg, ...s }: any) => s)
+  const weaknesses = deltas
+    .filter((d) => d.delta <= -DELTA_THRESHOLD)
+    .sort((a, b) => a.delta - b.delta).slice(0, 4)
+    .map((d) => ({ ...d, quote: extractSentence((d as any)._exNeg) }))
+    .map(({ _exPos, _exNeg, ...w }: any) => w)
+  return { strengths, weaknesses }
+}
+
+// Plain-English summary of how the outlet compares to the network. Deterministic
+// (no AI) — built from the computed rank/rating + top theme/dimension deltas.
+function buildNarrative(opts: {
+  name: string; rank: number; outletCount: number; percentile: number
+  ratingDelta: number; chainRating: number
+  themes: ComparisonBlock; dimensions: ComparisonBlock
+}): string {
+  const { name, rank, outletCount, percentile, ratingDelta, chainRating } = opts
+  const ord = (n: number) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]) }
+  const sentences: string[] = []
+  sentences.push(
+    `${name} ranks #${rank} of ${outletCount} outlets on star rating (${ord(percentile)} percentile), ` +
+    `${ratingDelta >= 0 ? '+' : ''}${ratingDelta.toFixed(2)}★ ${ratingDelta >= 0 ? 'above' : 'below'} the network average of ${chainRating.toFixed(2)}.`,
+  )
+  const ups = [...opts.themes.strengths, ...opts.dimensions.strengths].sort((a, b) => b.delta - a.delta).slice(0, 3).map((d) => d.label.toLowerCase())
+  const downs = [...opts.themes.weaknesses, ...opts.dimensions.weaknesses].sort((a, b) => a.delta - b.delta).slice(0, 3).map((d) => d.label.toLowerCase())
+  const list = (xs: string[]) => xs.length === 1 ? xs[0] : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]
+  if (ups.length && downs.length) sentences.push(`It stands out from its peers on ${list(ups)}, but trails them on ${list(downs)}.`)
+  else if (ups.length) sentences.push(`It stands out from its peers on ${list(ups)}; nothing trails the network materially.`)
+  else if (downs.length) sentences.push(`It trails its peers on ${list(downs)}; nothing stands out above the network.`)
+  else sentences.push('On measured themes and dimensions it performs in line with the rest of the network.')
+  return sentences.join(' ')
+}
+
 export async function computeOutletReport(datasetId: string, selectedPlaceId?: string): Promise<OutletReport> {
   const sb = createServiceRoleClient()
   const { data: ds } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
+  const { data: stateRow } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
+  const themeModel: { id?: string; label: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []
+  const themeMatchers = themeModel
+    .map((t) => ({ label: t.label || 'Theme', re: themeMatcher(t.keywords || []) }))
+    .filter((t): t is { label: string; re: RegExp } => !!t.re)
 
   const flat = await pageAll('dataset_rows_flat', 'id, data', datasetId)
   const byId = new Map<number, any>()
@@ -147,12 +225,11 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
 
   const tax = await pageAll('dataset_row_field_taxonomy', 'row_id, assertions', datasetId)
 
-  // Per-outlet state, keyed by place_id.
   type Outlet = {
     placeId: string; name: string; city: string; state: string; address: string
     reviews: number; ratingSum: number; ratingN: number
-    classified: number
-    subs: Map<string, Acc>
+    dimClassified: number; themeMatched: number
+    dimSubs: Map<string, Acc>; themeSubs: Map<string, Acc>
   }
   const outlets = new Map<string, Outlet>()
   const getOutlet = (d: any): Outlet | null => {
@@ -164,44 +241,63 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
         placeId,
         name: d.location_name || d.location || 'Outlet',
         city: d.location_city || '', state: d.location_state || '', address: d.location_address || '',
-        reviews: 0, ratingSum: 0, ratingN: 0, classified: 0, subs: new Map(),
+        reviews: 0, ratingSum: 0, ratingN: 0, dimClassified: 0, themeMatched: 0,
+        dimSubs: new Map(), themeSubs: new Map(),
       }
       outlets.set(placeId, o)
     }
     return o
   }
 
-  // Rating + review counts from flat rows.
+  const dimChain = new Map<string, Acc>()
+  const themeChain = new Map<string, Acc>()
+
+  // Pass over flat rows: rating + review counts, AND theme matching/sentiment.
   for (const r of flat) {
-    const o = getOutlet(r.data)
+    const d = r.data
+    const o = getOutlet(d)
     if (!o) continue
     o.reviews++
-    const rt = Number(r.data?.rating)
+    const rt = Number(d?.rating)
     if (rt) { o.ratingSum += rt; o.ratingN++ }
+
+    if (themeMatchers.length) {
+      const text = String(d?.review_text || '')
+      if (text.trim()) {
+        const { pos, neg } = lexiconScore(text)
+        const polarity = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neutral'
+        let matchedAny = false
+        for (const tm of themeMatchers) {
+          if (!tm.re.test(text)) continue
+          matchedAny = true
+          const key = tm.label
+          const cu = themeChain.get(key) || (themeChain.set(key, newAcc()), themeChain.get(key)!)
+          const ou = o.themeSubs.get(key) || (o.themeSubs.set(key, newAcc()), o.themeSubs.get(key)!)
+          cu.total++; ou.total++
+          if (polarity === 'pos') { cu.pos++; ou.pos++; if (!ou.exPos) ou.exPos = { full: text, ev: text } }
+          else if (polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg) ou.exNeg = { full: text, ev: text } }
+        }
+        if (matchedAny) o.themeMatched++
+      }
+    }
   }
 
-  // Sub-level sentiment from taxonomy assertions.
-  const chain = new Map<string, Acc>()
+  // Dimension sentiment from taxonomy assertions.
   for (const t of tax) {
     const d = byId.get(Number(t.row_id))
     if (!d) continue
     const o = getOutlet(d)
     if (!o) continue
-    o.classified++
+    o.dimClassified++
     for (const a of (t.assertions || [])) {
       if (!AXES.includes(a.axis)) continue
       if (isNoiseAssertion(a)) continue
       const key = `${a.axis}:${a.sub}`
-      const cu = chain.get(key) || (chain.set(key, newAcc()), chain.get(key)!)
-      const ou = o.subs.get(key) || (o.subs.set(key, newAcc()), o.subs.get(key)!)
+      const cu = dimChain.get(key) || (dimChain.set(key, newAcc()), dimChain.get(key)!)
+      const ou = o.dimSubs.get(key) || (o.dimSubs.set(key, newAcc()), o.dimSubs.get(key)!)
       cu.total++; ou.total++
-      if (a.polarity === 'pos') {
-        cu.pos++; ou.pos++
-        if (!ou.exPos && a.evidence) ou.exPos = { full: d.review_text || '', ev: a.evidence }
-      } else if (a.polarity === 'neg') {
-        cu.neg++; ou.neg++
-        if (!ou.exNeg && a.evidence) ou.exNeg = { full: d.review_text || '', ev: a.evidence }
-      }
+      if (a.polarity === 'pos') { cu.pos++; ou.pos++; if (!ou.exPos && a.evidence) ou.exPos = { full: d.review_text || '', ev: a.evidence } }
+      else if (a.polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg && a.evidence) ou.exNeg = { full: d.review_text || '', ev: a.evidence } }
     }
   }
 
@@ -235,41 +331,14 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
     const percentile = avgList.length > 1 ? Math.round((100 * beats) / (avgList.length - 1)) : 100
     const rank = rated.filter((o) => o.ratingSum / o.ratingN > outletRating).length + 1
 
-    const chainNetFor = (key: string) => {
-      const c = chain.get(key)!
-      return net(c)
-    }
-    const deltas: ThemeDelta[] = [...target.subs.entries()]
-      .filter(([key, o]) => {
-        const c = chain.get(key)
-        if (!c) return false
-        if (o.total < MIN_SUB_N_OUTLET || c.total < MIN_SUB_N_CHAIN) return false
-        if ((c.pos + c.neg) / c.total < MIN_POLAR_SHARE) return false  // skip pure-mention subs
-        return true
-      })
-      .map(([key, o]) => {
-        const [axis, sub] = key.split(':')
-        const oNet = net(o)
-        const cNet = chainNetFor(key)
-        return {
-          sub, axis, label: humanize(sub), category: CATEGORY[axis] || axis,
-          outletNet: oNet, chainNet: cNet, delta: oNet - cNet, n: o.total,
-          quote: null as string | null,
-          _exPos: o.exPos, _exNeg: o.exNeg,
-        } as ThemeDelta & { _exPos: Example | null; _exNeg: Example | null }
-      })
+    const themeDeltas = buildDeltas(target.themeSubs, themeChain, (key) => ({ axis: 'theme', sub: key, label: key, category: 'Theme' }))
+    const dimDeltas = buildDeltas(target.dimSubs, dimChain, (key) => {
+      const [axis, sub] = key.split(':')
+      return { axis, sub, label: humanize(sub), category: CATEGORY[axis] || axis }
+    })
 
-    const strengths = deltas
-      .filter((d) => d.delta >= DELTA_THRESHOLD && d.outletNet > 0)
-      .sort((a, b) => b.delta - a.delta)
-      .slice(0, 4)
-      .map((d) => ({ ...d, quote: extractSentence((d as any)._exPos) }))
-
-    const weaknesses = deltas
-      .filter((d) => d.delta <= -DELTA_THRESHOLD)
-      .sort((a, b) => a.delta - b.delta)
-      .slice(0, 4)
-      .map((d) => ({ ...d, quote: extractSentence((d as any)._exNeg) }))
+    const themes: ComparisonBlock = { available: themeMatchers.length > 0, analyzedReviews: target.themeMatched, ...themeDeltas }
+    const dimensions: ComparisonBlock = { available: tax.length > 0, analyzedReviews: target.dimClassified, ...dimDeltas }
 
     selected = {
       placeId: target.placeId,
@@ -280,9 +349,8 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
       chainRating: chainRatingAll,
       ratingDelta: outletRating - chainRatingAll,
       percentile, rank, outletCount: rated.length,
-      classifiedReviews: target.classified,
-      strengths: strengths.map(({ _exPos, _exNeg, ...s }: any) => s),
-      weaknesses: weaknesses.map(({ _exPos, _exNeg, ...w }: any) => w),
+      themes, dimensions,
+      narrative: buildNarrative({ name: target.name, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
     }
   }
 

@@ -8,42 +8,17 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
-import { computeOutletReport, type ThemeDelta } from '@/lib/outletReport'
+import { computeOutletReport } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import PrintButton from './PrintButton'
+import OutletReportTabs from './OutletReportTabs'
 
 export const dynamic = 'force-dynamic'
-
-function pts(delta: number) {
-  const v = Math.round(delta * 100)
-  return `${v >= 0 ? '+' : ''}${v} pts`
-}
 
 function ordinal(n: number) {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
   return n + (s[(v - 20) % 10] || s[v] || s[0])
-}
-
-function ThemeCard({ t, tone }: { t: ThemeDelta; tone: 'good' | 'bad' }) {
-  const good = tone === 'good'
-  return (
-    <div className={`rounded-lg border p-3 ${good ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
-      <div className="flex items-baseline justify-between gap-2">
-        <div>
-          <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${good ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-            {t.category}
-          </span>
-          <span className="text-sm font-semibold text-gray-900">{t.label}</span>
-        </div>
-        <span className={`text-sm font-bold ${good ? 'text-emerald-600' : 'text-amber-600'}`}>{pts(t.delta)}</span>
-      </div>
-      <div className="mt-1 text-xs text-gray-500">
-        {Math.round(t.outletNet * 100)}% net-positive here · {Math.round(t.chainNet * 100)}% across peers · {t.n} mentions
-      </div>
-      {t.quote && <p className="mt-2 border-l-2 border-gray-300 pl-2 text-xs italic text-gray-600">“{t.quote}”</p>}
-    </div>
-  )
 }
 
 export default async function OutletReportPage(props: {
@@ -94,7 +69,7 @@ export default async function OutletReportPage(props: {
             </div>
 
             {/* KPI row */}
-            <div className="mt-5 grid grid-cols-3 gap-4">
+            <div className="mt-5 grid grid-cols-2 gap-4">
               <div className="rounded-lg bg-gray-50 p-4">
                 <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Star rating</div>
                 <div className="mt-1 flex items-baseline gap-2">
@@ -110,57 +85,10 @@ export default async function OutletReportPage(props: {
                 <div className="mt-1 text-3xl font-bold text-gray-900">#{s.rank}<span className="text-lg font-medium text-gray-400"> / {s.outletCount}</span></div>
                 <div className="text-xs text-gray-500">{ordinal(s.percentile)} percentile</div>
               </div>
-              <div className="rounded-lg bg-gray-50 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Reviews analyzed</div>
-                <div className="mt-1 text-3xl font-bold text-gray-900">{s.classifiedReviews.toLocaleString()}</div>
-                <div className="text-xs text-gray-500">across 7 service dimensions</div>
-              </div>
             </div>
 
-            {/* No Dimensions classification yet → the theme comparison has nothing
-                to compare. Show guidance instead of empty "0 analyzed / no themes"
-                (which reads as broken). A classified-but-average outlet still falls
-                through to the normal "no themes materially ahead/behind" copy below. */}
-            {s.classifiedReviews === 0 ? (
-            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-5 text-center">
-              <p className="text-sm font-semibold text-gray-700">Theme comparison isn’t available yet</p>
-              <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">
-                This dataset hasn’t been classified into service Dimensions, so there are no themes to compare against peers.
-                Open <span className="font-medium text-gray-700">TextMine → Dimensions</span> and run classification (a quick keyword pass), then reload this report.
-              </p>
-            </div>
-            ) : (
-            <>
-            {/* Strengths / weaknesses */}
-            <div className="mt-6 grid grid-cols-2 gap-5">
-              <div>
-                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-700">
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> What this location excels at
-                </h2>
-                <div className="space-y-2">
-                  {s.strengths.length ? s.strengths.map((t) => <ThemeCard key={t.sub + t.axis} t={t} tone="good" />)
-                    : <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">No themes materially ahead of peers.</p>}
-                </div>
-              </div>
-              <div>
-                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-700">
-                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500" /> What needs work
-                </h2>
-                <div className="space-y-2">
-                  {s.weaknesses.length ? s.weaknesses.map((t) => <ThemeCard key={t.sub + t.axis} t={t} tone="bad" />)
-                    : <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">No themes materially behind peers.</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Method footnote */}
-            <p className="mt-6 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-              Themes ranked by net-positive sentiment gap vs. the brand’s other {s.outletCount - 1} outlets, from {s.classifiedReviews.toLocaleString()} AI-classified
-              reviews tagged across service dimensions (service, food, experience, atmosphere, loyalty). “pts” = percentage-point difference in net-positive
-              rate between this outlet and the peer-group average for that theme.
-            </p>
-            </>
-            )}
+            {/* Themes / Dimensions / Summary tabs (client) */}
+            <OutletReportTabs selected={s} />
           </div>
         )}
       </div>
