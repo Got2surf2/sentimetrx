@@ -336,10 +336,18 @@ so a record is **never silently destroyed**.
     content update** — `name` / `filter_config` / `frozen` are fixed at freeze. The freeze
     request sets the name up front (default suggestion: source view name + resolved range,
     e.g. *"Q2 Exec Review · Apr–Jun 2026"*).
-  - **Snapshot lifecycle endpoints**: `keep` (null the clock), `extend` (push `expires_at`),
-    `restore` (un-expire) — these touch only `expires_at`, never content (§5.2).
+  - **Snapshot lifecycle** is a single field on the snapshot's `PATCH`: `expires_at`
+    (`null` = keep forever; a future ISO date = extend/restore). It touches only the clock,
+    never content (§5.2). On a snapshot, `PATCH` rejects any content field
+    (`name`/`filter_config`/`frozen`/`visibility`).
   - Single-item reads return a clean 404 for missing/deleted/unauthorized rows (§6).
   - Mirror the `dataset_state` route's org-access gating; pair `id` with `org_id` on
     service-role reads.
+
+**Implemented (Phase 2):** `views/route.ts` (GET list, POST create/freeze), `views/[viewId]/route.ts`
+(GET/PATCH/DELETE), shared `views/gate.ts` (caller → dataset-org gate, returns the dataset's
+`org_id` so saved_views pairs `id`+`org_id` and still works for admins). `FilterProvider` gained
+`activeView` / `loadView` / `clearActiveView` / `isViewDirty` (the §5.1 dirty flag, via
+`serializedFiltersEqual`). Snapshot default TTL = 30 days. Remaining: Phase 3 UI, Phase 4 comparison.
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.

@@ -72,6 +72,31 @@ export function deserializeFilters(raw: SerializedFilters): Filters {
   return out
 }
 
+// Structural equality of two serialized filter sets, order-insensitive (cat
+// values come from a Set, so array order is not meaningful). Drives the saved-
+// view "dirty/diverged" flag: once the live filters stop matching the loaded
+// view's stored config, you're looking at a different (unsaved) view — so a
+// freeze no longer inherits the view name. See docs/SAVED_VIEWS.md §5.1.
+export function serializedFiltersEqual(a: SerializedFilters, b: SerializedFilters): boolean {
+  const aKeys = Object.keys(a), bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  for (const k of aKeys) {
+    const fa = a[k], fb = b[k]
+    if (!fb || fa.type !== fb.type) return false
+    if (fa.type === 'cat' && fb.type === 'cat') {
+      if ((fa.mode || 'include') !== (fb.mode || 'include')) return false
+      if (fa.excludeBlanks !== fb.excludeBlanks) return false
+      if (fa.values.length !== fb.values.length) return false
+      const bSet = new Set(fb.values)
+      for (const v of fa.values) if (!bSet.has(v)) return false
+    } else if ((fa.type === 'range' && fb.type === 'range') || (fa.type === 'daterange' && fb.type === 'daterange')) {
+      if (fa.values[0] !== fb.values[0] || fa.values[1] !== fb.values[1]) return false
+      if (fa.includeBlanks !== fb.includeBlanks) return false
+    }
+  }
+  return true
+}
+
 function parseDate(s: string): Date | null {
   const d = new Date(s)
   return isNaN(d.getTime()) ? null : d

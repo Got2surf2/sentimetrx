@@ -565,7 +565,15 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 ### Global Filter Architecture
 - Serializable: `serializeFilters()` / `deserializeFilters()` for URL/storage
 - Application: `applyFilters(rows, filters)` returns filtered array
-- Context Provider for app-wide state
+- Context Provider for app-wide state (`components/analyze/FilterContext.tsx`)
+
+### Saved Views & Snapshots (`docs/SAVED_VIEWS.md`)
+A **view** is a saved `FilterContext` state; a **snapshot** freezes a view's aggregates.
+API: `/api/datasets/[datasetId]/views` (views CRUD, snapshot CRD + `expires_at` lifecycle).
+`FilterContext` exposes `loadView` / `activeView` / `isViewDirty` (live filters diverged from the
+loaded view — via `serializedFiltersEqual()`). Relative **periods** resolve client-side through
+`resolvePeriod()` into the existing `DateRangeFilter`; the default date axis is
+`SchemaConfig.primaryDateField`. _Status: Phases 1–2 (foundation + API/context) built; UI + comparison pending._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")

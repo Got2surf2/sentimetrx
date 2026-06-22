@@ -518,3 +518,16 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `lib/datasetUtils.ts` — `rankPrimaryDateField()` (analytical-name > operational > fill-rate > spread > order; drops constant columns) wired into `autoDetectSchema()`. NOTE: the hardcoded template schemas (review/reddit/etc, getXSchema) don't yet set `primaryDateField` — follow-up so those common sources get period UI without a manual override.
 
 **Verify**: `npx vitest run tests/unit/resolvePeriod.test.ts tests/unit/primaryDateField.test.ts` → 17 pass (calendar boundaries, half-open, leap-year self-correction, fiscal start, comparison offset, ranking). `npm run typecheck` clean. Full `npm test` → 892 pass / 54 skip. Committed locally; **NOT pushed**. Migration not applied to prod.
+
+## 2026-06-21 — Saved Views: Phase 2 (views/snapshots API + FilterContext dirty flag)
+
+**Why**: With the Phase-1 foundation in place, build the data path: a CRUD API for views and a CRD+lifecycle API for snapshots, plus the FilterContext seam the UI will drive. No UI yet (Phase 3).
+
+**What changed**:
+- `app/api/datasets/[datasetId]/views/route.ts` — GET (list, RLS-scoped) + POST (create view / freeze snapshot). Snapshots default a 30-day `expires_at` unless pinned (ISO) or opted out (`null` = keep). Mirrors the `dataset_state` route's gate.
+- `app/api/datasets/[datasetId]/views/[viewId]/route.ts` — GET (single; missing/not-visible/deleted → clean 404, drives the graceful "deleted" UX), PATCH, DELETE. Views: rename/visibility/filter_config mutable. Snapshots: content immutable — PATCH accepts ONLY `expires_at` (null=keep, future ISO=extend/restore), rejects content edits. DELETE of a view does NOT touch snapshots (self-contained, no FK).
+- `app/api/datasets/[datasetId]/views/gate.ts` — shared org gate; returns the dataset's own `org_id` so saved_views mutations pair `id`+`org_id` (multi-tenancy invariant) and still admit platform admins cross-org.
+- `lib/filterUtils.ts` — `serializedFiltersEqual()` (order-insensitive, Set-aware) — the dirty-flag core.
+- `components/analyze/FilterContext.tsx` — `activeView` / `loadView` / `clearActiveView` / `isViewDirty`. Dirty = live filters diverged from the loaded view's stored config (SAVED_VIEWS.md §5.1).
+
+**Verify**: `tests/integration/saved-views-routes.test.ts` (24) pins gating (401/404 cross-org, 403 non-creator, id+org_id pairing), snapshot default TTL, snapshot immutability, graceful 404. `tests/unit/serializedFiltersEqual.test.ts` (10) pins the dirty diff. typecheck clean; full `npm test` 922 pass. Committed locally; **NOT pushed**. `sql/130` still not applied to prod (mocked tests don't need it; live API verification will).
