@@ -565,3 +565,12 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `app/analyze/[datasetId]/DatasetShell.tsx` — pass `schemaFields` to `ViewsBar` (needed to build the SchemaConfig for capture + label the summaries).
 
 **Verify**: typecheck clean; full `npm test` 923 pass; live dev server `/analyze/<id>` → 307 (compiles), no analyze-module errors. Capture relies on already-tested `computeAnalyticsFromRows` + `applyFilters` + `resolvePeriod`; no new unit test for the React glue. **Manual authed click-through (freeze → reopen modal → numbers stable after a sync → keep/extend/delete) still pending.** Committed locally; **NOT pushed**. Remaining: SchemaEditor date-field override; Phase 4 comparison.
+
+## 2026-06-21 — Saved Views: SchemaEditor date-axis override
+
+**Why**: The period picker keys off `primaryDateField` (auto-ranked). Give users an explicit control to change which date column drives time analysis (or opt out), instead of relying on the heuristic.
+
+**What changed**:
+- `components/analyze/SchemaEditor.tsx` — date-typed fields now show a "Time Analysis" toggle in the inline FieldEditor: "Use for time analysis" / "✓ Period date field". Sets `SchemaConfig.primaryDateField` via the existing `applyUpdate`→PATCH-state path; clicking the active one clears it (period UI then hides per §3.3). Threaded `isPrimaryDate`/`onSetPrimaryDate` through FieldCard→FieldEditor.
+
+**Verify**: typecheck clean; full `npm test` 923; Schema tab compiles on the live dev server (307). Authed click-through (toggle → save → period picker switches axis) pending. Committed locally; **NOT pushed**. Remaining: Phase 4 comparison.

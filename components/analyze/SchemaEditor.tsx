@@ -105,13 +105,15 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onValueAliasChange: (field: string, value: string, alias: string) => void
   onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
   onEntityExtractionToggle: (field: string) => void
+  isPrimaryDate: boolean
+  onSetPrimaryDate: (field: string) => void
 }) {
   const entityOn = f.entityExtraction !== false
   const ut     = getActiveType(f)
@@ -165,6 +167,19 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
           })}
         </div>
       </div>
+
+      {/* Period date field — the default time axis for Saved Views (§3.1). Only
+          meaningful on date fields. */}
+      {f.type === 'date' && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const, marginBottom: 6 }}>Time Analysis</div>
+          <button onClick={function() { onSetPrimaryDate(f.field) }}
+            style={{ padding: '5px 11px', fontSize: 11, fontWeight: isPrimaryDate ? 700 : 500, background: isPrimaryDate ? P.accentBg : P.white, border: '1.5px solid ' + (isPrimaryDate ? P.accent : P.border), borderRadius: 7, cursor: 'pointer', color: isPrimaryDate ? P.accent : P.textMute, display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit', transition: 'all .12s' }}>
+            {isPrimaryDate ? '✓ Period date field' : 'Use for time analysis'}
+          </button>
+          <div style={{ fontSize: 10, color: P.textFaint, marginTop: 5 }}>Default date axis for relative-period filtering in Saved Views.</div>
+        </div>
+      )}
 
       {/* Entity extraction — only meaningful on open-ended fields. Default on. */}
       {f.type === 'open-ended' && (
@@ -317,7 +332,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
@@ -325,6 +340,8 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
   onValueAliasChange: (field: string, value: string, alias: string) => void
   onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
   onEntityExtractionToggle: (field: string) => void
+  isPrimaryDate: boolean
+  onSetPrimaryDate: (field: string) => void
   readOnly?:     boolean
   index:         number
 }) {
@@ -519,7 +536,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} isPrimaryDate={isPrimaryDate} onSetPrimaryDate={onSetPrimaryDate} />
           </div>
         </div>
       </div>
@@ -552,6 +569,12 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
       fields: schema.fields.map(function(f) {
         return f.field === field ? { ...f, label: alias || undefined } : f
       }) })
+  }
+
+  // Set (or clear) the default date axis for relative-period filtering. Clicking
+  // the active one clears it → period UI hides for the dataset (§3.3).
+  function handleSetPrimaryDate(field: string) {
+    applyUpdate({ ...schema, primaryDateField: schema.primaryDateField === field ? undefined : field })
   }
 
   function handleScoreToggle(field: string) {
@@ -747,6 +770,8 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
               onValueAliasChange={handleValueAliasChange}
               onRemappingChange={handleRemappingChange}
               onEntityExtractionToggle={handleEntityExtractionToggle}
+              isPrimaryDate={schema.primaryDateField === f.field}
+              onSetPrimaryDate={handleSetPrimaryDate}
               readOnly={readOnly}
             />
           )

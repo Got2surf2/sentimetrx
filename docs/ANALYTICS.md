@@ -578,8 +578,10 @@ loaded view — via `serializedFiltersEqual()`). Relative **periods** resolve cl
 quarter/year × this/last, gated on `primaryDateField`). A period is stored as intent and resolved into
 `effectiveFilters` at read time, so "this quarter" recurs. **Snapshots** freeze
 `computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into a `frozen` blob and render
-read-only via `SnapshotModal` (drift-immune; no per-module render-from-frozen). _Status: foundation +
-API/context + views UI + period picker + snapshot freeze/render built; comparison pending._
+read-only via `SnapshotModal` (drift-immune; no per-module render-from-frozen). The Schema tab
+(`SchemaEditor`) lets a date field be designated the period axis ("Use for time analysis" →
+`primaryDateField`). _Status: foundation + API/context + views UI + period picker + snapshot freeze/render +
+date-axis override built; comparison pending._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")

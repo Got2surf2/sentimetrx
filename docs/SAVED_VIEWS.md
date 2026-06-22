@@ -359,7 +359,9 @@ picker. **Snapshot freeze + read-only render** built: `ViewsBar` "📸 Freeze" c
 `computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into `frozen` (record count +
 estimated flag + resolved period range + filters recipe + per-field summaries), POSTs a `kind='snapshot'`;
 `SnapshotModal` renders it read-only with retention controls (Keep / +30d / Delete, via `PATCH expires_at`).
-Aggregates-only, drift-immune — no render-from-frozen across the modules (deferred). Remaining: `SchemaEditor`
-date-field override + period field-override UI, Phase 4 (comparison two-series + to-date).
+Aggregates-only, drift-immune — no render-from-frozen across the modules (deferred). **`SchemaEditor`
+date-field override** built: date fields show a "Use for time analysis" toggle that sets/clears
+`SchemaConfig.primaryDateField` (clearing hides the period UI per §3.3). Remaining: Phase 4 (comparison
+two-series + to-date); minor: per-view period field-override (pick a non-primary date axis).
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.
