@@ -1905,6 +1905,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               </div>
             )}
 
+            {/* Leaderboard — the brand-level inverse of Outlets: for each theme &
+                dimension, the top/bottom outlets. Same gate; its own server route
+                (NOT a tab inside the single-location report). */}
+            {datasetSource === 'google_reviews' && (outletCount || 0) >= 5 && (
+              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Link href={'/analyze/' + datasetId + '/outlet-leaderboard'}
+                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
+                  Leaderboard
+                </Link>
+                <span style={{ paddingRight: 10 }}>
+                  <HelpHint title="Leaderboard" placement="bottom">A brand-level ranking: for each theme and dimension, the top and bottom outlets by net-positive sentiment — so you can see who leads and who lags across the whole chain.</HelpHint>
+                </span>
+              </div>
+            )}
+
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {/* View by Theme | Entity — gates which set of components renders

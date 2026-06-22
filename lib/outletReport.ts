@@ -294,9 +294,11 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   const brand: string = ds?.name || 'Brand'
   const brandTokens = new Set<string>(brand.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2))
   const { data: stateRow } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
-  const themeModel: { id?: string; label: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []
+  // Theme labels live in `name` ("Food Quality & Taste"); older payloads used
+  // `label`. Reading the wrong field collapses every theme to "Theme".
+  const themeModel: { id?: string; name?: string; label?: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []
   const themeMatchers = themeModel
-    .map((t) => ({ label: t.label || 'Theme', re: themeMatcher(t.keywords || []) }))
+    .map((t) => ({ label: t.name || t.label || 'Theme', re: themeMatcher(t.keywords || []) }))
     .filter((t): t is { label: string; re: RegExp } => !!t.re)
 
   const flat = await pageAll('dataset_rows_flat', 'id, data', datasetId)
@@ -525,8 +527,7 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
   return buildReport(await scanDataset(datasetId), selectedPlaceId)
 }
 
-// One scan → both the per-outlet report and the cross-outlet leaderboard.
-export async function computeOutletBundle(datasetId: string, selectedPlaceId?: string): Promise<{ report: OutletReport; leaderboard: OutletLeaderboard }> {
-  const scan = await scanDataset(datasetId)
-  return { report: buildReport(scan, selectedPlaceId), leaderboard: buildLeaderboard(scan) }
+// Chain-wide leaderboard (its own view — NOT a tab in the per-outlet report).
+export async function computeOutletLeaderboard(datasetId: string): Promise<OutletLeaderboard> {
+  return buildLeaderboard(await scanDataset(datasetId))
 }

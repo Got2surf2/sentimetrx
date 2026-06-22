@@ -8,7 +8,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
-import { computeOutletBundle } from '@/lib/outletReport'
+import { computeOutletReport } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import PrintButton from './PrintButton'
 import OutletReportTabs from './OutletReportTabs'
@@ -38,7 +38,7 @@ export default async function OutletReportPage(props: {
   if (!ds) notFound()
   if (!ctx.isAdminOrg && ds.org_id !== ctx.orgId) notFound()
 
-  const { report, leaderboard } = await computeOutletBundle(datasetId, outlet)
+  const report = await computeOutletReport(datasetId, outlet)
   const s = report.selected
 
   return (
@@ -87,8 +87,8 @@ export default async function OutletReportPage(props: {
               </div>
             </div>
 
-            {/* Summary / Themes / Dimensions / Leaderboard tabs (client) */}
-            <OutletReportTabs selected={s} leaderboard={leaderboard} />
+            {/* Summary / Themes / Dimensions tabs (client) */}
+            <OutletReportTabs selected={s} />
           </div>
         )}
       </div>
