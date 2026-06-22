@@ -554,3 +554,14 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `lib/datasetUtils.ts` — all `getXSchema()` templates now set `primaryDateField` via `rankPrimaryDateField(fields)` (name-ranked, since templates carry no stats) so review/reddit/study/bot/etc. surface the period picker without a manual override.
 
 **Verify**: typecheck clean; full `npm test` 922 + new template-ranking unit (6 in primaryDateField). Live dev server: `/analyze/<id>` → 307 (compiles), no analyze-module errors in dev log. Manual authed click-through of the picker (pick quarter → charts/count update → save → reload → recurs) still pending. Committed locally; **NOT pushed**. Remaining: snapshot freeze + frozen render, SchemaEditor date-field override, Phase 4 comparison.
+
+## 2026-06-21 — Saved Views: Phase 3b-ii (snapshot freeze + read-only render)
+
+**Why**: Snapshots — freeze the current filtered analysis as drift-immune aggregates and view them later. The hard part was the seam: the workspace renders charts from live rows, but a snapshot must be aggregates-only. Rather than refactor every module into a render-from-frozen mode (large/invasive), reuse the existing client-side `computeAnalyticsFromRows` to capture a compact summary and render it read-only.
+
+**What changed**:
+- `components/analyze/ViewsBar.tsx` — "📸 Freeze" action: ensures rows are loaded (`useRows().fetchRows` + a pending-capture effect), runs `computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), { fields: schemaFields, ... })`, and POSTs a snapshot whose `frozen` holds {capturedAt, filteredRowCount, totalRowCount, sampled, resolved period range, filters recipe, analytics.fieldSummaries}. Carries `source_view_name` only when a view is active AND clean (§5.1). Snapshots list in their own dropdown section; clicking opens the modal.
+- `components/analyze/SnapshotModal.tsx` (new) — read-only frozen report: record count (+ "(estimated)" when sampled), captured date, source view, resolved period window, and compact per-field summaries (categorical top-5 bars, numeric avg/min/max/median, date range, open-ended counts). Footer retention controls — Keep forever / +30 days / Delete — via `PATCH expires_at` (the only mutable field on a snapshot) and DELETE.
+- `app/analyze/[datasetId]/DatasetShell.tsx` — pass `schemaFields` to `ViewsBar` (needed to build the SchemaConfig for capture + label the summaries).
+
+**Verify**: typecheck clean; full `npm test` 923 pass; live dev server `/analyze/<id>` → 307 (compiles), no analyze-module errors. Capture relies on already-tested `computeAnalyticsFromRows` + `applyFilters` + `resolvePeriod`; no new unit test for the React glue. **Manual authed click-through (freeze → reopen modal → numbers stable after a sync → keep/extend/delete) still pending.** Committed locally; **NOT pushed**. Remaining: SchemaEditor date-field override; Phase 4 comparison.

@@ -355,7 +355,11 @@ graceful 404 recovery). **Relative-period picker** built into `ViewsBar` (gated 
 month/quarter/year × this/last presets) — stored as intent in `filter_config.period`, resolved into
 `effectiveFilters` against "now" by `FilterContext` (so "this quarter" recurs), and dirty-compared by
 intent. All `getXSchema()` templates now set `primaryDateField` (name-ranked) so review/reddit/etc. get the
-picker. Remaining: Phase 3b (snapshot freeze + frozen render, `SchemaEditor` date-field override + period
-field-override UI), Phase 4 (comparison two-series + to-date).
+picker. **Snapshot freeze + read-only render** built: `ViewsBar` "📸 Freeze" captures
+`computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into `frozen` (record count +
+estimated flag + resolved period range + filters recipe + per-field summaries), POSTs a `kind='snapshot'`;
+`SnapshotModal` renders it read-only with retention controls (Keep / +30d / Delete, via `PATCH expires_at`).
+Aggregates-only, drift-immune — no render-from-frozen across the modules (deferred). Remaining: `SchemaEditor`
+date-field override + period field-override UI, Phase 4 (comparison two-series + to-date).
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.

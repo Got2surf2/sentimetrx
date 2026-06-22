@@ -191,7 +191,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
       <DatasetMetricStrip datasetId={dataset.id} />
 
       {/* Saved Views switcher — save/load named filter configs + relative period (docs/SAVED_VIEWS.md) */}
-      <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} />
+      <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} schemaFields={schemaFields} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {

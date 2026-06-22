@@ -576,8 +576,10 @@ loaded view — via `serializedFiltersEqual()`). Relative **periods** resolve cl
 `SchemaConfig.primaryDateField`. The `ViewsBar` switcher (`components/analyze/ViewsBar.tsx`) is mounted in
 `DatasetShell` between the metric strip and filter chips, and hosts the **relative-period picker** (month/
 quarter/year × this/last, gated on `primaryDateField`). A period is stored as intent and resolved into
-`effectiveFilters` at read time, so "this quarter" recurs. _Status: foundation + API/context + views UI +
-period picker built; snapshot freeze and comparison pending._
+`effectiveFilters` at read time, so "this quarter" recurs. **Snapshots** freeze
+`computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into a `frozen` blob and render
+read-only via `SnapshotModal` (drift-immune; no per-module render-from-frozen). _Status: foundation +
+API/context + views UI + period picker + snapshot freeze/render built; comparison pending._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")
