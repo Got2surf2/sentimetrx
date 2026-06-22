@@ -1,11 +1,21 @@
 # Saved Views, Snapshots & Periods
 
-Status: **spec / not yet built** · Scope: v1 · Last updated: 2026-06-21
+Status: **built (v1) — verified e2e** · Scope: v1 · Last updated: 2026-06-22
 
 Lets users save the filter state of a dataset as a reusable **view**, freeze a view's
 results as an immutable **snapshot**, and filter/compare by relative **periods**
 (current quarter, last month, same period last year) so recurring analysis —
 e.g. a quarterly review — stays correct over time with no editing.
+
+> **Implementation status (v1, 2026-06-22).** Built and shipped behind the Analyze
+> workspace: the `ViewsBar` switcher (views CRUD), the relative-period picker, snapshot
+> freeze + read-only `SnapshotModal`, the SchemaEditor date-axis override, and headline-level
+> comparison (`ComparisonStrip`). `sql/130_saved_views.sql` applied to prod. Verified by unit +
+> integration tests and an env-gated Playwright e2e run green against a live dataset
+> (`tests/e2e/saved-views.spec.ts`). **Deferred (not in v1, deliberately):** per-chart two-series
+> comparison rendering across ChartsModule/Stats (v1 compares at the headline record count); a
+> per-view non-primary date-axis override (the picker uses the dataset's `primaryDateField`).
+> Section bodies below are the design of record; per-phase "built" notes are inline.
 
 ---
 

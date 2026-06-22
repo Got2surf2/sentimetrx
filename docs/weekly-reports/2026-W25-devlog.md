@@ -608,3 +608,16 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `tests/e2e/saved-views.spec.ts` — merged the two tests into one (a single login; repeated sign-ins were tripping Supabase auth rate-limiting). Mutating verbs now send an `Origin` header to satisfy the `proxy.ts` CSRF guard (`page.request` omits it; the real browser UI sends it) — without it, POST/PATCH/DELETE returned 403.
 
 **Verify**: `npm run test:e2e -- tests/e2e/saved-views.spec.ts` → **1 passed** against the live app + linked DB: real Supabase login → ViewsBar renders on the workspace → create/list/rename view → freeze snapshot (30d TTL) → snapshot immutability (400) → keep (200) → clean 404 → delete both (cleanup). The full Saved Views stack (auth → CSRF → route → service-role + RLS → prod DB) is now exercised end-to-end. Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Saved Views: v1 complete (pre-push summary)
+
+**Status**: Saved Views / Snapshots / Periods is built end-to-end and verified; ready to ship. Eleven commits on `main` (`dbc1888d` spec → `fc951fb4` e2e), unpushed pending authorization. `sql/130_saved_views.sql` is already applied to prod (`test:rls` green).
+
+**Shipped (v1)**:
+- Foundation — `resolvePeriod`/`resolveComparison`/`alignToDate`/`comparisonDelta` (calendar arithmetic, half-open, UTC for v1), `SchemaConfig.primaryDateField` + `rankPrimaryDateField`, `saved_views` table + RLS.
+- API — `/api/datasets/[id]/views` (views CRUD; snapshot CRD + `expires_at` lifecycle), shared org gate (id+org_id pairing), graceful 404.
+- UI — `ViewsBar` switcher (save/load/rename/share/delete + dirty "(modified)"), relative-period picker (recurs via resolve-at-read), snapshot freeze (`computeAnalyticsFromRows`) + read-only `SnapshotModal` (Keep/+30d/Delete), SchemaEditor date-axis override, `ComparisonStrip` (headline delta with to-date alignment + §4.2 rules).
+
+**Verification**: unit + integration suite (935 pass) + env-gated Playwright e2e run **green against a live dataset** (auth → CSRF → route → service-role + RLS → prod DB).
+
+**Deferred (deliberate, documented in SAVED_VIEWS.md)**: per-chart two-series comparison rendering; per-view non-primary date-axis override.
