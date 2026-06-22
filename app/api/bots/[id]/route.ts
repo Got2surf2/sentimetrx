@@ -101,6 +101,13 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Snapshot the bot row before the update so the change log can diff.
   const { data: beforeRow } = await service.from('agents').select('*').eq('id', params.id).single()
 
+  // Defense-in-depth: a non-admin may only touch their own org's agent. The
+  // update below is already org-paired, but guarding here (same as GET) also
+  // stops a cross-org id from writing a spurious audit-log entry / success:true.
+  if (!auth.isAdmin && beforeRow && (beforeRow as any).org_id !== auth.orgId) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
+
   let updateQuery = service.from('agents').update(updates).eq('id', params.id)
   if (!auth.isAdmin) updateQuery = updateQuery.eq('org_id', auth.orgId)
   const { error } = await updateQuery
@@ -167,6 +174,12 @@ export async function DELETE(req: NextRequest, props: Params) {
   // (The bot_change_log row gets removed by ON DELETE CASCADE shortly,
   // but it lives long enough to write to a polymorphic mirror later.)
   const { data: beforeRow } = await service.from('agents').select('*').eq('id', params.id).single()
+
+  // Defense-in-depth: non-admins may only delete their own org's agent (the
+  // delete below is already org-paired; this guards the snapshot read too).
+  if (!auth.isAdmin && beforeRow && (beforeRow as any).org_id !== auth.orgId) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
 
   let q = service.from('agents').delete().eq('id', params.id)
   if (!auth.isAdmin) q = q.eq('org_id', auth.orgId)

@@ -87,6 +87,20 @@ describe('bots/[id] — GET/PATCH/DELETE (getAuthUser + users)', () => {
     expect((await botMain.GET(reqGet(), props)).status).toBe(404)
   })
 
+  it('404 cross-org PATCH for a non-admin (guards the snapshot read, no spurious success/audit)', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = { data: sameOrgUser, error: null }
+    ctx.results['agents'] = { data: { id: 'b_1', org_id: 'orgB' }, error: null }
+    expect((await botMain.PATCH(reqPost(), props)).status).toBe(404)
+  })
+
+  it('404 cross-org DELETE for a non-admin', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = { data: sameOrgUser, error: null }
+    ctx.results['agents'] = { data: { id: 'b_1', org_id: 'orgB' }, error: null }
+    expect((await botMain.DELETE(reqGet(), props)).status).toBe(404)
+  })
+
   it('admin bypasses the org check (cross-org agent still resolves)', async () => {
     ctx.authUser = { id: 'admin' }
     ctx.results['users'] = { data: adminUser, error: null }

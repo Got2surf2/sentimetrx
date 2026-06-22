@@ -693,3 +693,15 @@ Net: a Manual source's pending tasks now drain on the next cron tick (≤6h) ins
 **Result**: `npm audit` 2 HIGH → **0 HIGH / 0 critical** (13 remain: 1 low, 12 moderate — `uuid`-via-`exceljs` needs a breaking downgrade, left as-is). No `npm audit fix --force` (per CLAUDE.md, it force-downgrades next). typecheck clean; full suite 929. Validated locally; CI confirms on push.
 
 Note: the `2026-W25.md` Monday governance report was never generated (its spec-drift companion exists from Jun 15, but the 04:00 routine's report didn't land) — worth checking the routine.
+
+## 2026-06-22 — W25 governance report recorded + progression items actioned
+
+**Why**: The Monday routine never produced `docs/weekly-reports/2026-W25.md` (only its spec-drift companion landed). Recorded the report by direct commit and actioned its progression plan during review.
+
+**What changed**:
+- `docs/weekly-reports/2026-W25.md` — the W25 governance report (verbatim) + a "Reviewer notes" addendum documenting the in-review actions.
+- `app/api/bots/[id]/route.ts` — progression #1: confirmed PATCH/DELETE mutating calls already pair id+org_id; added a defense-in-depth ownership guard on the pre-mutation snapshot read (non-admin targeting another org's agent → 404), closing a spurious-success/audit-log path.
+- `tests/integration/bot-routes-gate.test.ts` — 2 regression tests (cross-org PATCH + DELETE → 404).
+- Progression #2 (HIGH CVEs) was already resolved earlier today (undici 7.28.0 + piscina 5.2.0 → 0 HIGH). #3 (coverage ratchet) deferred as a measured follow-up.
+
+**Verify**: typecheck clean; bot-routes-gate 15 pass; full suite 931.
