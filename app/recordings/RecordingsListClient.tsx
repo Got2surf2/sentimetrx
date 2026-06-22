@@ -103,6 +103,7 @@ interface OrgOption { id: string; name: string }
 export default function RecordingsListClient({ rows: initial, showOrg, isAdmin = false, allOrgs = [] }: { rows: RecordingCard[]; showOrg: boolean; isAdmin?: boolean; allOrgs?: OrgOption[] }) {
   const router = useRouter()
   const [rows, setRows] = useState(initial)
+  const [query, setQuery] = useState('')
   const [target, setTarget] = useState<RecordingCard | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
@@ -208,10 +209,17 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
     )
   }
 
+  const nameQ = query.trim().toLowerCase()
+  const visibleRows = nameQ ? rows.filter(r => (r.name || '').toLowerCase().includes(nameQ)) : rows
   return (
     <>
+      <div className="mb-4">
+        <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name…"
+          style={{ fontSize: '16px' }}
+          className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 outline-none w-full sm:w-64" />
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rows.map(r => {
+        {visibleRows.map(r => {
           const href = r.status === 'complete'
             ? `/recordings/${r.id}/report`
             : `/recordings/${r.id}/status`
@@ -352,6 +360,10 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
       </div>
 
       {/* Click-away to dismiss an open ⋯ menu or ℹ️ progress popover */}
+      {visibleRows.length === 0 && nameQ && (
+        <div className="text-sm text-gray-400 py-8 text-center">No Town Halls match “{query}”.</div>
+      )}
+
       {(menuId || infoId) && <div className="fixed inset-0 z-10" onClick={() => { setMenuId(null); setInfoId(null) }} />}
 
       {target && (

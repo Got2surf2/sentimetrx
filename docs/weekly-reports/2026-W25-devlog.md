@@ -635,3 +635,16 @@ Wrapped `sql/130_saved_views.sql` in `BEGIN; ... COMMIT;` to satisfy the `check:
 - `app/api/bot-chat/route.ts` — normalized the two bare `calendly.com/sanjay-datanautix` references in the prompt to `https://calendly.com/...` (line 42 already had it) so the agent mirrors a clean protocol URL.
 
 **Verify**: typecheck clean. Reproduced that the ChatBot `formatHtml` pipeline already renders the markdown link correctly (so the chat widget itself wasn't the bug); this fix removes the bad pattern at the source so it renders correctly across all surfaces. Prompt-only.
+
+## 2026-06-22 — Search-by-name on the list pages
+
+**Why**: No way to find a dataset / survey / agent / recording by name in a long list — only category dropdowns + sort.
+
+**What changed** (client-side substring filter on the already-loaded list; no new API):
+- `app/analyze/AnalyzeClient.tsx` — "Search by name…" input beside the existing source/visibility/status filter bar.
+- `app/bots/BotsClient.tsx` — search input in the header controls; filters inside `sortedBots()`.
+- `app/dashboard/DashboardClient.tsx` — search input beside Sort; filters the studies list (surveys).
+- `app/recordings/RecordingsListClient.tsx` — search above the grid + a "No Town Halls match …" empty state.
+- All inputs are 16px (iOS no-zoom rule).
+
+**Verify**: typecheck clean; all four pages compile (307) on the live dev server, no errors.

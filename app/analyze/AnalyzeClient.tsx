@@ -30,6 +30,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const router = useRouter()
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
+  const [query,    setQuery]    = useState('')
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   // Brand drill-in: when set, the grid shows only that brand-collection's
   // member datasets instead of the flat listing. Cleared by "Back to all".
@@ -120,7 +121,9 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
     const last = (d as any).last_sync_at as string | undefined
     return -new Date(last || d.created_at).getTime()
   }
+  const nameQ = query.trim().toLowerCase()
   const filtered = scoped.filter(function(d) {
+    if (nameQ && !(d.name || '').toLowerCase().includes(nameQ)) return false
     if (filters.source !== 'all' && d.source !== filters.source) return false
     if (filters.visibility !== 'all' && d.visibility !== filters.visibility) return false
     if (filters.status !== 'all' && d.status !== filters.status) return false
@@ -247,7 +250,12 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
       {/* Filter bar + sort dropdown */}
       {datasets.length > 0 && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DatasetFilterBar filters={filters} onChange={setFilters} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name…"
+              style={{ fontSize: '16px' }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 outline-none w-52" />
+            <DatasetFilterBar filters={filters} onChange={setFilters} />
+          </div>
           <label className="flex items-center gap-1.5 text-xs text-gray-400">
             <span>Sort:</span>
             <select value={sortMode} onChange={e => changeSort(e.target.value as 'updated' | 'created' | 'name')}

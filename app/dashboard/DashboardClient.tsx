@@ -381,6 +381,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [error,        setError]        = useState<string | null>(null)
   const [favoriteIds,  setFavoriteIds]  = useState<Set<string>>(new Set())
   const [sortMode,     setSortMode]     = useState<'updated' | 'created' | 'name'>('updated')
+  const [query,        setQuery]        = useState('')
 
   useEffect(() => {
     fetch('/api/favorites').then(r => r.json()).then(d => {
@@ -427,7 +428,9 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
     })
   }
 
+  const nameQ = query.trim().toLowerCase()
   const filtered = sortFiltered(studies.filter(s => {
+    if (nameQ && !(s.name || '').toLowerCase().includes(nameQ)) return false
     if (ownerFilter  === 'mine'   && s.created_by !== user.userId) return false
     if (ownerFilter  === 'public' && s.visibility  !== 'public')   return false
     if (statusFilter !== 'all'   && s.status       !== statusFilter) return false
@@ -528,6 +531,9 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name…"
+              style={{ fontSize: '16px' }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 outline-none w-48 focus:border-orange-400 transition-colors" />
             <label className="flex items-center gap-1.5 text-xs text-gray-400">
               <span>Sort:</span>
               <select value={sortMode} onChange={e => changeSort(e.target.value as 'updated' | 'created' | 'name')}

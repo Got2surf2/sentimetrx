@@ -42,6 +42,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
   const [viewportTier, setViewportTier] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [sortMode, setSortMode] = useState<'updated' | 'created' | 'name'>('updated')
+  const [query, setQuery] = useState('')
 
   useEffect(function() {
     if (typeof window === 'undefined') return
@@ -61,7 +62,8 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
       if (sortMode === 'created') return -new Date(b.created_at).getTime()
       return -new Date(b.updated_at).getTime() // 'updated' default
     }
-    var copy = bots.slice()
+    var q = query.trim().toLowerCase()
+    var copy = q ? bots.filter(function(b) { return (b.name || '').toLowerCase().includes(q) }) : bots.slice()
     copy.sort(function(a, b) {
       var aFav = favoriteIds.has(a.id) ? 0 : 1
       var bFav = favoriteIds.has(b.id) ? 0 : 1
@@ -150,6 +152,8 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Create and manage branded AI agents trained on your content</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <input type="text" value={query} onChange={function(e) { setQuery(e.target.value) }} placeholder="Search by name…"
+            style={{ fontSize: 16, padding: '4px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'white', color: '#374151', outline: 'none', width: 180 }} />
           {/* Sort — always visible */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9ca3af' }}>
             <span>Sort:</span>
