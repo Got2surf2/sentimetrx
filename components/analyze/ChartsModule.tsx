@@ -895,11 +895,32 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   if (isH) { trace.y = cats; trace.x = vals; trace.orientation = 'h' }
   else { trace.x = cats; trace.y = vals }
 
+  // Overall average reference line — count-weighted across ALL groups (not just
+  // the displayed top 30), so it reads as the true mean of the value field.
+  var totalN = sortedGroups.reduce(function(a, g) { return a + (g.n || 0) }, 0)
+  var overallAvg = totalN > 0 ? sortedGroups.reduce(function(a, g) { return a + (g.n || 0) * g.mean }, 0) / totalN : null
+  var avgR = overallAvg != null ? Math.round(overallAvg * 100) / 100 : null
+  var avgShapes = avgR != null ? [{
+    type: 'line', layer: 'above',
+    xref: (isH ? 'x' : 'paper') as 'x' | 'paper', x0: isH ? avgR : 0, x1: isH ? avgR : 1,
+    yref: (isH ? 'paper' : 'y') as 'paper' | 'y', y0: isH ? 0 : avgR, y1: isH ? 1 : avgR,
+    line: { color: '#475569', width: 1.5, dash: 'dash' },
+  }] : []
+  var avgAnnotations = avgR != null ? [{
+    xref: (isH ? 'x' : 'paper') as 'x' | 'paper', x: isH ? avgR : 1,
+    yref: (isH ? 'paper' : 'y') as 'paper' | 'y', y: isH ? 1 : avgR,
+    text: 'Avg ' + avgR, showarrow: false,
+    xanchor: (isH ? 'center' : 'right') as 'center' | 'right', yanchor: 'bottom' as 'bottom',
+    font: { size: 10, color: '#475569' }, bgcolor: 'rgba(255,255,255,0.72)',
+  }] : []
+
   return <PlotlyChart traces={[trace]} layout={{
     title: catLabel,
     xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(cats) : {}) },
     yaxis: { title: isH ? '' : valLabel },
     barcornerradius: 4,
+    shapes: avgShapes,
+    annotations: avgAnnotations,
   }} />
 }
 

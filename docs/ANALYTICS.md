@@ -475,6 +475,8 @@ Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are 
 | Score Driver (`driver`) | themes, rating | Which themes drive higher/lower scores |
 | Data Table (`table`) | any fields | Sortable, filterable data table |
 
+When a Bar/Column chart has a numeric **value** assigned and the **Average** mode is on (`BarAggInner`), the bars show the per-category mean and the chart overlays a dashed **overall-average reference line** ("Avg N") — the **count-weighted** mean across all groups (i.e. the true mean of the value field, not the unweighted mean of the bars), so each bar reads against the dataset baseline at a glance. Works in both orientations (horizontal line for vertical bars, vertical line for horizontal) and on taxonomy-dimension averages (`tax_group_stats`).
+
 ### Synthetic categorical fields
 
 Three families of virtual fields are spliced into the chart field list alongside the real schema fields:
