@@ -37,7 +37,15 @@ export default async function OutletLeaderboardPage(props: {
       <div className="mx-auto max-w-4xl px-4">
         <div className="mb-4 flex items-center justify-between print:hidden">
           <Link href={`/analyze/${datasetId}/textmine`} className="text-sm font-medium text-gray-500 hover:text-gray-700">← Back to TextMine</Link>
-          <PrintButton />
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/analyze/${datasetId}/improvement-plan`}
+              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+            >
+              Improvement plan →
+            </Link>
+            <PrintButton />
+          </div>
         </div>
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">

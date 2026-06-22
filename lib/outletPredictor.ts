@@ -69,11 +69,29 @@ export type OutletLever = {
   quote: string | null  // a negative guest quote for this theme at this outlet
 }
 
+// One outlet's contribution to a brand lever (a worst-offender on that theme).
+export type LeverOutlet = { placeId: string; label: string; negRate: number; lift: number }
+
 export type BrandLever = {
   theme: string
   drag: number
   negN: number
-  chainLift: number // vol-weighted ★ the brand gains if EVERY outlet hits peer median
+  chainLift: number          // vol-weighted ★ the brand gains if EVERY outlet hits peer median
+  peerMedian: number         // peer median negative-mention rate for the theme
+  outletsAboveMedian: number // # outlets dragging this theme below the peer median
+  topOutlets: LeverOutlet[]  // biggest contributors (where to focus), top 3
+}
+
+// One outlet's brand-plan row: headline numbers + its single biggest lever.
+// Powers the "where to start" hot-list on the brand improvement plan.
+export type OutletSummary = {
+  placeId: string
+  label: string
+  reviews: number
+  rating: number | null
+  ratingDelta: number // vs the volume-weighted chain average
+  topLever: { theme: string; lift: number } | null
+  totalLift: number   // sum of this outlet's lever lifts (upper bound)
 }
 
 export type PredictorModel = {
@@ -93,6 +111,7 @@ export type OutletPredictor = {
   exemplars: Record<string, Exemplar | null>
   // Per-outlet top levers, keyed by placeId (already sorted by lift desc).
   outletLevers: Record<string, OutletLever[]>
+  outletSummaries: OutletSummary[] // brand-plan hot-list, worst rating first
 }
 
 // ─── tiny linear algebra (k ≈ themes+1, exact Gaussian elimination) ───
@@ -158,7 +177,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const empty: OutletPredictor = {
     available: false,
     model: { lambda: 0, r2: 0, intercept: 0, population: n, chainAvg: 0 },
-    themeDrag: [], brandLevers: [], peerMedians: {}, exemplars: {}, outletLevers: {},
+    themeDrag: [], brandLevers: [], peerMedians: {}, exemplars: {}, outletLevers: {}, outletSummaries: [],
   }
   if (!K || n < 50) return empty
 
@@ -247,11 +266,19 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       : null
   })
 
-  // Brand levers: vol-weighted chain ★ gained if every outlet hits peer median.
+  // Brand levers: vol-weighted chain ★ gained if every outlet hits peer median,
+  // plus how many outlets drag it and the biggest offenders (where to focus).
   const brandLevers: BrandLever[] = themes.map((t, j) => {
     let lift = 0
     for (const o of aggs) lift += Math.max(0, o.negRate[j] - peerMed[j]) * dragUse[j] * o.reviews
-    return { theme: t, drag: dragV2[j], negN: negN[j], chainLift: lift / totalN }
+    const contributors: LeverOutlet[] = aggs
+      .map((o) => ({ placeId: o.placeId, label: outletMeta.get(o.placeId)?.label || o.placeId, negRate: o.negRate[j], lift: Math.max(0, o.negRate[j] - peerMed[j]) * dragUse[j] }))
+      .filter((c) => c.lift > 0)
+      .sort((a, b) => b.lift - a.lift)
+    return {
+      theme: t, drag: dragV2[j], negN: negN[j], chainLift: lift / totalN,
+      peerMedian: peerMed[j], outletsAboveMedian: contributors.length, topOutlets: contributors.slice(0, 3),
+    }
   }).filter((d) => dragUse[themes.indexOf(d.theme)] > 0)
     .sort((a, b) => b.chainLift - a.chainLift)
 
@@ -279,9 +306,24 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     outletLevers[o.placeId] = levers
   }
 
+  // Brand-plan hot-list: every outlet with its headline numbers + biggest lever,
+  // worst rating first (where guest experience needs the most help).
+  const outletSummaries: OutletSummary[] = aggs.map((o) => {
+    const levers = outletLevers[o.placeId] || []
+    return {
+      placeId: o.placeId,
+      label: outletMeta.get(o.placeId)?.label || o.placeId,
+      reviews: o.reviews,
+      rating: o.avg,
+      ratingDelta: o.avg - chainAvg,
+      topLever: levers[0] ? { theme: levers[0].theme, lift: levers[0].lift } : null,
+      totalLift: levers.reduce((s, l) => s + l.lift, 0),
+    }
+  }).sort((a, b) => (a.rating ?? 99) - (b.rating ?? 99))
+
   return {
     available: true,
     model: { lambda, r2, intercept: beta[0], population: n, chainAvg },
-    themeDrag, brandLevers, peerMedians: peerMediansObj, exemplars, outletLevers,
+    themeDrag, brandLevers, peerMedians: peerMediansObj, exemplars, outletLevers, outletSummaries,
   }
 }
