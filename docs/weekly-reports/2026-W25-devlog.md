@@ -542,3 +542,15 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `app/analyze/[datasetId]/DatasetShell.tsx` — mounts `<ViewsBar>` between the metric strip and the filter chips (inside FilterProvider).
 
 **Verify**: typecheck clean. Live dev server (existing :3000): `GET /api/datasets/<id>/views` → 401 (gate compiles), `/analyze/<id>` → 307 to login (DatasetShell+ViewsBar compile; a build error would 500). No analyze-module compile errors in the dev log. **Manual click-through (save → reload → modified → delete) against an authed session still pending** — no RTL component test (the load-bearing logic — dirty diff, route gating — is already unit/integration-tested). Committed locally; **NOT pushed**. Phase 3b next: period picker + snapshot freeze + SchemaEditor date-field override.
+
+## 2026-06-21 — Saved Views: Phase 3b-i (relative-period picker)
+
+**Why**: The headline value — recurring time analysis. A view whose date filter is "this quarter" should re-resolve every quarter, not freeze to the quarter it was saved in.
+
+**What changed**:
+- `components/analyze/FilterContext.tsx` — `period: PeriodSpec | null` state, merged into `effectiveFilters` by resolving against `Date.now()` at memo time (so "this quarter" recurs). `activeView`/`loadView` carry the period; `isViewDirty` compares period INTENT (not the materialized range) so a current-quarter view doesn't read dirty when the quarter rolls.
+- `components/analyze/ViewsBar.tsx` — period picker (month/quarter/year × this/last presets + "All time"), gated on `primaryDateField` (§3.3). Period intent is saved into `filter_config.period`; a 🗓 marker flags period-bearing views in the list.
+- `app/analyze/[datasetId]/{layout,DatasetShell}.tsx` — plumb `primaryDateField` (from `schema_config`) to `ViewsBar`; filtered-row count now uses `effectiveFilters` so a period-only selection updates the header count.
+- `lib/datasetUtils.ts` — all `getXSchema()` templates now set `primaryDateField` via `rankPrimaryDateField(fields)` (name-ranked, since templates carry no stats) so review/reddit/study/bot/etc. surface the period picker without a manual override.
+
+**Verify**: typecheck clean; full `npm test` 922 + new template-ranking unit (6 in primaryDateField). Live dev server: `/analyze/<id>` → 307 (compiles), no analyze-module errors in dev log. Manual authed click-through of the picker (pick quarter → charts/count update → save → reload → recurs) still pending. Committed locally; **NOT pushed**. Remaining: snapshot freeze + frozen render, SchemaEditor date-field override, Phase 4 comparison.

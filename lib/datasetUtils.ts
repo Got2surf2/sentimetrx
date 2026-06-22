@@ -369,7 +369,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
       fields.push({ field: 'demo_' + sanitizeColumnName(df.key), type: 'categorical', sqt: df.type === 'text' ? 'open-text' : 'single-select', section: 'demographic', label: df.label, prompt: df.label })
     }
   }
-  return { fields, primaryTextField: 'q3_response', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'q3_response', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildGoogleReviewsSchema(): SchemaConfig {
@@ -388,7 +388,7 @@ export function buildGoogleReviewsSchema(): SchemaConfig {
     { field: 'owner_response',   type: 'open-ended',  sqt: 'open-text', label: 'Owner Response' },
     { field: 'review_likes',     type: 'numeric',     label: 'Helpful Votes' },
   ]
-  return { fields, primaryTextField: 'review_text', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'review_text', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildRedditSchema(): SchemaConfig {
@@ -410,7 +410,7 @@ export function buildRedditSchema(): SchemaConfig {
     { field: 'depth',           type: 'numeric',     label: 'Reply Depth' },
     { field: 'permalink',       type: 'ignore',      label: 'Link' },
   ]
-  return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'body', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildTownHallSchema(): SchemaConfig {
@@ -428,7 +428,7 @@ export function buildTownHallSchema(): SchemaConfig {
     { field: 'sentiment_score',  type: 'numeric',     label: 'Sentiment Score', min: -1, max: 1 },
     { field: 'responded_at',     type: 'date',        label: 'Date' },
   ]
-  return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'user_message', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildBotSchema(): SchemaConfig {
@@ -459,7 +459,7 @@ export function buildBotSchema(): SchemaConfig {
     { field: 'town_hall_name',   type: 'categorical', label: 'Town Hall (name)' },
     { field: 'responded_at',     type: 'date',        label: 'Date' },
   ]
-  return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'user_message', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildSubstackSchema(): SchemaConfig {
@@ -478,7 +478,7 @@ export function buildSubstackSchema(): SchemaConfig {
     { field: 'restacks',        type: 'numeric',     label: 'Restacks' },
     { field: 'parent_id',       type: 'id' },
   ]
-  return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'body', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildRegulationsSchema(): SchemaConfig {
@@ -497,7 +497,7 @@ export function buildRegulationsSchema(): SchemaConfig {
     { field: 'title',           type: 'categorical', label: 'Title' },
     { field: 'tracking_number', type: 'id' },
   ]
-  return { fields, primaryTextField: 'comment_text', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'comment_text', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildSocialSchema(): SchemaConfig {
@@ -519,7 +519,7 @@ export function buildSocialSchema(): SchemaConfig {
     { field: 'flag_types',      type: 'categorical', label: 'Flag Types' },
     { field: 'max_severity',    type: 'categorical', label: 'Max Severity' },
   ]
-  return { fields, primaryTextField: 'text', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'text', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function buildRecordingSchema(): SchemaConfig {
@@ -544,7 +544,7 @@ export function buildRecordingSchema(): SchemaConfig {
     { field: 'start_sec',       type: 'numeric',     label: 'Start (sec)' },
     { field: 'source_file',     type: 'categorical', label: 'Source Clip' },
   ]
-  return { fields, primaryTextField: 'response_text', autoDetected: false, version: 1 }
+  return { fields, primaryTextField: 'response_text', primaryDateField: rankPrimaryDateField(fields), autoDetected: false, version: 1 }
 }
 
 export function emptyThemeModel() {

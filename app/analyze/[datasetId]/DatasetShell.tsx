@@ -25,13 +25,14 @@ interface Props {
   userName: string
   orgName: string
   schemaFields: SchemaField[]
+  primaryDateField?: string
   datasetId: string
   outletCount?: number
   children: React.ReactNode
 }
 
-function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, outletCount, children }: Props) {
-  const { filters, setFilters, lockedFilters, setLockedFilters, showFilters, setShowFilters } = useFilters()
+function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField, datasetId, outletCount, children }: Props) {
+  const { filters, setFilters, lockedFilters, setLockedFilters, effectiveFilters, showFilters, setShowFilters } = useFilters()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoaded, setRowsLoaded] = useState(false)
   const [loadingRows, setLoadingRows] = useState(false)
@@ -141,14 +142,15 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, outle
   // than they actually were on big datasets.
   var { rows: ctxRows, rowsLoaded: ctxLoaded, sampled: ctxSampled, sampledCount: ctxSampledCount, totalRows: ctxTotalRows } = useRows()
   var filteredRowCount = useMemo(function() {
-    if (!ctxLoaded || !ctxRows.length || fCount === 0) return null
-    var allFilters = Object.assign({}, filters, lockedFilters)
-    var matched = applyFilters(ctxRows, allFilters).length
+    // effectiveFilters folds in lockedFilters + the resolved relative period, so
+    // a period-only selection updates the count even when fCount (explicit chips) is 0.
+    if (!ctxLoaded || !ctxRows.length || Object.keys(effectiveFilters).length === 0) return null
+    var matched = applyFilters(ctxRows, effectiveFilters).length
     if (ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount) {
       return Math.round(matched * (ctxTotalRows / ctxSampledCount))
     }
     return matched
-  }, [ctxRows, ctxLoaded, ctxSampled, ctxSampledCount, ctxTotalRows, filters, lockedFilters, fCount])
+  }, [ctxRows, ctxLoaded, ctxSampled, ctxSampledCount, ctxTotalRows, effectiveFilters])
 
   // Save session handler
   const handleSaveSession = function() {
@@ -188,8 +190,8 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, outle
           the orange header and the filter chips, visible on every tab. */}
       <DatasetMetricStrip datasetId={dataset.id} />
 
-      {/* Saved Views switcher — save/load named filter configs (docs/SAVED_VIEWS.md) */}
-      <ViewsBar datasetId={datasetId} />
+      {/* Saved Views switcher — save/load named filter configs + relative period (docs/SAVED_VIEWS.md) */}
+      <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {

@@ -49,4 +49,14 @@ describe('rankPrimaryDateField', () => {
     const fields = [dateField('imported_at', 1000, 1)]
     expect(rankPrimaryDateField(fields)).toBe('imported_at')
   })
+
+  it('ranks by name alone when fields carry no stats (template getXSchema)', () => {
+    // Template schemas declare type but no nonNullCount/values — name semantics decide.
+    const fields: SchemaFieldConfig[] = [
+      { field: 'updated_at', type: 'date' },
+      { field: 'comment_date', type: 'date' },
+      { field: 'review_text', type: 'open-ended' },
+    ]
+    expect(rankPrimaryDateField(fields)).toBe('comment_date')
+  })
 })

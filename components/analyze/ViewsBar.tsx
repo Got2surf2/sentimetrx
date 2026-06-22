@@ -2,15 +2,13 @@
 // components/analyze/ViewsBar.tsx
 // Dedicated Saved Views switcher for the Analyze workspace. Lists a dataset's
 // saved views, loads one into the shared FilterContext, and saves / renames /
-// shares / deletes the current filter state. See docs/SAVED_VIEWS.md.
-//
-// Scope: the VIEWS half. Relative-period picker and snapshot freeze land in a
-// follow-up; this bar already delivers "save a filter config and come back to it."
+// shares / deletes the current filter state. Also hosts the relative-period
+// picker (gated on the dataset having a primaryDateField). See docs/SAVED_VIEWS.md.
 
 import { useState, useEffect, useCallback } from 'react'
 import { useFilters } from './FilterContext'
 import { filterCount, serializeFilters } from '@/lib/filterUtils'
-import type { SerializedFilters } from '@/lib/filterUtils'
+import type { SerializedFilters, PeriodSpec, PeriodGranularity, PeriodAnchor } from '@/lib/filterUtils'
 import { T } from '@/lib/analyzeTheme'
 
 interface SavedView {
@@ -18,14 +16,31 @@ interface SavedView {
   name:          string
   kind:          'view' | 'snapshot'
   visibility:    'private' | 'org'
-  filter_config: { filters?: SerializedFilters } | null
+  filter_config: { filters?: SerializedFilters; period?: PeriodSpec | null } | null
   created_at:    string
 }
 
-export default function ViewsBar({ datasetId }: { datasetId: string }) {
-  const { filters, activeView, loadView, clearActiveView, isViewDirty } = useFilters()
+// Relative-period presets (the v1 menu). granularity × anchor.
+const PERIOD_PRESETS: { label: string; granularity: PeriodGranularity; anchor: PeriodAnchor }[] = [
+  { label: 'This month',   granularity: 'month',   anchor: 'current' },
+  { label: 'Last month',   granularity: 'month',   anchor: 'last' },
+  { label: 'This quarter', granularity: 'quarter', anchor: 'current' },
+  { label: 'Last quarter', granularity: 'quarter', anchor: 'last' },
+  { label: 'This year',    granularity: 'year',    anchor: 'current' },
+  { label: 'Last year',    granularity: 'year',    anchor: 'last' },
+]
+
+function periodLabel(p: PeriodSpec | null): string {
+  if (!p) return 'All time'
+  const m = PERIOD_PRESETS.find(function(x) { return x.granularity === p.primary.granularity && x.anchor === p.primary.anchor })
+  return m ? m.label : 'Custom period'
+}
+
+export default function ViewsBar({ datasetId, primaryDateField }: { datasetId: string; primaryDateField?: string }) {
+  const { filters, period, setPeriod, activeView, loadView, clearActiveView, isViewDirty } = useFilters()
   const [views, setViews] = useState<SavedView[]>([])
   const [open, setOpen] = useState(false)
+  const [periodOpen, setPeriodOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [naming, setNaming] = useState<null | 'new'>(null)
   const [draftName, setDraftName] = useState('')
@@ -53,6 +68,10 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
     refresh()
   }
 
+  function currentConfig() {
+    return { filters: serializeFilters(filters), period: period }
+  }
+
   function saveNew() {
     const name = draftName.trim()
     if (!name) return
@@ -60,7 +79,7 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
     fetch(base, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'view', name: name, filter_config: { filters: serializeFilters(filters) } }),
+      body: JSON.stringify({ kind: 'view', name: name, filter_config: currentConfig() }),
     })
       .then(function(r) { if (!r.ok) throw new Error(); return r.json() })
       .then(function(created: SavedView) { loadView(created); setNaming(null); setDraftName(''); refresh(); flash('Saved “' + name + '”.') })
@@ -71,14 +90,15 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
   function updateActive() {
     if (!activeView) return
     setBusy(true)
+    const cfg = currentConfig()
     fetch(base + '/' + activeView.id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filter_config: { filters: serializeFilters(filters) } }),
+      body: JSON.stringify({ filter_config: cfg }),
     })
       .then(function(r) { if (r.status === 404) return handleGone(); if (!r.ok) throw new Error()
-        // Re-anchor the active view to the now-saved filters so it reads clean.
-        loadView({ id: activeView.id, name: activeView.name, filter_config: { filters: serializeFilters(filters) } })
+        // Re-anchor the active view to the now-saved state so it reads clean.
+        loadView({ id: activeView.id, name: activeView.name, filter_config: cfg })
         refresh(); flash('Updated “' + activeView.name + '”.') })
       .catch(function() { flash('Could not update the view.') })
       .finally(function() { setBusy(false) })
@@ -114,8 +134,14 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
       .catch(function() { flash('Could not delete.') })
   }
 
-  const hasFilters = filterCount(filters) > 0
-  const activeLabel = activeView ? activeView.name + (isViewDirty ? ' (modified)' : '') : (hasFilters ? 'Unsaved view' : 'No filters')
+  function selectPreset(g: PeriodGranularity, a: PeriodAnchor) {
+    if (!primaryDateField) return
+    setPeriod({ field: primaryDateField, primary: { granularity: g, anchor: a } })
+    setPeriodOpen(false)
+  }
+
+  const hasState = filterCount(filters) > 0 || !!period
+  const activeLabel = activeView ? activeView.name + (isViewDirty ? ' (modified)' : '') : (hasState ? 'Unsaved view' : 'No filters')
 
   const pill = { fontSize: 11, fontWeight: 700 as const, padding: '4px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' as const }
 
@@ -130,11 +156,38 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
         <span style={{ fontSize: 9, color: T.textFaint }}>{'▼'}</span>
       </button>
 
+      {/* Relative-period picker — only when the dataset has a date axis (§3.3) */}
+      {primaryDateField && (
+        <div style={{ position: 'relative' }}>
+          <button onClick={function() { setPeriodOpen(function(v) { return !v }) }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 7, border: '1px solid ' + (period ? T.accentMid : T.border), background: period ? T.accentBg : T.bgCard, color: period ? T.accent : T.textMid, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <span>{'🗓 ' + periodLabel(period)}</span>
+            <span style={{ fontSize: 9, color: T.textFaint }}>{'▼'}</span>
+          </button>
+          {periodOpen && (
+            <>
+              <div onClick={function() { setPeriodOpen(false) }} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, width: 170, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, boxShadow: '0 16px 48px rgba(0,0,0,.18)', zIndex: 50, padding: 5 }}>
+                <button onClick={function() { setPeriod(null); setPeriodOpen(false) }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: !period ? T.accentBg : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: !period ? 700 : 500, color: !period ? T.accent : T.text, padding: '6px 10px', borderRadius: 6 }}>All time</button>
+                {PERIOD_PRESETS.map(function(p) {
+                  const on = !!period && period.primary.granularity === p.granularity && period.primary.anchor === p.anchor
+                  return (
+                    <button key={p.label} onClick={function() { selectPreset(p.granularity, p.anchor) }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? T.accentBg : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: on ? 700 : 500, color: on ? T.accent : T.text, padding: '6px 10px', borderRadius: 6 }}>{p.label}</button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Contextual save controls */}
       {activeView && isViewDirty && (
         <button disabled={busy} onClick={updateActive} style={{ ...pill, background: T.accent, color: 'white', border: 'none' }}>Update</button>
       )}
-      {!naming && hasFilters && (
+      {!naming && hasState && (
         <button disabled={busy} onClick={function() { setNaming('new'); setDraftName('') }}
           style={{ ...pill, background: T.bgCard, color: T.accent, border: '1px solid ' + T.accentMid }}>
           {activeView ? 'Save as new' : 'Save view'}
@@ -178,6 +231,7 @@ export default function ViewsBar({ datasetId }: { datasetId: string }) {
                   <button onClick={function() { loadView(v); setOpen(false) }}
                     style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.text, padding: 0 }}>
                     {v.name}
+                    {v.filter_config && v.filter_config.period && <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, marginLeft: 6 }}>{'🗓'}</span>}
                     {v.visibility === 'org' && <span style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, marginLeft: 6 }}>SHARED</span>}
                   </button>
                   <button title={v.visibility === 'org' ? 'Shared with org — click to make private' : 'Private — click to share with org'} onClick={function() { toggleVisibility(v) }}

@@ -351,7 +351,11 @@ so a record is **never silently destroyed**.
 `serializedFiltersEqual`). Snapshot default TTL = 30 days. `sql/130_saved_views.sql` applied to prod
 (RLS coverage passes). **Phase 3a:** `components/analyze/ViewsBar.tsx` — a dedicated views switcher
 mounted in `DatasetShell` (save/load/rename/share/delete a named filter config, "(modified)" indicator,
-graceful 404 recovery). Remaining: Phase 3b (relative-period picker gated on `primaryDateField`, snapshot
-freeze + frozen render, `SchemaEditor` date-field override), Phase 4 (comparison two-series + to-date).
+graceful 404 recovery). **Relative-period picker** built into `ViewsBar` (gated on `primaryDateField`;
+month/quarter/year × this/last presets) — stored as intent in `filter_config.period`, resolved into
+`effectiveFilters` against "now" by `FilterContext` (so "this quarter" recurs), and dirty-compared by
+intent. All `getXSchema()` templates now set `primaryDateField` (name-ranked) so review/reddit/etc. get the
+picker. Remaining: Phase 3b (snapshot freeze + frozen render, `SchemaEditor` date-field override + period
+field-override UI), Phase 4 (comparison two-series + to-date).
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.
