@@ -74,6 +74,38 @@ export type OutletReport = {
   } | null
 }
 
+// ─── Cross-outlet leaderboard types ──────────────────────────────────────────
+
+// One outlet's standing on a single theme/dimension item.
+export type LeaderRow = {
+  placeId: string
+  label: string
+  net: number           // (pos - neg) / total for this item at this outlet
+  n: number             // matched reviews/assertions for this item at this outlet
+  rating: number | null // outlet's avg star rating (for context)
+}
+
+// One theme or dimension item, with outlets ranked by net-positive rate.
+export type LeaderItem = {
+  key: string
+  axis: string
+  label: string
+  category: string
+  chainNet: number     // net-positive rate across the whole chain (baseline)
+  chainN: number       // total matched reviews/assertions chain-wide
+  qualifying: number   // # outlets that cleared the stability floor for this item
+  truncated: boolean   // true when only the top-10 + bottom-10 are carried
+  ranked: LeaderRow[]  // sorted desc by net; full list unless truncated
+}
+
+export type OutletLeaderboard = {
+  outletCount: number
+  defaultK: number     // outlets to show per side by default (slider start)
+  maxK: number         // slider ceiling
+  themes: LeaderItem[]
+  dimensions: LeaderItem[]
+}
+
 type Example = { full: string; ev: string }
 type Acc = { pos: number; neg: number; total: number; exPos: Example | null; exNeg: Example | null }
 const newAcc = (): Acc => ({ pos: 0, neg: 0, total: 0, exPos: null, exNeg: null })
@@ -233,7 +265,30 @@ function buildNarrative(opts: {
   return sentences.join(' ')
 }
 
-export async function computeOutletReport(datasetId: string, selectedPlaceId?: string): Promise<OutletReport> {
+type Outlet = {
+  placeId: string; name: string; city: string; state: string; address: string
+  reviews: number; ratingSum: number; ratingN: number
+  dimClassified: number; themeMatched: number
+  dimSubs: Map<string, Acc>; themeSubs: Map<string, Acc>
+}
+
+type Scan = {
+  brand: string
+  brandTokens: Set<string>
+  outlets: Outlet[]
+  outletsById: Map<string, Outlet>
+  themeChain: Map<string, Acc>
+  dimChain: Map<string, Acc>
+  themeAvailable: boolean
+  dimAvailable: boolean
+  flat: any[]
+  labelFor: (o: Outlet) => string
+}
+
+// One pass over a dataset's flat rows + taxonomy assertions, building the
+// per-outlet and chain-level net-positive accumulators that BOTH the per-outlet
+// report and the cross-outlet leaderboard read from (one scan, two views).
+async function scanDataset(datasetId: string): Promise<Scan> {
   const sb = createServiceRoleClient()
   const { data: ds } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
   const brand: string = ds?.name || 'Brand'
@@ -250,12 +305,6 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
 
   const tax = await pageAll('dataset_row_field_taxonomy', 'row_id, assertions', datasetId)
 
-  type Outlet = {
-    placeId: string; name: string; city: string; state: string; address: string
-    reviews: number; ratingSum: number; ratingN: number
-    dimClassified: number; themeMatched: number
-    dimSubs: Map<string, Acc>; themeSubs: Map<string, Acc>
-  }
   const outlets = new Map<string, Outlet>()
   const getOutlet = (d: any): Outlet | null => {
     const placeId = d?.place_id
@@ -338,13 +387,26 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
     return dupe && o.address ? `${base} (${o.address.split(',')[0]})` : base
   }
 
-  const all = [...outlets.values()]
+  return {
+    brand, brandTokens,
+    outlets: [...outlets.values()], outletsById: outlets,
+    themeChain, dimChain,
+    themeAvailable: themeMatchers.length > 0,
+    dimAvailable: tax.length > 0,
+    flat, labelFor,
+  }
+}
+
+// Per-outlet "vs peers" report — derived from a single scan.
+function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
+  const { brand, brandTokens, themeChain, dimChain, flat, labelFor } = scan
+  const all = scan.outlets
   const options: OutletOption[] = all
     .map((o) => ({ placeId: o.placeId, label: labelFor(o), sublabel: `${o.ratingN ? (o.ratingSum / o.ratingN).toFixed(1) : '—'}★`, reviews: o.reviews }))
     .sort((a, b) => b.reviews - a.reviews)
 
-  const targetId = selectedPlaceId && outlets.has(selectedPlaceId) ? selectedPlaceId : options[0]?.placeId
-  const target = targetId ? outlets.get(targetId)! : null
+  const targetId = selectedPlaceId && scan.outletsById.has(selectedPlaceId) ? selectedPlaceId : options[0]?.placeId
+  const target = targetId ? scan.outletsById.get(targetId)! : null
 
   let selected: OutletReport['selected'] = null
   if (target) {
@@ -362,8 +424,8 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
       return { axis, sub, label: humanize(sub), category: CATEGORY[axis] || axis }
     })
 
-    const themes: ComparisonBlock = { available: themeMatchers.length > 0, analyzedReviews: target.themeMatched, ...themeDeltas }
-    const dimensions: ComparisonBlock = { available: tax.length > 0, analyzedReviews: target.dimClassified, ...dimDeltas }
+    const themes: ComparisonBlock = { available: scan.themeAvailable, analyzedReviews: target.themeMatched, ...themeDeltas }
+    const dimensions: ComparisonBlock = { available: scan.dimAvailable, analyzedReviews: target.dimClassified, ...dimDeltas }
 
     // Location name (h1) is the city/state — NOT the brand (location_name is the
     // brand for these review sets, which dupes the brand eyebrow). Address goes
@@ -404,4 +466,67 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
   }
 
   return { brand, outlets: options, selected }
+}
+
+// ─── Cross-outlet leaderboard (top/bottom outlets per theme & dimension) ──────
+
+// For each theme and each dimension item, rank the outlets that clear the
+// stability floor by their net-positive rate, so a viewer sees the top/bottom
+// performers per item (the inverse of the per-outlet report). The client slices
+// top-K / bottom-K from `ranked`; we carry at most top-10 + bottom-10 per item.
+function buildLeaderboard(scan: Scan): OutletLeaderboard {
+  const outletCount = scan.outlets.length
+  const ratingOf = (o: Outlet): number | null => (o.ratingN ? o.ratingSum / o.ratingN : null)
+
+  const itemsFrom = (
+    chain: Map<string, Acc>,
+    subsOf: (o: Outlet) => Map<string, Acc>,
+    metaOf: (key: string) => { axis: string; label: string; category: string },
+  ): LeaderItem[] => {
+    const items: LeaderItem[] = []
+    for (const [key, c] of chain) {
+      // Item must carry real, chain-wide opinion (same floors as the report).
+      if (c.total < MIN_N_CHAIN) continue
+      if ((c.pos + c.neg) / c.total < MIN_POLAR_SHARE) continue
+      const rows: LeaderRow[] = []
+      for (const o of scan.outlets) {
+        const a = subsOf(o).get(key)
+        if (!a || a.total < MIN_N_OUTLET) continue
+        rows.push({ placeId: o.placeId, label: scan.labelFor(o), net: net(a), n: a.total, rating: ratingOf(o) })
+      }
+      if (rows.length < 2) continue
+      rows.sort((a, b) => (b.net !== a.net ? b.net - a.net : b.n - a.n))
+      const qualifying = rows.length
+      const truncated = qualifying > 20
+      const ranked = truncated ? [...rows.slice(0, 10), ...rows.slice(-10)] : rows
+      items.push({ key, ...metaOf(key), chainNet: net(c), chainN: c.total, qualifying, truncated, ranked })
+    }
+    items.sort((a, b) => b.chainN - a.chainN)
+    return items
+  }
+
+  const themes = scan.themeAvailable
+    ? itemsFrom(scan.themeChain, (o) => o.themeSubs, (key) => ({ axis: 'theme', label: key, category: 'Theme' }))
+    : []
+  const dimensions = scan.dimAvailable
+    ? itemsFrom(scan.dimChain, (o) => o.dimSubs, (key) => {
+        const [axis, sub] = key.split(':')
+        return { axis, label: humanize(sub), category: CATEGORY[axis] || axis }
+      })
+    : []
+
+  // Default per side: 3 for ≤15 outlets, else ~20% capped at 7. Slider can show more/less.
+  const defaultK = outletCount <= 15 ? 3 : Math.min(7, Math.round(outletCount * 0.2))
+  const maxK = Math.min(10, Math.max(3, Math.floor(outletCount / 2)))
+  return { outletCount, defaultK, maxK, themes, dimensions }
+}
+
+export async function computeOutletReport(datasetId: string, selectedPlaceId?: string): Promise<OutletReport> {
+  return buildReport(await scanDataset(datasetId), selectedPlaceId)
+}
+
+// One scan → both the per-outlet report and the cross-outlet leaderboard.
+export async function computeOutletBundle(datasetId: string, selectedPlaceId?: string): Promise<{ report: OutletReport; leaderboard: OutletLeaderboard }> {
+  const scan = await scanDataset(datasetId)
+  return { report: buildReport(scan, selectedPlaceId), leaderboard: buildLeaderboard(scan) }
 }

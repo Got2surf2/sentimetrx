@@ -23,3 +23,14 @@
 - **Charts: overall-average reference line** (`components/analyze/ChartsModule.tsx`, `BarAggInner`) — Average-mode Bar/Column charts now overlay a dashed "Avg N" line at the **count-weighted** mean across all groups (true value-field mean, not unweighted bar mean). Both orientations + taxonomy-dimension averages. Requested by owner off a Rubio's "Avg Star Rating by Location" chart.
 
 **Verify**: `npx tsc --noEmit` clean. Ignored Build Step + routine changes confirmed via API read-back. Chart change is render-only — owner to eyeball the line in TextMine → Charts → Average. Infra changes are live (Vercel setting + cloud routines); the two repo files are committed **local only**, not pushed.
+
+## 2026-06-22 — Outlet Report: cross-outlet "Leaderboard" (top/bottom per theme & dimension)
+
+**Why**: The Outlet Report answered "how does THIS outlet compare across all themes." Owner wanted the inverse for a multi-location brand: for each theme and dimension, *which* locations are the top/bottom performers — so you can see at a glance who's lagging on, say, Service across the whole chain. Building block toward a laggard-improvement predictor (next).
+
+**What changed**:
+- **`lib/outletReport.ts` refactored to one-scan/two-views.** Extracted `scanDataset()` (the single pass over `dataset_rows_flat` + `dataset_row_field_taxonomy` that builds per-outlet & chain `{pos,neg,total}` accumulators). `buildReport()` (per-outlet vs peers, unchanged behavior) and the new `buildLeaderboard()` both read the same scan. New `computeOutletBundle()` returns `{report, leaderboard}` from a single scan; `computeOutletReport` kept as a thin wrapper for compat.
+- **`buildLeaderboard()`** — per theme and per dimension item, ranks the outlets that clear `MIN_N_OUTLET` (≥6 mentions) by **net-positive rate** (signed pos/neg — not bare occurrence), item gated by `MIN_N_CHAIN`/`MIN_POLAR_SHARE`. Carries top-10+bottom-10 per item (`truncated` when >20 qualify). `defaultK` = 3 for ≤15 outlets else round(20%×count) capped at 7; `maxK` = min(10, ⌊count/2⌋).
+- **UI**: new **Leaderboard** tab in `OutletReportTabs.tsx` (dataset-wide, ignores `?outlet=`) with a **slider** (1…maxK) to show more/less per side, defaulting to `defaultK`. Cards show Top K / Bottom K with chain baseline; collapses to a single best→worst list when `qualifying ≤ 2K`; "+N in between" note when truncated. Page now calls `computeOutletBundle`.
+
+**Verify**: `rm tsconfig.tsbuildinfo && npx tsc --noEmit` clean. Refactor is behavior-preserving for the existing tabs (logic moved, not changed); no dedicated outletReport test exists. Owner to eyeball the Leaderboard tab + slider on a real multi-location dataset (e.g. Rubio's, 81 outlets). LOCAL/unpushed. **NEXT: Part 2 predictor prototype** — per-review logistic on *negative-mention* rates → per-laggard gap-to-median × severity → projected ★ lift + what-if scenarios ("lift Service laggards to median", "which units give the biggest overall lift").
