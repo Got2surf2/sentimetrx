@@ -41,10 +41,9 @@ var TABS: { key: string; label: string; icon: string; collapse: number; sources?
   { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD', collapse: 1 },
   { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA', collapse: 2 },
   { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
-  // Per-outlet vs. peer-group summary \u2014 only for multi-location review brands
-  // (peer comparison is meaningless with just a handful of outlets).
-  { key: 'outlet-report', label: 'Outlets', icon: '\uD83C\uDFEA', collapse: 3, sources: ['google_reviews'], minOutlets: 5 },
-  // Restaurant 7-axis taxonomy \u2014 only for review datasets where it applies.
+  // Outlets (per-outlet vs. peer-group report) moved under TextMine as a sub-tab
+  // link (see TextMineModule) \u2014 grouped with the review-brand deep-dives. Same
+  // gate there: google_reviews + \u22655 outlets.
   { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9

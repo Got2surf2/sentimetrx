@@ -670,3 +670,14 @@ Net: a Manual source's pending tasks now drain on the next cron tick (≤6h) ins
 - `app/analyze/[datasetId]/outlet-report/OutletPicker.tsx` — wrap the `router.push(?outlet=…)` in `useTransition`; while `isPending` (stays true until the new outlet's server-rendered report streams in) show a `LottieLoader` overlay and disable the picker. `print:hidden` so it never lands in exports.
 
 **Verify**: typecheck clean; outlet-report route compiles (307) on the live dev server.
+
+## 2026-06-22 — Outlets moved under TextMine (sub-tab link)
+
+**Why**: Outlets is a review-brand deep-dive like Dimensions, which already lives inside TextMine. Grouping them is better IA than a separate top-level tab. The report is a server-rendered route (URL-driven `?outlet=`), so a full client rebuild would've cost the server render + shareable URL — instead, a lightweight "sub-tab link".
+
+**What changed**:
+- `app/analyze/[datasetId]/DatasetHeader.tsx` — removed the top-level 🏪 Outlets tab from `TABS` (the generic `sources`/`minOutlets` gate machinery stays as reusable infra).
+- `components/analyze/TextMineModule.tsx` — added an "Outlets" entry to the sub-tab bar as a `next/link` to `/analyze/[id]/outlet-report` (navigates rather than in-place swap, since the report is its own server route). Gated `datasetSource === 'google_reviews' && outletCount >= 5`. New `outletCount?` prop.
+- `app/analyze/[datasetId]/textmine/page.tsx` — computes `outletCount` server-side (count off `review_source_locations`) and threads it to `TextMineModule`.
+
+**Verify**: typecheck clean; `/textmine` and `/outlet-report` both compile (307); full `npm test` 929. Pairs with the OutletPicker loader added earlier today.

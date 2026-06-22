@@ -46,6 +46,17 @@ export default async function TextMinePage(props: Props) {
 
   if (!stateRow) notFound()
 
+  // Outlet count gates the Outlets sub-tab link (google_reviews + ≥5 outlets),
+  // mirroring the dataset-shell tab gate.
+  let outletCount = 0
+  if (dataset?.source === 'google_reviews') {
+    const { data: src } = await service.from('review_sources').select('id').eq('dataset_id', params.datasetId).maybeSingle()
+    if (src) {
+      const { count } = await service.from('review_source_locations').select('id', { count: 'exact', head: true }).eq('review_source_id', src.id)
+      outletCount = count || 0
+    }
+  }
+
   const schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   const analytics = stateRow.analytics || null
   const themeModel = stateRow.theme_model && (stateRow.theme_model as any).themes?.length > 0
@@ -63,6 +74,7 @@ export default async function TextMinePage(props: Props) {
         taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled}
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
+        outletCount={outletCount}
       />
     </div>
   )

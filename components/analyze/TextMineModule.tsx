@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
@@ -158,6 +159,7 @@ interface Props {
   taxonomyEnabled?:  boolean   // org has the 'taxonomy' (Dimensions) capability → show Dimensions on any analyze dataset, not just google_reviews
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
+  outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
 }
 
 type SubTab = 'themes' | 'clouds' | 'compare' | 'comments' | 'dimensions'
@@ -983,7 +985,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor, outletCount }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
@@ -1886,6 +1888,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </div>
               )
             })}
+
+            {/* Outlets — a per-outlet vs-peers report for multi-location review
+                brands. It's a server-rendered route, so this sub-tab is a link
+                (navigates) rather than an in-place swap. Same gate as the old
+                top-level tab: google_reviews + ≥5 outlets. */}
+            {datasetSource === 'google_reviews' && (outletCount || 0) >= 5 && (
+              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Link href={'/analyze/' + datasetId + '/outlet-report'}
+                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
+                  Outlets
+                </Link>
+                <span style={{ paddingRight: 10 }}>
+                  <HelpHint title="Outlets" placement="bottom">A per-outlet, one-page report: each location&apos;s star rating and percentile rank vs. the brand&apos;s other outlets, plus the service themes where it over- or under-performs its peers.</HelpHint>
+                </span>
+              </div>
+            )}
 
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
