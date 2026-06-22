@@ -681,3 +681,15 @@ Net: a Manual source's pending tasks now drain on the next cron tick (≤6h) ins
 - `app/analyze/[datasetId]/textmine/page.tsx` — computes `outletCount` server-side (count off `review_source_locations`) and threads it to `TextMineModule`.
 
 **Verify**: typecheck clean; `/textmine` and `/outlet-report` both compile (307); full `npm test` 929. Pairs with the OutletPicker loader added earlier today.
+
+## 2026-06-22 — Audit follow-up: clear the 2 HIGH npm CVEs
+
+**Why**: Reviewed the W24 governance audit + current `npm audit`. Most W24 findings were already resolved (the `esbuild` override→0.28.1 cleared the 13 HIGH esbuild CVEs; the `bots/[id]/entities` + `questions` bare service-role lookups now pair id+org_id; normCDF fix shipped). Two live HIGH remained:
+
+**What changed** (`package.json` overrides + lockfile):
+- `undici` — the existing override pinned `7.27.0`, which is *inside* the vulnerable range (≤7.27.2: TLS-bypass, cache disclosure, header injection, DoS). Bumped → `7.28.0` (patched, still 7.x so it keeps `@vercel/sandbox` + `@workflow/*` compatibility).
+- `piscina` — prototype-pollution → RCE (≤4.9.2), pulled in via `workflow → @workflow/nest → @swc/cli` (an unused NestJS adapter, build-time only). Overrode → `5.2.0`.
+
+**Result**: `npm audit` 2 HIGH → **0 HIGH / 0 critical** (13 remain: 1 low, 12 moderate — `uuid`-via-`exceljs` needs a breaking downgrade, left as-is). No `npm audit fix --force` (per CLAUDE.md, it force-downgrades next). typecheck clean; full suite 929. Validated locally; CI confirms on push.
+
+Note: the `2026-W25.md` Monday governance report was never generated (its spec-drift companion exists from Jun 15, but the 04:00 routine's report didn't land) — worth checking the routine.
