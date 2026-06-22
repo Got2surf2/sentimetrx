@@ -574,3 +574,14 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `components/analyze/SchemaEditor.tsx` — date-typed fields now show a "Time Analysis" toggle in the inline FieldEditor: "Use for time analysis" / "✓ Period date field". Sets `SchemaConfig.primaryDateField` via the existing `applyUpdate`→PATCH-state path; clicking the active one clears it (period UI then hides per §3.3). Threaded `isPrimaryDate`/`onSetPrimaryDate` through FieldCard→FieldEditor.
 
 **Verify**: typecheck clean; full `npm test` 923; Schema tab compiles on the live dev server (307). Authed click-through (toggle → save → period picker switches axis) pending. Committed locally; **NOT pushed**. Remaining: Phase 4 comparison.
+
+## 2026-06-22 — Saved Views: env-gated Playwright e2e
+
+**Why**: All Saved Views UI was compile/typecheck-verified only. Add a real end-to-end that drives the full stack (browser auth cookie → route → service-role + RLS → linked DB) so the contract is exercised against prod, not just mocked.
+
+**What changed**:
+- `tests/e2e/saved-views.spec.ts` (new, env-gated on E2E_ADMIN_EMAIL/PASSWORD/DATASET_ID) — (1) logs in, opens `/analyze/<id>`, asserts the ViewsBar renders; (2) a view+snapshot CRUD round-trip via the authed `page.request`: create/list/rename a view, freeze a snapshot (asserts 30d default TTL), assert snapshot content-immutability (PATCH name → 400) + retention mutability (PATCH expires_at → 200), clean 404 on a missing item, and deletes every `_e2e_*` row it created.
+- `components/analyze/ViewsBar.tsx` — `data-testid="views-bar"` on the root for a stable selector.
+- `docs/TESTING.md` — documented `E2E_DATASET_ID` + the new spec.
+
+**Verify**: `npx playwright test tests/e2e/saved-views.spec.ts --list` → 2 tests; runs as 2 skipped without creds (gate works); typecheck clean. NOT yet executed against real creds (needs the operator's E2E_* env). Committed locally; **NOT pushed**.

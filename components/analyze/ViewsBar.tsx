@@ -195,7 +195,7 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields }: 
   const pill = { fontSize: 11, fontWeight: 700 as const, padding: '4px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' as const }
 
   return (
-    <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', zIndex: 30 }}>
+    <div data-testid="views-bar" style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', zIndex: 30 }}>
       <span style={{ fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>View</span>
 
       <button onClick={function() { setOpen(function(v) { return !v }) }}

@@ -312,19 +312,28 @@ npm run test:dataset-egress
 
 Sets `DATASET_EGRESS_TEST=1`. Test data prefixed `_datasetroute_<runId>_`.
 
-### Playwright e2e (`tests/e2e/deck-download.spec.ts`)
+### Playwright e2e (`tests/e2e/*.spec.ts`)
 
 Requires an admin login on a running instance:
 
 ```bash
 E2E_ADMIN_EMAIL=...
 E2E_ADMIN_PASSWORD=...
+E2E_DATASET_ID=...                   # for saved-views.spec.ts — a dataset the admin can open in /analyze
 E2E_BASE_URL=http://localhost:3000   # optional — Playwright will start `npm run dev` if unset
 npm run test:e2e
 ```
 
-When the env vars are not set, the test calls `test.skip(...)` and the
+When the env vars are not set, each test calls `test.skip(...)` and the
 suite reports the reason inline.
+
+- `deck-download.spec.ts` — admin → investor decks → downloads a real pptx.
+- `saved-views.spec.ts` — Saved Views: asserts the ViewsBar renders on the workspace, then
+  drives a view+snapshot CRUD round-trip through the authed API (auth cookie → route →
+  service-role + RLS → linked DB): create/list/rename a view, freeze a snapshot (asserts the
+  30-day default TTL), confirm snapshot content-immutability (PATCH name → 400) but
+  retention mutability (PATCH `expires_at` → 200), a clean 404 on a missing item, and deletes
+  every row it created (names are `_e2e_*` + timestamp).
 
 ## Load testing (Town Hall)
 

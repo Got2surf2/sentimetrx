@@ -580,8 +580,8 @@ quarter/year × this/last, gated on `primaryDateField`). A period is stored as i
 `computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into a `frozen` blob and render
 read-only via `SnapshotModal` (drift-immune; no per-module render-from-frozen). The Schema tab
 (`SchemaEditor`) lets a date field be designated the period axis ("Use for time analysis" →
-`primaryDateField`). _Status: foundation + API/context + views UI + period picker + snapshot freeze/render +
-date-axis override built; comparison pending._
+`primaryDateField`). End-to-end coverage in `tests/e2e/saved-views.spec.ts` (env-gated). _Status: foundation +
+API/context + views UI + period picker + snapshot freeze/render + date-axis override built; comparison pending._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")
