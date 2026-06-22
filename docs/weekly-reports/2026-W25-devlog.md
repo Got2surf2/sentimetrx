@@ -774,3 +774,7 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `lib/outletReport.ts` — `resolveLocationName()`: use `location_name` for the h1 when it has location-specific words *beyond the brand* (brand tokens from the dataset name + a generic-words stoplist removed); fall back to "City, State" only when `location_name` is just the brand (the Rubio's dupe case). So Tabla → "Tabla Indian Restaurant Lake Nona", Rubio's → "Redlands, California"; the address subtitle still uniquely identifies either way.
 
 **Verify**: `tsc --noEmit` exit 0 (caught + fixed two implicit-any/Set typing errors — the earlier "CLEAN" was a pipe masking tsc's exit code); route recompiles clean; full suite 931. Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Spec sync: ANALYTICS Outlet Report section
+
+Brought `docs/ANALYTICS.md` § "Outlet Report" up to date with the outlet commits that used `SKIP_SPEC_CHECK` (UI/label refinements): tab order **Summary · Themes · Dimensions** (default Summary), the Summary tab's **review-score-over-time chart** (`selected.trend`), the 2-KPI header, and the **`resolveLocationName()`** which-location mechanism (location_name when it carries words beyond the brand, else "City, State"; address subtitle disambiguates). Docs only.
