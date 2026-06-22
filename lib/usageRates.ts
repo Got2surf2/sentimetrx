@@ -12,6 +12,7 @@
  */
 export const RATES: Record<string, { input: number; output: number; cache_read: number }> = {
   'claude-haiku-4-5-20251001': { input: 0.80, output: 4.00, cache_read: 0.08 },
+  'claude-haiku-4-5':          { input: 0.80, output: 4.00, cache_read: 0.08 },
   'claude-sonnet-4-20250514':  { input: 3.00, output: 15.00, cache_read: 0.30 },
   'claude-sonnet-4-6':         { input: 3.00, output: 15.00, cache_read: 0.30 },
   'claude-opus-4-7':           { input: 15.00, output: 75.00, cache_read: 1.50 },
@@ -30,7 +31,7 @@ export const RATES: Record<string, { input: number; output: number; cache_read: 
  * — that is intentionally separate from this "what we call today" map.
  */
 export const TIER_DEFAULT_MODEL: Record<'fast' | 'standard' | 'advanced', string> = {
-  fast:     'claude-haiku-4-5-20251001',
+  fast:     'claude-haiku-4-5',
   standard: 'claude-sonnet-4-6',
   advanced: 'claude-sonnet-4-6',
 }

@@ -175,7 +175,7 @@ The Anthropic tier→model map is single-sourced in `lib/usageRates.ts` (`TIER_D
 ```typescript
 const MODEL_MAP: Record<AIProvider, Record<ModelTier, string>> = {
   // Single source of truth (lib/usageRates.ts) — imported, not re-declared.
-  anthropic: TIER_DEFAULT_MODEL,   // { fast: 'claude-haiku-4-5-20251001', standard: 'claude-sonnet-4-6', advanced: 'claude-sonnet-4-6' }
+  anthropic: TIER_DEFAULT_MODEL,   // { fast: 'claude-haiku-4-5', standard: 'claude-sonnet-4-6', advanced: 'claude-sonnet-4-6' } — all aliases, no dated snapshots
   openai: {
     fast:     'gpt-4o-mini',
     standard: 'gpt-4o',

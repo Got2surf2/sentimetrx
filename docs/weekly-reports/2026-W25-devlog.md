@@ -717,6 +717,7 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `app/api/architecture-deck/route.ts` — tier table reads from `TIER_DEFAULT_MODEL` so the deck can't drift. No raw `claude-*` IDs remain in any route.
 - `lib/modelHealth.ts` (NEW) — `checkConfiguredModels()` checks each configured model against `GET /v1/models/{id}`; 404 → `missing`.
 - `app/api/cron/model-health/route.ts` (NEW) + `vercel.json` — weekly cron (`0 12 * * 1`, `checkCronAuth`-gated, admin-callable); on a problem it logs, `Sentry.captureMessage(..., 'error')`, and returns 503.
+- Follow-up: flipped the `fast` tier from the dated snapshot `claude-haiku-4-5-20251001` to the alias `claude-haiku-4-5` (+ matching `RATES` key). Aliases don't expire on the snapshot-retirement clock, so there are now **zero expiry-prone snapshots in the live tier map**.
 
 **Verify**: typecheck clean. Deploys the fix for the live Ask Ana / `standard`-tier 404 on sentimetrx.ai. Local, unpushed.
 
