@@ -170,13 +170,12 @@ Rates for override-able models must be present in `RATES` in `lib/usageRates.ts`
 
 ### Tier → model resolution
 
+The Anthropic tier→model map is single-sourced in `lib/usageRates.ts` (`TIER_DEFAULT_MODEL`) — `lib/ai.ts` imports it for `MODEL_MAP.anthropic`, so the same constant drives both live calls and cost estimation and they can never drift. Raw `claude-*` IDs do not appear in route files; a model swap (e.g. a snapshot retirement) is a one-line change in `usageRates.ts`. A weekly `model-health` cron (`lib/modelHealth.ts`, `/api/cron/model-health`) checks each configured model against `GET /v1/models/{id}` and alerts via Sentry before a retired snapshot 404s live calls — added 2026-06-22 after `claude-sonnet-4-20250514` retired and silently broke Ask Ana + the `standard` tier.
+
 ```typescript
 const MODEL_MAP: Record<AIProvider, Record<ModelTier, string>> = {
-  anthropic: {
-    fast:     'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-20250514',
-    advanced: 'claude-sonnet-4-6',
-  },
+  // Single source of truth (lib/usageRates.ts) — imported, not re-declared.
+  anthropic: TIER_DEFAULT_MODEL,   // { fast: 'claude-haiku-4-5-20251001', standard: 'claude-sonnet-4-6', advanced: 'claude-sonnet-4-6' }
   openai: {
     fast:     'gpt-4o-mini',
     standard: 'gpt-4o',

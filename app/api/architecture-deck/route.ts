@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { logDeckDownload } from '@/lib/auth/logDeckDownload'
+import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
 
 export const dynamic = 'force-dynamic'
 
@@ -445,9 +446,9 @@ function slideAIPipeline(pptx: any, pg: number) {
 
   // Tier cards
   const tiers = [
-    { name: 'fast',     model: 'claude-haiku-4-5-20251001', use: 'Real-time clarifiers, persona, intent, deflection',  cost: 'cheapest · max 350 tok',  color: DN.sarinaBlue },
-    { name: 'standard', model: 'claude-sonnet-4-20250514',  use: 'Theme mining, town-hall pivots',                     cost: 'mid · max 4000 tok',      color: DN.teal },
-    { name: 'advanced', model: 'claude-sonnet-4-6',         use: 'Reasoning-heavy report generation',                  cost: 'highest · max 3500 tok',  color: DN.hermesOrange },
+    { name: 'fast',     model: TIER_DEFAULT_MODEL.fast,     use: 'Real-time clarifiers, persona, intent, deflection',  cost: 'cheapest · max 350 tok',  color: DN.sarinaBlue },
+    { name: 'standard', model: TIER_DEFAULT_MODEL.standard, use: 'Theme mining, town-hall pivots',                     cost: 'mid · max 4000 tok',      color: DN.teal },
+    { name: 'advanced', model: TIER_DEFAULT_MODEL.advanced, use: 'Reasoning-heavy report generation',                  cost: 'highest · max 3500 tok',  color: DN.hermesOrange },
   ]
   tiers.forEach((t, i) => {
     const x = 0.5 + i * 4.15

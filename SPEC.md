@@ -45,7 +45,7 @@ Browser ─── Next.js (Vercel Fluid) ─── Supabase (PostgreSQL + Auth +
 - **Server-side theme counting** — `/api/datasets/[datasetId]/theme-counts` for accurate full-dataset counts (avoids sampling bias)
 - **Value aliases** — Schema fields can define `valueAliases: Record<string, string>` to remap raw data values to display labels, applied via shared `lib/aliasUtils.ts`
 - **Flat row table** — `dataset_rows_flat` is the sole source of truth: one row per JSON document, GIN-indexed on `data` for JSONB lookups and on `tsv` for full-text search. Legacy `dataset_rows` batched table was removed in May 2026.
-- **Pluggable AI** — All AI calls go through `lib/ai.ts → callAI()` which routes to Anthropic (default), OpenAI, or Azure OpenAI based on per-org config (`org.config.ai_provider`) or BYO-key. `lib/usageLog.ts` records every call.
+- **Pluggable AI** — All AI calls go through `lib/ai.ts → callAI()` which routes to Anthropic (default), OpenAI, or Azure OpenAI based on per-org config (`org.config.ai_provider`) or BYO-key. `lib/usageLog.ts` records every call. Which Claude model each tier (`fast`/`standard`/`advanced`) calls is single-sourced in `lib/usageRates.ts → TIER_DEFAULT_MODEL` (imported by `lib/ai.ts`'s `MODEL_MAP.anthropic` and every Anthropic call site — no raw `claude-*` IDs in routes), so a snapshot retirement is a one-line change. The weekly `model-health` cron checks each configured model against the Anthropic Models API and alerts via Sentry before a retired snapshot 404s live calls (`lib/modelHealth.ts`).
 - **Multi-tenancy invariants** — Every `public` table has RLS enabled + an org-scoped `SELECT` policy. Service-role queries must pair `id` with `org_id` (`.eq('id', x).eq('org_id', orgId)`) — never trust the path id alone. Internal-only routes (deck exports, governance, admin) wrap with `requireAdmin` from day one.
 
 ---
@@ -476,7 +476,7 @@ A focused mobile-first status surface that installs as a home-screen app on iOS 
 | Sharing | `/api/share`, `/api/share/analytics` |
 | Org & Users | `/api/orgs`, `/api/orgs/[id]`, `/api/orgs/[id]/users`, `/api/org`, `/api/org/{logo,settings,users}`, `/api/me`, `/api/me/ai-mode`, `/api/invite`, `/api/invite/[id]`, `/api/invite/[id]/resend`, `/api/invite/register`, `/api/auth/{log-login,magic-link,signout}`, `/api/settings/{profile,team,team/disable,team/features}` |
 | Admin | `/api/admin/{orgs,orgs/[id]/users,orgs/[id]/ai-key,users,users/[id],clients,clients/[id],questions,questions/[id],bulk-invite,invite-preview,agent-tester,content-guard-test,sentry,sentry/issues,usage,org-snapshots/[orgId],org-snapshots/[orgId]/restore}` |
-| Cron Jobs (11) | `/api/cron/{campaign-scheduler,cleanup-shared-links,review-sync,entity-discovery,townhall-theme-detection,bot-conversation-review,social-sync,social-token-refresh,sentry-digest,temple-events-refresh,org-snapshot}` |
+| Cron Jobs (13) | `/api/cron/{campaign-scheduler,cleanup-shared-links,review-sync,service-balance,entity-discovery,townhall-theme-detection,bot-conversation-review,social-sync,social-token-refresh,sentry-digest,temple-events-refresh,org-snapshot,model-health}` |
 
 **Total**: ~200 API routes (added bot export/import/history routes, admin org-snapshots routes, and the org-snapshot cron in 2026-W21).
 

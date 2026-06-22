@@ -705,3 +705,17 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - Progression #2 (HIGH CVEs) was already resolved earlier today (undici 7.28.0 + piscina 5.2.0 → 0 HIGH). #3 (coverage ratchet) deferred as a measured follow-up.
 
 **Verify**: typecheck clean; bot-routes-gate 15 pass; full suite 931.
+
+## 2026-06-22 — Retired model snapshot broke Ask Ana + `standard` tier; single-sourced model IDs + added a model-health cron
+
+**Why**: `claude-sonnet-4-20250514` (Claude Sonnet 4) retired 2026-06-15. The ID was hardcoded as the `standard` tier in `lib/ai.ts` AND copy-pasted raw into `app/api/ask-ana/route.ts` (which bypasses `callAI` for streaming) — so every `standard`-tier call and Ask Ana started returning API 404 a week ago. Fixed the breakage, then killed the bug class: one source of truth for tier→model, and an early-warning check so the next retirement surfaces weeks ahead instead of as a silent prod outage.
+
+**What changed**:
+- `lib/usageRates.ts` — `TIER_DEFAULT_MODEL` is now the SINGLE SOURCE OF TRUTH for which Claude model each tier calls; `standard` → `claude-sonnet-4-6` (drop-in, same $3/$15 pricing). The `RATES` table keeps the retired `claude-sonnet-4-20250514` key on purpose — historical `usage_logs` rows were logged under it and need the rate for past-cost math (separate concern from "what we call today").
+- `lib/ai.ts` — `MODEL_MAP.anthropic` now *references* `TIER_DEFAULT_MODEL` instead of re-declaring literals.
+- `app/api/ask-ana/route.ts` — raw `model:` string → `TIER_DEFAULT_MODEL.standard` (no more abstraction bypass).
+- `app/api/architecture-deck/route.ts` — tier table reads from `TIER_DEFAULT_MODEL` so the deck can't drift. No raw `claude-*` IDs remain in any route.
+- `lib/modelHealth.ts` (NEW) — `checkConfiguredModels()` checks each configured model against `GET /v1/models/{id}`; 404 → `missing`.
+- `app/api/cron/model-health/route.ts` (NEW) + `vercel.json` — weekly cron (`0 12 * * 1`, `checkCronAuth`-gated, admin-callable); on a problem it logs, `Sentry.captureMessage(..., 'error')`, and returns 503.
+
+**Verify**: typecheck clean. Deploys the fix for the live Ask Ana / `standard`-tier 404 on sentimetrx.ai. Local, unpushed.

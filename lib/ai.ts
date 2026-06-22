@@ -7,6 +7,7 @@ import 'server-only'
 // IMPORTANT: Always pass `usage` context so calls are logged for cost tracking.
 
 import { recordCreditError, isCreditError } from '@/lib/serviceHealth'
+import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,11 +80,9 @@ export interface AIResponse {
 // ── Model mapping ────────────────────────────────────────────────────────────
 
 const MODEL_MAP: Record<AIProvider, Record<ModelTier, string>> = {
-  anthropic: {
-    fast:     'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-20250514',
-    advanced: 'claude-sonnet-4-6',
-  },
+  // Anthropic tier→model is the single source of truth in lib/usageRates.ts
+  // (TIER_DEFAULT_MODEL) so cost estimation and live calls can never drift.
+  anthropic: TIER_DEFAULT_MODEL,
   openai: {
     fast:     'gpt-4o-mini',
     standard: 'gpt-4o',

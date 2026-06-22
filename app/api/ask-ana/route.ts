@@ -12,6 +12,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
+import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -589,7 +590,7 @@ async function streamAnthropicResponse(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: TIER_DEFAULT_MODEL.standard,
       max_tokens: 4000,
       stream: true,
       tools,
