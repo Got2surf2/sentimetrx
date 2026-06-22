@@ -10,6 +10,11 @@
 --   touch_updated_at()  -> 001_schema.sql
 --   is_platform_admin() -> 001_schema.sql
 --   current_org_id()    -> 008_campaigns.sql
+--
+-- Wrapped in BEGIN/COMMIT for the CI tx-wrap guard (already applied to prod
+-- 2026-06-21 in its unwrapped form; the wrapper is a no-op re-apply guard).
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS saved_views (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,3 +71,5 @@ CREATE POLICY saved_views_delete ON saved_views FOR DELETE
     is_platform_admin()
     OR (org_id = current_org_id() AND created_by = auth.uid())
   );
+
+COMMIT;

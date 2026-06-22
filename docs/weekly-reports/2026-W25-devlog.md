@@ -621,3 +621,7 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 **Verification**: unit + integration suite (935 pass) + env-gated Playwright e2e run **green against a live dataset** (auth → CSRF → route → service-role + RLS → prod DB).
 
 **Deferred (deliberate, documented in SAVED_VIEWS.md)**: per-chart two-series comparison rendering; per-view non-primary date-axis override.
+
+## 2026-06-22 — sql/130 tx-wrap (CI guard)
+
+Wrapped `sql/130_saved_views.sql` in `BEGIN; ... COMMIT;` to satisfy the `check:sql-tx` CI guard (migrations after #70 must be transaction-wrapped). Cosmetic — no behavior change; the migration was already applied to prod unwrapped on 06-21. Unblocks the CI run for the Saved Views push.
