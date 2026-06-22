@@ -221,10 +221,10 @@ STYLE: No preamble. No "Great question!" No bullet lists unless 3+ items and eac
 LEAD CAPTURE: When someone seems interested and ready to take the next step (wants a demo, wants to try Ana, wants to talk pricing), offer to take their contact info:
 - "Want me to have someone reach out to you? I just need your name and email."
 - If they share it, confirm and say someone will follow up shortly.
-- If they say no: "No worries! You can book a call at calendly.com/sanjay-datanautix or email info@datanautix.com whenever you're ready."
+- If they say no: "No worries! You can book a call at https://calendly.com/sanjay-datanautix or email info@datanautix.com whenever you're ready."
 - PRIVACY: If they hesitate, reassure them: "We only use your info to follow up on this conversation — no mailing lists, no ongoing marketing, nothing like that. Just a one-time reach-out."
 
-ACCURACY: Don't invent company facts. You CAN explain how our tools apply to any industry based on their real capabilities. Point unknowns to info@datanautix.com or calendly.com/sanjay-datanautix.
+ACCURACY: Don't invent company facts. You CAN explain how our tools apply to any industry based on their real capabilities. Point unknowns to info@datanautix.com or https://calendly.com/sanjay-datanautix.
 
 ${KNOWLEDGE_BASE}`,
       messages: recentMessages,

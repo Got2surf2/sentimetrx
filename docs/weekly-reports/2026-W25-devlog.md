@@ -625,3 +625,13 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 ## 2026-06-22 — sql/130 tx-wrap (CI guard)
 
 Wrapped `sql/130_saved_views.sql` in `BEGIN; ... COMMIT;` to satisfy the `check:sql-tx` CI guard (migrations after #70 must be transaction-wrapped). Cosmetic — no behavior change; the migration was already applied to prod unwrapped on 06-21. Unblocks the CI run for the Saved Views push.
+
+## 2026-06-22 — Chat agents: link format — prefer plain URLs (kill bare-domain markdown)
+
+**Why**: Agents were emitting links like `[calendly.com/sanjay-datanautix](https://calendly.com/sanjay-datanautix)` — markdown where the visible text is just the bare domain. The chat widget renders it fine, but it shows up as raw `[text](url)` in any non-markdown surface (lead-capture emails, SMS, transcripts) — i.e. "poorly formed URLs."
+
+**What changed**:
+- `lib/chatCore.ts` — the shared LINK FORMAT system instruction now tells agents to DEFAULT to a plain URL with protocol (`https://…`, clickable in chat + clean everywhere else) and to use markdown link syntax ONLY when the visible text is genuinely descriptive; explicitly never wrap a bare URL/domain in markdown (with the calendly example as the counter-pattern).
+- `app/api/bot-chat/route.ts` — normalized the two bare `calendly.com/sanjay-datanautix` references in the prompt to `https://calendly.com/...` (line 42 already had it) so the agent mirrors a clean protocol URL.
+
+**Verify**: typecheck clean. Reproduced that the ChatBot `formatHtml` pipeline already renders the markdown link correctly (so the chat widget itself wasn't the bug); this fix removes the bad pattern at the source so it renders correctly across all surfaces. Prompt-only.
