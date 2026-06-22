@@ -261,3 +261,31 @@ export function resolveComparison(primary: PeriodPrimary, offset: PeriodOffset, 
 export function periodToDateFilter(range: TsRange, includeBlanks = false): DateRangeFilter {
   return { type: 'daterange', values: [range[0], range[1] - 1], includeBlanks: includeBlanks }
 }
+
+// To-date alignment (docs/SAVED_VIEWS.md §4.1). When `now` falls inside the
+// primary period (it's the in-progress current one), clip BOTH the primary and
+// comparison ranges to the same elapsed span — QTD vs same-quarter-last-year-to-
+// date — so you don't get a phantom "−90% on day 8". A completed primary period
+// (now past its end) compares full vs full, unchanged. The cap at each range's
+// own end handles a longer source month overrunning a shorter comparison one.
+export function alignToDate(primary: TsRange, comparison: TsRange, now: number): { primary: TsRange; comparison: TsRange } {
+  if (now >= primary[1] || now < primary[0]) return { primary: primary, comparison: comparison }
+  const elapsedDays = Math.floor((now - primary[0]) / 86_400_000) + 1
+  const span = elapsedDays * 86_400_000
+  return {
+    primary:    [primary[0], Math.min(primary[1], primary[0] + span)],
+    comparison: [comparison[0], Math.min(comparison[1], comparison[0] + span)],
+  }
+}
+
+export interface DeltaResult { kind: 'pct' | 'new' | 'none'; pct?: number; label: string }
+
+// Delta display rules (docs/SAVED_VIEWS.md §4.2). `priorWindowExists` = false when
+// the comparison window predates the dataset's earliest data — render "—", never a
+// fake −100% to a newer brand. A genuine zero base renders "new", never ∞%.
+export function comparisonDelta(primaryCount: number, comparisonCount: number, priorWindowExists: boolean): DeltaResult {
+  if (!priorWindowExists) return { kind: 'none', label: '—' }
+  if (comparisonCount === 0) return { kind: 'new', label: primaryCount > 0 ? 'new' : '—' }
+  const pct = (primaryCount - comparisonCount) / comparisonCount * 100
+  return { kind: 'pct', pct: pct, label: (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%' }
+}

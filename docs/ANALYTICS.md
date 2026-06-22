@@ -580,8 +580,11 @@ quarter/year × this/last, gated on `primaryDateField`). A period is stored as i
 `computeAnalyticsFromRows(applyFilters(rows, effectiveFilters), schema)` into a `frozen` blob and render
 read-only via `SnapshotModal` (drift-immune; no per-module render-from-frozen). The Schema tab
 (`SchemaEditor`) lets a date field be designated the period axis ("Use for time analysis" →
-`primaryDateField`). End-to-end coverage in `tests/e2e/saved-views.spec.ts` (env-gated). _Status: foundation +
-API/context + views UI + period picker + snapshot freeze/render + date-axis override built; comparison pending._
+`primaryDateField`). A period can also carry a **comparison** (previous period / same period last year); `ComparisonStrip` shows
+primary-vs-prior record counts + delta with to-date alignment (`alignToDate`) and the §4.2 delta rules.
+End-to-end coverage in `tests/e2e/saved-views.spec.ts` (env-gated). _Status: all phases built (foundation,
+API/context, views UI, period picker, snapshot freeze/render, date-axis override, headline comparison);
+per-chart two-series rendering deferred._
 
 ### Value Aliases (`lib/aliasUtils.ts`)
 - Remap categorical values for display (e.g., "1" -> "Very Satisfied")

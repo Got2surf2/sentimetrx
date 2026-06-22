@@ -186,8 +186,15 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields }: 
 
   function selectPreset(g: PeriodGranularity, a: PeriodAnchor) {
     if (!primaryDateField) return
-    setPeriod({ field: primaryDateField, primary: { granularity: g, anchor: a } })
+    setPeriod({ field: primaryDateField, primary: { granularity: g, anchor: a }, compare: period ? period.compare : undefined })
     setPeriodOpen(false)
+  }
+
+  function setCompare(key: string) {
+    if (!period) return
+    if (key === 'off') { setPeriod({ field: period.field, primary: period.primary }); return }
+    const unit: PeriodGranularity = key === 'year' ? 'year' : period.primary.granularity
+    setPeriod({ field: period.field, primary: period.primary, compare: { offset: { unit: unit, n: -1 } } })
   }
 
   const hasState = filterCount(filters) > 0 || !!period
@@ -220,6 +227,18 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields }: 
                   return (<button key={p.label} onClick={function() { selectPreset(p.granularity, p.anchor) }}
                     style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? T.accentBg : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: on ? 700 : 500, color: on ? T.accent : T.text, padding: '6px 10px', borderRadius: 6 }}>{p.label}</button>)
                 })}
+                {period && (
+                  <>
+                    <div style={{ borderTop: '1px solid ' + T.border, margin: '5px 0' }} />
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', padding: '2px 10px 4px' }}>Compare to</div>
+                    {[{ key: 'off', label: 'Off' }, { key: 'prev', label: 'Previous period' }, { key: 'year', label: 'Same period last year' }].map(function(c) {
+                      const cmp = period.compare
+                      const on = c.key === 'off' ? !cmp : !!cmp && (c.key === 'year' ? cmp.offset.unit === 'year' && cmp.offset.n === -1 : cmp.offset.unit === period.primary.granularity && cmp.offset.n === -1)
+                      return (<button key={c.key} onClick={function() { setCompare(c.key) }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? T.accentBg : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: on ? 700 : 500, color: on ? T.accent : T.text, padding: '6px 10px', borderRadius: 6 }}>{c.label}</button>)
+                    })}
+                  </>
+                )}
               </div>
             </>
           )}

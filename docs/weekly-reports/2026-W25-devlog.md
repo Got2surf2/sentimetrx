@@ -585,3 +585,17 @@ Community deck is in a good state for now: 13 slides, pain-led spine (hear-from-
 - `docs/TESTING.md` — documented `E2E_DATASET_ID` + the new spec.
 
 **Verify**: `npx playwright test tests/e2e/saved-views.spec.ts --list` → 2 tests; runs as 2 skipped without creds (gate works); typecheck clean. NOT yet executed against real creds (needs the operator's E2E_* env). Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Saved Views: Phase 4 comparison (headline level)
+
+**Why**: The recurring-analysis payoff — "this quarter vs same quarter last year." The trap is comparison math that lies (phantom −90% mid-quarter, fake −100% to a newer brand, ∞% on zero). Deliver the headline comparison + the guards now; defer the larger per-chart two-series render.
+
+**What changed**:
+- `lib/filterUtils.ts` — `alignToDate(primary, comparison, now)` (§4.1): completed primary → full-vs-full; in-progress → clip both to the same elapsed span (QTD vs same-quarter-LY-to-date), capped at each range end (short-month). `comparisonDelta(p, c, priorExists)` (§4.2): "—" when the prior window predates the data, "new" on a genuine zero base, signed % otherwise.
+- `components/analyze/ViewsBar.tsx` — "Compare to" control in the period dropdown (Off / Previous period / Same period last year) → sets `period.compare.offset`.
+- `components/analyze/ComparisonStrip.tsx` (new) — when a comparison is active, computes primary vs prior record counts over the client rows (with alignment), derives `priorExists` from the earliest value on the period field, and renders counts + delta. Mounted in `DatasetShell` under the ViewsBar; self-gates to null otherwise.
+- **Deferred (documented)**: per-chart two-series rendering across ChartsModule/Stats — a separable render-mode effort; v1 compares at the headline count.
+
+**Verify**: `tests/unit/comparison.test.ts` (6) pins alignment (full/in-progress/short-month cap) + delta rules (none/new/±%). typecheck clean; full `npm test` 929 pass; live dev server `/analyze/<id>` → 307 (compiles), no analyze-module errors. Authed click-through pending. Committed locally; **NOT pushed**.
+
+**Saved Views feature: all planned phases now built** (foundation → API → views UI → period picker → snapshot freeze/render → date-axis override → headline comparison + env-gated e2e). Open follow-ups: per-chart two-series render; per-view non-primary date-axis override; authed browser/e2e run against real creds.

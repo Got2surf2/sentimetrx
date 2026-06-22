@@ -12,6 +12,7 @@ import AskAnaPanel from '@/components/analyze/AskAnaPanel'
 import DatasetHeader from './DatasetHeader'
 import DatasetMetricStrip from '@/components/analyze/DatasetMetricStrip'
 import ViewsBar from '@/components/analyze/ViewsBar'
+import ComparisonStrip from '@/components/analyze/ComparisonStrip'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
@@ -192,6 +193,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
 
       {/* Saved Views switcher — save/load named filter configs + relative period (docs/SAVED_VIEWS.md) */}
       <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} schemaFields={schemaFields} />
+
+      {/* Period comparison strip — only when a period has a comparison offset */}
+      <ComparisonStrip />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {

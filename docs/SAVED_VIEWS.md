@@ -361,7 +361,14 @@ estimated flag + resolved period range + filters recipe + per-field summaries), 
 `SnapshotModal` renders it read-only with retention controls (Keep / +30d / Delete, via `PATCH expires_at`).
 Aggregates-only, drift-immune — no render-from-frozen across the modules (deferred). **`SchemaEditor`
 date-field override** built: date fields show a "Use for time analysis" toggle that sets/clears
-`SchemaConfig.primaryDateField` (clearing hides the period UI per §3.3). Remaining: Phase 4 (comparison
-two-series + to-date); minor: per-view period field-override (pick a non-primary date axis).
+`SchemaConfig.primaryDateField` (clearing hides the period UI per §3.3).
+
+**Phase 4 — comparison (headline level)** built: the period dropdown has a "Compare to" control
+(Off / Previous period / Same period last year) setting `period.compare.offset`. `alignToDate` (§4.1)
+clips the in-progress current period and its comparison to the same elapsed span (no phantom −90% on day
+8); `comparisonDelta` (§4.2) renders "—" when the prior window predates the data and "new" on a zero base
+(never ∞%). `ComparisonStrip` shows primary vs prior record counts + delta. **Deferred:** per-chart
+two-series rendering across ChartsModule/Stats (a larger, separable render-mode effort) — v1 compares at
+the headline count, not per chart. Also minor-deferred: per-view period field-override (non-primary axis).
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.
