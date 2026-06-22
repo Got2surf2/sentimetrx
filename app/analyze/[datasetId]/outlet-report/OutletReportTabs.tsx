@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { OutletReport, ThemeDelta, ComparisonBlock } from '@/lib/outletReport'
+import type { OutletReport, ThemeDelta, ComparisonBlock, TrendPoint } from '@/lib/outletReport'
 
 type Sel = NonNullable<OutletReport['selected']>
 
@@ -58,15 +58,60 @@ function Block({ block, kind }: { block: ComparisonBlock; kind: 'themes' | 'dime
   )
 }
 
-type Tab = 'themes' | 'dimensions' | 'summary'
+// Outlet vs network avg-rating over time (inline SVG dual-line; no chart dep).
+function monthLabel(m: string): string {
+  const [y, mo] = m.split('-')
+  const names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${names[Number(mo)] || mo} '${y.slice(2)}`
+}
+
+function TrendChart({ trend }: { trend: TrendPoint[] }) {
+  const pts = trend.filter((p) => typeof p.networkAvg === 'number')
+  if (pts.length < 3) {
+    return <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">Not enough dated reviews to chart a trend.</p>
+  }
+  const W = 660, H = 210, padL = 30, padR = 14, padT = 12, padB = 26
+  const x = (i: number) => padL + (W - padL - padR) * (pts.length === 1 ? 0 : i / (pts.length - 1))
+  const vals = pts.flatMap((p) => [p.networkAvg, ...(p.outletAvg != null ? [p.outletAvg] : [])])
+  const yMin = Math.max(1, Math.floor(Math.min(...vals) * 2) / 2 - 0.25)
+  const yMax = 5
+  const y = (v: number) => padT + (H - padT - padB) * (1 - (v - yMin) / (yMax - yMin))
+  const netLine = pts.map((p, i) => `${x(i).toFixed(1)},${y(p.networkAvg).toFixed(1)}`).join(' ')
+  const outLine = pts.map((p, i) => (p.outletAvg != null ? `${x(i).toFixed(1)},${y(p.outletAvg).toFixed(1)}` : '')).filter(Boolean).join(' ')
+  const yTicks = [yMin, (yMin + yMax) / 2, yMax]
+  const xIdx = [0, Math.floor((pts.length - 1) / 2), pts.length - 1]
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-4 text-xs">
+        <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-3 rounded-sm" style={{ background: '#e8622a' }} /> This location</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-3 rounded-sm bg-gray-400" /> Network avg</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 230 }} role="img" aria-label="Outlet vs network average rating over time">
+        {yTicks.map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="#ececed" strokeWidth={1} />
+            <text x={padL - 6} y={y(t) + 3} textAnchor="end" fontSize={10} fill="#9ca3af">{t.toFixed(1)}</text>
+          </g>
+        ))}
+        {xIdx.map((i) => (
+          <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#9ca3af">{monthLabel(pts[i].month)}</text>
+        ))}
+        <polyline points={netLine} fill="none" stroke="#9ca3af" strokeWidth={2} />
+        {outLine && <polyline points={outLine} fill="none" stroke="#e8622a" strokeWidth={2.5} />}
+      </svg>
+    </div>
+  )
+}
+
+type Tab = 'summary' | 'themes' | 'dimensions'
 
 export default function OutletReportTabs({ selected: s }: { selected: Sel }) {
-  const [tab, setTab] = useState<Tab>('themes')
+  const [tab, setTab] = useState<Tab>('summary')
   const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'summary', label: 'Summary' },
     { id: 'themes', label: 'Themes' },
     { id: 'dimensions', label: 'Dimensions' },
-    { id: 'summary', label: 'Summary' },
   ]
 
   return (
@@ -118,9 +163,15 @@ export default function OutletReportTabs({ selected: s }: { selected: Sel }) {
 
         {/* SUMMARY */}
         {tab === 'summary' && (
-          <div className="rounded-lg bg-gray-50 p-5">
-            <h2 className="mb-2 text-sm font-bold text-gray-700">How this location compares to the network</h2>
-            <p className="text-sm leading-relaxed text-gray-700">{s.narrative}</p>
+          <div className="space-y-5">
+            <div className="rounded-lg bg-gray-50 p-5">
+              <h2 className="mb-3 text-sm font-bold text-gray-700">Review score over time <span className="font-normal text-gray-400">— this location vs. network</span></h2>
+              <TrendChart trend={s.trend} />
+            </div>
+            <div className="rounded-lg bg-gray-50 p-5">
+              <h2 className="mb-2 text-sm font-bold text-gray-700">How this location compares to the network</h2>
+              <p className="text-sm leading-relaxed text-gray-700">{s.narrative}</p>
+            </div>
           </div>
         )}
       </div>

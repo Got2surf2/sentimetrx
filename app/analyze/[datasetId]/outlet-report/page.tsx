@@ -60,7 +60,7 @@ export default async function OutletReportPage(props: {
               <div>
                 <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">{report.brand}</div>
                 <h1 className="mt-1 text-2xl font-bold text-gray-900">{s.name}</h1>
-                <div className="text-sm text-gray-500">{s.location} · {s.reviews.toLocaleString()} reviews</div>
+                <div className="text-sm text-gray-500">{s.address ? `${s.address} · ` : ''}{s.reviews.toLocaleString()} reviews</div>
               </div>
               <div className="text-right">
                 <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Outlet performance vs. peer group</div>

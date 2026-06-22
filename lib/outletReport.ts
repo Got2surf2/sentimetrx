@@ -49,12 +49,16 @@ export type ComparisonBlock = {
   weaknesses: ThemeDelta[]
 }
 
+// Monthly avg-rating point: this outlet vs the whole network.
+export type TrendPoint = { month: string; outletAvg: number | null; networkAvg: number }
+
 export type OutletReport = {
   brand: string
   outlets: OutletOption[]
   selected: {
     placeId: string
-    name: string
+    name: string         // LOCATION name (city, state) — NOT the brand (which is `brand`)
+    address: string
     location: string
     reviews: number
     rating: number
@@ -64,6 +68,7 @@ export type OutletReport = {
     rank: number         // 1 = best
     outletCount: number
     narrative: string
+    trend: TrendPoint[]
     themes: ComparisonBlock
     dimensions: ComparisonBlock
   } | null
@@ -340,17 +345,41 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
     const themes: ComparisonBlock = { available: themeMatchers.length > 0, analyzedReviews: target.themeMatched, ...themeDeltas }
     const dimensions: ComparisonBlock = { available: tax.length > 0, analyzedReviews: target.dimClassified, ...dimDeltas }
 
+    // Location name (h1) is the city/state — NOT the brand (location_name is the
+    // brand for these review sets, which dupes the brand eyebrow). Address goes
+    // to the subtitle.
+    const locName = [target.city, target.state].filter(Boolean).join(', ') || target.name
+
+    // Monthly avg-rating trend: this outlet vs the whole network. One pass over
+    // flat rows (review_date → YYYY-MM), keep the last 24 months that have data.
+    const monthly = new Map<string, { oSum: number; oN: number; nSum: number; nN: number }>()
+    for (const r of flat) {
+      const rt = Number(r.data?.rating)
+      if (!rt) continue
+      const month = String(r.data?.review_date || '').slice(0, 7)
+      if (!/^\d{4}-\d{2}$/.test(month)) continue
+      const m = monthly.get(month) || { oSum: 0, oN: 0, nSum: 0, nN: 0 }
+      monthly.set(month, m)
+      m.nSum += rt; m.nN++
+      if (r.data?.place_id === target.placeId) { m.oSum += rt; m.oN++ }
+    }
+    const trend: TrendPoint[] = [...monthly.entries()]
+      .sort((a, b) => a[0] < b[0] ? -1 : 1)
+      .map(([month, m]) => ({ month, outletAvg: m.oN ? m.oSum / m.oN : null, networkAvg: m.nSum / m.nN }))
+      .slice(-24)
+
     selected = {
       placeId: target.placeId,
-      name: target.name,
+      name: locName,
+      address: target.address,
       location: [target.city, target.state].filter(Boolean).join(', '),
       reviews: target.reviews,
       rating: outletRating,
       chainRating: chainRatingAll,
       ratingDelta: outletRating - chainRatingAll,
       percentile, rank, outletCount: rated.length,
-      themes, dimensions,
-      narrative: buildNarrative({ name: target.name, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
+      themes, dimensions, trend,
+      narrative: buildNarrative({ name: locName, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
     }
   }
 

@@ -754,3 +754,14 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `docs/ANALYTICS.md` — documented the two-axis tabbed structure + narrative.
 
 **Verify**: fresh `tsc --noEmit` clean (rm'd tsbuildinfo to avoid the stale-cache trap); outlet-report route recompiles clean on the dev server (no syntax error in newest log entries — the lingering one was a stale append-only entry); full suite 931. Rubio's now has both a 7-theme comparison and (post-backfill) the dimensions comparison. Committed locally; **NOT pushed**.
+
+## 2026-06-22 — Outlets: summary-default, score-over-time chart, location-name header
+
+**Why**: Four UX fixes on the outlet report (per screenshots): land on the overview, add a trend chart, and stop showing the brand name twice.
+
+**What changed**:
+- `OutletReportTabs.tsx` — **Summary is now the default tab** (reordered first: Summary · Themes · Dimensions). Summary tab now leads with a **review-score-over-time chart** (inline SVG dual-line, no chart dep): this outlet's monthly avg rating vs the network's, then the narrative.
+- `lib/outletReport.ts` — added `trend` (monthly outlet-vs-network avg rating, last 24 months from `review_date`) to `selected`; `selected.name` is now the **location** (city, state) not the brand (`location_name` was the brand → dupe); added `address`. The narrative now reads "Redlands, California ranks #7…" instead of the brand name.
+- `page.tsx` — h1 = location (city/state); subtitle = `address · N reviews` (was the redundant city/state). Brand stays only in the uppercase eyebrow.
+
+**Verify**: fresh `tsc --noEmit` clean (cleared tsbuildinfo); outlet-report recompiles clean on the dev server; full suite 931. Committed locally; **NOT pushed**.
