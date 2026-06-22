@@ -1,6 +1,6 @@
 # Saved Views, Snapshots & Periods
 
-Status: **spec / not yet built** · Scope: v1 · Last updated: 2026-06-19
+Status: **spec / not yet built** · Scope: v1 · Last updated: 2026-06-21
 
 Lets users save the filter state of a dataset as a reusable **view**, freeze a view's
 results as an immutable **snapshot**, and filter/compare by relative **periods**
@@ -17,14 +17,18 @@ Three objects, with a deliberate relationship:
   `QTD`). Stored as *intent*, resolved to concrete dates at read time. A period is the
   date portion of a view's filters and the basis for comparison.
 
-- **View** — a *live* named filter configuration on a single dataset (the "recipe").
-  Recomputes against the latest data every time it's opened. A view's date filter may be
-  a period, which is what makes "current quarter" views recurring.
+- **View** — a filter configuration on a single dataset (the "recipe"). **Whatever you are
+  looking at right now is a view** — the live `FilterContext` state *is* a view, named or
+  not. Recomputes against the latest data every time it's applied. A view's date filter may
+  be a period, which is what makes "current quarter" views recurring. **Saving** a view just
+  gives that state a name and a row so you can come back to it; naming is optional
+  persistence, not part of what makes something a view.
 
 - **Snapshot** — a view **frozen at a moment** (the "photo"). The period is resolved to
-  absolute dates and the computed results are captured so the numbers never move. A
-  snapshot is *defined in terms of* a view — "freeze this view as of today" — so there is
-  one mental model, not two unrelated objects.
+  absolute dates and the computed results are captured so the numbers never move. You can
+  freeze *any* view — a saved one, or the unsaved live state you're looking at right now. A
+  snapshot is **fully self-contained**: it carries the resolved filters and the frozen
+  aggregates, so it needs no reference back to a view to be displayed or re-run.
 
 > Naming note: `collection` already means "virtual dataset that unions member datasets"
 > in this codebase. A **view** is a saved filter config layered on a dataset/collection —
@@ -49,17 +53,18 @@ views are private-by-default.
 
 ```
 saved_views
-  id            uuid pk
-  dataset_id    uuid  fk -> datasets(id)
-  org_id        uuid              -- tenant scope; pair id+org_id on service-role reads
-  name          text
-  kind          text             -- 'view' | 'snapshot'
-  visibility    text             -- 'private' | 'org'   (default 'private')
-  created_by    uuid  fk -> auth.users
-  filter_config jsonb            -- serialized filters (reuse serializeFilters shape) + period spec
-  frozen        jsonb            -- snapshots only: resolved range + captured aggregates (see §5)
-  source_view_id uuid null       -- snapshots only: back-ref to the view it was frozen from (may dangle)
-  created_at    timestamptz default now()
+  id              uuid pk
+  dataset_id      uuid  fk -> datasets(id)
+  org_id          uuid              -- tenant scope; pair id+org_id on service-role reads
+  name            text
+  kind            text             -- 'view' | 'snapshot'
+  visibility      text             -- 'private' | 'org'   (default 'private')
+  created_by      uuid  fk -> auth.users
+  filter_config   jsonb            -- serialized filters (reuse serializeFilters shape) + period spec
+  frozen          jsonb            -- snapshots only: resolved range + captured aggregates (see §5)
+  source_view_name text null       -- snapshots only: provenance LABEL (see §5.1); not a ref, never dangles
+  expires_at      timestamptz null -- snapshots only: retention clock (see §5.2); null = kept forever
+  created_at      timestamptz default now()
 ```
 
 - **RLS**: standard org-member scoping (as elsewhere). Additionally, a row is readable
@@ -69,6 +74,11 @@ saved_views
   (`serializeFilters` / `deserializeFilters` in `lib/filterUtils.ts`) plus a `period`
   block (§3) replacing/augmenting the raw `DateRangeFilter` for the period-bound field.
 - Snapshots store **aggregates only** in `frozen` (§5) — no row copies, no row IDs.
+- **No `source_view_id` foreign key.** A snapshot is self-contained (it stores its own
+  `filter_config` + `frozen`), so it never needs to reference a view to be displayed or
+  re-run live. The only provenance carried is `source_view_name`, a denormalized **label**
+  copied at freeze time (§5.1) — it cannot dangle, and renaming/deleting a view does not
+  affect it. This is why deleting a view has **zero** effect on any snapshot.
 
 ### Period filter config
 
@@ -193,25 +203,76 @@ quarter, forever).
 
 ---
 
-## 5. Snapshots (aggregates-only)
+## 5. Snapshots (aggregates-only, self-contained)
 
-Freezing a view:
+Freezing a view (saved or the unsaved live state):
 
 1. Resolve the period to an absolute `[startTs, endTs)`.
 2. Capture the **computed results** the client already holds — the summary stats and the
    results backing the dataset's saved charts/stats under the frozen filters — into
-   `frozen`, along with the resolved range and the resolved date field.
-3. Persist a `saved_views` row with `kind = 'snapshot'`, `source_view_id` set.
+   `frozen`, along with the resolved range and the resolved date field. Also persist the
+   resolved `filter_config` so the snapshot can be re-run live on its own.
+3. Persist a `saved_views` row with `kind = 'snapshot'`, `name` (set at freeze, §5.2),
+   `source_view_name` per §5.1, and `expires_at` defaulted per §5.2.
 
 Properties:
 
 - **Immune to synced-source drift** (reviews/Reddit/Substack edit & dedupe after the fact) —
   frozen aggregates reference no live rows.
-- **Self-contained** — editing or deleting the source view must not alter a snapshot;
-  `source_view_id` may dangle.
+- **Self-contained** — a snapshot carries everything needed to display *and* re-run it: its
+  own resolved `filter_config` plus the captured `frozen` aggregates. It holds **no reference
+  to a view**, so editing, renaming, or deleting any view never alters it. "Open this
+  snapshot's filters live" loads the snapshot's *own* `filter_config` into `FilterContext` —
+  faithful to exactly what was frozen, and works even if no view was ever saved.
+- **Content is immutable** — `filter_config`, `frozen`, and `name` never change after freeze.
+  (Retention is a separate axis — see §5.2.) Re-running analysis means opening the snapshot's
+  filters live, which produces a *new* current-data result, not a mutation of the snapshot.
 - **Trade-off accepted**: a snapshot cannot be re-sliced in a *new* dimension later (it's a
   frozen report, not frozen data). Row-copy materialization is **deferred** until usage
   proves people need to re-slice.
+
+### 5.1 Provenance label & dirty-view detection
+
+A snapshot may carry the **name of the view it was frozen from** as a display label
+(`source_view_name`, e.g. *"frozen from Q2 Exec Review"*). It is a denormalized string, not a
+reference — it cannot dangle and is unaffected by later renames or deletes of that view.
+
+The label is carried **only when the live state still matches the loaded saved view**:
+
+- Loading a saved view records its identity + its stored `filter_config`.
+- On any filter change, the live `FilterContext` is compared against that stored config:
+  - **Clean (identical)** → you are still looking at that view. Header shows the view name; a
+    freeze stamps `source_view_name = <view name>`.
+  - **Diverged (modified)** → you are now looking at a *different, unsaved* view (per §1,
+    whatever you're looking at is a view). Header shows *"<name> (modified)"* or unnamed; a
+    freeze stamps **no** `source_view_name` — it's a standalone snapshot of an ad-hoc state.
+
+This is why provenance is a conditional label and not a foreign key: a FK would keep pointing
+at the view even after you've diverged from it, misrepresenting what was actually frozen.
+
+Implementation note: `FilterContext` needs a **dirty/diverged flag** — a structural equality
+check between the live filter state and the loaded view's serialized config. That one flag
+drives both the "(modified)" header and whether a freeze inherits the view name.
+
+### 5.2 Lifecycle — default TTL, soft-expire, keep / extend / restore
+
+Snapshots accumulate; most are transient explorations, a few are the durable record (e.g. a
+quarter-close report). They get a default retention clock modeled on shared links, but tuned
+so a record is **never silently destroyed**.
+
+- **Default TTL = 30 days.** On freeze, `expires_at = now + 30 days`. (Views never expire;
+  `expires_at` is snapshot-only.)
+- **Soft-expire, not delete.** Expiry is enforced as a **read-time filter**: a snapshot with
+  `expires_at < now` drops out of the default list and renders an *"expired — restore?"*
+  state. The row and its `frozen` data are **retained**. There is **no cron hard-delete** for
+  snapshots (unlike `shared_links`) — frozen data can't be recreated once live data has
+  drifted, so it is never garbage-collected automatically.
+- **Keep** = set `expires_at = null` (at freeze or any time after) → kept forever.
+- **Extend** = push `expires_at` to a later date. **Restore** an expired snapshot = the same
+  action (extend or keep).
+- These are **lifecycle-metadata** actions, distinct from content editing. They adjust only
+  the retention clock; `filter_config`, `frozen`, and `name` remain immutable, so the
+  "snapshots have no content update" rule (§8) holds.
 
 ---
 
@@ -222,7 +283,15 @@ Properties:
   facet, surface a warning ("N filters no longer apply"), do **not** error.
 - **Visibility transitions**: an `org`-visible view whose `created_by` user is deleted →
   reassign ownership to the org so it survives. `private` views of a deleted user → removed.
-- **Snapshots are read-only**; re-running analysis means opening the source view live.
+- **Deleting a view has no effect on snapshots** — they are self-contained (§2/§5). No
+  cascade, no prompt, no dangling references.
+- **Opening a deleted / unavailable item** (e.g. an `org`-visible view a teammate just
+  deleted, or a snapshot since removed): the single-item read returns a clean **not-found**
+  signal (HTTP 404), never a 500. The UI shows a *"This view was deleted"* /
+  *"This snapshot is no longer available"* toast, drops it from the list, and refreshes —
+  rather than erroring.
+- **Snapshot content is read-only**; re-running analysis means opening the snapshot's filters
+  live (or the source view, if it still exists). Only the retention clock is adjustable (§5.2).
 
 ---
 
@@ -250,12 +319,23 @@ Properties:
 - `lib/filterUtils.ts` — add the `period` spec type + `resolvePeriod()`; periods resolve to
   the existing `DateRangeFilter` shape so `applyFilters()` is unchanged.
 - `components/analyze/FilterContext.tsx` — load/apply a view's `filter_config`; hold
-  primary + comparison filter sets when comparison is on.
+  primary + comparison filter sets when comparison is on; track the **dirty/diverged flag**
+  vs the loaded saved view (§5.1) for the "(modified)" header and snapshot name carry-over.
 - `components/analyze/FiltersModal.tsx` — period picker (granularity + anchor), date-field
   override, comparison toggle. **Gated on `primaryDateField` being set** — hidden entirely
   for date-less datasets (§3.3).
 - New `saved_views` table + RLS → next SQL migration (`sql/130_saved_views.sql`).
-- New API: `/api/datasets/[datasetId]/views` (list/create/delete) and snapshot-freeze
-  endpoint; mirror the `dataset_state` route's org-access gating.
+- New API: `/api/datasets/[datasetId]/views`:
+  - **Views — full CRUD**: `list`, `read` (single), `create`, `update` (rename, visibility,
+    re-save filters), `delete`.
+  - **Snapshots — CRD on content**: `create` (freeze), `read` (single + list), `delete`. **No
+    content update** — `name` / `filter_config` / `frozen` are fixed at freeze. The freeze
+    request sets the name up front (default suggestion: source view name + resolved range,
+    e.g. *"Q2 Exec Review · Apr–Jun 2026"*).
+  - **Snapshot lifecycle endpoints**: `keep` (null the clock), `extend` (push `expires_at`),
+    `restore` (un-expire) — these touch only `expires_at`, never content (§5.2).
+  - Single-item reads return a clean 404 for missing/deleted/unauthorized rows (§6).
+  - Mirror the `dataset_state` route's org-access gating; pair `id` with `org_id` on
+    service-role reads.
 - Charts/stats: **no change** for views (they already re-render against active filters);
   comparison adds a two-series render mode.
