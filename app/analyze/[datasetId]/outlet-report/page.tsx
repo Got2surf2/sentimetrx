@@ -8,7 +8,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
-import { computeOutletReport } from '@/lib/outletReport'
+import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import PrintButton from './PrintButton'
 import OutletReportTabs from './OutletReportTabs'
@@ -38,8 +38,9 @@ export default async function OutletReportPage(props: {
   if (!ds) notFound()
   if (!ctx.isAdminOrg && ds.org_id !== ctx.orgId) notFound()
 
-  const report = await computeOutletReport(datasetId, outlet)
+  const { report, predictor } = await computeOutletReportWithPredictor(datasetId, outlet)
   const s = report.selected
+  const levers = s ? (predictor.outletLevers[s.placeId] || []) : []
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
@@ -87,8 +88,8 @@ export default async function OutletReportPage(props: {
               </div>
             </div>
 
-            {/* Summary / Themes / Dimensions tabs (client) */}
-            <OutletReportTabs selected={s} />
+            {/* Action Plan / Summary / Themes / Dimensions tabs (client) */}
+            <OutletReportTabs selected={s} levers={levers} model={predictor.model} />
           </div>
         )}
       </div>

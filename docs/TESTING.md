@@ -46,6 +46,7 @@ tests/
 │   ├── entityMentionDetector.test.ts
 │   ├── guardrails.test.ts
 │   ├── nameExtractor.test.ts  # post-hoc AI name extractor — gating + JSON parsing + defense-in-depth regex
+│   ├── outletPredictor.test.ts # de-biased theme predictor — ridge recovers known per-theme ★-drag/ranking, de-biases co-occurrence (v2<v1), exemplar volume-floor, quote attach
 │   ├── personaExtractor.test.ts
 │   ├── phase3DualWrite.test.ts
 │   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation

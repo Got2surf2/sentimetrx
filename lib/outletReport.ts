@@ -1,6 +1,7 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { lexiconScore } from '@/lib/themeUtils'
+import { buildPredictor, type OutletPredictor, type PredReview, type PredExample } from '@/lib/outletPredictor'
 
 // Per-outlet "vs peers" summary report.
 //
@@ -283,6 +284,8 @@ type Scan = {
   dimAvailable: boolean
   flat: any[]
   labelFor: (o: Outlet) => string
+  themeLabels: string[]       // ordered theme labels (matchers) for the predictor
+  reviewMatrix: PredReview[]  // per rated text-review: theme-negative flag vector
 }
 
 // One pass over a dataset's flat rows + taxonomy assertions, building the
@@ -327,6 +330,8 @@ async function scanDataset(datasetId: string): Promise<Scan> {
 
   const dimChain = new Map<string, Acc>()
   const themeChain = new Map<string, Acc>()
+  const themeLabels = themeMatchers.map((tm) => tm.label)
+  const reviewMatrix: PredReview[] = []
 
   // Pass over flat rows: rating + review counts, AND theme matching/sentiment.
   for (const r of flat) {
@@ -343,9 +348,15 @@ async function scanDataset(datasetId: string): Promise<Scan> {
         const { pos, neg } = lexiconScore(text)
         const polarity = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neutral'
         let matchedAny = false
-        for (const tm of themeMatchers) {
+        // Per-review theme-negative flag vector for the predictor (whole-review
+        // polarity, same convention as the leaderboard). Only the negative
+        // signal drives the model — never score on bare theme presence.
+        const negFlags = new Array(themeMatchers.length).fill(false)
+        for (let ti = 0; ti < themeMatchers.length; ti++) {
+          const tm = themeMatchers[ti]
           if (!tm.re.test(text)) continue
           matchedAny = true
+          if (polarity === 'neg') negFlags[ti] = true
           const key = tm.label
           const cu = themeChain.get(key) || (themeChain.set(key, newAcc()), themeChain.get(key)!)
           const ou = o.themeSubs.get(key) || (o.themeSubs.set(key, newAcc()), o.themeSubs.get(key)!)
@@ -354,6 +365,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           else if (polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg) ou.exNeg = { full: text, ev: text } }
         }
         if (matchedAny) o.themeMatched++
+        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, neg: negFlags })
       }
     }
   }
@@ -396,6 +408,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     themeAvailable: themeMatchers.length > 0,
     dimAvailable: tax.length > 0,
     flat, labelFor,
+    themeLabels, reviewMatrix,
   }
 }
 
@@ -530,4 +543,39 @@ export async function computeOutletReport(datasetId: string, selectedPlaceId?: s
 // Chain-wide leaderboard (its own view — NOT a tab in the per-outlet report).
 export async function computeOutletLeaderboard(datasetId: string): Promise<OutletLeaderboard> {
   return buildLeaderboard(await scanDataset(datasetId))
+}
+
+// Theme-driven "biggest levers" predictor (per-outlet actions + brand levers).
+function buildPredictorFromScan(scan: Scan): OutletPredictor {
+  // Negative example quote per (outlet, theme), recovered from the scan's
+  // accumulators — "what to fix" in a guest's own words.
+  const examples: PredExample[] = []
+  for (const o of scan.outlets) {
+    for (const [theme, acc] of o.themeSubs) {
+      const quote = extractSentence(acc.exNeg)
+      if (quote) examples.push({ placeId: o.placeId, theme, quote })
+    }
+  }
+  return buildPredictor({
+    themeLabels: scan.themeLabels,
+    reviews: scan.reviewMatrix,
+    outlets: scan.outlets.map((o) => ({
+      placeId: o.placeId, label: scan.labelFor(o), reviews: o.reviews,
+      rating: o.ratingN ? o.ratingSum / o.ratingN : null,
+    })),
+    examples,
+  })
+}
+
+export async function computeOutletPredictor(datasetId: string): Promise<OutletPredictor> {
+  return buildPredictorFromScan(await scanDataset(datasetId))
+}
+
+// Per-outlet report + its predictor levers from ONE scan (the report page needs
+// both; avoids scanning the dataset twice).
+export async function computeOutletReportWithPredictor(
+  datasetId: string, selectedPlaceId?: string,
+): Promise<{ report: OutletReport; predictor: OutletPredictor }> {
+  const scan = await scanDataset(datasetId)
+  return { report: buildReport(scan, selectedPlaceId), predictor: buildPredictorFromScan(scan) }
 }
