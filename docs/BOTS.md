@@ -20,7 +20,7 @@
 ## 1. Overview
 
 The Agents module lets an org build branded, public-facing chat bots backed by:
-- **A dynamic system prompt** assembled from `bot.personality + bot.system_prompt + retrieved knowledge + guardrails + intents + session persona + demographics + contrast positions`.
+- **A dynamic system prompt** assembled from `bot.personality + bot.system_prompt + retrieved knowledge + guardrails + intents + session persona + demographics + contrast positions`. Includes a shared **LINK FORMAT** rule (`lib/chatCore.ts`): agents default to plain URLs (`https://…`) and never wrap a bare URL/domain in markdown link syntax — so links render as a clean clickable link in chat *and* stay readable in non-markdown surfaces (lead-capture emails, SMS, transcripts).
 - **Hybrid retrieval** over a per-bot knowledge base: pgvector cosine (semantic) + Postgres tsvector (lexical) + pg_trgm (fuzzy), blended in a single RPC.
 - **Public, rate-limited chat endpoint** (`POST /api/bots/[id]/chat`) — anyone with the bot URL can chat without auth.
 - **Optional UI-hint extractor** (`POST /api/bots/[id]/ui-hints`) — companion endpoint for the canvas demo at `/demo/mco`. Takes a `{userMessage, assistantMessage, context?}` payload and returns `{ui_hints: UiHint[], next_chips: string[], revert_canvas: boolean}`. UiHint is one of `terminal_map`, `parking`, `restaurants`, `link_card`, `welcome` (last is for canvas idle state only — never emitted by the extractor). Optional `context` carries an active terminal + last-rendered card type so the extractor can scope subsequent restaurants/parking selections and decide when to revert the canvas on off-topic pivots. Decoupled from `/chat` so chat latency is unchanged; see `docs/MCO_AGENT.md` §4 + §15. Same CORS/rate-limit posture as `/chat`.
@@ -30,7 +30,7 @@ The Agents module lets an org build branded, public-facing chat bots backed by:
 - **Session personas**: AI-extracted at turn 2-4, merged across the session for context-aware responses.
 - **Insights deck export**: AI-generated PPTX with KPIs, common questions, drop-off points, sample quotes, recommendations.
 
-End-users hit `/b/[slug]` (or an embedded iframe) → BotClient. Admins manage everything from `/bots`.
+End-users hit `/b/[slug]` (or an embedded iframe) → BotClient. Admins manage everything from `/bots` — a card grid with Sort (updated/created/name), favorite stars, and a **name search box** (client-side substring filter over the loaded agents, same affordance as the datasets/surveys/recordings lists).
 
 ---
 

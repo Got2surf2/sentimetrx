@@ -719,3 +719,14 @@ Note: the `2026-W25.md` Monday governance report was never generated (its spec-d
 - `app/api/cron/model-health/route.ts` (NEW) + `vercel.json` — weekly cron (`0 12 * * 1`, `checkCronAuth`-gated, admin-callable); on a problem it logs, `Sentry.captureMessage(..., 'error')`, and returns 503.
 
 **Verify**: typecheck clean. Deploys the fix for the live Ask Ana / `standard`-tier 404 on sentimetrx.ai. Local, unpushed.
+
+## 2026-06-22 — Spec-sync pass (close the SKIP_SPEC_CHECK gaps before push)
+
+**Why**: A few earlier commits this session bypassed the spec-drift hook (`SKIP_SPEC_CHECK`) for UI affordances / prompt nudges. Bringing the module specs in sync before the (pending, other-session-coordinated) push so the docs match shipped behavior.
+
+**What changed** (docs only):
+- `docs/SURVEYS.md` — noted the dashboard surveys list's **name search box**.
+- `docs/RECORDINGS.md` — noted the `/recordings` list **name search box** (+ no-match message).
+- `docs/BOTS.md` — noted the `/bots` agents-list **name search box**, and the agent **LINK FORMAT** rule (plain URLs, no bare-domain markdown; `lib/chatCore.ts`).
+
+(ANALYTICS.md was already updated in-range for the Outlets move + Saved Views; datasets-list search isn't mapped to a module spec in `specMap`.)
