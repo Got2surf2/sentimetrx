@@ -16,11 +16,15 @@ export type WhatIfData = {
   currentRate: number[]     // this outlet's problem rate per theme
   medianRate: number[]      // peer-median problem rate per theme
   bestRate: number[]        // best-quartile problem rate per theme
+  worstRate: number[]       // worst-in-class problem rate per theme (the right anchor)
   totalReviews: number
   lowCount: number
   lowRate: number
-  otherLowRates: number[]   // every OTHER outlet's 1–3★ rate (for rank)
-  currentRank: number
+  avg: number               // outlet's current avg star rating
+  detractorAvg: number      // mean rating of its 1–3★ reviews
+  happyAvg: number          // mean rating of its 4–5★ reviews
+  otherRatings: number[]    // every OTHER outlet's avg star (for the conventional rank)
+  currentRank: number       // 1 = best (highest avg star)
   outletCount: number
   trends: (Trend | null)[]  // brand-level QoQ trend per theme (index-aligned)
   trendBasis: { recent: string; prior: string } | null
@@ -33,10 +37,11 @@ const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 const C = { you: '#E85A1A', median: '#2563EB', best: '#16A34A' }
 const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100))
 
-// Per-theme axis: 0 (perfect, left) → domainMax (right = worse). Extends to ~2×
-// the current rate so there's room to drag LEFT (improve, past best toward 0)
-// AND RIGHT (model the theme getting worse). Handle + ticks share this scale.
-const domainOf = (cur: number, median: number, best: number) => Math.max(cur * 2, median, best, 0.0001) * 1.1
+// Per-theme axis: a fixed, intuitive scale — left = 0 (perfect), right = the
+// rounded-up WORST-IN-CLASS rate (the worst any outlet does on this theme). So
+// every tick reads against a real anchor, and dragging right models the theme
+// getting worse, up to the worst peer. Handle + ticks share this scale.
+const domainOf = (worst: number) => Math.max(0.01, Math.ceil(worst / 0.005) * 0.005)
 
 // Reference ticks on a slider track — all three plotted on the shared domain so
 // "You" is visible (not pinned to the edge) and benchmarks read honestly even
@@ -97,8 +102,13 @@ export default function WhatIfPanel(d: WhatIfData) {
     const net = recovered - added // detractors removed; negative = net added (worse)
     const newLowCount = Math.max(0, Math.min(d.totalReviews, d.lowCount - net))
     const newRate = d.totalReviews ? newLowCount / d.totalReviews : 0
-    const newRank = 1 + d.otherLowRates.filter((r) => r > newRate).length
-    return { net, newRate, newRank }
+    // Project the outlet's avg star: each net-removed detractor moves from the
+    // detractor avg up to the happy avg (and vice-versa for added). Then rank
+    // against every other outlet's (fixed) avg — conventional, 1 = best.
+    const delta = (isFinite(d.happyAvg) && isFinite(d.detractorAvg) ? d.happyAvg - d.detractorAvg : 0)
+    const newAvg = d.totalReviews ? d.avg + (net * delta) / d.totalReviews : d.avg
+    const newRank = 1 + d.otherRatings.filter((r) => r > newAvg).length
+    return { net, newRate, newAvg, newRank }
   }, [target, d])
 
   const setOne = (i: number, v: number) => setTarget((prev) => { const next = [...prev]; next[i] = v; return next })
@@ -130,7 +140,7 @@ export default function WhatIfPanel(d: WhatIfData) {
       <div className="mt-2 space-y-2">
         {d.themes.map((t, i) => {
           const cur = d.currentRate[i]
-          const dmax = domainOf(cur, d.medianRate[i], d.bestRate[i])
+          const dmax = domainOf(d.worstRate[i])
           const tgt = Math.min(target[i], dmax)
           const reduced = cur > 0 && target[i] < cur - 1e-9
           const worse = target[i] > cur + 1e-9
@@ -140,31 +150,31 @@ export default function WhatIfPanel(d: WhatIfData) {
                 <span className="truncate text-gray-700">{t}</span>
                 {d.trendBasis && <TrendBadge t={d.trends[i]} />}
               </div>
-              {/* Track: native range (neutral handle) + overlaid benchmark ticks,
-                  both on the shared 0→domainMax scale; numeric anchors below show
-                  the rates you're striving toward. Drag left past best toward 0. */}
+              {/* Track: native range (neutral handle) + benchmark ticks on the
+                  shared 0→worst-in-class scale, with the 0% / worst% anchors marked
+                  at the ends. Drag left to improve (past best toward 0), right to
+                  worsen (toward the worst peer). */}
               <div className="flex-1">
                 <div className="relative flex h-5 items-center">
                   <input
                     type="range" min={0} max={dmax} step={dmax / 200} value={tgt}
                     onChange={(e) => setOne(i, Number(e.target.value))}
-                    disabled={cur <= 0}
-                    className="relative z-0 h-1.5 w-full cursor-pointer accent-gray-500 disabled:cursor-default disabled:opacity-40"
+                    className="relative z-0 h-1.5 w-full cursor-pointer accent-gray-500"
                   />
                   <Marks cur={cur} median={d.medianRate[i]} best={d.bestRate[i]} domainMax={dmax} />
                 </div>
-                {cur > 0 && (
-                  <div className="relative mt-0.5 inset-x-[7px] h-3 text-[9px] font-medium tabular-nums">
-                    {([[d.bestRate[i], C.best], [d.medianRate[i], C.median], [cur, C.you]] as [number, string][]).map(([v, col], k) => (
-                      <span key={k} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPct(v / dmax)}%`, color: col }}>{pct1(v)}</span>
-                    ))}
-                  </div>
-                )}
+                <div className="relative mt-0.5 inset-x-[7px] h-3 text-[9px] tabular-nums text-gray-400">
+                  <span className="absolute left-0">0%</span>
+                  <span className="absolute right-0">{pct1(dmax)}</span>
+                </div>
               </div>
-              <span className="w-28 shrink-0 text-right tabular-nums">
-                <span className="text-gray-400">{pct1(cur)}</span>
-                <span className="mx-1 text-gray-300">→</span>
-                <span className={reduced ? 'font-semibold text-emerald-700' : worse ? 'font-semibold text-rose-600' : 'text-gray-400'}>{pct1(tgt)}</span>
+              <span className="w-36 shrink-0 text-right">
+                <span className="tabular-nums">
+                  <span className="text-gray-400">{pct1(cur)}</span>
+                  <span className="mx-1 text-gray-300">→</span>
+                  <span className={reduced ? 'font-semibold text-emerald-700' : worse ? 'font-semibold text-rose-600' : 'text-gray-400'}>{pct1(tgt)}</span>
+                </span>
+                <span className="block text-[9px] tabular-nums" style={{ color: C.median }}>median {pct1(d.medianRate[i])} <span style={{ color: C.best }}>· best {pct1(d.bestRate[i])}</span></span>
               </span>
             </div>
           )
@@ -186,8 +196,8 @@ export default function WhatIfPanel(d: WhatIfData) {
               <div className="text-xs text-gray-500">1–3★ review rate</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-900">#{d.currentRank} <span className="text-base font-medium text-gray-400">→</span> <span className={rankWorse ? 'text-rose-600' : ''}>#{out.newRank}</span></div>
-              <div className="text-xs text-gray-500">of {d.outletCount} (1 = worst)</div>
+              <div className="text-2xl font-bold text-gray-900">#{d.currentRank} <span className="text-base font-medium text-gray-400">→</span> <span className={rankWorse ? 'text-rose-600' : out.newRank < d.currentRank ? 'text-emerald-600' : ''}>#{out.newRank}</span></div>
+              <div className="text-xs text-gray-500">overall rank · of {d.outletCount} (1 = best)</div>
             </div>
           </div>
         )

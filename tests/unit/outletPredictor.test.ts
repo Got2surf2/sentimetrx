@@ -121,6 +121,22 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(projectRecovery([[0, 2]], current, target)).toBe(0)
   })
 
+  it('conventional rating rank (1 = best avg) + worst-in-class + avg-projection inputs', () => {
+    const { reviews, outlets } = fleet()
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 10 })
+    const best = p.outletSummaries.find((o) => o.placeId === 'F')!  // fewest 1–3★ → highest avg
+    const worst = p.outletSummaries.find((o) => o.placeId === 'A')! // most 1–3★ → lowest avg
+    expect(best.ratingRank).toBe(1)
+    expect(worst.ratingRank).toBe(p.outletSummaries.length)
+    // themeTargets carries the worst-in-class anchor (the max problem rate).
+    const oa = p.themeTargets.find((t) => t.theme === 'Order Accuracy')!
+    expect(oa.worstRate).toBeCloseTo(p.outletWhatIf['A'].currentRate[0], 6) // A is worst on it
+    // outletWhatIf carries the avg components for the star projection.
+    expect(p.outletWhatIf['A'].detractorAvg).toBeCloseTo(2, 6)
+    expect(p.outletWhatIf['A'].happyAvg).toBeCloseTo(5, 6)
+    expect(p.allRatings.length).toBe(p.outletSummaries.length)
+  })
+
   it('buildRecommendedActions: greedy, impact-ranked, de-duplicated', () => {
     // A: 4 reviews fully recoverable (redToMedian 1 on theme 0). B: 3 single-theme
     // reviews on theme 1. Theme 1 has a 2-outlet cohort {B, C} so it's a candidate.

@@ -88,6 +88,9 @@ export type OutletWhatIf = {
   totalReviews: number
   lowCount: number
   lowRate: number
+  avg: number          // outlet's current avg star rating
+  detractorAvg: number // mean rating of its 1–3★ reviews (where a recovered detractor leaves from)
+  happyAvg: number     // mean rating of its 4–5★ reviews (where a recovered detractor lands)
 }
 
 // "Detractors recovered" if the outlet moved each theme's problem rate from
@@ -121,6 +124,7 @@ export type OutletSummary = {
   lowCount: number
   gapToTarget: number
   lowRateRank: number   // 1 = the brand's highest 1–3★ rate (worst); N = best
+  ratingRank: number    // CONVENTIONAL rank by avg star: 1 = best (highest), N = worst
   topIssue: { theme: string; peerPercentile: number } | null // worst-quartile theme
   weaknessCount: number // # bottom-quartile actionable themes
 }
@@ -150,9 +154,10 @@ export type OutletPredictor = {
   outletStrengths: Record<string, ThemeStanding[]> // per outlet, TOP-quartile themes, best first
   themeFocus: Record<string, OutletFocus[]>       // per theme, bottom-quartile outlets, worst first
   themeExemplars: Record<string, Exemplar[]>      // per theme, top 3–5 performers to learn from
-  themeTargets: { theme: string; medianRate: number; bestRate: number }[] // per actionable theme, peer-median + best-quartile problem rate (what-if targets)
+  themeTargets: { theme: string; medianRate: number; bestRate: number; worstRate: number }[] // per actionable theme, peer-median + best-quartile + worst-in-class problem rate
   outletWhatIf: Record<string, OutletWhatIf>      // per outlet, interactive what-if input
   allLowRates: number[]                           // every outlet's current 1–3★ rate (for live rank recompute)
+  allRatings: number[]                            // every outlet's avg star rating (for the conventional 1=best rank)
   // Brand-level QoQ trend per actionable theme — problem rate in the most recent
   // full quarter vs the prior one. Brand-wide (per-outlet per-quarter is too
   // sparse to trust). trendBasis is null when there isn't enough dated data.
@@ -282,7 +287,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
-    themeTargets: [], outletWhatIf: {}, allLowRates: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
+    themeTargets: [], outletWhatIf: {}, allLowRates: [], allRatings: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
     outcomeCorrelations: [],
   }
   if (!K || n < 50) return empty
@@ -314,6 +319,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const actFullIdx = actionableIdx.map((x) => x.j) // full-themes index per actionable theme
   type Agg = {
     placeId: string; reviews: number; avg: number; lowCount: number; lowRate: number
+    detractorAvg: number; happyAvg: number
     problemRate: Record<string, number>; shareInBad: Record<string, number>; badCount: Record<string, number>
     reviews13: number[][] // 1–3★ reviews as actionable-theme index sets (for what-if)
   }
@@ -321,6 +327,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   for (const [pid, rs] of byOutlet) {
     if (rs.length < minOutletReviews) continue
     const low = rs.filter((r) => r.rating <= LOW_MAX)
+    const high = rs.filter((r) => r.rating > LOW_MAX)
     const problemRate: Record<string, number> = {}, shareInBad: Record<string, number> = {}, badCount: Record<string, number> = {}
     for (let j = 0; j < K; j++) {
       const c = low.filter((r) => r.themes[j]).length
@@ -329,7 +336,11 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       shareInBad[themes[j]] = low.length ? c / low.length : 0
     }
     const reviews13 = low.map((r) => actFullIdx.map((j, i) => (r.themes[j] ? i : -1)).filter((i) => i >= 0))
-    aggs.push({ placeId: pid, reviews: rs.length, avg: mean(rs.map((r) => r.rating)), lowCount: low.length, lowRate: low.length / rs.length, problemRate, shareInBad, badCount, reviews13 })
+    aggs.push({
+      placeId: pid, reviews: rs.length, avg: mean(rs.map((r) => r.rating)), lowCount: low.length, lowRate: low.length / rs.length,
+      detractorAvg: mean(low.map((r) => r.rating)), happyAvg: mean(high.map((r) => r.rating)),
+      problemRate, shareInBad, badCount, reviews13,
+    })
   }
   const totalN = aggs.reduce((s, o) => s + o.reviews, 0) || 1
 
@@ -415,12 +426,16 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     return {
       placeId: o.placeId, label: labelOf(o.placeId), reviews: o.reviews, rating: o.avg,
       lowRate: o.lowRate, lowCount: o.lowCount, gapToTarget: Math.max(0, o.lowRate - targetLowRate),
-      lowRateRank: 0, // assigned after the worst-first sort below
+      lowRateRank: 0, ratingRank: 0, // assigned below
       topIssue: w[0] ? { theme: w[0].theme, peerPercentile: w[0].peerPercentile } : null,
       weaknessCount: w.length,
     }
   }).sort((a, b) => b.lowRate - a.lowRate)
   outletSummaries.forEach((o, i) => { o.lowRateRank = i + 1 })
+  // Conventional star-rating rank: 1 = best (highest avg). Independent of the
+  // 1–3★-rate sort above.
+  const allRatings = aggs.map((o) => o.avg)
+  outletSummaries.forEach((o) => { o.ratingRank = 1 + allRatings.filter((r) => r > (o.rating ?? -1)).length })
 
   // ── Interactive what-if inputs. Per actionable theme, the peer-median and
   // best-quartile problem rate (the targets); per outlet, its 1–3★ review
@@ -428,7 +443,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const p25 = (a: number[]): number => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * 0.25)] : 0 }
   const themeTargets = actionableThemes.map((t) => {
     const rates = aggs.map((o) => o.problemRate[t])
-    return { theme: t, medianRate: median(rates), bestRate: p25(rates) }
+    return { theme: t, medianRate: median(rates), bestRate: p25(rates), worstRate: Math.max(0, ...rates) }
   })
   const outletWhatIf: Record<string, OutletWhatIf> = {}
   for (const o of aggs) {
@@ -436,6 +451,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       reviews13: o.reviews13,
       currentRate: actionableThemes.map((t) => o.problemRate[t]),
       totalReviews: o.reviews, lowCount: o.lowCount, lowRate: o.lowRate,
+      avg: o.avg, detractorAvg: o.detractorAvg, happyAvg: o.happyAvg,
     }
   }
   const allLowRates = aggs.map((o) => o.lowRate)
@@ -505,7 +521,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
-    themeTargets, outletWhatIf, allLowRates, themeTrends, trendBasis, recommendedActions,
+    themeTargets, outletWhatIf, allLowRates, allRatings, themeTrends, trendBasis, recommendedActions,
     outcomeCorrelations,
   }
 }
