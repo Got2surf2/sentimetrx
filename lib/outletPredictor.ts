@@ -132,6 +132,8 @@ export type OutletSummary = {
 export type PredictorModel = {
   population: number
   chainAvg: number
+  detractorAvg: number // brand mean rating of 1–3★ reviews (for the playbook avg-★ projection)
+  happyAvg: number     // brand mean rating of 4–5★ reviews
   lowRate: number
   lowCount: number
   bestLowRate: number
@@ -181,6 +183,8 @@ export type RecommendedAction = {
   kind: 'outlet' | 'theme'
   recovered: number    // MARGINAL detractors this action wins back (beyond prior actions)
   cumulative: number   // running total across the playbook
+  rec: { i: number; w: number }[] // per-review recovery (review index → weight) so a
+                                   // client can re-compute the de-duplicated total for any selected subset
   // outlet turnaround:
   placeId?: string
   label?: string
@@ -192,7 +196,7 @@ export type RecommendedAction = {
 }
 
 type ActionCand = {
-  meta: Omit<RecommendedAction, 'recovered' | 'cumulative'>
+  meta: Omit<RecommendedAction, 'recovered' | 'cumulative' | 'rec'>
   rec: { id: string; w: number }[] // per-review recovery weight this action provides
 }
 
@@ -242,7 +246,7 @@ export function buildRecommendedActions(args: {
   })
 
   const recovered = new Map<string, number>()
-  const out: RecommendedAction[] = []
+  const out: (Omit<RecommendedAction, 'rec'> & { _rec: { id: string; w: number }[] })[] = []
   let cumulative = 0
   const pool = [...cands]
   for (let round = 0; round < maxActions && pool.length; round++) {
@@ -256,9 +260,13 @@ export function buildRecommendedActions(args: {
     const chosen = pool.splice(bestI, 1)[0]
     for (const { id, w } of chosen.rec) recovered.set(id, Math.max(recovered.get(id) || 0, w))
     cumulative += bestMarg
-    out.push({ ...chosen.meta, recovered: bestMarg, cumulative })
+    out.push({ ...chosen.meta, recovered: bestMarg, cumulative, _rec: chosen.rec })
   }
-  return out
+  // Remap the recovered-review string keys (only across the chosen actions) to
+  // compact integer indices, so the client can union-merge any selected subset.
+  const idIdx = new Map<string, number>(); let nextIdx = 0
+  for (const a of out) for (const r of a._rec) if (!idIdx.has(r.id)) idIdx.set(r.id, nextIdx++)
+  return out.map(({ _rec, ...a }) => ({ ...a, rec: _rec.map((r) => ({ i: idIdx.get(r.id)!, w: r.w })) }))
 }
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
@@ -284,7 +292,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
 
   const empty: OutletPredictor = {
     available: false,
-    model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
+    model: { population: n, chainAvg: 0, detractorAvg: 0, happyAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
     themeTargets: [], outletWhatIf: {}, allLowRates: [], allRatings: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
@@ -518,7 +526,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
 
   return {
     available: true,
-    model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
+    model: { population: n, chainAvg, detractorAvg: mean(lows.map((r) => r.rating)), happyAvg: mean(highs.map((r) => r.rating)), lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
     themeTargets, outletWhatIf, allLowRates, allRatings, themeTrends, trendBasis, recommendedActions,

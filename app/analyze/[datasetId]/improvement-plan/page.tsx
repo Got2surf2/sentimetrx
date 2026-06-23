@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletPredictor } from '@/lib/outletReport'
 import AnalyticsNav from '../AnalyticsNav'
+import PlaybookPanel from './PlaybookPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,42 +85,21 @@ export default async function ImprovementPlanPage(props: {
                 </p>
               </div>
 
-              {/* Recommended actions — the prioritized, de-duplicated playbook */}
-              {p.recommendedActions.length > 0 && (() => {
-                const total = p.recommendedActions[p.recommendedActions.length - 1].cumulative
-                return (
-                  <>
-                    <h2 className="mt-7 text-sm font-bold text-gray-700">Recommended actions — your prioritized playbook</h2>
-                    <p className="mt-0.5 text-xs text-gray-500">Ranked by 1–3★ guests won back if laggards reach the peer median, de-duplicated so each line is additive — not a wish-list, a sequence.</p>
-                    <ol className="mt-2 space-y-2">
-                      {p.recommendedActions.map((a, i) => (
-                        <li key={i} className="flex items-baseline gap-3 rounded-lg border border-gray-200 p-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-800 text-[11px] font-bold text-white">{i + 1}</span>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-gray-900">
-                              {a.kind === 'outlet' ? `Turn around ${locOnly(a.label || '')}` : `${a.theme} program`}
-                              {a.kind === 'theme' && a.trend === 'up' && <span className="ml-1.5 text-[10px] font-semibold text-rose-600">▲ worsening</span>}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {a.kind === 'outlet'
-                                ? `Bring its ${a.weaknessThemes?.length} bottom-quartile themes to the peer median`
-                                : `Bring this theme to the peer median at its ${a.cohort} bottom-quartile outlets`}
-                            </div>
-                          </div>
-                          <span className="shrink-0 text-right">
-                            <span className="text-sm font-bold text-emerald-600">+{Math.round(a.recovered)}</span>
-                            <span className="block text-[10px] text-gray-400">detractors · {Math.round(a.cumulative)} cum.</span>
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="mt-2 text-xs text-gray-600">
-                      Together this playbook wins back <span className="font-semibold text-gray-900">~{Math.round(total)}</span> of {m.lowCount.toLocaleString()} brand detractors
-                      (~{Math.round((total / m.lowCount) * 100)}%) — a conservative floor (reviews citing an unaddressed theme aren’t counted).
-                    </p>
-                  </>
-                )
-              })()}
+              {/* Recommended actions — the interactive, de-duplicated playbook */}
+              {p.recommendedActions.length > 0 && (
+                <>
+                  <h2 className="mt-7 text-sm font-bold text-gray-700">Recommended actions — build your plan</h2>
+                  <p className="mt-0.5 text-xs text-gray-500">Ranked by 1–3★ guests won back if laggards reach the peer median. Check the actions you’d commit to and watch the brand impact update.</p>
+                  <PlaybookPanel
+                    actions={p.recommendedActions}
+                    population={m.population}
+                    lowCount={m.lowCount}
+                    chainAvg={m.chainAvg}
+                    detractorAvg={m.detractorAvg}
+                    happyAvg={m.happyAvg}
+                  />
+                </>
+              )}
 
               {/* What drives unhappy guests */}
               <h2 className="mt-7 text-sm font-bold text-gray-700">What to fix — the actionable drivers</h2>

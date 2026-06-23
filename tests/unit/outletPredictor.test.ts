@@ -158,6 +158,13 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(actions[1].placeId).toBe('A')
     expect(actions[1].recovered).toBeCloseTo(4, 6)
     expect(actions[1].cumulative).toBeCloseTo(9, 6) // additive, no double-count
+    // Each action ships per-review recovery (`rec`); the union over ALL actions
+    // (max weight per review) equals the greedy cumulative total — so the client
+    // can recompute any selected subset's de-duplicated total.
+    const best = new Map<number, number>()
+    for (const a of actions) for (const r of a.rec) best.set(r.i, Math.max(best.get(r.i) || 0, r.w))
+    let union = 0; best.forEach((w) => { union += w })
+    expect(union).toBeCloseTo(actions[actions.length - 1].cumulative, 6)
   })
 
   it('outcomeCorrelations: brand-level, ranks the operational theme loyalty erosion travels with', () => {
