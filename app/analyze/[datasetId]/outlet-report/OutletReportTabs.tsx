@@ -53,6 +53,27 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
   )
 }
 
+const topWord = (p: number) => (p <= 10 ? 'top 10%' : 'top 25%')
+
+// One theme where this location is a TOP-quartile performer vs all outlets — a
+// peer-relative strength, with a praise quote from a 4–5★ review.
+function StrengthCard({ t }: { t: OutletLever }) {
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-semibold text-gray-900">{t.theme}</span>
+        <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">{topWord(t.peerPercentile)} of locations</span>
+      </div>
+      <div className="mt-1.5 text-xs text-gray-500">
+        Only <span className="font-medium text-gray-700">{pct1(t.problemRate)}</span> of reviews here are 1–3★ and cite this — among the best in the brand. Protect it.
+      </div>
+      {t.quote && (
+        <p className="mt-2 border-l-2 border-emerald-300 pl-2 text-xs italic text-gray-600">“{t.quote}”</p>
+      )}
+    </div>
+  )
+}
+
 function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCount, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; s: Sel }) {
   if (!summary) {
     return (
@@ -102,10 +123,12 @@ function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCoun
         </>
       )}
       {strengths.length > 0 && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
-          <div className="text-xs font-semibold text-emerald-800">Strengths — top quartile vs all outlets</div>
-          <p className="mt-0.5 text-xs text-emerald-800/90">{strengths.map((t) => t.theme).join(', ')}. Protect these — they’re what guests reward.</p>
-        </div>
+        <>
+          <h3 className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">What this location does best — top quartile vs all outlets</h3>
+          <div className="space-y-2.5">
+            {strengths.map((t) => <StrengthCard key={t.theme} t={t} />)}
+          </div>
+        </>
       )}
       <p className="mt-2 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
         Each operational theme is peer-ranked across all outlets by its <span className="font-medium text-gray-500">problem rate</span> — the share of a location’s reviews that are 1–3★ and cite that theme. Weaknesses = bottom quartile (among the worst); strengths = top quartile. Lagging outcomes like brand loyalty are excluded — they’re symptoms of these operational issues, not levers. Quotes are this location’s own 1–3★ reviews. Associational — a prioritization signal, not a guaranteed star change.

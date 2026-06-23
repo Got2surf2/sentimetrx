@@ -30,7 +30,8 @@ export type PredictorInput = {
   themeLabels: string[]
   reviews: PredReview[]
   outlets: PredOutlet[]
-  examples?: PredExample[]
+  examples?: PredExample[]         // 1–3★ quotes per outlet×theme (weakness evidence)
+  positiveExamples?: PredExample[] // 4–5★ quotes per outlet×theme (strength evidence)
   minOutletReviews?: number   // outlet stability floor (default 30)
   minDriverBadN?: number      // theme needs this many 1–3★ mentions to rank as a brand driver (default 20)
   driverLift?: number         // over-representation threshold for a brand driver (default 1.2)
@@ -247,12 +248,16 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   }
 
   // ── Per-outlet weaknesses (bottom quartile) + strengths (top quartile). ──
-  const quoteFor = new Map<string, string>()
-  for (const e of input.examples || []) quoteFor.set(`${e.placeId}|${e.theme}`, e.quote)
-  const standing = (o: Agg, t: string): ThemeStanding => ({
+  // Weakness cards quote a 1–3★ review (the complaint); strength cards quote a
+  // 4–5★ review (the praise) — pass the matching quote map per context.
+  const negQuote = new Map<string, string>()
+  for (const e of input.examples || []) negQuote.set(`${e.placeId}|${e.theme}`, e.quote)
+  const posQuote = new Map<string, string>()
+  for (const e of input.positiveExamples || []) posQuote.set(`${e.placeId}|${e.theme}`, e.quote)
+  const standing = (o: Agg, t: string, qmap: Map<string, string>): ThemeStanding => ({
     theme: t, problemRate: o.problemRate[t], peerPercentile: themePctl[t]?.get(o.placeId) ?? 0,
     shareInBad: o.shareInBad[t], cohortSize: (themeFocus[t] || []).length,
-    exemplars: themeExemplars[t] || [], quote: quoteFor.get(`${o.placeId}|${t}`) || null,
+    exemplars: themeExemplars[t] || [], quote: qmap.get(`${o.placeId}|${t}`) || null,
   })
   const outletLevers: Record<string, ThemeStanding[]> = {}
   const outletStrengths: Record<string, ThemeStanding[]> = {}
@@ -260,11 +265,11 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     const ranked = actionableThemes.filter((t) => themeRanked.has(t))
     outletLevers[o.placeId] = ranked
       .filter((t) => (themePctl[t]?.get(o.placeId) ?? 0) >= BOTTOM_PCTL && o.problemRate[t] > 0)
-      .map((t) => standing(o, t))
+      .map((t) => standing(o, t, negQuote))
       .sort((a, b) => b.peerPercentile - a.peerPercentile || b.problemRate - a.problemRate)
     outletStrengths[o.placeId] = ranked
       .filter((t) => (themePctl[t]?.get(o.placeId) ?? 100) <= TOP_PCTL)
-      .map((t) => standing(o, t))
+      .map((t) => standing(o, t, posQuote))
       .sort((a, b) => a.peerPercentile - b.peerPercentile)
   }
 

@@ -287,6 +287,7 @@ type Scan = {
   themeLabels: string[]       // ordered theme labels (matchers) for the predictor
   reviewMatrix: PredReview[]  // per rated text-review: theme-membership vector
   lowExamples: PredExample[]  // one 1–3★ quote per (outlet, theme)
+  highExamples: PredExample[] // one 4–5★ (praise) quote per (outlet, theme)
 }
 
 // One pass over a dataset's flat rows + taxonomy assertions, building the
@@ -335,6 +336,8 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   const reviewMatrix: PredReview[] = []
   const lowExamples: PredExample[] = []
   const lowSeen = new Set<string>()
+  const highExamples: PredExample[] = []
+  const highSeen = new Set<string>()
 
   // Pass over flat rows: rating + review counts, AND theme matching/sentiment.
   for (const r of flat) {
@@ -351,6 +354,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
         const { pos, neg } = lexiconScore(text)
         const polarity = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neutral'
         const isLow = !!rt && rt <= 3
+        const isHigh = !!rt && rt >= 4
         let matchedAny = false
         // Per-review theme-membership vector for the predictor (bare keyword
         // presence, same matchers as the leaderboard). The 1–3★ vs 4–5★ split
@@ -369,6 +373,13 @@ async function scanDataset(datasetId: string): Promise<Scan> {
             if (!lowSeen.has(k)) {
               const q = extractSentence({ full: text, ev: text })
               if (q) { lowSeen.add(k); lowExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
+            }
+          } else if (isHigh && polarity === 'pos') {
+            // A 4–5★ review citing the theme = "what guests praise" — strength evidence.
+            const k = `${o.placeId}|${tm.label}`
+            if (!highSeen.has(k)) {
+              const q = extractSentence({ full: text, ev: text })
+              if (q) { highSeen.add(k); highExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
             }
           }
           const key = tm.label
@@ -422,7 +433,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     themeAvailable: themeMatchers.length > 0,
     dimAvailable: tax.length > 0,
     flat, labelFor,
-    themeLabels, reviewMatrix, lowExamples,
+    themeLabels, reviewMatrix, lowExamples, highExamples,
   }
 }
 
@@ -570,6 +581,7 @@ function buildPredictorFromScan(scan: Scan): OutletPredictor {
       rating: o.ratingN ? o.ratingSum / o.ratingN : null,
     })),
     examples: scan.lowExamples,
+    positiveExamples: scan.highExamples,
   })
 }
 
