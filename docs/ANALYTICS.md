@@ -538,7 +538,9 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 
 ---
 
-## Outlet Report (Outlets tab)
+> **Navigation (consolidated 2026-06-23):** the three multi-location views — **Brand Health** (`improvement-plan`), **Leaderboard** (`outlet-leaderboard`), and **Outlet Deep-Dive** (`outlet-report`) — now live under a single **"Advanced Analytics"** sub-tab in TextMine (replacing the former separate "Outlets" + "Leaderboard" sub-tabs). The TextMine sub-tab links to **Brand Health** (the default landing); a shared **`AnalyticsNav`** header (`app/analyze/[datasetId]/AnalyticsNav.tsx`) on all three routes switches between them (they stay separate server routes — no recompute/refactor — but feel like one tabbed area). Same gate: `google_reviews` + `outletCount >= 5`. Where older text below says "Outlets sub-tab" / "Leaderboard sub-tab" / "Improvement plan button on the Leaderboard," read it as a tab within Advanced Analytics.
+
+## Outlet Report (Advanced Analytics ▸ Outlet Deep-Dive)
 
 > **Added 2026-06-17.** A one-page **per-outlet vs. peer-group** summary for multi-location review brands. Answers "what does *this* location excel at / need to work on, relative to its sibling outlets?" — the building block was missing before (per-location aggregation and taxonomy existed, but nothing compared one outlet to the group).
 

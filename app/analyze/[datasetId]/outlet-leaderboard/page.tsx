@@ -5,12 +5,12 @@
 // level view, deliberately NOT a tab inside the single-location report. Reached
 // via the "Leaderboard" sub-tab in TextMine. See lib/outletReport.ts.
 
-import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletLeaderboard } from '@/lib/outletReport'
 import PrintButton from '../outlet-report/PrintButton'
+import AnalyticsNav from '../AnalyticsNav'
 import LeaderboardClient from './LeaderboardClient'
 
 export const dynamic = 'force-dynamic'
@@ -35,18 +35,7 @@ export default async function OutletLeaderboardPage(props: {
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
-        <div className="mb-4 flex items-center justify-between print:hidden">
-          <Link href={`/analyze/${datasetId}/textmine`} className="text-sm font-medium text-gray-500 hover:text-gray-700">← Back to TextMine</Link>
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/analyze/${datasetId}/improvement-plan`}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
-            >
-              Improvement plan →
-            </Link>
-            <PrintButton />
-          </div>
-        </div>
+        <AnalyticsNav datasetId={datasetId} active="leaderboard" action={<PrintButton />} />
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
           <div className="border-b border-gray-200 pb-4">

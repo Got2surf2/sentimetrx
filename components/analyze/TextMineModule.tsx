@@ -1889,33 +1889,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               )
             })}
 
-            {/* Outlets — a per-outlet vs-peers report for multi-location review
-                brands. It's a server-rendered route, so this sub-tab is a link
-                (navigates) rather than an in-place swap. Same gate as the old
-                top-level tab: google_reviews + ≥5 outlets. */}
+            {/* Advanced Analytics — the consolidated home for multi-location
+                review brands: brand health (improvement plan: opportunity,
+                recommended actions, drivers/trends, loyalty correlation),
+                leaderboard, and per-outlet deep-dive (action plan + what-if +
+                GM export). Server-rendered routes behind a shared sub-nav, so
+                this is a link (lands on Brand Health). Same gate as before:
+                google_reviews + ≥5 outlets. */}
             {datasetSource === 'google_reviews' && (outletCount || 0) >= 5 && (
               <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Link href={'/analyze/' + datasetId + '/outlet-report'}
+                <Link href={'/analyze/' + datasetId + '/improvement-plan'}
                   style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
-                  Outlets
+                  Advanced Analytics
                 </Link>
                 <span style={{ paddingRight: 10 }}>
-                  <HelpHint title="Outlets" placement="bottom">A per-outlet, one-page report: each location&apos;s star rating and percentile rank vs. the brand&apos;s other outlets, plus the service themes where it over- or under-performs its peers.</HelpHint>
-                </span>
-              </div>
-            )}
-
-            {/* Leaderboard — the brand-level inverse of Outlets: for each theme &
-                dimension, the top/bottom outlets. Same gate; its own server route
-                (NOT a tab inside the single-location report). */}
-            {datasetSource === 'google_reviews' && (outletCount || 0) >= 5 && (
-              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Link href={'/analyze/' + datasetId + '/outlet-leaderboard'}
-                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
-                  Leaderboard
-                </Link>
-                <span style={{ paddingRight: 10 }}>
-                  <HelpHint title="Leaderboard" placement="bottom">A brand-level ranking: for each theme and dimension, the top and bottom outlets by net-positive sentiment — so you can see who leads and who lags across the whole chain.</HelpHint>
+                  <HelpHint title="Advanced Analytics" placement="bottom">Brand-health diagnostics + per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers &amp; trends, the leaderboard, and each location&apos;s action plan with an interactive what-if modeler.</HelpHint>
                 </span>
               </div>
             )}

@@ -11,6 +11,7 @@ import { getUserContext } from '@/lib/userContext'
 import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
+import AnalyticsNav from '../AnalyticsNav'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,16 +65,11 @@ export default async function OutletReportPage(props: {
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
+        <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
+          s ? <a href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700">Export GM plan</a> : undefined
+        } />
         <div className="mb-4 flex items-center justify-between print:hidden">
           <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
-          {s && (
-            <a
-              href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
-            >
-              Export GM plan
-            </a>
-          )}
         </div>
 
         {!s ? (
