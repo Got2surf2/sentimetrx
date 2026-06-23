@@ -79,6 +79,35 @@ export type OutletFocus = {
   peerPercentile: number
 }
 
+// Interactive what-if data for one outlet: its 1–3★ reviews as ACTIONABLE-theme
+// index sets, plus the outlet's current per-theme problem rate. The client
+// toggles themes + a target and recomputes "detractors recovered" live.
+export type OutletWhatIf = {
+  reviews13: number[][] // per 1–3★ review, the actionable-theme indices it cites
+  currentRate: number[] // this outlet's problem rate per actionable theme (index-aligned)
+  totalReviews: number
+  lowCount: number
+  lowRate: number
+}
+
+// "Detractors recovered" if the outlet matched `targetRate` on the `selected`
+// themes. Counts ONLY reviews whose issues are CONFINED to the selected themes
+// (a review also citing an unfixed theme stays a detractor — honest about
+// co-occurrence), each weighted by how far the outlet closes the gap to target
+// (target is a rate, not zero, so this is partial + conservative).
+export function projectRecovery(
+  reviews13: number[][], selected: Set<number>, currentRate: number[], targetRate: number[],
+): number {
+  let recovered = 0
+  for (const r of reviews13) {
+    if (!r.length || !r.every((i) => selected.has(i))) continue
+    let w = 0
+    for (const i of r) w += currentRate[i] > 0 ? Math.max(0, (currentRate[i] - targetRate[i]) / currentRate[i]) : 0
+    recovered += w / r.length
+  }
+  return recovered
+}
+
 export type OutletSummary = {
   placeId: string
   label: string
@@ -117,6 +146,9 @@ export type OutletPredictor = {
   outletStrengths: Record<string, ThemeStanding[]> // per outlet, TOP-quartile themes, best first
   themeFocus: Record<string, OutletFocus[]>       // per theme, bottom-quartile outlets, worst first
   themeExemplars: Record<string, Exemplar[]>      // per theme, top 3–5 performers to learn from
+  themeTargets: { theme: string; medianRate: number; bestRate: number }[] // per actionable theme, peer-median + best-quartile problem rate (what-if targets)
+  outletWhatIf: Record<string, OutletWhatIf>      // per outlet, interactive what-if input
+  allLowRates: number[]                           // every outlet's current 1–3★ rate (for live rank recompute)
 }
 
 // Lagging-outcome themes — predicted BY the operational drivers, not directly
@@ -150,6 +182,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
+    themeTargets: [], outletWhatIf: {}, allLowRates: [],
   }
   if (!K || n < 50) return empty
 
@@ -177,9 +210,11 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const byOutlet = new Map<string, PredReview[]>()
   for (const r of revs) { const a = byOutlet.get(r.placeId) || []; a.push(r); byOutlet.set(r.placeId, a) }
   const outletMeta = new Map(input.outlets.map((o) => [o.placeId, o]))
+  const actFullIdx = actionableIdx.map((x) => x.j) // full-themes index per actionable theme
   type Agg = {
     placeId: string; reviews: number; avg: number; lowCount: number; lowRate: number
     problemRate: Record<string, number>; shareInBad: Record<string, number>; badCount: Record<string, number>
+    reviews13: number[][] // 1–3★ reviews as actionable-theme index sets (for what-if)
   }
   const aggs: Agg[] = []
   for (const [pid, rs] of byOutlet) {
@@ -192,7 +227,8 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       problemRate[themes[j]] = c / rs.length
       shareInBad[themes[j]] = low.length ? c / low.length : 0
     }
-    aggs.push({ placeId: pid, reviews: rs.length, avg: mean(rs.map((r) => r.rating)), lowCount: low.length, lowRate: low.length / rs.length, problemRate, shareInBad, badCount })
+    const reviews13 = low.map((r) => actFullIdx.map((j, i) => (r.themes[j] ? i : -1)).filter((i) => i >= 0))
+    aggs.push({ placeId: pid, reviews: rs.length, avg: mean(rs.map((r) => r.rating)), lowCount: low.length, lowRate: low.length / rs.length, problemRate, shareInBad, badCount, reviews13 })
   }
   const totalN = aggs.reduce((s, o) => s + o.reviews, 0) || 1
 
@@ -285,10 +321,29 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   }).sort((a, b) => b.lowRate - a.lowRate)
   outletSummaries.forEach((o, i) => { o.lowRateRank = i + 1 })
 
+  // ── Interactive what-if inputs. Per actionable theme, the peer-median and
+  // best-quartile problem rate (the targets); per outlet, its 1–3★ review
+  // theme-sets + current per-theme problem rate. ──
+  const p25 = (a: number[]): number => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * 0.25)] : 0 }
+  const themeTargets = actionableThemes.map((t) => {
+    const rates = aggs.map((o) => o.problemRate[t])
+    return { theme: t, medianRate: median(rates), bestRate: p25(rates) }
+  })
+  const outletWhatIf: Record<string, OutletWhatIf> = {}
+  for (const o of aggs) {
+    outletWhatIf[o.placeId] = {
+      reviews13: o.reviews13,
+      currentRate: actionableThemes.map((t) => o.problemRate[t]),
+      totalReviews: o.reviews, lowCount: o.lowCount, lowRate: o.lowRate,
+    }
+  }
+  const allLowRates = aggs.map((o) => o.lowRate)
+
   return {
     available: true,
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
+    themeTargets, outletWhatIf, allLowRates,
   }
 }

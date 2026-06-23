@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { OutletReport, ThemeDelta, ComparisonBlock, TrendPoint } from '@/lib/outletReport'
 import type { OutletLever, OutletSummary, PredictorModel } from '@/lib/outletPredictor'
+import WhatIfPanel, { type WhatIfData } from './WhatIfPanel'
 
 type Sel = NonNullable<OutletReport['selected']>
 
@@ -74,7 +75,7 @@ function StrengthCard({ t }: { t: OutletLever }) {
   )
 }
 
-function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCount, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; s: Sel }) {
+function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCount, whatIf, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; whatIf: WhatIfData | null; s: Sel }) {
   if (!summary) {
     return (
       <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
@@ -122,6 +123,7 @@ function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCoun
           </div>
         </>
       )}
+      {whatIf && whatIf.reviews13.length > 0 && whatIf.themes.length > 0 && <WhatIfPanel {...whatIf} />}
       {strengths.length > 0 && (
         <>
           <h3 className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">What this location does best — top quartile vs all outlets</h3>
@@ -237,7 +239,7 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
 
 type Tab = 'action' | 'summary' | 'themes' | 'dimensions'
 
-export default function OutletReportTabs({ selected: s, levers, strengths, summary, model, brandDriver, outletCount }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number }) {
+export default function OutletReportTabs({ selected: s, levers, strengths, summary, model, brandDriver, outletCount, whatIf }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; whatIf: WhatIfData | null }) {
   const [tab, setTab] = useState<Tab>('action')
   const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
@@ -261,7 +263,7 @@ export default function OutletReportTabs({ selected: s, levers, strengths, summa
 
       <div className="mt-5">
         {/* ACTION PLAN */}
-        {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} brandDriver={brandDriver} outletCount={outletCount} s={s} />}
+        {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} brandDriver={brandDriver} outletCount={outletCount} whatIf={whatIf} s={s} />}
 
         {/* THEMES */}
         {tab === 'themes' && (

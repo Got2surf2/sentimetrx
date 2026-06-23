@@ -43,6 +43,23 @@ export default async function OutletReportPage(props: {
   const strengths = s ? (predictor.outletStrengths[s.placeId] || []) : []
   const summary = s ? predictor.outletSummaries.find((o) => o.placeId === s.placeId) : undefined
 
+  // Interactive what-if input for the selected outlet (only its own data ships to the client).
+  const wi = s ? predictor.outletWhatIf[s.placeId] : undefined
+  const whatIf = wi && summary ? {
+    themes: predictor.actionableThemes,
+    reviews13: wi.reviews13,
+    currentRate: wi.currentRate,
+    medianRate: predictor.themeTargets.map((t) => t.medianRate),
+    bestRate: predictor.themeTargets.map((t) => t.bestRate),
+    totalReviews: wi.totalReviews,
+    lowCount: wi.lowCount,
+    lowRate: wi.lowRate,
+    otherLowRates: predictor.outletSummaries.filter((o) => o.placeId !== s!.placeId).map((o) => o.lowRate),
+    currentRank: summary.lowRateRank,
+    outletCount: predictor.outletSummaries.length,
+    defaultSelected: levers.map((l) => predictor.actionableThemes.indexOf(l.theme)).filter((i) => i >= 0),
+  } : null
+
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
@@ -101,6 +118,7 @@ export default async function OutletReportPage(props: {
               selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
               brandDriver={predictor.brandLevers[0]?.theme || null}
               outletCount={predictor.outletSummaries.length}
+              whatIf={whatIf}
             />
           </div>
         )}

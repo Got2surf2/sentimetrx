@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPredictor, type PredReview, type PredOutlet } from '@/lib/outletPredictor'
+import { buildPredictor, projectRecovery, type PredReview, type PredOutlet } from '@/lib/outletPredictor'
 
 // The predictor is a pure, deterministic engine for the "recover your 1–3★
 // guests" frame. Two layers: brand over-representation drivers (strategic) and
@@ -100,6 +100,26 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     // The weakness card carries the same list.
     const aT1 = (p.outletLevers['A'] || []).find((l) => l.theme === 'T1')
     expect(aT1?.exemplars.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('projectRecovery: confined reviews only, scaled to target (co-occurrence honest)', () => {
+    // Theme 0 current rate 0.20 → target 0 (full fix); theme 1 current 0.10 → target 0.
+    const current = [0.20, 0.10], target = [0, 0]
+    const reviews: number[][] = [
+      [0],     // confined to theme 0 → fully recovered (cut 100%)
+      [1],     // confined to theme 1 → fully recovered
+      [0, 1],  // both selected → recovered
+      [0, 2],  // cites theme 2 (NOT selected) → stays a detractor
+      [],      // no actionable theme → not counted
+    ]
+    const sel = new Set([0, 1])
+    // 3 confined reviews ([0],[1],[0,1]), each cut 100% → recovered ≈ 3.
+    expect(projectRecovery(reviews, sel, current, target)).toBeCloseTo(3, 6)
+    // Half-fix theme 0 (target = half its current) → its confined reviews recover ~50%.
+    const half = projectRecovery([[0]], new Set([0]), [0.20], [0.10])
+    expect(half).toBeCloseTo(0.5, 6)
+    // A review citing an unselected theme is never recovered.
+    expect(projectRecovery([[0, 2]], sel, current, target)).toBe(0)
   })
 
   it('attaches a quote to the matching outlet+theme weakness', () => {
