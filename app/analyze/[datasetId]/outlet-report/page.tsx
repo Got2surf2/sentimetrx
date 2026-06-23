@@ -91,7 +91,11 @@ export default async function OutletReportPage(props: {
             </div>
 
             {/* Action Plan / Summary / Themes / Dimensions tabs (client) */}
-            <OutletReportTabs selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model} />
+            <OutletReportTabs
+              selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
+              brandDriver={predictor.brandLevers[0]?.theme || null}
+              outletCount={predictor.outletSummaries.length}
+            />
           </div>
         )}
       </div>

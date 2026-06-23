@@ -61,6 +61,7 @@ export type ThemeStanding = {
   problemRate: number   // share of the outlet's reviews that are 1–3★ and cite the theme
   peerPercentile: number // 0–100, % of outlets this one is WORSE than (higher = worse)
   shareInBad: number    // share of the outlet's 1–3★ reviews citing the theme (context)
+  cohortSize: number    // # outlets in the bottom quartile on this theme (the peer cohort)
   exemplar: Exemplar | null // a top-quartile (best) peer on this theme — who to learn from
   quote: string | null  // a verbatim 1–3★ quote from this outlet citing the theme
 }
@@ -85,6 +86,7 @@ export type OutletSummary = {
   lowRate: number
   lowCount: number
   gapToTarget: number
+  lowRateRank: number   // 1 = the brand's highest 1–3★ rate (worst); N = best
   topIssue: { theme: string; peerPercentile: number } | null // worst-quartile theme
   weaknessCount: number // # bottom-quartile actionable themes
 }
@@ -239,7 +241,8 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   for (const e of input.examples || []) quoteFor.set(`${e.placeId}|${e.theme}`, e.quote)
   const standing = (o: Agg, t: string): ThemeStanding => ({
     theme: t, problemRate: o.problemRate[t], peerPercentile: themePctl[t]?.get(o.placeId) ?? 0,
-    shareInBad: o.shareInBad[t], exemplar: themeBestPeer[t] || null, quote: quoteFor.get(`${o.placeId}|${t}`) || null,
+    shareInBad: o.shareInBad[t], cohortSize: (themeFocus[t] || []).length,
+    exemplar: themeBestPeer[t] || null, quote: quoteFor.get(`${o.placeId}|${t}`) || null,
   })
   const outletLevers: Record<string, ThemeStanding[]> = {}
   const outletStrengths: Record<string, ThemeStanding[]> = {}
@@ -260,10 +263,12 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     return {
       placeId: o.placeId, label: labelOf(o.placeId), reviews: o.reviews, rating: o.avg,
       lowRate: o.lowRate, lowCount: o.lowCount, gapToTarget: Math.max(0, o.lowRate - targetLowRate),
+      lowRateRank: 0, // assigned after the worst-first sort below
       topIssue: w[0] ? { theme: w[0].theme, peerPercentile: w[0].peerPercentile } : null,
       weaknessCount: w.length,
     }
   }).sort((a, b) => b.lowRate - a.lowRate)
+  outletSummaries.forEach((o, i) => { o.lowRateRank = i + 1 })
 
   return {
     available: true,

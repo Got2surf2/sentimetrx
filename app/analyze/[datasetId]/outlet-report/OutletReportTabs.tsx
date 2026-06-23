@@ -31,7 +31,8 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
         <span className="shrink-0 rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700">{rankWord(l.peerPercentile)} of locations</span>
       </div>
       <div className="mt-1.5 text-xs text-gray-500">
-        <span className="font-medium text-gray-700">{pct1(l.problemRate)}</span> of all reviews here are 1–3★ and cite this ({pct1(l.shareInBad)} of its 1–3★ reviews) — among the worst in the brand.
+        <span className="font-medium text-gray-700">{pct1(l.problemRate)}</span> of all reviews here are 1–3★ and cite this ({pct1(l.shareInBad)} of its 1–3★ reviews).
+        {l.cohortSize > 1 && <> You’re one of <span className="font-medium text-gray-700">{l.cohortSize}</span> outlets in the bottom quartile here.</>}
       </div>
       {l.quote && (
         <p className="mt-2 border-l-2 border-rose-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
@@ -46,7 +47,7 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
   )
 }
 
-function ActionPlan({ levers, strengths, summary, model, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; s: Sel }) {
+function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCount, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; s: Sel }) {
   if (!summary) {
     return (
       <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
@@ -55,14 +56,20 @@ function ActionPlan({ levers, strengths, summary, model, s }: { levers: OutletLe
     )
   }
   const atPar = summary.gapToTarget <= 0.01
+  // Item 2 — connect this outlet to the chain's systemic driver.
+  const driverState: 'weak' | 'strong' | 'mid' | null = !brandDriver ? null
+    : levers.some((l) => l.theme === brandDriver) ? 'weak'
+    : strengths.some((l) => l.theme === brandDriver) ? 'strong' : 'mid'
   return (
     <div className="space-y-4">
       <div className={`rounded-lg p-5 ${atPar ? 'bg-emerald-50/60' : 'bg-gray-50'}`}>
         <h2 className="text-sm font-bold text-gray-700">Recovering this location’s unhappy guests</h2>
         <p className="mt-1 text-sm leading-relaxed text-gray-600">
           <span className="font-semibold text-gray-900">{pct1(summary.lowRate)}</span> of {s.name}’s reviews are 1–3★
-          ({summary.lowCount.toLocaleString()} of {s.reviews.toLocaleString()}) — versus about{' '}
-          <span className="font-semibold text-gray-900">{pct1(model.targetLowRate)}</span> at the brand’s best-run outlets.{' '}
+          ({summary.lowCount.toLocaleString()} of {s.reviews.toLocaleString()}) — the{' '}
+          <span className="font-semibold text-gray-900">#{summary.lowRateRank}</span> highest 1–3★ rate of {outletCount} outlets (1 = worst),
+          versus <span className="font-semibold text-gray-900">{pct1(model.lowRate)}</span> brand average and{' '}
+          <span className="font-semibold text-gray-900">{pct1(model.bestLowRate)}</span> at your best location.{' '}
           {levers.length
             ? `Below are the themes where this location ranks among the worst in the brand — its real, fixable weaknesses.`
             : atPar
@@ -70,6 +77,16 @@ function ActionPlan({ levers, strengths, summary, model, s }: { levers: OutletLe
               : 'It isn’t a bottom-quartile performer on any single operational theme; its 1–3★ reviews are spread across topics. Work the operational basics.'}
         </p>
       </div>
+      {driverState && (
+        <div className={`rounded-lg border p-3 text-xs leading-relaxed ${driverState === 'weak' ? 'border-rose-200 bg-rose-50/60 text-rose-800' : driverState === 'strong' ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+          The chain’s one <span className="font-semibold">systemic</span> issue is <span className="font-semibold">{brandDriver}</span> —{' '}
+          {driverState === 'weak'
+            ? <>and you’re <span className="font-semibold">bottom-quartile</span> on it. That makes it your highest-leverage fix.</>
+            : driverState === 'strong'
+              ? <>and you’re <span className="font-semibold">top-quartile</span> on it. One less thing to worry about — protect it.</>
+              : <>you’re middle-of-the-pack on it. Not your biggest problem, but worth watching.</>}
+        </div>
+      )}
       {levers.length > 0 && (
         <>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Where this location ranks worst vs all outlets — work these</h3>
@@ -191,7 +208,7 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
 
 type Tab = 'action' | 'summary' | 'themes' | 'dimensions'
 
-export default function OutletReportTabs({ selected: s, levers, strengths, summary, model }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel }) {
+export default function OutletReportTabs({ selected: s, levers, strengths, summary, model, brandDriver, outletCount }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number }) {
   const [tab, setTab] = useState<Tab>('action')
   const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
@@ -215,7 +232,7 @@ export default function OutletReportTabs({ selected: s, levers, strengths, summa
 
       <div className="mt-5">
         {/* ACTION PLAN */}
-        {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} s={s} />}
+        {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} brandDriver={brandDriver} outletCount={outletCount} s={s} />}
 
         {/* THEMES */}
         {tab === 'themes' && (
