@@ -158,12 +158,99 @@ export type OutletPredictor = {
   // sparse to trust). trendBasis is null when there isn't enough dated data.
   themeTrends: Record<string, { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }>
   trendBasis: { recent: string; prior: string } | null
+  recommendedActions: RecommendedAction[] // greedy impact-ranked playbook (de-duplicated)
 }
 
 // Lagging-outcome themes — predicted BY the operational drivers, not directly
 // actionable by a store manager (you fix loyalty by fixing order accuracy,
 // food, service…). Matched on theme name.
 const OUTCOME_RE = /loyalty|brand experience|brand[- ]?love|retention|net promoter|\bnps\b|would (not )?recommend/i
+
+// ─── recommended actions (greedy, impact-ranked, de-duplicated) ───
+
+export type RecommendedAction = {
+  kind: 'outlet' | 'theme'
+  recovered: number    // MARGINAL detractors this action wins back (beyond prior actions)
+  cumulative: number   // running total across the playbook
+  // outlet turnaround:
+  placeId?: string
+  label?: string
+  weaknessThemes?: string[]
+  // theme program:
+  theme?: string
+  cohort?: number      // # bottom-quartile outlets the program touches
+  trend?: 'up' | 'down' | 'flat'
+}
+
+type ActionCand = {
+  meta: Omit<RecommendedAction, 'recovered' | 'cumulative'>
+  rec: { id: string; w: number }[] // per-review recovery weight this action provides
+}
+
+// Greedy set-cover over the brand's 1–3★ review pool. Each round picks the
+// action with the highest MARGINAL recovery (beyond what's already been won
+// back), so the playbook is additive, not double-counted. Outlet turnarounds
+// fix all of an outlet's themes to median; theme programs fix one theme at its
+// bottom-quartile cohort (and so only recover that-theme-only reviews).
+export function buildRecommendedActions(args: {
+  outlets: { placeId: string; label: string; reviews13: number[][]; redToMedian: number[]; weaknessThemes: string[] }[]
+  actionableThemes: string[]
+  themeCohorts: Record<string, string[]>          // theme → bottom-quartile placeIds
+  themeTrends: Record<string, { direction: 'up' | 'down' | 'flat' }>
+  maxActions?: number
+  minMarginal?: number
+}): RecommendedAction[] {
+  const maxActions = args.maxActions ?? 8
+  const minMarginal = args.minMarginal ?? 2
+  const byId = new Map(args.outlets.map((o) => [o.placeId, o]))
+  const cands: ActionCand[] = []
+
+  // Outlet turnarounds: recovery gated by each review's least-improved theme.
+  for (const o of args.outlets) {
+    if (!o.reviews13.length || !o.redToMedian.some((r) => r > 0)) continue
+    const rec: { id: string; w: number }[] = []
+    o.reviews13.forEach((themeIdxs, k) => {
+      if (!themeIdxs.length) return
+      let min = Infinity
+      for (const i of themeIdxs) { const r = o.redToMedian[i] || 0; if (r < min) min = r }
+      if (min > 0) rec.push({ id: `${o.placeId}#${k}`, w: min })
+    })
+    if (rec.length) cands.push({ meta: { kind: 'outlet', placeId: o.placeId, label: o.label, weaknessThemes: o.weaknessThemes }, rec })
+  }
+
+  // Theme programs: recover only single-theme (T-only) reviews at the cohort.
+  args.actionableThemes.forEach((t, ti) => {
+    const cohort = args.themeCohorts[t] || []
+    if (cohort.length < 2) return
+    const rec: { id: string; w: number }[] = []
+    for (const pid of cohort) {
+      const o = byId.get(pid); if (!o) continue
+      o.reviews13.forEach((themeIdxs, k) => {
+        if (themeIdxs.length === 1 && themeIdxs[0] === ti) { const w = o.redToMedian[ti] || 0; if (w > 0) rec.push({ id: `${pid}#${k}`, w }) }
+      })
+    }
+    if (rec.length) cands.push({ meta: { kind: 'theme', theme: t, cohort: cohort.length, trend: args.themeTrends[t]?.direction }, rec })
+  })
+
+  const recovered = new Map<string, number>()
+  const out: RecommendedAction[] = []
+  let cumulative = 0
+  const pool = [...cands]
+  for (let round = 0; round < maxActions && pool.length; round++) {
+    let bestI = -1, bestMarg = 0
+    for (let i = 0; i < pool.length; i++) {
+      let m = 0
+      for (const { id, w } of pool[i].rec) m += Math.max(0, w - (recovered.get(id) || 0))
+      if (m > bestMarg) { bestMarg = m; bestI = i }
+    }
+    if (bestI < 0 || bestMarg < minMarginal) break
+    const chosen = pool.splice(bestI, 1)[0]
+    for (const { id, w } of chosen.rec) recovered.set(id, Math.max(recovered.get(id) || 0, w))
+    cumulative += bestMarg
+    out.push({ ...chosen.meta, recovered: bestMarg, cumulative })
+  }
+  return out
+}
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
 const median = (a: number[]) => {
@@ -191,7 +278,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
-    themeTargets: [], outletWhatIf: {}, allLowRates: [], themeTrends: {}, trendBasis: null,
+    themeTargets: [], outletWhatIf: {}, allLowRates: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
   }
   if (!K || n < 50) return empty
 
@@ -376,11 +463,26 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     }
   }
 
+  // ── Recommended actions: greedy, impact-ranked, de-duplicated playbook. ──
+  const medByIdx = themeTargets.map((t) => t.medianRate)
+  const recommendedActions = buildRecommendedActions({
+    outlets: aggs.map((o) => ({
+      placeId: o.placeId,
+      label: labelOf(o.placeId),
+      reviews13: o.reviews13,
+      redToMedian: actionableThemes.map((t, i) => { const c = o.problemRate[t]; return c > 0 ? Math.max(0, (c - medByIdx[i]) / c) : 0 }),
+      weaknessThemes: (outletLevers[o.placeId] || []).map((l) => l.theme),
+    })),
+    actionableThemes,
+    themeCohorts: Object.fromEntries(actionableThemes.map((t) => [t, (themeFocus[t] || []).map((f) => f.placeId)])),
+    themeTrends,
+  })
+
   return {
     available: true,
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
-    themeTargets, outletWhatIf, allLowRates, themeTrends, trendBasis,
+    themeTargets, outletWhatIf, allLowRates, themeTrends, trendBasis, recommendedActions,
   }
 }

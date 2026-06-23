@@ -46,7 +46,7 @@ tests/
 │   ├── entityMentionDetector.test.ts
 │   ├── guardrails.test.ts
 │   ├── nameExtractor.test.ts  # post-hoc AI name extractor — gating + JSON parsing + defense-in-depth regex
-│   ├── outletPredictor.test.ts # "recover 1–3★ guests" predictor — 1–3★ rate/spread, brand over-rep driver vs loud-but-neutral vs excluded outcome theme, peer-quartile weaknesses/strengths, themeFocus, top-3–5 learn-from list (distinct, best-first), quote attach + projectRecovery what-if (recovery gated by least-improved theme, co-occurrence-honest)
+│   ├── outletPredictor.test.ts # "recover 1–3★ guests" predictor — 1–3★ rate/spread, brand over-rep driver vs loud-but-neutral vs excluded outcome theme, peer-quartile weaknesses/strengths, themeFocus, top-3–5 learn-from list (distinct, best-first), quote attach + projectRecovery what-if (least-improved-theme gate) + buildRecommendedActions greedy playbook (marginal impact, de-duped)
 │   ├── personaExtractor.test.ts
 │   ├── phase3DualWrite.test.ts
 │   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation

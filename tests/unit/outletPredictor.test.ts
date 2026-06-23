@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPredictor, projectRecovery, type PredReview, type PredOutlet } from '@/lib/outletPredictor'
+import { buildPredictor, projectRecovery, buildRecommendedActions, type PredReview, type PredOutlet } from '@/lib/outletPredictor'
 
 // The predictor is a pure, deterministic engine for the "recover your 1–3★
 // guests" frame. Two layers: brand over-representation drivers (strategic) and
@@ -119,6 +119,29 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(projectRecovery([[0, 1]], [0.10, 0.10], [0.02, 0.08])).toBeCloseTo(0.2, 6)
     // A review citing a theme left unchanged is never recovered.
     expect(projectRecovery([[0, 2]], current, target)).toBe(0)
+  })
+
+  it('buildRecommendedActions: greedy, impact-ranked, de-duplicated', () => {
+    // A: 4 reviews fully recoverable (redToMedian 1 on theme 0). B: 3 single-theme
+    // reviews on theme 1. Theme 1 has a 2-outlet cohort {B, C} so it's a candidate.
+    const actions = buildRecommendedActions({
+      outlets: [
+        { placeId: 'A', label: 'Brand — A', reviews13: [[0], [0], [0], [0]], redToMedian: [1, 0], weaknessThemes: ['T0'] },
+        { placeId: 'B', label: 'Brand — B', reviews13: [[1], [1], [1]], redToMedian: [0, 1], weaknessThemes: ['T1'] },
+        { placeId: 'C', label: 'Brand — C', reviews13: [[1], [1]], redToMedian: [0, 1], weaknessThemes: ['T1'] },
+      ],
+      actionableThemes: ['T0', 'T1'],
+      themeCohorts: { T0: ['A'], T1: ['B', 'C'] },
+      themeTrends: {},
+      minMarginal: 1,
+    })
+    // Biggest first: turning around A recovers 4; the T1 program recovers 5 (3+2).
+    expect(actions[0].kind).toBe('theme')
+    expect(actions[0].theme).toBe('T1')
+    expect(actions[0].recovered).toBeCloseTo(5, 6)
+    expect(actions[1].placeId).toBe('A')
+    expect(actions[1].recovered).toBeCloseTo(4, 6)
+    expect(actions[1].cumulative).toBeCloseTo(9, 6) // additive, no double-count
   })
 
   it('attaches a quote to the matching outlet+theme weakness', () => {

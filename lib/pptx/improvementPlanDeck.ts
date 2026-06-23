@@ -42,6 +42,25 @@ export function buildImprovementPlanDeck(p: OutletPredictor, brand: string): Dec
     insight: `1–3★ rates range from ${pct1(m.bestLowRate)} to ${pct1(m.worstLowRate)} across outlets — that spread is operational inconsistency you can close. Pulling every outlet to your best-run quarter (~${pct1(m.targetLowRate)}) would cut the brand's 1–3★ rate to about ${pct1(m.projectedLowRate)}.`,
   })
 
+  // 1b. Recommended actions — the prioritized, de-duplicated playbook.
+  if (p.recommendedActions.length) {
+    const total = p.recommendedActions[p.recommendedActions.length - 1].cumulative
+    slides.push({
+      type: 'table',
+      title: 'Recommended Actions — Your Prioritized Playbook',
+      subtitle: 'Ranked by 1–3★ guests won back at the peer median, de-duplicated so each line is additive',
+      columns: ['#', 'Action', 'Scope', 'Win back', 'Cumulative'],
+      rows: p.recommendedActions.map((a, i) => [
+        String(i + 1),
+        a.kind === 'outlet' ? `Turn around ${trunc(locOnly(a.label || ''), 26)}` : `${trunc(a.theme || '', 26)} program${a.trend === 'up' ? ' (▲)' : ''}`,
+        a.kind === 'outlet' ? `${a.weaknessThemes?.length} themes` : `${a.cohort} outlets`,
+        `+${Math.round(a.recovered)}`,
+        String(Math.round(a.cumulative)),
+      ]),
+      insight: `This sequence wins back ~${Math.round(total)} of ${m.lowCount.toLocaleString()} brand detractors (~${Math.round((total / m.lowCount) * 100)}%) at the peer median — a conservative floor (reviews citing an unaddressed theme aren't counted). Theme programs lead because single-issue complaints aggregate across the worst-quartile cohort; outlet turnarounds mop up the multi-issue stores.`,
+    })
+  }
+
   // 2. The systemic driver — over-representation across the whole chain.
   if (drivers.length) {
     slides.push({
