@@ -76,24 +76,24 @@ export function buildOutletPlanDeck(p: OutletPredictor, placeId: string, brand: 
     slides.push({ type: 'quotes', title: 'What Your Unhappy Guests Said', subtitle: 'Verbatim 1–3★ reviews behind the themes above', quotes: wq })
   }
 
-  // 4. What you do best — strengths with praise quotes.
-  if (strengths.length) {
-    const sq = strengths.filter((sx) => sx.quote)
-    if (sq.length >= 2) {
-      slides.push({
-        type: 'quotes',
-        title: 'What You Do Best',
-        subtitle: `Top-quartile vs all outlets — protect these`,
-        quotes: sq.slice(0, 6).map((sx) => ({ text: trunc(sx.quote!, 180), attribution: `${sx.theme} · ${topWord(sx.peerPercentile)}` })),
-      })
-    } else {
-      slides.push({
-        type: 'bullets',
-        title: 'What You Do Best',
-        subtitle: 'Top-quartile vs all outlets — protect these',
-        bullets: strengths.slice(0, 6).map((sx) => `${sx.theme} — ${topWord(sx.peerPercentile)} of locations (only ${pct1(sx.problemRate)} of reviews here flag it).`),
-      })
-    }
+  // 4. What you do best — only when there's real substance: ≥2 praise quotes
+  // (the evidence), or ≥3 top-quartile themes (breadth). A single "0.0% flag it"
+  // strength is a pointless slide, so it's skipped.
+  const sq = strengths.filter((sx) => sx.quote)
+  if (sq.length >= 2) {
+    slides.push({
+      type: 'quotes',
+      title: 'What You Do Best',
+      subtitle: 'Top-quartile vs all outlets — protect these',
+      quotes: sq.slice(0, 6).map((sx) => ({ text: trunc(sx.quote!, 180), attribution: `${sx.theme} · ${topWord(sx.peerPercentile)}` })),
+    })
+  } else if (strengths.length >= 3) {
+    slides.push({
+      type: 'bullets',
+      title: 'What You Do Best',
+      subtitle: 'Top-quartile vs all outlets — protect these',
+      bullets: strengths.slice(0, 6).map((sx) => `${sx.theme} — ${topWord(sx.peerPercentile)} of locations (among the brand’s best on it).`),
+    })
   }
 
   // 5. How to use this.

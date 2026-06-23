@@ -10,7 +10,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
-import PrintButton from './PrintButton'
 import OutletReportTabs from './OutletReportTabs'
 
 export const dynamic = 'force-dynamic'
@@ -49,17 +48,14 @@ export default async function OutletReportPage(props: {
       <div className="mx-auto max-w-4xl px-4">
         <div className="mb-4 flex items-center justify-between print:hidden">
           <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
-          <div className="flex items-center gap-3">
-            {s && (
-              <a
-                href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`}
-                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
-              >
-                Export GM plan
-              </a>
-            )}
-            <PrintButton />
-          </div>
+          {s && (
+            <a
+              href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`}
+              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+            >
+              Export GM plan
+            </a>
+          )}
         </div>
 
         {!s ? (
