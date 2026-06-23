@@ -28,6 +28,28 @@ export type WhatIfData = {
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 
+// Benchmark colors on each slider track: You = Ana orange (the brand's nautix
+// orange), Peer median = Sarina blue, Best-in-class = a clean green.
+const C = { you: '#E85A1A', median: '#2563EB', best: '#059669' }
+const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100))
+
+// Fixed reference ticks on a slider track (positioned by value ÷ current rate).
+function Marks({ cur, median, best }: { cur: number; median: number; best: number }) {
+  if (cur <= 0) return null
+  const ticks = [
+    { pos: 100, color: C.you },                       // You = current rate (right end)
+    { pos: clampPct(median / cur), color: C.median },  // Peer median
+    { pos: clampPct(best / cur), color: C.best },      // Best-in-class
+  ]
+  return (
+    <div className="pointer-events-none absolute inset-x-[7px] inset-y-0 z-10">
+      {ticks.map((t, k) => (
+        <span key={k} className="absolute top-0.5 bottom-0.5 w-[2px] -translate-x-1/2 rounded-sm" style={{ left: `${t.pos}%`, background: t.color }} />
+      ))}
+    </div>
+  )
+}
+
 // Recovery gated by the least-improved theme (mirror of pure projectRecovery).
 function recover(reviews13: number[][], current: number[], target: number[]): number {
   let r = 0
@@ -80,7 +102,16 @@ export default function WhatIfPanel(d: WhatIfData) {
         <button onClick={() => preset((c, i) => Math.min(c, d.bestRate[i]))} className="rounded border border-gray-300 px-2 py-0.5 font-medium text-gray-600 hover:border-gray-400">All → best-in-class</button>
       </div>
 
-      <div className="mt-3 space-y-2">
+      {/* Legend (labels the colored ticks that appear on every slider). */}
+      <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-500">
+        <span className="font-medium text-gray-400">On each bar:</span>
+        {([['You (today)', C.you], ['Peer median', C.median], ['Best-in-class', C.best]] as const).map(([lbl, col]) => (
+          <span key={lbl} className="flex items-center gap-1"><span className="inline-block h-2.5 w-[3px] rounded-sm" style={{ background: col }} /> {lbl}</span>
+        ))}
+        <span className="ml-auto text-gray-400">drag the handle to set your target</span>
+      </div>
+
+      <div className="mt-2 space-y-2">
         {d.themes.map((t, i) => {
           const cur = d.currentRate[i]
           const reduced = cur > 0 && target[i] < cur - 1e-9
@@ -90,12 +121,16 @@ export default function WhatIfPanel(d: WhatIfData) {
                 <span className="truncate text-gray-700">{t}</span>
                 {d.trendBasis && <TrendBadge t={d.trends[i]} />}
               </div>
-              <input
-                type="range" min={0} max={Math.max(cur, 0.0001)} step={0.001} value={Math.min(target[i], cur)}
-                onChange={(e) => setOne(i, Number(e.target.value))}
-                disabled={cur <= 0}
-                className="h-1.5 flex-1 cursor-pointer accent-gray-800 disabled:cursor-default disabled:opacity-40"
-              />
+              {/* Track: native range (neutral handle) + overlaid benchmark ticks. */}
+              <div className="relative flex h-5 flex-1 items-center">
+                <input
+                  type="range" min={0} max={Math.max(cur, 0.0001)} step={0.001} value={Math.min(target[i], cur)}
+                  onChange={(e) => setOne(i, Number(e.target.value))}
+                  disabled={cur <= 0}
+                  className="relative z-0 h-1.5 w-full cursor-pointer accent-gray-500 disabled:cursor-default disabled:opacity-40"
+                />
+                <Marks cur={cur} median={d.medianRate[i]} best={d.bestRate[i]} />
+              </div>
               <span className="w-28 shrink-0 text-right tabular-nums">
                 <span className="text-gray-400">{pct1(cur)}</span>
                 <span className="mx-1 text-gray-300">→</span>
