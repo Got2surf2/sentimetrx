@@ -32,9 +32,9 @@ export type WhatIfData = {
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 
-// Benchmark colors on each slider track: You = Ana orange, Peer median = a clear
-// blue, Best-in-class = a true green (distinct hue from the blue, not a teal).
-const C = { you: '#E85A1A', median: '#2563EB', best: '#16A34A' }
+// Benchmark colors on each slider track: You = Ana orange, Peer median = the
+// brand Sarina teal, Best-in-class = a fresh lime green — three distinct hues.
+const C = { you: '#E85A1A', median: '#0F7173', best: '#65A30D' }
 const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100))
 
 // Per-theme axis: a fixed, intuitive scale — left = 0 (perfect), right = the
