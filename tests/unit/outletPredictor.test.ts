@@ -78,6 +78,30 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(p.themeFocus['Order Accuracy']?.[0]?.placeId).toBe('A')
   })
 
+  it('gives a LIST of top performers per theme to learn from (not one outlet for everything)', () => {
+    const TWO = ['T1', 'T2']
+    const rv = (id: string, total: number, low: number, t1: number, t2: number): PredReview[] =>
+      Array.from({ length: total }, (_, i) => {
+        const isLow = i < low
+        return { placeId: id, rating: isLow ? 2 : 5, themes: [isLow && i < t1, isLow && i >= low - t2 && i < low] }
+      })
+    const specs: [string, number, number, number, number][] = [
+      ['A', 120, 40, 30, 30], ['B', 120, 30, 20, 20], ['C', 120, 24, 12, 12],
+      ['D', 120, 18, 6, 6], ['E', 120, 10, 2, 2], ['F', 120, 6, 0, 0],
+    ]
+    const reviews = specs.flatMap(([id, t, low, a, b]) => rv(id, t, low, a, b))
+    const outlets: PredOutlet[] = specs.map(([id]) => ({ placeId: id, label: `Brand — ${id}`, reviews: 120, rating: null }))
+    const p = buildPredictor({ themeLabels: TWO, reviews, outlets, exemplarMinReviews: 100 })
+    // themeExemplars is a list of distinct top performers (best-on-theme first).
+    expect((p.themeExemplars['T1'] || []).length).toBeGreaterThanOrEqual(2)
+    const ids = (p.themeExemplars['T1'] || []).map((e) => e.placeId)
+    expect(new Set(ids).size).toBe(ids.length) // all distinct
+    expect(ids[0]).toBe('F') // cleanest on T1 leads
+    // The weakness card carries the same list.
+    const aT1 = (p.outletLevers['A'] || []).find((l) => l.theme === 'T1')
+    expect(aT1?.exemplars.length).toBeGreaterThanOrEqual(2)
+  })
+
   it('attaches a quote to the matching outlet+theme weakness', () => {
     const { reviews, outlets } = fleet()
     const p = buildPredictor({

@@ -190,6 +190,11 @@ export default async function ImprovementPlanPage(props: {
                             ))}
                             {focus.length > 8 && <span className="text-gray-400"> +{focus.length - 8} more</span>}
                           </div>
+                          {(p.themeExemplars[theme] || []).length > 0 && (
+                            <div className="mt-1.5 text-xs text-emerald-700">
+                              <span className="font-medium">Learn from:</span> {p.themeExemplars[theme].slice(0, 5).map((e) => locOnly(e.label)).join(', ')}
+                            </div>
+                          )}
                         </div>
                       ))}
                   </div>

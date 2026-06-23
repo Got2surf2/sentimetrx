@@ -37,10 +37,16 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
       {l.quote && (
         <p className="mt-2 border-l-2 border-rose-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
       )}
-      {l.exemplar && (
+      {l.exemplars.length > 0 && (
         <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50/70 px-2.5 py-1.5 text-xs text-emerald-800">
           <span aria-hidden className="mt-px">★</span>
-          <span><span className="font-semibold">Learn from {locOnly(l.exemplar.label)}</span> — a top-quartile performer on this ({pct1(l.exemplar.lowRate)} 1–3★ rate{l.exemplar.rating != null ? `, ${l.exemplar.rating.toFixed(1)}★` : ''}). Worth a call on how they run it.</span>
+          <span>
+            <span className="font-semibold">Learn from</span>{' '}
+            {l.exemplars.slice(0, 5).map((e, i) => (
+              <span key={e.placeId}>{i > 0 ? ', ' : ''}{locOnly(e.label)}{e.rating != null ? ` (${e.rating.toFixed(1)}★)` : ''}</span>
+            ))}
+            {' '}— the top performers on this theme. Worth a call on how they run it.
+          </span>
         </div>
       )}
     </div>

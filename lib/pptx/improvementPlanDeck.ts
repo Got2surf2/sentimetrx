@@ -62,6 +62,7 @@ export function buildImprovementPlanDeck(p: OutletPredictor, brand: string): Dec
     .filter((x) => x.focus.length >= 2)
     .sort((a, b) => b.focus.length - a.focus.length)
   for (const { theme, focus } of themeSlides) {
+    const ex = (p.themeExemplars[theme] || []).slice(0, 5).map((e) => locOnly(e.label))
     slides.push({
       type: 'table',
       title: `Where to Focus — ${trunc(theme, 40)}`,
@@ -70,7 +71,8 @@ export function buildImprovementPlanDeck(p: OutletPredictor, brand: string): Dec
       rows: focus.slice(0, 10).map((o) => [
         trunc(locOnly(o.label), 30), pct1(o.lowRate), pct1(o.problemRate), rankWord(o.peerPercentile),
       ]),
-      insight: 'Problem rate = share of a location’s reviews that are 1–3★ and cite this theme. These are your bottom-quartile performers on it — the outlets to coach first.',
+      insight: `Problem rate = share of a location's reviews that are 1–3★ and cite this theme — these are the bottom-quartile outlets to coach first.` +
+        (ex.length ? ` Learn from the top performers on it: ${ex.join(', ')}.` : ''),
     })
   }
 

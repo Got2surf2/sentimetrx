@@ -62,7 +62,7 @@ export type ThemeStanding = {
   peerPercentile: number // 0–100, % of outlets this one is WORSE than (higher = worse)
   shareInBad: number    // share of the outlet's 1–3★ reviews citing the theme (context)
   cohortSize: number    // # outlets in the bottom quartile on this theme (the peer cohort)
-  exemplar: Exemplar | null // a top-quartile (best) peer on this theme — who to learn from
+  exemplars: Exemplar[] // top 3–5 peers to learn from on this theme (best first)
   quote: string | null  // a verbatim 1–3★ quote from this outlet citing the theme
 }
 
@@ -115,6 +115,7 @@ export type OutletPredictor = {
   outletLevers: Record<string, ThemeStanding[]>   // per outlet, BOTTOM-quartile themes (weaknesses), worst first
   outletStrengths: Record<string, ThemeStanding[]> // per outlet, TOP-quartile themes, best first
   themeFocus: Record<string, OutletFocus[]>       // per theme, bottom-quartile outlets, worst first
+  themeExemplars: Record<string, Exemplar[]>      // per theme, top 3–5 performers to learn from
 }
 
 // Lagging-outcome themes — predicted BY the operational drivers, not directly
@@ -147,7 +148,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     available: false,
     model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
-    outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {},
+    outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
   }
   if (!K || n < 50) return empty
 
@@ -212,7 +213,6 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const labelOf = (pid: string) => outletMeta.get(pid)?.label || pid
   const themePctl: Record<string, Map<string, number>> = {} // theme → placeId → percentile (0–100, worse)
   const themeRanked = new Set<string>()
-  const themeBestPeer: Record<string, Exemplar | null> = {}
   const themeFocus: Record<string, OutletFocus[]> = {}
   for (const t of actionableThemes) {
     const chainBad = aggs.reduce((s, o) => s + o.badCount[t], 0)
@@ -230,10 +230,20 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       .filter((o) => (pctl.get(o.placeId) ?? 0) >= BOTTOM_PCTL && o.problemRate[t] > 0)
       .sort((a, b) => b.problemRate[t] - a.problemRate[t])
       .map((o) => ({ placeId: o.placeId, label: labelOf(o.placeId), lowRate: o.lowRate, problemRate: o.problemRate[t], peerPercentile: pctl.get(o.placeId) ?? 0 }))
-    // Best peer on this theme (top quartile, real volume) = who to learn from.
-    const best = [...eligible].filter((o) => (pctl.get(o.placeId) ?? 100) <= TOP_PCTL)
-      .sort((a, b) => a.problemRate[t] - b.problemRate[t] || a.lowRate - b.lowRate)[0]
-    themeBestPeer[t] = best ? { placeId: best.placeId, label: labelOf(best.placeId), lowRate: best.lowRate, rating: best.avg } : null
+  }
+
+  // Per-theme "learn from" — the top 3–5 performers ON THAT THEME (top-quartile,
+  // at real volume), best first, tie-broken by review volume (proven at scale).
+  // A LIST, not one pick: the top performers are ~tied at zero problems, so a
+  // single pick collapses to whichever outlet is best overall and gets
+  // recommended for every theme. A handful gives the GM real, varied options.
+  const themeExemplars: Record<string, Exemplar[]> = {}
+  for (const t of themeRanked) {
+    themeExemplars[t] = eligible
+      .filter((o) => (themePctl[t]?.get(o.placeId) ?? 100) <= TOP_PCTL)
+      .sort((a, b) => a.problemRate[t] - b.problemRate[t] || b.reviews - a.reviews)
+      .slice(0, 5)
+      .map((o) => ({ placeId: o.placeId, label: labelOf(o.placeId), lowRate: o.lowRate, rating: o.avg }))
   }
 
   // ── Per-outlet weaknesses (bottom quartile) + strengths (top quartile). ──
@@ -242,7 +252,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const standing = (o: Agg, t: string): ThemeStanding => ({
     theme: t, problemRate: o.problemRate[t], peerPercentile: themePctl[t]?.get(o.placeId) ?? 0,
     shareInBad: o.shareInBad[t], cohortSize: (themeFocus[t] || []).length,
-    exemplar: themeBestPeer[t] || null, quote: quoteFor.get(`${o.placeId}|${t}`) || null,
+    exemplars: themeExemplars[t] || [], quote: quoteFor.get(`${o.placeId}|${t}`) || null,
   })
   const outletLevers: Record<string, ThemeStanding[]> = {}
   const outletStrengths: Record<string, ThemeStanding[]> = {}
@@ -274,6 +284,6 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     available: true,
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
-    outletSummaries, outletLevers, outletStrengths, themeFocus,
+    outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
   }
 }
