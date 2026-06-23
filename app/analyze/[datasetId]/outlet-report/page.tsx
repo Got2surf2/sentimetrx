@@ -49,7 +49,17 @@ export default async function OutletReportPage(props: {
       <div className="mx-auto max-w-4xl px-4">
         <div className="mb-4 flex items-center justify-between print:hidden">
           <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
-          <PrintButton />
+          <div className="flex items-center gap-3">
+            {s && (
+              <a
+                href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+              >
+                Export GM plan
+              </a>
+            )}
+            <PrintButton />
+          </div>
         </div>
 
         {!s ? (
