@@ -363,22 +363,28 @@ async function scanDataset(datasetId: string): Promise<Scan> {
         const themeFlags = new Array(themeMatchers.length).fill(false)
         for (let ti = 0; ti < themeMatchers.length; ti++) {
           const tm = themeMatchers[ti]
-          if (!tm.re.test(text)) continue
+          // exec (not test) so we know WHERE the theme keyword matched — the
+          // quote is then the sentence CONTAINING that keyword (sentence-level
+          // attribution), not just the review's first sentence, so a quote
+          // filed under a theme is actually about that theme.
+          const km = tm.re.exec(text)
+          if (!km) continue
           matchedAny = true
           themeFlags[ti] = true
+          const ev = km[0]
           // Capture one representative quote per (outlet, theme) from a 1–3★
           // review — "what unhappy guests said", for the Action Plan.
           if (isLow) {
             const k = `${o.placeId}|${tm.label}`
             if (!lowSeen.has(k)) {
-              const q = extractSentence({ full: text, ev: text })
+              const q = extractSentence({ full: text, ev })
               if (q) { lowSeen.add(k); lowExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
             }
           } else if (isHigh && polarity === 'pos') {
             // A 4–5★ review citing the theme = "what guests praise" — strength evidence.
             const k = `${o.placeId}|${tm.label}`
             if (!highSeen.has(k)) {
-              const q = extractSentence({ full: text, ev: text })
+              const q = extractSentence({ full: text, ev })
               if (q) { highSeen.add(k); highExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
             }
           }
