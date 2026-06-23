@@ -22,7 +22,7 @@
 
 // ─── inputs (plain data — no server/db deps, unit-testable) ───
 
-export type PredReview = { placeId: string; rating: number; themes: boolean[] }
+export type PredReview = { placeId: string; rating: number; themes: boolean[]; month?: string } // month = YYYY-MM (for trends)
 export type PredOutlet = { placeId: string; label: string; reviews: number; rating: number | null }
 export type PredExample = { placeId: string; theme: string; quote: string }
 
@@ -90,20 +90,24 @@ export type OutletWhatIf = {
   lowRate: number
 }
 
-// "Detractors recovered" if the outlet matched `targetRate` on the `selected`
-// themes. Counts ONLY reviews whose issues are CONFINED to the selected themes
-// (a review also citing an unfixed theme stays a detractor — honest about
-// co-occurrence), each weighted by how far the outlet closes the gap to target
-// (target is a rate, not zero, so this is partial + conservative).
+// "Detractors recovered" if the outlet moved each theme's problem rate from
+// `currentRate[i]` to `targetRate[i]` (per-theme target — what each slider sets).
+// Honest about co-occurrence: a review flips only if EVERY theme it cites is
+// being improved, and it's gated by its LEAST-improved theme (min reduction). So
+// a review that also cites a theme left at its current rate stays a detractor,
+// and the recovery scales with how far you actually move the binding theme.
 export function projectRecovery(
-  reviews13: number[][], selected: Set<number>, currentRate: number[], targetRate: number[],
+  reviews13: number[][], currentRate: number[], targetRate: number[],
 ): number {
   let recovered = 0
   for (const r of reviews13) {
-    if (!r.length || !r.every((i) => selected.has(i))) continue
-    let w = 0
-    for (const i of r) w += currentRate[i] > 0 ? Math.max(0, (currentRate[i] - targetRate[i]) / currentRate[i]) : 0
-    recovered += w / r.length
+    if (!r.length) continue
+    let min = Infinity
+    for (const i of r) {
+      const red = currentRate[i] > 0 ? Math.max(0, (currentRate[i] - targetRate[i]) / currentRate[i]) : 0
+      if (red < min) min = red
+    }
+    recovered += min === Infinity ? 0 : min
   }
   return recovered
 }
@@ -149,6 +153,11 @@ export type OutletPredictor = {
   themeTargets: { theme: string; medianRate: number; bestRate: number }[] // per actionable theme, peer-median + best-quartile problem rate (what-if targets)
   outletWhatIf: Record<string, OutletWhatIf>      // per outlet, interactive what-if input
   allLowRates: number[]                           // every outlet's current 1–3★ rate (for live rank recompute)
+  // Brand-level QoQ trend per actionable theme — problem rate in the most recent
+  // full quarter vs the prior one. Brand-wide (per-outlet per-quarter is too
+  // sparse to trust). trendBasis is null when there isn't enough dated data.
+  themeTrends: Record<string, { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }>
+  trendBasis: { recent: string; prior: string } | null
 }
 
 // Lagging-outcome themes — predicted BY the operational drivers, not directly
@@ -182,7 +191,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     model: { population: n, chainAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
-    themeTargets: [], outletWhatIf: {}, allLowRates: [],
+    themeTargets: [], outletWhatIf: {}, allLowRates: [], themeTrends: {}, trendBasis: null,
   }
   if (!K || n < 50) return empty
 
@@ -339,11 +348,39 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   }
   const allLowRates = aggs.map((o) => o.lowRate)
 
+  // ── Brand-level QoQ trend per actionable theme. Problem rate in the most
+  // recent full quarter (≥ MIN_Q reviews) vs the prior qualifying quarter. ──
+  const MIN_Q = 40
+  const quarterOf = (mo: string): string | null => {
+    const m = /^(\d{4})-(\d{2})$/.exec(mo || '')
+    if (!m) return null
+    return `${m[1]}Q${Math.floor((Number(m[2]) - 1) / 3) + 1}`
+  }
+  const byQuarter = new Map<string, PredReview[]>()
+  for (const r of revs) { const q = r.month ? quarterOf(r.month) : null; if (!q) continue; const a = byQuarter.get(q) || []; a.push(r); byQuarter.set(q, a) }
+  const qualQuarters = [...byQuarter.entries()].filter(([, rs]) => rs.length >= MIN_Q).map(([q]) => q).sort()
+  const themeTrends: Record<string, { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }> = {}
+  let trendBasis: { recent: string; prior: string } | null = null
+  if (qualQuarters.length >= 2) {
+    const recent = qualQuarters[qualQuarters.length - 1], prior = qualQuarters[qualQuarters.length - 2]
+    trendBasis = { recent, prior }
+    const rate = (rs: PredReview[], j: number) => rs.filter((r) => r.rating <= LOW_MAX && r.themes[j]).length / rs.length
+    for (const { t, j } of actionableIdx) {
+      const recentRate = rate(byQuarter.get(recent)!, j), priorRate = rate(byQuarter.get(prior)!, j)
+      const d = recentRate - priorRate
+      // Directional only on a meaningful move — ≥0.5pp absolute AND ≥25% relative
+      // — so noise on a ~1% base rate reads "flat", not a false trend.
+      const rel = priorRate > 0 ? Math.abs(d) / priorRate : (recentRate > 0 ? 1 : 0)
+      const sig = Math.abs(d) >= 0.005 && rel >= 0.25
+      themeTrends[t] = { direction: sig ? (d > 0 ? 'up' : 'down') : 'flat', recentRate, priorRate }
+    }
+  }
+
   return {
     available: true,
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
-    themeTargets, outletWhatIf, allLowRates,
+    themeTargets, outletWhatIf, allLowRates, themeTrends, trendBasis,
   }
 }

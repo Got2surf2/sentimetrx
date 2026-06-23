@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from 'react'
 
-// Interactive "recover your detractors" what-if for one outlet. Toggle the
-// themes to fix + the target (peer median / best-in-class) and see the projected
-// 1–3★ rate and rank update live. Honest about co-occurrence: only 1–3★ reviews
-// whose complaints are ENTIRELY within the selected themes count, each scaled by
-// how far the outlet closes the gap to target (target is a rate, not zero).
+// Interactive "recover your detractors" what-if for one outlet. Drag each
+// theme's problem rate down (toward best-in-class) and see the projected 1–3★
+// rate + rank update live. Honest about co-occurrence: a 1–3★ review is
+// recovered gated by its LEAST-improved theme — a review citing a theme you
+// leave untouched stays a detractor.
+
+type Trend = { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }
 
 export type WhatIfData = {
   themes: string[]          // actionable theme names (index-aligned)
@@ -20,66 +22,88 @@ export type WhatIfData = {
   otherLowRates: number[]   // every OTHER outlet's 1–3★ rate (for rank)
   currentRank: number
   outletCount: number
-  defaultSelected: number[] // weakness theme indices, pre-checked
+  trends: (Trend | null)[]  // brand-level QoQ trend per theme (index-aligned)
+  trendBasis: { recent: string; prior: string } | null
 }
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
-const ord = (n: number) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]) }
 
-// Detractors recovered if `selected` themes hit `target` (mirror of the pure
-// projectRecovery in lib/outletPredictor — inlined to keep the client bundle small).
-function recover(reviews13: number[][], selected: Set<number>, current: number[], target: number[]): number {
+// Recovery gated by the least-improved theme (mirror of pure projectRecovery).
+function recover(reviews13: number[][], current: number[], target: number[]): number {
   let r = 0
   for (const rev of reviews13) {
-    if (!rev.length || !rev.every((i) => selected.has(i))) continue
-    let w = 0
-    for (const i of rev) w += current[i] > 0 ? Math.max(0, (current[i] - target[i]) / current[i]) : 0
-    r += w / rev.length
+    if (!rev.length) continue
+    let min = Infinity
+    for (const i of rev) { const red = current[i] > 0 ? Math.max(0, (current[i] - target[i]) / current[i]) : 0; if (red < min) min = red }
+    r += min === Infinity ? 0 : min
   }
   return r
 }
 
+function TrendBadge({ t }: { t: Trend | null }) {
+  if (!t || t.direction === 'flat') return <span className="text-[10px] text-gray-300">→ flat</span>
+  const up = t.direction === 'up' // up = problem rate rising = worsening
+  return (
+    <span className={`text-[10px] font-semibold ${up ? 'text-rose-600' : 'text-emerald-600'}`} title={`${pct1(t.priorRate)} → ${pct1(t.recentRate)} QoQ`}>
+      {up ? '▲ worsening' : '▼ improving'}
+    </span>
+  )
+}
+
 export default function WhatIfPanel(d: WhatIfData) {
-  const [selected, setSelected] = useState<Set<number>>(() => new Set(d.defaultSelected.length ? d.defaultSelected : d.themes.map((_, i) => i)))
-  const [target, setTarget] = useState<'median' | 'best'>('median')
+  // Default: bring every above-median theme down to the peer median (a sensible
+  // starting scenario); themes already at/below median start unchanged.
+  const [target, setTarget] = useState<number[]>(() => d.currentRate.map((c, i) => Math.min(c, d.medianRate[i])))
 
   const out = useMemo(() => {
-    const tgt = target === 'median' ? d.medianRate : d.bestRate
-    const recovered = recover(d.reviews13, selected, d.currentRate, tgt)
+    const recovered = recover(d.reviews13, d.currentRate, target)
     const newLowCount = Math.max(0, d.lowCount - recovered)
     const newRate = d.totalReviews ? newLowCount / d.totalReviews : 0
     const newRank = 1 + d.otherLowRates.filter((r) => r > newRate).length
     return { recovered, newRate, newRank }
-  }, [selected, target, d])
+  }, [target, d])
 
-  const toggle = (i: number) => setSelected((prev) => {
-    const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next
-  })
+  const setOne = (i: number, v: number) => setTarget((prev) => { const next = [...prev]; next[i] = v; return next })
+  const preset = (fn: (c: number, i: number) => number) => setTarget(d.currentRate.map(fn))
 
   return (
     <div className="rounded-lg border border-gray-200 p-4 print:hidden">
       <h3 className="text-sm font-bold text-gray-700">What-if — how many unhappy guests could you win back?</h3>
       <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
-        Pick the themes you’d fix and the bar to hit. We count only 1–3★ reviews whose complaints are <span className="font-medium text-gray-600">entirely within</span> those themes — a review that also gripes about something else stays a detractor.
+        Drag each theme’s 1–3★ problem rate down toward what your best outlets achieve. A review is only won back if <span className="font-medium text-gray-600">every</span> theme it complains about improves — so a review that also gripes about something you leave untouched stays a detractor.
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
-        {d.themes.map((t, i) => (
-          <label key={t} className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-700">
-            <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} className="h-3.5 w-3.5 rounded border-gray-300" />
-            {t} <span className="text-gray-400">({pct1(d.currentRate[i])})</span>
-          </label>
-        ))}
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+        <span className="text-gray-500">Quick set:</span>
+        <button onClick={() => preset((c) => c)} className="rounded border border-gray-300 px-2 py-0.5 font-medium text-gray-600 hover:border-gray-400">Reset</button>
+        <button onClick={() => preset((c, i) => Math.min(c, d.medianRate[i]))} className="rounded border border-gray-300 px-2 py-0.5 font-medium text-gray-600 hover:border-gray-400">All → peer median</button>
+        <button onClick={() => preset((c, i) => Math.min(c, d.bestRate[i]))} className="rounded border border-gray-300 px-2 py-0.5 font-medium text-gray-600 hover:border-gray-400">All → best-in-class</button>
       </div>
 
-      <div className="mt-3 flex items-center gap-2 text-xs">
-        <span className="text-gray-500">Bring them to:</span>
-        {([['median', 'Peer median'], ['best', 'Best-in-class']] as const).map(([v, lbl]) => (
-          <button key={v} onClick={() => setTarget(v)}
-            className={`rounded-md border px-2.5 py-1 font-medium transition-colors ${target === v ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}>
-            {lbl}
-          </button>
-        ))}
+      <div className="mt-3 space-y-2">
+        {d.themes.map((t, i) => {
+          const cur = d.currentRate[i]
+          const reduced = cur > 0 && target[i] < cur - 1e-9
+          return (
+            <div key={t} className="flex items-center gap-3 text-xs">
+              <div className="flex w-56 shrink-0 items-center gap-1.5">
+                <span className="truncate text-gray-700">{t}</span>
+                {d.trendBasis && <TrendBadge t={d.trends[i]} />}
+              </div>
+              <input
+                type="range" min={0} max={Math.max(cur, 0.0001)} step={0.001} value={Math.min(target[i], cur)}
+                onChange={(e) => setOne(i, Number(e.target.value))}
+                disabled={cur <= 0}
+                className="h-1.5 flex-1 cursor-pointer accent-gray-800 disabled:cursor-default disabled:opacity-40"
+              />
+              <span className="w-28 shrink-0 text-right tabular-nums">
+                <span className="text-gray-400">{pct1(cur)}</span>
+                <span className="mx-1 text-gray-300">→</span>
+                <span className={reduced ? 'font-semibold text-emerald-700' : 'text-gray-400'}>{pct1(Math.min(target[i], cur))}</span>
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-gray-50 p-4">
@@ -98,7 +122,7 @@ export default function WhatIfPanel(d: WhatIfData) {
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
-        A planning estimate, not a promise: each qualifying review is credited in proportion to how far you’d close the gap to {target === 'median' ? 'the peer median' : 'your best outlets'} on the themes it mentions. Reviews that also cite an unfixed theme aren’t counted, so this is a conservative floor.
+        A planning estimate, not a promise: each recovered review is credited only as far as its least-improved theme moves, and reviews citing an unfixed theme aren’t counted — a conservative floor.{d.trendBasis ? ` Trend badges are brand-wide QoQ (${d.trendBasis.prior} → ${d.trendBasis.recent}).` : ''}
       </p>
     </div>
   )

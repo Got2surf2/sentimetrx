@@ -396,7 +396,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           else if (polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg) ou.exNeg = { full: text, ev: text } }
         }
         if (matchedAny) o.themeMatched++
-        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, themes: themeFlags })
+        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, themes: themeFlags, month: String(d?.review_date || '').slice(0, 7) || undefined })
       }
     }
   }

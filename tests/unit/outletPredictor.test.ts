@@ -102,24 +102,23 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(aT1?.exemplars.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('projectRecovery: confined reviews only, scaled to target (co-occurrence honest)', () => {
-    // Theme 0 current rate 0.20 → target 0 (full fix); theme 1 current 0.10 → target 0.
-    const current = [0.20, 0.10], target = [0, 0]
+  it('projectRecovery: gated by least-improved theme, co-occurrence honest', () => {
+    // Themes 0,1 driven to 0 (full fix); theme 2 left at its current rate.
+    const current = [0.20, 0.10, 0.05], target = [0, 0, 0.05]
     const reviews: number[][] = [
-      [0],     // confined to theme 0 → fully recovered (cut 100%)
-      [1],     // confined to theme 1 → fully recovered
-      [0, 1],  // both selected → recovered
-      [0, 2],  // cites theme 2 (NOT selected) → stays a detractor
+      [0],     // theme 0 cut 100% → fully recovered
+      [1],     // theme 1 cut 100% → fully recovered
+      [0, 1],  // both improved → min reduction 1 → recovered
+      [0, 2],  // theme 2 unchanged → min reduction 0 → stays a detractor
       [],      // no actionable theme → not counted
     ]
-    const sel = new Set([0, 1])
-    // 3 confined reviews ([0],[1],[0,1]), each cut 100% → recovered ≈ 3.
-    expect(projectRecovery(reviews, sel, current, target)).toBeCloseTo(3, 6)
-    // Half-fix theme 0 (target = half its current) → its confined reviews recover ~50%.
-    const half = projectRecovery([[0]], new Set([0]), [0.20], [0.10])
-    expect(half).toBeCloseTo(0.5, 6)
-    // A review citing an unselected theme is never recovered.
-    expect(projectRecovery([[0, 2]], sel, current, target)).toBe(0)
+    expect(projectRecovery(reviews, current, target)).toBeCloseTo(3, 6)
+    // Half-fix theme 0 → reviews citing it recover ~50%.
+    expect(projectRecovery([[0]], [0.20], [0.10])).toBeCloseTo(0.5, 6)
+    // Gated by the LEAST-improved theme: cut 0 by 80%, theme 1 by 20% → min 20%.
+    expect(projectRecovery([[0, 1]], [0.10, 0.10], [0.02, 0.08])).toBeCloseTo(0.2, 6)
+    // A review citing a theme left unchanged is never recovered.
+    expect(projectRecovery([[0, 2]], current, target)).toBe(0)
   })
 
   it('attaches a quote to the matching outlet+theme weakness', () => {

@@ -57,7 +57,8 @@ export default async function OutletReportPage(props: {
     otherLowRates: predictor.outletSummaries.filter((o) => o.placeId !== s!.placeId).map((o) => o.lowRate),
     currentRank: summary.lowRateRank,
     outletCount: predictor.outletSummaries.length,
-    defaultSelected: levers.map((l) => predictor.actionableThemes.indexOf(l.theme)).filter((i) => i >= 0),
+    trends: predictor.actionableThemes.map((t) => predictor.themeTrends[t] || null),
+    trendBasis: predictor.trendBasis,
   } : null
 
   return (

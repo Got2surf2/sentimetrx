@@ -101,6 +101,7 @@ export default async function ImprovementPlanPage(props: {
                       <div className="flex items-baseline gap-2">
                         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-[11px] font-bold text-white">{i + 1}</span>
                         <span className="text-sm font-semibold text-gray-900">{d.theme}</span>
+                        {(() => { const tr = p.themeTrends[d.theme]; if (!tr || tr.direction === 'flat') return null; const up = tr.direction === 'up'; return <span className={`text-[10px] font-semibold ${up ? 'text-rose-600' : 'text-emerald-600'}`} title={`${pct1(tr.priorRate)} → ${pct1(tr.recentRate)} QoQ`}>{up ? '▲ worsening' : '▼ improving'}</span> })()}
                       </div>
                       <span className="shrink-0 text-sm font-bold text-rose-600">{d.lift.toFixed(1)}× more likely in 1–3★ reviews</span>
                     </div>
