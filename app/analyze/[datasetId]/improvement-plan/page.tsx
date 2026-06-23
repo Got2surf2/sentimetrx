@@ -41,7 +41,7 @@ export default async function ImprovementPlanPage(props: {
   const brand = ds.name || 'Brand'
   const m = p.model
   const drivers = p.brandLevers
-  const nonDrivers = p.drivers.filter((d) => !d.isDriver && d.nBad >= 20)
+  const nonDrivers = p.drivers.filter((d) => !d.isDriver && !d.isOutcome && d.nBad >= 20)
   const worst = p.outletSummaries[0]
   const best = p.exemplars[0]
   const hotlist = p.outletSummaries.slice(0, 10)
@@ -94,9 +94,9 @@ export default async function ImprovementPlanPage(props: {
               </div>
 
               {/* What drives unhappy guests */}
-              <h2 className="mt-7 text-sm font-bold text-gray-700">What drives your unhappy guests</h2>
+              <h2 className="mt-7 text-sm font-bold text-gray-700">What to fix — the actionable drivers</h2>
               <p className="mt-0.5 text-xs text-gray-500">
-                Themes that appear disproportionately in 1–3★ reviews vs 4–5★ reviews — the real drivers of low ratings, not just the loudest topics.
+                Operational themes that appear disproportionately in 1–3★ reviews vs 4–5★ reviews — what a manager can actually act on, not just the loudest topics.
               </p>
               <div className="mt-2 space-y-2.5">
                 {drivers.map((d, i) => (
@@ -115,9 +115,18 @@ export default async function ImprovementPlanPage(props: {
                   </div>
                 ))}
                 {drivers.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-gray-200 p-4 text-xs text-gray-500">No single theme is over-represented among unhappy guests — dissatisfaction is diffuse across topics.</p>
+                  <p className="rounded-lg border border-dashed border-gray-200 p-4 text-xs text-gray-500">No single operational theme is over-represented among unhappy guests — dissatisfaction is diffuse across topics.</p>
                 )}
               </div>
+              {p.outcomeSignals.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <div className="text-xs font-semibold text-amber-800">Brand-health signal (a symptom, not a lever)</div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-amber-800/90">
+                    {p.outcomeSignals.map((d) => `${d.theme} (${d.lift.toFixed(1)}×)`).join(', ')} also shows up disproportionately in 1–3★ reviews — guests
+                    signalling eroding loyalty. But that’s an <span className="font-semibold">outcome</span> of the operational drivers above, not something a manager fixes directly. Fix the drivers and this follows.
+                  </p>
+                </div>
+              )}
               {nonDrivers.length > 0 && (
                 <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
                   Discussed about equally by happy and unhappy guests — loud topics, not differentiators:{' '}
@@ -134,7 +143,7 @@ export default async function ImprovementPlanPage(props: {
                       <th className="px-3 py-2 font-semibold">Location</th>
                       <th className="px-3 py-2 text-right font-semibold">1–3★ rate</th>
                       <th className="px-3 py-2 text-right font-semibold">Rating</th>
-                      <th className="px-3 py-2 font-semibold">Their unhappy guests cite</th>
+                      <th className="px-3 py-2 font-semibold">Worst-ranked issue (vs all outlets)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -148,12 +157,44 @@ export default async function ImprovementPlanPage(props: {
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-rose-600">{pct1(o.lowRate)}</td>
                         <td className="px-3 py-2 text-right text-gray-700">{o.rating != null ? `${o.rating.toFixed(2)}★` : '—'}</td>
-                        <td className="px-3 py-2 text-gray-700">{o.topDriver ? o.topDriver.theme : <span className="text-gray-400">diffuse</span>}</td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {o.topIssue ? o.topIssue.theme : <span className="text-gray-400">no single weakness</span>}
+                          {o.weaknessCount > 1 && <span className="ml-1 text-xs text-gray-400">+{o.weaknessCount - 1} more</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {/* By issue — outlets to focus on per theme (mirrors the deck) */}
+              {p.actionableThemes.some((t) => (p.themeFocus[t] || []).length > 0) && (
+                <>
+                  <h2 className="mt-7 text-sm font-bold text-gray-700">By issue — which outlets to focus on</h2>
+                  <p className="mt-0.5 text-xs text-gray-500">For each operational theme, the outlets in the bottom quartile (worst performers vs all locations).</p>
+                  <div className="mt-2 space-y-3">
+                    {p.actionableThemes
+                      .map((t) => ({ theme: t, focus: p.themeFocus[t] || [] }))
+                      .filter((x) => x.focus.length > 0)
+                      .sort((a, b) => b.focus.length - a.focus.length)
+                      .map(({ theme, focus }) => (
+                        <div key={theme} className="rounded-lg border border-gray-200 p-3">
+                          <div className="text-sm font-semibold text-gray-900">{theme} <span className="text-xs font-normal text-gray-400">· {focus.length} outlet{focus.length === 1 ? '' : 's'} to focus on</span></div>
+                          <div className="mt-1 text-xs leading-relaxed text-gray-600">
+                            {focus.slice(0, 8).map((o, i) => (
+                              <span key={o.placeId}>
+                                {i > 0 ? ', ' : ''}
+                                <Link href={`/analyze/${datasetId}/outlet-report?outlet=${o.placeId}`} className="text-gray-700 underline decoration-gray-300 hover:decoration-gray-500">{locOnly(o.label)}</Link>
+                                <span className="text-gray-400"> ({pct1(o.problemRate)})</span>
+                              </span>
+                            ))}
+                            {focus.length > 8 && <span className="text-gray-400"> +{focus.length - 8} more</span>}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
 
               {/* Learn from — best operators */}
               {p.exemplars.length > 0 && (

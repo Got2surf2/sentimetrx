@@ -15,9 +15,11 @@ function locOnly(label: string): string {
   return i >= 0 ? label.slice(i + 3) : label
 }
 
-// One driver theme this location's unhappy (1–3★) guests cite, the over-
-// representation that makes it a real driver, a verbatim quote, and the peer
-// that handles it best.
+// How far into the worst tail an outlet sits on a theme, in plain words.
+const rankWord = (p: number) => (p >= 90 ? 'bottom 10%' : p >= 75 ? 'bottom 25%' : `worse than ${Math.round(p)}% of locations`)
+
+// One theme where this location is a BOTTOM-quartile performer vs all outlets —
+// a real, peer-relative weakness — with a verbatim quote and the best peer.
 function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
   return (
     <div className="rounded-lg border border-gray-200 p-4">
@@ -26,10 +28,10 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-[11px] font-bold text-white">{rank}</span>
           <span className="text-sm font-semibold text-gray-900">{l.theme}</span>
         </div>
-        <span className="shrink-0 text-sm font-bold text-rose-600">cited in {pct1(l.shareInBad)} of 1–3★ reviews here</span>
+        <span className="shrink-0 rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700">{rankWord(l.peerPercentile)} of locations</span>
       </div>
       <div className="mt-1.5 text-xs text-gray-500">
-        Brand-wide this theme is <span className="font-medium text-gray-700">{l.brandLift.toFixed(1)}×</span> more common in unhappy reviews than happy ones — a genuine driver of low ratings, not just a loud topic.
+        <span className="font-medium text-gray-700">{pct1(l.problemRate)}</span> of all reviews here are 1–3★ and cite this ({pct1(l.shareInBad)} of its 1–3★ reviews) — among the worst in the brand.
       </div>
       {l.quote && (
         <p className="mt-2 border-l-2 border-rose-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
@@ -37,17 +39,14 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
       {l.exemplar && (
         <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50/70 px-2.5 py-1.5 text-xs text-emerald-800">
           <span aria-hidden className="mt-px">★</span>
-          <span>
-            <span className="font-semibold">Learn from {locOnly(l.exemplar.label)}</span> — a {pct1(l.exemplar.lowRate)} 1–3★ rate
-            {l.exemplar.rating != null ? ` (${l.exemplar.rating.toFixed(1)}★)` : ''}; this complaint barely shows up there. Worth a call to compare how they run it.
-          </span>
+          <span><span className="font-semibold">Learn from {locOnly(l.exemplar.label)}</span> — a top-quartile performer on this ({pct1(l.exemplar.lowRate)} 1–3★ rate{l.exemplar.rating != null ? `, ${l.exemplar.rating.toFixed(1)}★` : ''}). Worth a call on how they run it.</span>
         </div>
       )}
     </div>
   )
 }
 
-function ActionPlan({ levers, summary, model, s }: { levers: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; s: Sel }) {
+function ActionPlan({ levers, strengths, summary, model, s }: { levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; s: Sel }) {
   if (!summary) {
     return (
       <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
@@ -56,7 +55,6 @@ function ActionPlan({ levers, summary, model, s }: { levers: OutletLever[]; summ
     )
   }
   const atPar = summary.gapToTarget <= 0.01
-  const showLevers = levers.length > 0 && summary.lowCount >= 5
   return (
     <div className="space-y-4">
       <div className={`rounded-lg p-5 ${atPar ? 'bg-emerald-50/60' : 'bg-gray-50'}`}>
@@ -65,25 +63,29 @@ function ActionPlan({ levers, summary, model, s }: { levers: OutletLever[]; summ
           <span className="font-semibold text-gray-900">{pct1(summary.lowRate)}</span> of {s.name}’s reviews are 1–3★
           ({summary.lowCount.toLocaleString()} of {s.reviews.toLocaleString()}) — versus about{' '}
           <span className="font-semibold text-gray-900">{pct1(model.targetLowRate)}</span> at the brand’s best-run outlets.{' '}
-          {atPar
-            ? 'This location already runs among your best — hold the line and share what’s working.'
-            : 'Closing that gap to your best operators is the opportunity; the themes below are what its unhappy guests cite most.'}
+          {levers.length
+            ? `Below are the themes where this location ranks among the worst in the brand — its real, fixable weaknesses.`
+            : atPar
+              ? 'This location already runs among your best — hold the line and share what’s working.'
+              : 'It isn’t a bottom-quartile performer on any single operational theme; its 1–3★ reviews are spread across topics. Work the operational basics.'}
         </p>
       </div>
-      {showLevers ? (
+      {levers.length > 0 && (
         <>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">What this location’s unhappy guests cite most</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Where this location ranks worst vs all outlets — work these</h3>
           <div className="space-y-2.5">
             {levers.map((l, i) => <LeverCard key={l.theme} l={l} rank={i + 1} />)}
           </div>
         </>
-      ) : !atPar ? (
-        <p className="rounded-lg border border-dashed border-gray-200 p-4 text-xs text-gray-500">
-          This location’s 1–3★ reviews don’t concentrate on any one brand-wide driver theme — they’re diffuse. Work the operational basics; the brand drivers (order accuracy, brand experience) are where to look first.
-        </p>
-      ) : null}
+      )}
+      {strengths.length > 0 && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+          <div className="text-xs font-semibold text-emerald-800">Strengths — top quartile vs all outlets</div>
+          <p className="mt-0.5 text-xs text-emerald-800/90">{strengths.map((t) => t.theme).join(', ')}. Protect these — they’re what guests reward.</p>
+        </div>
+      )}
       <p className="mt-2 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-        “Drivers” are themes that show up disproportionately in 1–3★ reviews vs 4–5★ reviews across the brand (an over-representation multiple, not bare frequency — so loud-but-neutral topics don’t mislead). Quotes are from this location’s own 1–3★ reviews. Computed from {model.population.toLocaleString()} rated reviews. Associational — a prioritization signal that benchmarks this outlet against its peers, not a guaranteed star change.
+        Each operational theme is peer-ranked across all outlets by its <span className="font-medium text-gray-500">problem rate</span> — the share of a location’s reviews that are 1–3★ and cite that theme. Weaknesses = bottom quartile (among the worst); strengths = top quartile. Lagging outcomes like brand loyalty are excluded — they’re symptoms of these operational issues, not levers. Quotes are this location’s own 1–3★ reviews. Associational — a prioritization signal, not a guaranteed star change.
       </p>
     </div>
   )
@@ -189,7 +191,7 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
 
 type Tab = 'action' | 'summary' | 'themes' | 'dimensions'
 
-export default function OutletReportTabs({ selected: s, levers, summary, model }: { selected: Sel; levers: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel }) {
+export default function OutletReportTabs({ selected: s, levers, strengths, summary, model }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel }) {
   const [tab, setTab] = useState<Tab>('action')
   const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
@@ -213,7 +215,7 @@ export default function OutletReportTabs({ selected: s, levers, summary, model }
 
       <div className="mt-5">
         {/* ACTION PLAN */}
-        {tab === 'action' && <ActionPlan levers={levers} summary={summary} model={model} s={s} />}
+        {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} s={s} />}
 
         {/* THEMES */}
         {tab === 'themes' && (

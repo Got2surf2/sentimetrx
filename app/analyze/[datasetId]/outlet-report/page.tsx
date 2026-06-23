@@ -41,6 +41,7 @@ export default async function OutletReportPage(props: {
   const { report, predictor } = await computeOutletReportWithPredictor(datasetId, outlet)
   const s = report.selected
   const levers = s ? (predictor.outletLevers[s.placeId] || []) : []
+  const strengths = s ? (predictor.outletStrengths[s.placeId] || []) : []
   const summary = s ? predictor.outletSummaries.find((o) => o.placeId === s.placeId) : undefined
 
   return (
@@ -90,7 +91,7 @@ export default async function OutletReportPage(props: {
             </div>
 
             {/* Action Plan / Summary / Themes / Dimensions tabs (client) */}
-            <OutletReportTabs selected={s} levers={levers} summary={summary} model={predictor.model} />
+            <OutletReportTabs selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model} />
           </div>
         )}
       </div>

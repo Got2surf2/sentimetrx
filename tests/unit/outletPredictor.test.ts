@@ -2,91 +2,89 @@ import { describe, it, expect } from 'vitest'
 import { buildPredictor, type PredReview, type PredOutlet } from '@/lib/outletPredictor'
 
 // The predictor is a pure, deterministic engine for the "recover your 1–3★
-// guests" frame: brand 1–3★ rate + spread, theme drivers by over-representation
-// in bad-vs-good reviews, and per-outlet levers. Synthetic data with a KNOWN
-// structure verifies it recovers that structure.
+// guests" frame. Two layers: brand over-representation drivers (strategic) and
+// per-outlet PEER QUARTILES on each theme (operational). Synthetic data with a
+// KNOWN structure verifies it recovers both.
 
-const THEMES = ['Order Accuracy', 'Food'] // Order Accuracy = real driver, Food = loud-but-neutral
+const THEMES = ['Order Accuracy', 'Food', 'Loyalty & Brand Experience']
 
-// total reviews; `low` are 1–3★. Order Accuracy is cited only in bad reviews
-// (`lowOrder` of them) → rare in happy reviews → a real driver. Food is cited in
-// HALF of all reviews regardless of rating → ~1× over-representation → a loud-
-// but-neutral topic, NOT a driver.
-function outletReviews(placeId: string, total: number, low: number, lowOrder: number): PredReview[] {
+// total reviews; `low` are 1–3★. `lowOrder` of the bad reviews cite Order
+// Accuracy (a problem topic — absent in good reviews). Food is in half of ALL
+// reviews (neutral). Loyalty is in `lowLoyal` of the bad reviews (an outcome).
+function outletReviews(placeId: string, total: number, low: number, lowOrder: number, lowLoyal = 0): PredReview[] {
   const out: PredReview[] = []
   for (let i = 0; i < total; i++) {
     const isLow = i < low
     const order = isLow && i < lowOrder
     const food = i % 2 === 0
-    out.push({ placeId, rating: isLow ? 2 : 5, themes: [order, food] })
+    const loyal = isLow && i < lowLoyal
+    out.push({ placeId, rating: isLow ? 2 : 5, themes: [order, food, loyal] })
   }
   return out
 }
 
-describe('outletPredictor — buildPredictor (1–3★ recovery frame)', () => {
+// A spread of outlets so quartiles are meaningful: A is the worst (high 1–3★ and
+// high order-accuracy problems), the rest progressively cleaner.
+function fleet(): { reviews: PredReview[]; outlets: PredOutlet[] } {
+  const specs: [string, number, number, number][] = [
+    ['A', 120, 60, 40], ['B', 120, 30, 12], ['C', 120, 18, 5],
+    ['D', 120, 12, 3], ['E', 120, 8, 2], ['F', 120, 4, 1],
+  ]
+  const reviews = specs.flatMap(([id, t, low, ord]) => outletReviews(id, t, low, ord))
+  const outlets: PredOutlet[] = specs.map(([id]) => ({ placeId: id, label: `Brand — ${id}town`, reviews: 120, rating: null }))
+  return { reviews, outlets }
+}
+
+describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)', () => {
   it('returns unavailable below the minimum population', () => {
-    const p = buildPredictor({ themeLabels: THEMES, reviews: [], outlets: [] })
-    expect(p.available).toBe(false)
+    expect(buildPredictor({ themeLabels: THEMES, reviews: [], outlets: [] }).available).toBe(false)
   })
 
-  it('measures the 1–3★ rate and its spread across outlets', () => {
-    const reviews = [
-      ...outletReviews('A', 100, 40, 20), // 40% bad — the laggard
-      ...outletReviews('B', 100, 5, 2),    // 5% bad — the exemplar
-    ]
-    const outlets: PredOutlet[] = [
-      { placeId: 'A', label: 'Brand — Atown, CA', reviews: 100, rating: null },
-      { placeId: 'B', label: 'Brand — Btown, CA', reviews: 100, rating: null },
-    ]
-    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 50, minDriverBadN: 10 })
+  it('measures the 1–3★ rate and spread, worst-first', () => {
+    const { reviews, outlets } = fleet()
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 10 })
     expect(p.available).toBe(true)
-    expect(p.model.lowRate).toBeCloseTo(0.225, 3) // 45 of 200
-    expect(p.model.worstLowRate).toBeCloseTo(0.40, 5)
-    expect(p.model.bestLowRate).toBeCloseTo(0.05, 5)
-    // Worst-first hot-list, and the best outlet is the exemplar.
-    expect(p.outletSummaries[0].placeId).toBe('A')
-    expect(p.exemplars[0]?.placeId).toBe('B')
+    expect(p.model.worstLowRate).toBeCloseTo(0.5, 5)   // A: 60/120
+    expect(p.model.bestLowRate).toBeCloseTo(0.033, 2)  // F: 4/120
+    expect(p.outletSummaries[0].placeId).toBe('A')     // worst first
+    expect(p.exemplars[0]?.placeId).toBe('F')          // best operator
   })
 
-  it('flags the over-represented theme as a driver and the loud-but-neutral one as not', () => {
-    // Order Accuracy: common in bad, absent in good → high lift → driver.
-    // Food: equally common in bad and good → ~1× → NOT a driver.
-    const reviews = [
-      ...outletReviews('A', 200, 60, 40),
-      ...outletReviews('B', 200, 20, 10),
-    ]
-    const outlets: PredOutlet[] = [
-      { placeId: 'A', label: 'Brand — Atown', reviews: 200, rating: null },
-      { placeId: 'B', label: 'Brand — Btown', reviews: 200, rating: null },
-    ]
-    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 50, minDriverBadN: 10, driverLift: 1.2 })
-    const order = p.drivers.find((d) => d.theme === 'Order Accuracy')!
-    const food = p.drivers.find((d) => d.theme === 'Food')!
-    expect(order.lift).toBeGreaterThan(food.lift)
-    expect(order.isDriver).toBe(true)
-    expect(food.isDriver).toBe(false)          // loud topic, not a differentiator
+  it('flags the over-represented theme as a driver and excludes the outcome theme', () => {
+    const specs: [string, number, number, number, number][] = [['A', 200, 80, 50, 30], ['B', 200, 20, 8, 4]]
+    const reviews = specs.flatMap(([id, t, low, ord, loy]) => outletReviews(id, t, low, ord, loy))
+    const outlets: PredOutlet[] = specs.map(([id]) => ({ placeId: id, label: `Brand — ${id}`, reviews: 200, rating: null }))
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 10, driverLift: 1.2 })
     expect(p.brandLevers.map((d) => d.theme)).toContain('Order Accuracy')
-    expect(p.brandLevers.map((d) => d.theme)).not.toContain('Food')
+    expect(p.brandLevers.map((d) => d.theme)).not.toContain('Food')                    // loud-but-neutral
+    expect(p.brandLevers.map((d) => d.theme)).not.toContain('Loyalty & Brand Experience') // outcome, excluded
+    // Loyalty IS over-represented but reported as an outcome signal, never a lever.
+    expect(p.outcomeSignals.map((d) => d.theme)).toContain('Loyalty & Brand Experience')
+    expect(p.actionableThemes).not.toContain('Loyalty & Brand Experience')
   })
 
-  it('per-outlet levers surface only driver themes the outlet’s unhappy guests cite, with quotes', () => {
-    const reviews = [
-      ...outletReviews('A', 200, 60, 40),
-      ...outletReviews('B', 200, 20, 10),
-    ]
-    const outlets: PredOutlet[] = [
-      { placeId: 'A', label: 'Brand — Atown', reviews: 200, rating: null },
-      { placeId: 'B', label: 'Brand — Btown', reviews: 200, rating: null },
-    ]
+  it('peer-ranks outlets per theme: worst outlet is a bottom-quartile weakness, best is a strength', () => {
+    const { reviews, outlets } = fleet()
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 10 })
+    // A is the worst on Order Accuracy → bottom quartile → a weakness, not a strength.
+    const aW = p.outletLevers['A'] || []
+    expect(aW.some((l) => l.theme === 'Order Accuracy')).toBe(true)
+    expect(aW.every((l) => l.theme !== 'Loyalty & Brand Experience')).toBe(true) // outcome never a weakness
+    expect(p.outletStrengths['A']?.some((l) => l.theme === 'Order Accuracy')).toBe(false)
+    // F is the best → Order Accuracy is a strength, not a weakness.
+    expect(p.outletStrengths['F']?.some((l) => l.theme === 'Order Accuracy')).toBe(true)
+    expect((p.outletLevers['F'] || []).some((l) => l.theme === 'Order Accuracy')).toBe(false)
+    // themeFocus lists the bottom-quartile outlets for the theme, A worst-first.
+    expect(p.themeFocus['Order Accuracy']?.[0]?.placeId).toBe('A')
+  })
+
+  it('attaches a quote to the matching outlet+theme weakness', () => {
+    const { reviews, outlets } = fleet()
     const p = buildPredictor({
-      themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 50, minDriverBadN: 10, driverLift: 1.2,
+      themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 10,
       examples: [{ placeId: 'A', theme: 'Order Accuracy', quote: 'they got my order wrong again' }],
     })
-    const aLevers = p.outletLevers['A'] || []
-    expect(aLevers.length).toBeGreaterThan(0)
-    expect(aLevers.every((l) => l.theme !== 'Food')).toBe(true) // non-drivers excluded
-    const order = aLevers.find((l) => l.theme === 'Order Accuracy')
-    expect(order?.quote).toBe('they got my order wrong again')
-    expect(order?.exemplar).toBeTruthy()
+    const lever = (p.outletLevers['A'] || []).find((l) => l.theme === 'Order Accuracy')
+    expect(lever?.quote).toBe('they got my order wrong again')
   })
 })
