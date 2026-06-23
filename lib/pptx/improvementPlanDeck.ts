@@ -70,7 +70,7 @@ export function buildImprovementPlanDeck(p: OutletPredictor, brand: string): Dec
       columns: ['Theme', 'In 1–3★', 'In 4–5★', 'Over-rep.', 'Mentions'],
       rows: drivers.map((d) => [trunc(d.theme, 30), pct0(d.pBad), pct0(d.pGood), `${d.lift.toFixed(1)}×`, String(d.nBad)]),
       insight: `${drivers[0].theme} is the only theme systematically more common in unhappy reviews brand-wide (${drivers[0].lift.toFixed(1)}×).` +
-        (p.outcomeSignals.length ? ` ${p.outcomeSignals.map((d) => d.theme).join(', ')} also over-indexes, but that's a lagging OUTCOME (eroding loyalty), not a lever — fix the operational drivers and it follows.` : '') +
+        (p.outcomeSignals.length ? ` ${p.outcomeSignals.map((d) => d.theme).join(', ')} also over-indexes, but that's a lagging OUTCOME, not a lever.${(() => { const c = p.outcomeCorrelations.find((x) => p.outcomeSignals.some((s) => s.theme === x.outcome)); const t = c?.drivers.filter((d) => d.lift >= 1.2).slice(0, 2) || []; return t.length ? ` Brand-wide it travels most with ${t.map((d) => `${d.theme} (${d.lift.toFixed(1)}×)`).join(' and ')} — prioritize those to protect loyalty.` : '' })()}` : '') +
         (nonDrivers.length ? ` Everything else is discussed ~equally by happy and unhappy guests (loud topics, not differentiators). Beyond this one systemic issue, the problems are LOCATION-SPECIFIC — see the per-theme focus slides.` : ''),
     })
   }

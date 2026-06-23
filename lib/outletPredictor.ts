@@ -159,6 +159,10 @@ export type OutletPredictor = {
   themeTrends: Record<string, { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }>
   trendBasis: { recent: string; prior: string } | null
   recommendedActions: RecommendedAction[] // greedy impact-ranked playbook (de-duplicated)
+  // For each over-represented OUTCOME theme (loyalty/brand), the operational
+  // themes most correlated with it among 1–3★ reviews — i.e. what drives the
+  // loyalty erosion (so "fix the drivers and loyalty follows" gets specific).
+  outcomeCorrelations: { outcome: string; n: number; drivers: { theme: string; coShare: number; lift: number }[] }[]
 }
 
 // Lagging-outcome themes — predicted BY the operational drivers, not directly
@@ -279,6 +283,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
     themeTargets: [], outletWhatIf: {}, allLowRates: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
+    outcomeCorrelations: [],
   }
   if (!K || n < 50) return empty
 
@@ -478,11 +483,29 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     themeTrends,
   })
 
+  // ── Outcome→driver correlation (BRAND-LEVEL; per-outlet is far too sparse).
+  // For each over-represented outcome theme, the operational themes most
+  // correlated with it among 1–3★ reviews (co-occurrence lift vs base rate). ──
+  const lowBaseShare: Record<number, number> = {}
+  for (const { j } of actionableIdx) lowBaseShare[j] = lows.length ? lows.filter((r) => r.themes[j]).length / lows.length : 0
+  const outcomeCorrelations: OutletPredictor['outcomeCorrelations'] = []
+  for (let oj = 0; oj < K; oj++) {
+    if (!OUTCOME_RE.test(themes[oj])) continue
+    const loN = lows.filter((r) => r.themes[oj])
+    if (loN.length < 15) continue // too few to be even directional
+    const driverCorr = actionableIdx.map(({ t, j }) => {
+      const coShare = loN.filter((r) => r.themes[j]).length / loN.length
+      return { theme: t, coShare, lift: lowBaseShare[j] > 0 ? coShare / lowBaseShare[j] : 0 }
+    }).sort((a, b) => b.lift - a.lift)
+    outcomeCorrelations.push({ outcome: themes[oj], n: loN.length, drivers: driverCorr })
+  }
+
   return {
     available: true,
     model: { population: n, chainAvg, lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
     themeTargets, outletWhatIf, allLowRates, themeTrends, trendBasis, recommendedActions,
+    outcomeCorrelations,
   }
 }

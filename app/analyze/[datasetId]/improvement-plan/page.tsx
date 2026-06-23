@@ -157,8 +157,20 @@ export default async function ImprovementPlanPage(props: {
                   <div className="text-xs font-semibold text-amber-800">Brand-health signal (a symptom, not a lever)</div>
                   <p className="mt-0.5 text-xs leading-relaxed text-amber-800/90">
                     {p.outcomeSignals.map((d) => `${d.theme} (${d.lift.toFixed(1)}×)`).join(', ')} also shows up disproportionately in 1–3★ reviews — guests
-                    signalling eroding loyalty. But that’s an <span className="font-semibold">outcome</span> of the operational drivers above, not something a manager fixes directly. Fix the drivers and this follows.
+                    signalling eroding loyalty. But that’s an <span className="font-semibold">outcome</span> of the operational drivers, not something a manager fixes directly.
                   </p>
+                  {(() => {
+                    const corr = p.outcomeCorrelations.find((c) => p.outcomeSignals.some((s) => s.theme === c.outcome))
+                    const top = corr?.drivers.filter((d) => d.lift >= 1.2).slice(0, 3) || []
+                    if (!top.length) return null
+                    return (
+                      <p className="mt-1.5 text-xs leading-relaxed text-amber-900">
+                        <span className="font-semibold">Where it comes from:</span> brand-wide, loyalty erosion travels most with{' '}
+                        {top.map((d, i) => <span key={d.theme}>{i > 0 ? ', ' : ''}<span className="font-medium">{d.theme}</span> ({d.lift.toFixed(1)}×)</span>)}
+                        {' '}— prioritize those to protect loyalty. <span className="text-amber-700/80">(brand-level, n={corr!.n} loyalty-citing 1–3★ reviews; directional)</span>
+                      </p>
+                    )
+                  })()}
                 </div>
               )}
               {nonDrivers.length > 0 && (

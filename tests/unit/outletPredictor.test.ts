@@ -144,6 +144,30 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(actions[1].cumulative).toBeCloseTo(9, 6) // additive, no double-count
   })
 
+  it('outcomeCorrelations: brand-level, ranks the operational theme loyalty erosion travels with', () => {
+    // Theme 2 = 'Loyalty & Brand Experience' (outcome). In bad reviews it
+    // co-occurs heavily with theme 0 (Order Accuracy) and never with theme 1.
+    const reviews: PredReview[] = []
+    for (let i = 0; i < 300; i++) {
+      const low = i < 90
+      // 20 bad reviews cite loyalty; of those, 16 also cite Order Accuracy.
+      const loyalty = low && i < 20
+      const order = low && (i < 16 || (i >= 30 && i < 50)) // co-occurs with loyalty + some standalone
+      const food = low && i >= 60 && i < 80                 // never with loyalty
+      reviews.push({ placeId: i % 2 ? 'A' : 'B', rating: low ? 2 : 5, themes: [order, food, loyalty] })
+    }
+    const outlets: PredOutlet[] = [
+      { placeId: 'A', label: 'Brand — A', reviews: 150, rating: null },
+      { placeId: 'B', label: 'Brand — B', reviews: 150, rating: null },
+    ]
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets, exemplarMinReviews: 100, minDriverBadN: 5 })
+    const corr = p.outcomeCorrelations.find((c) => c.outcome === 'Loyalty & Brand Experience')
+    expect(corr).toBeTruthy()
+    expect(corr!.n).toBe(20)
+    expect(corr!.drivers[0].theme).toBe('Order Accuracy') // most-correlated operational theme
+    expect(corr!.drivers[0].lift).toBeGreaterThan(corr!.drivers[1].lift)
+  })
+
   it('attaches a quote to the matching outlet+theme weakness', () => {
     const { reviews, outlets } = fleet()
     const p = buildPredictor({
