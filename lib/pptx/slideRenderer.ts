@@ -143,39 +143,44 @@ function rect(slide: any, pptx: any, x: number, y: number, w: number, h: number,
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill }, line: { color: CR.line, width: 1 }, rectRadius: 0.07 })
 }
 
-/** datanautix wordmark recolored for the cream header ('data' teal, 'nautix' orange) */
-function creamMark(slide: any) {
-  slide.addText(
-    [
-      { text: 'data',   options: { color: CR.teal,   bold: true } },
-      { text: 'nautix', options: { color: CR.orange, bold: true } },
-    ],
-    { x: W - 2.4, y: 0.45, w: 2.0, h: 0.4, fontSize: 15, valign: 'middle', align: 'right' }
-  )
+/** Prominent subject-brand label, top-right of every content slide (the brand the
+ *  report is about). The datanautix producer mark lives in the footer. */
+function brandLabel(slide: any, pptx: any, brand?: string) {
+  if (!brand) return
+  slide.addText(trunc(brand, 40), {
+    x: W - 3.8, y: 0.44, w: 3.5, h: 0.46, fontSize: 16, bold: true,
+    color: CR.ink, align: 'right', valign: 'top', wrap: false, autoFit: true,
+  })
+  // short orange accent rule beneath, aligned to the right margin
+  solidRect(slide, pptx, W - 2.0, 0.92, 1.7, 0.035, CR.orange)
 }
 
-function hdr(slide: any, pptx: any, title: string, subtitle?: string) {
+function hdr(slide: any, pptx: any, title: string, subtitle?: string, brand?: string) {
   bgFill(slide, pptx, CR.cream)
   // full-height left accent bar
   solidRect(slide, pptx, 0, 0, 0.16, H, CR.orange)
   slide.addText(title, {
-    x: 0.9, y: 0.5, w: W - 0.9 - 2.5, h: subtitle ? 0.5 : 0.7,
+    x: 0.9, y: 0.5, w: W - 0.9 - 3.8, h: subtitle ? 0.5 : 0.7,
     fontSize: 28, bold: true, color: CR.ink, valign: 'top', wrap: true, autoFit: true,
   })
   if (subtitle) {
     slide.addText(subtitle, {
-      x: 0.9, y: 1.02, w: W - 0.9 - 2.5, h: 0.4,
+      x: 0.9, y: 1.02, w: W - 0.9 - 3.8, h: 0.4,
       fontSize: 12.5, color: CR.teal, valign: 'top', italic: true, wrap: true,
     })
   }
-  creamMark(slide)
+  brandLabel(slide, pptx, brand)
 }
 
-function footer(slide: any, pptx: any, datasetName: string) {
+function footer(slide: any, pptx: any, _datasetName: string) {
   solidRect(slide, pptx, 0, FY - 0.02, W, 0.012, CR.teal, 55)
-  slide.addText('datanautix.com  ·  ' + datasetName, {
-    x: PAD, y: FY, w: W * 0.6, h: 0.26, fontSize: 8, color: CR.ink2, valign: 'middle',
-  })
+  // datanautix producer mark (moved here from the header; the subject brand now
+  // owns the top-right of each slide).
+  slide.addText([
+    { text: 'data',   options: { color: CR.teal,   bold: true } },
+    { text: 'nautix', options: { color: CR.orange, bold: true } },
+    { text: '   ·   datanautix.com', options: { color: CR.ink2 } },
+  ], { x: PAD, y: FY, w: W * 0.6, h: 0.26, fontSize: 8.5, valign: 'middle' })
 }
 
 function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string) {
@@ -196,7 +201,7 @@ const BAR_COLORS = [CR.teal, CR.tealL, CR.gold, CR.orange, CR.ink2, CR.tealD, CR
 
 export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const data = spec.data.slice(0, 12)
   const n = data.length
@@ -258,7 +263,7 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
 
 export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const data = spec.data.slice(0, 14)
   const n = data.length
@@ -315,7 +320,7 @@ export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName
 
 function renderKpiGrid(pptx: any, spec: KpiGridSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const kpis = spec.kpis.slice(0, 6)
   const cols = Math.min(kpis.length, 3)
@@ -361,7 +366,7 @@ function renderKpiGrid(pptx: any, spec: KpiGridSlide, datasetName: string) {
 
 function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const cols = spec.columns
   const rows = spec.rows.slice(0, 15)
@@ -404,7 +409,7 @@ function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
 
 function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const bullets = spec.bullets.slice(0, 10)
   const insightH = spec.insight ? 0.9 : 0
@@ -436,7 +441,7 @@ function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
 
 export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const quotes = spec.quotes.slice(0, 6)
   const cols = quotes.length <= 3 ? 1 : 2
@@ -474,7 +479,7 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
 
 function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const colW = (W - PAD * 2 - 0.3) / 2
   const contentH = FY - CONTENT_Y - 0.2
@@ -507,7 +512,7 @@ function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
 
 export function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title, spec.subtitle)
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const entities = spec.entities.slice(0, 24)
   const accent = spec.accentColor || CR.teal
@@ -573,7 +578,7 @@ export function fmtWallClock(seconds: number): string {
 
 export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title || 'How this deck was made.')
+  hdr(slide, pptx, spec.title || 'How this deck was made.', undefined, datasetName)
 
   // ── Layout constants — every region derives from these ──
   const contentTop = CONTENT_Y + 0.05
@@ -748,7 +753,7 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
 
 export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
-  hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline)
+  hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline, datasetName)
 
   // ── Shared vertical bounds — left stack and right box align top + bottom ──
   const hookH = spec.hook ? 0.55 : 0.10

@@ -51,7 +51,7 @@ export function buildOperationalReviewDeck(
       : ''
   slides.push({
     type: 'kpi_grid',
-    title: `Executive Summary — ${brand}`,
+    title: 'Executive Summary',
     subtitle: `${d.reviewCount.toLocaleString()} Google reviews · ${outlets.length} locations analyzed · last 18 months (${d.window.label})`,
     kpis: [
       { value: `${d.blendedRating.toFixed(2)}★`, label: 'Blended rating', sub: `${d.reviewCount.toLocaleString()} rated reviews`, color: DN.teal },

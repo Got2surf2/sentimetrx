@@ -1,5 +1,11 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-24 — PPTX: prominent subject-brand label top-right of every slide
+
+**Why**: Slides should self-identify which brand the report is about (e.g. for screenshots), so the subject brand — not the producer mark — owns the top-right of each page.
+
+**What changed** (`lib/pptx/slideRenderer.ts`, shared across all deck exports): `hdr` now renders the **subject brand prominently top-right** (16pt bold, ink, with a short orange accent rule) via a new `brandLabel(slide, pptx, brand)`; the brand is threaded through every `hdr(...)` call as `datasetName`. The **datanautix producer wordmark moved to the footer** (`data·nautix · datanautix.com`). The Operational Review exec-slide title dropped the now-redundant `— {brand}` suffix. Cover (title slide) unchanged — the brand is already its headline. tsc clean, render-verified. LOCAL/unpushed.
+
 ## 2026-06-24 — Theme-focus cards: outlet chips + peer-median baseline (readability)
 
 **Why**: On the Brand Health "By issue — which outlets to focus on" cards, the outlets rendered as a run-on comma string "City, State (pct%), City, State (pct%)…" which is hard to parse (city and state both comma-separated), and the per-outlet rates had no baseline to read against.
