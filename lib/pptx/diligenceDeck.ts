@@ -137,7 +137,7 @@ export function buildDiligenceDeck(
   // ── 5. What drives the stars (two-column: protect vs fix) ─────────────────
   const themeActions = p.recommendedActions.filter((a) => a.kind === 'theme' && a.theme)
   const fixThemes = themeActions.length
-    ? themeActions.slice(0, 5).map((a) => `${trunc(a.theme as string, 32)} — ~${Math.round(a.recovered)} detractors recoverable across ${a.cohort} outlets`)
+    ? themeActions.slice(0, 5).map((a) => `${trunc(a.theme as string, 36)} — ~${Math.round(a.recovered)} recoverable 1–3★ guests`)
     : p.brandLevers.slice(0, 5).map((dr) => `${trunc(dr.theme, 34)} — ${dr.lift.toFixed(1)}× over-represented in 1–3★ reviews`)
   const protectItems = p.exemplars.length
     ? p.exemplars.slice(0, 5).map((e) => `${trunc(locOnly(e.label), 30)} — just ${pct1(e.lowRate)} 1–3★${e.rating != null ? ` (${e.rating.toFixed(2)}★)` : ''}`)
