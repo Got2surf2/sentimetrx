@@ -2,17 +2,18 @@
 
 import { useState } from 'react'
 
-// Client control for the "Export diligence report" download. Competitors are
+// Client control for the "Export operational review" download. Competitors are
 // typed at generation time (the deck triggers a one-time live competitor pull),
 // so this can't be a plain server-rendered <a href>. On click it navigates the
-// browser to the diligence-deck route, which streams the PPTX as a download.
-export default function DiligenceExport({ datasetId }: { datasetId: string }) {
+// browser to the operational-review-deck route, which streams the merged
+// Operational Review PPTX (diligence framing + improvement detail + dimensions).
+export default function OperationalReviewExport({ datasetId }: { datasetId: string }) {
   const [competitors, setCompetitors] = useState('')
 
   function onExport() {
     const c = competitors.trim()
     const qs = c ? `?competitors=${encodeURIComponent(c)}` : ''
-    window.location.href = `/api/datasets/${datasetId}/diligence-deck${qs}`
+    window.location.href = `/api/datasets/${datasetId}/operational-review-deck${qs}`
   }
 
   return (
@@ -30,7 +31,7 @@ export default function DiligenceExport({ datasetId }: { datasetId: string }) {
         onClick={onExport}
         className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
       >
-        Export diligence report
+        Export operational review
       </button>
     </div>
   )

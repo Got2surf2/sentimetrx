@@ -13,7 +13,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletPredictor } from '@/lib/outletReport'
 import AnalyticsNav from '../AnalyticsNav'
-import DiligenceExport from '../DiligenceExport'
+import OperationalReviewExport from '../OperationalReviewExport'
 import PlaybookPanel from './PlaybookPanel'
 
 export const dynamic = 'force-dynamic'
@@ -52,10 +52,7 @@ export default async function ImprovementPlanPage(props: {
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
         <AnalyticsNav datasetId={datasetId} active="brand" action={
-          <>
-            <DiligenceExport datasetId={datasetId} />
-            <a href={`/api/datasets/${datasetId}/improvement-plan-deck`} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700">Export deck</a>
-          </>
+          <OperationalReviewExport datasetId={datasetId} />
         } />
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
