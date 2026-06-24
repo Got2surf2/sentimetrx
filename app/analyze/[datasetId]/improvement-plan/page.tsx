@@ -199,26 +199,41 @@ export default async function ImprovementPlanPage(props: {
                       .map((t) => ({ theme: t, focus: p.themeFocus[t] || [] }))
                       .filter((x) => x.focus.length > 0)
                       .sort((a, b) => b.focus.length - a.focus.length)
-                      .map(({ theme, focus }) => (
+                      .map(({ theme, focus }) => {
+                        const medianRate = p.themeTargets.find((tt) => tt.theme === theme)?.medianRate
+                        return (
                         <div key={theme} className="rounded-lg border border-gray-200 p-3">
-                          <div className="text-sm font-semibold text-gray-900">{theme} <span className="text-xs font-normal text-gray-400">· {focus.length} outlet{focus.length === 1 ? '' : 's'} to focus on</span></div>
-                          <div className="mt-1 text-xs leading-relaxed text-gray-600">
-                            {focus.slice(0, 8).map((o, i) => (
-                              <span key={o.placeId}>
-                                {i > 0 ? ', ' : ''}
-                                <Link href={`/analyze/${datasetId}/outlet-report?outlet=${o.placeId}`} className="text-gray-700 underline decoration-gray-300 hover:decoration-gray-500">{locOnly(o.label)}</Link>
-                                <span className="text-gray-400"> ({pct1(o.problemRate)})</span>
-                              </span>
+                          <div className="text-sm font-semibold text-gray-900">
+                            {theme}
+                            <span className="text-xs font-normal text-gray-400"> · {focus.length} outlet{focus.length === 1 ? '' : 's'} to focus on</span>
+                            {medianRate != null && <span className="text-xs font-normal text-gray-400"> · peer median {pct1(medianRate)}</span>}
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {focus.slice(0, 8).map((o) => (
+                              <Link
+                                key={o.placeId}
+                                href={`/analyze/${datasetId}/outlet-report?outlet=${o.placeId}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-700 hover:border-gray-300 hover:bg-gray-100"
+                              >
+                                <span>{locOnly(o.label)}</span>
+                                <span className="font-semibold text-gray-500">{pct1(o.problemRate)}</span>
+                              </Link>
                             ))}
-                            {focus.length > 8 && <span className="text-gray-400"> +{focus.length - 8} more</span>}
+                            {focus.length > 8 && <span className="self-center text-xs text-gray-400">+{focus.length - 8} more</span>}
                           </div>
                           {(p.themeExemplars[theme] || []).length > 0 && (
-                            <div className="mt-1.5 text-xs text-emerald-700">
-                              <span className="font-medium">Learn from:</span> {p.themeExemplars[theme].slice(0, 5).map((e) => locOnly(e.label)).join(', ')}
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-medium text-emerald-700">Learn from:</span>
+                              {p.themeExemplars[theme].slice(0, 5).map((e, i) => (
+                                <span key={i} className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                                  {locOnly(e.label)}
+                                </span>
+                              ))}
                             </div>
                           )}
                         </div>
-                      ))}
+                        )
+                      })}
                   </div>
                 </>
               )}

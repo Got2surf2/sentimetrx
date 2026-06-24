@@ -1,5 +1,13 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-24 — Theme-focus cards: outlet chips + peer-median baseline (readability)
+
+**Why**: On the Brand Health "By issue — which outlets to focus on" cards, the outlets rendered as a run-on comma string "City, State (pct%), City, State (pct%)…" which is hard to parse (city and state both comma-separated), and the per-outlet rates had no baseline to read against.
+
+**What changed** (`app/analyze/[datasetId]/improvement-plan/page.tsx`):
+- Each focus outlet now renders as a discrete clickable **chip** (location + problem-rate %), flex-wrapped — same for the green "Learn from:" exemplars (emerald chips). No more run-on city/state list.
+- The card heading now shows the **peer-median problem rate** for that theme (`p.themeTargets[].medianRate`) next to "N outlets to focus on", so the bottom-quartile outlet rates have a frame of reference. tsc clean. LOCAL/unpushed — owner to eyeball via `npm run dev`.
+
 ## 2026-06-24 — Merge the two deck exports into ONE "Operational Review Report" (+ Dimensions section)
 
 **Why**: The Brand Health page carried two overlapping one-click exports — the operator improvement-plan deck ("Export deck") and the acquirer diligence deck ("Export diligence report") — which duplicated most slides (KPIs, leaderboard, drivers, levers). Collapse them into a single **Operational Review** that keeps ALL operator detail (per-theme focus slides, hot-list, quotes, best-operators) under the cleaner diligence framing, and add the missing **Dimensions (aspect-sentiment ABSA)** lens the parent org tracks so the report reflects the same dimensions view as the Taxonomy tab.
