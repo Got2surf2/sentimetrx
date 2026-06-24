@@ -1,5 +1,16 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-24 — Customer-Experience Diligence report: one-click export from Brand Health
+
+**Why**: The diligence deck builder (`lib/pptx/diligenceDeck.ts`) and data helper (`lib/diligenceData.ts`) already existed but had no way to trigger them in-product. Wire it up as a one-click download so an acquirer's "independent read of the brand from its Google reviews" is generatable from the Advanced Analytics ▸ Brand Health page, with optional competitors benchmarked live at gen time.
+
+**What changed**:
+- `lib/diligenceData.ts` — added `topMarkets: string[]` ("City ST", top 8 by review count) to the `DiligenceData` interface + computed it from the existing row scan (no extra query); feeds the competitor pull.
+- `lib/competitorBenchmark.ts` (NEW, server-only) — ported the working `scripts/_rubio_comp_brand.ts` pull. Sweeps DataForSEO Maps for the brand + ≤4 competitors across ≤6 markets concurrently (`Promise.all`, per-fetch try/catch), keeps only listings whose **normalized title contains the normalized search name** (lowercase, strip non-alphanumeric, collapse ws, drop leading "the ") to exclude contamination, dedups by address, returns vote-weighted lifetime rating. Competitors with zero matched locs are omitted (no NaN).
+- `app/api/datasets/[datasetId]/diligence-deck/route.ts` (NEW, GET) — clones the `improvement-plan-deck` org-gating exactly (`getCallerOrgContext` + service-role dataset fetch + `!isAdmin && ds.org_id !== orgId → 404`). Reads `competitors`/`franchiseStates`/`preparedFor` params; competitor pull is **non-fatal** (catch → ship without competitor slide, never 500). Streams the PPTX as `${brand}_CustomerExperience_Diligence.pptx`.
+- `app/analyze/[datasetId]/DiligenceExport.tsx` (NEW, client) — competitors text input (16px, no iOS zoom) + "Export diligence report" button (matches existing export styling) → navigates to the route. Embedded in the Brand Health `AnalyticsNav` action slot next to "Export deck".
+- `docs/ANALYTICS.md` — documented the report, route, gen-time live pull, two rating lenses, and the cautionary review-volume flag.
+
 ## 2026-06-22 — Rubio's Coastal Grill pitch deck, rebuilt from real review data
 
 **Why**: A prior session produced a Rubio's pitch deck (`~/Downloads/Rubios_Pitch_Deck.pptx`) whose numbers were generic/assumed ("4.2★", "post-bankruptcy, 3–4 silent failures dragging the brand down") — a framing that would have torched credibility against an ops team that knows its own ratings. We have the actual data loaded in Sentimetrx (10,600 Google reviews, 81 locations), so rebuild the pitch on real, auditable numbers and let the data set the story.
