@@ -128,9 +128,11 @@ export function buildOperationalReviewDeck(
     subtitle: `Top 5 and bottom 5 of ${outlets.length} outlets by average rating · spread ${worstRating.toFixed(2)}★–${bestRating.toFixed(2)}★`,
     columns: ['Location', 'Rating', 'Reviews', 'Tier'],
     rows: [
-      ...top5.map((o) => [trunc(locOnly(o.label), 40), `${(o.rating ?? 0).toFixed(2)}★`, String(o.reviews ?? ''), 'Top 5']),
-      ...bottom5.map((o) => [trunc(locOnly(o.label), 40), `${(o.rating ?? 0).toFixed(2)}★`, String(o.reviews ?? ''), 'Bottom 5']),
+      ...top5.map((o) => [trunc(locOnly(o.label), 40), `${(o.rating ?? 0).toFixed(2)}★`, String(o.reviews ?? ''), '▲ Top 5']),
+      ...bottom5.map((o) => [trunc(locOnly(o.label), 40), `${(o.rating ?? 0).toFixed(2)}★`, String(o.reviews ?? ''), '▼ Bottom 5']),
     ],
+    // color-code the two groups: faint green for the top 5, faint red for the bottom 5
+    rowTints: [...top5.map(() => 'E4F0E7'), ...bottom5.map(() => 'F8E6DF')],
     insight:
       `A tight, well-run network with a shallow tail: the gap from best (${bestRating.toFixed(2)}★) to worst (${worstRating.toFixed(2)}★) is ${gap.toFixed(2)}★. ` +
       `The leaderboard is the operating manual — the top stores are a ready-made playbook for lifting the bottom five.`,

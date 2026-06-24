@@ -1,5 +1,13 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-24 — PPTX: one-row header + color-coded leaderboard
+
+**Why**: Long slide titles wrapped to two lines and collided with the subtitle (fixed-Y). And the Location Leaderboard relied on a "Tier" column to distinguish top-5 vs bottom-5 — too easy to miss.
+
+**What changed** (`lib/pptx/slideRenderer.ts` + `operationalReviewDeck.ts`):
+- **Header forced to one row**: the title is now `wrap: false` + `trunc(title, 62)` + `autoFit` (shrink), with the subtitle on its own line below — so a long title never wraps into the subtitle. Base title size 28→24.
+- **`TableSlide` gained `rowTints?: (string|undefined)[]`** (optional per-row background, overrides zebra). The **Location Leaderboard** now color-codes its rows — **faint green for the top 5, faint red for the bottom 5** — and prefixes the tier with ▲/▼, so the two groups read as distinct blocks at a glance. tsc clean, render-verified. LOCAL/unpushed.
+
 ## 2026-06-24 — PPTX: prominent subject-brand label top-right of every slide
 
 **Why**: Slides should self-identify which brand the report is about (e.g. for screenshots), so the subject brand — not the producer mark — owns the top-right of each page.

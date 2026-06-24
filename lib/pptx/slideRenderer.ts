@@ -66,6 +66,7 @@ export interface TableSlide {
   subtitle?: string
   columns: string[]
   rows: string[][]
+  rowTints?: (string | undefined)[]   // optional per-row background tint (overrides zebra) — e.g. color-code groups
   insight?: string
 }
 
@@ -159,14 +160,16 @@ function hdr(slide: any, pptx: any, title: string, subtitle?: string, brand?: st
   bgFill(slide, pptx, CR.cream)
   // full-height left accent bar
   solidRect(slide, pptx, 0, 0, 0.16, H, CR.orange)
-  slide.addText(title, {
-    x: 0.9, y: 0.5, w: W - 0.9 - 3.8, h: subtitle ? 0.5 : 0.7,
-    fontSize: 28, bold: true, color: CR.ink, valign: 'top', wrap: true, autoFit: true,
+  // Title is forced to ONE row: no wrap, truncated to fit, and autoFit shrinks
+  // it further if still wide — so it never wraps into the subtitle below it.
+  slide.addText(trunc(title, 62), {
+    x: 0.9, y: 0.52, w: W - 0.9 - 3.8, h: 0.6,
+    fontSize: 24, bold: true, color: CR.ink, valign: 'middle', wrap: false, autoFit: true,
   })
   if (subtitle) {
     slide.addText(subtitle, {
-      x: 0.9, y: 1.02, w: W - 0.9 - 3.8, h: 0.4,
-      fontSize: 12.5, color: CR.teal, valign: 'top', italic: true, wrap: true,
+      x: 0.9, y: 1.16, w: W - 0.9 - 3.8, h: 0.42,
+      fontSize: 12.5, color: CR.teal, italic: true, valign: 'top', wrap: true,
     })
   }
   brandLabel(slide, pptx, brand)
@@ -389,7 +392,7 @@ function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
   // Data rows
   rows.forEach((row, ri) => {
     const ry = CONTENT_Y + 0.05 + (ri + 1) * rowH
-    solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, ri % 2 === 0 ? CR.card : CR.cream)
+    solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, spec.rowTints?.[ri] ?? (ri % 2 === 0 ? CR.card : CR.cream))
     row.forEach((cell, ci) => {
       const x = PAD + ci * colW
       slide.addText(trunc(cell, 50), {
