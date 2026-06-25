@@ -1,5 +1,13 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — Fix poisoned signal_stats cache (cards missing "N signals · theme fit")
+
+**Why** (owner noticed): some google_reviews cards (Ruth's Chris, Tabla) showed "N signals · Theme fit X%" while others (Rubio's, BareBurger) didn't — despite all four having a FRESH cache (`cached.row_count === datasets.row_count`). Root cause was NOT freshness: the card's signal-stats line gates on `signalStats.records > 0` (`DatasetCard.tsx:560`), and the poisoned datasets had `records: 0` with `signals > 0` — an impossible shape. `computeSignalStatsRaw` (`lib/signalStats.ts:164`) **swallowed the error** on the exact-count `records` query; a transient statement-timeout on a large dataset's count scan (under the batch's parallel load) returned `null → 0` while the theme-match RPCs in the same batch succeeded → `records:0, signals>0` got persisted, and the freshness check (theme-hash + row_count) can't see the bad shape, so it served forever.
+
+**What changed** (`lib/signalStats.ts`):
+- Records count query now **throws on error** instead of swallowing it → a failed compute never persists a bad partial (the batch endpoint catches and the next load retries).
+- **Self-heal**: `computeSignalStats` treats `records === 0 && (signals > 0 || inThemes > 0)` as poisoned, bypasses the freshness short-circuit, and recomputes — auto-correcting the bad caches on the next `/analyze` load (verified read-only: Rubio recomputes to `records 5784 / 62%`, BareBurger `7350 / 84%`). No manual data op. tsc clean. LOCAL/unpushed.
+
 ## 2026-06-25 — Operational Review deck: themes/dimensions explainer + % on coverage bars
 
 **Why** (owner): the deck said "ABSA" without defining it and assumed the audience understood themes-vs-dimensions; and the Dimensions Aspect-Coverage bars showed bare numbers ("40") for what are percentages.

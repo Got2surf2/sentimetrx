@@ -164,12 +164,22 @@ export async function computeSignalStatsRaw(
     fields.map(async f => {
       const counts = await Promise.all(
         datasetIds.map(async did => {
-          const { count } = await service
+          const { count, error } = await service
             .from('dataset_rows_flat')
             .select('id', { count: 'exact', head: true })
             .eq('dataset_id', did)
             .not('data->' + f, 'is', null)
             .neq('data->>' + f, '')
+          // A transient error here (e.g. statement timeout on the exact-count
+          // scan of a large dataset under parallel load) used to be swallowed:
+          // `count` came back null → 0, and computeSignalStats then cached
+          // `records: 0` permanently (the freshness check keys on theme-model
+          // hash + row_count, neither of which flips on a recompute). That
+          // poisoned the cache for Rubio's/BareBurger — non-zero signals but
+          // records:0 → themeFitPct:0 → the listing card hid its signal-stats
+          // line. Throw instead so the bad partial is never persisted; the
+          // batch endpoint catches it and the next load recomputes.
+          if (error) throw new Error('records count failed for ' + did + ': ' + error.message)
           return count || 0
         }),
       )
@@ -247,8 +257,17 @@ export async function computeSignalStats(
   const datasetIds = await resolveDatasetIds(service, datasetId)
   const currentRowCount = await totalRowCount(service, datasetIds)
 
+  // A cache with signals/inThemes > 0 but records == 0 is internally
+  // inconsistent — a row can't match a theme without its text field being
+  // non-empty, so records >= inThemes always. This shape was produced by the
+  // old swallowed-error path (records count-query timed out → 0 → cached),
+  // and the freshness check above can't see it (hash + row_count still match).
+  // Treat it as poisoned and recompute, self-healing the bad entries.
+  const poisoned = !!cached && cached.records === 0 && (cached.signals > 0 || cached.inThemes > 0)
+
   if (
     cached &&
+    !poisoned &&
     cached.theme_model_hash === currentHash &&
     currentHash !== '' &&
     cached.row_count === currentRowCount

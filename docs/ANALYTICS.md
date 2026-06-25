@@ -96,7 +96,7 @@ collection members); `signals` / `inThemes` come from `count_theme_matches`.
 Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
 the theme-model hash **and** the current row count: editing/re-mining the themes
 flips the hash, and syncing rows in/out changes the count — either forces a
-recompute on the next read. The row-count key matters because a sync that adds
+recompute on the next read. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). The row-count key matters because a sync that adds
 rows leaves the theme model (and its hash) untouched, which previously left the
 strip frozen at a stale snapshot while the live Themes panel counted the new
 rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can
