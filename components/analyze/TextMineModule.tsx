@@ -4,9 +4,8 @@
 // Fetches rows from the paginated rows API, mines themes via server proxy,
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
-import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import Link from 'next/link'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
@@ -38,6 +37,7 @@ import EntitiesCard from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import DimensionCloud from '@/components/analyze/textmine/DimensionCloud'
 import DimensionCompareTab from '@/components/analyze/textmine/DimensionCompareTab'
+import TextMineNav from '@/components/analyze/TextMineNav'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
@@ -167,74 +167,6 @@ interface Props {
   outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
 }
 
-function TextMineNav({ sections, activeSection, views, activeView, advancedHref, onSelectSection, onSelectView, children }: {
-  sections: { id: Section; label: string; help: string }[]
-  activeSection: Section
-  views: { id: LensView; label: string; locked: boolean }[]
-  activeView: LensView
-  advancedHref: string | null
-  onSelectSection: (s: Section) => void
-  onSelectView: (v: LensView) => void
-  children?: ReactNode
-}) {
-  return (
-    <>
-      {/* Row 1 — peer sections (left) + right-aligned action pills (children) */}
-      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
-        {sections.map(function(sec) {
-          var isActive = activeSection === sec.id
-          // Advanced Analytics is still a server-rendered page (folded under the
-          // bar in a later phase) — render it as a link, not a state switch.
-          if (sec.id === 'advanced' && advancedHref) {
-            return (
-              <div key={sec.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Link href={advancedHref}
-                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
-                  {sec.label}
-                </Link>
-                <span style={{ paddingRight: 10 }}>
-                  <HelpHint title={sec.label} placement="bottom">{sec.help}</HelpHint>
-                </span>
-              </div>
-            )
-          }
-          return (
-            <div key={sec.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-              <button onClick={function() { onSelectSection(sec.id) }}
-                style={{ padding: '0 8px 0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.textMid, background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: 'pointer', transition: 'color .12s' }}>
-                {sec.label}
-              </button>
-              <span style={{ paddingRight: 10 }}>
-                <HelpHint title={sec.label} placement="bottom">{sec.help}</HelpHint>
-              </span>
-            </div>
-          )
-        })}
-        {/* Right: status + action pills (passed in from the module) */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
-          {children}
-        </div>
-      </div>
-
-      {/* Row 2 — the active section's lens views */}
-      {views.length > 0 && (
-        <div style={{ background: T.bg, borderBottom: '1px solid ' + T.border, height: 34, display: 'flex', alignItems: 'stretch', paddingLeft: 18, flexShrink: 0 }}>
-          {views.map(function(v) {
-            var isActive = activeView === v.id
-            return (
-              <button key={v.id} onClick={function() { if (!v.locked) onSelectView(v.id) }}
-                disabled={v.locked}
-                title={v.locked ? 'Run a theme model first' : ''}
-                style={{ padding: '0 16px', height: '100%', fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (v.locked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: v.locked ? 'not-allowed' : 'pointer', opacity: v.locked ? 0.4 : 1, transition: 'color .12s' }}>
-                {v.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </>
-  )
-}
 
 // ─── ApiKeyModal ──────────────────────────────────────────────────────────────
 
@@ -1937,13 +1869,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Row 1 — peer sections. Themes is always present; Dimensions / Entities /
   // Advanced gate exactly as before (taxonomy capability, a non-empty entity
   // catalog, and google_reviews + ≥5 outlets respectively).
-  const navSections: { id: Section; label: string; help: string }[] = [
+  const navSections: { id: Section; label: string; help: string; href?: string }[] = [
     { id: 'themes', label: 'Themes', help: 'AI-mined themes — clusters of comments that share a topic. Browse them, see the language people use, slice by segment, or read the underlying quotes.' },
     // Dimensions (the 7-axis classification) — Google Reviews datasets, OR any
     // analyze dataset when the org has the 'taxonomy' (Dimensions) capability.
     ...((datasetSource === 'google_reviews' || taxonomyEnabled) ? [{ id: 'dimensions' as Section, label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
     ...(entityCatalogRows.length > 0 ? [{ id: 'entities' as Section, label: 'Entities', help: 'The specific things people name — dishes, drinks, brands, places — catalogued from the comments, with the quotes behind each.' }] : []),
-    ...(datasetSource === 'google_reviews' && (outletCount || 0) >= 5 ? [{ id: 'advanced' as Section, label: 'Advanced Analytics', help: 'Brand-health diagnostics + per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' }] : []),
+    ...(datasetSource === 'google_reviews' && (outletCount || 0) >= 5 ? [{ id: 'advanced' as Section, label: 'Advanced Analytics', href: '/analyze/' + datasetId + '/improvement-plan', help: 'Brand-health diagnostics & per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' }] : []),
   ]
   const activeSection = section
   const activeView = view
@@ -2030,9 +1962,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             activeSection={activeSection}
             views={navViews}
             activeView={activeView}
-            advancedHref={'/analyze/' + datasetId + '/improvement-plan'}
             onSelectSection={selectSection}
-            onSelectView={function(v) { navTo(activeSection, v) }}
+            onSelectView={function(v) { navTo(activeSection, v as LensView) }}
           >
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
