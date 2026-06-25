@@ -503,10 +503,14 @@ function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
     if (col.text) {
       slide.addText(col.text, { x, y, w: colW, h: contentH - (y - CONTENT_Y), fontSize: 13, color: CR.ink2, wrap: true, lineSpacingMultiple: 1.4, valign: 'top', autoFit: true })
     }
-    if (col.bullets) {
-      col.bullets.forEach((b, i) => {
-        slide.addText('\u2022  ' + b, { x, y: y + i * 0.42, w: colW, h: 0.38, fontSize: 13, color: CR.ink2, valign: 'middle', wrap: true, autoFit: true })
-      })
+    if (col.bullets && col.bullets.length) {
+      // Native bullets (not a literal "\u2022 " prefix) so a wrapped line hangs-indents
+      // to align with the text above it, not under the bullet glyph. One text box
+      // \u2192 the bullets auto-flow and never overlap when they wrap.
+      slide.addText(
+        col.bullets.map((b) => ({ text: b, options: { bullet: { indent: 16 }, paraSpaceAfter: 10 } })),
+        { x, y, w: colW, h: contentH - (y - CONTENT_Y), fontSize: 13, color: CR.ink2, valign: 'top', wrap: true, lineSpacingMultiple: 1.15, autoFit: true },
+      )
     }
   }
 

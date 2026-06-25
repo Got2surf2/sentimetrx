@@ -8,6 +8,10 @@
 - Records count query now **throws on error** instead of swallowing it → a failed compute never persists a bad partial (the batch endpoint catches and the next load retries).
 - **Self-heal**: `computeSignalStats` treats `records === 0 && (signals > 0 || inThemes > 0)` as poisoned, bypasses the freshness short-circuit, and recomputes — auto-correcting the bad caches on the next `/analyze` load (verified read-only: Rubio recomputes to `records 5784 / 62%`, BareBurger `7350 / 84%`). No manual data op. tsc clean. LOCAL/unpushed.
 
+## 2026-06-25 — PPTX two_column bullets: hanging indent
+
+`renderTwoColumn` prefixed a literal "• " so a wrapped bullet line started under the glyph. Switched to pptxgenjs **native bullets** (`bullet: { indent: 16 }`, one text box with `paraSpaceAfter`) so wrapped lines hang-indent to align with the text above, and bullets auto-flow without overlap. Render-QC'd on the "two lenses" slide. LOCAL/unpushed.
+
 ## 2026-06-25 — Operational Review export: cover-info modal
 
 **Why** (owner): the export only took a competitor string; the cover should be fillable — title, audience, prepared-by, etc.
