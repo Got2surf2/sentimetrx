@@ -84,6 +84,7 @@ export interface QuotesSlide {
   title: string
   subtitle?: string
   quotes: { text: string; attribution?: string }[]
+  insight?: string   // optional AI narrative/implication shown in a band below the quotes
 }
 
 export interface TwoColumnSlide {
@@ -555,7 +556,8 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
   const perCol = Math.ceil(quotes.length / cols)
   const colW = (W - PAD * 2 - (cols > 1 ? 0.2 : 0)) / cols
   const gap = 0.14
-  const qh = Math.min(1.2, (FY - CONTENT_Y - 0.2) / perCol - gap)
+  const insightH = spec.insight ? 0.85 : 0
+  const qh = Math.min(1.2, (FY - CONTENT_Y - 0.2 - insightH) / perCol - gap)
 
   quotes.forEach((q, i) => {
     const col = Math.floor(i / perCol)
@@ -580,6 +582,10 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
       })
     }
   })
+
+  if (spec.insight) {
+    insightBox(slide, pptx, PAD, FY - insightH - 0.05, W - PAD * 2, insightH, spec.insight)
+  }
 
   footer(slide, pptx, datasetName)
 }
