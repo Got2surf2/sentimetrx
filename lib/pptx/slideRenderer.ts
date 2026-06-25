@@ -155,7 +155,81 @@ export interface ThemeCardsSlide {
   insight?: string
 }
 
-export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide | SectionSlide | ThemeCardsSlide
+// Verbatim-comment cards in a 2-column grid (up to 8). Each card holds a quoted
+// comment plus optional metadata pills (e.g. demographic / psychographic tags),
+// with a left accent strip that can be color-coded by a source value.
+export interface CommentsGridSlide {
+  type: 'comments_grid'
+  title: string
+  subtitle?: string
+  comments: {
+    text: string
+    accent?: string                                        // left strip color (sentiment / value gradient)
+    pills?: { label: string; tone?: 'demo' | 'psycho' | 'neutral' }[]
+  }[]
+}
+
+// Numeric-field distribution: a row of summary-stat cards above a histogram, with
+// an optional mean marker. Covers both continuous (binned) and discrete-integer
+// fields — the caller supplies the buckets either way.
+export interface NumericStatsSlide {
+  type: 'numeric_stats'
+  title: string
+  subtitle?: string
+  stats: { label: string; value: string; color?: string }[]
+  histogram?: { label: string; count: number }[]
+  meanFrac?: number      // 0..1 position of the mean within [min,max] — draws the mean line
+  meanLabel?: string     // e.g. "avg 4"
+  insight?: string
+}
+
+// Response-distribution horizontal bars with an optional KPI strip on top
+// (respondents / top response / top-2 positive). The categorical + pie builders
+// both reduce to this.
+export interface DistBarsSlide {
+  type: 'dist_bars'
+  title: string
+  subtitle?: string
+  kpis?: { value: string; label: string; sub?: string; color?: string }[]
+  data: { label: string; value: number; color?: string }[]
+  insight?: string
+}
+
+// 2×2 compact grid of mini bar charts — one card per categorical field. Packs
+// low-priority survey/psychographic/demographic fields without one-slide-each bloat.
+export interface CompactGridSlide {
+  type: 'compact_grid'
+  title: string
+  subtitle?: string
+  cells: {
+    label: string
+    total: number
+    bars: { label: string; value: number; color?: string }[]
+  }[]
+}
+
+// Survey response + completion funnel: headline KPI cards above a stage-by-stage
+// retention funnel (each stage a bar sized to its share of stage 1).
+export interface SurveyFunnelSlide {
+  type: 'survey_funnel'
+  title: string
+  subtitle?: string
+  kpis: { value: string; label: string; sub?: string; color?: string }[]
+  stages: { label: string; count: number }[]
+  insight?: string
+}
+
+// Key-driver (OLS coefficient) chart — diverging horizontal bars around a zero
+// line; green raises / red lowers the target metric, faded = not significant.
+export interface ThemeImpactSlide {
+  type: 'theme_impact'
+  title: string
+  subtitle?: string
+  impacts: { themeName: string; coefficient: number; significant: boolean }[]
+  interpretation?: string
+}
+
+export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide | SectionSlide | ThemeCardsSlide | CommentsGridSlide | NumericStatsSlide | DistBarsSlide | CompactGridSlide | SurveyFunnelSlide | ThemeImpactSlide
 
 export interface DeckSpec {
   title: string
@@ -973,6 +1047,345 @@ function renderThemeCards(pptx: any, spec: ThemeCardsSlide, datasetName: string)
   footer(slide, pptx, datasetName)
 }
 
+// Verbatim-comment grid — 2 columns × up to 4 rows of quoted cards with optional
+// metadata pills pinned to the bottom of each card.
+const PILL_TONE: Record<string, { bg: string; fg: string }> = {
+  demo:    { bg: 'FCEFE6', fg: CR.orange },
+  psycho:  { bg: 'E6F2F0', fg: CR.teal },
+  neutral: { bg: 'F0EBE3', fg: CR.ink2 },
+}
+function renderCommentsGrid(pptx: any, spec: CommentsGridSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  const comments = spec.comments.slice(0, 8)
+  const cols = 2
+  const rows = Math.max(1, Math.ceil(comments.length / cols))
+  const gapX = 0.24, gapY = 0.18
+  const top = CONTENT_Y + 0.05
+  const avail = FY - top - 0.1
+  const cardW = (W - PAD * 2 - gapX * (cols - 1)) / cols
+  const cardH = (avail - gapY * (rows - 1)) / rows
+
+  comments.forEach((c, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const x = PAD + col * (cardW + gapX)
+    const y = top + row * (cardH + gapY)
+    rect(slide, pptx, x, y, cardW, cardH, CR.card)
+    solidRect(slide, pptx, x, y, 0.06, cardH, c.accent || CR.teal)
+
+    const hasPills = !!(c.pills && c.pills.length)
+    const pillH = 0.26
+    const textH = cardH - 0.2 - (hasPills ? pillH + 0.08 : 0)
+    slide.addText([
+      { text: '“', options: { fontSize: 17, bold: true, color: CR.tealL } },
+      { text: trunc(c.text, 240), options: { fontSize: 12.5, color: CR.ink2, italic: true } },
+      { text: '”', options: { fontSize: 17, bold: true, color: CR.tealL } },
+    ], { x: x + 0.16, y: y + 0.1, w: cardW - 0.28, h: textH, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true })
+
+    if (hasPills) {
+      let px = x + 0.16
+      const py = y + cardH - pillH - 0.08
+      const maxRight = x + cardW - 0.12
+      c.pills!.slice(0, 6).forEach((p) => {
+        if (!p.label) return
+        const pw = p.label.length * 0.072 + 0.20
+        if (px + pw > maxRight) return
+        const tone = PILL_TONE[p.tone || 'neutral'] || PILL_TONE.neutral
+        slide.addShape(pptx.ShapeType.roundRect, { x: px, y: py, w: pw, h: pillH, rectRadius: 0.13, fill: { color: tone.bg }, line: { width: 0 } })
+        slide.addText(p.label, { x: px, y: py, w: pw, h: pillH, fontSize: 8.5, bold: true, color: tone.fg, align: 'center', valign: 'middle', wrap: false })
+        px += pw + 0.08
+      })
+    }
+  })
+
+  footer(slide, pptx, datasetName)
+}
+
+// Numeric distribution — summary-stat cards over a histogram with an optional mean line.
+function renderNumericStats(pptx: any, spec: NumericStatsSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  const stats = spec.stats.slice(0, 6)
+  const top = CONTENT_Y + 0.05
+  const sgap = 0.16
+  const sw = (W - PAD * 2 - sgap * (stats.length - 1)) / Math.max(stats.length, 1)
+  const sh = 0.95
+  stats.forEach((st, i) => {
+    const x = PAD + i * (sw + sgap)
+    rect(slide, pptx, x, top, sw, sh, CR.card)
+    solidRect(slide, pptx, x, top, sw, 0.06, st.color || CR.teal)
+    slide.addText(st.value, { x: x + 0.1, y: top + 0.14, w: sw - 0.2, h: sh * 0.46, fontSize: 23, bold: true, color: st.color || CR.teal, align: 'center', valign: 'middle', autoFit: true })
+    slide.addText(st.label, { x: x + 0.1, y: top + sh * 0.62, w: sw - 0.2, h: sh * 0.3, fontSize: 11, bold: true, color: CR.ink2, align: 'center', valign: 'middle', autoFit: true })
+  })
+
+  const insightH = spec.insight ? 0.8 : 0
+  const histTop = top + sh + 0.45
+  const histBot = FY - insightH - 0.45
+  const hist = spec.histogram || []
+  if (hist.length > 0 && histBot > histTop) {
+    slide.addText('DISTRIBUTION', { x: PAD, y: histTop - 0.3, w: W - PAD * 2, h: 0.22, fontSize: 10, bold: true, color: CR.ink2, charSpacing: 2 })
+    solidRect(slide, pptx, PAD, histTop - 0.05, W - PAD * 2, 0.012, CR.line)
+    const chartX = PAD
+    const chartW = W - PAD * 2
+    const axisY = histBot
+    const chartH = axisY - histTop
+    const maxC = Math.max(...hist.map(b => b.count), 1)
+    const bw = chartW / hist.length
+    solidRect(slide, pptx, chartX, axisY, chartW, 0.012, CR.line)
+    hist.forEach((b, i) => {
+      const bh = Math.max(0.02, (b.count / maxC) * (chartH - 0.1))
+      const bx = chartX + i * bw
+      solidRect(slide, pptx, bx + 0.03, axisY - bh, Math.max(0.04, bw - 0.06), bh, CR.teal)
+    })
+    const step = Math.max(1, Math.ceil(hist.length / 10))
+    hist.forEach((b, i) => {
+      if (i % step !== 0 && i !== hist.length - 1) return
+      slide.addText(b.label, { x: chartX + i * bw - bw * 0.5, y: axisY + 0.04, w: bw * 2, h: 0.24, fontSize: 9, color: CR.ink2, align: 'center' })
+    })
+    if (spec.meanFrac != null) {
+      const mx = chartX + Math.max(0, Math.min(1, spec.meanFrac)) * chartW
+      solidRect(slide, pptx, mx - 0.01, histTop, 0.02, chartH, CR.orange)
+      if (spec.meanLabel) {
+        const mlx = Math.min(Math.max(chartX, mx - 0.42), chartX + chartW - 0.84)
+        // cream chip so the label stays legible where it crosses a tall bar
+        solidRect(slide, pptx, mlx, histTop + 0.02, 0.84, 0.24, CR.cream)
+        slide.addText(spec.meanLabel, { x: mlx, y: histTop + 0.02, w: 0.84, h: 0.24, fontSize: 9, bold: true, color: CR.orange, align: 'center', valign: 'middle' })
+      }
+    }
+  }
+
+  if (spec.insight) insightBox(slide, pptx, PAD, FY - insightH - 0.05, W - PAD * 2, insightH, spec.insight)
+  footer(slide, pptx, datasetName)
+}
+
+// Response-distribution horizontal bars with an optional KPI strip on top.
+function renderDistBars(pptx: any, spec: DistBarsSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  let top = CONTENT_Y + 0.05
+  const kpis = (spec.kpis || []).slice(0, 3)
+  if (kpis.length) {
+    const kgap = 0.16
+    const kw = (W - PAD * 2 - kgap * (kpis.length - 1)) / kpis.length
+    const kh = 0.85
+    kpis.forEach((k, i) => {
+      const x = PAD + i * (kw + kgap)
+      rect(slide, pptx, x, top, kw, kh, CR.card)
+      solidRect(slide, pptx, x, top, 0.06, kh, k.color || CR.teal)
+      slide.addText(k.value, { x: x + 0.18, y: top + 0.08, w: kw - 0.32, h: kh * 0.5, fontSize: 22, bold: true, color: k.color || CR.teal, valign: 'middle', autoFit: true })
+      slide.addText(k.label, { x: x + 0.18, y: top + kh * 0.56, w: kw - 0.32, h: 0.24, fontSize: 11.5, bold: true, color: CR.ink, autoFit: true })
+      if (k.sub) slide.addText(k.sub, { x: x + 0.18, y: top + kh * 0.56 + 0.22, w: kw - 0.32, h: 0.2, fontSize: 9, color: CR.ink2, autoFit: true })
+    })
+    top += kh + 0.24
+  }
+
+  const data = spec.data.slice(0, 9)
+  const n = data.length
+  const total = data.reduce((s, d) => s + d.value, 0)
+  const maxVal = Math.max(...data.map(d => d.value), 1)
+  const labelW = 3.0
+  const barX = PAD + labelW + 0.15
+  const barMaxW = W - barX - PAD - 1.5
+  const pctX = barX + barMaxW + 0.12
+  const cntX = pctX + 0.62
+
+  const headY = top
+  slide.addText('Response', { x: PAD, y: headY, w: labelW, h: 0.24, fontSize: 11.5, bold: true, color: CR.ink2, valign: 'middle' })
+  slide.addText('Distribution', { x: barX, y: headY, w: barMaxW, h: 0.24, fontSize: 11.5, bold: true, color: CR.ink2, valign: 'middle' })
+  slide.addText('%', { x: pctX, y: headY, w: 0.6, h: 0.24, fontSize: 11.5, bold: true, color: CR.ink2, valign: 'middle' })
+  slide.addText('n', { x: cntX, y: headY, w: 1.0, h: 0.24, fontSize: 11.5, bold: true, color: CR.ink2, valign: 'middle' })
+  solidRect(slide, pptx, PAD, headY + 0.28, W - PAD * 2, 0.012, CR.line)
+
+  const insightH = spec.insight ? 0.8 : 0
+  const rowStart = headY + 0.38
+  const rowAvail = FY - rowStart - insightH - 0.12
+  const rowH = Math.min(0.56, rowAvail / Math.max(n, 1))
+  const rowGap = Math.min(0.08, (rowAvail - rowH * n) / Math.max(n - 1, 1))
+
+  data.forEach((d, i) => {
+    const ry = rowStart + i * (rowH + rowGap)
+    const col = d.color || BAR_COLORS[i % BAR_COLORS.length]
+    const p = pct(d.value, total)
+    if (i % 2 === 0) solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, CR.card)
+    slide.addText(trunc(d.label, 42), { x: PAD, y: ry, w: labelW, h: rowH, fontSize: i === 0 ? 13 : 12.5, bold: i === 0, color: i === 0 ? CR.ink : CR.ink2, valign: 'middle', autoFit: true })
+    const trackH = rowH * 0.5
+    const trackY = ry + (rowH - trackH) / 2
+    solidRect(slide, pptx, barX, trackY, barMaxW, trackH, CR.line)
+    const bw = barMaxW * d.value / maxVal
+    if (bw > 0.04) solidRect(slide, pptx, barX, trackY, bw, trackH, col)
+    slide.addText(p + '%', { x: pctX, y: ry, w: 0.6, h: rowH, fontSize: i === 0 ? 13 : 12, bold: true, color: col, valign: 'middle' })
+    slide.addText(d.value.toLocaleString(), { x: cntX, y: ry, w: 1.0, h: rowH, fontSize: 12, color: CR.ink2, valign: 'middle' })
+  })
+
+  if (spec.insight) insightBox(slide, pptx, PAD, FY - insightH - 0.05, W - PAD * 2, insightH, spec.insight)
+  footer(slide, pptx, datasetName)
+}
+
+// 2×2 compact grid of mini bar charts (one card per categorical field).
+function renderCompactGrid(pptx: any, spec: CompactGridSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  const cells = spec.cells.slice(0, 4)
+  const cols = 2
+  const rows = Math.max(1, Math.ceil(cells.length / cols))
+  const gapX = 0.3, gapY = 0.24
+  const top = CONTENT_Y + 0.05
+  const avail = FY - top - 0.1
+  const cellW = (W - PAD * 2 - gapX * (cols - 1)) / cols
+  const cellH = (avail - gapY * (rows - 1)) / rows
+
+  cells.forEach((cell, idx) => {
+    const col = idx % cols
+    const row = Math.floor(idx / cols)
+    const cx = PAD + col * (cellW + gapX)
+    const cy = top + row * (cellH + gapY)
+    rect(slide, pptx, cx, cy, cellW, cellH, CR.card)
+    slide.addText(trunc(cell.label, 48), { x: cx + 0.16, y: cy + 0.08, w: cellW - 0.32, h: 0.3, fontSize: 12.5, bold: true, color: CR.ink, valign: 'middle', autoFit: true })
+    solidRect(slide, pptx, cx + 0.16, cy + 0.42, cellW * 0.28, 0.028, CR.teal)
+
+    const bars = cell.bars.slice(0, 6)
+    const bn = bars.length
+    const barAreaY = cy + 0.52
+    const barAreaH = cellH - 0.66
+    const barRowH = Math.min(0.34, barAreaH / Math.max(bn, 1))
+    const barGap = Math.min(0.05, (barAreaH - barRowH * bn) / Math.max(bn - 1, 1))
+    const labelW = cellW * 0.40
+    const barMaxW = cellW * 0.32
+    const barX = cx + 0.16 + labelW + 0.06
+    const pctX = barX + barMaxW + 0.06
+    const maxVal = Math.max(...bars.map(b => b.value), 1)
+    bars.forEach((b, i) => {
+      const ry = barAreaY + i * (barRowH + barGap)
+      const p = pct(b.value, cell.total)
+      const col_ = b.color || BAR_COLORS[i % BAR_COLORS.length]
+      slide.addText(trunc(b.label, 22), { x: cx + 0.16, y: ry, w: labelW, h: barRowH, fontSize: 11.5, color: i === 0 ? CR.ink : CR.ink2, bold: i === 0, valign: 'middle', wrap: false, autoFit: true })
+      const trackH = barRowH * 0.5
+      const trackY = ry + (barRowH - trackH) / 2
+      solidRect(slide, pptx, barX, trackY, barMaxW, trackH, CR.line)
+      const bw = barMaxW * b.value / maxVal
+      if (bw > 0.03) solidRect(slide, pptx, barX, trackY, bw, trackH, col_)
+      slide.addText(p + '%', { x: pctX, y: ry, w: cellW - (pctX - cx) - 0.16, h: barRowH, fontSize: 11.5, bold: true, color: col_, valign: 'middle' })
+    })
+    slide.addText('n=' + cell.total.toLocaleString(), { x: cx + cellW - 1.1, y: cy + cellH - 0.28, w: 0.96, h: 0.22, fontSize: 8, color: CR.ink2, align: 'right', valign: 'middle' })
+  })
+  footer(slide, pptx, datasetName)
+}
+
+// Survey response + completion funnel.
+function renderSurveyFunnel(pptx: any, spec: SurveyFunnelSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+  const top = CONTENT_Y + 0.05
+  const kpis = spec.kpis.slice(0, 3)
+  const kgap = 0.18
+  const kw = (W - PAD * 2 - kgap * (kpis.length - 1)) / Math.max(kpis.length, 1)
+  const kh = 0.95
+  kpis.forEach((k, i) => {
+    const x = PAD + i * (kw + kgap)
+    rect(slide, pptx, x, top, kw, kh, CR.card)
+    solidRect(slide, pptx, x, top, 0.06, kh, k.color || CR.teal)
+    slide.addText(k.value, { x: x + 0.18, y: top + 0.1, w: kw - 0.34, h: kh * 0.5, fontSize: 26, bold: true, color: k.color || CR.teal, valign: 'middle', autoFit: true })
+    slide.addText(k.label, { x: x + 0.18, y: top + kh * 0.56, w: kw - 0.34, h: 0.24, fontSize: 12, bold: true, color: CR.ink, autoFit: true })
+    if (k.sub) slide.addText(k.sub, { x: x + 0.18, y: top + kh * 0.56 + 0.22, w: kw - 0.34, h: 0.2, fontSize: 9.5, color: CR.ink2, autoFit: true })
+  })
+
+  const insightH = spec.insight ? 0.7 : 0
+  const funnelLblY = top + kh + 0.22
+  slide.addText('COMPLETION FUNNEL', { x: PAD, y: funnelLblY, w: W - PAD * 2, h: 0.22, fontSize: 10, bold: true, color: CR.ink2, charSpacing: 2 })
+  const stages = spec.stages.slice(0, 8)
+  const n = stages.length
+  if (n >= 1) {
+    const start = stages[0].count || 1
+    const labelW = 3.0
+    const metaW = 2.3
+    const barX = PAD + labelW + 0.12
+    const barMaxW = W - PAD - metaW - barX
+    const areaY = funnelLblY + 0.32
+    const areaH = FY - areaY - insightH - 0.12
+    const rowH = Math.min(0.5, (areaH - 0.1 * (n - 1)) / n)
+    const rowGap = n > 1 ? Math.min(0.14, (areaH - rowH * n) / (n - 1)) : 0
+    stages.forEach((st, i) => {
+      const ry = areaY + i * (rowH + rowGap)
+      const ret = pct(st.count, start)
+      const prev = i > 0 ? stages[i - 1].count : st.count
+      const drop = i > 0 && prev > 0 ? Math.round((1 - st.count / prev) * 100) : 0
+      const bw = Math.max(0.04, barMaxW * st.count / start)
+      const col = ret >= 70 ? CR.teal : ret >= 40 ? CR.amber : CR.red
+      slide.addText(trunc(st.label, 40), { x: PAD, y: ry, w: labelW, h: rowH, fontSize: 12.5, bold: i === 0 || i === n - 1, color: CR.ink, valign: 'middle', wrap: false, autoFit: true })
+      const trackH = rowH * 0.54
+      const trackY = ry + (rowH - trackH) / 2
+      solidRect(slide, pptx, barX, trackY, barMaxW, trackH, CR.line)
+      solidRect(slide, pptx, barX, trackY, bw, trackH, col)
+      slide.addText(st.count.toLocaleString() + ' (' + ret + '%)', { x: barX + barMaxW + 0.12, y: ry, w: metaW - 1.0, h: rowH, fontSize: 12, bold: true, color: CR.ink, valign: 'middle', wrap: false })
+      if (drop > 0) slide.addText('↓' + drop + '%', { x: W - PAD - 0.85, y: ry, w: 0.85, h: rowH, fontSize: 11, bold: true, color: drop >= 20 ? CR.red : CR.amber, align: 'right', valign: 'middle' })
+    })
+  }
+  if (spec.insight) insightBox(slide, pptx, PAD, FY - insightH - 0.02, W - PAD * 2, insightH, spec.insight)
+  footer(slide, pptx, datasetName)
+}
+
+// Key-driver (OLS coefficient) diverging-bar chart.
+function renderThemeImpact(pptx: any, spec: ThemeImpactSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  const impacts = spec.impacts.slice(0, 10)
+  const nBars = impacts.length
+  const labelW = 2.8
+  const coefW = 0.8
+  const top = CONTENT_Y + 0.4
+  const interpH = spec.interpretation ? 0.85 : 0
+  const legendH = 0.3
+  const barAreaW = W - PAD * 2 - labelW - coefW - 0.3
+  const barMaxW = barAreaW / 2
+  const midX = PAD + labelW + 0.15 + barMaxW
+  const maxAbs = Math.max(...impacts.map(i => Math.abs(i.coefficient)), 0.1)
+
+  const availH = FY - top - interpH - legendH - 0.3
+  const barH = Math.min(0.4, availH / Math.max(nBars, 1) - 0.05)
+  const barGap = 0.05
+  // Scale bars to leave room for the coefficient label OUTSIDE the longest bar,
+  // so a long negative bar's label never collides with the theme-name column.
+  const barScaleW = barMaxW - coefW - 0.14
+
+  slide.addText('Theme', { x: PAD, y: top - 0.3, w: labelW, h: 0.22, fontSize: 11, bold: true, color: CR.ink2, align: 'right', valign: 'middle' })
+  slide.addText('← lowers score      raises score →', { x: midX - barMaxW, y: top - 0.3, w: barMaxW * 2, h: 0.22, fontSize: 8.5, color: CR.ink2, align: 'center', valign: 'middle' })
+  solidRect(slide, pptx, midX, top - 0.02, 0.014, nBars * (barH + barGap), CR.ink2)
+
+  impacts.forEach((imp, i) => {
+    const y = top + i * (barH + barGap)
+    const isPos = imp.coefficient >= 0
+    const bw = Math.abs(imp.coefficient) / maxAbs * barScaleW
+    const col = imp.significant ? (isPos ? CR.green : CR.red) : (isPos ? '9FD9C4' : 'F0B4B4')
+    slide.addText(trunc(imp.themeName, 32), { x: PAD, y, w: labelW, h: barH, fontSize: 12, color: CR.ink, bold: imp.significant, valign: 'middle', align: 'right' })
+    if (isPos) solidRect(slide, pptx, midX + 0.02, y + barH * 0.16, bw, barH * 0.68, col)
+    else solidRect(slide, pptx, midX - 0.02 - bw, y + barH * 0.16, bw, barH * 0.68, col)
+    const txt = (isPos ? '+' : '') + imp.coefficient.toFixed(2) + (imp.significant ? ' *' : '')
+    slide.addText(txt, { x: isPos ? midX + bw + 0.06 : midX - bw - coefW - 0.04, y, w: coefW, h: barH, fontSize: 11.5, color: imp.significant ? (isPos ? CR.green : CR.red) : CR.ink2, bold: imp.significant, valign: 'middle', align: isPos ? 'left' : 'right' })
+  })
+
+  let yAfter = top + nBars * (barH + barGap) + 0.1
+  if (spec.interpretation) {
+    insightBox(slide, pptx, PAD, yAfter, W - PAD * 2, interpH, spec.interpretation)
+    yAfter += interpH + 0.08
+  }
+  slide.addText([
+    { text: '■ ', options: { color: CR.green, fontSize: 9 } },
+    { text: 'Raises score    ', options: { color: CR.ink2, fontSize: 9 } },
+    { text: '■ ', options: { color: CR.red, fontSize: 9 } },
+    { text: 'Lowers score    ', options: { color: CR.ink2, fontSize: 9 } },
+    { text: '* = statistically significant    ', options: { color: CR.ink2, fontSize: 9 } },
+    { text: 'Faded = not significant', options: { color: CR.ink2, fontSize: 9 } },
+  ], { x: PAD, y: yAfter, w: W - PAD * 2, h: 0.24, valign: 'middle' })
+
+  footer(slide, pptx, datasetName)
+}
+
 // ── Main renderer ───────────────────────────────────────────────────────────
 export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<Buffer> {
   const pptxgen = (await import('pptxgenjs')).default
@@ -1002,6 +1415,12 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
       case 'custom_decks': renderCustomDecks(pptx, spec, datasetName); break
       case 'section':      renderSection(pptx, spec, datasetName); break
       case 'theme_cards':  renderThemeCards(pptx, spec, datasetName); break
+      case 'comments_grid': renderCommentsGrid(pptx, spec, datasetName); break
+      case 'numeric_stats': renderNumericStats(pptx, spec, datasetName); break
+      case 'dist_bars':    renderDistBars(pptx, spec, datasetName); break
+      case 'compact_grid': renderCompactGrid(pptx, spec, datasetName); break
+      case 'survey_funnel': renderSurveyFunnel(pptx, spec, datasetName); break
+      case 'theme_impact': renderThemeImpact(pptx, spec, datasetName); break
       default:
         // Unknown type — render as bullets with the raw data
         renderBullets(pptx, { type: 'bullets', title: (spec as any).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)

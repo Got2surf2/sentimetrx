@@ -1,5 +1,20 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — StoryTime cream migration: 6 more cream slide kinds added to shared renderer
+
+**Why** (continuation of the StoryTime report → shared cream-renderer migration; prior commit `1f1c30d9` added `section` + `theme_cards`): the report's ~15 bespoke navy/gold builders need cream equivalents in `lib/pptx/slideRenderer.ts` before the route's build phase can flip onto `renderDeck` in one commit. This commit adds the remaining genuinely-new kinds so every bespoke builder has a cream target. Purely **additive** — the export route is untouched and keeps rendering via its own builders until the final flip.
+
+**What changed** (`lib/pptx/slideRenderer.ts`): six new `SlideSpec` kinds + renderers, wired into the `renderDeck` switch:
+- `comments_grid` — 2×4 verbatim cards (curly quotes, value-colored accent strip, demo/psycho/neutral metadata pills). ← `buildCommentsSlide`.
+- `numeric_stats` — summary-stat card row + histogram + optional mean line (cream chip behind the label so it stays legible over a tall bar). ← `buildNumericSlide` (continuous + discrete).
+- `dist_bars` — full-width horizontal response bars with an optional KPI strip (respondents / top response / top-2). ← `buildCategoricalSlide` + `buildPieSlide`.
+- `compact_grid` — 2×2 mini bar-chart cards for low-priority categorical fields. ← `buildCompactGridSlides`.
+- `survey_funnel` — KPI cards + stage-by-stage retention funnel with drop-off badges. ← `buildSurveyOverviewSlide`.
+- `theme_impact` — diverging OLS-coefficient bars around a zero line (green raises / red lowers, faded = not significant); bars scaled to leave room for outside labels so a long negative bar's coefficient never collides with the theme-name column. ← `buildThemeImpactSlide`.
+- All six render-QC'd via LibreOffice+pdftoppm on a synthetic deck (Ruth's Chris fixtures); cream bg + larger fonts confirmed on each, two layout collisions caught and fixed (theme_impact label overlap, numeric mean-label legibility). tsc clean.
+
+**Still open**: flip the route's build phase (~2785–3175) to emit `SlideSpec[]` → `renderDeck` and delete the local navy helpers — the single final commit, done only once every kind exists. SKIP_SPEC_CHECK: additive renderer kinds, no behavioral spec change yet (the route still uses its own builders). LOCAL/unpushed.
+
 ## 2026-06-25 — TextMine Dimensions: consistency pass (clouds/compare/loaders) + Google-reviews breakdown filter
 
 **Why** (owner QC of the new Dimensions cells): the Dimensions views didn't match the Themes/Entities views — (1) the Clouds/Compare Lottie loaders were tiny (`28`/`26` vs Themes' `120`); (2) Dimension Clouds had no card/header/controls chrome (bare axis groups) while Theme/Entity clouds are a card + sticky header + filter chips; (3) Dimension Compare was a dense crosstab matrix, a totally different paradigm from the Theme/Entity bar-chart Compare; (4) the Compare "Break down by" defaulted to **Author** on Google Reviews — one reviewer ≈ 4 reviews, so every group was n≈4 (noise). Owner: "all views should be similar, differences only for the data type."
