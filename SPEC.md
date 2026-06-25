@@ -227,7 +227,7 @@ Color palettes: 7 built-in (Hermes, Ocean, Sunset, Earth, Pastel, Vivid, Mono).
 
 #### TextMine Module (`TextMineModule.tsx`)
 
-**Sub-tabs**: Themes, Theme Clouds, Compare, Comments
+**Two-row nav (Target B IA, 2026-06-25)**: four peer **sections** — Themes · Dimensions · Entities · Advanced Analytics (row 1) × per-lens **views** — Overview · Clouds · Compare · Comments (row 2). Canonical `section`/`view` state (legacy `subTab`/`viewBy` derived); the shared `TextMineNav` bar also wraps the Advanced Analytics pages. See `docs/ANALYTICS.md` "Navigation IA". Replaced the old flat sub-tabs (Themes/Theme Clouds/Compare/Comments) + the View-by-Theme/Entity toggle.
 
 - **Theme Discovery**: Server-side NLP clustering via `/api/datasets/[datasetId]/mine-themes`
 - **Theme Editor**: Rename, merge, add/remove keywords, keyword expansion
@@ -289,7 +289,7 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 - Auto-sync polling every 10s during download
 
 **Restaurant taxonomy → "Dimensions"** (closed-vocab 7-axis ABSA; originated as the Ruth's Chris admin pilot 2026-05-27, now a **shipped in-app feature**). Full module spec: `docs/TAXONOMY.md`.
-- **In-app surface**: the **Dimensions** sub-tab in TextMine (`components/analyze/TaxonomyModule.tsx`) — axis pills → sub-dimension cards → comment drill, ⚠ Severity pill, per-field/multi-field (auto-classifies the selected open-end(s) on selection), and `__dim_*` synthetic fields in Charts/Stats (per-field + filter-aware).
+- **In-app surface**: the **Dimensions** section in TextMine (`components/analyze/TaxonomyModule.tsx` = its Overview view; the section also has Clouds/Compare/Comments) — axis pills → sub-dimension cards → comment drill, ⚠ Severity pill, per-field/multi-field (auto-classifies the selected open-end(s) on selection), and `__dim_*` synthetic fields in Charts/Stats (per-field + filter-aware).
 - Storage: **`dataset_row_field_taxonomy`** (sql/114, per `(dataset_id, row_id, field-key)`) for the reactive Dimensions tab, **dual-written** alongside the legacy `dataset_row_taxonomy` (one row per `(dataset_id, row_id)`) which the theme-card chips / Comments dim filter / deck / admin viewer still read. See § Database Tables.
 - Vocabulary: `lib/taxonomyVocabulary.ts` (axes + sub-buckets + product items + severity {normal|alert|crisis}). Keyword tier `lib/taxonomyClassify.ts` (no AI cost).
 - Legacy projection: `lib/taxonomyMapping.ts` canonicalizes case-duplicate labels, routes `Service-X/SERV-X/Staff-X` parallels to `(touchpoint, attribute)` tuples, quarantines TEST (~21% of source rows), `Brand Alert`, campaign tags, and competitor `LH/OG/CSK Menu-*` prefixes.

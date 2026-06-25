@@ -115,7 +115,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 4. Surfaces
 
-- **In-app Dimensions view** (user-facing label **"Dimensions"**; internal code/routes/keys stay `taxonomy` — friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions"). As of 2026-06-04 it lives as a **sub-tab inside TextMine** (`TextMineModule` renders `<TaxonomyModule>` when `subTab==='dimensions'`, shown when `taxonomyEnabled` is true = `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`: Google Reviews; **OR org capability** (`orgTaxonomyEnabled` in `lib/resolveOrg` — the explicit per-org `ModuleFeatures.taxonomy` toggle OR a restaurant `primaryIndustries` value, auto-enabled); **OR per-dataset** (`datasets.taxonomy_enabled`, sql/109 — an "Apply Dimensions" checkbox at upload or a Schema-tab toggle, for admin/one-off datasets). Threaded as `taxonomyEnabled` to TextMine/Charts/Stats; the classify route is org-gated (not source-gated) so it works on any dataset. Exempt from the theme-model lock); the standalone top-level tab was retired (the `/analyze/[datasetId]/taxonomy` route still resolves but is unlinked). `TaxonomyModule.tsx` is self-contained and fed by
+- **In-app Dimensions view** (user-facing label **"Dimensions"**; internal code/routes/keys stay `taxonomy` — friendlier than "taxonomy", reads as analytical structure you can pivot/trend on, aligns with the future chart-integration plan; owner considered "Categories" (the competitor's word) but chose "Dimensions"). As of 2026-06-04 it lives **inside TextMine** — a peer lens section since the Target B IA (2026-06-25), whose Overview view renders `<TaxonomyModule>` (`TextMineModule` renders it when `subTab==='dimensions' && activeView==='overview'`; the section also carries Clouds=`DimensionCloud` / Compare=`DimensionCompareTab` / the unified Comments), shown when `taxonomyEnabled` is true = `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`: Google Reviews; **OR org capability** (`orgTaxonomyEnabled` in `lib/resolveOrg` — the explicit per-org `ModuleFeatures.taxonomy` toggle OR a restaurant `primaryIndustries` value, auto-enabled); **OR per-dataset** (`datasets.taxonomy_enabled`, sql/109 — an "Apply Dimensions" checkbox at upload or a Schema-tab toggle, for admin/one-off datasets). Threaded as `taxonomyEnabled` to TextMine/Charts/Stats; the classify route is org-gated (not source-gated) so it works on any dataset. Exempt from the theme-model lock); the standalone top-level tab was retired (the `/analyze/[datasetId]/taxonomy` route still resolves but is unlinked). `TaxonomyModule.tsx` is self-contained and fed by
   `GET /api/datasets/[datasetId]/taxonomy` (org-gated). **Auto-classification** (no button,
   2026-06-07): when the selected field-set isn't classified yet the tab **classifies it
   automatically** (a guarded effect, once per field-key, fires `runClassifier`) — picking a
@@ -211,7 +211,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 4a. Dimensions view display — pills + cards (BUILT 2026-06-06)
 
-Redesign of the **Dimensions** sub-tab display (`TaxonomyModule.tsx`). Pure
+Redesign of the **Dimensions** section Overview display (`TaxonomyModule.tsx`). Pure
 presentation change — **no theme-card changes, no new backend, no new
 endpoint/RPC**; everything is fed by the existing `taxonomy` rollup (`SubStat`).
 Replaced the dense two-column "By axis bars / Top sub-topics list" + the
@@ -233,7 +233,7 @@ cards** below. A pill is the collapsed form of its cards.
   "Dimensions" (20px/800) + a **one-line stat summary** ("N reviews classified · X% with
   a signal · ★ Y avg rating · Z flagged"). No right-aligned controls — the field picker and
   Re-classify were removed (2026-06-06). The old big centered KPI cards were removed (they
-  clashed with the TextMine sub-tab chrome); the **flagged count moved onto the ⚠ Severity
+  clashed with the TextMine nav chrome); the **flagged count moved onto the ⚠ Severity
   pill**, so it isn't a KPI anymore.
 - **Axis pills (the 7 top-level dimensions)** adopt the **Entities-pill treatment**:
   `● Touchpoint  28%  ★3.8` — axis identity-color **dot** + label + **mention rate %**
