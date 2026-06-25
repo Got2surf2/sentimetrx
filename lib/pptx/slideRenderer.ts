@@ -128,7 +128,34 @@ export interface CustomDecksSlide {
   hook?: string
 }
 
-export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide
+// Full-bleed section divider on the dark cream-family cover background. Used to
+// break a long report into labelled chapters (Themes, Quotes, Statistics, …).
+export interface SectionSlide {
+  type: 'section'
+  title: string
+  subtitle?: string
+  eyebrow?: string   // small uppercase kicker above the title (e.g. "THEMES")
+}
+
+// Theme-analysis cards: each card = a big share %, the theme name, a sentiment
+// badge, and a row of keyword chips (each with its own share %). The signature
+// StoryTime slide.
+export interface ThemeCardsSlide {
+  type: 'theme_cards'
+  title: string
+  subtitle?: string
+  cards: {
+    name: string
+    pct: number                 // theme share of analysed comments
+    count?: number              // n matching
+    total?: number              // of N analysed
+    sentiment?: string          // 'Positive' | 'Mixed' | 'Negative' | 'Neutral'
+    keywords?: { word: string; pct?: number }[]
+  }[]
+  insight?: string
+}
+
+export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide | SectionSlide | ThemeCardsSlide
 
 export interface DeckSpec {
   title: string
@@ -855,6 +882,97 @@ function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetNam
 }
 
 
+// Section divider — chapter break on the dark cream-family background.
+function renderSection(pptx: any, spec: SectionSlide, _datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  solidRect(slide, pptx, 0, 0, W, H, CR.ink)
+  solidRect(slide, pptx, 0, 0, 0.22, H, CR.orange)
+  let y = 2.7
+  if (spec.eyebrow) {
+    slide.addText(spec.eyebrow.toUpperCase(), { x: 0.9, y, w: W - 2.0, h: 0.32, fontSize: 12, bold: true, color: CR.tealL, charSpacing: 2 })
+    y += 0.5
+  }
+  slide.addText(trunc(spec.title, 60), { x: 0.9, y, w: W - 2.0, h: 1.0, fontSize: 34, bold: true, color: CR.white, valign: 'top', wrap: true, autoFit: true })
+  solidRect(slide, pptx, 0.93, y + 1.02, 3.6, 0.04, CR.orange)
+  if (spec.subtitle) {
+    slide.addText(spec.subtitle, { x: 0.9, y: y + 1.2, w: W - 2.2, h: 0.7, fontSize: 15, color: CR.coverSub, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
+  }
+  slide.addText([
+    { text: 'data',   options: { color: CR.tealL,  bold: true } },
+    { text: 'nautix', options: { color: CR.orange, bold: true } },
+  ], { x: 0.9, y: H - 0.7, w: 4.0, h: 0.34, fontSize: 12, valign: 'middle' })
+}
+
+// Theme-analysis cards — stacked full-width cards (share %, name, sentiment
+// badge, keyword chips).
+const SENT_COLOR: Record<string, { fg: string; bg: string }> = {
+  positive: { fg: CR.green,  bg: 'EAF7F1' },
+  negative: { fg: CR.red,    bg: 'FCEDEC' },
+  mixed:    { fg: CR.amber,  bg: 'FBF2DF' },
+  neutral:  { fg: CR.ink2,   bg: 'F0EBE3' },
+}
+function renderThemeCards(pptx: any, spec: ThemeCardsSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
+
+  const cards = spec.cards.slice(0, 5)
+  const insightH = spec.insight ? 0.8 : 0
+  const top = CONTENT_Y + 0.05
+  const avail = FY - top - 0.12 - insightH
+  const gap = 0.16
+  const ch = Math.min(1.15, (avail - gap * (cards.length - 1)) / Math.max(cards.length, 1))
+
+  cards.forEach((c, i) => {
+    const y = top + i * (ch + gap)
+    rect(slide, pptx, PAD, y, W - PAD * 2, ch, CR.card)
+    solidRect(slide, pptx, PAD, y, 0.06, ch, CR.teal)
+
+    // Share-% box (left)
+    const boxW = 1.25
+    solidRect(slide, pptx, PAD + 0.14, y + 0.12, boxW, ch - 0.24, CR.teal)
+    slide.addText(Math.round(c.pct) + '%', {
+      x: PAD + 0.14, y: y + 0.16, w: boxW, h: (ch - 0.24) * 0.6,
+      fontSize: 22, bold: true, color: CR.white, align: 'center', valign: 'middle', autoFit: true,
+    })
+    if (c.count != null) {
+      slide.addText(c.count.toLocaleString() + (c.total != null ? ' of ' + c.total.toLocaleString() : ''), {
+        x: PAD + 0.14, y: y + ch - 0.34, w: boxW, h: 0.22,
+        fontSize: 8, color: CR.white, align: 'center', valign: 'middle',
+      })
+    }
+
+    const tx = PAD + 0.14 + boxW + 0.24
+    const tw = W - PAD - tx - 0.16
+    // Theme name
+    slide.addText(trunc(c.name, 48), {
+      x: tx, y: y + 0.12, w: tw - 1.6, h: 0.34, fontSize: 15, bold: true, color: CR.ink, valign: 'middle', autoFit: true,
+    })
+    // Sentiment badge (top-right)
+    if (c.sentiment) {
+      const s = SENT_COLOR[c.sentiment.toLowerCase()] || SENT_COLOR.neutral
+      slide.addShape(pptx.ShapeType.roundRect, { x: W - PAD - 1.4, y: y + 0.14, w: 1.24, h: 0.3, rectRadius: 0.06, fill: { color: s.bg }, line: { color: s.fg, width: 1 } })
+      slide.addText(c.sentiment, { x: W - PAD - 1.4, y: y + 0.14, w: 1.24, h: 0.3, fontSize: 9.5, bold: true, color: s.fg, align: 'center', valign: 'middle' })
+    }
+    // Keyword chips as one inline rich-text row
+    if (c.keywords && c.keywords.length) {
+      const runs: any[] = []
+      c.keywords.slice(0, 8).forEach((k, ki) => {
+        if (ki > 0) runs.push({ text: '   ', options: { fontSize: 12 } })
+        runs.push({ text: k.word, options: { fontSize: 12.5, bold: true, color: CR.teal } })
+        if (k.pct != null) runs.push({ text: ' ' + Math.round(k.pct) + '%', options: { fontSize: 9, color: CR.ink2 } })
+      })
+      slide.addText(runs, { x: tx, y: y + 0.52, w: tw, h: ch - 0.62, valign: 'top', wrap: true, lineSpacingMultiple: 1.2 })
+    }
+  })
+
+  if (spec.insight) {
+    const insY = top + cards.length * (ch + gap) + 0.04
+    if (FY - insY - 0.12 > 0.3) insightBox(slide, pptx, PAD, insY, W - PAD * 2, Math.min(0.8, FY - insY - 0.12), spec.insight)
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
 // ── Main renderer ───────────────────────────────────────────────────────────
 export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<Buffer> {
   const pptxgen = (await import('pptxgenjs')).default
@@ -882,6 +1000,8 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
       case 'entity_grid': renderEntityGrid(pptx, spec as EntityGridSlide, datasetName); break
       case 'provenance':   renderProvenance(pptx, spec, datasetName); break
       case 'custom_decks': renderCustomDecks(pptx, spec, datasetName); break
+      case 'section':      renderSection(pptx, spec, datasetName); break
+      case 'theme_cards':  renderThemeCards(pptx, spec, datasetName); break
       default:
         // Unknown type — render as bullets with the raw data
         renderBullets(pptx, { type: 'bullets', title: (spec as any).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)

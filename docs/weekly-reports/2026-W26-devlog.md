@@ -19,6 +19,16 @@
 
 **Follow-up — Themes Compare header matched to the others.** Owner: the Themes Compare chrome was taller than Dimensions/Entities. `CompareTab` had a big "Group Comparison" h2 + ★ legend + paragraph + a bordered control *card*; collapsed it to the same single compact top-bar (`padding 12px 24px`, borderBottom, "Break down by:" + chips left, toggles right) the peer compares use, with the legend folded into a "?" hint and "Smart Axes"→"Sort by impact" for label parity. All three Compare views are now the same height. tsc + eslint + build clean.
 
+## 2026-06-25 — StoryTime report: fix sampling + stale total; begin cream-theme migration
+
+**Why** (owner, reviewing `Ruths_Chris_Reviews_report.pptx`): the StoryTime report (`/api/datasets/[id]/export/pptx`) (1) still renders in the OLD navy/gold theme with small fonts — the cream re-skin only touched `lib/pptx/slideRenderer.ts` (the `renderDeck` path); this export builds slides with its own bespoke navy helpers. (2) showed **"30,170 total responses"** (pre-dedup) when the dataset is now **27,234**, and (3) **sampled to 10,000 rows** even though 27K is under the 50K no-sampling rule.
+
+**Bugs fixed (this commit)**:
+- **Sampling**: `MAX_ROWS` was a flat `hasFilters ? 30_000 : 10_000` with no dataset-size check. Now respects the rule — `flatCount ≤ 50K → load all` (no sampling), only caps above 50K. So the 27K dataset loads in full and the "sampled" note disappears.
+- **Stale total**: `knownTotal = Math.max(flatCount, analytics.totalRows, …)` surfaced the stale-HIGH snapshot (30,170 > live 27,234). `Math.max` only guarded the stale-low case. Now the live `flatCount` wins whenever > 0 (fixes both drift directions). Also passes `knownTotal` (not `analytics.totalRows`) to `generateNarratives`.
+
+**Theme migration (started)**: added two cream slide kinds to the shared renderer — `section` (chapter divider on the dark cream-family bg) and `theme_cards` (share % + name + sentiment badge + keyword chips), wired into `renderDeck`. The full migration of all ~15 bespoke slide builders to the shared renderer is staged (the inventory found exec-summary, numeric histogram/gauge, comment grids, compact grids, theme-impact regression, survey funnel, etc. — a big-bang rewrite of the route's build phase). LOCAL/unpushed.
+
 ## 2026-06-25 — Filters modal: real date range + real blank counts
 
 **Why** (owner): Ruth's Chris (27,234 rows spanning 2025-01-01 → 2026-06-24) showed a **REVIEW DATE filter range of just Apr 14 → May 10, 2026** (~1 month) and "Include blanks (198)" on fields with zero actual blanks. The owner suspected stale/static filter metadata.

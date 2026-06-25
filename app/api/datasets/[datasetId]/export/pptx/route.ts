@@ -2411,10 +2411,12 @@ export async function POST(req: Request, props: Params) {
   // Fetch rows for comment sampling and theme matching.
   // Fetch rows from flat table (fast) with fallback to batched table.
   // For collections: union rows from member datasets.
-  // Cap at 10K for no-filter, 30K for filtered.
+  // Row cap honors the platform's no-sampling-under-50K rule (CLAUDE.md): load
+  // EVERY row when the dataset is ≤50K, only sampling above that. The real value
+  // is set from flatCount below; this is just the >50K ceiling.
   const allRows: Record<string, any>[] = []
   let rowsSampled = false
-  const MAX_ROWS = hasFilters ? 30_000 : 10_000
+  let MAX_ROWS = 50_000
 
   // Collections: fetch from member datasets
   const isCollection = dataset?.source === 'collection'
@@ -2437,6 +2439,8 @@ export async function POST(req: Request, props: Params) {
     const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
     flatCount += count || 0
   }
+  // ≤50K total → load all (no sampling, per the platform rule); >50K → cap at 50K.
+  if (flatCount > 0) MAX_ROWS = flatCount <= 50_000 ? flatCount : 50_000
 
   if (flatCount > 0) {
     // Flat table — paginate in chunks of 1000 (Supabase default limit)
@@ -2489,9 +2493,12 @@ export async function POST(req: Request, props: Params) {
     }
     if (allRows.length >= MAX_ROWS) rowsSampled = true
   }
-  // Live flat-table count is authoritative; persisted snapshots (analytics.totalRows,
-  // collection.row_count) go stale when members gain rows (e.g. 62 snapshot vs 108 live).
-  const knownTotal = Math.max(flatCount || 0, analytics?.totalRows || 0, dataset.row_count || 0) || 0
+  // Live flat-table count is authoritative whenever it exists — persisted
+  // snapshots (analytics.totalRows, dataset.row_count) drift BOTH ways: stale-low
+  // when members gain rows, stale-HIGH after a dedup cleanup (e.g. Ruth's Chris
+  // 30,170 snapshot vs 27,234 live post-dedup). Math.max only caught the low case
+  // and surfaced the stale-high 30,170 on the report. Trust flatCount when > 0.
+  const knownTotal = flatCount > 0 ? flatCount : (Math.max(analytics?.totalRows || 0, dataset.row_count || 0) || 0)
 
   // Build a normalized key map so we can find columns regardless of case/spaces
   // e.g. schema field "general_experience_comments" matches row key "General Experience Comments"
@@ -2704,7 +2711,7 @@ export async function POST(req: Request, props: Params) {
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '', watchout: '' }])),
   }
   if (!skipAI) {
-    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
+    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, knownTotal || analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error({ at: 'export/pptx', msg: "AI error", err: e }) }
   }
 
