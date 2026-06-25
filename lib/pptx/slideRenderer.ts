@@ -302,6 +302,28 @@ function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: n
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 
+// Word-boundary clip with ellipsis. Used to HARD-cap verbatim text to a budget
+// derived from its card size, so a quote can never bleed past the card even when
+// the renderer ignores pptx autoFit shrink (LibreOffice/older PowerPoint).
+function clip(s: string, max: number): string {
+  if (!s || s.length <= max) return s
+  const cut = s.slice(0, max)
+  const sentence = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+  if (sentence > max * 0.55) return cut.slice(0, sentence + 1)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > 0 ? cut.slice(0, sp) : cut).replace(/[\s,;:]+$/, '') + '…'
+}
+
+// Chars that fit a w×h box at the given font size (conservative — leaves margin
+// so wrapping never pushes a final line out of the box).
+function fitBudget(w: number, h: number, fontPt: number): number {
+  const charW = fontPt * 0.0066      // ~inches per char (italic body)
+  const lineH = fontPt / 72 * 1.28   // line height at 1.28 spacing
+  const perLine = Math.max(8, Math.floor(w / charW))
+  const lines = Math.max(1, Math.floor(h / lineH))
+  return Math.max(40, Math.floor(perLine * lines * 0.92))
+}
+
 // ── Slide builders ──────────────────────────────────────────────────────────
 
 // Cream-family bar palette cycled across chart slides.
@@ -552,32 +574,47 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
 
   const quotes = spec.quotes.slice(0, 6)
-  const cols = quotes.length <= 3 ? 1 : 2
+  // 1–2 quotes → one full-width column; 3+ → two columns.
+  const cols = quotes.length <= 2 ? 1 : 2
   const perCol = Math.ceil(quotes.length / cols)
-  const colW = (W - PAD * 2 - (cols > 1 ? 0.2 : 0)) / cols
-  const gap = 0.14
+  const colGap = cols > 1 ? 0.24 : 0
+  const colW = (W - PAD * 2 - colGap) / cols
+  const gap = 0.16
   const insightH = spec.insight ? 0.85 : 0
-  const qh = Math.min(1.2, (FY - CONTENT_Y - 0.2 - insightH) / perCol - gap)
+  const top = CONTENT_Y + 0.1
+  const availH = FY - top - 0.12 - insightH
+  // Card height: fill the available space, but CAPPED so a short quote isn't
+  // marooned in a giant box. When capped, the stack is centered vertically so the
+  // layout still looks intentional (and long quotes are trimmed to fit — no bleed).
+  const MAX_QH = 1.7
+  const qh = Math.min(MAX_QH, (availH - gap * (perCol - 1)) / perCol)
+  const stackH = qh * perCol + gap * (perCol - 1)
+  const top0 = top + Math.max(0, (availH - stackH) / 2)
+  const FS = 12.5
 
   quotes.forEach((q, i) => {
     const col = Math.floor(i / perCol)
     const row = i % perCol
-    const x = PAD + col * (colW + 0.2)
-    const y = CONTENT_Y + 0.1 + row * (qh + gap)
+    const x = PAD + col * (colW + colGap)
+    const y = top0 + row * (qh + gap)
 
     rect(slide, pptx, x, y, colW, qh, CR.card)
     solidRect(slide, pptx, x, y, 0.06, qh, CR.teal)
 
-    const trimmed = q.text.length > 230 ? q.text.slice(0, 227) + '...' : q.text
+    const innerW = colW - 0.34
+    const innerH = qh - (q.attribution ? 0.34 : 0.2)
+    // Hard char budget from the card size → text can't bleed even when the
+    // rendering app ignores pptx autoFit shrink (LibreOffice / older PowerPoint).
+    const body = clip(q.text, fitBudget(innerW, innerH, FS))
     slide.addText([
-      { text: '\u201C', options: { fontSize: 17, bold: true, color: CR.tealL } },
-      { text: trimmed, options: { fontSize: 13, color: CR.ink2, italic: true } },
-      { text: '\u201D', options: { fontSize: 17, bold: true, color: CR.tealL } },
-    ], { x: x + 0.16, y: y + 0.08, w: colW - 0.28, h: qh - (q.attribution ? 0.32 : 0.14), valign: 'top', wrap: true, lineSpacingMultiple: 1.4, autoFit: true })
+      { text: '\u201C', options: { fontSize: FS + 4, bold: true, color: CR.tealL } },
+      { text: body, options: { fontSize: FS, color: CR.ink2, italic: true } },
+      { text: '\u201D', options: { fontSize: FS + 4, bold: true, color: CR.tealL } },
+    ], { x: x + 0.16, y: y + 0.1, w: innerW, h: innerH, valign: 'middle', wrap: true, lineSpacingMultiple: 1.28, autoFit: true })
 
     if (q.attribution) {
       slide.addText('— ' + q.attribution, {
-        x: x + 0.16, y: y + qh - 0.26, w: colW - 0.28, h: 0.2,
+        x: x + 0.16, y: y + qh - 0.26, w: innerW, h: 0.2,
         fontSize: 8.5, color: CR.ink2, italic: true, align: 'right',
       })
     }
@@ -700,10 +737,10 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   // ── Layout constants — every region derives from these ──
   const contentTop = CONTENT_Y + 0.05
   const contentBot = FY - 0.15
-  const statH      = 1.30     // top stats region
-  const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.45 : 0
-  const strapH     = 0.95     // bottom productivity strap
-  const gap        = 0.15
+  const statH      = 1.02     // top stats region (trimmed so the 3-item columns fit value+label+sub)
+  const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.42 : 0
+  const strapH     = 0.80     // bottom productivity strap
+  const gap        = 0.12
 
   const colY    = contentTop + statH + gap
   const strapY  = contentBot - strapH
@@ -717,23 +754,23 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   const wallUnit = wallClockTxt.match(/seconds?|minutes?|hours?/)?.[0] || 'time'
 
   function drawStat(x: number, w: number, value: string, label: string, color: string, sub?: string) {
-    // Stat region inside statH (1.30) — top padding 0.05 + value 0.78 + 0.02
-    // gap + label 0.22 + 0.02 gap + sub 0.18 + bottom 0.03 = 1.30 exactly
-    const topPad = 0.05
-    const valH   = 0.78
-    const lblHt  = 0.22
-    const subHt  = 0.18
+    // Stat region inside statH (1.02): topPad 0.04 + value 0.60 + 0.02 gap +
+    // label 0.18 + 0.02 gap + sub 0.14 + bottom 0.02 = 1.02
+    const topPad = 0.04
+    const valH   = 0.60
+    const lblHt  = 0.18
+    const subHt  = 0.14
     const g      = 0.02
     const valY = contentTop + topPad
     const lblY = valY + valH + g
     const subY = lblY + lblHt + g
     slide.addText(value, {
       x, y: valY, w, h: valH,
-      fontSize: 56, bold: true, color, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      fontSize: 46, bold: true, color, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
     })
     slide.addText(label, {
       x, y: lblY, w, h: lblHt,
-      fontSize: 18, bold: true, color: CR.ink, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      fontSize: 16, bold: true, color: CR.ink, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
     })
     if (sub) {
       slide.addText(sub, {
@@ -786,10 +823,12 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
     const innerBot = colY + colH - 0.10      // bottom pad
     const innerH = innerBot - innerTop
     const itemSlotH = innerH / Math.max(col.items.length, 1)
-    const valH = 0.24
-    const labH = 0.16
-    const subH = 0.28
-    const g    = 0.04
+    const valH = 0.22
+    const labH = 0.15
+    const g    = 0.03
+    // Sub height is whatever room is left IN the slot — so a sub can never spill
+    // into the next item's value (the bug the owner caught). Kept to one line.
+    const subH = Math.min(0.28, itemSlotH - valH - labH - g * 2 - 0.03)
 
     col.items.forEach((it, j) => {
       const iy = innerTop + j * itemSlotH + 0.02   // tiny top padding inside each slot
@@ -804,10 +843,10 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
         x: x + 0.15, y: lblY, w: colW - 0.3, h: labH,
         fontSize: 9.5, color: CR.ink2, italic: true, valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
       })
-      if (it.sub) {
-        slide.addText(it.sub, {
+      if (it.sub && subH >= 0.11) {
+        slide.addText(clip(it.sub, 60), {
           x: x + 0.15, y: subY, w: colW - 0.3, h: subH,
-          fontSize: 8.5, color: CR.ink2, valign: 'top', wrap: true, autoFit: true, margin: 0 as any, lineSpacingMultiple: 1.15,
+          fontSize: 8.5, color: CR.ink2, valign: 'top', wrap: false, autoFit: true, margin: 0 as any,
         })
       }
     })
@@ -1071,24 +1110,29 @@ function renderCommentsGrid(pptx: any, spec: CommentsGridSlide, datasetName: str
   const top = CONTENT_Y + 0.05
   const avail = FY - top - 0.1
   const cardW = (W - PAD * 2 - gapX * (cols - 1)) / cols
-  const cardH = (avail - gapY * (rows - 1)) / rows
+  // Cap card height so a near-empty last slide (1–2 comments) doesn't blow each
+  // card up to full-slide size; center the rows when capped.
+  const cardH = Math.min(2.0, (avail - gapY * (rows - 1)) / rows)
+  const gridH = cardH * rows + gapY * (rows - 1)
+  const top0 = top + Math.max(0, (avail - gridH) / 2)
 
   comments.forEach((c, i) => {
     const col = i % cols
     const row = Math.floor(i / cols)
     const x = PAD + col * (cardW + gapX)
-    const y = top + row * (cardH + gapY)
+    const y = top0 + row * (cardH + gapY)
     rect(slide, pptx, x, y, cardW, cardH, CR.card)
     solidRect(slide, pptx, x, y, 0.06, cardH, c.accent || CR.teal)
 
     const hasPills = !!(c.pills && c.pills.length)
     const pillH = 0.26
     const textH = cardH - 0.2 - (hasPills ? pillH + 0.08 : 0)
+    const body = clip(c.text, fitBudget(cardW - 0.34, textH, 12))
     slide.addText([
-      { text: '“', options: { fontSize: 17, bold: true, color: CR.tealL } },
-      { text: trunc(c.text, 240), options: { fontSize: 12.5, color: CR.ink2, italic: true } },
-      { text: '”', options: { fontSize: 17, bold: true, color: CR.tealL } },
-    ], { x: x + 0.16, y: y + 0.1, w: cardW - 0.28, h: textH, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true })
+      { text: '“', options: { fontSize: 16, bold: true, color: CR.tealL } },
+      { text: body, options: { fontSize: 12, color: CR.ink2, italic: true } },
+      { text: '”', options: { fontSize: 16, bold: true, color: CR.tealL } },
+    ], { x: x + 0.16, y: y + 0.1, w: cardW - 0.28, h: textH, valign: 'top', wrap: true, lineSpacingMultiple: 1.28, autoFit: true })
 
     if (hasPills) {
       let px = x + 0.16
