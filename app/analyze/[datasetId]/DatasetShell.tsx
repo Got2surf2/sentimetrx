@@ -187,12 +187,14 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
-      {/* Phase B metric strip — records / signals / theme-fit. Sits between
-          the orange header and the filter chips, visible on every tab. */}
-      <DatasetMetricStrip datasetId={dataset.id} />
-
-      {/* Saved Views switcher — save/load named filter configs + relative period (docs/SAVED_VIEWS.md) */}
-      <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} schemaFields={schemaFields} />
+      {/* Metric strip (records / signals / theme-fit) + Saved Views switcher
+          share ONE row to save vertical space — visible on every tab. Metrics
+          flex left, the view/period/save controls sit right (both wrap on
+          narrow widths). docs/SAVED_VIEWS.md */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', background: '#fff', borderBottom: '1px solid #e8e8ec', padding: '6px 20px', flexShrink: 0, position: 'relative', zIndex: 30 }}>
+        <DatasetMetricStrip datasetId={dataset.id} embedded />
+        <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} schemaFields={schemaFields} embedded />
+      </div>
 
       {/* Period comparison strip — only when a period has a comparison offset */}
       <ComparisonStrip />

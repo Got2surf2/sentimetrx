@@ -15,7 +15,7 @@ import { type Section } from '@/lib/textmineNav'
 export interface NavSectionItem { id: Section; label: string; help?: string; href?: string }
 export interface NavViewItem { id: string; label: string; locked?: boolean; href?: string }
 
-export default function TextMineNav({ sections, activeSection, views, activeView, onSelectSection, onSelectView, children }: {
+export default function TextMineNav({ sections, activeSection, views, activeView, onSelectSection, onSelectView, children, viewsExtra }: {
   sections: NavSectionItem[]
   activeSection: Section
   views: NavViewItem[]
@@ -23,11 +23,14 @@ export default function TextMineNav({ sections, activeSection, views, activeView
   onSelectSection?: (s: Section) => void
   onSelectView?: (v: string) => void
   children?: ReactNode
+  // Right-aligned slot on the views row (row 2) — used for the text-field
+  // picker so it shares a row instead of occupying its own bar.
+  viewsExtra?: ReactNode
 }) {
   return (
     <>
       {/* Row 1 — peer sections (left) + right-aligned action slot (children) */}
-      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
+      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 36, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
         {sections.map(function(sec) {
           var isActive = activeSection === sec.id
           var base: CSSProperties = { padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.textMid, background: 'transparent', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), textDecoration: 'none', transition: 'color .12s' }
@@ -52,9 +55,9 @@ export default function TextMineNav({ sections, activeSection, views, activeView
         </div>
       </div>
 
-      {/* Row 2 — the active section's views */}
+      {/* Row 2 — the active section's views (+ optional right-aligned slot) */}
       {views.length > 0 && (
-        <div style={{ background: T.bg, borderBottom: '1px solid ' + T.border, height: 34, display: 'flex', alignItems: 'stretch', paddingLeft: 18, flexShrink: 0 }}>
+        <div style={{ background: T.bg, borderBottom: '1px solid ' + T.border, height: 32, display: 'flex', alignItems: 'center', paddingLeft: 18, flexShrink: 0 }}>
           {views.map(function(v) {
             var isActive = activeView === v.id
             var base: CSSProperties = { padding: '0 16px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (v.locked ? T.textFaint : T.textMid), background: 'transparent', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), textDecoration: 'none', transition: 'color .12s' }
@@ -65,6 +68,11 @@ export default function TextMineNav({ sections, activeSection, views, activeView
             if (v.href) return <Link key={v.id} href={v.href} style={base}>{v.label}</Link>
             return <button key={v.id} onClick={function() { if (onSelectView) onSelectView(v.id) }} style={{ ...base, border: 'none', cursor: 'pointer' }}>{v.label}</button>
           })}
+          {viewsExtra && (
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 16 }}>
+              {viewsExtra}
+            </div>
+          )}
         </div>
       )}
     </>

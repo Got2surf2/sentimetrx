@@ -13,7 +13,7 @@
 // Skeleton + small Lottie spinner stands in until the response lands
 // (the underlying RPC takes 1–4s on collection datasets).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SignalStats {
@@ -30,7 +30,10 @@ interface SignalStats {
   ratingLabel?: string | null
 }
 
-interface Props { datasetId: string }
+// `embedded` strips the component's own bar wrapper (border/background/padding)
+// so it can sit inside a shared row alongside the ViewsBar — the metrics + view
+// switcher share ONE row instead of stacking two (reclaims a row on every tab).
+interface Props { datasetId: string; embedded?: boolean }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function fmtDate(d: string): string {
@@ -44,7 +47,7 @@ const BAND_STYLES: Record<SignalStats['themeFitBand'], { fg: string; bg: string;
   Diffuse: { fg: '#9f1239', bg: '#fff1f2', border: '#fecdd3' },
 }
 
-export default function DatasetMetricStrip({ datasetId }: Props) {
+export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
   const [stats, setStats] = useState<SignalStats | null>(null)
   const [loaded, setLoaded] = useState(false)
 
@@ -63,8 +66,11 @@ export default function DatasetMetricStrip({ datasetId }: Props) {
 
   // Loading placeholder
   if (!loaded) {
+    const loadStyle: CSSProperties = embedded
+      ? { display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, minWidth: 0 }
+      : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, fontSize: 12 }
     return (
-      <div style={{ background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, fontSize: 12 }}>
+      <div style={loadStyle}>
         <span style={{ display: 'inline-block', height: 14, width: 220, background: '#e5e7eb', borderRadius: 7 }} />
         <span style={{ color: '#9ca3af' }}>·</span>
         <span style={{ display: 'inline-block', height: 14, width: 180, background: '#e5e7eb', borderRadius: 7 }} />
@@ -80,11 +86,12 @@ export default function DatasetMetricStrip({ datasetId }: Props) {
 
   const band = BAND_STYLES[stats.themeFitBand]
   const barFill = Math.max(0, Math.min(100, stats.themeFitPct))
+  const outerStyle: CSSProperties = embedded
+    ? { display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#374151', flexWrap: 'wrap', minWidth: 0 }
+    : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }
 
   return (
-    <div
-      style={{ background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }}
-    >
+    <div style={outerStyle}>
       <span>
         <strong style={{ color: '#111827' }}>{stats.records.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>records</span>

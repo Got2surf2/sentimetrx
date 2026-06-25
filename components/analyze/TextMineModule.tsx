@@ -1923,7 +1923,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       '}</style>
 
       {/* ─── Multi-field picker bar (Ana style with checkbox pills) ───── */}
-      {openFields.length > 1 && hasThemes && (
+      {/* Standalone text-field picker bar retired — the picker now rides the
+          views-nav row via viewsExtra (see <TextMineNav> below) to reclaim a
+          chrome row. Kept disabled rather than deleted to preserve the field-
+          combine markup history alongside the live copy. */}
+      {false && openFields.length > 1 && hasThemes && (
         <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}>
             Analyze:
@@ -1983,6 +1987,33 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             activeView={activeView}
             onSelectSection={selectSection}
             onSelectView={function(v) { navTo(activeSection, v as LensView) }}
+            viewsExtra={openFields.length > 1 && hasThemes ? (
+              <>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', display: 'inline-flex', alignItems: 'center' }}>
+                  Text
+                  <HelpHint title="Multiple text fields" placement="bottom">
+                    Your dataset has more than one open-ended column (e.g. a comment + an owner response). Pick which one to analyze — or check several to combine them into one model.
+                  </HelpHint>
+                </span>
+                {openFields.map(function(f) {
+                  var sel = activeFields.includes(f.field)
+                  return (
+                    <button key={f.field} onClick={function() {
+                      var next = sel ? activeFields.filter(function(x) { return x !== f.field }) : activeFields.concat([f.field])
+                      var fin = next.length ? next : [f.field]
+                      setActiveFields(fin)
+                      setActiveField(fin[0])
+                    }}
+                      style={{ padding: '2px 9px', fontSize: 11, fontWeight: sel ? 700 : 500, background: sel ? T.accentBg : T.bgCard, border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 11, height: 11, borderRadius: 3, border: '1.5px solid ' + (sel ? T.accent : T.borderMid), background: sel ? T.accent : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', flexShrink: 0 }}>
+                        {sel ? '✓' : ''}
+                      </span>
+                      {fieldLabel(f.field)}
+                    </button>
+                  )
+                })}
+              </>
+            ) : undefined}
           >
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}

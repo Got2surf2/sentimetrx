@@ -45,7 +45,9 @@ function periodLabel(p: PeriodSpec | null): string {
 
 const DAY = 86_400_000
 
-export default function ViewsBar({ datasetId, primaryDateField, schemaFields }: { datasetId: string; primaryDateField?: string; schemaFields: SchemaFieldConfig[] }) {
+// `embedded` strips the bar's own wrapper (border/background/padding) so it can
+// share ONE row with the DatasetMetricStrip instead of stacking a second bar.
+export default function ViewsBar({ datasetId, primaryDateField, schemaFields, embedded }: { datasetId: string; primaryDateField?: string; schemaFields: SchemaFieldConfig[]; embedded?: boolean }) {
   const { filters, effectiveFilters, period, setPeriod, activeView, loadView, clearActiveView, isViewDirty } = useFilters()
   const { rows, rowsLoaded, sampled, totalRows, fetchRows } = useRows()
   const [views, setViews] = useState<SavedView[]>([])
@@ -202,7 +204,9 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields }: 
   const pill = { fontSize: 11, fontWeight: 700 as const, padding: '4px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' as const }
 
   return (
-    <div data-testid="views-bar" style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', zIndex: 30 }}>
+    <div data-testid="views-bar" style={embedded
+      ? { display: 'flex', alignItems: 'center', gap: 10, position: 'relative', zIndex: 30, flexShrink: 0, flexWrap: 'wrap' }
+      : { background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', zIndex: 30 }}>
       <span style={{ fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>View</span>
 
       <button onClick={function() { setOpen(function(v) { return !v }) }}
