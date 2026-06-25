@@ -47,6 +47,10 @@ export interface SchemaFieldConfig {
   // from these, not from min/max of `values`.
   dateMin?:       string
   dateMax?:       string
+  // True count of rows where this field is blank (null key or empty string),
+  // computed live by /filter-options. The filter modal is fed synthetic rows
+  // (one per distinct value) so it can't derive this itself — it reads this.
+  blanks?:        number
 }
 
 export interface SchemaConfig {

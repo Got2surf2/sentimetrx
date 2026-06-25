@@ -49,12 +49,23 @@ export async function GET(_req: Request, props: Props) {
 
   const hasFlat = (flatCount || 0) > 0
 
-  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string }> = {}
+  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string; blanks?: number }> = {}
 
   if (hasFlat) {
     // Use SQL helper functions on flat table — fast at any scale
     for (const f of fields) {
       const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
+
+      // True blank count for this field (null key OR empty string). The filter
+      // modal is fed synthetic rows (one per distinct value), so it can't derive
+      // blank counts itself — it must come from here, against the live table.
+      const { count: nonBlank } = await service
+        .from('dataset_rows_flat')
+        .select('id', { count: 'exact', head: true })
+        .eq('dataset_id', params.datasetId)
+        .not('data->' + f.field, 'is', null)
+        .neq('data->>' + f.field, '')
+      opt.blanks = Math.max(0, (flatCount || 0) - (nonBlank || 0))
 
       if (f.type === 'categorical' || f.type === 'open-ended') {
         const { data } = await service.rpc('count_field_values', {
@@ -77,20 +88,27 @@ export async function GET(_req: Request, props: Props) {
       }
 
       if (f.type === 'date') {
-        // Date ranges via direct query on flat table
+        // Date range = the actual earliest/latest VALUE, not insertion order.
+        // Reviews sync per-location in arbitrary order, so ordering by row_index
+        // returned two random rows' dates (a ~1-month window on multi-year data).
+        // ISO date / timestamp strings sort lexically by date, so ordering on the
+        // JSON text value gives the true min/max; empties are excluded so a blank
+        // doesn't sort to the front as the "min".
         const { data } = await service
           .from('dataset_rows_flat')
           .select('data')
           .eq('dataset_id', params.datasetId)
           .not('data->' + f.field, 'is', null)
-          .order('row_index', { ascending: true })
+          .neq('data->>' + f.field, '')
+          .order('data->>' + f.field, { ascending: true })
           .limit(1)
         const { data: dataMax } = await service
           .from('dataset_rows_flat')
           .select('data')
           .eq('dataset_id', params.datasetId)
           .not('data->' + f.field, 'is', null)
-          .order('row_index', { ascending: false })
+          .neq('data->>' + f.field, '')
+          .order('data->>' + f.field, { ascending: false })
           .limit(1)
         if (data?.[0]) opt.dateMin = String((data[0] as any).data[f.field] || '')
         if (dataMax?.[0]) opt.dateMax = String((dataMax[0] as any).data[f.field] || '')

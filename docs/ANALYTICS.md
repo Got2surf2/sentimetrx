@@ -606,6 +606,7 @@ Each axis surfaces top excels/needs-work by peer-delta with the same stability f
 - Serializable: `serializeFilters()` / `deserializeFilters()` for URL/storage
 - Application: `applyFilters(rows, filters)` returns filtered array
 - Context Provider for app-wide state (`components/analyze/FilterContext.tsx`)
+- **Filter-option metadata is live, not the loaded rows.** `FiltersModal` is fed *synthetic* rows (one per distinct value) built by `DatasetShell` from `/api/datasets/[id]/filter-options`, which queries the flat table directly: categorical value lists via `count_field_values`, numeric ranges via `numeric_field_stats`, **date range by ordering on the JSON date value** (`data->>field`, empties excluded — NOT `row_index`, which returned two arbitrary insertion-order dates), and a **live per-field `blanks` count** (`SchemaFieldConfig.blanks`, total − non-blank). The modal prefers `f.blanks` over counting synthetic rows (which would fabricate blanks for any field with fewer distinct values than the widest).
 
 ### Saved Views & Snapshots (`docs/SAVED_VIEWS.md`)
 A **view** is a saved `FilterContext` state; a **snapshot** freezes a view's aggregates.

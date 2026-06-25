@@ -197,7 +197,12 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               var pf = pending[f.field]
               var isActive = !!filters[f.field]
               var lbl = fieldLabel(f.field)
-              var blankCount = rows.filter(function(r) { var v = r[f.field]; return v == null || String(v).trim() === '' }).length
+              // Prefer the live blank count from /filter-options — the rows here
+              // are synthetic (one per distinct value) so counting them fabricates
+              // blanks for any field with fewer distinct values than the widest.
+              var blankCount = (f as any).blanks != null
+                ? (f as any).blanks
+                : rows.filter(function(r) { var v = r[f.field]; return v == null || String(v).trim() === '' }).length
 
               // ── Categorical ──────────────────────────────────────────
               if (f.type === 'categorical') {

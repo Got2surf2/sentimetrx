@@ -123,6 +123,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
           if (opt?.values && !sf.values) sf.values = opt.values
           if (opt?.min != null && sf.min == null) sf.min = opt.min
           if (opt?.max != null && sf.max == null) sf.max = opt.max
+          if (opt?.dateMin != null) sf.dateMin = opt.dateMin
+          if (opt?.dateMax != null) sf.dateMax = opt.dateMax
+          if (opt?.blanks != null) sf.blanks = opt.blanks
         })
 
         setRows(syntheticRows)

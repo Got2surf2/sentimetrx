@@ -18,6 +18,14 @@
 **Follow-up — owner approved all three consolidations (apply across themes/dimensions/entities).** (1) `DatasetMetricStrip` + `ViewsBar` now share ONE row in `DatasetShell` (both got an `embedded` prop that strips their own bar wrapper) — reclaims a row on EVERY analyze tab. (2) The multi-text-field picker ("Review / Owner Response") moved off its standalone bar onto the views-nav row via a new `viewsExtra` right-slot on `TextMineNav` (the old bar is disabled-in-place). (3) Nav rows tightened (row 1 40→36, row 2 34→32). Net ~3 fewer chrome rows (~135px) above the data. `views-bar` testid preserved (e2e saved-views). tsc + eslint clean, `npm run build` passes, 19/19 nav tests. LOCAL/unpushed.
 
 **Follow-up — Themes Compare header matched to the others.** Owner: the Themes Compare chrome was taller than Dimensions/Entities. `CompareTab` had a big "Group Comparison" h2 + ★ legend + paragraph + a bordered control *card*; collapsed it to the same single compact top-bar (`padding 12px 24px`, borderBottom, "Break down by:" + chips left, toggles right) the peer compares use, with the legend folded into a "?" hint and "Smart Axes"→"Sort by impact" for label parity. All three Compare views are now the same height. tsc + eslint + build clean.
+
+## 2026-06-25 — Filters modal: real date range + real blank counts
+
+**Why** (owner): Ruth's Chris (27,234 rows spanning 2025-01-01 → 2026-06-24) showed a **REVIEW DATE filter range of just Apr 14 → May 10, 2026** (~1 month) and "Include blanks (198)" on fields with zero actual blanks. The owner suspected stale/static filter metadata.
+
+**Root cause** (`/api/datasets/[id]/filter-options`): (1) date min/max were read by `.order('row_index')` — i.e. the *first- and last-inserted* rows' dates. Reviews sync per-location in arbitrary order, so that's two random dates, not the range. (2) The modal is fed *synthetic* rows (one per distinct value) by `DatasetShell`, so `FiltersModal`'s blank count (`rows.filter(blank)`) fabricated blanks for every field with fewer distinct values than the widest field (hence the uniform "198").
+
+**Fix**: (1) date range now orders by the JSON value (`data->>field`, empties excluded) → true earliest/latest (verified: 2025-01-01 → 2026-06-24). (2) `/filter-options` now returns a live per-field `blanks` count (total − non-blank); `SchemaFieldConfig.blanks` threaded through `DatasetShell`; `FiltersModal` uses it when present instead of counting synthetic rows. Categorical value lists + numeric ranges were already live (RPCs), so unaffected. tsc + eslint + build clean. LOCAL/unpushed.
 - **Still open**: owner's separate "entities all fall into Other" report — couldn't reproduce; the live catalog for Rubio's/Ruth's has proper categories (top = Food). Needs the dataset it was seen on.
 
 ## 2026-06-25 — Fix poisoned signal_stats cache (cards missing "N signals · theme fit")
