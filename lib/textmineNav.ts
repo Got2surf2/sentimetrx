@@ -49,7 +49,7 @@ export function viewsFor(_section: Section): LensView[] {
 // graceful placeholder. Single gate so a not-yet-built cell is one edit away
 // from the placeholder. (Dimensions Clouds/Compare are filled in during Phase 2.)
 export function cellHasContent(section: Section, view: LensView): boolean {
-  if (section === 'dimensions') return view === 'overview' || view === 'comments'
+  if (section === 'dimensions') return view !== 'compare'   // Compare is the last Phase-2 build
   return true
 }
 

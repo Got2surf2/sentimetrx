@@ -36,6 +36,7 @@ import HelpHint from '@/components/analyze/textmine/HelpHint'
 import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent } from '@/lib/textmineNav'
 import EntitiesCard from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
+import DimensionCloud from '@/components/analyze/textmine/DimensionCloud'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
@@ -2780,11 +2781,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               />
             )}
 
-            {/* ═══ DIMENSIONS TAB ═══ (self-contained module — fetches dataset_row_taxonomy itself) */}
-            {subTab === 'dimensions' && !cellPending && (
+            {/* ═══ DIMENSIONS SECTION ═══ Overview / Clouds / Compare share the
+                'dimensions' subTab; the active view picks the renderer.
+                (self-contained modules — fetch dataset_row_taxonomy themselves) */}
+            {subTab === 'dimensions' && activeView === 'overview' && (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <TaxonomyModule datasetId={datasetId} fields={effectiveFields} fieldLabel={effectiveFields.length ? effectiveFields.map(fieldLabel).join(' + ') : null} />
               </div>
+            )}
+            {subTab === 'dimensions' && activeView === 'clouds' && (
+              <DimensionCloud datasetId={datasetId} fields={effectiveFields} onDrillDimension={handleDrillDimension} />
             )}
 
             {/* ═══ PLACEHOLDER ═══ cells with no renderer yet (e.g. Dimensions ×

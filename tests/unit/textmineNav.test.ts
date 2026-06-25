@@ -82,9 +82,11 @@ describe('cellHasContent', () => {
     }
   })
 
-  it('Dimensions Overview + Comments have renderers', () => {
+  it('Dimensions Overview + Clouds + Comments have renderers (Compare pending)', () => {
     expect(cellHasContent('dimensions', 'overview')).toBe(true)
+    expect(cellHasContent('dimensions', 'clouds')).toBe(true)
     expect(cellHasContent('dimensions', 'comments')).toBe(true)
+    expect(cellHasContent('dimensions', 'compare')).toBe(false)
   })
 })
 
