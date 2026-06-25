@@ -197,11 +197,18 @@ function deriveLegacy(section: Section, view: LensView): { subTab: SubTab; viewB
   if (view === 'comments') return { subTab: 'comments', viewBy }
   return { subTab: 'themes', viewBy }   // overview
 }
-// Views available per section today. Dimensions only has Overview + Comments in
-// Phase 0; its Clouds/Compare cells get built in later phases.
-function viewsFor(section: Section): LensView[] {
-  if (section === 'dimensions') return ['overview', 'comments']
+// The lens sections share one uniform sub-menu. Cells without a renderer yet
+// (see cellHasContent) surface a graceful placeholder rather than being hidden,
+// so the bar reads the same across Themes / Dimensions / Entities.
+function viewsFor(_section: Section): LensView[] {
   return ['overview', 'clouds', 'compare', 'comments']
+}
+// Which (section, view) cells have a real renderer today. Dimensions×Clouds and
+// Dimensions×Compare are later-phase builds → placeholder. Everything else maps
+// to an existing renderer (Entities×Overview = the entity catalog home).
+function cellHasContent(section: Section, view: LensView): boolean {
+  if (section === 'dimensions') return view === 'overview' || view === 'comments'
+  return true
 }
 
 function TextMineNav({ sections, activeSection, views, activeView, advancedHref, onSelectSection, onSelectView, children }: {
@@ -1146,13 +1153,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   const [activeField, setActiveField] = useState<string | null>(null)
   const [activeFields, setActiveFields] = useState<string[]>([])
-  const [subTab, setSubTab] = useState<SubTab>('themes')
+  // Canonical nav state: which peer section + which lens view. The legacy
+  // (subTab, viewBy) the renderers key off are DERIVED from these — see the
+  // `deriveLegacy` const just below. Section/view is the only representation
+  // that covers the full grid (Dimensions×Clouds/Compare, and Dimensions vs
+  // Themes Comments, all collapse under subTab/viewBy alone).
+  const [section, setSection] = useState<Section>('themes')
+  const [view, setView] = useState<LensView>('overview')
   const [showCommentSearch, setShowCommentSearch] = useState(false)  // collapsible search in the Comments tab
-  // Theme | Entity view toggle. Themes (default) emphasises the AI-mined
-  // theme model on Themes / Clouds subtabs; Entity flips both to the
-  // catalog-driven views. Compare and Signals subtabs are theme-only —
-  // entity Compare lives in BreakdownDist on the Themes subtab.
-  const [viewBy, setViewBy] = useState<'theme' | 'entity'>('theme')
   const [themesView, setThemesView] = useState<'distribution' | 'cards' | 'signals'>('cards')
   const [signalCutoffs, setSignalCutoffs] = useState<{ mainstream: number; noise: number }>({ mainstream: 70, noise: 30 })
   const [showAllThemes, setShowAllThemes] = useState(false)
@@ -1164,7 +1172,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
   const [drillGroup, setDrillGroup] = useState<string | null>(null)
   const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
-  const [previousTab, setPreviousTab] = useState<SubTab>('themes')
+  const [previousView, setPreviousView] = useState<LensView>('overview')
+  // Legacy (subTab, viewBy) the content renderers read — derived, never set
+  // directly. deriveLegacy is pure + cheap, so a plain recompute per render.
+  const { subTab, viewBy } = deriveLegacy(section, view)
   const [opinionWord, setOpinionWord] = useState<string | null>(null)
   const [themePopoverIdx, setThemePopoverIdx] = useState<number | null>(null)
   const [isDirty, setIsDirty] = useState(false)
@@ -1223,8 +1234,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (saved) {
       if (saved.activeField !== undefined) setActiveField(saved.activeField)
       if (Array.isArray(saved.activeFields)) setActiveFields(saved.activeFields)
-      if (saved.subTab) { setSubTab(saved.subTab); setPreviousTab(saved.subTab) }
-      if (saved.viewBy === 'theme' || saved.viewBy === 'entity') setViewBy(saved.viewBy)
+      // New shape persists section/view; fall back to mapping older saved
+      // subTab/viewBy so a mid-rollout reload doesn't reset the user's place.
+      if (saved.section && saved.view) { setSection(saved.section); setView(saved.view) }
+      else if (saved.subTab) { setSection(sectionOf(saved.subTab, saved.viewBy === 'entity' ? 'entity' : 'theme')); setView(viewOf(saved.subTab)) }
       if (saved.themesView) setThemesView(saved.themesView)
       if (saved.signalCutoffs) setSignalCutoffs(saved.signalCutoffs)
       if (typeof saved.showAllThemes === 'boolean') setShowAllThemes(saved.showAllThemes)
@@ -1243,15 +1256,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   useEffect(function() {
     if (!restoredFromSession) return
     writeSession(_tmKey, {
-      activeField: activeField, activeFields: activeFields, subTab: subTab,
+      activeField: activeField, activeFields: activeFields, section: section, view: view,
       themesView: themesView, showAllThemes: showAllThemes, signalCutoffs: signalCutoffs,
       breakdownField: breakdownField, compareFields: compareFields,
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
       ratingField: ratingField, colorMode: colorMode, hideFlagged: hideFlagged,
-      viewBy: viewBy,
     })
-  }, [restoredFromSession, activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, viewBy, _tmKey])
+  }, [restoredFromSession, activeField, activeFields, section, view, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
   // Whether a section tab is reachable for this dataset (mirrors the row-1 gates).
   function sectionAvailable(s: Section): boolean {
@@ -1272,10 +1284,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     const sec = sp.get('section') as Section | null
     const vw = sp.get('view') as LensView | null
     if (sec && sec !== 'advanced' && sectionAvailable(sec)) {
-      const view: LensView = vw && viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview'
-      const legacy = deriveLegacy(sec, view)
-      setViewBy(legacy.viewBy)
-      setSubTab(legacy.subTab)
+      setSection(sec)
+      setView(vw && viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityCatalogLoading])
@@ -1286,10 +1296,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       const sec = (sp.get('section') as Section) || 'themes'
       const vw = (sp.get('view') as LensView) || 'overview'
       if (sec !== 'advanced' && sectionAvailable(sec)) {
-        const view: LensView = viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview'
-        const legacy = deriveLegacy(sec, view)
-        setViewBy(legacy.viewBy)
-        setSubTab(legacy.subTab)
+        setSection(sec)
+        setView(viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview')
       }
     }
     window.addEventListener('popstate', onPop)
@@ -1774,7 +1782,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setThemeLibName(null)
         setSamplingInfo({ sampled: filteredRows.length, total: filteredRows.length })
         setLastRunPct(samplePct)
-        setSubTab('themes')
+        setSection('themes'); setView('overview')
         setIsDirty(true)
         fetchServerThemeCounts(tm, effectiveFields)
         enrichSearchInterest(tm)
@@ -1809,7 +1817,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setThemeLibName(null)
         setSamplingInfo({ sampled: texts.length, total: total })
         setLastRunPct(samplePct)
-        setSubTab('themes')
+        setSection('themes'); setView('overview')
         setIsDirty(true)
         fetchServerThemeCounts(tm2, effectiveFields)
         enrichSearchInterest(tm2)
@@ -1843,7 +1851,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     enrichSearchInterest(tm)
     setLastRunPct(null)
     setShowThemeEditor(false)
-    setSubTab('themes')
+    setSection('themes'); setView('overview')
     // Auto-save immediately so the user doesn't need a separate Save press
     setSaving(true)
     fetch('/api/datasets/' + datasetId + '/state', {
@@ -1873,41 +1881,39 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setSaving(false)
   }
 
-  function handleSubTab(tab: SubTab) {
-    if (tab === 'comments') setPreviousTab(subTab)
-    setSubTab(tab)
-    // Clear the entity/dimension filter facets when leaving Comments explicitly.
-    if (tab !== 'comments') { setFilterEntities([]); setFilterDims([]); setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
-  }
-
-  // Navigate the two-row bar: set the legacy (subTab, viewBy) the renderers read,
-  // then reflect (section, view) into the URL with a shallow history push
-  // (shareable + back/forward, no server round-trip).
-  function navTo(section: Section, view: LensView) {
-    const legacy = deriveLegacy(section, view)
-    setViewBy(legacy.viewBy)
-    handleSubTab(legacy.subTab)
+  // Navigate the two-row bar: section/view ARE the state now (renderers read the
+  // derived subTab/viewBy). Clears the comment facets when leaving Comments and
+  // remembers the prior view so the in-Comments back button returns there.
+  // Reflected into the URL via a shallow history push (shareable + back/forward,
+  // no server round-trip).
+  function navTo(nextSection: Section, nextView: LensView) {
+    if (nextView === 'comments') setPreviousView(view)
+    else { setFilterEntities([]); setFilterDims([]); setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
+    setSection(nextSection)
+    setView(nextView)
     try {
       const sp = new URLSearchParams(window.location.search)
-      sp.set('section', section); sp.set('view', view)
+      sp.set('section', nextSection); sp.set('view', nextView)
       window.history.pushState({}, '', window.location.pathname + '?' + sp.toString())
     } catch (_e) { /* SSR / no history — nav state still updates */ }
   }
   // Section click: keep the current view if the target section offers it, else
   // fall back to Overview.
-  function selectSection(section: Section) {
-    if (section === 'advanced') return   // Advanced is a link, never routed here
-    const cur = viewOf(subTab)
-    const view: LensView = viewsFor(section).indexOf(cur) >= 0 ? cur : 'overview'
-    navTo(section, view)
+  function selectSection(nextSection: Section) {
+    if (nextSection === 'advanced') return   // Advanced is a link, never routed here
+    const v: LensView = viewsFor(nextSection).indexOf(view) >= 0 ? view : 'overview'
+    navTo(nextSection, v)
   }
 
+  // Drills jump to Comments within the CURRENT section (lens), remembering the
+  // view to return to. They don't rewrite the URL — the nav highlight stays
+  // correct since it reads section/view directly.
   function handleDrillTheme(t: Theme, group?: string) {
-    setPreviousTab(subTab)
+    setPreviousView(view)
     setDrillTheme(t)
     setSelectedThemes([t])
     setDrillGroup(group || null)
-    setSubTab('comments')
+    setView('comments')
   }
 
   function handleBackFromComments() {
@@ -1915,23 +1921,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setSelectedThemes([])
     setDrillGroup(null)
     setFilterEntities([]); setFilterDims([])
-    setSubTab(previousTab)
+    setView(previousView)
   }
 
   // Clicking an entity (cloud / card / pill) adds it to the Comments entity
   // facet and opens the Comments tab — combinable with themes + dimensions.
   function handleDrillEntity(entity: { slug: string; canonical: string; category: string; aliases: string[] }) {
-    setPreviousTab(subTab)
+    setPreviousView(view)
     setFilterEntities(function(prev) { return prev.some(function(e) { return e.slug === entity.slug }) ? prev : prev.concat([entity]) })
-    setSubTab('comments')
+    setView('comments')
   }
 
   // Clicking a Dimension chip (theme-card row / facet) adds it to the Comments
   // dimension facet and opens the Comments tab.
   function handleDrillDimension(axis: string, sub: string) {
-    setPreviousTab(subTab)
+    setPreviousView(view)
     setFilterDims(function(prev) { return prev.some(function(d) { return d.axis === axis && d.sub === sub }) ? prev : prev.concat([{ axis: axis, sub: sub }]) })
-    setSubTab('comments')
+    setView('comments')
   }
 
   function handleThemeEditorApply(themeArr: Theme[], libName: string, source: string) {
@@ -1983,17 +1989,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     ...(entityCatalogRows.length > 0 ? [{ id: 'entities' as Section, label: 'Entities', help: 'The specific things people name — dishes, drinks, brands, places — catalogued from the comments, with the quotes behind each.' }] : []),
     ...(datasetSource === 'google_reviews' && (outletCount || 0) >= 5 ? [{ id: 'advanced' as Section, label: 'Advanced Analytics', help: 'Brand-health diagnostics + per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' }] : []),
   ]
-  const activeSection = sectionOf(subTab, viewBy)
-  const activeView = viewOf(subTab)
+  const activeSection = section
+  const activeView = view
   const VIEW_LABEL: Record<LensView, string> = { overview: 'Overview', clouds: 'Clouds', compare: 'Compare', comments: 'Comments' }
-  // Row 2 — the active section's views. A view is locked (needs a theme model)
-  // when its underlying subTab is clouds/compare/comments and no themes exist —
-  // matching the previous per-tab lock.
+  // Row 2 — the active section's views (uniform Overview·Clouds·Compare·Comments
+  // across the lens sections). A view is locked (needs a theme model) when its
+  // underlying subTab is clouds/compare/comments and no themes exist — matching
+  // the previous per-tab lock.
   const navViews = activeSection === 'advanced' ? [] : viewsFor(activeSection).map(function(v) {
     const st = deriveLegacy(activeSection, v).subTab
     const locked = (st === 'clouds' || st === 'compare' || st === 'comments') && !hasThemes
     return { id: v, label: VIEW_LABEL[v], locked: locked }
   })
+  // Cells without a real renderer yet (later-phase builds) show a graceful
+  // placeholder instead of mis-rendering the section's Overview.
+  const cellPending = !cellHasContent(activeSection, activeView)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' }}>
@@ -2791,9 +2801,27 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             )}
 
             {/* ═══ DIMENSIONS TAB ═══ (self-contained module — fetches dataset_row_taxonomy itself) */}
-            {subTab === 'dimensions' && (
+            {subTab === 'dimensions' && !cellPending && (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <TaxonomyModule datasetId={datasetId} fields={effectiveFields} fieldLabel={effectiveFields.length ? effectiveFields.map(fieldLabel).join(' + ') : null} />
+              </div>
+            )}
+
+            {/* ═══ PLACEHOLDER ═══ cells with no renderer yet (e.g. Dimensions ×
+                Clouds / Compare) — keep the bar uniform, say it's coming. */}
+            {cellPending && (
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} className="fadein">
+                <div style={{ textAlign: 'center', maxWidth: 420 }}>
+                  <div style={{ fontSize: 30, marginBottom: 12, opacity: 0.5 }}>{'◱'}</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: '0 0 6px' }}>{VIEW_LABEL[activeView]} isn&apos;t available for {activeSection === 'dimensions' ? 'Dimensions' : activeSection} yet</h3>
+                  <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.6, margin: '0 0 16px' }}>
+                    This view is on the way. For now, switch to a view that&apos;s ready for this section.
+                  </p>
+                  <button onClick={function() { navTo(activeSection, 'overview') }}
+                    style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: T.accent, color: 'white', border: 'none', borderRadius: 20, cursor: 'pointer' }}>
+                    Go to Overview
+                  </button>
+                </div>
               </div>
             )}
 
