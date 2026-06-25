@@ -687,26 +687,16 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {/* Sticky header + controls */}
-      <div style={{ padding: '24px 24px 0', flexShrink: 0 }}>
-      {/* Header */}
-      <div style={{ marginBottom: 22 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '0 0 6px' }}>Group Comparison</h2>
-          <span style={{ fontSize: 11, color: T.textMute }}>
-            <span style={{ color: '#16a34a', fontWeight: 800 }}>★</span> over-indexed&nbsp;
-            <span style={{ color: '#dc2626', fontWeight: 800 }}>★</span> under-indexed&nbsp;
-            <span style={{ color: T.textFaint, fontSize: 10 }}>(p &lt; 0.05, min n=30)</span>
-          </span>
-        </div>
-        <p style={{ fontSize: 13, color: T.textMid, margin: 0 }}>Select one or more fields to build segments and compare theme distribution.</p>
-      </div>
-
-      {/* Controls card */}
-      <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px', marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      {/* Top bar — compact, matches Dimensions/Entities Compare (no big title
+          card; the ★ legend + segment help live in the "?" hint). */}
+      <div style={{ flexShrink: 0, padding: '12px 24px', borderBottom: '1px solid ' + T.border, background: T.bgCard }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-              Segment by <span style={{ fontWeight: 400 }}>(select one or more)</span>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.textMid, marginBottom: 6, display: 'inline-flex', alignItems: 'center' }}>
+              Break down by:
+              <HelpHint title="Group Comparison" placement="bottom">
+                Select one or more fields to build segments and compare theme distribution. <strong style={{ color: '#16a34a' }}>★</strong> over-indexed / <strong style={{ color: '#dc2626' }}>★</strong> under-indexed vs the baseline (p &lt; 0.05, min n=30).
+              </HelpHint>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {catFields.sort(function(a, b) { return fieldLabel(a).localeCompare(fieldLabel(b)) }).map(function(f) {
@@ -765,8 +755,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
             )}
           </div>
         </div>
-      </div>
-      </div>{/* end sticky header */}
+      </div>{/* end top bar */}
 
       {/* Scrollable results area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
