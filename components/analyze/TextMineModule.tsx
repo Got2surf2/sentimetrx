@@ -31,6 +31,9 @@ import CommentSearchPanel from '@/components/analyze/textmine/CommentSearchPanel
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
+// Nav types + the pure (section, view) ⇄ (subTab, viewBy) state map (shared with
+// the Advanced pages' bar + unit-tested in tests/unit/textmineNav).
+import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent } from '@/lib/textmineNav'
 import EntitiesCard from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -160,55 +163,6 @@ interface Props {
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
   outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
-}
-
-type SubTab = 'themes' | 'clouds' | 'compare' | 'comments' | 'dimensions'
-
-// ─── TextMine navigation (peer sections × lens views) ──────────────────────────
-// The IA: TextMine is four PEER sections in a two-row bar — row 1 = sections,
-// row 2 = the active section's views. Renderers still key off the legacy
-// (subTab, viewBy) state; these pure helpers map (section, view) ⇄ (subTab,
-// viewBy) so Phase 0 introduces the new nav without touching any renderer.
-type Section = 'themes' | 'dimensions' | 'entities' | 'advanced'
-type LensView = 'overview' | 'clouds' | 'compare' | 'comments'
-
-// (subTab, viewBy) → which section tab is highlighted.
-function sectionOf(subTab: SubTab, viewBy: 'theme' | 'entity'): Section {
-  if (subTab === 'dimensions') return 'dimensions'
-  return viewBy === 'entity' ? 'entities' : 'themes'
-}
-// (subTab) → which view tab is highlighted. themes/dimensions are each a
-// section's Overview; clouds/compare/comments map straight across.
-function viewOf(subTab: SubTab): LensView {
-  if (subTab === 'clouds') return 'clouds'
-  if (subTab === 'compare') return 'compare'
-  if (subTab === 'comments') return 'comments'
-  return 'overview'
-}
-// (section, view) → the legacy (subTab, viewBy) the renderers understand.
-function deriveLegacy(section: Section, view: LensView): { subTab: SubTab; viewBy: 'theme' | 'entity' } {
-  if (section === 'dimensions') {
-    if (view === 'comments') return { subTab: 'comments', viewBy: 'theme' }
-    return { subTab: 'dimensions', viewBy: 'theme' }
-  }
-  const viewBy: 'theme' | 'entity' = section === 'entities' ? 'entity' : 'theme'
-  if (view === 'clouds') return { subTab: 'clouds', viewBy }
-  if (view === 'compare') return { subTab: 'compare', viewBy }
-  if (view === 'comments') return { subTab: 'comments', viewBy }
-  return { subTab: 'themes', viewBy }   // overview
-}
-// The lens sections share one uniform sub-menu. Cells without a renderer yet
-// (see cellHasContent) surface a graceful placeholder rather than being hidden,
-// so the bar reads the same across Themes / Dimensions / Entities.
-function viewsFor(_section: Section): LensView[] {
-  return ['overview', 'clouds', 'compare', 'comments']
-}
-// Which (section, view) cells have a real renderer today. Dimensions×Clouds and
-// Dimensions×Compare are later-phase builds → placeholder. Everything else maps
-// to an existing renderer (Entities×Overview = the entity catalog home).
-function cellHasContent(section: Section, view: LensView): boolean {
-  if (section === 'dimensions') return view === 'overview' || view === 'comments'
-  return true
 }
 
 function TextMineNav({ sections, activeSection, views, activeView, advancedHref, onSelectSection, onSelectView, children }: {
@@ -2329,6 +2283,32 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </div>
                       </div>
                       )}
+
+                      {/* ── Entity overview stat strip (Entities section home) — mirrors
+                          the theme grid so the lens has a real Overview, not a
+                          stripped Themes tab. ─── */}
+                      {viewBy === 'entity' && entityCatalogRows.length > 0 && (function() {
+                        var catCounts: Record<string, number> = {}
+                        entityCatalogRows.forEach(function(e) { var c = e.category || 'other'; catCounts[c] = (catCounts[c] || 0) + 1 })
+                        var cats = Object.keys(catCounts)
+                        var topCat = cats.sort(function(a, b) { return catCounts[b] - catCounts[a] })[0] || '—'
+                        return (
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
+                            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{totalResp.toLocaleString()}</div>
+                              <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Comments</div>
+                            </div>
+                            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                              <div style={{ fontSize: 24, fontWeight: 800, color: T.blue, lineHeight: 1 }}>{(entityCatalogTotal != null ? entityCatalogTotal : entityCatalogRows.length).toLocaleString()}</div>
+                              <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Distinct Entities</div>
+                            </div>
+                            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                              <div style={{ fontSize: 24, fontWeight: 800, color: T.green, lineHeight: 1, textTransform: 'capitalize' }}>{topCat}</div>
+                              <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Top Category</div>
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
                       <EntitiesCard
