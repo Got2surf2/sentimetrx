@@ -4,7 +4,7 @@
 // Fetches rows from the paginated rows API, mines themes via server proxy,
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
@@ -163,6 +163,115 @@ interface Props {
 }
 
 type SubTab = 'themes' | 'clouds' | 'compare' | 'comments' | 'dimensions'
+
+// ─── TextMine navigation (peer sections × lens views) ──────────────────────────
+// The IA: TextMine is four PEER sections in a two-row bar — row 1 = sections,
+// row 2 = the active section's views. Renderers still key off the legacy
+// (subTab, viewBy) state; these pure helpers map (section, view) ⇄ (subTab,
+// viewBy) so Phase 0 introduces the new nav without touching any renderer.
+type Section = 'themes' | 'dimensions' | 'entities' | 'advanced'
+type LensView = 'overview' | 'clouds' | 'compare' | 'comments'
+
+// (subTab, viewBy) → which section tab is highlighted.
+function sectionOf(subTab: SubTab, viewBy: 'theme' | 'entity'): Section {
+  if (subTab === 'dimensions') return 'dimensions'
+  return viewBy === 'entity' ? 'entities' : 'themes'
+}
+// (subTab) → which view tab is highlighted. themes/dimensions are each a
+// section's Overview; clouds/compare/comments map straight across.
+function viewOf(subTab: SubTab): LensView {
+  if (subTab === 'clouds') return 'clouds'
+  if (subTab === 'compare') return 'compare'
+  if (subTab === 'comments') return 'comments'
+  return 'overview'
+}
+// (section, view) → the legacy (subTab, viewBy) the renderers understand.
+function deriveLegacy(section: Section, view: LensView): { subTab: SubTab; viewBy: 'theme' | 'entity' } {
+  if (section === 'dimensions') {
+    if (view === 'comments') return { subTab: 'comments', viewBy: 'theme' }
+    return { subTab: 'dimensions', viewBy: 'theme' }
+  }
+  const viewBy: 'theme' | 'entity' = section === 'entities' ? 'entity' : 'theme'
+  if (view === 'clouds') return { subTab: 'clouds', viewBy }
+  if (view === 'compare') return { subTab: 'compare', viewBy }
+  if (view === 'comments') return { subTab: 'comments', viewBy }
+  return { subTab: 'themes', viewBy }   // overview
+}
+// Views available per section today. Dimensions only has Overview + Comments in
+// Phase 0; its Clouds/Compare cells get built in later phases.
+function viewsFor(section: Section): LensView[] {
+  if (section === 'dimensions') return ['overview', 'comments']
+  return ['overview', 'clouds', 'compare', 'comments']
+}
+
+function TextMineNav({ sections, activeSection, views, activeView, advancedHref, onSelectSection, onSelectView, children }: {
+  sections: { id: Section; label: string; help: string }[]
+  activeSection: Section
+  views: { id: LensView; label: string; locked: boolean }[]
+  activeView: LensView
+  advancedHref: string | null
+  onSelectSection: (s: Section) => void
+  onSelectView: (v: LensView) => void
+  children?: ReactNode
+}) {
+  return (
+    <>
+      {/* Row 1 — peer sections (left) + right-aligned action pills (children) */}
+      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
+        {sections.map(function(sec) {
+          var isActive = activeSection === sec.id
+          // Advanced Analytics is still a server-rendered page (folded under the
+          // bar in a later phase) — render it as a link, not a state switch.
+          if (sec.id === 'advanced' && advancedHref) {
+            return (
+              <div key={sec.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Link href={advancedHref}
+                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
+                  {sec.label}
+                </Link>
+                <span style={{ paddingRight: 10 }}>
+                  <HelpHint title={sec.label} placement="bottom">{sec.help}</HelpHint>
+                </span>
+              </div>
+            )
+          }
+          return (
+            <div key={sec.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <button onClick={function() { onSelectSection(sec.id) }}
+                style={{ padding: '0 8px 0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.textMid, background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: 'pointer', transition: 'color .12s' }}>
+                {sec.label}
+              </button>
+              <span style={{ paddingRight: 10 }}>
+                <HelpHint title={sec.label} placement="bottom">{sec.help}</HelpHint>
+              </span>
+            </div>
+          )
+        })}
+        {/* Right: status + action pills (passed in from the module) */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+          {children}
+        </div>
+      </div>
+
+      {/* Row 2 — the active section's lens views */}
+      {views.length > 0 && (
+        <div style={{ background: T.bg, borderBottom: '1px solid ' + T.border, height: 34, display: 'flex', alignItems: 'stretch', paddingLeft: 18, flexShrink: 0 }}>
+          {views.map(function(v) {
+            var isActive = activeView === v.id
+            return (
+              <button key={v.id} onClick={function() { if (!v.locked) onSelectView(v.id) }}
+                disabled={v.locked}
+                title={v.locked ? 'Run a theme model first' : ''}
+                style={{ padding: '0 16px', height: '100%', fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (v.locked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: v.locked ? 'not-allowed' : 'pointer', opacity: v.locked ? 0.4 : 1, transition: 'color .12s' }}>
+                {v.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </>
+  )
+}
 
 // ─── ApiKeyModal ──────────────────────────────────────────────────────────────
 
@@ -1144,6 +1253,50 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     })
   }, [restoredFromSession, activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, viewBy, _tmKey])
 
+  // Whether a section tab is reachable for this dataset (mirrors the row-1 gates).
+  function sectionAvailable(s: Section): boolean {
+    if (s === 'themes') return true
+    if (s === 'dimensions') return dimensionsEnabled
+    if (s === 'entities') return entityCatalogRows.length > 0
+    if (s === 'advanced') return datasetSource === 'google_reviews' && (outletCount || 0) >= 5
+    return false
+  }
+  // Apply ?section=&view= from the URL once entity availability is known (the
+  // catalog loads async). URL wins over the sessionStorage restore above; absent
+  // params leave the restored/default state untouched. Runs once via the ref.
+  const urlAppliedRef = useRef(false)
+  useEffect(function() {
+    if (urlAppliedRef.current || entityCatalogLoading) return
+    urlAppliedRef.current = true
+    const sp = new URLSearchParams(window.location.search)
+    const sec = sp.get('section') as Section | null
+    const vw = sp.get('view') as LensView | null
+    if (sec && sec !== 'advanced' && sectionAvailable(sec)) {
+      const view: LensView = vw && viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview'
+      const legacy = deriveLegacy(sec, view)
+      setViewBy(legacy.viewBy)
+      setSubTab(legacy.subTab)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityCatalogLoading])
+  // Back/forward: re-sync nav state from the URL (shallow history, no reload).
+  useEffect(function() {
+    function onPop() {
+      const sp = new URLSearchParams(window.location.search)
+      const sec = (sp.get('section') as Section) || 'themes'
+      const vw = (sp.get('view') as LensView) || 'overview'
+      if (sec !== 'advanced' && sectionAvailable(sec)) {
+        const view: LensView = viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview'
+        const legacy = deriveLegacy(sec, view)
+        setViewBy(legacy.viewBy)
+        setSubTab(legacy.subTab)
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return function() { window.removeEventListener('popstate', onPop) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dimensionsEnabled, entityCatalogRows.length, datasetSource, outletCount])
+
   // Listen for Ana theme mutations and refetch theme model
   useEffect(function() {
     function handleAnaThemes() {
@@ -1727,6 +1880,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (tab !== 'comments') { setFilterEntities([]); setFilterDims([]); setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
   }
 
+  // Navigate the two-row bar: set the legacy (subTab, viewBy) the renderers read,
+  // then reflect (section, view) into the URL with a shallow history push
+  // (shareable + back/forward, no server round-trip).
+  function navTo(section: Section, view: LensView) {
+    const legacy = deriveLegacy(section, view)
+    setViewBy(legacy.viewBy)
+    handleSubTab(legacy.subTab)
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      sp.set('section', section); sp.set('view', view)
+      window.history.pushState({}, '', window.location.pathname + '?' + sp.toString())
+    } catch (_e) { /* SSR / no history — nav state still updates */ }
+  }
+  // Section click: keep the current view if the target section offers it, else
+  // fall back to Overview.
+  function selectSection(section: Section) {
+    if (section === 'advanced') return   // Advanced is a link, never routed here
+    const cur = viewOf(subTab)
+    const view: LensView = viewsFor(section).indexOf(cur) >= 0 ? cur : 'overview'
+    navTo(section, view)
+  }
+
   function handleDrillTheme(t: Theme, group?: string) {
     setPreviousTab(subTab)
     setDrillTheme(t)
@@ -1797,16 +1972,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   var hasThemes = themes && themes.themes && themes.themes.length > 0
   var canMine = rowsLoaded && effectiveFields.length > 0 && rows.length > 0
-  const subTabs: { id: SubTab; label: string; help: string }[] = [
-    { id: 'themes',   label: 'Themes',       help: 'Each card is a theme — a cluster of comments that share a topic. The size shows how common the theme is. Click a card to see the actual quotes.' },
-    { id: 'clouds',   label: 'Theme Clouds', help: 'A word cloud per theme, showing the words that appear most often within that theme\'s comments. Useful for spotting the exact language people use.' },
-    { id: 'compare',  label: 'Compare',      help: 'Slice your themes by a categorical field — region, channel, age bracket — to see which segments care about which themes. Significance markers flag groups whose mix differs meaningfully from the baseline.' },
-    { id: 'comments', label: 'Comments',     help: 'The raw quotes underlying everything. Search the text, filter by theme, or jump here from any chart to see the source rows.' },
+  // Row 1 — peer sections. Themes is always present; Dimensions / Entities /
+  // Advanced gate exactly as before (taxonomy capability, a non-empty entity
+  // catalog, and google_reviews + ≥5 outlets respectively).
+  const navSections: { id: Section; label: string; help: string }[] = [
+    { id: 'themes', label: 'Themes', help: 'AI-mined themes — clusters of comments that share a topic. Browse them, see the language people use, slice by segment, or read the underlying quotes.' },
     // Dimensions (the 7-axis classification) — Google Reviews datasets, OR any
     // analyze dataset when the org has the 'taxonomy' (Dimensions) capability.
-    // Doesn't depend on a theme model.
-    ...((datasetSource === 'google_reviews' || taxonomyEnabled) ? [{ id: 'dimensions' as SubTab, label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
+    ...((datasetSource === 'google_reviews' || taxonomyEnabled) ? [{ id: 'dimensions' as Section, label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
+    ...(entityCatalogRows.length > 0 ? [{ id: 'entities' as Section, label: 'Entities', help: 'The specific things people name — dishes, drinks, brands, places — catalogued from the comments, with the quotes behind each.' }] : []),
+    ...(datasetSource === 'google_reviews' && (outletCount || 0) >= 5 ? [{ id: 'advanced' as Section, label: 'Advanced Analytics', help: 'Brand-health diagnostics + per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' }] : []),
   ]
+  const activeSection = sectionOf(subTab, viewBy)
+  const activeView = viewOf(subTab)
+  const VIEW_LABEL: Record<LensView, string> = { overview: 'Overview', clouds: 'Clouds', compare: 'Compare', comments: 'Comments' }
+  // Row 2 — the active section's views. A view is locked (needs a theme model)
+  // when its underlying subTab is clouds/compare/comments and no themes exist —
+  // matching the previous per-tab lock.
+  const navViews = activeSection === 'advanced' ? [] : viewsFor(activeSection).map(function(v) {
+    const st = deriveLegacy(activeSection, v).subTab
+    const locked = (st === 'clouds' || st === 'compare' || st === 'comments') && !hasThemes
+    return { id: v, label: VIEW_LABEL[v], locked: locked }
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' }}>
@@ -1870,74 +2057,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       {/* ─── Main layout (no sidebar — full width like Ana.html) ────── */}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
-          {/* Sub-tab bar with actions */}
-          <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
-            {subTabs.map(function(tab) {
-              var isActive = subTab === tab.id
-              var isLocked = !hasThemes && tab.id !== 'themes' && tab.id !== 'dimensions'
-              return (
-                <div key={tab.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  <button onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
-                    style={{ padding: '0 8px 0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (isLocked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.4 : 1, transition: 'color .12s' }}
-                    title={isLocked ? 'Run a theme model first' : ''}>
-                    {tab.label}
-                  </button>
-                  <span style={{ paddingRight: 10, opacity: isLocked ? 0.4 : 1 }}>
-                    <HelpHint title={tab.label} placement="bottom">{tab.help}</HelpHint>
-                  </span>
-                </div>
-              )
-            })}
-
-            {/* Advanced Analytics — the consolidated home for multi-location
-                review brands: brand health (improvement plan: opportunity,
-                recommended actions, drivers/trends, loyalty correlation),
-                leaderboard, and per-outlet deep-dive (action plan + what-if +
-                GM export). Server-rendered routes behind a shared sub-nav, so
-                this is a link (lands on Brand Health). Same gate as before:
-                google_reviews + ≥5 outlets. */}
-            {datasetSource === 'google_reviews' && (outletCount || 0) >= 5 && (
-              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Link href={'/analyze/' + datasetId + '/improvement-plan'}
-                  style={{ padding: '0 8px 0 18px', height: '100%', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: T.textMid, background: 'transparent', borderBottom: '2px solid transparent', textDecoration: 'none' }}>
-                  Advanced Analytics
-                </Link>
-                <span style={{ paddingRight: 10 }}>
-                  <HelpHint title="Advanced Analytics" placement="bottom">Brand-health diagnostics + per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers &amp; trends, the leaderboard, and each location&apos;s action plan with an interactive what-if modeler.</HelpHint>
-                </span>
-              </div>
-            )}
-
-            {/* Right: status + action pills */}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
-              {/* View by Theme | Entity — gates which set of components renders
-                  on subtabs that have both (Themes, Clouds). Only shown when
-                  the scope actually has an entity catalog; otherwise the
-                  toggle would be a footgun (Entity view would render empty). */}
-              {(subTab === 'themes' || subTab === 'clouds' || subTab === 'compare') && entityCatalogRows.length > 0 && (
-                <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border, marginRight: 4 }}>
-                  {(['theme', 'entity'] as const).map(function(mode) {
-                    return (
-                      <button
-                        key={mode}
-                        onClick={function() { setViewBy(mode) }}
-                        title={mode === 'theme' ? 'Show AI-mined themes' : 'Show entity catalog (dishes, drinks, brands, places)'}
-                        style={{
-                          padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6,
-                          background: viewBy === mode ? T.bgCard : 'transparent',
-                          color: viewBy === mode ? T.accent : T.textMute,
-                          border: 'none', cursor: 'pointer',
-                          boxShadow: viewBy === mode ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-                          textTransform: 'capitalize' as const,
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {mode === 'theme' ? 'Themes' : 'Entities'}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+          {/* Two-row nav: peer sections (row 1) + lens views (row 2). The
+              status + action pills float right on row 1 as children. */}
+          <TextMineNav
+            sections={navSections}
+            activeSection={activeSection}
+            views={navViews}
+            activeView={activeView}
+            advancedHref={'/analyze/' + datasetId + '/improvement-plan'}
+            onSelectSection={selectSection}
+            onSelectView={function(v) { navTo(activeSection, v) }}
+          >
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
               {themeSource && (
@@ -1991,8 +2121,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   {saving ? 'Saving...' : 'Save'}
                 </button>
               )}
-            </div>
-          </div>
+          </TextMineNav>
 
           {/* ─── Tab content ─────────────────────────────────────────── */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

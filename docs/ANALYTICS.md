@@ -16,7 +16,16 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 
 ## TextMine (Theme Detection & Analysis)
 
-### Core Features (4 Sub-tabs)
+### Navigation IA (two-row bar — Phase 0, 2026-06-25)
+
+TextMine is now **four peer sections** in a persistent **two-row bar** (`TextMineNav` in `TextMineModule.tsx`): **row 1 = sections** `[Themes] [Dimensions] [Entities] [Advanced Analytics]`, **row 2 = the active section's views** `Overview · Clouds · Compare · Comments`. This replaces the old flat sub-tab strip + the right-aligned "View by Theme/Entity" toggle (the toggle **folded into the Entities section** — picking a section sets the lens).
+
+- The content renderers are unchanged: they still key off the legacy `subTab ∈ {themes,clouds,compare,comments,dimensions}` × `viewBy ∈ {theme,entity}` state. `TextMineNav` is a pure presentation layer — `deriveLegacy(section, view) → (subTab, viewBy)` drives the renderers, and `sectionOf`/`viewOf` derive the active tab highlight back from the legacy state. So **Themes/Entities/Dimensions × Overview/Clouds/Compare/Comments are the same cells described below**, re-keyed: Themes×Overview = the Themes view, Entities×Overview = the Entities card home (`viewBy='entity'`), Dimensions×Overview = `<TaxonomyModule>`, etc.
+- **Section gates** (unchanged from the old per-tab gates): Themes always; Dimensions when `datasetSource==='google_reviews' || taxonomyEnabled`; Entities when the entity catalog is non-empty; Advanced Analytics when `google_reviews && outletCount≥5` (still a link to `/analyze/[id]/improvement-plan` — folded under the bar in a later phase).
+- **View availability (Phase 0):** Dimensions exposes only **Overview + Comments** today; its Clouds/Compare cells, plus a dedicated **Entities × Overview** and **Dimensions × Compare**, are later-phase builds. A view is **locked** (needs a theme model) when its underlying subTab is clouds/compare/comments and no themes exist — matching the previous lock.
+- **State & URL:** section/view round-trips through **`?section=&view=` URL params** (shallow `history.pushState`, shareable + back/forward via a `popstate` listener); `sessionStorage` still persists the legacy `subTab`/`viewBy` and acts as the last-used default. URL wins over the restore on load. (Known Phase-0 gap: in-content drills/back don't yet rewrite the URL — the visible nav highlight stays correct since it's derived.)
+
+### Core Features (4 lens views)
 
 **1. Themes**
 - AI-mined or library-selected themes with keyword matching
