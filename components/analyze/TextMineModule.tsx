@@ -37,6 +37,7 @@ import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLega
 import EntitiesCard from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import DimensionCloud from '@/components/analyze/textmine/DimensionCloud'
+import DimensionCompareTab from '@/components/analyze/textmine/DimensionCompareTab'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
@@ -2791,6 +2792,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             )}
             {subTab === 'dimensions' && activeView === 'clouds' && (
               <DimensionCloud datasetId={datasetId} fields={effectiveFields} onDrillDimension={handleDrillDimension} />
+            )}
+            {subTab === 'dimensions' && activeView === 'compare' && (
+              <DimensionCompareTab datasetId={datasetId} catFields={catFields} fieldLabel={fieldLabel} onDrillDimension={handleDrillDimension} />
             )}
 
             {/* ═══ PLACEHOLDER ═══ cells with no renderer yet (e.g. Dimensions ×

@@ -74,19 +74,12 @@ describe('viewsFor', () => {
 })
 
 describe('cellHasContent', () => {
-  it('marks all Themes and Entities cells as having a renderer', () => {
-    for (const section of (['themes', 'entities'] as Section[])) {
+  it('every lens cell has a renderer (all Phase-2 cells built)', () => {
+    for (const section of LENS_SECTIONS) {
       for (const view of VIEWS) {
         expect(cellHasContent(section, view)).toBe(true)
       }
     }
-  })
-
-  it('Dimensions Overview + Clouds + Comments have renderers (Compare pending)', () => {
-    expect(cellHasContent('dimensions', 'overview')).toBe(true)
-    expect(cellHasContent('dimensions', 'clouds')).toBe(true)
-    expect(cellHasContent('dimensions', 'comments')).toBe(true)
-    expect(cellHasContent('dimensions', 'compare')).toBe(false)
   })
 })
 

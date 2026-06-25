@@ -45,11 +45,10 @@ export function viewsFor(_section: Section): LensView[] {
   return ['overview', 'clouds', 'compare', 'comments']
 }
 
-// Which (section, view) cells have a real renderer today; the rest show a
-// graceful placeholder. Single gate so a not-yet-built cell is one edit away
-// from the placeholder. (Dimensions Clouds/Compare are filled in during Phase 2.)
-export function cellHasContent(section: Section, view: LensView): boolean {
-  if (section === 'dimensions') return view !== 'compare'   // Compare is the last Phase-2 build
+// Which (section, view) cells have a real renderer. Every lens cell now has one
+// (Dimensions Clouds/Compare were built in Phase 2). Kept as the single gate so
+// a future not-yet-built cell is one edit away from the graceful placeholder.
+export function cellHasContent(_section: Section, _view: LensView): boolean {
   return true
 }
 
