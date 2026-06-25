@@ -170,5 +170,26 @@ export async function POST(req: Request, props: Params) {
     return NextResponse.json({ grid: grid, rows: Object.keys(grid), cols: Array.from(colSet) })
   }
 
+  if (op === 'tax_axis_crosstab') {
+    // Top-level crosstab: all seven axes (the dimension "categories") on one
+    // side, a scalar field on the other. Same returned shape as tax_crosstab
+    // (rowKey = axis name when axisIsRow) so the Compare view can swap between
+    // the axis-level overview and a single axis's sub-level drill seamlessly.
+    var { field: axField, axisIsRow: axIsRow } = body
+    if (!axField) return NextResponse.json({ error: 'field required' }, { status: 400 })
+    var axResp = await service.rpc('taxonomy_axis_crosstab', { p_dataset_id: params.datasetId, p_field: axField, p_row_ids: taxRowIds })
+    if (axResp.error) return NextResponse.json({ error: axResp.error.message }, { status: 500 })
+    var axGrid: Record<string, Record<string, number>> = {}
+    var axColSet = new Set<string>()
+    ;(axResp.data || []).forEach(function(r: any) {
+      var rowKey = axIsRow ? r.axis_val : (r.field_val || '(blank)')
+      var colKey = axIsRow ? (r.field_val || '(blank)') : r.axis_val
+      if (!axGrid[rowKey]) axGrid[rowKey] = {}
+      axGrid[rowKey][colKey] = Number(r.cnt)
+      axColSet.add(colKey)
+    })
+    return NextResponse.json({ grid: axGrid, rows: Object.keys(axGrid), cols: Array.from(axColSet) })
+  }
+
   return NextResponse.json({ error: 'Unknown op: ' + op }, { status: 400 })
 }
