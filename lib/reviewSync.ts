@@ -2,6 +2,7 @@
 // Core sync algorithm for Google Reviews
 // Two-phase: submit tasks → check results across multiple sync calls
 
+import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { submitReviewTask, submitTripadvisorReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
 import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
@@ -484,28 +485,77 @@ async function updateSourceTimestamps(service: SupabaseClient, source: any, hasP
   }).eq('id', source.id)
 }
 
+// Content-addressed dedup key for a review flat-row. Keyed on stable persisted
+// fields (NOT review_id — that's fabricated as `profile_name:timestamp` when
+// Google omits it, see dataforseo.ts:parseReviewItem). A later backfill can
+// recompute the identical key from the stored `data` object.
+export function reviewDedupKey(data: Record<string, unknown>): string {
+  const s = (v: unknown) => (v == null ? '' : String(v))
+  const placeId = s(data.place_id)
+  const author = s(data.author).trim().toLowerCase()
+  const reviewDate = s(data.review_date)
+  const text = s(data.review_text).slice(0, 200).toLowerCase()
+  const basis = `${placeId}|${author}|${reviewDate}|${text}`
+  return createHash('sha1').update(basis).digest('hex')
+}
+
+// Probe URL length cap: keep `.in()` batches small so the query string stays
+// well under PostgREST/proxy URL limits (each sha1 key is 40 chars).
+const DEDUP_PROBE_CHUNK = 200
+
 async function insertReviewRows(service: SupabaseClient, datasetId: string, rows: Record<string, unknown>[]): Promise<void> {
   const syncTimestamp = new Date().toISOString()
-  const { data: maxRowResp } = await service
-    .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
-    .order('row_index', { ascending: false }).limit(1)
-  let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
-  const { data: dsData } = await service
-    .from('datasets').select('row_count').eq('id', datasetId).single()
-  let currentTotal = dsData?.row_count || 0
 
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE)
-    const flatRows = chunk.map(function(r, j) {
-      return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
-    })
-    await service.from('dataset_rows_flat').insert(flatRows)
-    currentTotal += chunk.length
-    nextRowIndex += chunk.length
+  // 1. Compute dedup_key per row.
+  const keyed = rows.map(function(r) { return { data: r, dedup_key: reviewDedupKey(r) } })
+
+  // 2. Drop in-batch dupes (same key), keeping the first occurrence.
+  const seen = new Set<string>()
+  const deduped = keyed.filter(function(k) {
+    if (seen.has(k.dedup_key)) return false
+    seen.add(k.dedup_key)
+    return true
+  })
+
+  // 3. Find which keys already exist in this dataset (chunked .in() probe).
+  const allKeys = deduped.map(function(k) { return k.dedup_key })
+  const existing = new Set<string>()
+  for (let i = 0; i < allKeys.length; i += DEDUP_PROBE_CHUNK) {
+    const probe = allKeys.slice(i, i + DEDUP_PROBE_CHUNK)
+    const { data: present } = await service
+      .from('dataset_rows_flat').select('dedup_key')
+      .eq('dataset_id', datasetId).in('dedup_key', probe)
+    if (present) for (const row of present) { if (row.dedup_key) existing.add(row.dedup_key as string) }
   }
 
+  // 4. Keep only rows whose key isn't already present.
+  const toInsert = deduped.filter(function(k) { return !existing.has(k.dedup_key) })
+
+  // 5. Insert the new rows with a fresh contiguous row_index range.
+  if (toInsert.length > 0) {
+    const { data: maxRowResp } = await service
+      .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
+      .order('row_index', { ascending: false }).limit(1)
+    let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
+
+    for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+      const chunk = toInsert.slice(i, i + CHUNK_SIZE)
+      const flatRows = chunk.map(function(k, j) {
+        return { dataset_id: datasetId, row_index: nextRowIndex + j, data: k.data, dedup_key: k.dedup_key }
+      })
+      await service.from('dataset_rows_flat').insert(flatRows)
+      nextRowIndex += chunk.length
+    }
+  }
+
+  // 6. Reconcile row_count to the ACTUAL count(*) — the old running counter
+  // (currentTotal += chunk.length) drifted both ways across syncs.
+  const { count } = await service
+    .from('dataset_rows_flat').select('*', { count: 'exact', head: true })
+    .eq('dataset_id', datasetId)
+
   await service.from('datasets').update({
-    row_count: currentTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
+    row_count: count ?? 0, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
   }).eq('id', datasetId)
 }
 

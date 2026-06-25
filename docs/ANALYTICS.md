@@ -74,6 +74,8 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 5. Performance: O(rows x themes x keywords), single pass
 
 ### Signal-stats toolbar (`lib/signalStats.ts`)
+**Date-field range (2026-06-24):** `computeFieldStats`/`mergeSchemaStats` (`lib/datasetUtils.ts`) now persist true `dateMin`/`dateMax` on date fields (`SchemaFieldConfig` in `analyzeTypes.ts`), widened across incremental sync batches — the categorical `values` list is still capped at 500 (which, sorted ascending, used to drop the *recent* end on long-running review datasets). The `FiltersModal` review-date slider takes its absolute domain from the **union of schema `dateMin`/`dateMax` and the loaded-row extents**, so the recent end can't be lost whichever path truncates.
+
 The TextMine strip ("N records · M signals · theme-fit X% · K themes · ★ R avg rating · 📅 date range") and the
 `/analyze` listing cards are powered by `computeSignalStats`. The **date range** and **avg rating**
 are added in the `signal-stats` route (not the cached compute). The date range comes from

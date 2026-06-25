@@ -31,11 +31,16 @@ export async function POST(_req: Request, props: Params) {
     // Verify ownership
     const { data: source } = await service
       .from('review_sources')
-      .select('id')
+      .select('id, status')
       .eq('id', params.sourceId)
       .eq('org_id', orgId)
       .single()
     if (!source) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // A paused source must not be synced (no DataForSEO spend, no re-ingest).
+    if (source.status === 'paused') {
+      return NextResponse.json({ error: 'Source is paused' }, { status: 409 })
+    }
 
     const result = await syncReviewSource(params.sourceId, service)
 

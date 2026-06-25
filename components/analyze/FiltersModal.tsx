@@ -364,8 +364,18 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               if (f.type === 'date') {
                 var dateVals = rows.map(function(r) { return String(r[f.field] ?? '') }).filter(Boolean)
                 var timestamps = dateVals.map(function(v) { var d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime() }).filter(function(t) { return t > 0 })
-                if (!timestamps.length) return null
-                var absMinTs = Math.min.apply(null, timestamps), absMaxTs = Math.max.apply(null, timestamps)
+                // Prefer the schema's true earliest/latest (dateMin/dateMax) for
+                // the slider DOMAIN: the loaded rows may be sampled/truncated and
+                // the schema's `values` list is capped at 500 dates, so neither is
+                // a reliable source for the range ends. Fall back to row-derived
+                // extents when the schema lacks dateMin/dateMax.
+                var fdMinTs = f.dateMin ? new Date(f.dateMin).getTime() : NaN
+                var fdMaxTs = f.dateMax ? new Date(f.dateMax).getTime() : NaN
+                if (!timestamps.length && isNaN(fdMinTs) && isNaN(fdMaxTs)) return null
+                var rowMinTs = timestamps.length ? Math.min.apply(null, timestamps) : Infinity
+                var rowMaxTs = timestamps.length ? Math.max.apply(null, timestamps) : -Infinity
+                var absMinTs = !isNaN(fdMinTs) ? Math.min(fdMinTs, rowMinTs) : rowMinTs
+                var absMaxTs = !isNaN(fdMaxTs) ? Math.max(fdMaxTs, rowMaxTs) : rowMaxTs
                 var curMinTs = pf && pf.type === 'daterange' ? pf.values[0] : absMinTs
                 var curMaxTs = pf && pf.type === 'daterange' ? pf.values[1] : absMaxTs
                 var inclBlanksDt = pf ? (pf as PendingDate).includeBlanks !== false : true

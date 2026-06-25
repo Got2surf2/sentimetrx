@@ -41,6 +41,12 @@ export interface SchemaFieldConfig {
   min?:           number
   max?:           number
   avg?:           string
+  // For `date` fields: true earliest/latest date strings (ISO YYYY-MM-DD).
+  // The categorical `values` list is capped at 500, so on datasets spanning
+  // >500 days it loses one end of the range — the slider domain must come
+  // from these, not from min/max of `values`.
+  dateMin?:       string
+  dateMax?:       string
 }
 
 export interface SchemaConfig {

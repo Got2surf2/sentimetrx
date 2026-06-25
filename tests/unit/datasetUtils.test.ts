@@ -4,6 +4,7 @@ import {
   autoDetectSchema, mergeSchemaStats,
   flattenCustomQuestions, flattenPsychographics, flattenDemographics, flattenUrlParams,
 } from '@/lib/datasetUtils'
+import { reviewDedupKey } from '@/lib/reviewSync'
 import type { SchemaConfig, DatasetRowBatch } from '@/lib/analyzeTypes'
 import type { SurveyPayload, StudyConfig } from '@/lib/types'
 
@@ -92,6 +93,59 @@ describe('datasetUtils — schema detection & merging', () => {
     expect(byField['cat'].values).toEqual(['a', 'b', 'c'])
     expect(byField['n'].min).toBe(1)
     expect(byField['n'].max).toBe(20)
+  })
+
+  it('computeFieldStats records true dateMin/dateMax independent of the 500 values cap', () => {
+    // 600 distinct ISO dates → `values` caps at the earliest 500, but
+    // dateMin/dateMax must still span the full range.
+    const dates: string[] = []
+    const start = new Date('2024-01-01').getTime()
+    for (let i = 0; i < 600; i++) {
+      dates.push(new Date(start + i * 86400000).toISOString().slice(0, 10))
+    }
+    const last = dates[dates.length - 1]
+    const s = computeFieldStats('review_date', dates)
+    expect(s.type).toBe('date')
+    expect(s.values!.length).toBe(500)        // capped
+    expect(s.values).not.toContain(last)      // cap dropped the recent end
+    expect(s.dateMin).toBe('2024-01-01')       // but range survives
+    expect(s.dateMax).toBe(last)
+  })
+
+  it('mergeSchemaStats widens date dateMin/dateMax across batches', () => {
+    const schema: SchemaConfig = {
+      fields: [{ field: 'review_date', type: 'date', values: ['2026-05-01'], dateMin: '2026-05-01', dateMax: '2026-05-10' }],
+      autoDetected: false, version: 1,
+    }
+    const merged = mergeSchemaStats(schema, [{ review_date: '2026-06-20' }, { review_date: '2026-04-15' }])
+    const f = merged.fields[0]
+    expect(f.dateMin).toBe('2026-04-15')
+    expect(f.dateMax).toBe('2026-06-20')
+  })
+})
+
+describe('reviewDedupKey', () => {
+  const base = {
+    place_id: 'ChIJabc', author: 'Jane Doe', review_date: '2026-06-01',
+    review_text: 'Great burrito, fast service.',
+  }
+
+  it('is stable for identical content', () => {
+    expect(reviewDedupKey({ ...base })).toBe(reviewDedupKey({ ...base }))
+  })
+
+  it('ignores author case/whitespace and unrelated fields', () => {
+    const a = reviewDedupKey(base)
+    const b = reviewDedupKey({ ...base, author: '  jane doe  ', review_id: 'x:123', rating: 5 })
+    expect(b).toBe(a)
+  })
+
+  it('differs when review text differs', () => {
+    expect(reviewDedupKey({ ...base, review_text: 'Terrible.' })).not.toBe(reviewDedupKey(base))
+  })
+
+  it('coerces missing fields to empty without throwing', () => {
+    expect(typeof reviewDedupKey({})).toBe('string')
   })
 })
 

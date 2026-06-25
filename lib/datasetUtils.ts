@@ -123,7 +123,14 @@ export function computeFieldStats(
     // Cap distinct-value list to keep schema JSON bounded. 500 matches the
     // analytics CategoricalSummary cap. Categorical type detection already
     // bounds at uniqueArr.length <= 30, so this cap only fires for date.
-    return { ...base, values: uniqueArr.sort().slice(0, 500) }
+    const sorted = uniqueArr.sort()
+    if (detectedType === 'date') {
+      // The 500-cap on `values` drops one end of the range on long-span date
+      // fields. Persist the TRUE earliest/latest separately so the slider
+      // domain survives the cap. ISO date strings sort lexically.
+      return { ...base, values: sorted.slice(0, 500), dateMin: sorted[0], dateMax: sorted[sorted.length - 1] }
+    }
+    return { ...base, values: sorted.slice(0, 500) }
   }
   return base
 }
@@ -226,6 +233,18 @@ export function mergeSchemaStats(
       const existing = Array.isArray(f.values) ? f.values : []
       const union    = Array.from(new Set([...existing, ...newStats.values])).sort().slice(0, 500)
       out.values = union
+    }
+
+    // Widen date range to cover the new batch. ISO date strings compare
+    // lexically, so plain string min/max is correct. This is independent of
+    // the capped `values` list above — the slider reads dateMin/dateMax.
+    if (f.type === 'date') {
+      if (newStats.dateMin) {
+        out.dateMin = (f.dateMin && f.dateMin < newStats.dateMin) ? f.dateMin : newStats.dateMin
+      }
+      if (newStats.dateMax) {
+        out.dateMax = (f.dateMax && f.dateMax > newStats.dateMax) ? f.dateMax : newStats.dateMax
+      }
     }
 
     // Widen numeric range to cover the new batch.
