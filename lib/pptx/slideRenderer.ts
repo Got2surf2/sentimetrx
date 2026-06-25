@@ -48,6 +48,7 @@ export interface ColumnChartSlide {
   subtitle?: string
   xAxisLabel?: string
   yAxisLabel?: string
+  valueSuffix?: string   // appended to each on-bar value label (e.g. '%') — use for percentage charts, NOT rating charts
   data: { label: string; value: number; color?: string; muted?: boolean }[]
   insight?: string
 }
@@ -299,7 +300,7 @@ export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName
 
     solidRect(slide, pptx, cx, by, barW, barH, col)
     // value label on top
-    slide.addText(d.value.toLocaleString(), {
+    slide.addText(d.value.toLocaleString() + (spec.valueSuffix || ''), {
       x: cx - 0.2, y: by - 0.26, w: barW + 0.4, h: 0.24,
       fontSize: 12, bold: true, color: d.muted ? CR.ink2 : CR.ink, align: 'center',
     })

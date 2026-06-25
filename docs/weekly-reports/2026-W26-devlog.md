@@ -1,5 +1,13 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — Operational Review deck: themes/dimensions explainer + % on coverage bars
+
+**Why** (owner): the deck said "ABSA" without defining it and assumed the audience understood themes-vs-dimensions; and the Dimensions Aspect-Coverage bars showed bare numbers ("40") for what are percentages.
+
+**What changed**:
+- `lib/pptx/operationalReviewDeck.ts` — new **"How we read the reviews — two lenses"** two_column slide up front (after Exec Summary): **Themes = organic** (emergent, mined from guests' words, brand-specific) vs **Dimensions = pre-defined** (fixed taxonomy; **ABSA = Aspect-Based Sentiment Analysis** spelled out; 7 axes, each with sentiment; standardized/comparable). Don't assume the audience knows it.
+- `lib/pptx/slideRenderer.ts` — `ColumnChartSlide` gains optional `valueSuffix` (appended to on-bar labels). Applied `'%'` to the **star-distribution** and **Dimensions — Aspect Coverage** charts (percentage metrics) — NOT to by-state/competitor (those are 4.x ratings, where "%" would be wrong). tsc clean, render-QC'd. LOCAL/unpushed.
+
 ## 2026-06-24 — Google-reviews refresh: data cleanup + UNIQUE backstop (APPLIED to prod)
 
 **Why**: Finish the refresh fix — backfill keys, collapse the existing dupes, and lock in the dedup at the DB level.

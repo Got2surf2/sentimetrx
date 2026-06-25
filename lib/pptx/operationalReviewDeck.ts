@@ -66,6 +66,29 @@ export function buildOperationalReviewDeck(
       `The weakness is variance, not the brand — store ratings span ${worstRating.toFixed(2)}★ to ${bestRating.toFixed(2)}★ (a ${gap.toFixed(2)}★ gap), and that spread is geographic and operationally fixable.${compNote} The upside is operational, not a repositioning.`,
   })
 
+  // ── 1b. How we read the reviews — themes vs dimensions (define the models) ──
+  slides.push({
+    type: 'two_column',
+    title: 'How we read the reviews — two lenses',
+    subtitle: 'Two complementary models run over every review. Themes show what is distinctive about this brand; dimensions give a standardized, comparable frame. The report uses both.',
+    left: {
+      heading: 'Themes — organic',
+      bullets: [
+        'Emergent — mined from your guests’ actual words, not a preset list.',
+        'Brand-specific topics surface what people genuinely talk about here (e.g. “Special Occasions”, “Wait Times”, “Value”).',
+        'Best for the story that is unique to this brand — and what to fix first.',
+      ],
+    },
+    right: {
+      heading: 'Dimensions — pre-defined',
+      bullets: [
+        'A fixed industry taxonomy — ABSA (Aspect-Based Sentiment Analysis): every review is scored on the same set of aspects.',
+        'Seven axes: who served you, service attributes, food, drinks, ambiance, occasion, and outcome — each with its own sentiment.',
+        'Standardized and comparable — apples-to-apples across locations, brands, and time. The lens many operators and parent groups track.',
+      ],
+    },
+  })
+
   // ── 2. Brand health — star distribution (column chart) — from diligence ────
   const first3 = d.monthly.slice(0, 3)
   const last3 = d.monthly.slice(-3)
@@ -86,6 +109,7 @@ export function buildOperationalReviewDeck(
     type: 'column_chart',
     title: 'Brand Health — Last 18 Months',
     subtitle: `Star distribution · ${d.reviewCount.toLocaleString()} rated reviews · ${d.window.label}`,
+    valueSuffix: '%',
     data: d.starDist.map((s) => ({
       label: `${s.star}★`,
       value: Math.round(s.pct * 10) / 10,
@@ -246,6 +270,7 @@ export function buildOperationalReviewDeck(
       title: 'Dimensions — Aspect Coverage',
       subtitle: `Aspect-level ABSA lens · ${dim.withSignal.toLocaleString()} of ${dim.classifiedRows.toLocaleString()} classified reviews carry at least one aspect`,
       yAxisLabel: '% of classified reviews mentioning the axis',
+      valueSuffix: '%',
       data: dim.axes.map((a) => ({ label: a.label, value: Math.round(a.rate) })),
       insight:
         `Dimensions are an aspect-level ABSA lens — touchpoint, attribute, product, beverage, ambiance, context, and outcome. ` +
