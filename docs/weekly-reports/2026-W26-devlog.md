@@ -1,5 +1,18 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-24 — Google-reviews refresh: data cleanup + UNIQUE backstop (APPLIED to prod)
+
+**Why**: Finish the refresh fix — backfill keys, collapse the existing dupes, and lock in the dedup at the DB level.
+
+**What ran (prod, via `supabase db query --linked`)**:
+- Applied `sql/131` (dedup_key column + index). Verified pgcrypto `digest(...)` produces the byte-identical sha1 to `reviewSync.ts:reviewDedupKey` (`f5b19ff0…` on a test input) before touching data.
+- One-time cleanup across all **14 google_reviews datasets**: backfilled `dedup_key` (SQL formula == JS), collapsed dupes (keep one ctid per `dataset_id,dedup_key`), reconciled every `datasets.row_count` to `count(*)`. **Ruth's Chris: 30,170 → 27,234 rows (−2,936 dupes), row_count 29,436 → 27,234.** After sweep: 0 null keys, 0 dupes, all 14 row_counts match.
+- Applied `sql/132`: promoted the index to **UNIQUE `(dataset_id, dedup_key)`** — the build succeeding is itself proof no dupes remain. `insertReviewRows` now **upserts ON CONFLICT DO NOTHING** (code) against it, so a concurrent sync can't re-duplicate.
+
+**Code (LOCAL/unpushed)**: `lib/reviewSync.ts` insert→upsert; `sql/132`; doc updates. The earlier dedup/reconcile/date-range code is in the prior commit. tsc clean.
+
+**Net**: refreshed datasets are de-duplicated and counts are correct *now*; the code prevents recurrence. Owner can re-enable the Ruth's Chris source and a fresh sync should add only genuinely-new reviews. (Ruth's Chris source was left `paused`-intent / manual+parked — confirm before re-syncing.)
+
 ## 2026-06-24 — Fix broken Google-reviews refresh (duplication + stale row_count + date range)
 
 **Why**: Audited the review-refresh path after the owner doubted it. Confirmed in prod data: refreshed datasets (Ruth's Chris) had **~10% duplicate rows** and `datasets.row_count` drifted from actual `count(*)` (both directions). Root cause: `lib/reviewSync.ts:insertReviewRows` did a bare `INSERT` with no dedup — the only guard was a fragile per-location `last_review_id` sentinel that fails when DataForSEO returns "Task Not Found" (40401, treated transient → location re-fetched → rows re-inserted). `review_id` is unreliable (fabricated `profile_name:timestamp` when Google omits it). Separately, a date field's range could lose its recent end (`mergeSchemaStats` caps `values` at 500 sorted ascending).

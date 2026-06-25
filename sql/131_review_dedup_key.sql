@@ -23,12 +23,14 @@ BEGIN;
 ALTER TABLE dataset_rows_flat
   ADD COLUMN IF NOT EXISTS dedup_key text;
 
-COMMIT;
-
 -- Non-unique lookup index for the existing-keys probe in insertReviewRows().
--- dataset_rows_flat holds every dataset's rows, so build CONCURRENTLY to avoid
--- a long write-lock on this large table. CREATE INDEX CONCURRENTLY CANNOT run
--- inside a transaction block, so it lives OUTSIDE the BEGIN/COMMIT above (the
--- tx-wrap CI guard only requires that a BEGIN; and COMMIT; appear in the file).
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dataset_rows_flat_dedup
+-- Plain (non-CONCURRENT) build on purpose: the apply tooling (`supabase db
+-- query`) runs the whole file in a transaction, where CONCURRENTLY is not
+-- permitted; and dataset_rows_flat is moderate-sized with controlled review
+-- writes (manual/cron sync), so the brief build lock is acceptable.
+-- UNIQUE constraint deliberately deferred (existing data has dupes) — a later
+-- cleanup backfills keys, collapses dupes, then adds the unique backstop.
+CREATE INDEX IF NOT EXISTS idx_dataset_rows_flat_dedup
   ON dataset_rows_flat (dataset_id, dedup_key);
+
+COMMIT;

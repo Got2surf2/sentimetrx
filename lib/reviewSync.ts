@@ -543,7 +543,11 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
       const flatRows = chunk.map(function(k, j) {
         return { dataset_id: datasetId, row_index: nextRowIndex + j, data: k.data, dedup_key: k.dedup_key }
       })
-      await service.from('dataset_rows_flat').insert(flatRows)
+      // Upsert with ON CONFLICT DO NOTHING against the unique (dataset_id,
+      // dedup_key) index (sql/132) — the hard backstop. The app-level probe
+      // above already filters most dupes; this makes a concurrent-sync race
+      // impossible to duplicate (and impossible to error the chunk).
+      await service.from('dataset_rows_flat').upsert(flatRows, { onConflict: 'dataset_id,dedup_key', ignoreDuplicates: true })
       nextRowIndex += chunk.length
     }
   }
