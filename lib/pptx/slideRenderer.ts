@@ -8,23 +8,25 @@ import { W, H, PAD, FY, bgFill, trunc } from './shared'
 // Defined LOCALLY so we can re-skin every deck that uses this renderer without
 // touching shared.ts (other self-contained decks import DN/W/H/CY from there).
 const CR = {
-  cream:   'FFFDF9',  // slide background for content slides
-  card:    'FAF6F0',  // card fill
-  ink:     '2E2A25',  // primary text / dark cover bg
-  ink2:    '8C7E6E',  // muted text / sublabels
-  orange:  'E85A1A',  // primary accent
+  // Modern base — white / cool gray / deep navy — with the Datanautix Ana orange
+  // as the signature accent and a cool blue as the secondary/variety color.
+  cream:   'FFFFFF',  // slide background for content slides (white)
+  card:    'F1F5F9',  // card fill (cool light gray)
+  ink:     '0F1E33',  // primary text / dark cover bg (deep navy)
+  ink2:    '5B6B7F',  // muted text / sublabels (slate)
+  orange:  'E85A1A',  // primary accent — Datanautix Ana orange
   orangeD: 'B84010',  // dark orange / negative
-  teal:    '2A7A6F',  // secondary accent
-  tealL:   '3D9E91',  // light teal
-  tealD:   '1D5A52',  // dark teal
-  gold:    'E8B84B',
-  line:    'E4DDD4',  // hairline borders
+  teal:    'E85A1A',  // workhorse accent (badges/KPIs/stripes) — intentionally orange
+  tealL:   '38BDF8',  // sky blue — wordmark "data", quote marks, eyebrows (cool counterpoint)
+  tealD:   '1E3A8A',  // deep blue (secondary accent)
+  gold:    '2563EB',  // secondary pop (blue) — bullet/bar variety
+  line:    'E2E8F0',  // hairline borders (slate-200)
   white:   'FFFFFF',
   // semantic chart colors kept
   green:   '059669',
   red:     'DC2626',
   amber:   'D97706',
-  coverSub:'D8D0C6',  // muted cream for dataset/date on the dark cover
+  coverSub:'C7D2E0',  // muted steel for dataset/date on the dark cover
 }
 
 // Header eats the top of the slide; content starts here.

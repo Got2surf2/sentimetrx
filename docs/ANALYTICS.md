@@ -691,13 +691,15 @@ analytics export — dataset-row CSV download is not part of this module.
   prompt box and "Headline finding" when they would only repeat the field label (no real
   prompt / no AI finding). Previously the label could appear three times on one slide.
 - **Branding**: exported decks carry the **Datanautix** company brand (the deliverable
-  brand), while the **Sentimetrx** product name stays in the app/widgets. Since the cream flip
-  the deck uses the shared `renderDeck` chrome: a **cream** content background with the
-  Datanautix accents (Ana orange `#E85A1A`, Sarina teal `#0F7173`; authoritative hexes in the
-  `datanautix-homepage` repo), a dark-INK cover, the `data·nautix` wordmark in each footer,
-  and the **subject brand prominent top-right** of every content slide. `pptx.author =
-  pptx.company = 'Datanautix'` in file metadata. (Decks are Datanautix-branded, product is
-  Sentimetrx — clarified by the owner 2026-06-02.)
+  brand), while the **Sentimetrx** product name stays in the app/widgets. The deck uses the
+  shared `renderDeck` chrome: a **modern white / cool-gray / deep-navy base** with the
+  **Datanautix Ana orange `#E85A1A` as the signature accent** (left bars, KPI/value numbers,
+  %-badges, keyword chips, header rules) and a **sky-blue** cool counterpoint (the two-tone
+  `data·nautix` wordmark, quote marks). Deep-navy cover, the `data·nautix` wordmark in each
+  footer, and the **subject brand prominent top-right** of every content slide. `pptx.author =
+  pptx.company = 'Datanautix'` in file metadata. (Owner picked this scheme 2026-06-25 — the
+  earlier cream/orange/teal read "old-school" against the modern type; decks are
+  Datanautix-branded, product is Sentimetrx, per 2026-06-02.)
 - **Canonical themes (one set, matches the app)**: themes are counted ONCE across the
   theme model's fields (`computeCanonicalThemes`, mirroring `/api/share/analytics` + the
   in-app Themes page) — not per open-ended field. The executive summary's TOP THEMES and
