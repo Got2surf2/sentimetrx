@@ -19,6 +19,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { T } from '@/lib/analyzeTheme'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { sigTest } from '@/lib/statsUtils'
+import HelpHint from '@/components/analyze/textmine/HelpHint'
 import { DIM_AXES, DIM_AXIS_LABEL, AXIS_COLOR, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
 const MAX_VISIBLE = 15  // top sub-buckets / groups shown before "Show all"
@@ -132,20 +133,21 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* ── Top bar: breakdown-field (left) + dimension axis + view toggle ── */}
-      <div style={{ flexShrink: 0, padding: '16px 24px', borderBottom: '1px solid ' + T.border, background: T.bgCard }}>
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>Dimension Compare</h2>
-          <p style={{ fontSize: 12, color: T.textMid, margin: '3px 0 0' }}>{isAll
-            ? <>How each dimension splits across a categorical field. Bars show the mention rate within each group; <strong style={{ color: '#16a34a' }}>★</strong> flags groups that over/under-index. Click a dimension to drill into its sub-buckets.</>
-            : <>How <strong style={{ color: AXIS_COLOR[axis as Axis] }}>{DIM_AXIS_LABEL[axis as Axis]}</strong>&apos;s sub-buckets split across a categorical field. Click a bar to read its comments.</>
-          }</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      {/* ── Top bar: breakdown-field (left) + dimension axis + view toggle.
+          No title/paragraph — the nav breadcrumb (Dimensions › Compare) labels
+          it and the bar tooltips explain the ★; matches Theme/Entity Compare and
+          keeps the chrome to one row. The "?" carries the explanation. ── */}
+      <div style={{ flexShrink: 0, padding: '12px 24px', borderBottom: '1px solid ' + T.border, background: T.bgCard }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             {/* Break down by — leftmost, matching theme/entity Compare */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Break down by:</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid, display: 'inline-flex', alignItems: 'center' }}>
+                Break down by:
+                <HelpHint title="Dimension Compare" placement="bottom">
+                  Bars show each {unitNoun}&apos;s mention rate within a group; <strong style={{ color: '#16a34a' }}>★</strong> flags groups that over/under-index vs the baseline. With <strong>All</strong> selected you compare the seven top-level dimensions — click one to drill into its sub-buckets. Pick a single dimension to compare its sub-buckets and click a bar to read the comments.
+                </HelpHint>
+              </span>
               {catFields.length === 0 && <span style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic' }}>no comparable fields</span>}
               {catFields.map(function(f) {
                 const on = field === f
