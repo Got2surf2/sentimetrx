@@ -49,7 +49,7 @@ export function buildOperationalReviewDeck(
 
   // ── 1. Executive summary (kpi_grid) — from diligence ──────────────────────
   const compNote =
-    opts.competitors?.length && opts.brandLifetime
+    opts.competitors?.length && opts.brandLifetime && opts.brandLifetime.rating > 0
       ? ` On a lifetime basis it sits near parity with its closest direct competitor (${opts.brandLifetime.rating.toFixed(2)}★ vs ${opts.competitors[0].name} at ${opts.competitors[0].rating.toFixed(2)}★).`
       : ''
   slides.push({
@@ -344,7 +344,7 @@ export function buildOperationalReviewDeck(
   }
 
   // ── 13. Competitive benchmark (column chart) — from diligence (if competitors) ─
-  if (opts.competitors?.length && opts.brandLifetime) {
+  if (opts.competitors?.length && opts.brandLifetime && opts.brandLifetime.rating > 0) {
     const bars = [
       { label: brand, value: Math.round(opts.brandLifetime.rating * 100) / 100, color: DN.teal },
       ...opts.competitors.map((c) => ({ label: c.name, value: Math.round(c.rating * 100) / 100, color: DN.slate })),

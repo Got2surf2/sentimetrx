@@ -8,6 +8,16 @@
 - Records count query now **throws on error** instead of swallowing it → a failed compute never persists a bad partial (the batch endpoint catches and the next load retries).
 - **Self-heal**: `computeSignalStats` treats `records === 0 && (signals > 0 || inThemes > 0)` as poisoned, bypasses the freshness short-circuit, and recomputes — auto-correcting the bad caches on the next `/analyze` load (verified read-only: Rubio recomputes to `records 5784 / 62%`, BareBurger `7350 / 84%`). No manual data op. tsc clean. LOCAL/unpushed.
 
+## 2026-06-25 — Competitor benchmark: brand rating 0 fix
+
+**Why** (owner): on Ruth's Chris the Competitive Benchmark slide showed the **primary brand at 0** ("0.00★ vs 4.64★"). Two compounding causes: (1) the route passed the **dataset name** ("Ruths Chris **Reviews**") as the brand's Maps search term, but the listings are "Ruth's Chris Steak House" — the "Reviews" suffix isn't in the real name; (2) `norm()` turned the **apostrophe** in "Ruth's" into a *space* ("ruth s chris…"), which then doesn't contain the apostrophe-less brand name. Both broke the contains-match → 0 matched listings.
+
+**What changed**:
+- `operational-review-deck/route.ts` — derive a clean **brandSearch**: prefer `review_sources.brand_name`, strip a trailing "reviews"/"restaurant reviews"; pass that (not the dataset name) to `computeCompetitorBenchmark`. Also guard: only attach the competitor slide when `brandLifetime.rating > 0`.
+- `lib/competitorBenchmark.ts` — `norm()` now **removes** apostrophes (straight + curly) before spacing other punctuation, so "Ruth's Chris" / "Mortons" / "Morton's" all match their listings. `MAX_MARKETS` 6→8 (use all of `topMarkets`) to widen competitor coverage.
+- `operationalReviewDeck.ts` — competitor slide + exec compNote gated on `brandLifetime.rating > 0` (never render a "0.00★" comparison).
+- Verified live: Ruth's Chris brand now **4.58★** (9 locs, 31.9K reviews); Capital Grille 4.64 / Fleming's 4.57 / Morton's 4.37 all matched. tsc clean. LOCAL/unpushed.
+
 ## 2026-06-25 — PPTX two_column bullets: hanging indent
 
 `renderTwoColumn` prefixed a literal "• " so a wrapped bullet line started under the glyph. Switched to pptxgenjs **native bullets** (`bullet: { indent: 16 }`, one text box with `paraSpaceAfter`) so wrapped lines hang-indent to align with the text above, and bullets auto-flow without overlap. Render-QC'd on the "two lenses" slide. LOCAL/unpushed.

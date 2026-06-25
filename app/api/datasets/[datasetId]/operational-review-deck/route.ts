@@ -70,6 +70,15 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
   const brand = ds.name || 'Brand'
   const dd = await computeDiligenceData(datasetId)
 
+  // Brand search name for the live competitor pull. The dataset name often carries
+  // a "… Reviews" suffix that isn't in the real Google listing name (e.g. "Ruths
+  // Chris Reviews" vs "Ruth's Chris Steak House"), which breaks the contains-match
+  // and returns a brand rating of 0. Prefer the review_source brand_name, then
+  // strip a trailing "reviews" / "restaurant reviews".
+  const { data: src } = await service
+    .from('review_sources').select('brand_name').eq('dataset_id', datasetId).maybeSingle()
+  const brandSearch = ((src?.brand_name || brand).replace(/\s*(restaurant\s+)?reviews?\s*$/i, '').trim()) || brand
+
   const url = new URL(req.url)
   const competitorNames = (url.searchParams.get('competitors') || '')
     .split(',')
@@ -90,8 +99,8 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
   // the live pull fails — just ship the deck without the competitor slide.
   if (competitorNames.length) {
     try {
-      const bench = await computeCompetitorBenchmark(brand, competitorNames, dd.topMarkets)
-      if (bench.competitors.length) {
+      const bench = await computeCompetitorBenchmark(brandSearch, competitorNames, dd.topMarkets)
+      if (bench.competitors.length && bench.brandLifetime.rating > 0) {
         opts.brandLifetime = bench.brandLifetime
         opts.competitors = bench.competitors
       }

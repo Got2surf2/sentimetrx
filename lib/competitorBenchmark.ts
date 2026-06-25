@@ -20,7 +20,7 @@ type Listing = { name: string; address: string; rating: number | null; votes: nu
 // Bound the work so the route stays inside maxDuration: at most
 // (1 brand + 4 competitors) × 6 markets = 30 concurrent Maps calls.
 const MAX_COMPETITORS = 4
-const MAX_MARKETS = 6
+const MAX_MARKETS = 8
 const MIN_VOTES = 15
 
 function auth(): string {
@@ -45,11 +45,14 @@ async function search(keyword: string): Promise<Listing[]> {
     }))
 }
 
-// Normalize for name matching: lowercase, strip all non-alphanumeric except
+// Normalize for name matching: lowercase, REMOVE apostrophes (so "Ruth's" →
+// "ruths" — not "ruth s", which a space-replace would produce and which then
+// fails to contain the apostrophe-less brand name), turn other punctuation into
 // spaces, collapse whitespace, strip a leading "the ".
 function norm(s: string): string {
   return s
     .toLowerCase()
+    .replace(/['’ʼ]/g, '')   // straight + curly apostrophes → removed
     .replace(/[^a-z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
