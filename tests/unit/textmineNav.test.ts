@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent, viewLocked,
+  availableSections, defaultSection,
   type Section, type LensView,
 } from '@/lib/textmineNav'
 
@@ -80,6 +81,42 @@ describe('cellHasContent', () => {
         expect(cellHasContent(section, view)).toBe(true)
       }
     }
+  })
+})
+
+describe('availableSections', () => {
+  it('plain upload with no entities = Themes only', () => {
+    expect(availableSections({ datasetSource: 'upload' })).toEqual(['themes'])
+  })
+
+  it('taxonomy capability adds Dimensions', () => {
+    expect(availableSections({ datasetSource: 'upload', taxonomyEnabled: true })).toEqual(['themes', 'dimensions'])
+  })
+
+  it('a non-empty entity catalog adds Entities', () => {
+    expect(availableSections({ datasetSource: 'upload', hasEntities: true })).toEqual(['themes', 'entities'])
+  })
+
+  it('google_reviews implies Dimensions; ≥5 outlets adds Advanced', () => {
+    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 4 })).toEqual(['themes', 'dimensions'])
+    expect(availableSections({ datasetSource: 'google_reviews', hasEntities: true, outletCount: 5 }))
+      .toEqual(['themes', 'dimensions', 'entities', 'advanced'])
+  })
+
+  it('returns sections in bar order', () => {
+    const all = availableSections({ datasetSource: 'google_reviews', taxonomyEnabled: true, hasEntities: true, outletCount: 10 })
+    expect(all).toEqual(['themes', 'dimensions', 'entities', 'advanced'])
+  })
+
+  it('Advanced needs google_reviews, not just outlets', () => {
+    expect(availableSections({ datasetSource: 'upload', outletCount: 99 })).toEqual(['themes'])
+  })
+})
+
+describe('defaultSection', () => {
+  it('is the first available section (Themes today)', () => {
+    expect(defaultSection({ datasetSource: 'upload' })).toBe('themes')
+    expect(defaultSection({ datasetSource: 'google_reviews', outletCount: 9 })).toBe('themes')
   })
 })
 

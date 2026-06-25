@@ -59,3 +59,20 @@ export function viewLocked(section: Section, view: LensView, hasThemes: boolean)
   const st = deriveLegacy(section, view).subTab
   return (st === 'clouds' || st === 'compare' || st === 'comments') && !hasThemes
 }
+
+// Which sections a dataset supports — the single source of truth for the row-1
+// gates (shared by TextMineModule's bar and the reset-if-unavailable guard).
+// Returned in bar order: Themes, Dimensions, Entities, Advanced.
+export interface SectionGateOpts { datasetSource?: string; taxonomyEnabled?: boolean; hasEntities?: boolean; outletCount?: number }
+export function availableSections(opts: SectionGateOpts): Section[] {
+  const out: Section[] = ['themes']   // Themes is always available (the mining home)
+  if (opts.datasetSource === 'google_reviews' || opts.taxonomyEnabled) out.push('dimensions')
+  if (opts.hasEntities) out.push('entities')
+  if (opts.datasetSource === 'google_reviews' && (opts.outletCount || 0) >= 5) out.push('advanced')
+  return out
+}
+// Default landing section = the first AVAILABLE section (always Themes today,
+// but kept derived so a future themes-less dataset lands somewhere valid).
+export function defaultSection(opts: SectionGateOpts): Section {
+  return availableSections(opts)[0]
+}

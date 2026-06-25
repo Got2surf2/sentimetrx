@@ -32,7 +32,7 @@ import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
 // Nav types + the pure (section, view) ⇄ (subTab, viewBy) state map (shared with
 // the Advanced pages' bar + unit-tested in tests/unit/textmineNav).
-import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent } from '@/lib/textmineNav'
+import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent, availableSections } from '@/lib/textmineNav'
 import EntitiesCard from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import DimensionCloud from '@/components/analyze/textmine/DimensionCloud'
@@ -1154,12 +1154,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [restoredFromSession, activeField, activeFields, section, view, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
   // Whether a section tab is reachable for this dataset (mirrors the row-1 gates).
+  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, hasEntities: entityCatalogRows.length > 0, outletCount: outletCount }
   function sectionAvailable(s: Section): boolean {
-    if (s === 'themes') return true
-    if (s === 'dimensions') return dimensionsEnabled
-    if (s === 'entities') return entityCatalogRows.length > 0
-    if (s === 'advanced') return datasetSource === 'google_reviews' && (outletCount || 0) >= 5
-    return false
+    return availableSections(sectionGate).indexOf(s) >= 0
   }
   // Apply ?section=&view= from the URL once entity availability is known (the
   // catalog loads async). URL wins over the sessionStorage restore above; absent
@@ -1177,6 +1174,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityCatalogLoading])
+  // Guard: if the active section isn't actually available for this dataset
+  // (e.g. a restored 'entities' but the catalog came back empty), fall back to
+  // the default section. Waits for the async entity catalog so it doesn't fire
+  // mid-load.
+  useEffect(function() {
+    if (entityCatalogLoading) return
+    if (!sectionAvailable(section)) { setSection('themes'); setView('overview') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityCatalogLoading, section, entityCatalogRows.length])
   // Back/forward: re-sync nav state from the URL (shallow history, no reload).
   useEffect(function() {
     function onPop() {
@@ -1869,14 +1875,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Row 1 — peer sections. Themes is always present; Dimensions / Entities /
   // Advanced gate exactly as before (taxonomy capability, a non-empty entity
   // catalog, and google_reviews + ≥5 outlets respectively).
-  const navSections: { id: Section; label: string; help: string; href?: string }[] = [
-    { id: 'themes', label: 'Themes', help: 'AI-mined themes — clusters of comments that share a topic. Browse them, see the language people use, slice by segment, or read the underlying quotes.' },
-    // Dimensions (the 7-axis classification) — Google Reviews datasets, OR any
-    // analyze dataset when the org has the 'taxonomy' (Dimensions) capability.
-    ...((datasetSource === 'google_reviews' || taxonomyEnabled) ? [{ id: 'dimensions' as Section, label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' }] : []),
-    ...(entityCatalogRows.length > 0 ? [{ id: 'entities' as Section, label: 'Entities', help: 'The specific things people name — dishes, drinks, brands, places — catalogued from the comments, with the quotes behind each.' }] : []),
-    ...(datasetSource === 'google_reviews' && (outletCount || 0) >= 5 ? [{ id: 'advanced' as Section, label: 'Advanced Analytics', href: '/analyze/' + datasetId + '/improvement-plan', help: 'Brand-health diagnostics & per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' }] : []),
-  ]
+  // Row 1 — peer sections, derived from the shared availableSections() gate so
+  // the bar and the reset-if-unavailable guard can never drift. Labels/help/href
+  // come from this static map; Advanced is a link (it lives on its own pages).
+  const SECTION_META: Record<Section, { label: string; help: string; href?: string }> = {
+    themes: { label: 'Themes', help: 'AI-mined themes — clusters of comments that share a topic. Browse them, see the language people use, slice by segment, or read the underlying quotes.' },
+    dimensions: { label: 'Dimensions', help: 'Every row classified into a fixed, consistent set of dimensions (service, food, drinks, ambiance, …) with severity alerts. Filter by dimension/sub-dimension and read the comments behind each.' },
+    entities: { label: 'Entities', help: 'The specific things people name — dishes, drinks, brands, places — catalogued from the comments, with the quotes behind each.' },
+    advanced: { label: 'Advanced Analytics', href: '/analyze/' + datasetId + '/improvement-plan', help: 'Brand-health diagnostics & per-outlet deep-dive for multi-location brands: the recommended-actions playbook, drivers & trends, the leaderboard, and each location\'s action plan with an interactive what-if modeler.' },
+  }
+  const navSections: { id: Section; label: string; help: string; href?: string }[] = availableSections(sectionGate).map(function(id) { return { id: id, ...SECTION_META[id] } })
   const activeSection = section
   const activeView = view
   const VIEW_LABEL: Record<LensView, string> = { overview: 'Overview', clouds: 'Clouds', compare: 'Compare', comments: 'Comments' }

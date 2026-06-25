@@ -174,6 +174,8 @@ factory is mocked before any module that calls it is imported.
 
 _Pure-logic example: `tests/unit/serviceHealth.test.ts` (added 2026-06-16) covers the service-credit monitor's balance-threshold classification (`statusForBalance`) and out-of-credit detection (`isCreditError`) — see `docs/ENGINEERING.md` §4._
 
+_Pure-logic example: `tests/unit/textmineNav.test.ts` (added 2026-06-25) covers the TextMine two-row-nav state map in `lib/textmineNav.ts` — the `(section,view)⇄(subTab,viewBy)` round-trips, the Comments lens-collapse, the uniform sub-menu, the theme-lock rule, and the `availableSections`/`defaultSection` gating — see ANALYTICS.md "Navigation IA"._
+
 1. Pick the boundary. If you're testing a pure function in `lib/`, write a
    unit test under `tests/unit/`. If you're testing a route handler, write
    an integration test under `tests/integration/` and mock at
