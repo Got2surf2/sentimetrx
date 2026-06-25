@@ -52,7 +52,7 @@ export default async function ImprovementPlanPage(props: {
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
         <AnalyticsNav datasetId={datasetId} active="brand" action={
-          <OperationalReviewExport datasetId={datasetId} />
+          <OperationalReviewExport datasetId={datasetId} brand={brand} />
         } />
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">

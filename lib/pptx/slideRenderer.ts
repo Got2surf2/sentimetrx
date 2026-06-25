@@ -133,6 +133,8 @@ export type SlideSpec = BarChartSlide | ColumnChartSlide | KpiGridSlide | TableS
 export interface DeckSpec {
   title: string
   subtitle?: string
+  preparedFor?: string
+  preparedBy?: string
   slides: SlideSpec[]
 }
 
@@ -816,7 +818,7 @@ export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName
 
 // ── Title slide ─────────────────────────────────────────────────────────────
 // Dark INK cover — premium, high-contrast against the cream content slides.
-function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetName: string) {
+function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetName: string, preparedFor?: string, preparedBy?: string) {
   const slide = pptx.addSlide('NUMBERED')
   solidRect(slide, pptx, 0, 0, W, H, CR.ink)
   // full-height orange left bar
@@ -838,6 +840,13 @@ function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetNam
   slide.addText(datasetName, { x: 0.75, y: 5.6, w: W - 2.0, h: 0.4, fontSize: 13, color: CR.coverSub })
   slide.addText(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), { x: 0.75, y: 5.98, w: W - 2.0, h: 0.35, fontSize: 12, color: CR.coverSub })
 
+  if (preparedFor) {
+    slide.addText(`Prepared for ${preparedFor}`, { x: 0.75, y: 6.36, w: W - 2.0, h: 0.32, fontSize: 12, color: CR.coverSub })
+  }
+  if (preparedBy) {
+    slide.addText(`Prepared by ${preparedBy}`, { x: 0.75, y: preparedFor ? 6.68 : 6.36, w: W - 2.0, h: 0.32, fontSize: 12, color: CR.coverSub })
+  }
+
   slide.addText('datanautix.com', { x: 0.75, y: H - 0.6, w: 4.0, h: 0.34, fontSize: 12, color: CR.ink2, valign: 'middle' })
 }
 
@@ -855,7 +864,7 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
     slideNumber: { x: W - PAD - 0.5, y: FY, w: 0.5, h: 0.26, color: CR.ink2, fontSize: 8, align: 'right' },
   })
 
-  renderTitleSlide(pptx, deck.title, deck.subtitle || '', datasetName)
+  renderTitleSlide(pptx, deck.title, deck.subtitle || '', datasetName, deck.preparedFor, deck.preparedBy)
 
   for (const spec of deck.slides) {
     switch (spec.type) {

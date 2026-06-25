@@ -8,6 +8,16 @@
 - Records count query now **throws on error** instead of swallowing it → a failed compute never persists a bad partial (the batch endpoint catches and the next load retries).
 - **Self-heal**: `computeSignalStats` treats `records === 0 && (signals > 0 || inThemes > 0)` as poisoned, bypasses the freshness short-circuit, and recomputes — auto-correcting the bad caches on the next `/analyze` load (verified read-only: Rubio recomputes to `records 5784 / 62%`, BareBurger `7350 / 84%`). No manual data op. tsc clean. LOCAL/unpushed.
 
+## 2026-06-25 — Operational Review export: cover-info modal
+
+**Why** (owner): the export only took a competitor string; the cover should be fillable — title, audience, prepared-by, etc.
+
+**What changed**:
+- `OperationalReviewExport.tsx` — now opens a **modal** (backdrop/✕/Cancel close) collecting **title** (default `${brand} — Operational Review`), **subtitle** (optional), **prepared for**, **prepared by** (default Datanautix), **competitors**, **franchise states**. All inputs 16px (iOS). Blank fields are omitted from the URL (fall back to builder defaults); Generate navigates to the deck route. Takes a new `brand` prop (page passes it).
+- Route `operational-review-deck` reads `title`/`subtitle`/`preparedBy` (+ existing `preparedFor`/`competitors`/`franchiseStates`) into opts.
+- `operationalReviewDeck.ts` — `OperationalOpts` gains `title`/`subtitle`/`preparedBy`; sets `DeckSpec.title`/`subtitle` from them (with defaults) and `preparedFor`/`preparedBy` on the spec.
+- `slideRenderer.ts` — `DeckSpec` gains `preparedFor`/`preparedBy`; the dark cover (`renderTitleSlide`) renders "Prepared for {x}" / "Prepared by {y}" below the dataset/date. tsc clean, cover render-QC'd (title/subtitle/prepared-for/by all land, no overflow). LOCAL/unpushed.
+
 ## 2026-06-25 — Operational Review deck: themes/dimensions explainer + % on coverage bars
 
 **Why** (owner): the deck said "ABSA" without defining it and assumed the audience understood themes-vs-dimensions; and the Dimensions Aspect-Coverage bars showed bare numbers ("40") for what are percentages.

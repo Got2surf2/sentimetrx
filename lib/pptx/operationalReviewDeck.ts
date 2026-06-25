@@ -24,6 +24,9 @@ function locOnly(label: string): string {
 
 export interface OperationalOpts extends DiligenceOpts {
   dimensions?: TaxonomyRollup | null
+  title?: string
+  subtitle?: string
+  preparedBy?: string
 }
 
 export function buildOperationalReviewDeck(
@@ -399,8 +402,10 @@ export function buildOperationalReviewDeck(
   })
 
   return {
-    title: `${brand} — Operational Review`,
-    subtitle: `${d.reviewCount.toLocaleString()} reviews · ${p.outletSummaries.length} outlets · last 18 months`,
+    title: opts.title || `${brand} — Operational Review`,
+    subtitle: opts.subtitle || `${d.reviewCount.toLocaleString()} reviews · ${p.outletSummaries.length} outlets · last 18 months`,
+    preparedFor: opts.preparedFor,
+    preparedBy: opts.preparedBy || 'Datanautix',
     slides,
   }
 }

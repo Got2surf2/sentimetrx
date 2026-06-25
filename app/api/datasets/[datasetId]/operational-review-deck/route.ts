@@ -80,8 +80,11 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
     .map((s) => s.trim())
     .filter(Boolean)
   const preparedFor = url.searchParams.get('preparedFor')?.trim() || undefined
+  const title = url.searchParams.get('title')?.trim() || undefined
+  const subtitle = url.searchParams.get('subtitle')?.trim() || undefined
+  const preparedBy = url.searchParams.get('preparedBy')?.trim() || undefined
 
-  const opts: OperationalOpts = { franchiseStates, preparedFor }
+  const opts: OperationalOpts = { franchiseStates, preparedFor, title, subtitle, preparedBy }
 
   // Optional one-time live competitor benchmark. Never 500 the whole report if
   // the live pull fails — just ship the deck without the competitor slide.
