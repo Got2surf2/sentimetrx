@@ -1251,7 +1251,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var augmentedFields = (datasetSource === 'reddit' || datasetSource === 'substack')
     ? [...schema.fields, { field: 'signal_tier', type: 'categorical' as const, label: 'Signal Tier' }]
     : schema.fields
-  var catFields = augmentedFields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
+  // Google-reviews rows carry per-review noise fields that are categorical by
+  // type but worthless as a breakdown axis — `author` (one reviewer ≈ a handful
+  // of reviews, so every group is n≈4), the row/place identifiers, the free-text
+  // owner response, and the full street address. Drop them from the breakdown
+  // options so Compare/Breakdown only offer fields that actually segment the
+  // data (rating, outlet, city, state). Scoped to google_reviews per the data
+  // shape; other dataset types keep every categorical field.
+  var GREVIEW_NOISE_FIELDS = ['author', 'review_id', 'place_id', 'owner_response', 'location_address']
+  var catFields = augmentedFields
+    .filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' })
+    .map(function(f) { return f.field })
+    .filter(function(f) { return datasetSource !== 'google_reviews' || GREVIEW_NOISE_FIELDS.indexOf(f) === -1 })
 
   // Issue 7: Always use alias (label) if available
   function fieldLabel(fieldName: string): string {

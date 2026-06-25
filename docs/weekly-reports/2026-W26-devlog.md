@@ -1,5 +1,17 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — TextMine Dimensions: consistency pass (clouds/compare/loaders) + Google-reviews breakdown filter
+
+**Why** (owner QC of the new Dimensions cells): the Dimensions views didn't match the Themes/Entities views — (1) the Clouds/Compare Lottie loaders were tiny (`28`/`26` vs Themes' `120`); (2) Dimension Clouds had no card/header/controls chrome (bare axis groups) while Theme/Entity clouds are a card + sticky header + filter chips; (3) Dimension Compare was a dense crosstab matrix, a totally different paradigm from the Theme/Entity bar-chart Compare; (4) the Compare "Break down by" defaulted to **Author** on Google Reviews — one reviewer ≈ 4 reviews, so every group was n≈4 (noise). Owner: "all views should be similar, differences only for the data type."
+
+**What changed**:
+- **`DimensionCompareTab` rebuilt as bar charts** (`components/analyze/textmine/DimensionCompareTab.tsx`) mirroring `CompareTab`/`EntityCompareTab`: left-aligned "Break down by:" field selector + an axis selector → By Group / By Sub horizontal-bar cards with over/under-index ★ (two-proportion z-test, `sigTest`), sort-by-impact, show-all. Same `tax_crosstab` data, rendered as bars not a matrix. No rating metric (the crosstab carries counts only — a legitimate data-type difference).
+- **`DimensionCloud` re-skinned** to the `EntityCloud` structure: card + sticky header + axis filter-chips (click to isolate, hover-to-dim) + one flowing cloud of sub-buckets sized by mentions / colored by axis + show-all.
+- **Loaders standardized** across the lens Clouds + Compare: centered `LottieLoader size=120` (message) on initial load, `64` transient overlay — matching the Theme clouds.
+- **Breakdown-field denylist for Google Reviews** (`GREVIEW_NOISE_FIELDS` in `TextMineModule`): drops `author`, `review_id`, `place_id`, `owner_response`, `location_address` from the shared `catFields` so Compare *and* the Overview breakdown selector only offer fields that segment the data (rating, outlet, city, state). Gated on `source==='google_reviews'`; other dataset types unaffected.
+- tsc clean, eslint clean (new files), 19/19 `textmineNav` tests, `npm run build` passes. ANALYTICS.md synced. LOCAL/unpushed.
+- **Still open**: owner's separate "entities all fall into Other" report — couldn't reproduce; the live catalog for Rubio's/Ruth's has proper categories (top = Food). Needs the dataset it was seen on.
+
 ## 2026-06-25 — Fix poisoned signal_stats cache (cards missing "N signals · theme fit")
 
 **Why** (owner noticed): some google_reviews cards (Ruth's Chris, Tabla) showed "N signals · Theme fit X%" while others (Rubio's, BareBurger) didn't — despite all four having a FRESH cache (`cached.row_count === datasets.row_count`). Root cause was NOT freshness: the card's signal-stats line gates on `signalStats.records > 0` (`DatasetCard.tsx:560`), and the poisoned datasets had `records: 0` with `signals > 0` — an impossible shape. `computeSignalStatsRaw` (`lib/signalStats.ts:164`) **swallowed the error** on the exact-count `records` query; a transient statement-timeout on a large dataset's count scan (under the batch's parallel load) returned `null → 0` while the theme-match RPCs in the same batch succeeded → `records:0, signals>0` got persisted, and the freshness check (theme-hash + row_count) can't see the bad shape, so it served forever.
