@@ -87,6 +87,7 @@ const nextConfig = {
     '/api/recordings/[id]/report/pdf':  ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/recordings/[id]/report/send': ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/api/bots/[id]/readout/pdf':       ['./node_modules/@sparticuz/chromium/bin/**'],
   },
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,

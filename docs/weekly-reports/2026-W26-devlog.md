@@ -373,3 +373,13 @@
 - Per-agent `bot.config.readoutTitle` override (generic template; NOWOCATS is instance #1, no hardcoding).
 - **Verified** against Sarina (read-mostly harness, since discarded): 49 useful conversations → 15 clean question themes (focus-matched 38q/21q/18q + emergent "About the Study" 16q) and 12 beyond-themes (Safety 10c, Traffic & Congestion 8c, Transit & Mobility 6c…); summary cites real counts, no fabrication. tsc clean.
 - BOTS.md § Agent Conversation Readout added. Phases 2–5 (HTML/interactive page, PDF, PPTX, agent-card link) to follow. LOCAL/unpushed.
+
+## 2026-06-26 — Agent Conversation Readout: interactive page + PDF (Phases 2–3)
+
+**Why**: deliver the Readout (Phase-1 compute) as a viewable/handoff artifact for the NOWOCATS Sarina report.
+
+**What changed**:
+- `lib/agentReadoutHtml.ts` — the ONE pure renderer for the Readout (no React mirror to hand-sync, unlike the Agent Study). `renderAgentReadoutFragment` (collapsed `<details>`, interactive page) + `renderAgentReadoutHtml` (full doc, drill-downs expanded for print) share `readoutBody(r, expand)`. Datanautix-branded, all strings escaped. Tail-noise floor: single-mention themes collapse into a one-line "also raised once" footer.
+- `GET /api/bots/[id]/readout` (auth + org-gated, `?force=1`, 503 on AI timeout — mirrors `/study`). Interactive page `/bots/[id]/readout` (server wrapper + `ReadoutClient`): Lottie loader → fetch → inject fragment, with Refresh / PDF / PPTX toolbar.
+- `POST /api/bots/[id]/readout/pdf` — headless Chrome (`@sparticuz/chromium` on Linux, local Chrome on macOS, keyed off `process.platform`). Added its `bin/**` to `next.config.js` `outputFileTracingIncludes` (per-PDF-route, else prod 500).
+- **Verified**: rendered Sarina's readout to PDF (local Chrome) and pixel-QC'd page-by-page — clean header + datanautix wordmark + honest "Based on 49 conversations" line, summary card + 6 grounded takeaways, focus/emergent theme cards with sentiment bars + sample questions, orange verbatim cards for the beyond-themes (Safety 10c, Traffic & Congestion 8c, Transit & Mobility 6c). tsc clean, eslint 0 errors (only house-style warnings matching ReportClient). BOTS.md updated. Phases 4–5 (PPTX, card link) next. LOCAL/unpushed.

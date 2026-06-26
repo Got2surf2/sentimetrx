@@ -593,6 +593,7 @@ needs `'./node_modules/@sparticuz/chromium/bin/**'` traced in:
 '/api/recordings/[id]/report/pdf':  ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/recordings/[id]/report/send': ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/bots/[id]/readout/pdf':       ['./node_modules/@sparticuz/chromium/bin/**'],
 ```
 
 When you add a new headless-Chrome PDF route, add its path here too —
