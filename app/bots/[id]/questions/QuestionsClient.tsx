@@ -33,6 +33,7 @@ interface Question {
   notes: string | null
   suggested_kb_addition: string | null
   created_at: string
+  agent_response: string | null   // the assistant reply that followed this question (context for review)
 }
 
 interface Props {
@@ -269,6 +270,21 @@ export default function QuestionsClient({
                       </div>
                     </div>
                   </div>
+
+                  {/* What the agent actually replied — context for what to correct,
+                      and a one-click "accept this as the answer" into the KB. */}
+                  {q.agent_response && (
+                    <div className='mt-3'>
+                      <div className='text-xs font-medium text-gray-500 mb-1'>{botName} replied:</div>
+                      <div className='text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md p-2 whitespace-pre-wrap break-words max-h-40 overflow-auto'>{q.agent_response}</div>
+                      <button
+                        disabled={answeringId === q.id}
+                        onClick={() => saveAnswer(q.id, (q.agent_response || '').trim())}
+                        className='mt-1 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
+                        title={'Accept this reply as the correct answer and add it to ' + botName + "'s knowledge base."}
+                      >✓ Accept {botName}&apos;s reply as the answer</button>
+                    </div>
+                  )}
 
                   {/* Status mutation row */}
                   <div className='mt-3 flex items-center gap-2 text-xs flex-wrap'>

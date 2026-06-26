@@ -421,3 +421,13 @@
 - **Sharp edge handled**: forced `metadata.sentiment:'neutral'` (skip the AI sentiment classifier) — RAG suppresses negative-tagged chunks on the deflect path, so a human answer to a hard question would otherwise be silently dropped.
 - `QuestionsClient.tsx`: per-question **Answer** textarea (≥16px per the input rule) prefilled from `suggested_kb_addition`; button "Save answer & add to knowledge" → "Update knowledge" for corrections; **✓ In knowledge base** badge once promoted.
 - Embeddings-off orgs still get a retrievable chunk via the full-text fallback. tsc clean, eslint 0 errors (house-style warnings only). BOTS.md §9.x + FEATURES.md synced (the deferred "cross-link KB additions to logged questions" item is now done). **Verified read-only** (table shape + `metadata @>` upsert filter parse against prod; Sarina has 0 chunks today so this would seed its KB). NOT pushed; round-trip is the owner's UI click (mutates the live agent KB). LOCAL/unpushed.
+
+## 2026-06-26 — Questions page: show the agent's reply + one-click accept
+
+**Why** (owner): reviewers need to see what the agent actually said (context for what to correct), and a button to accept the agent's reply as the answer when it was fine.
+
+**What changed**:
+- `GET /api/bots/[id]/questions` now attaches `agent_response` per question (`attachAgentResponses`). Matches by **session_id + question text → next assistant turn** (the Agent Study's `findFollowingAgentLine` approach) — NOT by turn_id/conversation_id, because the capture path leaves both null on virtually all rows (confirmed: all 17 of Sarina's questions have turn_id AND conversation_id null; session_id+text resolves 13/17). The 4 unresolved are deflects with no clean text match.
+- `QuestionsClient.tsx`: each card shows "{Agent} replied:" + the reply in a scrollable box, with a **"✓ Accept {Agent}'s reply as the answer"** button that promotes it via the existing /answer endpoint. Personified with the agent name per [[feedback_personify_agent_in_files]].
+- tsc clean, eslint 0 errors. Verified read-only (session+message match resolves 13/17 for Sarina). BOTS.md/FEATURES.md synced. LOCAL/unpushed.
+- **FOLLOW-UP FILED (owner flagged):** logged_questions.turn_id + conversation_id are null on capture — a traceability gap (should link each logged question to its conversation/turn). Investigating lib/logQuestion.ts capture path separately.

@@ -36,5 +36,53 @@ export async function GET(_req: NextRequest, props: Params) {
     .limit(1000)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ questions: rows || [] })
+  // Attach the agent's actual reply to each question — the assistant turn that
+  // immediately followed the logged user turn — so the reviewer sees what the
+  // agent said (the thing to correct, or to accept as-is into the KB). The
+  // capture path leaves turn_id/conversation_id null on most rows, so we match
+  // the SAME way the Agent Study does: by session_id + the question text, then
+  // take the next assistant turn. Questions with no clean match (e.g. some
+  // deflects, or legacy non-phase-3 sessions) just get a null response.
+  const questions = await attachAgentResponses(service, params.id, rows || [])
+  return NextResponse.json({ questions })
+}
+
+const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+async function attachAgentResponses(service: any, botId: string, rows: any[]): Promise<any[]> {
+  const sessionIds = [...new Set(rows.map(r => r.session_id).filter(Boolean))]
+  if (sessionIds.length === 0) return rows.map(r => ({ ...r, agent_response: null }))
+
+  // All turns for these sessions (phase-3 conversations join, like agentStudy).
+  const { data: turns } = await service
+    .from('conversation_turns')
+    .select('turn_number, role, content, content_en, conversations!inner(session_id, bot_id)')
+    .eq('conversations.bot_id', botId)
+    .in('conversations.session_id', sessionIds)
+    .order('turn_number', { ascending: true })
+
+  // session_id -> ordered turns
+  const bySession = new Map<string, { turn_number: number; role: string; content: string; content_en: string | null }[]>()
+  for (const t of (turns || [])) {
+    const sid = t.conversations?.session_id
+    if (!sid) continue
+    if (!bySession.has(sid)) bySession.set(sid, [])
+    bySession.get(sid)!.push({ turn_number: t.turn_number, role: t.role, content: t.content, content_en: t.content_en })
+  }
+  for (const arr of bySession.values()) arr.sort((a, b) => a.turn_number - b.turn_number)
+
+  return rows.map(q => {
+    let agent_response: string | null = null
+    const ts = bySession.get(q.session_id)
+    if (ts) {
+      const nq = norm(q.user_message)
+      const idx = ts.findIndex(t => t.role === 'user' && (norm(t.content) === nq || norm(t.content_en) === nq))
+      if (idx >= 0) {
+        const next = ts.slice(idx + 1).find(t => t.role === 'assistant')
+        const text = (next?.content_en || next?.content || '').trim()
+        if (text) agent_response = text
+      }
+    }
+    return { ...q, agent_response }
+  })
 }
