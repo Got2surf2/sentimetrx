@@ -830,6 +830,13 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 14 }}>
                       <span style={{ color: T.accent }}>{g.group}</span>
                       <span style={{ fontSize: 12, fontWeight: 400, color: T.textMute, marginLeft: 6 }}>({g.groupPct}% of dataset {'\u00B7'} {g.groupTotal.toLocaleString()} responses)</span>
+                      {/* Segment-level overall avg rating, colored vs the dataset overall. */}
+                      {ratingField && g.groupRating != null && (function() {
+                        var gd = g.groupRating! - (compStats!.overallRatAvg || 0)
+                        return <span style={{ fontSize: 13, fontWeight: 800, marginLeft: 10, color: gd > 0.05 ? '#059669' : gd < -0.05 ? '#dc2626' : T.textMid }}
+                          title={'Average rating across this segment: ' + g.groupRating!.toFixed(2) + ' (' + (gd >= 0 ? '+' : '') + gd.toFixed(2) + ' vs overall ' + (compStats!.overallRatAvg || 0).toFixed(2) + ')'}>
+                          {'\u2605 ' + g.groupRating!.toFixed(1)}</span>
+                      })()}
                     </div>
                     {themes.themes.slice().sort(function(a, b) {
                       // Unclassified always last

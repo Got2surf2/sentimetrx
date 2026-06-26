@@ -461,6 +461,13 @@ export default function EntityCompareTab({
                   <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 14 }}>
                     <span style={{ color: T.accent }}>{g.group}</span>
                     <span style={{ fontSize: 12, fontWeight: 400, color: T.textMute, marginLeft: 6 }}>({g.groupPct}% of dataset · {g.groupTotal.toLocaleString()} responses)</span>
+                    {/* Segment-level overall avg rating, colored vs the dataset overall. */}
+                    {ratingField && g.groupRating != null && (function() {
+                      const gd = g.groupRating! - (compStats!.overallRatAvg || 0)
+                      return <span style={{ fontSize: 13, fontWeight: 800, marginLeft: 10, color: gd > 0.05 ? '#059669' : gd < -0.05 ? '#dc2626' : T.textMid }}
+                        title={'Average rating across this segment: ' + g.groupRating!.toFixed(2) + ' (' + (gd >= 0 ? '+' : '') + gd.toFixed(2) + ' vs overall ' + (compStats!.overallRatAvg || 0).toFixed(2) + ')'}>
+                        {'★ ' + g.groupRating!.toFixed(1)}</span>
+                    })()}
                   </div>
                   {localOrdered.length === 0 && (
                     <div style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic' as const }}>No entity mentions in this segment's visible-entity set.</div>

@@ -1,5 +1,11 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — TextMine Compare By-Group: segment-level avg rating in the card header
+
+**Why** (owner, on Rubio's): in Themes → Compare → By Group, each theme *row* shows its avg rating, but the location *card header* ("San Diego, California — 15% of dataset · 1,429 responses") had no **location-level** overall rating, so you couldn't see how a whole outlet rates at a glance.
+
+**What changed**: added the segment's overall avg rating (`★ 4.5`) to the By-Group card header in `CompareTab` (themes) and `EntityCompareTab` (entities), next to the responses label. Colored green/red vs the dataset overall (`compStats.overallRatAvg`) with a tooltip carrying the exact value + delta. Reuses the per-segment `groupRating` already computed for the rating sort (no new compute). `DimensionCompareTab` omits it — its crosstab carries counts only, no rating. tsc + eslint clean. `docs/ANALYTICS.md` synced. LOCAL/unpushed.
+
 ## 2026-06-25 — TextMine Compare "By Group": sort dropdown + collapse nominal-N segments
 
 **Why** (owner, on Rubio's): the per-location cards in Themes Compare → By Group led with **Yorba Linda (4 responses, all 0%/Unclassified)** above Vista (142). Root cause: with `compareSmartAxes` defaulting on, location groups were ordered by `smartOrder(...).reverse()` → effectively reverse-alphabetical (meaningless), so a nominal-N outlet floated to the top. Owner wanted nominal locations hidden (with an expand-all) and a real sort order.
