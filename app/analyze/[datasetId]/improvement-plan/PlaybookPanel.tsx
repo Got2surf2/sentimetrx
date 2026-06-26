@@ -12,9 +12,10 @@ import type { RecommendedAction } from '@/lib/outletPredictor'
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 function locOnly(label: string): string { const i = label.indexOf(' — '); return i >= 0 ? label.slice(i + 3) : label }
 
-export default function PlaybookPanel({ actions, population, lowCount, chainAvg, detractorAvg, happyAvg }: {
+export default function PlaybookPanel({ actions, population, ratedPopulation, lowCount, chainAvg, detractorAvg, happyAvg }: {
   actions: RecommendedAction[]
-  population: number
+  population: number       // text-bearing reviews analyzed (lowRate / recovery denominator)
+  ratedPopulation: number  // ALL rated reviews (denominator for projecting the all-reviews brand avg ★)
   lowCount: number
   chainAvg: number
   detractorAvg: number
@@ -32,9 +33,11 @@ export default function PlaybookPanel({ actions, population, lowCount, chainAvg,
     const newLowCount = Math.max(0, lowCount - recovered)
     const newRate = population ? newLowCount / population : 0
     const delta = isFinite(happyAvg) && isFinite(detractorAvg) ? happyAvg - detractorAvg : 0
-    const newAvg = population ? chainAvg + (recovered * delta) / population : chainAvg
+    // Project the all-reviews brand avg ★: recovered detractors spread over ALL
+    // rated reviews (matches the chainAvg base), not just the text-bearing pool.
+    const newAvg = ratedPopulation ? chainAvg + (recovered * delta) / ratedPopulation : chainAvg
     return { recovered, newRate, newAvg }
-  }, [on, actions, population, lowCount, chainAvg, detractorAvg, happyAvg])
+  }, [on, actions, population, ratedPopulation, lowCount, chainAvg, detractorAvg, happyAvg])
 
   const toggle = (k: number) => setOn((p) => { const n = [...p]; n[k] = !n[k]; return n })
   const lowRate = population ? lowCount / population : 0

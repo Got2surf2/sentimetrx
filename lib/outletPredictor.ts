@@ -23,7 +23,7 @@
 // ─── inputs (plain data — no server/db deps, unit-testable) ───
 
 export type PredReview = { placeId: string; rating: number; themes: boolean[]; month?: string } // month = YYYY-MM (for trends)
-export type PredOutlet = { placeId: string; label: string; reviews: number; rating: number | null }
+export type PredOutlet = { placeId: string; label: string; reviews: number; rating: number | null; ratingN?: number } // rating = avg over ALL rated rows; ratingN = that all-rows rated count
 export type PredExample = { placeId: string; theme: string; quote: string }
 
 export type PredictorInput = {
@@ -85,10 +85,11 @@ export type OutletFocus = {
 export type OutletWhatIf = {
   reviews13: number[][] // per 1–3★ review, the actionable-theme indices it cites
   currentRate: number[] // this outlet's problem rate per actionable theme (index-aligned)
-  totalReviews: number
+  totalReviews: number // text-bearing review count (the recoverable pool / lowRate denominator)
+  ratedReviews: number // ALL rated rows (the denominator for projecting the all-reviews avg ★)
   lowCount: number
   lowRate: number
-  avg: number          // outlet's current avg star rating
+  avg: number          // outlet's current avg star rating — over ALL rated rows (ties to Google)
   detractorAvg: number // mean rating of its 1–3★ reviews (where a recovered detractor leaves from)
   happyAvg: number     // mean rating of its 4–5★ reviews (where a recovered detractor lands)
 }
@@ -130,8 +131,9 @@ export type OutletSummary = {
 }
 
 export type PredictorModel = {
-  population: number
-  chainAvg: number
+  population: number      // text-bearing reviews analyzed (lowRate / recovery denominator)
+  ratedPopulation: number // ALL rated reviews (denominator for projecting the all-reviews brand avg ★)
+  chainAvg: number        // brand avg ★ over ALL rated rows (ties to Google)
   detractorAvg: number // brand mean rating of 1–3★ reviews (for the playbook avg-★ projection)
   happyAvg: number     // brand mean rating of 4–5★ reviews
   lowRate: number
@@ -292,7 +294,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
 
   const empty: OutletPredictor = {
     available: false,
-    model: { population: n, chainAvg: 0, detractorAvg: 0, happyAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
+    model: { population: n, ratedPopulation: 0, chainAvg: 0, detractorAvg: 0, happyAvg: 0, lowRate: 0, lowCount: 0, bestLowRate: 0, worstLowRate: 0, medianLowRate: 0, targetLowRate: 0, projectedLowRate: 0 },
     drivers: [], brandLevers: [], outcomeSignals: [], actionableThemes: [], exemplars: [],
     outletSummaries: [], outletLevers: {}, outletStrengths: {}, themeFocus: {}, themeExemplars: {},
     themeTargets: [], outletWhatIf: {}, allLowRates: [], allRatings: [], themeTrends: {}, trendBasis: null, recommendedActions: [],
@@ -300,7 +302,15 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   }
   if (!K || n < 50) return empty
 
-  const chainAvg = mean(revs.map((r) => r.rating))
+  // Brand avg ★ over ALL rated rows (every review with a rating, incl. rating-only)
+  // so it ties back to Google / exports — weighted by each outlet's all-rows rated
+  // count. Falls back to the text-pool mean when the input carries no all-rows
+  // rating (e.g. unit-test fixtures with rating:null), preserving prior behaviour.
+  const outletMetaForAvg = input.outlets.filter((o) => o.rating != null && (o.ratingN ?? 0) > 0)
+  const ratedPopulation = outletMetaForAvg.reduce((s, o) => s + (o.ratingN || 0), 0)
+  const chainAvg = ratedPopulation
+    ? outletMetaForAvg.reduce((s, o) => s + (o.rating as number) * (o.ratingN || 0), 0) / ratedPopulation
+    : mean(revs.map((r) => r.rating))
   const lows = revs.filter((r) => r.rating <= LOW_MAX)
   const highs = revs.filter((r) => r.rating > LOW_MAX)
   const lowRate = lows.length / n
@@ -326,7 +336,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   const outletMeta = new Map(input.outlets.map((o) => [o.placeId, o]))
   const actFullIdx = actionableIdx.map((x) => x.j) // full-themes index per actionable theme
   type Agg = {
-    placeId: string; reviews: number; avg: number; lowCount: number; lowRate: number
+    placeId: string; reviews: number; avg: number; ratedN: number; lowCount: number; lowRate: number
     detractorAvg: number; happyAvg: number
     problemRate: Record<string, number>; shareInBad: Record<string, number>; badCount: Record<string, number>
     reviews13: number[][] // 1–3★ reviews as actionable-theme index sets (for what-if)
@@ -344,8 +354,16 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       shareInBad[themes[j]] = low.length ? c / low.length : 0
     }
     const reviews13 = low.map((r) => actFullIdx.map((j, i) => (r.themes[j] ? i : -1)).filter((i) => i >= 0))
+    // Display rating = the outlet's avg over ALL rated rows (from the scan, ties
+    // to Google), not the text-only review mean. Fall back to the text mean when
+    // the input carries no all-rows rating (unit-test fixtures). The 1–3★/4–5★
+    // cohort means (detractorAvg/happyAvg) and lowRate stay over the text pool —
+    // they drive the recovery model, which only acts on reviews with comments.
+    const meta = outletMeta.get(pid)
+    const allRowsAvg = meta && meta.rating != null ? meta.rating : mean(rs.map((r) => r.rating))
+    const ratedN = meta && (meta.ratingN ?? 0) > 0 ? (meta.ratingN as number) : rs.length
     aggs.push({
-      placeId: pid, reviews: rs.length, avg: mean(rs.map((r) => r.rating)), lowCount: low.length, lowRate: low.length / rs.length,
+      placeId: pid, reviews: rs.length, avg: allRowsAvg, ratedN, lowCount: low.length, lowRate: low.length / rs.length,
       detractorAvg: mean(low.map((r) => r.rating)), happyAvg: mean(high.map((r) => r.rating)),
       problemRate, shareInBad, badCount, reviews13,
     })
@@ -458,7 +476,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
     outletWhatIf[o.placeId] = {
       reviews13: o.reviews13,
       currentRate: actionableThemes.map((t) => o.problemRate[t]),
-      totalReviews: o.reviews, lowCount: o.lowCount, lowRate: o.lowRate,
+      totalReviews: o.reviews, ratedReviews: o.ratedN, lowCount: o.lowCount, lowRate: o.lowRate,
       avg: o.avg, detractorAvg: o.detractorAvg, happyAvg: o.happyAvg,
     }
   }
@@ -526,7 +544,7 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
 
   return {
     available: true,
-    model: { population: n, chainAvg, detractorAvg: mean(lows.map((r) => r.rating)), happyAvg: mean(highs.map((r) => r.rating)), lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
+    model: { population: n, ratedPopulation: ratedPopulation || n, chainAvg, detractorAvg: mean(lows.map((r) => r.rating)), happyAvg: mean(highs.map((r) => r.rating)), lowRate, lowCount: lows.length, bestLowRate, worstLowRate, medianLowRate, targetLowRate, projectedLowRate },
     drivers, brandLevers, outcomeSignals, actionableThemes, exemplars,
     outletSummaries, outletLevers, outletStrengths, themeFocus, themeExemplars,
     themeTargets, outletWhatIf, allLowRates, allRatings, themeTrends, trendBasis, recommendedActions,

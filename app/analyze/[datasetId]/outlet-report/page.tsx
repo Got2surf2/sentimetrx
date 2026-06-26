@@ -54,6 +54,7 @@ export default async function OutletReportPage(props: {
     bestRate: predictor.themeTargets.map((t) => t.bestRate),
     worstRate: predictor.themeTargets.map((t) => t.worstRate),
     totalReviews: wi.totalReviews,
+    ratedReviews: wi.ratedReviews,
     lowCount: wi.lowCount,
     lowRate: wi.lowRate,
     avg: wi.avg,

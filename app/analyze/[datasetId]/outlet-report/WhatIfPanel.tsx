@@ -17,10 +17,11 @@ export type WhatIfData = {
   medianRate: number[]      // peer-median problem rate per theme
   bestRate: number[]        // best-quartile problem rate per theme
   worstRate: number[]       // worst-in-class problem rate per theme (the right anchor)
-  totalReviews: number
+  totalReviews: number      // text-bearing reviews (the recoverable pool / lowRate denominator)
+  ratedReviews: number      // ALL rated rows (denominator for projecting the all-reviews avg ★)
   lowCount: number
   lowRate: number
-  avg: number               // outlet's current avg star rating
+  avg: number               // outlet's current avg star rating — over ALL rated rows (ties to Google)
   detractorAvg: number      // mean rating of its 1–3★ reviews
   happyAvg: number          // mean rating of its 4–5★ reviews
   otherRatings: number[]    // every OTHER outlet's avg star (for the conventional rank)
@@ -107,7 +108,10 @@ export default function WhatIfPanel(d: WhatIfData) {
     // detractor avg up to the happy avg (and vice-versa for added). Then rank
     // against every other outlet's (fixed) avg — conventional, 1 = best.
     const delta = (isFinite(d.happyAvg) && isFinite(d.detractorAvg) ? d.happyAvg - d.detractorAvg : 0)
-    const newAvg = d.totalReviews ? d.avg + (net * delta) / d.totalReviews : d.avg
+    // Project the all-reviews avg ★: recovered detractors (from the text pool)
+    // each move ~delta, spread over ALL rated rows (ties the base + projection to
+    // the headline rating), not just the text-bearing reviews.
+    const newAvg = d.ratedReviews ? d.avg + (net * delta) / d.ratedReviews : d.avg
     const newRank = 1 + d.otherRatings.filter((r) => r > newAvg).length
     return { net, newRate, newAvg, newRank }
   }, [target, d])

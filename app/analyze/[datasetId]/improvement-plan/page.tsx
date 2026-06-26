@@ -61,7 +61,7 @@ export default async function ImprovementPlanPage(props: {
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">{brand}</div>
             <h1 className="mt-1 text-2xl font-bold text-gray-900">Guest experience improvement plan</h1>
             <div className="text-sm text-gray-500">
-              {p.outletSummaries.length} outlets · {m.population.toLocaleString()} reviews analyzed · brand average {m.chainAvg.toFixed(2)}★
+              {p.outletSummaries.length} outlets · {m.population.toLocaleString()} reviews analyzed · brand average {m.chainAvg.toFixed(2)}★ <span className="text-gray-400">(all {m.ratedPopulation.toLocaleString()} rated reviews)</span>
             </div>
           </div>
 
@@ -94,6 +94,7 @@ export default async function ImprovementPlanPage(props: {
                   <PlaybookPanel
                     actions={p.recommendedActions}
                     population={m.population}
+                    ratedPopulation={m.ratedPopulation}
                     lowCount={m.lowCount}
                     chainAvg={m.chainAvg}
                     detractorAvg={m.detractorAvg}

@@ -584,7 +584,7 @@ function buildPredictorFromScan(scan: Scan): OutletPredictor {
     reviews: scan.reviewMatrix,
     outlets: scan.outlets.map((o) => ({
       placeId: o.placeId, label: scan.labelFor(o), reviews: o.reviews,
-      rating: o.ratingN ? o.ratingSum / o.ratingN : null,
+      rating: o.ratingN ? o.ratingSum / o.ratingN : null, ratingN: o.ratingN,
     })),
     examples: scan.lowExamples,
     positiveExamples: scan.highExamples,

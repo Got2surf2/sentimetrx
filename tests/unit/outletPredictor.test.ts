@@ -137,6 +137,27 @@ describe('outletPredictor — buildPredictor (1–3★ recovery, peer quartiles)
     expect(p.allRatings.length).toBe(p.outletSummaries.length)
   })
 
+  it('ratings = all reviews: avg/chainAvg use the all-rows rating + count, recovery stays text-pool', () => {
+    // Same text reviews (mean 3.5 for A: 60×2★ + 60×5★), but each outlet carries
+    // an all-rows Google rating of 4.2 over 200 rated rows (80 rating-only 5★s
+    // not in the text set). The headline ratings must be 4.2 (all-rows), while
+    // lowRate stays over the 120 text reviews and the what-if denominator = 200.
+    const { reviews, outlets } = fleet()
+    const withAllRows: PredOutlet[] = outlets.map((o) => ({ ...o, rating: 4.2, ratingN: 200 }))
+    const p = buildPredictor({ themeLabels: THEMES, reviews, outlets: withAllRows, exemplarMinReviews: 100, minDriverBadN: 10 })
+    const a = p.outletSummaries.find((o) => o.placeId === 'A')!
+    expect(a.rating).toBeCloseTo(4.2, 6)          // all-rows, NOT the text mean 3.5
+    expect(p.model.chainAvg).toBeCloseTo(4.2, 6)  // all outlets 4.2 → weighted 4.2
+    expect(p.model.ratedPopulation).toBe(200 * withAllRows.length)
+    expect(p.outletWhatIf['A'].avg).toBeCloseTo(4.2, 6)
+    expect(p.outletWhatIf['A'].ratedReviews).toBe(200)
+    // Recovery cohorts + lowRate stay over the text pool (unchanged by the above).
+    expect(p.outletWhatIf['A'].detractorAvg).toBeCloseTo(2, 6)
+    expect(p.outletWhatIf['A'].happyAvg).toBeCloseTo(5, 6)
+    expect(p.outletWhatIf['A'].lowRate).toBeCloseTo(0.5, 6) // 60 of 120 text reviews
+    expect(p.outletWhatIf['A'].totalReviews).toBe(120)
+  })
+
   it('buildRecommendedActions: greedy, impact-ranked, de-duplicated', () => {
     // A: 4 reviews fully recoverable (redToMedian 1 on theme 0). B: 3 single-theme
     // reviews on theme 1. Theme 1 has a 2-outlet cohort {B, C} so it's a candidate.
