@@ -1,5 +1,15 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — TextMine Compare "By Group": sort dropdown + collapse nominal-N segments
+
+**Why** (owner, on Rubio's): the per-location cards in Themes Compare → By Group led with **Yorba Linda (4 responses, all 0%/Unclassified)** above Vista (142). Root cause: with `compareSmartAxes` defaulting on, location groups were ordered by `smartOrder(...).reverse()` → effectively reverse-alphabetical (meaningless), so a nominal-N outlet floated to the top. Owner wanted nominal locations hidden (with an expand-all) and a real sort order.
+
+**What changed** (all three Compare views, for consistency):
+- **By-Group card ordering decoupled from "Smart Axes."** New per-view `groupSort` state drives the segment-card order with a **Sort** dropdown: **Responses (high→low)** default, **Name (A→Z)**, and **Avg rating (low→high)** where a rating field exists (computed a group-level overall avg rating in each compStats). "Smart Axes"/"Sort by impact" now shows only in the By-Theme/By-Entity/By-Sub view (it orders the *unit rows*, not the segment cards) — the dropdown replaces it in By-Group.
+- **Nominal-N collapse**: segments with **< 30 responses** hide behind a *"Show all N segments (M with < 30 responses)"* inline expander; skipped when every segment is nominal (small datasets aren't hidden whole) and never applied to the canonical signal-tier order.
+- `CompareTab` (`TextMineModule.tsx`): default flipped from reverse-alpha to responses-desc; per-group `groupRating` added. `EntityCompareTab`: same, By-Group render wrapped in a sort+partition IIFE. `DimensionCompareTab`: already responses-desc; added the dropdown (Mentions/Name — no rating since the crosstab is counts-only), and converted its top-N "Show all" to the nominal-N (< 30 mentions) expander for the group view (By-Sub keeps the top-N + impact/show-all controls).
+- tsc clean, eslint 0 errors (pre-existing warnings only), 19/19 nav tests, `npm run build` passes. `docs/ANALYTICS.md` synced. LOCAL/unpushed. Owner to eyeball on Rubio's: By-Group should lead with high-volume outlets and tuck the < 30-response ones behind the expander.
+
 ## 2026-06-25 — TextMine Entities pill: server-prefetch the gate (fix pop-in)
 
 **Why** (owner): the **Entities** top-bar pill was absent on first paint and appeared a moment later. Traced it: the pill is gated on `hasEntities = entityCatalogRows.length > 0`, and `entityCatalogRows` is filled by an async client fetch (`/api/datasets/[id]/entities`) on mount — so the gate only flipped true once that round-trip resolved. Every other section gates on server-known values (`outletCount` is already prefetched in `textmine/page.tsx` precisely so Advanced doesn't pop in); Entities was the outlier.

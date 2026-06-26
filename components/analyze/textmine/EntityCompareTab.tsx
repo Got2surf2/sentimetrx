@@ -89,6 +89,10 @@ export default function EntityCompareTab({
   const [copied, setCopied] = useState(false)
   // Bar metric: 'share' (mention rate, default) vs 'rating' (avg star rating).
   const [barMetric, setBarMetric] = useState<'share' | 'rating'>('share')
+  // By-Group segment ordering (own control, default data-rich first) + a
+  // collapse for nominal-N segments (< MIN_GROUP_N responses). Mirrors CompareTab.
+  const [groupSort, setGroupSort] = useState<'responses' | 'name' | 'rating'>('responses')
+  const [showAllGroups, setShowAllGroups] = useState(false)
 
   const catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
   const fieldLabel = function(f: string): string {
@@ -196,7 +200,14 @@ export default function EntityCompareTab({
           : null
         return { entitySlug: e.slug, entityName: e.canonical, count, avgRating, ratingValues }
       })
-      return { group: gk, groupTotal, groupPct, entityStats }
+      // Group-level overall avg rating (all rows in the segment) for the rating sort.
+      let groupRating: number | null = null
+      if (ratingField) {
+        let grS = 0, grC = 0
+        for (const ri of rowIdxs) { const rv = parseFloat(String(parsedData[ri][ratingField] ?? '')); if (!isNaN(rv)) { grS += rv; grC++ } }
+        if (grC > 0) groupRating = grS / grC
+      }
+      return { group: gk, groupTotal, groupPct, entityStats, groupRating }
     })
 
     let overallRatAvg = 0
@@ -348,10 +359,23 @@ export default function EntityCompareTab({
                 })}
               </div>
             )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
-              <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
-              Sort by impact
-            </label>
+            {/* By Group → segment sort dropdown; By Entity → Sort-by-impact (entity order) */}
+            {viewMode === 'group' ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute }}>
+                Sort:
+                <select value={groupSort} onChange={function(e) { setGroupSort(e.target.value as 'responses' | 'name' | 'rating') }}
+                  style={{ fontSize: 11, fontWeight: 600, color: T.text, padding: '4px 8px', border: '1px solid ' + T.border, borderRadius: 8, background: T.bgCard, cursor: 'pointer' }}>
+                  <option value="responses">Responses (high to low)</option>
+                  <option value="name">Name (A to Z)</option>
+                  {ratingField && <option value="rating">Avg rating (low to high)</option>}
+                </select>
+              </label>
+            ) : (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+                <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
+                Sort by impact
+              </label>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
               <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
               Show all
@@ -405,9 +429,26 @@ export default function EntityCompareTab({
         )}
 
         {/* ── By Group view ────────────────────────────────────────── */}
-        {compStats && breakdownFields.length > 0 && viewMode === 'group' && (
+        {compStats && breakdownFields.length > 0 && viewMode === 'group' && (function() {
+          const isSignalTierGroup = breakdownFields.length === 1 && breakdownFields[0] === 'signal_tier'
+          const sortedGroups = compStats!.groupStats.slice().sort(function(a, b) {
+            if (groupSort === 'responses') return b.groupTotal - a.groupTotal
+            if (groupSort === 'rating') {
+              const ra = a.groupRating, rb = b.groupRating
+              if (ra == null && rb == null) return a.group.localeCompare(b.group)
+              if (ra == null) return 1
+              if (rb == null) return -1
+              return ra - rb
+            }
+            return a.group.localeCompare(b.group)
+          })
+          const MIN_GROUP_N = 30
+          const nominalCount = sortedGroups.filter(function(g) { return g.groupTotal < MIN_GROUP_N }).length
+          const collapseNominal = !showAllGroups && !isSignalTierGroup && nominalCount > 0 && nominalCount < sortedGroups.length
+          const visibleGroups = collapseNominal ? sortedGroups.filter(function(g) { return g.groupTotal >= MIN_GROUP_N }) : sortedGroups
+          return (
           <div>
-            {compStats.groupStats.map(function(g) {
+            {visibleGroups.map(function(g) {
               const localOrdered = visibleEntityStats.map(function(es) {
                 const local = es.perGroup.find(function(pg) { return pg.group === g.group })
                 return { es, local }
@@ -463,8 +504,17 @@ export default function EntityCompareTab({
                 </div>
               )
             })}
+            {(collapseNominal || (showAllGroups && nominalCount > 0 && !isSignalTierGroup)) && (
+              <button onClick={function() { setShowAllGroups(!showAllGroups) }}
+                style={{ display: 'block', margin: '4px auto 8px', padding: '7px 16px', fontSize: 12, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, cursor: 'pointer' }}>
+                {showAllGroups
+                  ? 'Hide ' + nominalCount + ' low-volume segment' + (nominalCount === 1 ? '' : 's') + ' (< 30 responses)'
+                  : 'Show all ' + sortedGroups.length + ' segments (' + nominalCount + ' with < 30 responses)'}
+              </button>
+            )}
           </div>
-        )}
+          )
+        })()}
 
         {/* ── By Entity view ───────────────────────────────────────── */}
         {compStats && breakdownFields.length > 0 && viewMode === 'entity' && (

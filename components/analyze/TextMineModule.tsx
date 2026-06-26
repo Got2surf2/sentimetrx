@@ -467,6 +467,13 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   // Bar metric: 'share' (theme % within segment, default) vs 'rating' (avg star
   // rating). Toggle only meaningful when the dataset has a rating field.
   var [barMetric, setBarMetric] = useState<'share' | 'rating'>('share')
+  // By-Group card ordering (locations etc.) — its own control, independent of
+  // Smart Axes (which orders theme rows / the By-Theme view). Default puts the
+  // data-rich segments first so nominal-N groups don't lead.
+  var [groupSort, setGroupSort] = useState<'responses' | 'name' | 'rating'>('responses')
+  // Collapse nominal-N segments (< MIN_GROUP_N responses) behind an expander so
+  // a handful of low-volume groups don't bury the meaningful ones.
+  var [showAllGroups, setShowAllGroups] = useState(false)
 
   if (!themes) {
     return (
@@ -538,7 +545,15 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       var unclassified = rows.filter(function(r) {
         return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
       }).length
-      return { group: gk, groupTotal: groupTotal, groupPct: groupPct, themeCounts: themeCounts, unclassified: unclassified }
+      // Group-level overall avg rating (across all rows in the segment, not
+      // theme-scoped) — powers the "Avg rating" sort. Null when no rating field.
+      var groupRating: number | null = null
+      if (ratingField) {
+        var grS = 0, grC = 0
+        rows.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) { grS += rv; grC++ } })
+        if (grC > 0) groupRating = grS / grC
+      }
+      return { group: gk, groupTotal: groupTotal, groupPct: groupPct, themeCounts: themeCounts, unclassified: unclassified, groupRating: groupRating }
     })
 
     // Overall avg rating for delta coloring
@@ -742,11 +757,23 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 })}
               </div>
             )}
-            {/* Smart Axes checkbox */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute, cursor: 'pointer', userSelect: 'none' }}>
-              <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
-              Smart Axes
-            </label>
+            {/* By Group → segment sort dropdown; By Theme → Smart Axes (theme order) */}
+            {viewMode === 'group' ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute, userSelect: 'none' }}>
+                Sort:
+                <select value={groupSort} onChange={function(e) { setGroupSort(e.target.value as 'responses' | 'name' | 'rating') }}
+                  style={{ fontSize: 11, fontWeight: 600, color: T.text, padding: '4px 8px', border: '1px solid ' + T.border, borderRadius: 8, background: T.bgCard, cursor: 'pointer' }}>
+                  <option value="responses">Responses (high to low)</option>
+                  <option value="name">Name (A to Z)</option>
+                  {ratingField && <option value="rating">Avg rating (low to high)</option>}
+                </select>
+              </label>
+            ) : (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute, cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
+                Smart Axes
+              </label>
+            )}
             {/* Summarize Findings */}
             {outliers.length > 0 && (
               <button onClick={function() { setShowSummary(true) }}
@@ -765,20 +792,37 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         if (viewMode === 'group') {
           var groupNames = compStats!.groupStats.map(function(g) { return g.group })
           var isSignalTierGroup = breakdownFields.length === 1 && breakdownFields[0] === 'signal_tier'
+          var groupMap: Record<string, typeof compStats.groupStats[0]> = {}
+          compStats!.groupStats.forEach(function(g) { groupMap[g.group] = g })
           var orderedNames: string[]
           if (isSignalTierGroup) {
+            // Signal tiers have a canonical ordinal order; keep it (sort dropdown N/A).
             var isReddit = groupNames.some(function(n) { return n === 'Mainstream' || n === 'Controversial' || n === 'Fringe' || n === 'Noise' })
             var tierList = isReddit ? SIGNAL_TIER_ORDER_REDDIT : SIGNAL_TIER_ORDER_SUBSTACK
             orderedNames = tierList.filter(function(t) { return groupNames.indexOf(t) >= 0 })
           } else {
-            orderedNames = smartAxes ? smartOrder(groupNames).reverse() : groupNames.slice().sort(function(a, b) { return a.localeCompare(b) })
+            orderedNames = groupNames.slice().sort(function(a, b) {
+              if (groupSort === 'responses') return groupMap[b].groupTotal - groupMap[a].groupTotal
+              if (groupSort === 'rating') {
+                var ra = groupMap[a].groupRating, rb = groupMap[b].groupRating
+                if (ra == null && rb == null) return a.localeCompare(b)
+                if (ra == null) return 1
+                if (rb == null) return -1
+                return ra - rb  // low → high (worst segments first)
+              }
+              return a.localeCompare(b)  // name
+            })
           }
-          var groupMap: Record<string, typeof compStats.groupStats[0]> = {}
-          compStats!.groupStats.forEach(function(g) { groupMap[g.group] = g })
           var sortedGroups = orderedNames.map(function(n) { return groupMap[n] }).filter(Boolean)
+          // Collapse nominal-N segments behind an expander (skip the collapse when
+          // ALL segments are nominal, so a small dataset isn't hidden entirely).
+          var MIN_GROUP_N = 30
+          var nominalCount = sortedGroups.filter(function(g) { return g.groupTotal < MIN_GROUP_N }).length
+          var collapseNominal = !showAllGroups && !isSignalTierGroup && nominalCount > 0 && nominalCount < sortedGroups.length
+          var visibleGroups = collapseNominal ? sortedGroups.filter(function(g) { return g.groupTotal >= MIN_GROUP_N }) : sortedGroups
           return (
             <div>
-              {sortedGroups.map(function(g) {
+              {visibleGroups.map(function(g) {
                 var maxShare = g.themeCounts.reduce(function(m, tc) { return Math.max(m, g.groupTotal > 0 ? Math.round(tc.count / g.groupTotal * 100) : 0) }, 1)
                 if (g.unclassified > 0) { var uPct = g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0; if (uPct > maxShare) maxShare = uPct }
                 return (
@@ -810,6 +854,15 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                   </div>
                 )
               })}
+              {/* Nominal-N expander — show/hide the segments below MIN_GROUP_N. */}
+              {(collapseNominal || (showAllGroups && nominalCount > 0 && !isSignalTierGroup)) && (
+                <button onClick={function() { setShowAllGroups(!showAllGroups) }}
+                  style={{ display: 'block', margin: '4px auto 8px', padding: '7px 16px', fontSize: 12, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, cursor: 'pointer' }}>
+                  {showAllGroups
+                    ? 'Hide ' + nominalCount + ' low-volume segment' + (nominalCount === 1 ? '' : 's') + ' (< 30 responses)'
+                    : 'Show all ' + sortedGroups.length + ' segments (' + nominalCount + ' with < 30 responses)'}
+                </button>
+              )}
             </div>
           )
         }

@@ -37,6 +37,9 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
   const [viewMode, setViewMode] = useState<'group' | 'sub'>('group')
   const [smartAxes, setSmartAxes] = useState(true)
   const [showAll, setShowAll] = useState(false)
+  // By-Group segment (column) ordering — own control, default data-rich first.
+  // No rating option: the crosstab carries counts only (a data-type difference).
+  const [groupSort, setGroupSort] = useState<'responses' | 'name'>('responses')
   const [grid, setGrid] = useState<Record<string, Record<string, number>>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -87,19 +90,27 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
       })
       subTotals[s] = st
     })
-    const allCols = Object.keys(colTotals).sort(function(a, b) { return colTotals[b] - colTotals[a] })
+    const allCols = Object.keys(colTotals).sort(function(a, b) {
+      if (groupSort === 'name') return a.localeCompare(b)
+      return colTotals[b] - colTotals[a]  // responses (mentions) high → low
+    })
     const allSubs = subs.slice().sort(function(a, b) {
       return smartAxes ? (subTotals[b] - subTotals[a]) : labelFor(a).localeCompare(labelFor(b))
     })
     return { allCols, allSubs, colTotals, subTotals, grand }
     // labelFor depends on axis; recompute when axis changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid, smartAxes, axis])
+  }, [grid, smartAxes, axis, groupSort])
 
   const visibleSubs = showAll ? model.allSubs : model.allSubs.slice(0, MAX_VISIBLE)
   const hiddenSubs = model.allSubs.length - visibleSubs.length
-  const visibleCols = showAll ? model.allCols : model.allCols.slice(0, MAX_VISIBLE)
-  const hiddenCols = model.allCols.length - visibleCols.length
+  // By-Group columns: collapse nominal-N segments (< MIN_GROUP_N mentions) behind
+  // the expander, unless ALL are nominal (then show them so nothing's hidden).
+  const MIN_GROUP_N = 30
+  const bigCols = model.allCols.filter(function(c) { return (model.colTotals[c] || 0) >= MIN_GROUP_N })
+  const nominalColCount = model.allCols.length - bigCols.length
+  const collapseNominalCols = !showAll && nominalColCount > 0 && bigCols.length > 0
+  const visibleCols = collapseNominalCols ? bigCols : model.allCols
 
   // One bar row — label + share bar + over/under ★ + % + n. Mirrors the row in
   // EntityCompareTab so the three Compare views read identically.
@@ -175,14 +186,28 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
-              <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
-              Sort by impact
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
-              <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
-              Show all
-            </label>
+            {/* By Group → segment sort dropdown; By Sub → impact + show-all (unit order) */}
+            {viewMode === 'group' ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute }}>
+                Sort:
+                <select value={groupSort} onChange={function(e) { setGroupSort(e.target.value as 'responses' | 'name') }}
+                  style={{ fontSize: 11, fontWeight: 600, color: T.text, padding: '4px 8px', border: '1px solid ' + T.border, borderRadius: 8, background: T.bgCard, cursor: 'pointer' }}>
+                  <option value="responses">Mentions (high to low)</option>
+                  <option value="name">Name (A to Z)</option>
+                </select>
+              </label>
+            ) : (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
+                  Sort by impact
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+                  Show all
+                </label>
+              </>
+            )}
             <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
               {(['group', 'sub'] as const).map(function(m) {
                 return (
@@ -237,8 +262,13 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
                 </div>
               )
             })}
-            {hiddenCols > 0 && (
-              <p style={{ fontSize: 11, color: T.textFaint, marginTop: 4 }}>{hiddenCols} more group{hiddenCols === 1 ? '' : 's'} hidden — turn on “Show all”.</p>
+            {(collapseNominalCols || (showAll && nominalColCount > 0)) && (
+              <button onClick={function() { setShowAll(function(v) { return !v }) }}
+                style={{ display: 'block', margin: '4px auto 8px', padding: '7px 16px', fontSize: 12, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, cursor: 'pointer' }}>
+                {showAll
+                  ? 'Hide ' + nominalColCount + ' low-volume segment' + (nominalColCount === 1 ? '' : 's') + ' (< 30 mentions)'
+                  : 'Show all ' + model.allCols.length + ' segments (' + nominalColCount + ' with < 30 mentions)'}
+              </button>
             )}
           </div>
         ) : (
