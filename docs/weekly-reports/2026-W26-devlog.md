@@ -1,6 +1,6 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
-## 2026-06-26 — Ratings = all reviews (principle) — roots A + B (TextMine core)
+## 2026-06-26 — Ratings = all reviews (principle) — roots A + B + C (TextMine + Dimensions)
 
 **Why** (owner): the TextMine strip showed ★4.4 (computed over text-bearing "analyzed" reviews only) while the Compare coloring baseline was already over all rated rows (~4.5), so a 4.4 location read red. Worse, the strip number never tied back to the rating a client sees on Google or in a downloaded CSV. Decision (after a comprehensive 4-agent rating audit): adopt **"ratings = all reviews, always"** — every overall/aggregate/location rating averages over all rated rows (rating-only reviews included); only per-theme/entity/dimension ratings stay text-scoped, by necessity.
 
