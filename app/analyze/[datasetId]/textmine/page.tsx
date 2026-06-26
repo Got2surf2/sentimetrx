@@ -6,6 +6,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { resolveOrg, orgTaxonomyEnabled } from '@/lib/resolveOrg'
+import { resolveEntityScope } from '@/lib/entityFilter'
 import TextMineModule from '@/components/analyze/TextMineModule'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,7 @@ export default async function TextMinePage(props: Props) {
 
   const service = createServiceRoleClient()
 
-  const [{ data: stateRow }, { data: dataset }] = await Promise.all([
+  const [{ data: stateRow }, { data: dataset }, entityScope] = await Promise.all([
     service
       .from('dataset_state')
       .select('schema_config, theme_model, analytics')
@@ -42,9 +43,26 @@ export default async function TextMinePage(props: Props) {
       .select('source, ana_library, taxonomy_enabled')
       .eq('id', params.datasetId)
       .single(),
+    resolveEntityScope(service, params.datasetId),
   ])
 
   if (!stateRow) notFound()
+
+  // Entities-section gate, prefetched so the pill doesn't pop in after the
+  // client entity-catalog fetch resolves (mirrors outletCount for Advanced).
+  // True when the scope has any non-hidden catalog entity; the client catalog
+  // still governs once it loads, so a scope whose entities match no rows live
+  // drops the pill exactly as before.
+  let initialHasEntities = false
+  if (entityScope.found) {
+    const { count } = await service
+      .from('entity_catalog')
+      .select('slug', { count: 'exact', head: true })
+      .eq('scope_type', entityScope.scopeType)
+      .eq('scope_id', entityScope.scopeId)
+      .eq('hidden', false)
+    initialHasEntities = (count || 0) > 0
+  }
 
   // Outlet count gates the Outlets sub-tab link (google_reviews + ≥5 outlets),
   // mirroring the dataset-shell tab gate.
@@ -75,6 +93,7 @@ export default async function TextMinePage(props: Props) {
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
         outletCount={outletCount}
+        initialHasEntities={initialHasEntities}
       />
     </div>
   )

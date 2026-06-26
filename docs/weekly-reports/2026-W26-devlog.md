@@ -1,5 +1,15 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — TextMine Entities pill: server-prefetch the gate (fix pop-in)
+
+**Why** (owner): the **Entities** top-bar pill was absent on first paint and appeared a moment later. Traced it: the pill is gated on `hasEntities = entityCatalogRows.length > 0`, and `entityCatalogRows` is filled by an async client fetch (`/api/datasets/[id]/entities`) on mount — so the gate only flipped true once that round-trip resolved. Every other section gates on server-known values (`outletCount` is already prefetched in `textmine/page.tsx` precisely so Advanced doesn't pop in); Entities was the outlier.
+
+**What changed**:
+- `app/analyze/[datasetId]/textmine/page.tsx` — added `resolveEntityScope` to the existing parallel fetch and a `head:true` count of non-hidden `entity_catalog` rows for the scope → `initialHasEntities`, passed as a prop (mirrors how `outletCount` is computed/passed).
+- `components/analyze/TextMineModule.tsx` — new `initialHasEntities?` prop seeds the gate **only while the client catalog fetch is in flight**: `hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities)`. Steady state is unchanged — once the live catalog loads it governs, so a scope whose catalog entities match no rows live still drops the pill (and the existing reset-guard bounces off an unavailable section). This avoids the opposite jank (a "reserve the slot during loading" approach would flash-then-remove the pill on empty-catalog datasets).
+- `docs/ANALYTICS.md` — gate description notes the server-prefetch.
+- tsc clean, eslint clean (only pre-existing warnings), 19/19 `textmineNav` tests. LOCAL/unpushed. Owner to eyeball: pill should be present on first paint for entity datasets.
+
 ## 2026-06-25 — TextMine Themes page: remove the scope-wide Entities card
 
 **Why** (owner): the big **Entities** panel ("179 found · brand-wide" — the scope-wide `EntitiesCard`) rendered on the Themes view as a leftover from before entities had a home. Now that **Entities is a dedicated peer section**, that panel is redundant on the Themes page.

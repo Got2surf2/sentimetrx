@@ -165,6 +165,7 @@ interface Props {
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
   outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
+  initialHasEntities?: boolean  // server-prefetched (scope has ≥1 non-hidden catalog entity) so the Entities pill doesn't pop in after the client catalog fetch; only seeds the gate while that fetch is in flight, then the live catalog governs
 }
 
 
@@ -978,7 +979,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor, outletCount }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
@@ -1143,7 +1144,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [restoredFromSession, activeField, activeFields, section, view, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
   // Whether a section tab is reachable for this dataset (mirrors the row-1 gates).
-  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, hasEntities: entityCatalogRows.length > 0, outletCount: outletCount }
+  // hasEntities: the live client catalog governs once loaded; while that fetch
+  // is still in flight, fall back to the server-prefetched flag so the Entities
+  // pill renders on first paint instead of popping in (steady state unchanged —
+  // if the catalog comes back empty, the pill drops as before).
+  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities), outletCount: outletCount }
   function sectionAvailable(s: Section): boolean {
     return availableSections(sectionGate).indexOf(s) >= 0
   }
