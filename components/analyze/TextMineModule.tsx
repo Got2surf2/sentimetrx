@@ -2282,17 +2282,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         )
                       })()}
 
-                      {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
-                      <EntitiesCard
-                        entities={entityCatalogRows}
-                        totalDistinct={entityCatalogTotal}
-                        scopeType={entityCatalogScopeType}
-                        loading={entityCatalogLoading}
-                        error={entityCatalogError}
-                        onDrillEntity={handleDrillEntity}
-                        ratings={entityRatings.byEntity}
-                        overallRating={entityRatings.overall}
-                      />
+                      {/* ── Entities — scope-wide, click an entity to read its comments.
+                          Only on the Entities section (its Overview home); not on the
+                          Themes page, which has a dedicated Entities section now. ─── */}
+                      {viewBy === 'entity' && (
+                        <EntitiesCard
+                          entities={entityCatalogRows}
+                          totalDistinct={entityCatalogTotal}
+                          scopeType={entityCatalogScopeType}
+                          loading={entityCatalogLoading}
+                          error={entityCatalogError}
+                          onDrillEntity={handleDrillEntity}
+                          ratings={entityRatings.byEntity}
+                          overallRating={entityRatings.overall}
+                        />
+                      )}
 
                       {/* ── Distribution view ─── */}
                       {viewBy === 'theme' && themesView === 'distribution' && (

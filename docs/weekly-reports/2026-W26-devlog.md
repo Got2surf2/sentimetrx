@@ -1,5 +1,11 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-25 — TextMine Themes page: remove the scope-wide Entities card
+
+**Why** (owner): the big **Entities** panel ("179 found · brand-wide" — the scope-wide `EntitiesCard`) rendered on the Themes view as a leftover from before entities had a home. Now that **Entities is a dedicated peer section**, that panel is redundant on the Themes page.
+
+**What changed** (`components/analyze/TextMineModule.tsx`): gated the `<EntitiesCard>` render on `viewBy === 'entity'` — it was unconditional, so it leaked onto the Themes view *and* the Entities section. Now it shows only on the **Entities** section (its Overview home), matching what ANALYTICS.md already documented (Entities×Overview = stat strip + EntitiesCard). One-line gate; nothing else touched — the per-theme-card "Items mentioned" chip rows stay. `docs/ANALYTICS.md` synced (Themes view bullet corrected). tsc clean. LOCAL/unpushed.
+
 ## 2026-06-25 — StoryTime cream migration: THE FLIP — export route now renders entirely through the shared cream renderer
 
 **Why** (final step of the StoryTime report → shared cream-renderer migration): the export route (`/api/datasets/[datasetId]/export/pptx`) built its own ~2,000-line bank of bespoke navy/gold slide builders. With all cream `SlideSpec` kinds now in `lib/pptx/slideRenderer.ts` (prior commits `1f1c30d9`, `fac1d8a8`), the route's build phase is flipped onto `renderDeck` in one commit — so the StoryTime report now shares the exact cream styling (single source of truth) as every other `renderDeck` export, with larger fonts.

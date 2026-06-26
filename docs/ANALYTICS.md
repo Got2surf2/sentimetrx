@@ -37,7 +37,7 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
 - Dual color mode: sentiment gradient vs rating gradient
 - Sampling control with 95% confidence margin-of-error display
 - Breakdown by any categorical field (by group / by theme views)
-- Hosts the **Entities** card (catalog rendered scope-wide; see Entity Discovery below)
+- The scope-wide **Entities** card is **not** hosted here — it lives on the dedicated **Entities** section (Entities×Overview; see Entity Discovery below). The Themes view no longer duplicates it.
 
 **2. Theme Clouds**
 - One word cloud per theme — the words that appear most often inside that theme's matched comments
