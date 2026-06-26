@@ -32,8 +32,13 @@ function fmtDate(iso: string | null): string {
 }
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
-const CARD = 'background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:14px'
-const H2 = 'font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:' + MUTE + ';margin:34px 0 14px'
+// break-inside:avoid keeps a whole card (header + its samples) on one printed
+// page instead of splitting it across the fold; break-after:avoid stops a
+// section heading from being orphaned at the bottom of a page. Both are inert in
+// the interactive page (no pagination) and only shape the PDF.
+const NOBREAK = 'break-inside:avoid;page-break-inside:avoid'
+const CARD = 'background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:14px;' + NOBREAK
+const H2 = 'font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:' + MUTE + ';margin:34px 0 14px;break-after:avoid;page-break-after:avoid'
 
 // A compact three-segment sentiment bar (positive / neutral / negative) sized to
 // the theme's tally. Neutral is the default for unscored turns, so most bars
@@ -135,7 +140,7 @@ function readoutBody(r: AgentReadout, expand: boolean): string {
     + (q.main.length ? q.main.map(t => questionThemeCard(t, expand)).join('') : `<div style="font-size:13px;color:${MUTE}">No themed questions yet.</div>`)
     + singletonFooter(q.singletons, 'Also asked about, once:')
     + `<div style="${H2}">Raised beyond the questions</div>`
-    + `<div style="font-size:13px;color:${MUTE};margin:-8px 4px 14px">What participants volunteered on their own — observations, concerns, suggestions, and opinions beyond what they asked.</div>`
+    + `<div style="font-size:13px;color:${MUTE};margin:-8px 4px 14px;break-after:avoid;page-break-after:avoid">What participants volunteered on their own — observations, concerns, suggestions, and opinions beyond what they asked.</div>`
     + (b.main.length ? b.main.map(t => beyondThemeCard(t, expand)).join('') : `<div style="font-size:13px;color:${MUTE}">No volunteered comments yet.</div>`)
     + singletonFooter(b.singletons, 'Also raised, once:')
     + `<div style="font-size:11.5px;color:${MUTE};margin-top:28px;line-height:1.5;border-top:1px solid #e5e7eb;padding-top:14px">${esc(r.meta.method)}</div>`

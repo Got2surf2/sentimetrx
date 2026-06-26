@@ -34,7 +34,7 @@ export function buildReadoutDeck(readout: AgentReadout): DeckSpec {
   if (r.summary.overview || r.summary.takeaways.length) {
     slides.push({
       type: 'bullets',
-      title: 'What we heard',
+      title: 'Executive summary',
       subtitle: `Based on ${r.scope.conversations} conversation${r.scope.conversations === 1 ? '' : 's'} · ${fmtDate(r.range.first)} – ${fmtDate(r.range.last)}`,
       bullets: r.summary.takeaways.slice(0, 6).map(t => t.slice(0, 240)),
       insight: r.summary.overview || undefined,
@@ -61,7 +61,7 @@ export function buildReadoutDeck(readout: AgentReadout): DeckSpec {
         total: r.scope.questions,
         sentiment: sentimentLabel(t.sentiment),
       })),
-      insight: qMain.length > 5 ? `Showing the 5 largest of ${qMain.length} question themes; the full set is in the bar chart and the readout.` : undefined,
+      insight: qMain.length > 5 ? `Showing the 5 largest of ${qMain.length} question themes; the full set is in the bar chart and the full report.` : undefined,
     })
   }
 
@@ -93,7 +93,7 @@ export function buildReadoutDeck(readout: AgentReadout): DeckSpec {
   // 4. Methodology
   slides.push({
     type: 'bullets',
-    title: 'How this readout was made',
+    title: 'How this report was made',
     subtitle: 'Method & provenance',
     bullets: [
       `${r.scope.questions} question${r.scope.questions === 1 ? '' : 's'} and ${r.scope.beyondComments} volunteered comment${r.scope.beyondComments === 1 ? '' : 's'} themed across ${r.scope.conversations} conversation${r.scope.conversations === 1 ? '' : 's'}.`,
@@ -102,7 +102,7 @@ export function buildReadoutDeck(readout: AgentReadout): DeckSpec {
         ? `Themes are hybrid: a question matching one of the agent's ${r.scope.focusesConfigured} focus areas is filed there; anything outside is themed from the message itself and near-duplicate themes are merged.`
         : 'Themes are mined directly from the messages; near-duplicate themes are merged.',
       'Sentiment is the per-message reading. Non-English messages are themed on their translation.',
-      'Single-mention themes are summarized in the readout but omitted from these charts as tail noise.',
+      'Single-mention themes are summarized in the full report but omitted from these charts as tail noise.',
     ],
   })
 

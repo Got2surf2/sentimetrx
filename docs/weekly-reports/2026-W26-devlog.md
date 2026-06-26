@@ -401,3 +401,12 @@
 - `app/bots/BotsClient.tsx` — added a "Readout" link to each agent card footer (next to Report) → `/bots/[id]/readout`.
 - FEATURES.md § Agents › Conversation Analytics — added the Conversation Readout (and backfilled the Agent Study, which was missing) to the inventory.
 - **Agent Conversation Readout COMPLETE across Phases 1–5, all LOCAL/unpushed.** Generic per-agent template (`bot.config.readoutTitle` override); NOWOCATS/Sarina verified end-to-end (compute → HTML page → PDF → PPTX, each pixel-QC'd). Net-new: `lib/agentReadout.ts`, `lib/agentReadoutHtml.ts`, `lib/pptx/agentReadoutDeck.ts`, `sql/134_agent_readout_cache.sql` (applied to prod), routes under `/api/bots/[id]/readout{,/pdf,/pptx}`, page `/bots/[id]/readout`. Reuses the Agent Study's review gate + turn loading (helpers exported, zero drift). NEXT (owner): click through Sarina's Readout in the UI; consider wiring the LLM-tier title for non-civic agents; optionally tighten the comment classifier to cut the few tail "factual aside" mis-tags.
+
+## 2026-06-26 — "What We Heard" rename + PDF page-break fix (Readout follow-up)
+
+**Why** (owner): (1) the card's "Report" (Agent Study) and the new "Readout" were too similar — owner kept "Report" and renamed the community one to **"What We Heard"**; (2) the readout PDF split cards across page folds and orphaned section headings ("a mess").
+
+**What changed** (user-facing strings only — internal `readout` slug/route/files/`agent_readout_cache` table stay, per the slug-stays convention):
+- Rename: card link "Readout" → **"What We Heard"**; default title `"{Agent} — Conversation Readout"` → `"{Agent} — What We Heard"` (cacheKey hashes the title, so it self-recomputes); loader copy; deck slide "What we heard" → "Executive summary", "How this readout was made" → "How this report was made", and two in-deck "readout"→"full report" mentions. Export filenames flow from the title (`Sarina_What_We_Heard.pdf/.pptx`). BOTS.md/FEATURES.md note the UI label vs internal slug.
+- **PDF page-breaks** (`lib/agentReadoutHtml.ts`): added `break-inside:avoid;page-break-inside:avoid` to every card and `break-after:avoid` to section headings + the beyond-section subtitle. A card that won't fit now moves WHOLE to the next page; headings never orphan at a page bottom. Inert on the interactive page.
+- **Verified**: re-rendered Sarina's PDF (now titled "Sarina — What We Heard") — pages start on a section header, hold complete cards, push overflow cards intact to the next page (confirmed across question + beyond sections). tsc clean. LOCAL/unpushed.

@@ -209,8 +209,10 @@ function cacheKeyFor(pairTotal: number, bot: BotRow, title: string): string {
   return h.digest('hex').slice(0, 16)
 }
 
+// User-facing report name is "What We Heard" (the internal feature / route /
+// table / file names stay "readout" per the project's slug-stays convention).
 function defaultTitle(botName: string): string {
-  return `${botName} — Conversation Readout`
+  return `${botName} — What We Heard`
 }
 
 // ── Main: getAgentReadout (compute-if-stale, cached) ──────────────────────────

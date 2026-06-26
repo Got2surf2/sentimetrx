@@ -422,10 +422,10 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                     </a>
                     <a
                       href={'/bots/' + bot.id + '/readout'}
-                      style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s' }}
+                      style={{ color: '#9ca3af', textDecoration: 'none', transition: 'color 0.15s', whiteSpace: 'nowrap' }}
                       onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#374151' }}
                       onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = '#9ca3af' }}>
-                      Readout
+                      What We Heard
                     </a>
                     <a
                       href={'/bots/' + bot.id + '/questions'}

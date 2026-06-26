@@ -16,8 +16,8 @@ import LottieLoader from '@/components/ui/LottieLoader'
 const MUTE = '#6b7280'
 const TEAL = '#0F7173'
 
-// File-safe stem from the report title (e.g. "Sarina — Conversation Readout"
-// → "Sarina_Conversation_Readout").
+// File-safe stem from the report title (e.g. "Sarina — What We Heard"
+// → "Sarina_What_We_Heard").
 function fileStem(title: string): string {
   return (title || 'Agent_Readout').replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'Agent_Readout'
 }
@@ -68,7 +68,7 @@ export default function ReadoutClient() {
 
   if (loading) {
     return <div style={{ maxWidth: 860, margin: '0 auto', padding: '64px 24px', textAlign: 'center' }}>
-      <LottieLoader message="Building the conversation readout…" />
+      <LottieLoader message="Building What We Heard…" />
     </div>
   }
   if (error || !readout) {
