@@ -392,3 +392,12 @@
 - `lib/pptx/agentReadoutDeck.ts` — `buildReadoutDeck(readout)` → DeckSpec via the shared `slideRenderer` (brand label = agent name): cover → "What we heard" (takeaways + overview callout) → section + bar_chart + theme_cards (top 5, share% + sentiment badge) for Questions by theme → section + bar_chart + comments_grid (≤8 sentiment-accented verbatims) for Beyond the questions → "How this readout was made". Reuses existing slide types only.
 - `POST /api/bots/[id]/readout/pptx` — auth + org-gated; renders + returns the .pptx (filename from title).
 - **Verified**: rendered Sarina's deck (9 slides) → LibreOffice→PNG pixel-QC. Caught + fixed a theme_cards overflow (requested 6, layout holds 5 → capped at 5, footer updated). Cover (datanautix wordmark, navy+orange), bar charts (all 12 main themes, %/n), 5 share cards, 8 verbatim cards with sentiment-colored strips + theme pills — all clean. tsc clean, eslint 0 errors. BOTS.md updated. Phase 5 (agent-card link) next. LOCAL/unpushed.
+
+## 2026-06-26 — Agent Conversation Readout: card link + FEATURES (Phase 5, COMPLETE)
+
+**Why**: make the Readout discoverable and close out the feature inventory.
+
+**What changed**:
+- `app/bots/BotsClient.tsx` — added a "Readout" link to each agent card footer (next to Report) → `/bots/[id]/readout`.
+- FEATURES.md § Agents › Conversation Analytics — added the Conversation Readout (and backfilled the Agent Study, which was missing) to the inventory.
+- **Agent Conversation Readout COMPLETE across Phases 1–5, all LOCAL/unpushed.** Generic per-agent template (`bot.config.readoutTitle` override); NOWOCATS/Sarina verified end-to-end (compute → HTML page → PDF → PPTX, each pixel-QC'd). Net-new: `lib/agentReadout.ts`, `lib/agentReadoutHtml.ts`, `lib/pptx/agentReadoutDeck.ts`, `sql/134_agent_readout_cache.sql` (applied to prod), routes under `/api/bots/[id]/readout{,/pdf,/pptx}`, page `/bots/[id]/readout`. Reuses the Agent Study's review gate + turn loading (helpers exported, zero drift). NEXT (owner): click through Sarina's Readout in the UI; consider wiring the LLM-tier title for non-civic agents; optionally tighten the comment classifier to cut the few tail "factual aside" mis-tags.
