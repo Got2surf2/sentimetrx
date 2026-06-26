@@ -105,7 +105,7 @@ export interface AgentStudy {
   }
 }
 
-interface Turn {
+export interface Turn {
   session_id: string
   turn_number: number
   role: string
@@ -138,7 +138,10 @@ function isLeakedTurn(t: Turn): boolean {
 }
 
 // ── Turn loading (substrate-aware, mirrors insights-deck route) ──────────────
-async function loadTurns(service: any, botId: string): Promise<Turn[]> {
+// Exported so the Agent Conversation Readout (lib/agentReadout.ts) loads turns,
+// groups sessions, applies the review gate, and shapes exchanges through the
+// EXACT same code path — the two reports must never drift on what counts.
+export async function loadTurns(service: any, botId: string): Promise<Turn[]> {
   let rows: Turn[]
   if (isPhase3ReadSafe()) {
     const { data } = await service
@@ -167,9 +170,9 @@ async function loadTurns(service: any, botId: string): Promise<Turn[]> {
 }
 
 // ── Session / exchange shaping ───────────────────────────────────────────────
-interface Exchange { sessionId: string; question: Turn; answer: Turn | null }
+export interface Exchange { sessionId: string; question: Turn; answer: Turn | null }
 
-function groupSessions(turns: Turn[]): Map<string, Turn[]> {
+export function groupSessions(turns: Turn[]): Map<string, Turn[]> {
   const m = new Map<string, Turn[]>()
   for (const t of turns) {
     if (!m.has(t.session_id)) m.set(t.session_id, [])
@@ -181,7 +184,7 @@ function groupSessions(turns: Turn[]): Map<string, Turn[]> {
 // Apply the human-in-the-loop review gate: drop sessions a human excluded, or
 // that auto-flag as troll/bot/wholly-off-topic and a human hasn't approved.
 // Returns the included sessions + how many were excluded for review. One query.
-async function partitionByReview(service: any, botId: string, sessions: Map<string, Turn[]>): Promise<{ included: Map<string, Turn[]>; flaggedExcluded: number }> {
+export async function partitionByReview(service: any, botId: string, sessions: Map<string, Turn[]>): Promise<{ included: Map<string, Turn[]>; flaggedExcluded: number }> {
   let human = new Map<string, 'approved' | 'excluded'>()
   try {
     const { data } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', botId)
@@ -205,7 +208,7 @@ async function partitionByReview(service: any, botId: string, sessions: Map<stri
 // A normalized "pair" = a substantive user turn matched to the next assistant
 // turn as its answer. Trivial turns are excluded so "Learn"/"Yes" never count
 // as engagement depth or get classified into a focus.
-function buildExchanges(sessionTurns: Turn[]): Exchange[] {
+export function buildExchanges(sessionTurns: Turn[]): Exchange[] {
   const out: Exchange[] = []
   for (let i = 0; i < sessionTurns.length; i++) {
     const t = sessionTurns[i]
@@ -217,7 +220,7 @@ function buildExchanges(sessionTurns: Turn[]): Exchange[] {
   return out
 }
 
-function text(t: Turn): string { return (t.content_en || t.content || '').trim() }
+export function text(t: Turn): string { return (t.content_en || t.content || '').trim() }
 
 // ── Tier 1: health (no AI) ───────────────────────────────────────────────────
 function computeHealth(sessions: Map<string, Turn[]>, impressions: { created_at: string }[], openQuestionCount: number): AgentHealth {
@@ -307,7 +310,7 @@ export async function getAgentHealth(botId: string): Promise<AgentHealth> {
 }
 
 // ── Tier 2: focus + entity classification (AI, batched) ──────────────────────
-async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+export async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length)
   let cursor = 0
   async function worker() {
