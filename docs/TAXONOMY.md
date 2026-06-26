@@ -92,7 +92,13 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
   per-sub mention rates, sentiment per sub, alert tag counts, and **avg star rating per
-  axis / per sub + an overall avg**. The rating field is **detected dynamically** from
+  axis / per sub + an overall avg**. The per-axis / per-sub averages are over the
+  classified (text-tagged) rows that carry that dimension (inherently text-scoped). The
+  **overall avg ★, however, is over ALL rated rows** — `computeTaxonomyRollup` overrides
+  `aggregateTaxonomy`'s classified-rows mean with an all-rows average from the same
+  `numeric_field_stats` / `field_aliased_avg` RPCs the metric strip uses, under the standing
+  **"ratings = all reviews"** principle (the Dimensions overall ★ ties back to Google /
+  exports; it's display-only, so per-axis colouring is unaffected). The rating field is **detected dynamically** from
   `dataset_state.schema_config` (the first numeric field tagged `sqt` rating/nps/likert or
   `scoreField` — the same rule the metric strip uses), not a hardcoded `rating` key, so it
   works for surveys whose rating lives under an arbitrary question-text key. **Remapped

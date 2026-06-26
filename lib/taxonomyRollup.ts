@@ -188,5 +188,22 @@ export async function computeTaxonomyRollup(opts: {
     from += data.length
     if (data.length < PAGE) break
   }
-  return aggregateTaxonomy(all, topSubs)
+  const rollup = aggregateTaxonomy(all, topSubs)
+
+  // Overall avg rating = ALL rated rows, not just the classified subset
+  // aggregateTaxonomy sees (the "ratings = all reviews" principle — the
+  // Dimensions overall ★ ties back to Google/exports). Per-axis/per-sub
+  // avgRating stay dimension-scoped (text-classified). Same all-rows RPCs the
+  // metric strip uses; leave the classified-rows fallback if the RPC returns 0.
+  try {
+    const { data: ns } = aliases
+      ? await service.rpc('field_aliased_avg', { p_dataset_id: datasetId, p_field: ratingField, p_present_field: '', p_aliases: aliases })
+      : await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: ratingField })
+    const row = Array.isArray(ns) ? ns[0] : null
+    if (row && Number(row.n) > 0 && row.avg_val != null) {
+      rollup.overallAvgRating = Math.round(Number(row.avg_val) * 100) / 100
+    }
+  } catch { /* keep the classified-rows overall if the all-rows RPC fails */ }
+
+  return rollup
 }
