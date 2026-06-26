@@ -95,16 +95,20 @@ The TextMine strip ("N records · M signals · theme-fit X% · K themes · ★ R
 are added in the `signal-stats` route (not the cached compute). The date range comes from
 `datasets.description.start_date/end_date`; the **avg rating** detects the dataset's rating field from
 `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField` — the same rule TextMine uses) and
-averages it over the **same population as `records`** — the rows carrying the theme-source text (the
-*analyzed* reviews) — via `numeric_field_stats_present(ratingField, themeSourceField)` (sql/107).
-**Remapped rating fields** (a survey scale tagged numeric whose stored values are text labels mapped to
-numbers via the field's `valueAliases`, e.g. "Highly Satisfied"→5) are detected (any numeric alias value)
-and averaged via `field_aliased_avg(field, presentField, aliases)` (sql/110) — which maps each label to its
-number before averaging, since the raw value is the label (numeric_field_stats would cast nothing). This
-matters: averaging *every* rated row pulls the number above the per-theme/dimension baseline because
-text-less reviews are mostly silent 5-stars (Cheddar's: all rated ★4.14 vs analyzed ★3.90 — and 3.90 is
-what the Dimensions tab + theme cards show, so they reconcile). Falls back to plain `numeric_field_stats`
-when there's no theme model. Read via the RLS-enforced user client (org-safe, no row scan); shown only when present. `records` is the
+averages it over **ALL rated rows** (every review with a rating, including rating-only reviews with no
+comment) via `numeric_field_stats(ratingField)` — so the headline number **ties back to the rating shown
+on Google and in a downloaded export.** This is the standing **"ratings = all reviews"** principle: any
+*overall/aggregate/location* rating is over all reviews; only *per-theme / per-entity / per-dimension*
+ratings are text-scoped (you can only attribute a theme to a review with words), so those can sit slightly
+below this headline — the real "comment-leavers rate lower" gap (e.g. Cheddar's all-rated ★4.14 vs
+comment-only ★3.90), not a reconciliation bug. **Remapped rating fields** (a survey scale tagged numeric
+whose stored values are text labels mapped to numbers via the field's `valueAliases`, e.g. "Highly
+Satisfied"→5) are detected (any numeric alias value) and averaged via `field_aliased_avg(field, '', aliases)`
+(sql/110, `presentField=''` = no text gate) — which maps each label to its number before averaging, since
+the raw value is the label (numeric_field_stats would cast nothing). (Earlier this strip was deliberately
+text-only via `numeric_field_stats_present` so it matched the theme/dimension numbers; that was reversed
+under the all-reviews principle — the theme/dimension deltas now compare against this all-reviews baseline,
+see `recountThemes` below.) Read via the RLS-enforced user client (org-safe, no row scan); shown only when present. `records` is the
 **max** non-empty count across the saved theme model's fields (summed across
 collection members); `signals` / `inThemes` come from `count_theme_matches`.
 Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**

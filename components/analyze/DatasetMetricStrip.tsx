@@ -137,7 +137,7 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
         return (
           <>
             <span style={{ color: '#d1d5db' }}>·</span>
-            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across the ' + stats.records.toLocaleString() + ' analyzed reviews (those with text — out of ' + max + '). This is the baseline the per-theme and per-dimension ratings compare against; rating-only reviews with no text are excluded so it matches the theme/dimension numbers.'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across ALL reviews with a rating (out of ' + max + '), including rating-only reviews with no comment — so it ties back to the rating shown on Google and in a downloaded export. Per-theme and per-dimension ratings are computed only over reviews that have comment text, so they can sit slightly below this number (comment-leavers tend to rate lower).'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: color }}>{'★'}</span>
               <strong style={{ color: '#111827' }}>{stats.avgRating!.toFixed(1)}</strong>
               <span style={{ color: '#6b7280' }}>avg rating</span>

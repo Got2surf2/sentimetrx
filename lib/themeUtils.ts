@@ -157,11 +157,16 @@ export function recountThemes(
     }
   }
 
-  // Compute overall avg rating (for delta calculation)
+  // Overall avg rating — the baseline each theme's rating delta compares against.
+  // Averaged over ALL rated rows (not just the text-bearing `nonEmpty` set), so
+  // the baseline matches the all-reviews headline rating users see (and Google).
+  // A theme's own avgRating stays theme-scoped (text-bearing matches only), so a
+  // theme can read below this baseline — that's the real "comment-leavers rate
+  // lower" signal, not a bug.
   let overallAvg = 0
   if (ratingField) {
     let sum = 0, cnt = 0
-    for (const r of nonEmpty) {
+    for (const r of rows) {
       const v = parseFloat(String(r[ratingField] ?? ''))
       if (!isNaN(v)) { sum += v; cnt++ }
     }

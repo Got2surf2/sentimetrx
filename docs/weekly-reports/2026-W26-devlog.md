@@ -1,5 +1,18 @@
 # 2026-W26 — Dev log (Week of Jun 22 to Jun 28)
 
+## 2026-06-26 — Ratings = all reviews (principle) — roots A + B (TextMine core)
+
+**Why** (owner): the TextMine strip showed ★4.4 (computed over text-bearing "analyzed" reviews only) while the Compare coloring baseline was already over all rated rows (~4.5), so a 4.4 location read red. Worse, the strip number never tied back to the rating a client sees on Google or in a downloaded CSV. Decision (after a comprehensive 4-agent rating audit): adopt **"ratings = all reviews, always"** — every overall/aggregate/location rating averages over all rated rows (rating-only reviews included); only per-theme/entity/dimension ratings stay text-scoped, by necessity.
+
+**The audit found 4 root computations that were text-only and would change** (A: signal-stats strip; B: `recountThemes.overallAvg` theme-delta baseline; C: `taxonomyRollup.overallAvgRating`; D: `outletPredictor` chainAvg/o.avg → Brand Health + 4 client decks). Everything else was already all-reviews (CompareTab/EntityCompareTab/Breakdown `overallRatAvg`, `entityRatings.overall`, `diligenceData.blendedRating`, the in-product outlet report) or legitimately scoped (per-theme/entity/dimension ratings, problem-rate/lift/net) or external (competitorBenchmark = Google).
+
+**Shipped here — roots A + B (the verifiable TextMine core):**
+- **A — strip → all reviews** (`signal-stats/route.ts`): swapped `numeric_field_stats_present` / `field_aliased_avg(present=textField)` for `numeric_field_stats` / `field_aliased_avg(present='')`. The strip now averages all rated rows; tooltip reworded (`DatasetMetricStrip.tsx`) to say it ties to Google and that per-theme/dimension ratings are text-scoped (so they can sit below it).
+- **B — theme-delta baseline → all reviews** (`lib/themeUtils.ts` `recountThemes`): `overallAvg` now averages the rating field over all input `rows`, not just the text-bearing `nonEmpty` set. Per-theme `avgRating` stays theme-scoped; only the delta baseline moved, so theme cards/WordCloud deltas now compare against the same all-reviews headline. (Note: `ratingDelta` is recomputed by `recountThemes` on load, but the value persisted in `theme_model` is stale until themes are re-run — affects the share view / decks that read persisted deltas.)
+- tsc clean, 966 unit tests pass, ANALYTICS.md rating-semantics block rewritten. LOCAL/unpushed.
+
+**Deferred — roots C + D (NOT done here, by design):** these rewrite **client-deck rating denominators** (Dimensions overall, Brand-Health header, the improvement/outlet/operational decks) which per the deck-number-credibility rule must reconcile and can't be verified headlessly. C needs an all-rows average plumbed into `computeTaxonomyRollup` (it only sees classified rows); D needs the predictor to read `outletReport`'s existing all-rows `ratingSum/ratingN` instead of averaging the text-only `reviewMatrix`, keeping the text-bearing set for problem-rate/lift. Awaiting owner go-ahead for that deeper tier + real-data deck QC.
+
 ## 2026-06-25 — TextMine Compare By-Group: segment-level avg rating in the card header
 
 **Why** (owner, on Rubio's): in Themes → Compare → By Group, each theme *row* shows its avg rating, but the location *card header* ("San Diego, California — 15% of dataset · 1,429 responses") had no **location-level** overall rating, so you couldn't see how a whole outlet rates at a glance.

@@ -35,36 +35,34 @@ export async function GET(_req: Request, props: Props) {
     if (parsed?.end_date) dateMax = parsed.end_date
   } catch { /* description not JSON — leave the range unset */ }
 
-  // Overall average of the dataset's rating field — the baseline the per-theme /
-  // per-dimension ratings compare against. It must average over the SAME
-  // population as `records` (the rows carrying the theme-source text, i.e. the
-  // analyzed reviews) — NOT every rated row. On review datasets the text-less
-  // rows are mostly silent 5-stars that pull a plain average above what the
-  // theme/dimension ratings reflect (Cheddar's: all rated ★4.14 vs analyzed
-  // ★3.90). The schema + theme model are read via the RLS user client
-  // (org-enforced, like the dates); only then do we run the service-role RPC.
+  // Overall average of the dataset's rating field — over ALL rated rows (every
+  // review with a rating), NOT just the text-bearing "analyzed" subset. This is
+  // the standing principle: rating numbers shown to users must tie back to what
+  // they'd see on Google and in a downloaded CSV, so rating-only reviews (a star,
+  // no comment) ARE counted. (Per-theme / per-dimension ratings remain text-scoped
+  // by necessity — you can only attribute a theme to a review with words — so they
+  // can sit slightly below this all-reviews headline; that gap is real, not a bug:
+  // the people who write comments tend to rate lower.) The schema is read via the
+  // RLS user client (org-enforced, like the dates); only then the service-role RPC.
   // Optional: absent for datasets with no rating-type field (open-text surveys).
   let avgRating: number | null = null, ratingMax: number | null = null, ratingLabel: string | null = null
   try {
     const { data: stateRow } = await supabase
-      .from('dataset_state').select('schema_config, theme_model').eq('dataset_id', params.datasetId).maybeSingle()
-    const sr = stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean; valueAliases?: Record<string, string> }> }; theme_model?: { fieldName?: string; fieldNames?: string[] } } | null
+      .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).maybeSingle()
+    const sr = stateRow as { schema_config?: { fields?: Array<{ field: string; label?: string; type?: string; sqt?: string; scoreField?: boolean; valueAliases?: Record<string, string> }> } } | null
     const fields = sr?.schema_config?.fields || []
     const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
-    // The field whose presence marks an "analyzed review" — the theme-source text.
-    const textField = sr?.theme_model?.fieldNames?.[0] || sr?.theme_model?.fieldName || null
     if (rf) {
       // A "remapped" rating field stores text labels mapped to numbers via
       // valueAliases ({"Highly Satisfied":"5",…}). Its raw value is the label,
       // so numeric_field_stats casts nothing — apply the alias map first.
+      // `p_present_field: ''` = no text gate → average over all rated rows.
       const aliases = rf.valueAliases
       const isRemapped = !!aliases && typeof aliases === 'object'
         && Object.values(aliases).some(v => /^-?[0-9]+\.?[0-9]*$/.test(String(v)))
       const { data: ns } = isRemapped
-        ? await service.rpc('field_aliased_avg', { p_dataset_id: params.datasetId, p_field: rf.field, p_present_field: textField || '', p_aliases: aliases })
-        : textField
-          ? await service.rpc('numeric_field_stats_present', { p_dataset_id: params.datasetId, p_field_key: rf.field, p_present_field: textField })
-          : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
+        ? await service.rpc('field_aliased_avg', { p_dataset_id: params.datasetId, p_field: rf.field, p_present_field: '', p_aliases: aliases })
+        : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
       const row = Array.isArray(ns) ? ns[0] : null
       if (row && Number(row.n) > 0 && row.avg_val != null) {
         avgRating = Math.round(Number(row.avg_val) * 100) / 100
