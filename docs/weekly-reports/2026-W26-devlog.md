@@ -383,3 +383,12 @@
 - `GET /api/bots/[id]/readout` (auth + org-gated, `?force=1`, 503 on AI timeout — mirrors `/study`). Interactive page `/bots/[id]/readout` (server wrapper + `ReadoutClient`): Lottie loader → fetch → inject fragment, with Refresh / PDF / PPTX toolbar.
 - `POST /api/bots/[id]/readout/pdf` — headless Chrome (`@sparticuz/chromium` on Linux, local Chrome on macOS, keyed off `process.platform`). Added its `bin/**` to `next.config.js` `outputFileTracingIncludes` (per-PDF-route, else prod 500).
 - **Verified**: rendered Sarina's readout to PDF (local Chrome) and pixel-QC'd page-by-page — clean header + datanautix wordmark + honest "Based on 49 conversations" line, summary card + 6 grounded takeaways, focus/emergent theme cards with sentiment bars + sample questions, orange verbatim cards for the beyond-themes (Safety 10c, Traffic & Congestion 8c, Transit & Mobility 6c). tsc clean, eslint 0 errors (only house-style warnings matching ReportClient). BOTS.md updated. Phases 4–5 (PPTX, card link) next. LOCAL/unpushed.
+
+## 2026-06-26 — Agent Conversation Readout: PPTX deck (Phase 4)
+
+**Why**: a presentable Datanautix-branded leave-behind for the NOWOCATS town-hall stakeholders (the meeting/email artifact alongside the page + PDF).
+
+**What changed**:
+- `lib/pptx/agentReadoutDeck.ts` — `buildReadoutDeck(readout)` → DeckSpec via the shared `slideRenderer` (brand label = agent name): cover → "What we heard" (takeaways + overview callout) → section + bar_chart + theme_cards (top 5, share% + sentiment badge) for Questions by theme → section + bar_chart + comments_grid (≤8 sentiment-accented verbatims) for Beyond the questions → "How this readout was made". Reuses existing slide types only.
+- `POST /api/bots/[id]/readout/pptx` — auth + org-gated; renders + returns the .pptx (filename from title).
+- **Verified**: rendered Sarina's deck (9 slides) → LibreOffice→PNG pixel-QC. Caught + fixed a theme_cards overflow (requested 6, layout holds 5 → capped at 5, footer updated). Cover (datanautix wordmark, navy+orange), bar charts (all 12 main themes, %/n), 5 share cards, 8 verbatim cards with sentiment-colored strips + theme pills — all clean. tsc clean, eslint 0 errors. BOTS.md updated. Phase 5 (agent-card link) next. LOCAL/unpushed.
