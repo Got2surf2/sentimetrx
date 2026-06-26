@@ -79,6 +79,8 @@ export default function QuestionsClient({
   const [tab, setTab] = useState<'all' | 'open'>('all')
   const [savingId, setSavingId] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({})
+  const [answerDraft, setAnswerDraft] = useState<Record<string, string>>({})
+  const [answeringId, setAnsweringId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/bots/' + botId + '/questions')
@@ -109,6 +111,29 @@ export default function QuestionsClient({
       alert('Update failed: ' + (e?.message || 'network error'))
     } finally {
       setSavingId(null)
+    }
+  }
+
+  // Answer the question AND feed it into the agent's knowledge base in one call.
+  // Idempotent per question — saving again corrects (re-embeds) the same chunk.
+  async function saveAnswer(qId: string, answer: string) {
+    setAnsweringId(qId)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/questions/' + qId + '/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer }),
+      })
+      const d = await r.json()
+      if (d?.question) {
+        setQuestions(prev => prev.map(q => q.id === qId ? d.question : q))
+      } else if (d?.error) {
+        alert('Save failed: ' + d.error)
+      }
+    } catch (e: any) {
+      alert('Save failed: ' + (e?.message || 'network error'))
+    } finally {
+      setAnsweringId(null)
     }
   }
 
@@ -212,6 +237,9 @@ export default function QuestionsClient({
               const st = STATUS_STYLES[q.status] || { bg: '#f3f4f6', text: '#374151', label: q.status }
               const noteDraft = notesDraft[q.id] ?? (q.notes || '')
               const noteDirty = noteDraft !== (q.notes || '')
+              const ansDraft = answerDraft[q.id] ?? (q.suggested_kb_addition || '')
+              const ansDirty = ansDraft !== (q.suggested_kb_addition || '')
+              const hasKb = !!q.suggested_kb_addition
               return (
                 <div key={q.id} className='p-4'>
                   <div className='flex items-start gap-3 flex-wrap'>
@@ -221,6 +249,11 @@ export default function QuestionsClient({
                     <span className='px-2 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap' style={{ background: st.bg, color: st.text }}>
                       {st.label}
                     </span>
+                    {hasKb && (
+                      <span className='px-2 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap' style={{ background: '#d1fae5', color: '#065f46' }} title='This answer is in the agent knowledge base and the agent can use it.'>
+                        ✓ In knowledge base
+                      </span>
+                    )}
                     {q.language && (
                       <span className='px-2 py-0.5 rounded-md text-xs font-medium text-gray-600 bg-gray-100 uppercase'>{q.language}</span>
                     )}
@@ -254,6 +287,34 @@ export default function QuestionsClient({
                       </button>
                     ))}
                     {savingId === q.id && <span className='text-gray-400'>saving…</span>}
+                  </div>
+
+                  {/* Answer → feeds the agent's knowledge base (correction loop) */}
+                  <div className='mt-3'>
+                    <label className='block text-xs font-medium text-gray-600 mb-1'>
+                      {hasKb ? 'Correct the answer (re-trains the agent)' : 'Answer this — the agent learns it for next time'}
+                    </label>
+                    <textarea
+                      value={ansDraft}
+                      onChange={e => setAnswerDraft(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      placeholder='Type the answer the agent should give next time…'
+                      style={{ fontSize: '16px' }}
+                      className='w-full border border-gray-200 rounded-md p-2 resize-y min-h-[56px] focus:outline-none focus:border-emerald-400'
+                    />
+                    <div className='mt-1 flex gap-2 items-center'>
+                      <button
+                        disabled={answeringId === q.id || !ansDraft.trim() || (hasKb && !ansDirty)}
+                        onClick={() => saveAnswer(q.id, ansDraft.trim())}
+                        className='px-2 py-1 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50'
+                      >{answeringId === q.id ? 'Saving…' : hasKb ? 'Update knowledge' : 'Save answer & add to knowledge'}</button>
+                      {ansDirty && hasKb && (
+                        <button
+                          onClick={() => setAnswerDraft(prev => ({ ...prev, [q.id]: q.suggested_kb_addition || '' }))}
+                          className='px-2 py-1 rounded-md bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200'
+                        >Cancel</button>
+                      )}
+                      {answeringId === q.id && <span className='text-xs text-gray-400'>adding to knowledge…</span>}
+                    </div>
                   </div>
 
                   {/* Notes */}
