@@ -61,6 +61,8 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   n_a:      { bg: '#f3f4f6', text: '#374151', label: 'N/A'      },
 }
 
+const normText = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
 function formatRelative(iso: string) {
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 60000) return 'just now'
@@ -82,6 +84,10 @@ export default function QuestionsClient({
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({})
   const [answerDraft, setAnswerDraft] = useState<Record<string, string>>({})
   const [answeringId, setAnsweringId] = useState<string | null>(null)
+  // Full-conversation modal: the question being viewed + its loaded transcript.
+  const [convQ, setConvQ] = useState<Question | null>(null)
+  const [convTurns, setConvTurns] = useState<{ role: string; content: string; content_en: string | null; source: string | null }[] | null>(null)
+  const [convLoading, setConvLoading] = useState(false)
 
   useEffect(() => {
     fetch('/api/bots/' + botId + '/questions')
@@ -128,6 +134,8 @@ export default function QuestionsClient({
       const d = await r.json()
       if (d?.question) {
         setQuestions(prev => prev.map(q => q.id === qId ? d.question : q))
+        // keep the open modal in sync (status badge / button label flip)
+        setConvQ(prev => prev && prev.id === qId ? d.question : prev)
       } else if (d?.error) {
         alert('Save failed: ' + d.error)
       }
@@ -135,6 +143,24 @@ export default function QuestionsClient({
       alert('Save failed: ' + (e?.message || 'network error'))
     } finally {
       setAnsweringId(null)
+    }
+  }
+
+  // Open the full-conversation modal for a question and load its transcript by
+  // session_id (always populated, so this traces back even when the inline
+  // agent-reply text-match missed). Reuses the auth-gated transcript endpoint.
+  async function openConversation(q: Question) {
+    setConvQ(q)
+    setConvTurns(null)
+    setConvLoading(true)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(q.session_id))
+      const d = await r.json()
+      setConvTurns(Array.isArray(d?.turns) ? d.turns : [])
+    } catch {
+      setConvTurns([])
+    } finally {
+      setConvLoading(false)
     }
   }
 
@@ -153,6 +179,11 @@ export default function QuestionsClient({
     }
     return questions
   }, [questions, tab])
+
+  // Derived answer-state for the open conversation modal (mirrors the inline card).
+  const mAns = convQ ? (answerDraft[convQ.id] ?? (convQ.suggested_kb_addition || '')) : ''
+  const mDirty = convQ ? mAns !== (convQ.suggested_kb_addition || '') : false
+  const mHasKb = convQ ? !!convQ.suggested_kb_addition : false
 
   return (
     <div className='min-h-screen bg-gray-50'>
@@ -267,6 +298,10 @@ export default function QuestionsClient({
                         <Link href={'/bots/' + botId + '/conversations'} className='text-blue-700 hover:underline' title={'Session ' + q.session_id}>
                           session {q.session_id.slice(-8)}
                         </Link>
+                        {' · '}
+                        <button onClick={() => openConversation(q)} className='text-blue-700 hover:underline font-medium'>
+                          💬 View full conversation
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -366,6 +401,77 @@ export default function QuestionsClient({
           {' '}CSV export redacts emails, phones, and street addresses by default.
         </p>
       </div>
+
+      {/* Full-conversation modal — see the whole chat for context, then answer or
+          accept the agent's reply without leaving the page. */}
+      {convQ && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4' onClick={() => setConvQ(null)}>
+          <div className='bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[88vh] flex flex-col' onClick={e => e.stopPropagation()}>
+            {/* header */}
+            <div className='p-4 border-b border-gray-200 flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <div className='text-xs text-gray-500'>Full conversation · session {convQ.session_id.slice(-8)}</div>
+                <div className='text-sm font-medium text-gray-900 mt-1 break-words'>{convQ.user_message}</div>
+              </div>
+              <button onClick={() => setConvQ(null)} className='text-gray-400 hover:text-gray-700 text-2xl leading-none shrink-0' aria-label='Close'>&times;</button>
+            </div>
+
+            {/* transcript */}
+            <div className='flex-1 overflow-auto p-4 space-y-2 bg-gray-50'>
+              {convLoading && <div className='py-8 text-center'><LottieLoader message='Loading conversation…' /></div>}
+              {!convLoading && convTurns && convTurns.length === 0 && (
+                <div className='text-sm text-gray-500 text-center py-8'>No transcript found for this session.</div>
+              )}
+              {!convLoading && convTurns && convTurns.filter(t => t.source !== 'greeting').map((t, i) => {
+                const isUser = t.role === 'user'
+                const text = t.content_en || t.content || ''
+                const isThisQ = isUser && normText(text) === normText(convQ.user_message)
+                return (
+                  <div key={i} className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
+                    <div className={'max-w-[82%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ' +
+                      (isUser
+                        ? (isThisQ ? 'bg-amber-100 border border-amber-300 text-gray-900' : 'bg-blue-50 text-gray-900')
+                        : 'bg-white border border-gray-200 text-gray-800')}>
+                      <div className='text-[10px] uppercase tracking-wide opacity-60 mb-0.5'>{isUser ? 'Visitor' : botName}</div>
+                      {text}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* action footer — answer or accept, with full context above */}
+            <div className='p-4 border-t border-gray-200 bg-white'>
+              {convQ.agent_response && (
+                <button
+                  disabled={answeringId === convQ.id}
+                  onClick={() => saveAnswer(convQ.id, (convQ.agent_response || '').trim())}
+                  className='mb-2 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
+                >✓ Accept {botName}&apos;s reply as the answer</button>
+              )}
+              <label className='block text-xs font-medium text-gray-600 mb-1'>
+                {mHasKb ? 'Correct the answer (re-trains the agent)' : 'Answer this — the agent learns it for next time'}
+              </label>
+              <textarea
+                value={mAns}
+                onChange={e => convQ && setAnswerDraft(prev => ({ ...prev, [convQ.id]: e.target.value }))}
+                placeholder='Type the answer the agent should give next time…'
+                style={{ fontSize: '16px' }}
+                className='w-full border border-gray-200 rounded-md p-2 resize-y min-h-[64px] focus:outline-none focus:border-emerald-400'
+              />
+              <div className='mt-2 flex gap-2 items-center'>
+                <button
+                  disabled={answeringId === convQ.id || !mAns.trim() || (mHasKb && !mDirty)}
+                  onClick={() => saveAnswer(convQ.id, mAns.trim())}
+                  className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
+                >{answeringId === convQ.id ? 'Saving…' : mHasKb ? 'Update knowledge' : 'Save answer & add to knowledge'}</button>
+                {mHasKb && <span className='text-xs text-emerald-700 font-medium'>✓ In knowledge base</span>}
+                <button onClick={() => setConvQ(null)} className='ml-auto px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200'>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

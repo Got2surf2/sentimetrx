@@ -431,3 +431,13 @@
 - `QuestionsClient.tsx`: each card shows "{Agent} replied:" + the reply in a scrollable box, with a **"✓ Accept {Agent}'s reply as the answer"** button that promotes it via the existing /answer endpoint. Personified with the agent name per [[feedback_personify_agent_in_files]].
 - tsc clean, eslint 0 errors. Verified read-only (session+message match resolves 13/17 for Sarina). BOTS.md/FEATURES.md synced. LOCAL/unpushed.
 - **FOLLOW-UP FILED (owner flagged):** logged_questions.turn_id + conversation_id are null on capture — a traceability gap (should link each logged question to its conversation/turn). Investigating lib/logQuestion.ts capture path separately.
+
+## 2026-06-26 — Questions page: full-conversation modal (read context, then answer/accept inline)
+
+**Why** (owner): a reviewer should see the whole chat before suggesting an answer; expand the conversation in a modal and still be able to provide a new answer or accept the agent's reply there.
+
+**What changed** (`QuestionsClient.tsx`, no new endpoint):
+- **💬 View full conversation** button per question → modal that loads the session transcript on demand from the existing **auth-gated, phase-3-safe** `GET /api/bots/[id]/conversations/[sessionId]`. Renders the chat as bubbles (Visitor right / {Agent} left), **highlights the logged question's turn** (amber), hides greeting preamble.
+- Modal footer embeds the SAME actions as the inline card: answer textarea (≥16px), "Save answer & add to knowledge" / "Update knowledge", and "Accept {Agent}'s reply as the answer". `saveAnswer` keeps the open modal in sync (status/badge flip).
+- **Traceability (owner Q):** `logged_questions.turn_id`/`conversation_id` are null on capture by design (`lib/logQuestion.ts` punts them — turn id isn't reliably available in the fire-and-forget hot path; comment says callers join on session_id). Owner: fine if null as long as traceable. The modal loads by `session_id` (populated 17/17), so every question traces back to its full conversation — even the 4/17 where the inline agent-reply text-match misses. No capture-path change needed.
+- tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
