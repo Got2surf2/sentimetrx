@@ -317,6 +317,10 @@ export default function QuestionsClient({
               >Review unanswered ({counts.open}) →</button>
             )}
             <Link
+              href={'/bots/' + botId + '/knowledge/health'}
+              className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
+            >KB health</Link>
+            <Link
               href={'/bots/' + botId + '/conversations'}
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
             >View transcripts</Link>

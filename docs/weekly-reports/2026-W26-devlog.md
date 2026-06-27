@@ -467,3 +467,12 @@
 - `/answer` route restructured: embeds the answer FIRST (vector used for both storage + the check), then on a NEW insert (not same-question corrections) checks the nearest chunk; if cosine ≥ 0.92 it writes nothing and returns `{ duplicate }`. New body flags `force` (add anyway) + `replaceChunkId` (merge into the flagged chunk + re-point it at this question). Audit summary now Added/Updated/Merged.
 - `QuestionsClient`: `saveAnswer` handles the `duplicate` response → a 3-button dialog (Replace existing / Add as separate / Cancel) above the review overlay (z-60); also now auto-advances the review queue on a successful save (so the dup handshake doesn't skip an unsaved card).
 - Skipped when embeddings are off (no vector → full-text-only, as before). tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. NEXT: (B) KB Health view. LOCAL/unpushed.
+
+## 2026-06-27 — KB hygiene (B): Knowledge-base Health view
+
+**Why** (owner): a surface to keep the agent KB tight/observable as answered questions feed in.
+
+**What changed** (no new endpoint — reuses GET/DELETE knowledge):
+- `/bots/[id]/knowledge/health` (`page.tsx` + `KbHealthClient.tsx`), linked "KB health" from the Questions page header. Summary cards (entries / total chars / from-answered-questions / oldest-entry age), by-source breakdown with per-source **Clear all** (`DELETE /knowledge?source_type=`), and a searchable + sortable (oldest/newest/largest) chunk list with view + per-chunk **Delete** (`DELETE /knowledge/[chunkId]`). Reads `GET /api/bots/[id]/knowledge`.
+- Honest gap surfaced in-UI: retrieval recency ("last used") isn't tracked, so it's not shown (no fabrication).
+- tsc clean, eslint 0 errors, 967 tests pass. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
