@@ -575,3 +575,11 @@ Owner-driven UI cleanup on the /analyze listing:
 - **Source filter cleanup** (`DatasetFilterBar` + `AnalyzeClient`): pills are now **All · Surveys · Uploads · Agents · Reviews · Town Halls · PulseIQ · Other**. Renames: Sarina→Surveys (study), Google Reviews→Reviews (google_reviews). New: Agents (`bot`), Town Halls (`recording`) — both real DB sources that previously had no pill. Reddit/Substack/Collection/Regulations fold into **Other** (a catch-all = any source without its own pill), so nothing is hidden.
 - **Card + detail-header identity** for the two newly-pillable sources: `DatasetCard` gains 🤖 Agent (teal) + 🎙 Town Hall (amber) badges/accents; `DatasetHeader` source label adds Agent/Town Hall and renames Sarina→Survey, Google Reviews→Reviews (previously both fell through to "Upload"). Widened the `source` type unions (`analyzeTypes` + the header's local type) to declare `bot`/`recording`.
 - tsc clean, 986 tests pass, eslint 0 errors. LOCAL/unpushed.
+
+## 2026-06-27 — Test coverage for the brand-correction / provenance work
+
+Filled the appropriate test gaps from the convergence + provenance arc:
+- `tests/unit/correction/provenance.test.ts`: + `datasetSourceToKind` (authority mapping for discovery — upload/regulations/substack→document; google_reviews→review; study→survey; townhall→transcript; reddit→conversation; unknown→discovered).
+- `tests/unit/botEntityExtraction.test.ts`: + `classifyChunkSource` (now exported) — KB chunk metadata → crawl (URL) vs document (file/text/none), both authoritative.
+- `tests/integration/collection-entities-routes-gate.test.ts` (new): org-gating for the Phase-5 brand-glossary routes (`/api/collections/[id]/entities` GET/POST, `…/[entityId]` PATCH/DELETE, `…/refresh` POST) — 401 no-org + 404 cross-org. Closes the route-handler org-filter gap (not covered by RLS/egress suites). Mirrors `dataset-query-routes-gate.test.ts`.
+- 997 tests pass (+11), tsc clean. Only `export` added to lib code (classifyChunkSource); no behavior change.

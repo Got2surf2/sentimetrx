@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  isAuthoritative, canSetCanonical, chooseCanonical, mergeProvenance, hasAuthoritativeSource,
+  isAuthoritative, canSetCanonical, chooseCanonical, mergeProvenance, hasAuthoritativeSource, datasetSourceToKind,
 } from '@/lib/correction/provenance'
 
 describe('authority tiers', () => {
@@ -71,6 +71,29 @@ describe('mergeProvenance', () => {
     expect(p.document.refs).toHaveLength(1)          // dup not added twice
     expect(p.survey.count).toBe(120)
     expect(p.survey.refs).toHaveLength(0)
+  })
+})
+
+describe('datasetSourceToKind', () => {
+  it('maps uploaded/published docs to the authoritative document tier', () => {
+    expect(datasetSourceToKind('upload')).toBe('document')
+    expect(datasetSourceToKind('regulations')).toBe('document')
+    expect(datasetSourceToKind('substack')).toBe('document')
+    expect(isAuthoritative(datasetSourceToKind('upload'))).toBe(true)
+  })
+  it('maps UGC / review / pulse sources to corroborating (non-authoritative) tiers', () => {
+    expect(datasetSourceToKind('google_reviews')).toBe('review')
+    expect(datasetSourceToKind('study')).toBe('survey')
+    expect(datasetSourceToKind('reddit')).toBe('conversation')
+    expect(datasetSourceToKind('townhall')).toBe('transcript')
+    expect(datasetSourceToKind('collection')).toBe('review')   // virtual aggregate — conservative
+    expect(isAuthoritative(datasetSourceToKind('google_reviews'))).toBe(false)
+    expect(isAuthoritative(datasetSourceToKind('study'))).toBe(false)
+  })
+  it('falls back to discovered for unknown sources', () => {
+    expect(datasetSourceToKind('whatever')).toBe('discovered')
+    expect(datasetSourceToKind(null)).toBe('discovered')
+    expect(datasetSourceToKind(undefined)).toBe('discovered')
   })
 })
 

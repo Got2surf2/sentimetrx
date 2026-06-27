@@ -25,7 +25,7 @@ import { mergeProvenance, authorityOf, type SourceKind, type Provenance } from '
 // — every chunk is an OFFICIAL record. Classify each as a crawled URL vs an
 // uploaded document from its ingestion metadata ({source, source_type}); both are
 // authoritative-tier, so bot-extracted entities may own a canonical spelling.
-function classifyChunkSource(metadata: unknown): { kind: SourceKind; ref: Record<string, unknown> } {
+export function classifyChunkSource(metadata: unknown): { kind: SourceKind; ref: Record<string, unknown> } {
   const m = (metadata ?? {}) as Record<string, unknown>
   const src = String(m.source ?? '')
   const type = String(m.source_type ?? '').toLowerCase()

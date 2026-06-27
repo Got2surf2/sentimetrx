@@ -8,8 +8,23 @@ import { describe, it, expect } from 'vitest'
 import {
   batchChunksForExtraction,
   aggregateExtractedEntities,
+  classifyChunkSource,
   BOT_ENTITY_CATEGORIES,
 } from '@/lib/botEntityExtraction'
+
+describe('classifyChunkSource (provenance)', () => {
+  it('classifies a URL-origin chunk as an authoritative crawl', () => {
+    expect(classifyChunkSource({ source: 'https://brand.com/about', source_type: 'url' }))
+      .toEqual({ kind: 'crawl', ref: { url: 'https://brand.com/about', source_type: 'url' } })
+    expect(classifyChunkSource({ source_type: 'crawl' }).kind).toBe('crawl')
+  })
+  it('classifies an uploaded file / text chunk as an authoritative document', () => {
+    expect(classifyChunkSource({ source: 'Brand Style Guide.pdf', source_type: 'file' }))
+      .toEqual({ kind: 'document', ref: { source: 'Brand Style Guide.pdf', source_type: 'file' } })
+    expect(classifyChunkSource({}).kind).toBe('document')         // no metadata → document (KB is official)
+    expect(classifyChunkSource(null).kind).toBe('document')
+  })
+})
 
 describe('batchChunksForExtraction', () => {
   it('returns no batches for empty input', () => {
