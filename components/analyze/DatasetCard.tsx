@@ -101,8 +101,15 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const isTownHall   = dataset.source === 'townhall'
   const isSubstack   = dataset.source === 'substack'
   const isCollection = dataset.source === 'collection'
+  const isBot        = dataset.source === 'bot'         // Agents
+  const isRecording  = dataset.source === 'recording'   // Town Halls
   const isBrand = isCollection && dataset.collection_kind === 'brand'
   const isArchived = dataset.status === 'archived'
+  // Collection id for the brand-glossary editor: a brand card → its own
+  // collection; a dataset tagged to a brand → the parent brand collection.
+  const glossaryCollectionId = isBrand
+    ? (dataset.collection_id || null)
+    : (!isCollection ? ((dataset as any).brand_collection_id || null) : null)
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
   }).length ?? null
@@ -299,7 +306,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     <div style={{
       background:    'white',
       border:        '1px solid #e8e8ec',
-      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES),
+      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isBot ? '#0d9488' : isRecording ? '#b45309' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES),
       borderRadius:  12,
       padding:       '16px',
       boxShadow:     '0 1px 4px rgba(0,0,0,.05)',
@@ -315,7 +322,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       // has nothing inside that bleeds past the rounded corners.
       overflow:      'visible' as const,
     }}
-    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isBrand ? '0 4px 16px rgba(99,102,241,.12)' : isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
+    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isBrand ? '0 4px 16px rgba(99,102,241,.12)' : isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isBot ? '0 4px 16px rgba(13,148,136,.12)' : isRecording ? '0 4px 16px rgba(180,83,9,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
 
       {/* 1. Name + menu */}
@@ -428,9 +435,13 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {/* 2. Source + visibility badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
         {isStudy ? (
-          <Badge label={'Sarina: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
+          <Badge label={'Survey: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
+        ) : isBot ? (
+          <Badge label={'\uD83E\uDD16 Agent'} color="#0d9488" bg="#f0fdfa" border="#99f6e4" />
         ) : isReviews ? (
-          <Badge label={'\u2B50 Google Reviews'} color="#2563eb" bg="#eff6ff" border="#bfdbfe" />
+          <Badge label={'\u2B50 Reviews'} color="#2563eb" bg="#eff6ff" border="#bfdbfe" />
+        ) : isRecording ? (
+          <Badge label={'\uD83C\uDF99 Town Hall'} color="#b45309" bg="#fffbeb" border="#fde68a" />
         ) : isReddit ? (
           <Badge label={'\uD83D\uDCAC Reddit'} color="#059669" bg="#ecfdf5" border="#a7f3d0" />
         ) : isTownHall ? (
@@ -525,8 +536,17 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ fontSize: 15, lineHeight: 1 }}>&#8803;</span>
-          <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
-          <span style={{ color: '#9ca3af' }}>rows</span>
+          {signalStats && signalStats.records > 0 ? (
+            <>
+              <span style={{ fontWeight: 700, color: '#111827' }}>{signalStats.records.toLocaleString()}</span>
+              <span style={{ color: '#9ca3af' }}>comments</span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
+              <span style={{ color: '#9ca3af' }}>rows</span>
+            </>
+          )}
         </div>
         {fieldCount !== null && !isReviews && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -566,6 +586,9 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
             <span style={{ color: '#6b7280' }} title="Sum of per-theme record matches (a row in N themes contributes N).">
               <strong style={{ color: '#111827' }}>{signalStats.signals.toLocaleString()}</strong> signals
+              {' '}<span style={{ color: '#9ca3af' }} title="Average number of theme signals per commenting record (signals ÷ comments).">
+                ({(signalStats.signals / signalStats.records).toFixed(1)} per comment)
+              </span>
             </span>
             <span style={{ color: '#d1d5db' }}>·</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} title={tip}>
@@ -683,6 +706,23 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         </button>
       )}
 
+      {/* Brand glossary editor — the brand's shared, authoritative entity list.
+          Shows on a brand card AND on any dataset tagged to a brand. */}
+      {glossaryCollectionId && (
+        <button
+          onClick={function() { router.push('/collections/' + glossaryCollectionId + '/glossary') }}
+          title="Edit this brand's shared entity list (names &amp; spellings used to correct reports + exports)"
+          style={{
+            width: '100%', padding: '6px 0', borderRadius: 9, fontSize: 11, fontWeight: 600,
+            color: '#4338ca', background: 'transparent', border: '1px solid #e0e7ff',
+            cursor: 'pointer', fontFamily: 'inherit', transition: 'background .15s',
+          }}
+          onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.background = '#eef2ff' }}
+          onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+          {'✎'} Brand glossary
+        </button>
+      )}
+
       {/* 5. Analyze button */}
       <button
         onClick={function() { router.push('/analyze/' + dataset.id + '/textmine') }}
@@ -690,7 +730,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         style={{
           width: '100%', padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 700,
           color: isArchived ? '#9ca3af' : 'white',
-          background: isArchived ? '#f3f4f6' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES,
+          background: isArchived ? '#f3f4f6' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isBot ? '#0d9488' : isRecording ? '#b45309' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES,
           border: 'none', cursor: isArchived ? 'not-allowed' : 'pointer',
           transition: 'opacity .15s', fontFamily: 'inherit',
         }}

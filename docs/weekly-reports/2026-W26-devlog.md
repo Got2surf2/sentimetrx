@@ -566,3 +566,12 @@
 - **Navigation**: the agent Entities page (`/bots/[id]/entities`) resolves the brand collection from the agent's `brand_tag` and shows a "Manage brand glossary →" link when brand-tagged.
 - tsc clean, 986 tests pass, eslint 0 errors, **`npm run build` passes** (new routes/page registered). ENGINEERING.md + BOTS.md synced. LOCAL/unpushed.
 - **Completes the 5-phase shared brand-correction convergence** (Phases 1–5 + provenance/authority). Owner verify locally: open an agent's Entities tab, set a Brand, click "Manage brand glossary →", add/curate an entity, "Pull from agents".
+
+## 2026-06-27 — /analyze listing UI polish (dataset cards + source filter)
+
+Owner-driven UI cleanup on the /analyze listing:
+- **Dataset card stats** (`DatasetCard`): the second stat row now shows **comments** (the exact `signalStats.records` count of text-bearing rows) instead of the redundant row count, falling back to "rows" when no signal stats; the signals stat gains a density readout **"(X.X per comment)"** (signals ÷ comments). Both derive from the already-loaded signal stats — no new computation.
+- **Brand-glossary entry point**: a **"✎ Brand glossary"** link on brand cards (→ own collection) and on any dataset tagged to a brand (→ parent brand's `/collections/[id]/glossary`), so the Phase-5 editor is reachable from where brands are browsed, not just via an agent.
+- **Source filter cleanup** (`DatasetFilterBar` + `AnalyzeClient`): pills are now **All · Surveys · Uploads · Agents · Reviews · Town Halls · PulseIQ · Other**. Renames: Sarina→Surveys (study), Google Reviews→Reviews (google_reviews). New: Agents (`bot`), Town Halls (`recording`) — both real DB sources that previously had no pill. Reddit/Substack/Collection/Regulations fold into **Other** (a catch-all = any source without its own pill), so nothing is hidden.
+- **Card + detail-header identity** for the two newly-pillable sources: `DatasetCard` gains 🤖 Agent (teal) + 🎙 Town Hall (amber) badges/accents; `DatasetHeader` source label adds Agent/Town Hall and renames Sarina→Survey, Google Reviews→Reviews (previously both fell through to "Upload"). Widened the `source` type unions (`analyzeTypes` + the header's local type) to declare `bot`/`recording`.
+- tsc clean, 986 tests pass, eslint 0 errors. LOCAL/unpushed.

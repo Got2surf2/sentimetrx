@@ -3,7 +3,7 @@
 // components/analyze/DatasetFilterBar.tsx
 
 interface Filters {
-  source:     'all' | 'study' | 'upload' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
+  source:     'all' | 'study' | 'upload' | 'bot' | 'google_reviews' | 'recording' | 'townhall' | 'other'
   visibility: 'all' | 'private' | 'public'
   status:     'all' | 'active' | 'archived'
 }
@@ -41,8 +41,8 @@ export default function DatasetFilterBar({ filters, onChange }: Props) {
     <div className="flex items-center gap-4 flex-wrap">
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-400 font-medium mr-1">Source</span>
-        {(['all', 'study', 'upload', 'google_reviews', 'reddit', 'substack', 'townhall', 'collection'] as const).map(function(v) {
-          const labels: Record<string, string> = { all: 'All', study: 'Sarina', upload: 'Upload', google_reviews: 'Google Reviews', reddit: 'Reddit', substack: 'Substack', townhall: 'PulseIQ', collection: 'Collection' }
+        {(['all', 'study', 'upload', 'bot', 'google_reviews', 'recording', 'townhall', 'other'] as const).map(function(v) {
+          const labels: Record<string, string> = { all: 'All', study: 'Surveys', upload: 'Uploads', bot: 'Agents', google_reviews: 'Reviews', recording: 'Town Halls', townhall: 'PulseIQ', other: 'Other' }
           return (
             <Pill
               key={v}

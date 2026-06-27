@@ -15,7 +15,7 @@ import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection' | 'bot' | 'recording'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_id?: string | null; description?: string | null; study_name: string | null
 }
 
@@ -117,10 +117,10 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   }
 
   // Source pill colors
-  var srcBg = dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'reddit' ? 'rgba(16,185,129,.25)' : dataset.source === 'townhall' ? 'rgba(139,92,246,.25)' : dataset.source === 'substack' ? 'rgba(225,29,72,.25)' : 'rgba(255,255,255,.12)'
-  var srcColor = dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'reddit' ? '#a7f3d0' : dataset.source === 'townhall' ? '#ddd6fe' : dataset.source === 'substack' ? '#fecdd3' : 'rgba(255,255,255,.6)'
-  var srcBorder = dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : dataset.source === 'reddit' ? '1px solid rgba(16,185,129,.4)' : dataset.source === 'townhall' ? '1px solid rgba(139,92,246,.4)' : dataset.source === 'substack' ? '1px solid rgba(225,29,72,.4)' : '1px solid rgba(255,255,255,.2)'
-  var srcLabel = dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : dataset.source === 'reddit' ? 'Reddit' : dataset.source === 'townhall' ? 'PulseIQ' : dataset.source === 'substack' ? 'Substack' : 'Upload'
+  var srcBg = dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'bot' ? 'rgba(13,148,136,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'recording' ? 'rgba(180,83,9,.25)' : dataset.source === 'reddit' ? 'rgba(16,185,129,.25)' : dataset.source === 'townhall' ? 'rgba(139,92,246,.25)' : dataset.source === 'substack' ? 'rgba(225,29,72,.25)' : 'rgba(255,255,255,.12)'
+  var srcColor = dataset.source === 'study' ? '#bae6fd' : dataset.source === 'bot' ? '#99f6e4' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'recording' ? '#fde68a' : dataset.source === 'reddit' ? '#a7f3d0' : dataset.source === 'townhall' ? '#ddd6fe' : dataset.source === 'substack' ? '#fecdd3' : 'rgba(255,255,255,.6)'
+  var srcBorder = dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'bot' ? '1px solid rgba(13,148,136,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : dataset.source === 'recording' ? '1px solid rgba(180,83,9,.4)' : dataset.source === 'reddit' ? '1px solid rgba(16,185,129,.4)' : dataset.source === 'townhall' ? '1px solid rgba(139,92,246,.4)' : dataset.source === 'substack' ? '1px solid rgba(225,29,72,.4)' : '1px solid rgba(255,255,255,.2)'
+  var srcLabel = dataset.source === 'study' ? 'Survey' : dataset.source === 'bot' ? 'Agent' : dataset.source === 'google_reviews' ? 'Reviews' : dataset.source === 'recording' ? 'Town Hall' : dataset.source === 'reddit' ? 'Reddit' : dataset.source === 'townhall' ? 'PulseIQ' : dataset.source === 'substack' ? 'Substack' : 'Upload'
 
   return (
     <div>

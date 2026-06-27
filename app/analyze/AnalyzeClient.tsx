@@ -19,10 +19,13 @@ interface Props {
 }
 
 interface Filters {
-  source:     'all' | 'study' | 'upload' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
+  source:     'all' | 'study' | 'upload' | 'bot' | 'google_reviews' | 'recording' | 'townhall' | 'other'
   visibility: 'all' | 'private' | 'public'
   status:     'all' | 'active' | 'archived'
 }
+
+// Sources that have their own pill; anything else falls under the "Other" pill.
+const NAMED_SOURCES = ['study', 'upload', 'bot', 'google_reviews', 'recording', 'townhall']
 
 const HERMES = '#e8622a'
 
@@ -124,7 +127,10 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const nameQ = query.trim().toLowerCase()
   const filtered = scoped.filter(function(d) {
     if (nameQ && !(d.name || '').toLowerCase().includes(nameQ)) return false
-    if (filters.source !== 'all' && d.source !== filters.source) return false
+    if (filters.source === 'other') {
+      // "Other" = any source without its own pill (reddit, substack, collection, regulations, …).
+      if (NAMED_SOURCES.includes(d.source)) return false
+    } else if (filters.source !== 'all' && d.source !== filters.source) return false
     if (filters.visibility !== 'all' && d.visibility !== filters.visibility) return false
     if (filters.status !== 'all' && d.status !== filters.status) return false
     return true
