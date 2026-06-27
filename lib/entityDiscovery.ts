@@ -19,6 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
 import { resolveEntityScope, slugify, eligibleEntityFields } from '@/lib/entityFilter'
+import { datasetSourceToKind, authorityOf, mergeProvenance, type SourceKind, type Provenance } from '@/lib/correction/provenance'
 
 export type DiscoveryMode = 'initial' | 'incremental' | 'manual' | 'cron'
 
@@ -488,19 +489,29 @@ export async function discoverEntities(opts: {
   // and leave hidden rows alone (no count bump, no un-hide).
   const { data: existing } = await service
     .from('entity_catalog')
-    .select('slug, canonical, category, aliases, sample_count, source, hidden')
+    .select('slug, canonical, category, aliases, sample_count, source, hidden, provenance')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
-  const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean }>()
+  const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean; provenance: Provenance }>()
   for (const e of (existing || []) as any[]) {
     existingBySlug.set(e.slug, {
       canonical: e.canonical, category: e.category,
       aliases: e.aliases || [], sample_count: e.sample_count || 0,
       source: e.source || 'discovered',
       hidden: !!e.hidden,
+      provenance: (e.provenance ?? {}) as Provenance,
     })
   }
   const entitiesBefore = existingBySlug.size
+
+  // Source-kind of THIS discovery run = the (conservatively lowest-authority)
+  // kind among the datasets sampled, so review/survey/ASR discovery is recorded
+  // as corroborating and can't claim authority over a brand canonical (only an
+  // upload/regulations dataset discovers at the authoritative 'document' tier).
+  const { data: sampledDs } = await service.from('datasets').select('source').in('id', sampleFrom)
+  const discoveryKind: SourceKind = ((sampledDs ?? []) as Array<{ source: string | null }>)
+    .map(d => datasetSourceToKind(d.source))
+    .reduce<SourceKind>((lo, k) => (authorityOf(k) < authorityOf(lo) ? k : lo), 'document')
 
   const writeRefresh = async (result: Partial<DiscoveryResult> & { sample_size: number; error: string | null }) => {
     await service.from('entity_catalog_refresh').insert({
@@ -616,7 +627,8 @@ export async function discoverEntities(opts: {
     category: string
     aliases: string[]
     sample_count: number
-    source: 'discovered'
+    source: SourceKind
+    provenance: Provenance
     hidden: boolean
     last_seen_at: string
   }> = []
@@ -629,6 +641,14 @@ export async function discoverEntities(opts: {
       ...(prev?.aliases || []),
       ...Array.from(disc.aliases),
     ])).slice(0, MAX_ALIASES)
+    // Provenance + authority. Discovery never overrides an existing canonical
+    // (first-wins); it stamps the run's source-kind and keeps the higher-
+    // authority owner so e.g. a 'document'/'crawl' owner isn't downgraded by a
+    // later review-discovery pass.
+    const owner: SourceKind = prev
+      ? (authorityOf(discoveryKind) > authorityOf(prev.source) ? discoveryKind : (prev.source as SourceKind))
+      : discoveryKind
+    const provenance = mergeProvenance(prev?.provenance ?? {}, discoveryKind, { dataset_id: scope.scopeId }, disc.sampleCount)
     upsertRows.push({
       scope_type:   scope.scopeType,
       scope_id:     scope.scopeId,
@@ -638,16 +658,11 @@ export async function discoverEntities(opts: {
       aliases:      aliasUnion,
       sample_count: (prev?.sample_count || 0) + disc.sampleCount,
       // Defensive: PostgREST's upsert ON CONFLICT SETs every column present
-      // in the payload using EXCLUDED.col. Omitting source / hidden was
-      // technically fine — the skip-hidden / skip-manual checks above mean
-      // those rows never enter this list — but a bug in the skip path (or
-      // a race) could let a hidden row sneak in, and the upsert would then
-      // silently reset hidden=false because the DB column has a non-null
-      // default. Belt-and-suspenders: write the values explicitly so the
-      // upsert's behaviour matches what the SELECT loop intended. The skip
-      // already filters source!='manual' and hidden=false, so these values
-      // are safe.
-      source:       'discovered',
+      // in the payload using EXCLUDED.col. The skip-hidden / skip-manual checks
+      // above mean those rows never enter this list, but write the values
+      // explicitly so the upsert matches what the SELECT loop intended.
+      source:       owner,
+      provenance,
       hidden:       false,
       last_seen_at: nowIso,
     })

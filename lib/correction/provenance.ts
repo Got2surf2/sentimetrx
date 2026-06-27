@@ -108,6 +108,25 @@ export function mergeProvenance(
   return out
 }
 
+// Map a dataset's `source` (datasets.source) to a catalog source-kind, so
+// entity discovery records the right authority: uploaded/published docs are
+// authoritative; reviews / survey responses / Reddit / ASR are corroborating.
+export function datasetSourceToKind(src: string | null | undefined): SourceKind {
+  switch ((src || '').toLowerCase()) {
+    case 'upload':
+    case 'regulations':
+    case 'substack':       return 'document'
+    case 'townhall':       return 'transcript'
+    case 'reddit':         return 'conversation'
+    case 'study':          return 'survey'
+    case 'google_reviews':
+    case 'reviews':
+    case 'review':         return 'review'
+    case 'collection':     return 'review'   // virtual aggregate — conservative
+    default:               return 'discovered'
+  }
+}
+
 // Does this entity have at least one authoritative source? (Used by the glossary
 // to keep only trustworthy canonicals for correction.)
 export function hasAuthoritativeSource(source: SourceKind | string | null | undefined, provenance: Provenance | null | undefined): boolean {

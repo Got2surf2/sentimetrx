@@ -70,7 +70,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (isExport) {
     const brandTag = String((cfg as any).brandTag ?? '').trim()
     if (brandTag && study?.org_id) {
-      const glossary = await resolveBrandGlossary(service, { orgId: study.org_id, brandTag })
+      const glossary = await resolveBrandGlossary(service, { orgId: study.org_id, brandTag, authoritativeOnly: true })
       const repl = buildReplacements(glossary)
       if (repl.length > 0) nz = (t: string) => normalizeText(t, repl)
     }

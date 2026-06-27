@@ -321,7 +321,7 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   // never mutated; we polish only the derived sample strings in this object. Done
   // BEFORE summarize so the executive summary cites cleaned text.
   try {
-    const glossary = glossaryTerms(await resolveBrandGlossary(service, { orgId: bot.org_id, agentId: botId }))
+    const glossary = glossaryTerms(await resolveBrandGlossary(service, { orgId: bot.org_id, agentId: botId, authoritativeOnly: true }))
     const refs: Array<{ kind: 'q' | 'b'; t: number; s: number }> = []
     const toPolish: string[] = []
     questionThemes.forEach((th, t) => th.samples.forEach((s, si) => { refs.push({ kind: 'q', t, s: si }); toPolish.push(s.text) }))

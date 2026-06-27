@@ -177,6 +177,17 @@ the brand-collection and syncs membership via DB triggers (migrations 060–062)
 6. Log the run to `public.entity_catalog_refresh` (before/after/new counts, sample size,
    cost estimate, duration).
 
+**Provenance + source authority (2026-06-27).** Each discovery run stamps the catalog
+rows with a **source-kind** (`source`, `sql/137`) derived from `datasets.source`
+(`datasetSourceToKind`: uploaded/published docs → `document`; google_reviews → `review`;
+study → `survey`; townhall → `transcript`; reddit → `conversation`) and a `provenance`
+trail (jsonb). Reviews / survey responses / ASR are **corroborating** sources: discovery
+already first-wins on the canonical, so a UGC run never overrides an existing canonical,
+and it never downgrades a `document`/`crawl`/`manual` owner. This authority model
+(`lib/correction/provenance.ts`, ENGINEERING.md → "Shared correction layer") only gates the
+**correction glossary** (which keeps authoritative canonicals) — the catalog still holds
+every entity for TextMine analysis. See BOTS.md §9.y.2c for the agent-KB side.
+
 **Field selection** (`SchemaFieldConfig.entityExtraction`): discovery reads a dataset's
 `open-ended` fields *only* — categorical/location/numeric/date/ignored columns are never
 fed to NER (they produce noise like "Florida" or "Texas"). Each open-ended field carries

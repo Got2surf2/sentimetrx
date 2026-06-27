@@ -54,6 +54,9 @@ export async function fetchBrandEntities(
     orgId: opts.orgId,
     brandTag: opts.brandTag,
     agentId: opts.agentId,
+    // Only seed/correct toward canonicals from an OFFICIAL record or a human —
+    // never a UGC-invented name (provenance authority, owner requirement).
+    authoritativeOnly: true,
   })
   return entries.map(e => {
     const seen = new Set<string>()

@@ -541,3 +541,16 @@
 - Manual bot routes (`POST`/`PATCH /api/bots/[id]/entities[...]`): stamp `manual` provenance.
 - tsc clean (cache-cleared), 986 tests pass (+13), BOTS.md §9.y.2c + ENGINEERING.md synced. Code LOCAL; sql/137 applied (additive — local dev runs vs linked prod DB).
 - **NEXT (part B):** dataset/collection discovery stamps source-kind from `datasets.source` (review/survey/transcript/document); the correction glossary (`resolveBrandGlossary`) gains an authoritative-only filter for the normalize/polish consumers (Town Hall, survey export, readout) so we never correct toward a UGC-invented canonical.
+
+## 2026-06-27 — Entity-catalog provenance + source authority — part B: discovery stamping + glossary authority filter
+
+**Why** (part B of the owner provenance requirement): close the loop — dataset/collection discovery now records WHICH source kind it sampled, and the correction glossary only emits authoritative canonicals so we never correct toward a UGC-invented name.
+
+**What changed:**
+- `lib/entityDiscovery.ts`: stamps each discovery run's source-kind from `datasets.source` (`datasetSourceToKind`: upload/regulations/substack→document; townhall→transcript; reddit→conversation; study→survey; google_reviews→review; collection→review conservative). Picks the **lowest-authority** kind among sampled datasets (mixed→conservative). Sets `source` (keeps the higher-authority owner — never downgrades a doc/crawl/manual) + merges `provenance`. Discovery already first-wins on canonical, so UGC discovery still never overrides an existing canonical.
+- `lib/correction/glossary.ts`: `readScope` now reads `source`+`provenance`; `rowToEntry` computes `authoritative` (`hasAuthoritativeSource`), OR'd across scopes in `unionInto`. `resolveBrandGlossary` gains `authoritativeOnly?` → filters to authoritative canonicals.
+- **Correction consumers pass `authoritativeOnly: true`**: agent What-We-Heard readout (`lib/agentReadout.ts`), survey export (`/api/studies/[id]/responses`), Town Hall seed/correction (`lib/recordings/brandGlossary.fetchBrandEntities`). So all three only correct toward official/human canonicals; UGC-discovered entities stay in the catalog for TextMine analysis but are excluded from correction.
+- `lib/correction/provenance.ts`: added `datasetSourceToKind`.
+- tsc clean (cache-cleared), 986 tests pass, eslint 0 errors. RECORDINGS §3.5c + SURVEYS.md + ENGINEERING.md synced. Code LOCAL/unpushed.
+- **Owner verify**: after re-extracting an agent's entities (now stamped document/crawl) and tagging a survey/Town Hall to that brand, exports/reports correct toward the KB-derived official spellings; a brand with only review-discovered entities yields an empty correction glossary (safe — exports raw).
+- Minor follow-up (noted, not done): dataset-scope manual curate routes (`/api/datasets/[id]/entities/*`) still set `source='manual'` (correct authority) but don't yet write a `manual` provenance trail entry — cosmetic, the authority signal is already correct.
