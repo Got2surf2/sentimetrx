@@ -38,6 +38,10 @@ export async function POST(req: NextRequest, props: Params) {
   const body = await req.json().catch(() => ({}))
   const answer = typeof body?.answer === 'string' ? body.answer.trim() : ''
   if (answer.length < 2) return NextResponse.json({ error: 'An answer is required' }, { status: 400 })
+  // Near-duplicate guard handshake: `force` = add anyway despite a near-dup;
+  // `replaceChunkId` = merge into the flagged existing chunk instead of adding.
+  const force = body?.force === true
+  const replaceChunkId = typeof body?.replaceChunkId === 'string' ? body.replaceChunkId : null
 
   const service = createServiceRoleClient()
 
@@ -66,8 +70,19 @@ export async function POST(req: NextRequest, props: Params) {
     logged_question_id: params.questionId,
   }
 
-  // Upsert by logged_question_id: update+re-embed the existing chunk (correction
-  // loop) or insert a fresh one.
+  // Embed up front: the vector is both stored on the row AND used for the
+  // near-duplicate check. Non-blocking — a null embedding (org AI off / no key)
+  // just means no dup-check and full-text-only retrieval.
+  let vec: number[] | null = null
+  try {
+    vec = await generateEmbedding(title + '\n' + content, bot.org_id)
+  } catch (e: any) {
+    console.error({ at: 'question-answer', msg: 'embedding failed (chunk still usable)', err: e?.message })
+  }
+  const embeddingPatch = vec ? { embedding: JSON.stringify(vec) } : {}
+
+  // Existing chunk for THIS question (the correction loop) — always update it,
+  // never dup-checked (it's the same question being re-answered).
   const { data: existingChunk } = await service
     .from('agent_knowledge_chunks')
     .select('id')
@@ -76,33 +91,50 @@ export async function POST(req: NextRequest, props: Params) {
     .limit(1)
     .maybeSingle()
 
+  const NEAR_DUP_THRESHOLD = 0.92
   let chunkId: string
   let created: boolean
+  let merged = false
+
   if (existingChunk) {
     chunkId = existingChunk.id
     created = false
     const { error } = await service.from('agent_knowledge_chunks')
-      .update({ title, content, metadata })
-      .eq('id', chunkId)
-      .eq('bot_id', params.id)
+      .update({ title, content, metadata, ...embeddingPatch })
+      .eq('id', chunkId).eq('bot_id', params.id)
     if (error) return NextResponse.json({ error: 'Failed to update knowledge: ' + error.message }, { status: 500 })
+  } else if (replaceChunkId) {
+    // Reviewer chose to merge into the flagged near-duplicate: overwrite it and
+    // re-point it at this question (so future corrections update this chunk).
+    chunkId = replaceChunkId
+    created = false
+    merged = true
+    const { error } = await service.from('agent_knowledge_chunks')
+      .update({ title, content, metadata, ...embeddingPatch })
+      .eq('id', chunkId).eq('bot_id', params.id)
+    if (error) return NextResponse.json({ error: 'Failed to merge knowledge: ' + error.message }, { status: 500 })
   } else {
+    // Near-duplicate guard: if a near-identical chunk already exists, don't add
+    // — hand the match back so the reviewer can Replace it / Add anyway / Cancel.
+    // Skipped when forced or when we have no embedding to compare.
+    if (!force && vec) {
+      const { data: near } = await service.rpc('match_agent_knowledge_embedding', {
+        p_bot_id: params.id, p_embedding: JSON.stringify(vec), p_limit: 1,
+      })
+      const top = Array.isArray(near) ? near[0] : null
+      if (top && typeof top.similarity === 'number' && top.similarity >= NEAR_DUP_THRESHOLD) {
+        return NextResponse.json({
+          duplicate: { chunkId: top.id, title: top.title, content: top.content, similarity: Math.round(top.similarity * 100) },
+        })
+      }
+    }
     const { data: inserted, error } = await service.from('agent_knowledge_chunks')
-      .insert({ bot_id: params.id, title, content, metadata })
+      .insert({ bot_id: params.id, title, content, metadata, ...embeddingPatch })
       .select('id')
       .single()
     if (error || !inserted) return NextResponse.json({ error: 'Failed to add knowledge: ' + (error?.message || '') }, { status: 500 })
     chunkId = inserted.id
     created = true
-  }
-
-  // Embed (re-embed on correction). Non-blocking: a null embedding (org AI off /
-  // no key) still leaves the chunk retrievable via the full-text fallback.
-  try {
-    const vec = await generateEmbedding(title + '\n' + content, bot.org_id)
-    if (vec) await service.from('agent_knowledge_chunks').update({ embedding: JSON.stringify(vec) }).eq('id', chunkId)
-  } catch (e: any) {
-    console.error({ at: 'question-answer', msg: 'embedding failed (chunk still usable)', err: e?.message })
   }
 
   // Close the loop on the question: mark answered + keep the answer text on the
@@ -123,9 +155,9 @@ export async function POST(req: NextRequest, props: Params) {
     actorId: userId,
     actorEmail: null,
     action: 'knowledge_added',
-    summary: (created ? 'Added' : 'Updated') + ' knowledge from an answered question: "' + title.slice(0, 80) + (title.length > 80 ? '…' : '') + '"',
-    metadata: { source_type: 'logged_qa', logged_question_id: params.questionId, chunk_id: chunkId, corrected: !created },
+    summary: (created ? 'Added' : merged ? 'Merged into existing' : 'Updated') + ' knowledge from an answered question: "' + title.slice(0, 80) + (title.length > 80 ? '…' : '') + '"',
+    metadata: { source_type: 'logged_qa', logged_question_id: params.questionId, chunk_id: chunkId, corrected: !created, merged },
   })
 
-  return NextResponse.json({ question: updated, chunkId, created })
+  return NextResponse.json({ question: updated, chunkId, created, merged })
 }

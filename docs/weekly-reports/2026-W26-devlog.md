@@ -457,3 +457,13 @@
 - `QuestionsClient.tsx`: **"Review unanswered (N) →"** opens a one-at-a-time overlay (snapshot of open ids walked by index) — conversation on screen (shared `renderTranscript`, question highlighted), AI draft pre-filled, **Save & next / ✓ Accept reply / Skip**, `N of M` progress. Loads transcript (existing conversations/[sessionId]) + draft per card; draft only fetched when no answer typed/saved yet.
 - **Edit-the-reply** (owner refinement): "✏️ Edit this reply" (inline) / "Start from {Agent}'s reply" (overlay) prefill the editor with the agent's own reply for the low-confidence-tweak case — distinct from Accept-as-is and the fresh AI draft.
 - Refactored the modal's transcript rendering into a shared `renderTranscript` (modal + review reuse it). tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
+
+## 2026-06-27 — KB hygiene (A): near-duplicate guard on answer→KB
+
+**Why** (owner): keep the agent KB tight — different-but-similar questions shouldn't accumulate redundant answer chunks over time.
+
+**What changed**:
+- `sql/135_match_knowledge_embedding.sql` (APPLIED to prod) — `match_agent_knowledge_embedding(p_bot_id, p_embedding, p_exclude_id, p_limit)`: cosine nearest-neighbour over `agent_knowledge_chunks` (bot-scoped, mirrors search_knowledge_semantic's `<=>`). Read-only/additive.
+- `/answer` route restructured: embeds the answer FIRST (vector used for both storage + the check), then on a NEW insert (not same-question corrections) checks the nearest chunk; if cosine ≥ 0.92 it writes nothing and returns `{ duplicate }`. New body flags `force` (add anyway) + `replaceChunkId` (merge into the flagged chunk + re-point it at this question). Audit summary now Added/Updated/Merged.
+- `QuestionsClient`: `saveAnswer` handles the `duplicate` response → a 3-button dialog (Replace existing / Add as separate / Cancel) above the review overlay (z-60); also now auto-advances the review queue on a successful save (so the dup handshake doesn't skip an unsaved card).
+- Skipped when embeddings are off (no vector → full-text-only, as before). tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. NEXT: (B) KB Health view. LOCAL/unpushed.

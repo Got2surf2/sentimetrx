@@ -98,6 +98,9 @@ export default function QuestionsClient({
   const [reviewTurnsLoading, setReviewTurnsLoading] = useState(false)
   const [draftLoading, setDraftLoading] = useState(false)
   const [draftError, setDraftError] = useState(false)
+  // Near-duplicate guard: set when the server flags the answer as ~identical to
+  // an existing KB chunk; the reviewer chooses replace / add-anyway / cancel.
+  const [dupPrompt, setDupPrompt] = useState<{ qId: string; answer: string; duplicate: { chunkId: string; title: string; content: string; similarity: number } } | null>(null)
 
   useEffect(() => {
     fetch('/api/bots/' + botId + '/questions')
@@ -133,19 +136,26 @@ export default function QuestionsClient({
 
   // Answer the question AND feed it into the agent's knowledge base in one call.
   // Idempotent per question — saving again corrects (re-embeds) the same chunk.
-  async function saveAnswer(qId: string, answer: string) {
+  async function saveAnswer(qId: string, answer: string, opts: { force?: boolean; replaceChunkId?: string } = {}) {
     setAnsweringId(qId)
     try {
       const r = await fetch('/api/bots/' + botId + '/questions/' + qId + '/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer }),
+        body: JSON.stringify({ answer, force: opts.force, replaceChunkId: opts.replaceChunkId }),
       })
       const d = await r.json()
+      if (d?.duplicate) {
+        // Near-dup: pause and let the reviewer decide (don't write, don't advance).
+        setDupPrompt({ qId, answer, duplicate: d.duplicate })
+        return
+      }
       if (d?.question) {
+        setDupPrompt(null)
         setQuestions(prev => prev.map(q => q.id === qId ? d.question : q))
-        // keep the open modal in sync (status badge / button label flip)
         setConvQ(prev => prev && prev.id === qId ? d.question : prev)
+        // In guided review, a successful save on the current card advances the queue.
+        if (reviewing && reviewQueue[reviewIndex] === qId) advanceReview()
       } else if (d?.error) {
         alert('Save failed: ' + d.error)
       }
@@ -193,13 +203,11 @@ export default function QuestionsClient({
   }
   async function reviewAccept(q: Question) {
     if (!q.agent_response) return
-    await saveAnswer(q.id, q.agent_response.trim())
-    advanceReview()
+    await saveAnswer(q.id, q.agent_response.trim())  // auto-advances on success
   }
   async function reviewSave(q: Question, answer: string) {
     if (!answer.trim()) return
-    await saveAnswer(q.id, answer.trim())
-    advanceReview()
+    await saveAnswer(q.id, answer.trim())  // auto-advances on success
   }
 
   const reviewQ = reviewing ? (questions.find(q => q.id === reviewQueue[reviewIndex]) || null) : null
@@ -638,6 +646,33 @@ export default function QuestionsClient({
                   className='ml-auto px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200'
                 >Skip →</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Near-duplicate guard — keeps the KB tight by catching ~identical answers
+          before they pile up. Sits above the review overlay (z-60). */}
+      {dupPrompt && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4' onClick={() => setDupPrompt(null)}>
+          <div className='bg-white rounded-lg shadow-xl max-w-md w-full p-4' onClick={e => e.stopPropagation()}>
+            <div className='text-sm font-semibold text-gray-900'>Similar answer already exists</div>
+            <p className='text-xs text-gray-600 mt-1'>
+              This is <span className='font-semibold'>{dupPrompt.duplicate.similarity}%</span> similar to an answer already in {botName}&apos;s knowledge base:
+            </p>
+            <div className='mt-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md p-2 max-h-36 overflow-auto whitespace-pre-wrap break-words'>{dupPrompt.duplicate.content}</div>
+            <div className='mt-3 flex gap-2 flex-wrap'>
+              <button
+                onClick={() => { const dp = dupPrompt; setDupPrompt(null); saveAnswer(dp.qId, dp.answer, { replaceChunkId: dp.duplicate.chunkId }) }}
+                className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700'
+                title='Overwrite the existing answer with this one (keeps the KB to one entry).'
+              >Replace existing</button>
+              <button
+                onClick={() => { const dp = dupPrompt; setDupPrompt(null); saveAnswer(dp.qId, dp.answer, { force: true }) }}
+                className='px-3 py-1.5 rounded-md bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50'
+                title='Keep both — add this as a separate knowledge entry.'
+              >Add as separate</button>
+              <button onClick={() => setDupPrompt(null)} className='ml-auto px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200'>Cancel</button>
             </div>
           </div>
         </div>
