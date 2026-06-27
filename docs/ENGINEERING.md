@@ -599,6 +599,26 @@ needs `'./node_modules/@sparticuz/chromium/bin/**'` traced in:
 When you add a new headless-Chrome PDF route, add its path here too —
 it works locally (installed Chrome) but 500s in prod without the hint.
 
+### Shared correction layer (`lib/correction/`)
+
+Product-agnostic verbatim correction, so Town Hall, agent reports (What We
+Heard), and surveys all clean text through ONE code path instead of siloed
+copies. Three pieces:
+
+- **`normalize.ts`** — pure/client-safe deterministic variant→canonical
+  spelling replacement (`buildReplacements`/`normalizeText`) from a
+  `{canonical, aliases}[]` glossary. Not an AI rewrite; only listed mis-spellings
+  change. (Generalizes the original `lib/recordings/normalize.ts`.)
+- **`glossary.ts`** — `resolveBrandGlossary(service, {orgId, brandTag?, collectionId?, agentId?, datasetId?})` unions the curated `entity_catalog` across the relevant scopes (brand collection ∪ bot ∪ dataset) into one `{canonical, aliases}[]`. `glossaryTerms()` extracts the canonical strings for the polish prompt. (Generalizes `lib/recordings/brandGlossary.fetchBrandEntities`.)
+- **`polish.ts`** — `polishVerbatims(texts, {glossary, usage})` (Sonnet, glossary-injected, strict no-fabrication) faithfully cleans typos/grammar/mis-hearings; returns an array aligned with input (`null` per item on failure → caller shows raw). (Generalizes Town Hall's `polishQaPairs`.)
+
+**Invariant:** the raw source is NEVER mutated — correction is a derived/display
+layer (Town Hall stores `polished_*` + a corrected-view overlay; the agent
+readout polishes only the sample strings in its regenerable cache). Convergence
+plan: Town Hall (`lib/recordings/*`) and the survey pipeline migrate onto this
+module; bot entities roll up to the brand `entity_catalog` so one brand glossary
+serves every product. First consumer: the What We Heard readout (`lib/agentReadout.ts`, 2026-06-27).
+
 ### Claude Code push discipline
 
 Codified in `CLAUDE.md` "Push policy" — committed to the repo so it

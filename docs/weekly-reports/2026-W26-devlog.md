@@ -476,3 +476,15 @@
 - `/bots/[id]/knowledge/health` (`page.tsx` + `KbHealthClient.tsx`), linked "KB health" from the Questions page header. Summary cards (entries / total chars / from-answered-questions / oldest-entry age), by-source breakdown with per-source **Clear all** (`DELETE /knowledge?source_type=`), and a searchable + sortable (oldest/newest/largest) chunk list with view + per-chunk **Delete** (`DELETE /knowledge/[chunkId]`). Reads `GET /api/bots/[id]/knowledge`.
 - Honest gap surfaced in-UI: retrieval recency ("last used") isn't tracked, so it's not shown (no fabrication).
 - tsc clean, eslint 0 errors, 967 tests pass. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
+
+## 2026-06-27 — Shared brand-correction layer (Phase 1) + What We Heard verbatims polished
+
+**Why** (owner): the What We Heard report showed raw verbatims with typos (`leftbor`, `Roind Lake`, "eminent Domaine") while Town Hall reports polish + canonicalize them — and the correction infra should be brand-level/shared across products, not per-report. Owner chose "full convergence"; this is Phase 1 of 5.
+
+**What changed** (new `lib/correction/`):
+- `normalize.ts` — pure variant→canonical (generalizes recordings/normalize; takes `{canonical, aliases}`).
+- `glossary.ts` — `resolveBrandGlossary(service, {orgId, brandTag?, collectionId?, agentId?, datasetId?})` unions entity_catalog across brand-collection ∪ bot ∪ dataset scopes; `glossaryTerms()` (generalizes recordings/brandGlossary.fetchBrandEntities).
+- `polish.ts` — `polishVerbatims(texts, {glossary, usage})` (Sonnet, glossary-injected, strict no-fabrication, batched, null-per-item fallback; generalizes Town Hall polishQaPairs).
+- `lib/agentReadout.ts`: before summarize, resolves the agent's brand+bot glossary and polishes the SHOWN sample verbatims (raw `conversation_turns` never mutated — only the cached sample strings). Cache `READOUT_SCHEMA_VERSION` v1→v2. event_type `verbatim_polish`.
+- **Verified** against Sarina (force-recompute): leftbor→"left or", loghtbor→"light or", Roind Lake→"Round Lake Road", Kelky Park→"Kelly Park", "eminent Domaine"→"eminent domain", Clara Toni Apopka Road→"Clarcona-Ocoee Road" (inferred — glossary empty for Sarina; Phase 3 makes name corrections authoritative). tsc clean, eslint 0 errors. BOTS.md/ENGINEERING.md synced.
+- NEXT: Phase 2 (refactor recordings onto lib/correction with parity), 3 (bot→brand rollup), 4 (survey correction), 5 (unified glossary editor). LOCAL/unpushed.

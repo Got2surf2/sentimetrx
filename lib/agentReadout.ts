@@ -30,6 +30,8 @@ import {
   loadTurns, groupSessions, partitionByReview, buildExchanges, text, runConcurrent,
   type Exchange,
 } from '@/lib/agentStudy'
+import { resolveBrandGlossary, glossaryTerms } from '@/lib/correction/glossary'
+import { polishVerbatims } from '@/lib/correction/polish'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Sentiment { positive: number; neutral: number; negative: number }
@@ -202,7 +204,9 @@ Return ONLY JSON, no markdown:
 // ── Cache key ────────────────────────────────────────────────────────────────
 // Bump when the AgentReadout SHAPE changes so stale cached readouts recompute.
 //   v1 (2026-06-26): initial — questionThemes (hybrid) + beyondThemes + summary.
-const READOUT_SCHEMA_VERSION = 'v1'
+//   v2 (2026-06-27): sample verbatims polished via the shared correction layer
+//   (lib/correction) — typos/mis-spellings cleaned, brand glossary applied.
+const READOUT_SCHEMA_VERSION = 'v2'
 function cacheKeyFor(pairTotal: number, bot: BotRow, title: string): string {
   const h = crypto.createHash('sha1')
   h.update(`${READOUT_SCHEMA_VERSION}|${pairTotal}|${title}|${JSON.stringify(bot.focuses || [])}`)
@@ -310,7 +314,32 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
     .map(a => ({ label: a.label, comments: a.comments, sessions: a.sessions.size, sentiment: a.sentiment, samples: a.samples }))
     .sort((a, b) => b.comments - a.comments)
 
-  // Pass C: executive summary over the themed structure.
+  // ── Polish sample verbatims (shared brand-correction layer) ──
+  // Clean the verbatims we'll SHOW (typos / mis-spellings / grammar) via the
+  // product-agnostic polish pass, seeded with the agent's brand+bot glossary —
+  // same correction layer Town Hall uses. The raw source (conversation_turns) is
+  // never mutated; we polish only the derived sample strings in this object. Done
+  // BEFORE summarize so the executive summary cites cleaned text.
+  try {
+    const glossary = glossaryTerms(await resolveBrandGlossary(service, { orgId: bot.org_id, agentId: botId }))
+    const refs: Array<{ kind: 'q' | 'b'; t: number; s: number }> = []
+    const toPolish: string[] = []
+    questionThemes.forEach((th, t) => th.samples.forEach((s, si) => { refs.push({ kind: 'q', t, s: si }); toPolish.push(s.text) }))
+    beyondThemes.forEach((th, t) => th.samples.forEach((s, si) => { refs.push({ kind: 'b', t, s: si }); toPolish.push(s.quote) }))
+    if (toPolish.length) {
+      const polished = await polishVerbatims(toPolish, { glossary, usage: { org_id: bot.org_id, resource_type: 'bot', resource_id: botId, event_type: 'verbatim_polish' } })
+      refs.forEach((r, i) => {
+        const p = polished[i]
+        if (!p) return
+        if (r.kind === 'q') questionThemes[r.t].samples[r.s].text = p
+        else beyondThemes[r.t].samples[r.s].quote = p
+      })
+    }
+  } catch (e: any) {
+    console.error({ at: 'agent-readout', msg: 'verbatim polish failed (showing raw)', err: e?.message })
+  }
+
+  // Pass C: executive summary over the (now polished) themed structure.
   const summary = await summarize(botId, bot.name, questionThemes, beyondThemes, conversations)
 
   const allDates = turns.map(t => new Date(t.created_at).getTime()).sort((a, b) => a - b)

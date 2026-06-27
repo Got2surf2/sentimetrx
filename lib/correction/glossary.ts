@@ -1,0 +1,100 @@
+// lib/correction/glossary.ts
+//
+// Product-agnostic brand-glossary resolver — the shared canonicalization source
+// every product (Town Hall, agent reports / What We Heard, surveys) draws on.
+// Generalizes lib/recordings/brandGlossary.fetchBrandEntities: reads the curated
+// entity_catalog across the relevant scopes (brand collection ∪ bot ∪ dataset),
+// unions by slug, and returns a neutral {canonical, aliases} list usable by both
+// the deterministic normalizer (lib/correction/normalize) and the AI polish pass.
+//
+// Best-effort throughout — never throws; returns [] on any failure so correction
+// degrades to "no glossary" rather than breaking a report.
+
+import 'server-only'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { slugify } from '@/lib/entityFilter'
+import type { GlossaryEntry } from '@/lib/correction/normalize'
+
+interface CatalogRow { canonical: string; aliases: string[] | null }
+
+function rowToEntry(r: CatalogRow): GlossaryEntry {
+  const seen = new Set<string>()
+  const aliases: string[] = []
+  for (const v of (r.aliases ?? [])) {
+    const s = String(v ?? '').trim()
+    if (!s || s.toLowerCase() === r.canonical.toLowerCase() || seen.has(s.toLowerCase())) continue
+    seen.add(s.toLowerCase())
+    aliases.push(s)
+  }
+  return { canonical: r.canonical, aliases }
+}
+
+function unionInto(map: Map<string, GlossaryEntry>, entries: GlossaryEntry[]) {
+  for (const e of entries) {
+    const k = slugify(e.canonical)
+    if (!k) continue
+    const existing = map.get(k)
+    if (!existing) { map.set(k, { canonical: e.canonical, aliases: [...(e.aliases ?? [])] }); continue }
+    const seen = new Set((existing.aliases ?? []).map(v => v.toLowerCase()))
+    for (const v of (e.aliases ?? [])) {
+      if (!seen.has(v.toLowerCase())) { existing.aliases!.push(v); seen.add(v.toLowerCase()) }
+    }
+  }
+}
+
+async function readScope(service: SupabaseClient, scopeType: 'collection' | 'bot' | 'dataset', scopeId: string): Promise<GlossaryEntry[]> {
+  const { data } = await service
+    .from('entity_catalog')
+    .select('canonical, aliases')
+    .eq('scope_type', scopeType).eq('scope_id', scopeId).eq('hidden', false)
+  return ((data ?? []) as CatalogRow[]).map(rowToEntry)
+}
+
+// Resolve a brand glossary by unioning every scope the caller provides:
+//   - brandTag / collectionId → the brand collection's catalog
+//   - agentId                 → the bot's catalog (bot entities aren't collection members)
+//   - datasetId               → the dataset's own catalog
+export async function resolveBrandGlossary(
+  service: SupabaseClient,
+  opts: { orgId: string; brandTag?: string | null; collectionId?: string | null; agentId?: string | null; datasetId?: string | null },
+): Promise<GlossaryEntry[]> {
+  const bySlug = new Map<string, GlossaryEntry>()
+  try {
+    // brand collection — by explicit id, else resolved from brand_tag (same slug
+    // the sql/062 trigger uses).
+    let collectionId = (opts.collectionId ?? '').trim() || null
+    if (!collectionId && (opts.brandTag ?? '').trim()) {
+      const slug = slugify(opts.brandTag!)
+      if (slug) {
+        const { data: col } = await service
+          .from('collections').select('id')
+          .eq('org_id', opts.orgId).eq('kind', 'brand').eq('slug', slug)
+          .maybeSingle()
+        collectionId = (col as any)?.id ?? null
+      }
+    }
+    if (collectionId) unionInto(bySlug, await readScope(service, 'collection', collectionId))
+
+    if (opts.agentId) {
+      // Verify the agent is in the caller's org before reading its catalog.
+      const { data: bot } = await service.from('agents').select('id, org_id').eq('id', opts.agentId).maybeSingle()
+      if (bot && (bot as any).org_id === opts.orgId) unionInto(bySlug, await readScope(service, 'bot', opts.agentId))
+    }
+
+    if (opts.datasetId) unionInto(bySlug, await readScope(service, 'dataset', opts.datasetId))
+  } catch {
+    /* best-effort — return whatever resolved */
+  }
+  return [...bySlug.values()]
+}
+
+// Convenience: just the canonical strings (what the AI polish prompt wants).
+export function glossaryTerms(entries: GlossaryEntry[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const e of entries) {
+    const c = (e.canonical ?? '').trim()
+    if (c && !seen.has(c.toLowerCase())) { seen.add(c.toLowerCase()); out.push(c) }
+  }
+  return out
+}
