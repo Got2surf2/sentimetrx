@@ -30,7 +30,7 @@ export default async function BotEntitiesPage(props: Params) {
   const service = createServiceRoleClient()
   // Service-role lookup pairs id with org_id for non-admins (multi-tenancy
   // invariant); admins may load any org's agent.
-  let agentQuery = service.from('agents').select('id, name, slug, org_id').eq('id', params.id)
+  let agentQuery = service.from('agents').select('id, name, slug, org_id, brand_tag').eq('id', params.id)
   if (!isAdmin && userData?.org_id) agentQuery = agentQuery.eq('org_id', userData.org_id)
   const { data: bot } = await agentQuery.single()
   if (!bot) redirect('/bots')
@@ -41,6 +41,7 @@ export default async function BotEntitiesPage(props: Params) {
       botId={params.id}
       botName={(bot as any).name}
       botSlug={(bot as any).slug}
+      brandTag={(bot as any).brand_tag ?? null}
       logoUrl={orgData?.logo_url}
       orgName={orgData?.name}
       isAdmin={isAdmin}

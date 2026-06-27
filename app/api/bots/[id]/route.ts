@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { logBotChange, snapshotForDiff, diffSnapshots } from '@/lib/auditLog'
+import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const allowed = ['name', 'slug', 'status', 'config', 'system_prompt', 'personality', 'knowledge_base', 'training_urls', 'review_interval_hours', 'next_review_at', 'faq', 'facts', 'guardrails', 'subject', 'negative_content_mode', 'opponents', 'contrast_mode', 'sensitive_topics', 'focus_topics', 'deflection_enabled', 'deflection_message', 'ask_profile', 'profile_question', 'intents', 'focuses', 'demographic_inference', 'probe_focus_enabled']
+  const allowed = ['name', 'slug', 'status', 'config', 'system_prompt', 'personality', 'knowledge_base', 'training_urls', 'review_interval_hours', 'next_review_at', 'faq', 'facts', 'guardrails', 'subject', 'negative_content_mode', 'opponents', 'contrast_mode', 'sensitive_topics', 'focus_topics', 'deflection_enabled', 'deflection_message', 'ask_profile', 'profile_question', 'intents', 'focuses', 'demographic_inference', 'probe_focus_enabled', 'brand_tag']
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
@@ -113,6 +114,18 @@ export async function PATCH(req: NextRequest, props: Params) {
   const { error } = await updateQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Phase 3 (shared brand-correction layer): tagging an agent with a brand seeds
+  // that brand's shared entity catalog from the agent's curated entities, so the
+  // brand glossary is authoritative immediately. Best-effort; skip on org
+  // transfers (handled by their own cascade).
+  if (updates.brand_tag !== undefined && !isTransfer && beforeRow) {
+    await rollupAgentEntitiesToBrand(service, {
+      agentId: params.id,
+      orgId: (beforeRow as any).org_id,
+      brandTag: updates.brand_tag as string,
+    })
+  }
 
   if (isTransfer) {
     // Cascade the org move to ALL the agent's owned data (conversations, turns,

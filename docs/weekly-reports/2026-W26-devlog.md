@@ -502,3 +502,16 @@
 - **Still siloed (by design):** Town Hall's `polishQaPairs` is pair-shaped (Q&A) vs the shared `polishVerbatims` (flat strings) — different prompt + I/O shape, not converged this phase. Survey correction = Phase 4.
 - RECORDINGS.md §3.5b/§3.5c + ENGINEERING.md "Shared correction layer" synced. LOCAL/unpushed.
 - NEXT: Phase 3 (bot→brand entity rollup), 4 (survey correction), 5 (unified glossary editor). Owner live-QC: open a NOWOCATS recording's report/deck and confirm names still normalize (should be visually identical).
+
+## 2026-06-27 — Shared brand-correction layer (Phase 3): bot→brand entity rollup
+
+**Why** (Phase 3 of 5): an agent's curated entity catalog (scope='bot') was an island — Town Hall only saw it when a recording explicitly named the agent as `underlying_agent_id` (read-time bridge). Phase 3 makes the agent's curation flow UP into the brand collection's shared catalog so the brand glossary is authoritative for every product (Town Hall spelling correction, the What We Heard readout, future survey correction — all read the collection scope via `resolveBrandGlossary`).
+
+**What changed:**
+- **`sql/136_agent_brand_tag.sql`** (APPLIED to prod): `agents.brand_tag text` (nullable, additive, idempotent) — the first-class bot→brand link, mirroring `datasets.brand_tag`.
+- **`lib/correction/rollup.ts`** (new): `rollupAgentEntitiesToBrand` resolves the brand collection via `find_or_create_brand_collection` (same slugify find-or-create as the sql/062 dataset trigger), reads the agent's `hidden=false` bot rows + the brand's rows, and upserts (`onConflict scope_type,scope_id,slug`). Pure core `mergeBotEntitiesIntoBrand` (6 unit tests): **additive** — first-canonical/category-wins, aliases union (bot canonical folds in as a brand alias), sample_count accumulates; **never** overwrites a `source='manual'` or `hidden` brand row, never deletes. Best-effort (never throws). Mirrors the `lib/entityDiscovery.ts` upsert contract.
+- **Wired** (all best-effort, org-scoped to the agent's org): end of `extractBotEntities` (returns `brandPushed` for the UI); manual add + curated canonical/alias edit (`POST`/`PATCH /api/bots/[id]/entities[...]`); tagging the agent (`PATCH /api/bots/[id] {brand_tag}` — added to the allowlist).
+- **UI**: a "Brand" control on the Entities tab (`/bots/[id]/entities`) — set/clear the brand link; the Re-extract message reports `Rolled N up to brand "X"`.
+- **Not done** (deliberate): an agent is NOT made a true collection member (no trigger/membership) — "bots as true collection members" stays deferred; the brand catalog is enriched directly, which is all the glossary needs.
+- tsc clean (cache-cleared), 973 tests pass (+6), eslint 0 errors. BOTS.md §9.y.2b + RECORDINGS.md §3.5c + ENGINEERING.md "Shared correction layer" synced. Code LOCAL/unpushed; **sql/136 already applied to prod** (additive, needed so local dev — which runs against the linked prod DB — sees the column).
+- NEXT: Phase 4 (survey entity correction), Phase 5 (unified cross-scope glossary editor). **Owner verify locally**: tag Sarina (NOWOCATS agent) with brand "NOWOCATS" on her Entities tab → re-extract or just save → confirm the message, then a NOWOCATS-tagged Town Hall draws her spellings via the brand (collection) scope.

@@ -612,6 +612,7 @@ copies. Three pieces:
   which now delegates to it.)
 - **`glossary.ts`** — `resolveBrandGlossary(service, {orgId, brandTag?, collectionId?, agentId?, datasetId?})` unions the curated `entity_catalog` across the relevant scopes (brand collection ∪ bot ∪ dataset) into one `{canonical, aliases, category?}[]` (the optional `category` is carried through for typed consumers like Town Hall's entity map). `glossaryTerms()` extracts the canonical strings for the polish prompt. (Generalizes `lib/recordings/brandGlossary.fetchBrandEntities`, which now delegates to it.)
 - **`polish.ts`** — `polishVerbatims(texts, {glossary, usage})` (Sonnet, glossary-injected, strict no-fabrication) faithfully cleans typos/grammar/mis-hearings; returns an array aligned with input (`null` per item on failure → caller shows raw). (Generalizes Town Hall's `polishQaPairs`.)
+- **`rollup.ts`** — `rollupAgentEntitiesToBrand(service, {agentId, orgId, brandTag?})` promotes an agent's curated `entity_catalog` (scope='bot') into its **brand collection's** catalog (scope='collection') so the brand glossary is authoritative across products. Additive/non-destructive (pure core `mergeBotEntitiesIntoBrand`: first-canonical-wins, aliases union, sample_count accumulate, never trample a manual/hidden brand row). The bot→brand link is `agents.brand_tag` (`sql/136`); fired on entity extract/curate. (Phase 3, 2026-06-27 — BOTS.md §9.y.2b.)
 
 **Invariant:** the raw source is NEVER mutated — correction is a derived/display
 layer (Town Hall stores `polished_*` + a corrected-view overlay; the agent
@@ -621,9 +622,10 @@ module; bot entities roll up to the brand `entity_catalog` so one brand glossary
 serves every product. Consumers: the What We Heard readout (`lib/agentReadout.ts`,
 2026-06-27); Town Hall (`lib/recordings/normalize.ts` + `brandGlossary.fetchBrandEntities`
 now thin adapters over the shared layer — Phase 2, 2026-06-27, output verified
-byte-identical via the recordings unit suite). Still siloed: Town Hall's
-pair-shaped polish (`polishQaPairs` — Q&A pairs vs flat verbatims) and the survey
-pipeline (Phase 4).
+byte-identical via the recordings unit suite). Phase 3 (2026-06-27) wired the
+bot→brand rollup (`rollup.ts`) so agent curation feeds the brand catalog every
+consumer reads. Still siloed: Town Hall's pair-shaped polish (`polishQaPairs` —
+Q&A pairs vs flat verbatims) and the survey pipeline (Phase 4).
 
 ### Claude Code push discipline
 

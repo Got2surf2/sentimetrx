@@ -45,6 +45,7 @@ export async function POST(_req: NextRequest, props: Params) {
       total: result.total,
       cost_cents: result.costCents,
       duration_ms: result.durationMs,
+      brand_pushed: result.brandPushed,
     })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Extraction failed' }, { status: 500 })

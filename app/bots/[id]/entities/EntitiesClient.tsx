@@ -41,6 +41,7 @@ interface Props {
   botId: string
   botName: string
   botSlug: string
+  brandTag: string | null
   logoUrl?: string
   orgName?: string
   isAdmin: boolean
@@ -77,8 +78,12 @@ function formatCost(cents: number | null) {
 }
 
 export default function EntitiesClient({
-  botId, botName, logoUrl, orgName, isAdmin, userEmail, fullName, features,
+  botId, botName, brandTag, logoUrl, orgName, isAdmin, userEmail, fullName, features,
 }: Props) {
+  // Brand link (Phase 3) — the brand this agent's curated entities roll up into.
+  const [brand, setBrand] = useState(brandTag ?? '')
+  const [brandSaving, setBrandSaving] = useState(false)
+  const [brandMessage, setBrandMessage] = useState<string | null>(null)
   const [entities, setEntities] = useState<Entity[]>([])
   const [hiddenCount, setHiddenCount] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<LastRefresh | null>(null)
@@ -115,6 +120,32 @@ export default function EntitiesClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId, showHidden])
 
+  async function saveBrand() {
+    const next = brand.trim()
+    setBrandSaving(true)
+    setBrandMessage(null)
+    try {
+      const r = await fetch('/api/bots/' + botId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_tag: next }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d?.error) {
+        setBrandMessage('Save failed: ' + (d?.error || r.statusText))
+      } else {
+        setBrand(next)
+        setBrandMessage(next
+          ? `Linked to brand “${next}”. Curated entities now roll up to its shared catalog.`
+          : 'Brand link cleared.')
+      }
+    } catch (e: any) {
+      setBrandMessage('Save failed: ' + (e?.message || 'network error'))
+    } finally {
+      setBrandSaving(false)
+    }
+  }
+
   async function runExtract() {
     if (!confirm('Re-extract entities from this agent\'s knowledge base?\n\nRuns Haiku on all KB chunks. Typical cost: $0.01–$0.05.')) return
     setExtracting(true)
@@ -125,8 +156,11 @@ export default function EntitiesClient({
       if (d?.error) {
         setExtractMessage('Extract failed: ' + d.error)
       } else {
+        const brandNote = typeof d.brand_pushed === 'number'
+          ? ` Rolled ${d.brand_pushed} up to brand “${brand}”.`
+          : ''
         setExtractMessage(
-          `Added ${d.added} new entities (total ${d.total}). Cost: ${formatCost(d.cost_cents)} · ${(d.duration_ms / 1000).toFixed(1)}s.`
+          `Added ${d.added} new entities (total ${d.total}). Cost: ${formatCost(d.cost_cents)} · ${(d.duration_ms / 1000).toFixed(1)}s.${brandNote}`
         )
         await reload({ includeHidden: showHidden })
       }
@@ -266,6 +300,30 @@ export default function EntitiesClient({
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
             >View transcripts</Link>
           </div>
+        </div>
+
+        {/* Brand link (Phase 3) — this agent's curated entities roll up into the
+            named brand's shared catalog, which powers spelling correction for the
+            brand's Town Hall reports, the What We Heard readout, and more. */}
+        <div className='mb-4 p-4 rounded-lg border border-indigo-200 bg-indigo-50/50'>
+          <div className='flex flex-wrap gap-3 items-end'>
+            <label className='flex flex-col gap-1'>
+              <span className='text-xs font-medium text-gray-600'>Brand</span>
+              <input value={brand} onChange={e => setBrand(e.target.value)} placeholder='e.g. NOWOCATS'
+                className='border border-gray-300 rounded-lg px-3 py-2' style={{ fontSize: '16px', minWidth: 220 }} />
+            </label>
+            <button
+              onClick={saveBrand}
+              disabled={brandSaving || brand.trim() === (brandTag ?? '')}
+              className='px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50'
+            >{brandSaving ? 'Saving…' : 'Save brand'}</button>
+          </div>
+          <p className='text-xs text-gray-500 mt-2'>
+            Links this agent to a brand so its curated entities (names, places, spellings) roll up into the
+            brand's <strong>shared catalog</strong> — the authoritative glossary used by the brand's Town Hall
+            spelling correction, reports, and other products. Leave blank to keep entities agent-only.
+          </p>
+          {brandMessage && <p className='text-xs text-indigo-700 mt-1'>{brandMessage}</p>}
         </div>
 
         {/* Manual add-entity form — manual rows survive re-extraction */}

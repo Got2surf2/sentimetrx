@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { invalidateEntityCache } from '@/lib/entityMentionDetector'
+import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,6 +78,13 @@ export async function PATCH(req: NextRequest, props: Params) {
 
   // Visibility change or term change → catalog needs a fresh load on the next turn.
   invalidateEntityCache(params.id)
+
+  // Phase 3: a curated spelling/alias change rolls up into the brand collection
+  // (best-effort; uses the BOT's org so an admin's cross-org edit lands in the
+  // right brand). Hide/unhide doesn't need a roll — the rollup only ever adds.
+  if (canonical !== undefined || aliases !== undefined) {
+    await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as any).org_id })
+  }
 
   return NextResponse.json({ entity: updated })
 }

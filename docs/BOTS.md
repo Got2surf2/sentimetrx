@@ -970,6 +970,15 @@ Algorithm:
 
 **Trigger**: button on the new `/bots/[id]/entities` tab → `POST /api/bots/[id]/entities/extract`. No automatic trigger on KB chunk insert (per § 9.y open Q1).
 
+#### 9.y.2b Brand rollup (Phase 3 — shared brand-correction layer, 2026-06-27)
+
+An agent can carry a **`brand_tag`** (`sql/136`, free text, set via a "Brand" control on the Entities tab → `PATCH /api/bots/[id] {brand_tag}`). When set, the agent's **visible** curated entities roll up into that brand's **collection-scope** `entity_catalog` (`scope_type='collection'`), so the brand glossary is authoritative across products — Town Hall spelling correction, the What We Heard readout, future survey correction (all read the collection scope via `resolveBrandGlossary`, ENGINEERING.md → "Shared correction layer").
+
+- **Mechanism**: `rollupAgentEntitiesToBrand` (`lib/correction/rollup.ts`) resolves the brand collection via `find_or_create_brand_collection(org_id, brand_tag, created_by)` (`sql/060` — the same slugify find-or-create the `sql/062` dataset trigger uses, so an agent and a dataset tagged with the same brand land in ONE collection), reads the agent's `hidden=false` bot rows + the brand's existing rows, and upserts (`onConflict scope_type,scope_id,slug`).
+- **Contract** (pure core `mergeBotEntitiesIntoBrand`, unit-tested): **additive** — bot→brand only ever ADDS/enriches; first canonical/category wins (no flapping on re-roll), aliases union (the bot canonical folds in as a brand alias), `sample_count` accumulates. It **never** overwrites a brand row that's `source='manual'` (hand-curated) or `hidden=true` (soft-deleted), and never deletes brand rows. Hidden bot entities are not promoted. Mirrors the discovery upsert contract in `lib/entityDiscovery.ts`.
+- **Fired on**: a successful `extractBotEntities` run (best-effort; returns `brandPushed` for the UI message), a manual entity add or curated canonical/alias edit (`POST`/`PATCH /api/bots/[id]/entities[...]`), and on tagging the agent (`PATCH /api/bots/[id] {brand_tag}`). All best-effort — a rollup failure never breaks the triggering action. Org-scoped by construction (uses the **agent's** org so an admin's cross-org edit lands in the right brand).
+- **Not done here**: an agent is NOT made a true collection member (no trigger/membership row — "bots as true collection members" stays deferred, RECORDINGS.md §3.5c). The brand catalog is enriched directly, which is all the glossary needs.
+
 #### 9.y.3 Mention detection — `lib/entityMentionDetector.ts` (new)
 
 ```ts

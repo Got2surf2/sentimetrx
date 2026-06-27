@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { slugify } from '@/lib/entityFilter'
+import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
 
 const ENTITY_FIELDS = 'id, canonical, slug, category, aliases, sample_count, source, hidden, first_seen_at, last_seen_at'
 
@@ -115,6 +116,8 @@ export async function POST(req: NextRequest, props: Params) {
       .eq('id', (existing as { id: string }).id).eq('scope_type', 'bot').eq('scope_id', params.id)
       .select(ENTITY_FIELDS).single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Phase 3: a manually-curated entity rolls up into the brand collection.
+    await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as { org_id: string }).org_id })
     return NextResponse.json({ entity: updated, merged: true })
   }
 
@@ -123,5 +126,6 @@ export async function POST(req: NextRequest, props: Params) {
     .insert({ scope_type: 'bot', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', hidden: false, sample_count: 0 })
     .select(ENTITY_FIELDS).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as { org_id: string }).org_id })
   return NextResponse.json({ entity: created })
 }

@@ -18,6 +18,7 @@ import 'server-only'
 import { callAI } from './ai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from './entityFilter'
+import { rollupAgentEntitiesToBrand } from './correction/rollup'
 
 // 8 categories per § 9.y open Q2.
 export const BOT_ENTITY_CATEGORIES = [
@@ -42,6 +43,7 @@ interface ExtractResult {
   total: number
   costCents: number
   durationMs: number
+  brandPushed?: number   // entities rolled up into the brand collection (Phase 3); undefined if the agent has no brand_tag
 }
 
 // Roughly 5 chunks per call, capped on character budget so we don't blow
@@ -307,10 +309,17 @@ export async function extractBotEntities(
     duration_ms: durationMs,
   })
 
+  // Phase 3 (shared brand-correction layer): if this agent is brand-tagged, roll
+  // its curated entities up into the brand collection's shared catalog so the
+  // brand glossary is authoritative across products. Best-effort — never fails
+  // the extract.
+  const rollup = await rollupAgentEntitiesToBrand(service, { agentId: opts.botId, orgId: opts.orgId })
+
   return {
     added,
     total: entitiesAfter,
     costCents: totalCostCents,
     durationMs,
+    brandPushed: rollup?.pushed,
   }
 }
