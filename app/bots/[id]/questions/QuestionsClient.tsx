@@ -36,6 +36,8 @@ interface Question {
   agent_response: string | null   // the assistant reply that followed this question (context for review)
 }
 
+type ConvTurn = { role: string; content: string; content_en: string | null; source: string | null }
+
 interface Props {
   botId: string
   botName: string
@@ -86,8 +88,16 @@ export default function QuestionsClient({
   const [answeringId, setAnsweringId] = useState<string | null>(null)
   // Full-conversation modal: the question being viewed + its loaded transcript.
   const [convQ, setConvQ] = useState<Question | null>(null)
-  const [convTurns, setConvTurns] = useState<{ role: string; content: string; content_en: string | null; source: string | null }[] | null>(null)
+  const [convTurns, setConvTurns] = useState<ConvTurn[] | null>(null)
   const [convLoading, setConvLoading] = useState(false)
+  // Guided Review mode: a snapshot queue of open question ids walked one at a time.
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewQueue, setReviewQueue] = useState<string[]>([])
+  const [reviewIndex, setReviewIndex] = useState(0)
+  const [reviewTurns, setReviewTurns] = useState<ConvTurn[] | null>(null)
+  const [reviewTurnsLoading, setReviewTurnsLoading] = useState(false)
+  const [draftLoading, setDraftLoading] = useState(false)
+  const [draftError, setDraftError] = useState(false)
 
   useEffect(() => {
     fetch('/api/bots/' + botId + '/questions')
@@ -164,6 +174,70 @@ export default function QuestionsClient({
     }
   }
 
+  // ── Guided Review mode ──────────────────────────────────────────────────────
+  function startReview() {
+    const openIds = questions
+      .filter(q => q.status === 'open')
+      .sort((a, b) => a.created_at > b.created_at ? -1 : 1)
+      .map(q => q.id)
+    if (!openIds.length) return
+    setReviewQueue(openIds)
+    setReviewIndex(0)
+    setReviewing(true)
+  }
+  function advanceReview() {
+    setReviewIndex(i => {
+      if (i + 1 >= reviewQueue.length) { setReviewing(false); return i }
+      return i + 1
+    })
+  }
+  async function reviewAccept(q: Question) {
+    if (!q.agent_response) return
+    await saveAnswer(q.id, q.agent_response.trim())
+    advanceReview()
+  }
+  async function reviewSave(q: Question, answer: string) {
+    if (!answer.trim()) return
+    await saveAnswer(q.id, answer.trim())
+    advanceReview()
+  }
+
+  const reviewQ = reviewing ? (questions.find(q => q.id === reviewQueue[reviewIndex]) || null) : null
+
+  // Load the current review question's transcript + AI-drafted answer.
+  useEffect(() => {
+    if (!reviewing) return
+    const qId = reviewQueue[reviewIndex]
+    if (!qId) return
+    const q = questions.find(x => x.id === qId)
+    if (!q) return
+    let cancelled = false
+
+    setReviewTurns(null); setReviewTurnsLoading(true)
+    fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(q.session_id))
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setReviewTurns(Array.isArray(d?.turns) ? d.turns : []) })
+      .catch(() => { if (!cancelled) setReviewTurns([]) })
+      .finally(() => { if (!cancelled) setReviewTurnsLoading(false) })
+
+    // AI draft — only when the reviewer hasn't already typed/saved an answer.
+    if (answerDraft[qId] === undefined && !q.suggested_kb_addition) {
+      setDraftLoading(true); setDraftError(false)
+      fetch('/api/bots/' + botId + '/questions/' + qId + '/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentReply: q.agent_response || '' }),
+      })
+        .then(r => r.json())
+        .then(d => { if (!cancelled && d?.draft) setAnswerDraft(prev => prev[qId] !== undefined ? prev : ({ ...prev, [qId]: d.draft })) })
+        .catch(() => { if (!cancelled) setDraftError(true) })
+        .finally(() => { if (!cancelled) setDraftLoading(false) })
+    } else {
+      setDraftLoading(false); setDraftError(false)
+    }
+    return () => { cancelled = true }
+  }, [reviewing, reviewIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const counts = useMemo(() => {
     const open = questions.filter(q => q.status === 'open').length
     const byCls: Record<string, number> = {}
@@ -187,6 +261,30 @@ export default function QuestionsClient({
   const mDirty = convQ ? mAns !== (convQ.suggested_kb_addition || '') : false
   const mHasKb = convQ ? !!convQ.suggested_kb_addition : false
 
+  // Chat-bubble transcript (shared by the modal + the review overlay); the logged
+  // question's turn is highlighted, greeting preamble hidden.
+  const renderTranscript = (turns: ConvTurn[], questionText: string) =>
+    turns.filter(t => t.source !== 'greeting').map((t, i) => {
+      const isUser = t.role === 'user'
+      const text = t.content_en || t.content || ''
+      const isThisQ = isUser && normText(text) === normText(questionText)
+      return (
+        <div key={i} className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
+          <div className={'max-w-[82%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ' +
+            (isUser
+              ? (isThisQ ? 'bg-amber-100 border border-amber-300 text-gray-900' : 'bg-blue-50 text-gray-900')
+              : 'bg-white border border-gray-200 text-gray-800')}>
+            <div className='text-[10px] uppercase tracking-wide opacity-60 mb-0.5'>{isUser ? 'Visitor' : botName}</div>
+            {text}
+          </div>
+        </div>
+      )
+    })
+
+  // Review overlay derived answer-state.
+  const rAns = reviewQ ? (answerDraft[reviewQ.id] ?? (reviewQ.suggested_kb_addition || '')) : ''
+  const rHasKb = reviewQ ? !!reviewQ.suggested_kb_addition : false
+
   return (
     <div className='min-h-screen bg-gray-50'>
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='bots' features={features} />
@@ -204,6 +302,12 @@ export default function QuestionsClient({
             </p>
           </div>
           <div className='flex gap-2'>
+            {counts.open > 0 && (
+              <button
+                onClick={startReview}
+                className='px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700'
+              >Review unanswered ({counts.open}) →</button>
+            )}
             <Link
               href={'/bots/' + botId + '/conversations'}
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
@@ -314,12 +418,19 @@ export default function QuestionsClient({
                     <div className='mt-3'>
                       <div className='text-xs font-medium text-gray-500 mb-1'>{botName} replied:</div>
                       <div className='text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md p-2 whitespace-pre-wrap break-words max-h-40 overflow-auto'>{q.agent_response}</div>
-                      <button
-                        disabled={answeringId === q.id}
-                        onClick={() => saveAnswer(q.id, (q.agent_response || '').trim())}
-                        className='mt-1 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
-                        title={'Accept this reply as the correct answer and add it to ' + botName + "'s knowledge base."}
-                      >✓ Accept {botName}&apos;s reply as the answer</button>
+                      <div className='mt-1 flex gap-2 flex-wrap'>
+                        <button
+                          disabled={answeringId === q.id}
+                          onClick={() => saveAnswer(q.id, (q.agent_response || '').trim())}
+                          className='px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
+                          title={'Accept this reply as-is and add it to ' + botName + "'s knowledge base."}
+                        >✓ Accept {botName}&apos;s reply as the answer</button>
+                        <button
+                          onClick={() => setAnswerDraft(prev => ({ ...prev, [q.id]: (q.agent_response || '') }))}
+                          className='px-2 py-1 rounded-md bg-white text-gray-700 border border-gray-300 text-xs font-medium hover:bg-gray-50'
+                          title={'Copy ' + botName + "'s reply into the answer box so you can tweak it."}
+                        >✏️ Edit this reply</button>
+                      </div>
                     </div>
                   )}
 
@@ -424,22 +535,7 @@ export default function QuestionsClient({
               {!convLoading && convTurns && convTurns.length === 0 && (
                 <div className='text-sm text-gray-500 text-center py-8'>No transcript found for this session.</div>
               )}
-              {!convLoading && convTurns && convTurns.filter(t => t.source !== 'greeting').map((t, i) => {
-                const isUser = t.role === 'user'
-                const text = t.content_en || t.content || ''
-                const isThisQ = isUser && normText(text) === normText(convQ.user_message)
-                return (
-                  <div key={i} className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
-                    <div className={'max-w-[82%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ' +
-                      (isUser
-                        ? (isThisQ ? 'bg-amber-100 border border-amber-300 text-gray-900' : 'bg-blue-50 text-gray-900')
-                        : 'bg-white border border-gray-200 text-gray-800')}>
-                      <div className='text-[10px] uppercase tracking-wide opacity-60 mb-0.5'>{isUser ? 'Visitor' : botName}</div>
-                      {text}
-                    </div>
-                  </div>
-                )
-              })}
+              {!convLoading && convTurns && renderTranscript(convTurns, convQ.user_message)}
             </div>
 
             {/* action footer — answer or accept, with full context above */}
@@ -469,6 +565,78 @@ export default function QuestionsClient({
                 >{answeringId === convQ.id ? 'Saving…' : mHasKb ? 'Update knowledge' : 'Save answer & add to knowledge'}</button>
                 {mHasKb && <span className='text-xs text-emerald-700 font-medium'>✓ In knowledge base</span>}
                 <button onClick={() => setConvQ(null)} className='ml-auto px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200'>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guided Review mode — one unanswered question at a time, conversation on
+          screen, an AI-drafted answer prefilled. Accept the agent's reply, save
+          a (drafted/edited) answer, or skip — each advances the queue. */}
+      {reviewing && reviewQ && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+          <div className='bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col'>
+            {/* header + progress */}
+            <div className='p-4 border-b border-gray-200 flex items-center justify-between gap-3'>
+              <div>
+                <div className='text-sm font-semibold text-gray-900'>Review unanswered</div>
+                <div className='text-xs text-gray-500 mt-0.5'>{reviewIndex + 1} of {reviewQueue.length}</div>
+              </div>
+              <button onClick={() => setReviewing(false)} className='text-gray-400 hover:text-gray-700 text-2xl leading-none' aria-label='Exit review'>&times;</button>
+            </div>
+
+            {/* conversation context */}
+            <div className='flex-1 overflow-auto p-4 space-y-2 bg-gray-50'>
+              {reviewTurnsLoading && <div className='py-6 text-center'><LottieLoader message='Loading conversation…' /></div>}
+              {!reviewTurnsLoading && reviewTurns && reviewTurns.length === 0 && (
+                <div className='text-sm text-gray-500 text-center py-4'>No transcript found — answer from the question above.</div>
+              )}
+              {!reviewTurnsLoading && reviewTurns && renderTranscript(reviewTurns, reviewQ.user_message)}
+            </div>
+
+            {/* answer + actions */}
+            <div className='p-4 border-t border-gray-200 bg-white'>
+              <div className='flex items-center justify-between gap-2 mb-1'>
+                <label className='text-xs font-medium text-gray-600'>
+                  What should {botName} say next time?
+                  {draftLoading && <span className='ml-2 text-emerald-700'>✨ drafting…</span>}
+                  {draftError && <span className='ml-2 text-amber-600'>couldn’t draft — type your own</span>}
+                  {!draftLoading && !draftError && !rHasKb && answerDraft[reviewQ.id] !== undefined && <span className='ml-2 text-gray-400'>AI draft — review &amp; edit before saving</span>}
+                </label>
+                {reviewQ.agent_response && (
+                  <button
+                    onClick={() => setAnswerDraft(prev => ({ ...prev, [reviewQ.id]: (reviewQ.agent_response || '') }))}
+                    className='text-xs text-gray-600 hover:text-gray-900 underline shrink-0'
+                    title={'Start from ' + botName + "'s own reply instead of the AI draft."}
+                  >✏️ Start from {botName}&apos;s reply</button>
+                )}
+              </div>
+              <textarea
+                value={rAns}
+                onChange={e => setAnswerDraft(prev => ({ ...prev, [reviewQ.id]: e.target.value }))}
+                placeholder={draftLoading ? 'Drafting a suggested answer…' : 'Type the answer the agent should give next time…'}
+                style={{ fontSize: '16px' }}
+                className='w-full border border-gray-200 rounded-md p-2 resize-y min-h-[90px] focus:outline-none focus:border-emerald-400'
+              />
+              <div className='mt-3 flex items-center gap-2 flex-wrap'>
+                <button
+                  disabled={answeringId === reviewQ.id || !rAns.trim()}
+                  onClick={() => reviewSave(reviewQ, rAns)}
+                  className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
+                >{answeringId === reviewQ.id ? 'Saving…' : rHasKb ? 'Update & next →' : 'Save answer & next →'}</button>
+                {reviewQ.agent_response && (
+                  <button
+                    disabled={answeringId === reviewQ.id}
+                    onClick={() => reviewAccept(reviewQ)}
+                    className='px-3 py-1.5 rounded-md bg-white border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50 disabled:opacity-50'
+                    title={'Accept ' + botName + "'s own reply (shown above) as the answer."}
+                  >✓ Accept {botName}&apos;s reply</button>
+                )}
+                <button
+                  onClick={advanceReview}
+                  className='ml-auto px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200'
+                >Skip →</button>
               </div>
             </div>
           </div>

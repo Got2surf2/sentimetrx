@@ -447,3 +447,13 @@
 **Why** (owner): the two tabs ordered differently (All newest-first, Unanswered oldest-first FIFO) — owner wanted them consistent. (Confirmed the full-conversation modal + agent-reply/accept already apply to BOTH tabs — they share one render path.)
 
 **What changed**: `QuestionsClient.tsx` — Unanswered queue sort flipped ascending→descending (newest-first). BOTS.md §9.x notes updated (the queue's "oldest-first" → "newest-first", + noted both tabs share the row UI incl. the modal). LOCAL/unpushed.
+
+## 2026-06-27 — Questions page: Guided Review mode + AI-drafted answers + edit-the-reply
+
+**Why** (owner): accepting/correcting an answer required hunting for context — wanted an intuitive, guided review where context + a draft come to the reviewer. Plus: for answered/low-confidence rows, just let them modify the agent's reply (prefill / copy).
+
+**What changed**:
+- `POST /api/bots/[id]/questions/[questionId]/draft` (new) — AI-suggested answer, `tier:'standard'`, **grounded only in the agent's system_prompt + KB full-text chunks** (search_knowledge_chunks RPC, no embedding) with strict no-fabrication ("if not in the knowledge, draft an honest gap response, don't invent hours/numbers/URLs"). Org-gated.
+- `QuestionsClient.tsx`: **"Review unanswered (N) →"** opens a one-at-a-time overlay (snapshot of open ids walked by index) — conversation on screen (shared `renderTranscript`, question highlighted), AI draft pre-filled, **Save & next / ✓ Accept reply / Skip**, `N of M` progress. Loads transcript (existing conversations/[sessionId]) + draft per card; draft only fetched when no answer typed/saved yet.
+- **Edit-the-reply** (owner refinement): "✏️ Edit this reply" (inline) / "Start from {Agent}'s reply" (overlay) prefill the editor with the agent's own reply for the low-confidence-tweak case — distinct from Accept-as-is and the fresh AI draft.
+- Refactored the modal's transcript rendering into a shared `renderTranscript` (modal + review reuse it). tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
