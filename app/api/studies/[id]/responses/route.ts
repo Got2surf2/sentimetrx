@@ -6,6 +6,8 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
+import { resolveBrandGlossary } from '@/lib/correction/glossary'
+import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -57,6 +59,22 @@ export async function GET(req: NextRequest, props: Params) {
   const service = createServiceRoleClient()
 
   const cfg = study?.config || {}
+
+  // ── Brand spelling correction (shared brand-correction layer, Phase 4) ────
+  // When the study is brand-tagged, exported open-ended verbatims are
+  // canonicalized against the brand's curated entity glossary (variant→canonical,
+  // deterministic). Raw `responses.payload` is never mutated — correction is a
+  // derived/display layer applied on read. No-op when there's no brand_tag or the
+  // glossary is empty. Only needed for exports.
+  let nz: (t: string) => string = (t) => t
+  if (isExport) {
+    const brandTag = String((cfg as any).brandTag ?? '').trim()
+    if (brandTag && study?.org_id) {
+      const glossary = await resolveBrandGlossary(service, { orgId: study.org_id, brandTag })
+      const repl = buildReplacements(glossary)
+      if (repl.length > 0) nz = (t: string) => normalizeText(t, repl)
+    }
+  }
 
   // ── Collect all psycho/demo keys across ALL responses ─────────────────────
   let allPsychoKeys: string[] = []
@@ -165,10 +183,10 @@ export async function GET(req: NextRequest, props: Params) {
 
     if (sections.has('openended') && !forDatanautix) {
       cols.push(
-        { header: oeLabel('q1'), value: r => r.payload?.openEnded?.q1 ?? '' },
-        { header: oeLabel('q2'), value: r => r.payload?.openEnded?.q2 ?? '' },
-        { header: oeLabel('q3'), value: r => r.payload?.openEnded?.q3 ?? '' },
-        { header: oeLabel('q4'), value: r => r.payload?.openEnded?.q4 ?? '' },
+        { header: oeLabel('q1'), value: r => nz(r.payload?.openEnded?.q1 ?? '') },
+        { header: oeLabel('q2'), value: r => nz(r.payload?.openEnded?.q2 ?? '') },
+        { header: oeLabel('q3'), value: r => nz(r.payload?.openEnded?.q3 ?? '') },
+        { header: oeLabel('q4'), value: r => nz(r.payload?.openEnded?.q4 ?? '') },
       )
     }
 
@@ -237,9 +255,9 @@ export async function GET(req: NextRequest, props: Params) {
   for (const r of rows) {
     const base = closedCols.map(c => c.value(r))
     for (const { key } of oeFields) {
-      const text = (r.payload?.openEnded?.[key] || '').trim()
-      if (!text) continue
-      dnRows.push([...base, oeLabel(key), text])
+      const raw = (r.payload?.openEnded?.[key] || '').trim()
+      if (!raw) continue
+      dnRows.push([...base, oeLabel(key), nz(raw)])
     }
   }
 

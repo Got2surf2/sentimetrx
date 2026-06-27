@@ -184,6 +184,13 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
           hint="Internal name — respondents don't see this" />
       </Section>
 
+      {/* Brand (shared brand-correction layer, Phase 4) */}
+      <Section title="Brand" description="Optional. Link this survey to a brand so exported open-ended verbatims use the brand's curated spellings (e.g. a respondent's “Nowocats” becomes “NOWOCATS”). Leave blank to export answers exactly as typed.">
+        <Input value={draft.config.brandTag || ''} onChange={v => updateConfig({ brandTag: v })}
+          placeholder="e.g. NOWOCATS"
+          hint="Respondents don't see this — it only drives spelling correction in exports" />
+      </Section>
+
       {/* Custom URL */}
       <Section title="Custom survey URL" description="Give your survey a short, memorable link. Leave blank to use the default.">
         <div className="flex flex-col gap-2">

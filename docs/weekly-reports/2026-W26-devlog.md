@@ -515,3 +515,16 @@
 - **Not done** (deliberate): an agent is NOT made a true collection member (no trigger/membership) — "bots as true collection members" stays deferred; the brand catalog is enriched directly, which is all the glossary needs.
 - tsc clean (cache-cleared), 973 tests pass (+6), eslint 0 errors. BOTS.md §9.y.2b + RECORDINGS.md §3.5c + ENGINEERING.md "Shared correction layer" synced. Code LOCAL/unpushed; **sql/136 already applied to prod** (additive, needed so local dev — which runs against the linked prod DB — sees the column).
 - NEXT: Phase 4 (survey entity correction), Phase 5 (unified cross-scope glossary editor). **Owner verify locally**: tag Sarina (NOWOCATS agent) with brand "NOWOCATS" on her Entities tab → re-extract or just save → confirm the message, then a NOWOCATS-tagged Town Hall draws her spellings via the brand (collection) scope.
+
+## 2026-06-27 — Shared brand-correction layer (Phase 4): survey verbatims consume the brand glossary
+
+**Why** (Phase 4 of 5, scope = consume-only, owner-chosen): surveys were the only product entirely outside the entity loop — no brand link, open-ended answers exported raw. Phase 4 lets a survey READ its brand's curated glossary and spelling-correct exported verbatims (e.g. a respondent's "Nowocats" → "NOWOCATS"), mirroring Phase 1/Town Hall. Surveys do NOT write the catalog (no pollution of canonicals).
+
+**What changed:**
+- `lib/types.ts`: `StudyConfig.brandTag?` — the brand link lives in `config` (NOT a new column) because surveys are consume-only (no trigger/rollup keyed on it); rides the existing study save flow.
+- `app/api/studies/[id]/responses/route.ts` (export): when the study is brand-tagged, `resolveBrandGlossary({orgId, brandTag})` → `buildReplacements` → deterministic `normalizeText` applied to exported open-ended verbatims (standard q1–q4 cols + the Datanautix one-row-per-verbatim `response_text`). Raw `responses.payload` is never mutated — correction is applied on read. No-op when blank/empty glossary.
+- `components/creator/StepBasics.tsx`: a "Brand" field (Creator → Basics) → `updateConfig({ brandTag })`.
+- **AI polish deliberately deferred**: the export is a synchronous file download — inline Sonnet (10+ batched calls at survey scale) would hang it. Unlike the readout (a cached compute), survey polish belongs in a cached/async pass. Normalize IS the consume behavior; instant + cheap + scalable.
+- tsc clean. SURVEYS.md + ENGINEERING.md "Shared correction layer" synced. LOCAL/unpushed. No migration.
+- **Owner verify locally**: set a survey's Brand (Creator → Basics) to a brand whose glossary has curated spellings, then export responses (Datanautix XLSX) → verbatims use canonical spellings.
+- **NEW REQUIREMENT raised by owner mid-phase (provenance)**: the entity_catalog must trace every entry to a valid SOURCE record and maintain provenance — canonicals from official records (crawl / uploaded source docs), with conversations / survey responses / ASR as corroborating (variant) sources, not authorities. Design pending — see project_open_work_queue. This does NOT change Phase 4 (consume-only = provenance-neutral).

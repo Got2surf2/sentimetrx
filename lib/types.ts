@@ -202,6 +202,12 @@ export interface OpeningFlowItem {
 export interface StudyConfig {
   greeting:           string
 
+  // Brand link (shared brand-correction layer, Phase 4). Free-text brand label;
+  // when set, exported open-ended verbatims are spelling-corrected against the
+  // brand's curated entity glossary (variant→canonical). Stored in config (not a
+  // column) because surveys are consume-only — no trigger/rollup keyed on it.
+  brandTag?:          string
+
   // Header text (shown in the survey widget header bar)
   headerSubtitle?:    string           // default: study name — text below bot name in header
   headerStatus?:      string           // default: 'Ready for your feedback' — status line with green dot

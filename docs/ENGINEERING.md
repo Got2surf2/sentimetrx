@@ -624,8 +624,13 @@ serves every product. Consumers: the What We Heard readout (`lib/agentReadout.ts
 now thin adapters over the shared layer — Phase 2, 2026-06-27, output verified
 byte-identical via the recordings unit suite). Phase 3 (2026-06-27) wired the
 bot→brand rollup (`rollup.ts`) so agent curation feeds the brand catalog every
-consumer reads. Still siloed: Town Hall's pair-shaped polish (`polishQaPairs` —
-Q&A pairs vs flat verbatims) and the survey pipeline (Phase 4).
+consumer reads. Phase 4 (2026-06-27) made **surveys** consume-only: a
+`config.brandTag` resolves the brand glossary and deterministically normalizes
+exported open-ended verbatims (`/api/studies/[id]/responses?export=` — raw
+`responses.payload` never mutated). AI polish is deliberately NOT applied inline
+in the survey export (a file download must stay instant; unlike the readout,
+which is a cached compute) — it would need a cached/async pass. Still siloed:
+Town Hall's pair-shaped polish (`polishQaPairs` — Q&A pairs vs flat verbatims).
 
 ### Claude Code push discipline
 
