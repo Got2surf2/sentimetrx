@@ -15,7 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/entityFilter'
 import type { GlossaryEntry } from '@/lib/correction/normalize'
 
-interface CatalogRow { canonical: string; aliases: string[] | null }
+interface CatalogRow { canonical: string; category: string | null; aliases: string[] | null }
 
 function rowToEntry(r: CatalogRow): GlossaryEntry {
   const seen = new Set<string>()
@@ -26,7 +26,7 @@ function rowToEntry(r: CatalogRow): GlossaryEntry {
     seen.add(s.toLowerCase())
     aliases.push(s)
   }
-  return { canonical: r.canonical, aliases }
+  return { canonical: r.canonical, aliases, category: r.category ?? undefined }
 }
 
 function unionInto(map: Map<string, GlossaryEntry>, entries: GlossaryEntry[]) {
@@ -34,7 +34,8 @@ function unionInto(map: Map<string, GlossaryEntry>, entries: GlossaryEntry[]) {
     const k = slugify(e.canonical)
     if (!k) continue
     const existing = map.get(k)
-    if (!existing) { map.set(k, { canonical: e.canonical, aliases: [...(e.aliases ?? [])] }); continue }
+    // First scope to define a slug wins canonical + category; later scopes only union aliases.
+    if (!existing) { map.set(k, { canonical: e.canonical, aliases: [...(e.aliases ?? [])], category: e.category }); continue }
     const seen = new Set((existing.aliases ?? []).map(v => v.toLowerCase()))
     for (const v of (e.aliases ?? [])) {
       if (!seen.has(v.toLowerCase())) { existing.aliases!.push(v); seen.add(v.toLowerCase()) }
@@ -45,7 +46,7 @@ function unionInto(map: Map<string, GlossaryEntry>, entries: GlossaryEntry[]) {
 async function readScope(service: SupabaseClient, scopeType: 'collection' | 'bot' | 'dataset', scopeId: string): Promise<GlossaryEntry[]> {
   const { data } = await service
     .from('entity_catalog')
-    .select('canonical, aliases')
+    .select('canonical, category, aliases')
     .eq('scope_type', scopeType).eq('scope_id', scopeId).eq('hidden', false)
   return ((data ?? []) as CatalogRow[]).map(rowToEntry)
 }

@@ -12,6 +12,8 @@
 export interface GlossaryEntry {
   canonical: string
   aliases?: string[]   // variant spellings that should map to `canonical`
+  category?: string    // optional source category (e.g. entity_catalog.category); ignored by the
+                       // normalizer, carried through for typed consumers like Town Hall's entity map
 }
 
 // variant → canonical replacements. Case-insensitive, whole-word, longest-

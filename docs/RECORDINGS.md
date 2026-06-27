@@ -581,11 +581,15 @@ ASR mis-hears proper names **phonetically** ("Babuji"→"Babu G", "NOWOCATS"→"
 - **(a) feeds the polish glossary** (`glossaryFromEntities`) so the polished Q&A uses correct spellings, and
 - **(b) powers a deterministic "Corrected" transcript view** (`normalizeSegments` — whole-word, case-insensitive, longest-variant-first variant→canonical replace). **The raw ASR transcript is never mutated** — the corrected view is derived on read, so the record of truth is preserved (the "two transcripts" model).
 
+The deterministic normalizer (`lib/recordings/normalize.ts`) is now a thin Town Hall adapter over the **shared brand-correction layer** (`lib/correction/normalize`, ENGINEERING.md → "Shared correction layer"): it projects the `entity_map` onto the neutral `{canonical, aliases}` glossary and delegates `buildReplacements`/`normalizeText`. `normalizeSegments` stays Town-Hall-specific (operates on transcript segments). Output is byte-identical to the pre-convergence logic (Phase 2, 2026-06-27; locked by the recordings unit suite).
+
 Future sources for the map: auto-extract from uploaded slides/agenda via vision, or the dataset entity catalog (same `entity_map` shape).
 
 ### 3.5c Brand-entity convergence (sql/103)
 
 A recording can name a **brand** and/or an **underlying agent** (set in the New Town Hall wizard, persisted as `recordings.brand_tag` + `recordings.underlying_agent_id`) so the meeting's spelling correction draws on that brand's already-curated entity catalog instead of starting from scratch. At the entity-extraction step (`runEntityExtraction`, before the gate), `fetchBrandEntities` (`lib/recordings/brandGlossary.ts`) reads two sources and unions them by slug:
+
+The cross-scope catalog read + slug-union is now the **shared** `resolveBrandGlossary` (`lib/correction/glossary`); `fetchBrandEntities` just projects its neutral `{canonical, aliases, category}` result onto the typed `EntityMapEntry` (category→`EntityType`, canonical folded into `variants`, `mentions` seeded at 1). The shared resolver also supports a `datasetId` scope, unused here (Town Halls pass no dataset). Behavior is unchanged (Phase 2 convergence, 2026-06-27).
 - the **brand collection's** `entity_catalog` (collection scope) — resolved from `brand_tag` via the same `slugify` the sql/062 trigger uses (`collections` where `kind='brand'`); and
 - the **linked agent's** `entity_catalog` (bot scope, `scope_id = underlying_agent_id`) — bots aren't collection members, so their entities are unioned in at read time (the "bridge").
 

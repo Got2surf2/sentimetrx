@@ -488,3 +488,17 @@
 - `lib/agentReadout.ts`: before summarize, resolves the agent's brand+bot glossary and polishes the SHOWN sample verbatims (raw `conversation_turns` never mutated — only the cached sample strings). Cache `READOUT_SCHEMA_VERSION` v1→v2. event_type `verbatim_polish`.
 - **Verified** against Sarina (force-recompute): leftbor→"left or", loghtbor→"light or", Roind Lake→"Round Lake Road", Kelky Park→"Kelly Park", "eminent Domaine"→"eminent domain", Clara Toni Apopka Road→"Clarcona-Ocoee Road" (inferred — glossary empty for Sarina; Phase 3 makes name corrections authoritative). tsc clean, eslint 0 errors. BOTS.md/ENGINEERING.md synced.
 - NEXT: Phase 2 (refactor recordings onto lib/correction with parity), 3 (bot→brand rollup), 4 (survey correction), 5 (unified glossary editor). LOCAL/unpushed.
+
+## 2026-06-27 — Shared brand-correction layer (Phase 2): Town Hall migrated onto `lib/correction/`
+
+**Why** (Phase 2 of 5): Phase 1 *extracted* the shared correction layer from the recordings code but the recordings pipeline still ran its own parallel copies. This makes Town Hall actually *consume* the shared layer so there's one code path, not two that can drift. Touches the LIVE NOWOCATS Town Hall, so the bar was byte-identical output before/after.
+
+**What changed:**
+- `lib/correction/normalize.ts`: `GlossaryEntry` gains optional `category?` (ignored by the normalizer; carried through for typed consumers).
+- `lib/correction/glossary.ts`: `resolveBrandGlossary`/`readScope` now also select + carry `entity_catalog.category` (first scope to define a slug wins category, same as canonical). Agent path (`glossaryTerms`) unaffected.
+- `lib/recordings/normalize.ts`: now a thin adapter — projects `entity_map` → `{canonical, aliases}` and delegates `buildReplacements`/`normalizeText` to the shared layer; re-exports `normalizeText`; `normalizeSegments` stays Town-Hall-specific. Deleted the duplicated builder + `escapeRegExp`.
+- `lib/recordings/brandGlossary.ts`: `fetchBrandEntities` now calls `resolveBrandGlossary` and projects the neutral result onto `EntityMapEntry` (category→`EntityType`, canonical folded into `variants`, `mentions:1`). Deleted the duplicated scope-read SQL + `rowToEntry`/`unionInto`/`CatalogRow`. `mergeBrandEntities` (pure) unchanged.
+- **Parity:** the recordings unit suite (`entities.test.ts` normalize cases + `brandGlossary.test.ts` merge cases) is unchanged and green — the deterministic corrected-transcript/Q&A output is byte-identical. The fetch projection is provably equivalent to the old two-scope read (same scopes, same first-wins union, same variant/category shape). tsc clean, 967 tests pass.
+- **Still siloed (by design):** Town Hall's `polishQaPairs` is pair-shaped (Q&A) vs the shared `polishVerbatims` (flat strings) — different prompt + I/O shape, not converged this phase. Survey correction = Phase 4.
+- RECORDINGS.md §3.5b/§3.5c + ENGINEERING.md "Shared correction layer" synced. LOCAL/unpushed.
+- NEXT: Phase 3 (bot→brand entity rollup), 4 (survey correction), 5 (unified glossary editor). Owner live-QC: open a NOWOCATS recording's report/deck and confirm names still normalize (should be visually identical).

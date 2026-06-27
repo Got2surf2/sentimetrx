@@ -607,9 +607,10 @@ copies. Three pieces:
 
 - **`normalize.ts`** — pure/client-safe deterministic variant→canonical
   spelling replacement (`buildReplacements`/`normalizeText`) from a
-  `{canonical, aliases}[]` glossary. Not an AI rewrite; only listed mis-spellings
-  change. (Generalizes the original `lib/recordings/normalize.ts`.)
-- **`glossary.ts`** — `resolveBrandGlossary(service, {orgId, brandTag?, collectionId?, agentId?, datasetId?})` unions the curated `entity_catalog` across the relevant scopes (brand collection ∪ bot ∪ dataset) into one `{canonical, aliases}[]`. `glossaryTerms()` extracts the canonical strings for the polish prompt. (Generalizes `lib/recordings/brandGlossary.fetchBrandEntities`.)
+  `{canonical, aliases, category?}[]` glossary. Not an AI rewrite; only listed
+  mis-spellings change. (Generalizes the original `lib/recordings/normalize.ts`,
+  which now delegates to it.)
+- **`glossary.ts`** — `resolveBrandGlossary(service, {orgId, brandTag?, collectionId?, agentId?, datasetId?})` unions the curated `entity_catalog` across the relevant scopes (brand collection ∪ bot ∪ dataset) into one `{canonical, aliases, category?}[]` (the optional `category` is carried through for typed consumers like Town Hall's entity map). `glossaryTerms()` extracts the canonical strings for the polish prompt. (Generalizes `lib/recordings/brandGlossary.fetchBrandEntities`, which now delegates to it.)
 - **`polish.ts`** — `polishVerbatims(texts, {glossary, usage})` (Sonnet, glossary-injected, strict no-fabrication) faithfully cleans typos/grammar/mis-hearings; returns an array aligned with input (`null` per item on failure → caller shows raw). (Generalizes Town Hall's `polishQaPairs`.)
 
 **Invariant:** the raw source is NEVER mutated — correction is a derived/display
@@ -617,7 +618,12 @@ layer (Town Hall stores `polished_*` + a corrected-view overlay; the agent
 readout polishes only the sample strings in its regenerable cache). Convergence
 plan: Town Hall (`lib/recordings/*`) and the survey pipeline migrate onto this
 module; bot entities roll up to the brand `entity_catalog` so one brand glossary
-serves every product. First consumer: the What We Heard readout (`lib/agentReadout.ts`, 2026-06-27).
+serves every product. Consumers: the What We Heard readout (`lib/agentReadout.ts`,
+2026-06-27); Town Hall (`lib/recordings/normalize.ts` + `brandGlossary.fetchBrandEntities`
+now thin adapters over the shared layer — Phase 2, 2026-06-27, output verified
+byte-identical via the recordings unit suite). Still siloed: Town Hall's
+pair-shaped polish (`polishQaPairs` — Q&A pairs vs flat verbatims) and the survey
+pipeline (Phase 4).
 
 ### Claude Code push discipline
 

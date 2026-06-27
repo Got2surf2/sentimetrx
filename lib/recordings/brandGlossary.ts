@@ -10,10 +10,16 @@
 // cluster under the right spelling) and are merged into the resulting entity_map
 // (so brand names not mentioned are still seeded + the corrected-transcript view
 // has their aliases). Best-effort throughout — seeding never blocks the pipeline.
+//
+// The cross-scope catalog read + union now lives in the shared brand-correction
+// layer (lib/correction/glossary.resolveBrandGlossary); this module projects the
+// neutral {canonical, aliases, category} result onto the Town Hall EntityMapEntry
+// shape (typed + canonical-in-variants) the meeting pipeline expects.
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/entityFilter'
+import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import type { EntityMapEntry, EntityType } from '@/lib/recordings/types'
 
 // entity_catalog.category (dataset: food/drink/place/person/brand/other; bot:
@@ -35,75 +41,31 @@ function categoryToType(cat: string): EntityType {
   }
 }
 
-interface CatalogRow { canonical: string; category: string; aliases: string[] | null }
-
-function rowToEntry(r: CatalogRow): EntityMapEntry {
-  const seen = new Set<string>()
-  const variants: string[] = []
-  for (const v of [r.canonical, ...(r.aliases ?? [])]) {
-    const s = String(v ?? '').trim()
-    if (!s || seen.has(s.toLowerCase())) continue
-    seen.add(s.toLowerCase())
-    variants.push(s)
-  }
-  return { canonical: r.canonical, variants, type: categoryToType(r.category), mentions: 1 }
-}
-
-function unionInto(map: Map<string, EntityMapEntry>, entries: EntityMapEntry[]) {
-  for (const e of entries) {
-    const k = slugify(e.canonical)
-    if (!k) continue
-    const existing = map.get(k)
-    if (!existing) { map.set(k, { ...e, variants: [...e.variants] }); continue }
-    const seen = new Set(existing.variants.map(v => v.toLowerCase()))
-    for (const v of e.variants) {
-      if (!seen.has(v.toLowerCase())) { existing.variants.push(v); seen.add(v.toLowerCase()) }
-    }
-  }
-}
-
 // Read-only fetch of a brand's curated entities (collection ∪ linked-agent bot
-// scope). Never throws — returns [] on any failure.
+// scope), projected onto the Town Hall EntityMapEntry shape. The cross-scope
+// catalog read + slug-union is the shared resolver; here we just map each neutral
+// {canonical, aliases, category} entry to a typed entry (category→EntityType,
+// canonical folded into `variants`, mentions seeded at 1). Never throws.
 export async function fetchBrandEntities(
   service: SupabaseClient,
   opts: { orgId: string; brandTag?: string | null; agentId?: string | null },
 ): Promise<EntityMapEntry[]> {
-  const bySlug = new Map<string, EntityMapEntry>()
-  try {
-    const tag = (opts.brandTag ?? '').trim()
-    if (tag) {
-      const slug = slugify(tag)
-      if (slug) {
-        const { data: col } = await service
-          .from('collections').select('id')
-          .eq('org_id', opts.orgId).eq('kind', 'brand').eq('slug', slug)
-          .maybeSingle()
-        if ((col as any)?.id) {
-          const { data: rows } = await service
-            .from('entity_catalog')
-            .select('canonical, category, aliases')
-            .eq('scope_type', 'collection').eq('scope_id', (col as any).id).eq('hidden', false)
-          unionInto(bySlug, ((rows ?? []) as CatalogRow[]).map(rowToEntry))
-        }
-      }
+  const entries = await resolveBrandGlossary(service, {
+    orgId: opts.orgId,
+    brandTag: opts.brandTag,
+    agentId: opts.agentId,
+  })
+  return entries.map(e => {
+    const seen = new Set<string>()
+    const variants: string[] = []
+    for (const v of [e.canonical, ...(e.aliases ?? [])]) {
+      const s = String(v ?? '').trim()
+      if (!s || seen.has(s.toLowerCase())) continue
+      seen.add(s.toLowerCase())
+      variants.push(s)
     }
-
-    if (opts.agentId) {
-      // Verify the agent is in the caller's org before reading its catalog.
-      const { data: bot } = await service
-        .from('agents').select('id, org_id').eq('id', opts.agentId).maybeSingle()
-      if (bot && (bot as any).org_id === opts.orgId) {
-        const { data: rows } = await service
-          .from('entity_catalog')
-          .select('canonical, category, aliases')
-          .eq('scope_type', 'bot').eq('scope_id', opts.agentId).eq('hidden', false)
-        unionInto(bySlug, ((rows ?? []) as CatalogRow[]).map(rowToEntry))
-      }
-    }
-  } catch {
-    /* best-effort */
-  }
-  return [...bySlug.values()]
+    return { canonical: e.canonical, variants, type: categoryToType(e.category ?? ''), mentions: 1 }
+  })
 }
 
 // Merge brand-catalog entries into the meeting's extracted map. Brand canonicals
