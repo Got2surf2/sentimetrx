@@ -173,9 +173,11 @@ export default function QuestionsClient({
 
   const visible = useMemo(() => {
     if (tab === 'open') {
+      // Newest-first, matching the All tab (was oldest-first FIFO; owner wants
+      // both views ordered the same).
       return questions
         .filter(q => q.status === 'open')
-        .sort((a, b) => a.created_at < b.created_at ? -1 : 1)
+        .sort((a, b) => a.created_at > b.created_at ? -1 : 1)
     }
     return questions
   }, [questions, tab])

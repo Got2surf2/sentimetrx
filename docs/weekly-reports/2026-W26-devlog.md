@@ -441,3 +441,9 @@
 - Modal footer embeds the SAME actions as the inline card: answer textarea (≥16px), "Save answer & add to knowledge" / "Update knowledge", and "Accept {Agent}'s reply as the answer". `saveAnswer` keeps the open modal in sync (status/badge flip).
 - **Traceability (owner Q):** `logged_questions.turn_id`/`conversation_id` are null on capture by design (`lib/logQuestion.ts` punts them — turn id isn't reliably available in the fire-and-forget hot path; comment says callers join on session_id). Owner: fine if null as long as traceable. The modal loads by `session_id` (populated 17/17), so every question traces back to its full conversation — even the 4/17 where the inline agent-reply text-match misses. No capture-path change needed.
 - tsc clean, eslint 0 errors. BOTS.md/FEATURES.md synced. LOCAL/unpushed.
+
+## 2026-06-27 — Questions page: Unanswered queue newest-first (match All tab)
+
+**Why** (owner): the two tabs ordered differently (All newest-first, Unanswered oldest-first FIFO) — owner wanted them consistent. (Confirmed the full-conversation modal + agent-reply/accept already apply to BOTH tabs — they share one render path.)
+
+**What changed**: `QuestionsClient.tsx` — Unanswered queue sort flipped ascending→descending (newest-first). BOTS.md §9.x notes updated (the queue's "oldest-first" → "newest-first", + noted both tabs share the row UI incl. the modal). LOCAL/unpushed.
