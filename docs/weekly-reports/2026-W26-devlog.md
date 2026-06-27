@@ -554,3 +554,15 @@
 - tsc clean (cache-cleared), 986 tests pass, eslint 0 errors. RECORDINGS §3.5c + SURVEYS.md + ENGINEERING.md synced. Code LOCAL/unpushed.
 - **Owner verify**: after re-extracting an agent's entities (now stamped document/crawl) and tagging a survey/Town Hall to that brand, exports/reports correct toward the KB-derived official spellings; a brand with only review-discovered entities yields an empty correction glossary (safe — exports raw).
 - Minor follow-up (noted, not done): dataset-scope manual curate routes (`/api/datasets/[id]/entities/*`) still set `source='manual'` (correct authority) but don't yet write a `manual` provenance trail entry — cosmetic, the authority signal is already correct.
+
+## 2026-06-27 — Shared brand-correction layer (Phase 5): brand-glossary editor + manual add at brand scope
+
+**Why** (Phase 5 of 5, owner: "allow users to also add to the entity list"): the brand collection's entity_catalog — THE authoritative shared glossary driving all correction — was the one scope with no editor (populated only by discovery + the bot→brand rollup). Phase 5 makes it hand-editable, so a user can curate the brand's official names directly.
+
+**What changed (all additive, no migration):**
+- **Routes** (mirror the bot entity routes; org-gated by `collections.org_id`): `GET/POST /api/collections/[id]/entities`, `PATCH/DELETE /api/collections/[id]/entities/[entityId]`, `POST /api/collections/[id]/entities/refresh`. Manual add/edit stamps `source='manual'` (authoritative — owns its canonical, used for correction immediately) + manual provenance. Delete is manual-rows-only (discovered/rolled-up → hide).
+- **`refresh`** = "Pull from agents": finds every agent in the org whose `brand_tag` slugifies to this collection's slug and fans `rollupAgentEntitiesToBrand` over them — one-click cross-scope sync.
+- **Editor page** `/collections/[id]/glossary` (`BrandGlossaryClient`): list + add + edit (canonical/aliases/category) + hide/unhide + delete + "Pull from agents". Each entity shows an **authority badge** (official vs corroborating, from `hasAuthoritativeSource(source, provenance)`) so the curator sees which canonicals are trustworthy. Category picker spans the union of bot+dataset vocabularies.
+- **Navigation**: the agent Entities page (`/bots/[id]/entities`) resolves the brand collection from the agent's `brand_tag` and shows a "Manage brand glossary →" link when brand-tagged.
+- tsc clean, 986 tests pass, eslint 0 errors, **`npm run build` passes** (new routes/page registered). ENGINEERING.md + BOTS.md synced. LOCAL/unpushed.
+- **Completes the 5-phase shared brand-correction convergence** (Phases 1–5 + provenance/authority). Owner verify locally: open an agent's Entities tab, set a Brand, click "Manage brand glossary →", add/curate an entity, "Pull from agents".

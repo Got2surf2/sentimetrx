@@ -987,6 +987,8 @@ Every `entity_catalog` row records its **provenance** and the **source-kind that
 - **Manual curate** (`POST`/`PATCH /api/bots/[id]/entities[...]`): stamps `source='manual'` (highest authority) + a `manual` provenance entry — the row then owns its canonical outright.
 - **Rollup** carries each bot entity's `source`+`provenance` to the brand collection and applies the same strict rule: an authoritative bot entity may **correct** a brand canonical that a low-authority source (e.g. review-text discovery) had set, but cannot override an equal/higher-authority or manual brand canonical.
 
+**Brand-glossary editor (Phase 5).** When the agent is brand-tagged, the Entities tab shows a **"Manage brand glossary →"** link to `/collections/[id]/glossary` — the shared, hand-editable brand catalog (the authoritative glossary). There a user can add/curate brand entities directly (manual = authoritative), see each entity's official-vs-corroborating authority, and "Pull from agents" (fan the rollup over every agent linked to the brand). Details in ENGINEERING.md → "Shared correction layer".
+
 #### 9.y.3 Mention detection — `lib/entityMentionDetector.ts` (new)
 
 ```ts

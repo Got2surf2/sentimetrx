@@ -6,6 +6,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
+import { slugify } from '@/lib/entityFilter'
 import EntitiesClient from './EntitiesClient'
 
 export const dynamic = 'force-dynamic'
@@ -36,12 +37,25 @@ export default async function BotEntitiesPage(props: Params) {
   if (!bot) redirect('/bots')
   if (!isAdmin && (bot as any).org_id !== userData?.org_id) redirect('/bots')
 
+  // Resolve the brand collection (if this agent is brand-tagged) so the editor
+  // can link to the shared brand-glossary editor (Phase 5).
+  let brandCollectionId: string | null = null
+  const brandTag = String((bot as any).brand_tag ?? '').trim()
+  if (brandTag) {
+    const { data: col } = await service
+      .from('collections').select('id')
+      .eq('org_id', (bot as any).org_id).eq('kind', 'brand').eq('slug', slugify(brandTag))
+      .maybeSingle()
+    brandCollectionId = (col as any)?.id ?? null
+  }
+
   return (
     <EntitiesClient
       botId={params.id}
       botName={(bot as any).name}
       botSlug={(bot as any).slug}
       brandTag={(bot as any).brand_tag ?? null}
+      brandCollectionId={brandCollectionId}
       logoUrl={orgData?.logo_url}
       orgName={orgData?.name}
       isAdmin={isAdmin}

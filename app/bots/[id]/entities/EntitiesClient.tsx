@@ -42,6 +42,7 @@ interface Props {
   botName: string
   botSlug: string
   brandTag: string | null
+  brandCollectionId: string | null
   logoUrl?: string
   orgName?: string
   isAdmin: boolean
@@ -78,7 +79,7 @@ function formatCost(cents: number | null) {
 }
 
 export default function EntitiesClient({
-  botId, botName, brandTag, logoUrl, orgName, isAdmin, userEmail, fullName, features,
+  botId, botName, brandTag, brandCollectionId, logoUrl, orgName, isAdmin, userEmail, fullName, features,
 }: Props) {
   // Brand link (Phase 3) — the brand this agent's curated entities roll up into.
   const [brand, setBrand] = useState(brandTag ?? '')
@@ -324,6 +325,14 @@ export default function EntitiesClient({
             spelling correction, reports, and other products. Leave blank to keep entities agent-only.
           </p>
           {brandMessage && <p className='text-xs text-indigo-700 mt-1'>{brandMessage}</p>}
+          {brandCollectionId && (
+            <p className='text-xs mt-2'>
+              <Link href={'/collections/' + brandCollectionId + '/glossary'} className='text-indigo-700 font-medium hover:underline'>
+                Manage brand glossary →
+              </Link>
+              <span className='text-gray-500'> — view &amp; curate the shared entity list across this brand's agents.</span>
+            </p>
+          )}
         </div>
 
         {/* Manual add-entity form — manual rows survive re-extraction */}
