@@ -21,6 +21,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/entityFilter'
+import { chooseCanonical, mergeProvenance, type SourceKind, type Provenance } from '@/lib/correction/provenance'
 
 const MAX_ALIASES = 50
 
@@ -32,6 +33,7 @@ export interface CatalogEntity {
   sample_count: number
   source: string
   hidden: boolean
+  provenance?: Provenance
 }
 
 export interface BrandUpsertRow {
@@ -42,16 +44,21 @@ export interface BrandUpsertRow {
   category: string
   aliases: string[]
   sample_count: number
-  source: 'discovered'
+  source: SourceKind
+  provenance: Provenance
   hidden: false
   last_seen_at: string
 }
 
 // Pure merge: given the brand collection's existing rows and the agent's
-// (already-visible) bot rows, produce the upsert payload. First canonical /
-// category wins (no flapping on re-roll); aliases union (incl. the bot canonical
-// folded in as a brand alias when it differs); sample_count accumulates. A brand
-// row that's source='manual' or hidden is left untouched (skipped).
+// (already-visible) bot rows, produce the upsert payload. Authority-aware:
+//   - canonical is chosen by source authority (chooseCanonical) — an authoritative
+//     bot entity (KB = document/crawl) may CORRECT a brand canonical that a
+//     low-authority source (e.g. review-text discovery) had set, but cannot
+//     override an equal/higher-authority brand canonical.
+//   - aliases union (incl. the loser surface folded in); sample_count accumulates;
+//     provenance trails merge.
+//   - a brand row that's source='manual' or hidden is left untouched (skipped).
 export function mergeBotEntitiesIntoBrand(
   scopeId: string,
   brandRows: CatalogEntity[],
@@ -68,23 +75,38 @@ export function mergeBotEntitiesIntoBrand(
     const prev = brandBySlug.get(slug)
     // Never trample hand-curated or soft-deleted brand entries.
     if (prev && (prev.source === 'manual' || prev.hidden)) continue
+
+    const botKind = (bot.source || 'document') as SourceKind
+    const { canonical, source } = chooseCanonical(
+      prev ? { canonical: prev.canonical, source: prev.source as SourceKind } : null,
+      { canonical: bot.canonical, kind: botKind },
+    )
+    // Everything that isn't the chosen canonical becomes an alias.
     const aliasUnion = Array.from(new Set([
       ...(prev?.aliases ?? []),
       ...bot.aliases,
-      // fold the bot's canonical in as a brand alias when the brand keeps a
-      // different canonical surface form
+      prev?.canonical ?? '',
       bot.canonical,
-    ])).filter(a => a && a.toLowerCase() !== (prev?.canonical ?? bot.canonical).toLowerCase())
+    ])).filter(a => a && a.toLowerCase() !== canonical.toLowerCase())
       .slice(0, MAX_ALIASES)
+
+    // Merge the bot entity's provenance trail into the brand's.
+    let provenance: Provenance = { ...(prev?.provenance ?? {}) }
+    for (const [k, v] of Object.entries(bot.provenance ?? {})) {
+      provenance = mergeProvenance(provenance, k as SourceKind, null, v.count)
+      for (const ref of v.refs) provenance = mergeProvenance(provenance, k as SourceKind, ref, 0)
+    }
+
     out.push({
       scope_type: 'collection',
       scope_id: scopeId,
-      canonical: prev?.canonical || bot.canonical,
+      canonical,
       slug,
       category: prev?.category || bot.category,
       aliases: aliasUnion,
       sample_count: (prev?.sample_count ?? 0) + bot.sample_count,
-      source: 'discovered',
+      source,
+      provenance,
       hidden: false,
       last_seen_at: nowIso,
     })
@@ -131,14 +153,14 @@ export async function rollupAgentEntitiesToBrand(
     // promoted — the admin said "don't surface this").
     const { data: botRows } = await service
       .from('entity_catalog')
-      .select('canonical, slug, category, aliases, sample_count, source, hidden')
+      .select('canonical, slug, category, aliases, sample_count, source, hidden, provenance')
       .eq('scope_type', 'bot').eq('scope_id', opts.agentId).eq('hidden', false)
     const bot = (botRows ?? []) as CatalogEntity[]
     if (bot.length === 0) return { collectionId: collectionId as string, pushed: 0 }
 
     const { data: brandRows } = await service
       .from('entity_catalog')
-      .select('canonical, slug, category, aliases, sample_count, source, hidden')
+      .select('canonical, slug, category, aliases, sample_count, source, hidden, provenance')
       .eq('scope_type', 'collection').eq('scope_id', collectionId as string)
     const brand = (brandRows ?? []) as CatalogEntity[]
 

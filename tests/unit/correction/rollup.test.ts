@@ -20,6 +20,7 @@ const ent = (canonical: string, over: Partial<CatalogEntity> = {}): CatalogEntit
   sample_count: over.sample_count ?? 1,
   source: over.source ?? 'discovered',
   hidden: over.hidden ?? false,
+  provenance: over.provenance,
 })
 
 describe('mergeBotEntitiesIntoBrand', () => {
@@ -30,6 +31,33 @@ describe('mergeBotEntitiesIntoBrand', () => {
     expect(out[0].aliases).toContain('No What Cats')
     // bot canonical equals brand canonical → not folded in as a redundant alias
     expect(out[0].aliases.map(a => a.toLowerCase())).not.toContain('nowocats')
+  })
+
+  it('an authoritative bot entity (document) corrects a UGC-owned brand canonical', () => {
+    // a brand row whose canonical came from review-text discovery
+    const brand = [ent('No What Cats', { slug: 'nowocats', source: 'review', sample_count: 9 })]
+    const bot = [ent('NOWOCATS', { slug: 'nowocats', source: 'document', sample_count: 2 })]
+    const out = mergeBotEntitiesIntoBrand(COL, brand, bot, NOW)
+    expect(out[0].canonical).toBe('NOWOCATS')   // official spelling wins
+    expect(out[0].source).toBe('document')
+    expect(out[0].aliases.map(a => a.toLowerCase())).toContain('no what cats')  // UGC surface demoted to alias
+  })
+
+  it('a UGC-owned brand canonical is NOT overwritten by a lower bot authority', () => {
+    const brand = [ent('Official Name', { slug: 'x', source: 'document' })]
+    const bot = [ent('offishul name', { slug: 'x', source: 'discovered' })]
+    const out = mergeBotEntitiesIntoBrand(COL, brand, bot, NOW)
+    expect(out[0].canonical).toBe('Official Name')
+    expect(out[0].source).toBe('document')
+  })
+
+  it('merges provenance trails from bot into brand', () => {
+    const brand = [ent('US 441', { slug: 'us-441', source: 'document', provenance: { document: { count: 1, refs: [] } } })]
+    const bot = [ent('US 441', { slug: 'us-441', source: 'crawl', provenance: { crawl: { count: 2, refs: [{ url: 'https://x' }] } } })]
+    const out = mergeBotEntitiesIntoBrand(COL, brand, bot, NOW)
+    expect(out[0].provenance.document.count).toBe(1)
+    expect(out[0].provenance.crawl.count).toBe(2)
+    expect(out[0].provenance.crawl.refs).toEqual([{ url: 'https://x' }])
   })
 
   it('first canonical/category wins; aliases union; sample_count accumulates', () => {

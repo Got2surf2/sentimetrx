@@ -979,6 +979,14 @@ An agent can carry a **`brand_tag`** (`sql/136`, free text, set via a "Brand" co
 - **Fired on**: a successful `extractBotEntities` run (best-effort; returns `brandPushed` for the UI message), a manual entity add or curated canonical/alias edit (`POST`/`PATCH /api/bots/[id]/entities[...]`), and on tagging the agent (`PATCH /api/bots/[id] {brand_tag}`). All best-effort — a rollup failure never breaks the triggering action. Org-scoped by construction (uses the **agent's** org so an admin's cross-org edit lands in the right brand).
 - **Not done here**: an agent is NOT made a true collection member (no trigger/membership row — "bots as true collection members" stays deferred, RECORDINGS.md §3.5c). The brand catalog is enriched directly, which is all the glossary needs.
 
+#### 9.y.2c Provenance + source authority (owner requirement, 2026-06-27)
+
+Every `entity_catalog` row records its **provenance** and the **source-kind that owns its canonical** (`source`, `provenance` jsonb — `sql/137`; model in `lib/correction/provenance.ts`, ENGINEERING.md → "Shared correction layer"). A canonical spelling must come from an OFFICIAL record (a crawled URL or uploaded document) or a human; agent conversations / survey responses / ASR are corroborating only and never override an authoritative canonical (strict gating).
+
+- **Agent KB extraction** (`extractBotEntities`): the KB is "extracted text from training URLs/docs" — every chunk is an official record. Each chunk is classified from its ingestion metadata (`{source, source_type}`) as **`crawl`** (URL) or **`document`** (uploaded), attributed at batch granularity; entities are stamped `source` = the highest-authority kind seen + a `provenance` trail (capped refs per kind). A row first seen as legacy `discovered` is upgraded to `document`/`crawl` on re-extract.
+- **Manual curate** (`POST`/`PATCH /api/bots/[id]/entities[...]`): stamps `source='manual'` (highest authority) + a `manual` provenance entry — the row then owns its canonical outright.
+- **Rollup** carries each bot entity's `source`+`provenance` to the brand collection and applies the same strict rule: an authoritative bot entity may **correct** a brand canonical that a low-authority source (e.g. review-text discovery) had set, but cannot override an equal/higher-authority or manual brand canonical.
+
 #### 9.y.3 Mention detection — `lib/entityMentionDetector.ts` (new)
 
 ```ts

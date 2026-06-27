@@ -19,6 +19,23 @@ import { callAI } from './ai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from './entityFilter'
 import { rollupAgentEntitiesToBrand } from './correction/rollup'
+import { mergeProvenance, authorityOf, type SourceKind, type Provenance } from './correction/provenance'
+
+// An agent's knowledge base is "extracted text from training URLs/docs" (sql/020)
+// — every chunk is an OFFICIAL record. Classify each as a crawled URL vs an
+// uploaded document from its ingestion metadata ({source, source_type}); both are
+// authoritative-tier, so bot-extracted entities may own a canonical spelling.
+function classifyChunkSource(metadata: unknown): { kind: SourceKind; ref: Record<string, unknown> } {
+  const m = (metadata ?? {}) as Record<string, unknown>
+  const src = String(m.source ?? '')
+  const type = String(m.source_type ?? '').toLowerCase()
+  const isUrl = /^https?:\/\//i.test(src) || ['url', 'crawl', 'website', 'link', 'sitemap'].includes(type)
+  const kind: SourceKind = isUrl ? 'crawl' : 'document'
+  const ref: Record<string, unknown> = {}
+  if (src) ref[isUrl ? 'url' : 'source'] = src
+  if (type) ref.source_type = type
+  return { kind, ref }
+}
 
 // 8 categories per § 9.y open Q2.
 export const BOT_ENTITY_CATEGORIES = [
@@ -79,11 +96,11 @@ function parseEntities(raw: string): ExtractedEntity[] {
  * CHUNKS_PER_BATCH chunks and MAX_CHARS_PER_BATCH characters of content.
  * Exported so unit tests can verify boundary behavior without invoking AI.
  */
-export function batchChunksForExtraction(
-  chunks: Array<{ title: string | null; content: string }>,
-): Array<Array<{ title: string | null; content: string }>> {
-  const batches: Array<Array<{ title: string | null; content: string }>> = []
-  let current: Array<{ title: string | null; content: string }> = []
+export function batchChunksForExtraction<T extends { content: string }>(
+  chunks: T[],
+): T[][] {
+  const batches: T[][] = []
+  let current: T[] = []
   let currentChars = 0
   for (const c of chunks) {
     const len = (c.content || '').length
@@ -215,18 +232,37 @@ export async function extractBotEntities(
   // org gate is the protection.
   const { data: chunkRows } = await service
     .from('bot_knowledge_chunks')
-    .select('title, content')
+    .select('title, content, metadata')
     .eq('bot_id', opts.botId)
 
-  const chunks = (chunkRows || []).filter(c => typeof c.content === 'string' && c.content.trim().length > 0)
+  const chunks = (chunkRows || [])
+    .filter(c => typeof c.content === 'string' && c.content.trim().length > 0)
+    .map(c => ({ title: c.title as string | null, content: c.content as string, ...classifyChunkSource((c as any).metadata) }))
   const batches = batchChunksForExtraction(chunks)
 
   let totalCostCents = 0
   const batchResults: ExtractedEntity[][] = []
+  // Provenance accumulator: which authoritative KB source(s) each slug came from.
+  // Attributed at batch granularity (the entity came from one of the batch's
+  // chunks); the owning `source` is the highest-authority kind seen for the slug.
+  const slugProvenance = new Map<string, Provenance>()
+  const slugOwner = new Map<string, SourceKind>()
   for (const batch of batches) {
     const { entities, costCents } = await extractFromBatch(batch, { orgId: opts.orgId, botId: opts.botId })
     batchResults.push(entities)
     totalCostCents += costCents
+    // Distinct authoritative sources present in this batch.
+    const batchSources = new Map<string, { kind: SourceKind; ref: Record<string, unknown> }>()
+    for (const c of batch) batchSources.set(JSON.stringify([c.kind, c.ref]), { kind: c.kind, ref: c.ref })
+    for (const e of entities) {
+      const slug = slugify(e.canonical)
+      if (!slug) continue
+      for (const { kind, ref } of batchSources.values()) {
+        slugProvenance.set(slug, mergeProvenance(slugProvenance.get(slug), kind, ref, 1))
+        const owner = slugOwner.get(slug)
+        if (!owner || authorityOf(kind) > authorityOf(owner)) slugOwner.set(slug, kind)
+      }
+    }
   }
 
   const aggregated = aggregateExtractedEntities(batchResults)
@@ -235,16 +271,17 @@ export async function extractBotEntities(
   // an alias/count refresh. One round-trip rather than per-row reads.
   const { data: existingRows } = await service
     .from('entity_catalog')
-    .select('id, slug, sample_count, aliases, source, hidden')
+    .select('id, slug, sample_count, aliases, source, hidden, provenance')
     .eq('scope_type', 'bot')
     .eq('scope_id', opts.botId)
-  const existingBySlug = new Map<string, { id: string; sample_count: number; aliases: string[]; source: string; hidden: boolean }>(
+  const existingBySlug = new Map<string, { id: string; sample_count: number; aliases: string[]; source: string; hidden: boolean; provenance: Provenance }>(
     (existingRows || []).map(r => [r.slug as string, {
       id: r.id as string,
       sample_count: (r.sample_count as number) || 0,
       aliases: Array.isArray(r.aliases) ? r.aliases as string[] : [],
       source: (r.source as string) || 'discovered',
       hidden: !!r.hidden,
+      provenance: ((r as any).provenance ?? {}) as Provenance,
     }]),
   )
 
@@ -254,6 +291,11 @@ export async function extractBotEntities(
   aggregated.forEach((v, k) => { aggregatedEntries.push([k, v]) })
   for (const [slug, entity] of aggregatedEntries) {
     const existing = existingBySlug.get(slug)
+    // Provenance for this slug (which authoritative KB sources it came from). KB
+    // is always an official record, so the owning source is authoritative-tier
+    // ('document'/'crawl') — these entities may own a brand canonical.
+    const prov = slugProvenance.get(slug) ?? {}
+    const owner = (slugOwner.get(slug) ?? 'document') as SourceKind
     if (!existing) {
       // New row. sample_count starts at the discovery count; hidden=true if
       // the entity surfaced only once (§ 9.y open Q3 — low-confidence noise).
@@ -265,7 +307,8 @@ export async function extractBotEntities(
         category: entity.category,
         aliases: entity.aliases,
         sample_count: entity.count,
-        source: 'discovered',
+        source: owner,
+        provenance: prov,
         hidden: entity.count <= 1,
         first_seen_at: nowIso,
         last_seen_at: nowIso,
@@ -282,11 +325,22 @@ export async function extractBotEntities(
         // whatever's already in the row (we don't change canonical here).
         entity.canonical,
       ])).filter(a => a && a.toLowerCase() !== entity.canonical.toLowerCase())
+      // Merge provenance; upgrade the owning source only if the new KB source
+      // outranks it (e.g. a row first seen as 'discovered' becomes 'document').
+      // Never downgrade a 'manual' row.
+      let mergedProv = existing.provenance
+      for (const [k, v] of Object.entries(prov)) {
+        mergedProv = mergeProvenance(mergedProv, k as SourceKind, null, v.count)   // bump count once
+        for (const ref of v.refs) mergedProv = mergeProvenance(mergedProv, k as SourceKind, ref, 0)  // add refs
+      }
+      const nextSource = authorityOf(owner) > authorityOf(existing.source) ? owner : (existing.source as SourceKind)
       await service
         .from('entity_catalog')
         .update({
           sample_count: existing.sample_count + entity.count,
           aliases: mergedAliases,
+          source: nextSource,
+          provenance: mergedProv,
           last_seen_at: nowIso,
         })
         .eq('id', existing.id)

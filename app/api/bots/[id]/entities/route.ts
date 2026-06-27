@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { slugify } from '@/lib/entityFilter'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
+import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'
 
 const ENTITY_FIELDS = 'id, canonical, slug, category, aliases, sample_count, source, hidden, first_seen_at, last_seen_at'
 
@@ -104,15 +105,18 @@ export async function POST(req: NextRequest, props: Params) {
   // Existing row for this slug (incl. hidden)? Rescue + merge instead of duplicating.
   const { data: existing } = await service
     .from('entity_catalog')
-    .select('id, aliases')
+    .select('id, aliases, provenance')
     .eq('scope_type', 'bot').eq('scope_id', params.id).eq('slug', slug)
     .maybeSingle()
 
   if (existing) {
     const merged = Array.from(new Set([...((existing as { aliases: string[] }).aliases ?? []), ...aliases]))
+    // Record human provenance — manual is the highest authority, so this row now
+    // owns its canonical outright.
+    const provenance = mergeProvenance(((existing as any).provenance ?? {}) as Provenance, 'manual', null, 1)
     const { data: updated, error } = await service
       .from('entity_catalog')
-      .update({ canonical, aliases: merged, category, source: 'manual', hidden: false, last_seen_at: new Date().toISOString() })
+      .update({ canonical, aliases: merged, category, source: 'manual', provenance, hidden: false, last_seen_at: new Date().toISOString() })
       .eq('id', (existing as { id: string }).id).eq('scope_type', 'bot').eq('scope_id', params.id)
       .select(ENTITY_FIELDS).single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest, props: Params) {
 
   const { data: created, error } = await service
     .from('entity_catalog')
-    .insert({ scope_type: 'bot', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', hidden: false, sample_count: 0 })
+    .insert({ scope_type: 'bot', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', provenance: { manual: { count: 1, refs: [] } }, hidden: false, sample_count: 0 })
     .select(ENTITY_FIELDS).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as { org_id: string }).org_id })

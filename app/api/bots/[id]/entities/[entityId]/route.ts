@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { invalidateEntityCache } from '@/lib/entityMentionDetector'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
+import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,7 +49,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Pair entity_catalog row by id + scope to prevent cross-bot updates.
   const { data: existing } = await service
     .from('entity_catalog')
-    .select('id, scope_type, scope_id, source')
+    .select('id, scope_type, scope_id, source, provenance')
     .eq('id', params.entityId)
     .eq('scope_type', 'bot')
     .eq('scope_id', params.id)
@@ -64,6 +65,11 @@ export async function PATCH(req: NextRequest, props: Params) {
   if (aliases !== undefined) {
     patch.aliases = aliases
     patch.source = 'manual'
+  }
+  // Curating the spelling/aliases is a human act — record manual provenance so
+  // this row owns its canonical at the highest authority.
+  if (canonical !== undefined || aliases !== undefined) {
+    patch.provenance = mergeProvenance(((existing as any).provenance ?? {}) as Provenance, 'manual', null, 1)
   }
 
   const { data: updated, error } = await service

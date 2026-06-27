@@ -528,3 +528,16 @@
 - tsc clean. SURVEYS.md + ENGINEERING.md "Shared correction layer" synced. LOCAL/unpushed. No migration.
 - **Owner verify locally**: set a survey's Brand (Creator → Basics) to a brand whose glossary has curated spellings, then export responses (Datanautix XLSX) → verbatims use canonical spellings.
 - **NEW REQUIREMENT raised by owner mid-phase (provenance)**: the entity_catalog must trace every entry to a valid SOURCE record and maintain provenance — canonicals from official records (crawl / uploaded source docs), with conversations / survey responses / ASR as corroborating (variant) sources, not authorities. Design pending — see project_open_work_queue. This does NOT change Phase 4 (consume-only = provenance-neutral).
+
+## 2026-06-27 — Entity-catalog provenance + source authority (owner requirement) — part A: foundation + agent write-side
+
+**Why** (owner, mid-Phase-4): the entity_catalog must trace every entry to a valid SOURCE and a canonical spelling must come from an OFFICIAL record (crawl / uploaded docs for agents; official uploaded docs for town halls) — conversations / survey responses / ASR are corroborating, not authorities. Today provenance was only `source ∈ {discovered,manual}` (too coarse). Owner chose STRICT gating + FULL build. Key design note: entity_catalog is dual-purpose (TextMine analysis needs ALL entities incl. UGC-discovered) — so authority gates *canonical ownership* + the *correction glossary*, NOT which entities exist.
+
+**Part A (this commit):**
+- `sql/137` (APPLIED to prod): widened `entity_catalog.source` CHECK to the full source-kind set; added `provenance jsonb`. Additive — existing rows keep source='discovered', provenance='{}'.
+- `lib/correction/provenance.ts` (new, pure, 14 tests): `SourceKind` authority tiers (manual>document>crawl authoritative > transcript>conversation>survey>review>discovered); `canSetCanonical`/`chooseCanonical` (strict: UGC never sets/overrides a canonical), `mergeProvenance` (capped de-duped refs), `hasAuthoritativeSource`.
+- `lib/botEntityExtraction.ts`: classifies each KB chunk as crawl/document from `metadata.{source,source_type}`; stamps bot entities' `source` (authoritative) + `provenance` (batch-attributed); upgrades legacy `discovered`→`document` on re-extract.
+- `lib/correction/rollup.ts`: `mergeBotEntitiesIntoBrand` now authority-aware (`chooseCanonical`) — an authoritative bot entity CORRECTS a UGC-owned brand canonical but can't override manual/higher; merges provenance trails. (6→9 rollup tests.)
+- Manual bot routes (`POST`/`PATCH /api/bots/[id]/entities[...]`): stamp `manual` provenance.
+- tsc clean (cache-cleared), 986 tests pass (+13), BOTS.md §9.y.2c + ENGINEERING.md synced. Code LOCAL; sql/137 applied (additive — local dev runs vs linked prod DB).
+- **NEXT (part B):** dataset/collection discovery stamps source-kind from `datasets.source` (review/survey/transcript/document); the correction glossary (`resolveBrandGlossary`) gains an authoritative-only filter for the normalize/polish consumers (Town Hall, survey export, readout) so we never correct toward a UGC-invented canonical.
