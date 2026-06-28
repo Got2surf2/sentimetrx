@@ -223,6 +223,50 @@ async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise
   return out
 }
 
+// Collapse the union of members' separately-mined themes into ONE shared set,
+// for collections that have no unified theme model of their own. Deterministic:
+// greedily cluster themes whose label tokens or keyword sets overlap, union the
+// keywords. Cheaper than re-mining from raw text, and reuses work already done —
+// every member is then scored against this one set (no per-report AI merge).
+const LABEL_STOP = new Set(['and', 'the', 'a', 'an', 'to', 'vs', 'or', 'with', 'for', 'amp'])
+function labelTokens(s: string): Set<string> {
+  return new Set(s.toLowerCase().split(/[^a-z]+/).filter(t => t.length > 2 && !LABEL_STOP.has(t)))
+}
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0
+  let inter = 0
+  for (const x of a) if (b.has(x)) inter++
+  return inter / (a.size + b.size - inter)
+}
+async function deriveSharedThemes(svc: Svc, memberIds: string[]): Promise<Theme[]> {
+  const raw: { name: string; keywords: string[] }[] = []
+  for (const id of memberIds) {
+    const { data } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', id).single()
+    for (const t of (((data?.theme_model as any)?.themes ?? []) as any[])) {
+      const name = String(t.name || t.label || '').trim()
+      const keywords = Array.isArray(t.keywords) ? t.keywords.map(String) : []
+      if (name && keywords.length) raw.push({ name, keywords })
+    }
+  }
+  const clusters: { name: string; tokens: Set<string>; kw: Set<string> }[] = []
+  for (const t of raw) {
+    const tok = labelTokens(t.name)
+    const kw = new Set(t.keywords.map(k => k.toLowerCase()))
+    const hit = clusters.find(c => jaccard(c.tokens, tok) >= 0.5 || jaccard(c.kw, kw) >= 0.35)
+    if (hit) {
+      for (const k of kw) hit.kw.add(k)
+      for (const x of tok) hit.tokens.add(x)
+      if (t.name.length < hit.name.length) hit.name = t.name   // prefer the cleaner/shorter label
+    } else {
+      clusters.push({ name: t.name, tokens: tok, kw })
+    }
+  }
+  return clusters.map((c, i) => ({
+    id: 'shared-' + i, name: c.name, description: '', keywords: [...c.kw],
+    sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [],
+  }))
+}
+
 function scoreSharedThemes(rows: MemberRow[], shared: Theme[]): ProjectInputTheme[] {
   // Pre-compile each theme's keyword regexes ONCE (buildKwRegex is not cheap).
   const compiled = shared.map(th => ({ name: String(th.name || 'Theme'), res: (th.keywords || []).map(buildKwRegex) }))
@@ -363,9 +407,24 @@ export async function loadProjectInputs(collectionDatasetId: string): Promise<{ 
   // named themes. Only meaningful when members are review/CSAT (generic loader).
   const { data: colState } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', collectionDatasetId).single()
   const sharedThemesRaw = ((colState?.theme_model as any)?.themes ?? []) as any[]
-  const sharedThemes: Theme[] | undefined = sharedThemesRaw.length
+  let sharedThemes: Theme[] | undefined = sharedThemesRaw.length
     ? sharedThemesRaw.filter(t => t && (t.keywords?.length)) as Theme[]
     : undefined
+
+  // No collection-level theme set → COLLAPSE the members' own mined themes into
+  // one shared set so the matrix still aligns (vs re-mining from raw text, which
+  // is far heavier). Only over the review/CSAT members — town halls/agents carry
+  // topic summaries, not keyword themes.
+  if (!sharedThemes || !sharedThemes.length) {
+    const genericIds = members
+      .map(m => dsMap.get(m.dataset_id))
+      .filter((d): d is NonNullable<typeof d> => !!d && d.source !== 'recording' && d.source !== 'bot')
+      .map(d => d.id)
+    if (genericIds.length >= 2) {
+      const derived = await deriveSharedThemes(svc, genericIds)
+      if (derived.length) sharedThemes = derived
+    }
+  }
   const useShared = !!sharedThemes && sharedThemes.length > 0
 
   const inputs: ProjectInputModel[] = []
