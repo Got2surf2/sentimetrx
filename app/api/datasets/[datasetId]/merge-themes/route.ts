@@ -25,7 +25,7 @@ export async function POST(request: Request, props: Props) {
 
   const { data: dataset } = await supabase
     .from('datasets')
-    .select('id, source')
+    .select('id, source, org_id')
     .eq('id', params.datasetId)
     .single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
@@ -41,7 +41,11 @@ export async function POST(request: Request, props: Props) {
   }
 
   const { apiKey, memberThemes } = body
-  if (!apiKey) return NextResponse.json({ error: 'NO_API_KEY' }, { status: 400 })
+  // No NO_API_KEY rejection — callAI() falls back to the platform ANTHROPIC_API_KEY
+  // when body.apiKey is empty, so a customer org can merge member themes without
+  // bringing its own key (usage is logged per-org below for billing/cap). This
+  // matches mine-themes; the stale gate here blocked the collection theme-merge
+  // ("import component topics") for anyone without a personal key.
   if (!memberThemes || memberThemes.length < 2) {
     return NextResponse.json({ error: 'Need themes from at least 2 members' }, { status: 400 })
   }
@@ -93,7 +97,7 @@ export async function POST(request: Request, props: Props) {
       return NextResponse.json({ error: 'API_' + status + ': ' + e.message }, { status })
     }
 
-    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'merge_themes' }, result.usage)
+    logUsage({ org_id: (dataset as any).org_id ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'merge_themes' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     let parsed: { themes?: unknown[]; summary?: string }
