@@ -317,7 +317,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             className="accent-orange-500 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-gray-700">Apply Dimensions{taxSaving && <span className="text-xs text-gray-400 font-normal"> · saving…</span>}</p>
-            <p className="text-xs text-gray-400">Make the restaurant taxonomy (service, food, drinks, ambiance…) available for this dataset — the Dimensions tab plus dimension breakdowns in Charts &amp; Stats. For restaurant data. After enabling, open the Dimensions tab and click “Classify this dataset.” Restaurant-industry orgs get this automatically.</p>
+            <p className="text-xs text-gray-400">Reveals the <strong>Dimensions</strong> tab (the restaurant taxonomy — service, food, drinks, ambiance, value…) for this dataset, plus dimension breakdowns in Charts &amp; Stats. <strong>For restaurant data only.</strong> You don’t need this for Google-reviews datasets (already eligible) or restaurant-industry orgs (automatic) — in either case just open the Dimensions tab and click <strong>Enable Dimensions</strong> there, which turns it on and classifies in one step.</p>
           </div>
         </label>
       </div>

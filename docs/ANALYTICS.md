@@ -497,9 +497,16 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Classification (self-serve from the tab).** `lib/taxonomyClassify.ts`
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
-  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. The tab's
-  an unclassified selection is **auto-classified** (no button) via `POST /api/datasets/[datasetId]/taxonomy`
-  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The
+  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. **One-click
+  enable+classify (2026-06-28):** an unclassified dataset's Dimensions tab shows a single **"Enable
+  Dimensions"** button — it PATCHes `taxonomy_enabled=true` (hygiene, idempotent) AND runs the
+  classifier in one action (`enableAndClassify` in `TaxonomyModule`), replacing the prior silent
+  auto-classify-on-open + the separate Schema-tab toggle step (the Schema "Apply Dimensions" toggle
+  remains only to *reveal* the tab for non-Google restaurant datasets; its stale "click Classify this
+  dataset" copy was fixed). Classification still runs via `POST /api/datasets/[datasetId]/taxonomy`
+  (org-gated, 10K-row resumable chunks, `core` overlay) with a progress bar — no AI cost. The button
+  only ever appears inside the restaurant-gated Dimensions tab (`google_reviews || orgTaxonomy ||
+  dataset.taxonomy_enabled`), so it never surfaces on non-restaurant data. The
   classified **field follows the ANALYZE selection** (passed as `fields`/`fieldLabel`; the old
   "Field to classify" dropdown was removed 2026-06-06), and the prominent **Re-classify** button
   was removed (destructive + expensive — re-classification is deferred to the dataset level).

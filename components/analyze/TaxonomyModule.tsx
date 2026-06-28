@@ -7,7 +7,7 @@
 // by the keyword-tier classifier (lib/taxonomyClassify), run self-serve from
 // here: the "Classify" button loops POST chunks until the dataset is done.
 
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { AXIS_COLOR, DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
@@ -113,6 +113,10 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
   const [classifying, setClassifying] = useState(false)
   const [progress, setProgress] = useState<{ scanned: number; total: number | null }>({ scanned: 0, total: null })
   const [classifyErr, setClassifyErr] = useState<string | null>(null)
+  // True once a full classify has been attempted this mount — lets the empty
+  // state distinguish "not enabled yet" (show the Enable button) from "enabled
+  // but the field had no taggable text" (show that instead of the button).
+  const [attempted, setAttempted] = useState(false)
   // The field to classify follows the parent's ANALYZE selection (Liked Most /
   // Liked Least) — there's no separate field picker here anymore.
 
@@ -184,12 +188,6 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
 
   useEffect(() => { void load() }, [load])
 
-  // Auto-classify on selection: when the analyzed field-set isn't classified yet,
-  // run the classifier automatically (no "Classify" button to press). Guarded per
-  // field-key so a selection with no taggable text can't loop. Defined after
-  // runClassifier (below) via a ref so this effect can call it.
-  const autoRef = useRef<Set<string>>(new Set())
-
   // Loop POST chunks until the dataset is fully classified, then refresh the
   // roll-up. Idempotent server-side, so an interrupted run resumes safely.
   const runClassifier = useCallback(async (pendingOnly = false) => {
@@ -225,6 +223,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
           cursor = j.nextCursor
         }
       }
+      if (!pendingOnly) setAttempted(true)
       await load()
     } catch (e: any) {
       setClassifyErr(String(e.message || e))
@@ -233,14 +232,19 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
     }
   }, [datasetId, load, fieldsCsv])
 
-  // Kick auto-classify once per field-selection that loads empty.
-  useEffect(() => {
-    if (!hasField || loading || classifying || !data) return
-    if (data.classifiedRows === 0 && !autoRef.current.has(fieldsCsv)) {
-      autoRef.current.add(fieldsCsv)
-      void runClassifier(false)
-    }
-  }, [data, fieldsCsv, hasField, loading, classifying, runClassifier])
+  // One-click "Enable Dimensions": flip the dataset's Dimensions flag on (idempotent
+  // hygiene so the tab + Charts/Stats dim breakdowns stay available) AND run the
+  // keyword classifier. Replaces the old silent auto-classify-on-open with one
+  // explicit action — the single place to turn Dimensions on for this dataset.
+  const enableAndClassify = useCallback(async () => {
+    try {
+      await fetch('/api/datasets/' + datasetId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taxonomy_enabled: true }),
+      })
+    } catch { /* non-fatal — google_reviews is already dimension-eligible */ }
+    await runClassifier(false)
+  }, [datasetId, runClassifier])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><LottieLoader size={120} message="Loading dimensions…" /></div>
   if (err) return <div style={{ padding: 32, color: RED }}>Couldn’t load dimensions: {err}</div>
@@ -262,32 +266,39 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
   }
 
   if (!data || data.classifiedRows === 0) {
-    // No "Classify" button — picking a field auto-classifies (see the effect above).
-    // This screen only shows the brief gap / terminal states.
+    // Single setup screen: one "Enable Dimensions" button does enable + classify
+    // (no separate Schema-tab toggle step, no silent auto-run).
     return (
       <div style={{ padding: 40, maxWidth: 560 }}>
         {!hasField ? (
           <>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Pick a field to analyze</h2>
             <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
-              Choose an open-ended field — the <strong>Liked Most / Liked Least</strong> toggle at the top (you can select more than one) — and its dimensions appear automatically.
+              Choose an open-ended field — the <strong>Liked Most / Liked Least</strong> toggle at the top (you can select more than one) — then click <strong>Enable Dimensions</strong>.
             </p>
           </>
         ) : classifyErr ? (
           <>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Couldn’t classify</h2>
             <p style={{ color: RED, fontSize: 13, marginBottom: 16 }}>Classification failed: {classifyErr}</p>
-            <button onClick={() => runClassifier(false)}
+            <button onClick={() => { void enableAndClassify() }}
               style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               Try again
             </button>
           </>
-        ) : autoRef.current.has(fieldsCsv) ? (
+        ) : attempted ? (
           <p style={{ fontSize: 14, color: SLATE }}>No taggable text found in <strong>{fieldLabel || 'this selection'}</strong>.</p>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 24 }}>
-            <LottieLoader size={90} message={`Classifying ${fieldLabel || 'dimensions'}…`} />
-          </div>
+          <>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Enable Dimensions</h2>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.55, marginBottom: 18 }}>
+              Classify every comment in <strong>{fieldLabel || 'this field'}</strong> into a consistent set of restaurant dimensions — service, food, drinks, ambiance, value, and more — each with sentiment and severity flags, so you can compare and filter by aspect. Uses the built-in restaurant taxonomy (keyword-based, no AI cost) and runs in one pass.
+            </p>
+            <button onClick={() => { void enableAndClassify() }}
+              style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              Enable Dimensions
+            </button>
+          </>
         )}
       </div>
     )
