@@ -23,9 +23,11 @@ import type { SourceSummary } from '@/lib/sourceSummary'
 
 // ── Normalized per-input shapes ──────────────────────────────────────────────
 
+export type ProjectSourceKind = 'town_hall' | 'agent' | 'reviews' | 'survey' | 'dataset'
+
 export interface ProjectSource {
   id: string                       // dataset_id of the member
-  kind: 'town_hall' | 'agent'
+  kind: ProjectSourceKind
   name: string                     // display name, e.g. "NOWOCATS Meeting 2"
   date: string | null              // meeting date (town hall) / last-active (agent), ISO or null
   badge: string                    // short per-item attribution, e.g. "Town Hall · Jun 16" / "via Sarina"
@@ -50,11 +52,22 @@ export interface ProjectComment {
   source: string                   // ProjectSource.badge
 }
 
+// A mined/derived theme for one input — the comparison substrate for the
+// competitive + brand-360 reports (each column is an input; each row a theme).
+export interface ProjectInputTheme {
+  label: string
+  count: number                    // rows/exchanges matched
+  sentiment: string                // positive|neutral|negative|mixed
+  avgRating: number | null         // review datasets only
+  samples: string[]                // 1-3 short verbatim snippets
+}
+
 export interface ProjectInputModel {
   source: ProjectSource
   presentation: SourceSummary | null   // meeting presentation OR agent KB summary
   qa: ProjectQA[]
   commentary: ProjectComment[]
+  themes: ProjectInputTheme[]          // per-input themes (reviews/CSAT/recordings/agents)
   entities: { name: string; mentions: number }[]
   sentiment: { positive: number; neutral: number; negative: number }
 }

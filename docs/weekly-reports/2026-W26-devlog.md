@@ -653,3 +653,14 @@ Owner directive, now a permanent rule for EVERY new PDF (docs/ENGINEERING.md §6
 - `lib/htmlToPdf.ts` `brandedPdfChrome({ brand, confidentiality })` — shared per-page header (brand, top-right) + footer (Confidential · datanautix wordmark + datanautix.com · Page X of Y) templates + margins. Reuse for every PDF route.
 - `lib/projectReportHtml.ts` — `.keep` wrapper (break-inside:avoid) on each section heading+first-content and each theme header+summary+first-exchange; fixed a double "Commentary" heading.
 - Project-report PDF route uses `brandedPdfChrome({ brand: model.name })`. Regenerated the NOWOCATS PDF and QC'd pages (pdftoppm): header/footer correct, no orphaned titles, Q&A cards don't split. tsc clean. LOCAL/unpushed.
+
+## 2026-06-28 — Purpose-typed collection reports (competitive + brand-360) + PDF design system
+
+The report now adapts to the collection's purpose, and the new types run on a shared PDF design system.
+
+- **`lib/pdf.ts`** — shared PDF DESIGN SYSTEM (owner request): tokens (font/colours/type-scale/spacing), `pdfBaseStyles()` (incl. the `.keep` pagination rule), `pdfDoc/pdfSection/pdfKpiGrid/pdfCoverHeader/pdfSentPill/pdfPill`. Single source of truth for every PDF.
+- **`lib/projectCompare.ts`** — one engine for **competitive** + **brand_360** (themes × columns matrix; AI aligns synonymous themes + writes framed insight/exec, counts deterministic). **Competitive is a PRIMARY-focused deep-dive** (owner refinement): a designated focus member titles the report + is highlighted ★ Focus, exec/insights written from its POV vs the field. brand_360 triangulates one brand's sources.
+- **Generic loaders** (`projectReportLoad`): reviews/CSAT/upload → `ProjectInputModel` from `theme_model` + sampled rows; recordings/agents now also carry per-input `themes` (topic_summaries / focuses). `loadInputsForDatasets` for ad-hoc groupings. `buildProjectReportForCollection` dispatches by purpose (`inferPurpose` default).
+- Routes accept `?purpose=` / body `{purpose, primary}`; card ⋯ menu offers Community / Competitive (prompts for the focus member) / Brand 360.
+- **Verified on REAL data**: Ruth's Chris competitive deep-dive vs Capital Grille/Nobu/Tabla (65.5K Google reviews) — consultant-grade exec + matrix, PDF standard applied. brand_360 code-complete; no real one-brand-many-sources collection exists to demo.
+- Tests: `projectCompare.test.ts` (6). tsc clean; 1053 tests pass. LOCAL/unpushed.

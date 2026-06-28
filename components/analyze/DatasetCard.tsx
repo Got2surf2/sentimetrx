@@ -282,12 +282,33 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     setRenaming(false); setMenuOpen(false)
   }
 
-  // Project report (collections only): synthesize a brand-level PDF across every
-  // town hall + agent in the collection. POST → PDF blob → download.
-  async function handleProjectReport() {
-    setSyncing(true); setMenuOpen(false); setSyncToast('Building project report — synthesizing across inputs…')
+  // Competitive report needs a focus (primary) member — fetch members and let the
+  // user pick which one the deep-dive centers on.
+  async function startCompetitive() {
+    setMenuOpen(false)
     try {
-      var res = await fetch('/api/collections/' + dataset.id + '/project-report/pdf', { method: 'POST' })
+      var res = await fetch('/api/collections/' + dataset.id)
+      var data = await res.json()
+      var members = (data.members || []) as { dataset_id: string; name: string }[]
+      if (members.length < 2) { window.alert('Add at least 2 datasets for a competitive report.'); return }
+      var list = members.map(function(m, i) { return (i + 1) + ') ' + m.name }).join('\n')
+      var pick = window.prompt('Which is the FOCUS (primary) competitor the deep-dive should center on? Enter a number:\n\n' + list, '1')
+      if (!pick) return
+      var idx = parseInt(pick, 10) - 1
+      if (isNaN(idx) || idx < 0 || idx >= members.length) { window.alert('Invalid choice.'); return }
+      handleProjectReport('competitive', members[idx].dataset_id)
+    } catch { window.alert('Could not load the collection members.') }
+  }
+
+  // Project report (collections only): synthesize a purpose-specific PDF across the
+  // collection's inputs. POST → PDF blob → download.
+  async function handleProjectReport(purpose?: 'community' | 'competitive' | 'brand_360', primary?: string) {
+    setSyncing(true); setMenuOpen(false); setSyncToast('Building report — synthesizing across inputs…')
+    try {
+      var res = await fetch('/api/collections/' + dataset.id + '/project-report/pdf', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: purpose, primary: primary }),
+      })
       if (!res.ok) {
         var err = await res.json().then(function(d) { return d.error }).catch(function() { return null })
         setSyncing(false); setSyncToast(err || 'Could not build the report'); setTimeout(function() { setSyncToast('') }, 5000); return
@@ -439,10 +460,20 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 </button>
               )}
               {isCollection && (
-                <button onClick={handleProjectReport}
-                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  📊 Project report (PDF)
-                </button>
+                <>
+                  <button onClick={function() { handleProjectReport('community') }}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    📊 Community report (PDF)
+                  </button>
+                  <button onClick={startCompetitive}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    📊 Competitive report (PDF)…
+                  </button>
+                  <button onClick={function() { handleProjectReport('brand_360') }}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    📊 Brand 360 report (PDF)
+                  </button>
+                </>
               )}
               {collectionInfo && (
                 <button onClick={handleRemoveFromCollection}

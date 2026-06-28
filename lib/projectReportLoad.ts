@@ -10,14 +10,16 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { getAgentStudy } from '@/lib/agentStudy'
-import { buildProjectReportModel, type ProjectReportModel } from '@/lib/projectReport'
+import { buildProjectReportModel } from '@/lib/projectReport'
+import { renderProjectReportHtml } from '@/lib/projectReportHtml'
+import { buildCompareModel, renderCompareReportHtml, type ComparePurpose } from '@/lib/projectCompare'
 import { isPanelMember } from '@/lib/recordings/panel'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import type { SourceSummary } from '@/lib/sourceSummary'
 import type {
   QaPairPayload, ProceedingsSummary, PanelMember, RecordingAnalysisSummary,
 } from '@/lib/recordings/types'
-import type { ProjectInputModel, ProjectQA, ProjectComment, ProjectSource } from '@/lib/projectReport'
+import type { ProjectInputModel, ProjectQA, ProjectComment, ProjectSource, ProjectInputTheme } from '@/lib/projectReport'
 
 type Svc = ReturnType<typeof createServiceRoleClient>
 
@@ -78,12 +80,26 @@ async function loadRecordingInput(svc: Svc, datasetId: string, label: string, ro
     }
   }
 
-  const sb = (rec.analysis_summary as RecordingAnalysisSummary | null)?.sentiment_breakdown
+  const summary = rec.analysis_summary as RecordingAnalysisSummary | null
+  const sb = summary?.sentiment_breakdown
   const sentiment = sb
     ? { positive: sb.positive || 0, neutral: (sb.neutral || 0) + (sb.mixed || 0), negative: sb.negative || 0 }
     : { positive: 0, neutral: 0, negative: 0 }
+  const themes: ProjectInputTheme[] = (summary?.topic_summaries ?? []).map(ts => ({
+    label: ts.topic,
+    count: ts.qa_count,
+    sentiment: ts.sentiment || 'neutral',
+    avgRating: null,
+    samples: (ts.representative_exchanges ?? []).map(e => e.question).filter(Boolean).slice(0, 2),
+  }))
 
-  return { source, presentation: proceedingsToSummary(rec.proceedings_summary as ProceedingsSummary | null), qa, commentary, entities: [], sentiment }
+  return { source, presentation: proceedingsToSummary(rec.proceedings_summary as ProceedingsSummary | null), qa, commentary, themes, entities: [], sentiment }
+}
+
+function dominantSentiment(s: { positive: number; neutral: number; negative: number }): string {
+  if (s.positive >= s.neutral && s.positive >= s.negative && s.positive > 0) return 'positive'
+  if (s.negative >= s.neutral && s.negative >= s.positive && s.negative > 0) return 'negative'
+  return 'neutral'
 }
 
 // ── Agent (bot) member ───────────────────────────────────────────────────────
@@ -107,14 +123,90 @@ async function loadAgentInput(svc: Svc, datasetId: string, label: string, rowCou
   const sentiment = study.focuses.reduce(
     (a, f) => ({ positive: a.positive + f.sentiment.positive, neutral: a.neutral + f.sentiment.neutral, negative: a.negative + f.sentiment.negative }),
     { positive: 0, neutral: 0, negative: 0 })
+  const themes: ProjectInputTheme[] = study.focuses.map(f => ({
+    label: f.label,
+    count: f.exchanges,
+    sentiment: dominantSentiment(f.sentiment),
+    avgRating: null,
+    samples: f.samples.map(s => s.question).filter(Boolean).slice(0, 2),
+  }))
 
   return {
     source,
     presentation: study.presentation,
-    qa, commentary,
+    qa, commentary, themes,
     entities: study.entities.map(e => ({ name: e.name, mentions: e.mentions })),
     sentiment,
   }
+}
+
+// ── Generic (reviews / CSAT / upload) member ─────────────────────────────────
+// Reviews + survey/CSAT datasets carry mined themes (theme_model) + rated text
+// rows, not Q&A/panel. These are the substrate for the competitive + brand-360
+// reports (each column an input; each row a theme).
+async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowCount: number, source: string, brandTag: string | null): Promise<ProjectInputModel | null> {
+  const kind = source === 'google_reviews' ? 'reviews' : source === 'study' ? 'survey' : 'dataset'
+  const { data: stateRow } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
+  const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
+  const src: ProjectSource = {
+    id: datasetId, kind: kind as any,
+    name: brandTag || label,
+    date: null,
+    badge: brandTag || label,
+    rowCount,
+  }
+  const themes: ProjectInputTheme[] = rawThemes.map(t => ({
+    label: String(t.name || t.label || 'Theme'),
+    count: typeof t.count === 'number' ? t.count : 0,
+    sentiment: typeof t.sentiment === 'string' ? t.sentiment : 'neutral',
+    avgRating: typeof t.avgRating === 'number' ? t.avgRating : null,
+    samples: Array.isArray(t.keywords) ? t.keywords.slice(0, 4).map(String) : [],
+  }))
+
+  // A small sample of verbatim rows for representative quotes.
+  const { data: rows } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
+  const commentary: ProjectComment[] = (rows || []).map(r => {
+    const d = (r.data || {}) as Record<string, any>
+    const text = d.review_text || d.body || d.user_message || d.comment || d.response_text || ''
+    if (!text || String(text).trim().length < 8) return null
+    return { quote: String(text).slice(0, 240), topic: null, sentiment: d.sentiment ?? null, speaker: d.author ?? d.reviewer ?? null, source: src.badge }
+  }).filter(Boolean) as ProjectComment[]
+
+  // Input sentiment ≈ theme counts weighted by their sentiment.
+  const sentiment = themes.reduce((a, t) => {
+    const s = (t.sentiment || '').toLowerCase()
+    if (s.startsWith('pos')) a.positive += t.count
+    else if (s.startsWith('neg')) a.negative += t.count
+    else a.neutral += t.count
+    return a
+  }, { positive: 0, neutral: 0, negative: 0 })
+
+  return { source: src, presentation: null, qa: [], commentary, themes, entities: [], sentiment }
+}
+
+// ── Per-dataset dispatch (shared by collection load + ad-hoc grouping) ───────
+interface DatasetRow { id: string; source: string; name: string; row_count: number | null; description: string | null; brand_tag: string | null }
+
+async function loadInputForDataset(svc: Svc, d: DatasetRow, label: string): Promise<ProjectInputModel | null> {
+  if (d.source === 'recording') return loadRecordingInput(svc, d.id, label, d.row_count || 0)
+  if (d.source === 'bot') return loadAgentInput(svc, d.id, label, d.row_count || 0, d.description)
+  return loadGenericInput(svc, d.id, label, d.row_count || 0, d.source, d.brand_tag) // reviews / CSAT / upload
+}
+
+// Load arbitrary datasets (by id, in order) into normalized inputs — used for an
+// ad-hoc grouping (e.g. a competitive set not yet saved as a collection).
+export async function loadInputsForDatasets(datasetIds: string[]): Promise<ProjectInputModel[]> {
+  const svc = createServiceRoleClient()
+  const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', datasetIds)
+  const dsMap = new Map((dsRows || []).map(d => [d.id, d]))
+  const out: ProjectInputModel[] = []
+  for (const id of datasetIds) {
+    const d = dsMap.get(id)
+    if (!d) continue
+    const m = await loadInputForDataset(svc, d as DatasetRow, d.name)
+    if (m) out.push(m)
+  }
+  return out
 }
 
 // ── Collection → inputs ──────────────────────────────────────────────────────
@@ -131,29 +223,38 @@ export async function loadProjectInputs(collectionDatasetId: string): Promise<{ 
   if (!members?.length) return { name: collectionDs.name, inputs: [] }
 
   const ids = members.map(m => m.dataset_id)
-  const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description').in('id', ids)
+  const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', ids)
   const dsMap = new Map((dsRows || []).map(d => [d.id, d]))
 
   const inputs: ProjectInputModel[] = []
   for (const mem of members) {
     const d = dsMap.get(mem.dataset_id)
     if (!d) continue
-    const label = mem.label || d.name
-    let model: ProjectInputModel | null = null
-    if (d.source === 'recording') model = await loadRecordingInput(svc, d.id, label, d.row_count || 0)
-    else if (d.source === 'bot') model = await loadAgentInput(svc, d.id, label, d.row_count || 0, d.description)
-    // Other source types are skipped (the project report is for town halls + agents).
+    const model = await loadInputForDataset(svc, d as DatasetRow, mem.label || d.name)
     if (model) inputs.push(model)
   }
   return { name: collectionDs.name, inputs }
 }
 
-// Route-facing: gate (collection + admin-aware org), load, build. Routes own auth;
-// this owns tenancy + the pipeline so the HTML and PDF routes can't drift.
+export type ReportPurpose = 'community' | ComparePurpose
+
+// Smart default when the caller doesn't designate a purpose: all town-hall/agent
+// inputs → community; otherwise default to competitive (review/CSAT collections).
+// brand-360 (one brand, many sources) is an explicit pick.
+export function inferPurpose(inputs: ProjectInputModel[]): ReportPurpose {
+  if (inputs.every(i => i.source.kind === 'town_hall' || i.source.kind === 'agent')) return 'community'
+  return 'competitive'
+}
+
+// Route-facing: gate (collection + admin-aware org), load, pick the purpose-
+// specific report, render. Routes own auth; this owns tenancy + dispatch so the
+// HTML and PDF routes can't drift. Returns rendered HTML directly.
 export async function buildProjectReportForCollection(
   collectionDatasetId: string,
   caller: { orgId: string; isAdmin: boolean },
-): Promise<{ ok: true; model: ProjectReportModel } | { ok: false; status: number; error: string }> {
+  purpose?: ReportPurpose,
+  primaryId?: string,   // competitive only — the dataset_id of the focus competitor
+): Promise<{ ok: true; name: string; purpose: ReportPurpose; html: string } | { ok: false; status: number; error: string }> {
   const svc = createServiceRoleClient()
   const { data: ds } = await svc.from('datasets').select('id, source, org_id').eq('id', collectionDatasetId).single()
   if (!ds) return { ok: false, status: 404, error: 'Not found' }
@@ -162,8 +263,18 @@ export async function buildProjectReportForCollection(
 
   const loaded = await loadProjectInputs(collectionDatasetId)
   if (!loaded || loaded.inputs.length === 0) {
-    return { ok: false, status: 409, error: 'No analyzed town halls or agents in this collection yet. Add at least one and run its analysis first.' }
+    return { ok: false, status: 409, error: 'Nothing analyzable in this collection yet. Add at least one analyzed dataset (town hall, agent, reviews, or CSAT) first.' }
   }
-  const model = await buildProjectReportModel(loaded.name, loaded.inputs, new Date().toISOString(), { synthesize: true })
-  return { ok: true, model }
+
+  const resolved: ReportPurpose = purpose || inferPurpose(loaded.inputs)
+  const stamp = new Date().toISOString()
+  let html: string
+  if (resolved === 'community') {
+    const model = await buildProjectReportModel(loaded.name, loaded.inputs, stamp, { synthesize: true })
+    html = renderProjectReportHtml(model)
+  } else {
+    const model = await buildCompareModel(loaded.name, resolved, loaded.inputs, stamp, { synthesize: true, primaryId })
+    html = renderCompareReportHtml(model)
+  }
+  return { ok: true, name: loaded.name, purpose: resolved, html }
 }

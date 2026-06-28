@@ -51,6 +51,7 @@ tests/
 │   ├── outletPredictor.test.ts # "recover 1–3★ guests" predictor — 1–3★ rate/spread, brand over-rep driver vs loud-but-neutral vs excluded outcome theme, peer-quartile weaknesses/strengths, themeFocus, top-3–5 learn-from list (distinct, best-first), quote attach + projectRecovery what-if (least-improved-theme gate) + buildRecommendedActions greedy playbook + outcomeCorrelations (loyalty→driver) + conventional ratingRank + recommended-actions rec/union (interactive playbook de-dup)
 │   ├── personaExtractor.test.ts
 │   ├── phase3DualWrite.test.ts
+│   ├── projectCompare.test.ts # competitive + brand-360 comparison engine — primary focus resolution/reorder, matrix cells (count/dominant-sentiment/avg-rating), row sort by volume, brand_360 no-primary
 │   ├── projectReport.test.ts # project (brand) report aggregation — by-topic pooling case-insensitive, reconciling totals, deterministic 1:1 theme fallback, entity merge across sources, sentiment sum, source-attributed commentary
 │   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation
 │   ├── rateLimit.test.ts

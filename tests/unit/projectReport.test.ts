@@ -16,6 +16,7 @@ const townHall: ProjectInputModel = {
   commentary: [
     { quote: 'The 441 corridor backs up daily.', topic: 'Roads', sentiment: 'negative', speaker: 'Maria', source: 'Town Hall · Jun 16' },
   ],
+  themes: [{ label: 'Roads', count: 2, sentiment: 'negative', avgRating: null, samples: [] }],
   entities: [{ name: 'US-441', mentions: 4 }],
   sentiment: { positive: 1, neutral: 2, negative: 3 },
 }
@@ -30,6 +31,7 @@ const agent: ProjectInputModel = {
     { quote: 'We need the 441 fixed sooner.', topic: 'roads', sentiment: 'negative', speaker: null, source: 'via Sarina' },
     { quote: 'Budget keeps slipping.', topic: 'Funding', sentiment: 'negative', speaker: null, source: 'via Sarina' },
   ],
+  themes: [{ label: 'Funding', count: 1, sentiment: 'negative', avgRating: null, samples: [] }],
   entities: [{ name: 'US-441', mentions: 6 }, { name: 'Kelly Park Rd', mentions: 2 }],
   sentiment: { positive: 2, neutral: 5, negative: 8 },
 }
