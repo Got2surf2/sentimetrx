@@ -20,13 +20,13 @@ interface Props {
 }
 
 interface Filters {
-  source:     'all' | 'study' | 'upload' | 'bot' | 'google_reviews' | 'recording' | 'townhall' | 'other'
+  source:     'all' | 'study' | 'upload' | 'bot' | 'google_reviews' | 'recording' | 'townhall' | 'collection' | 'other'
   visibility: 'all' | 'private' | 'public'
   status:     'all' | 'active' | 'archived'
 }
 
 // Sources that have their own pill; anything else falls under the "Other" pill.
-const NAMED_SOURCES = ['study', 'upload', 'bot', 'google_reviews', 'recording', 'townhall']
+const NAMED_SOURCES = ['study', 'upload', 'bot', 'google_reviews', 'recording', 'townhall', 'collection']
 
 const HERMES = '#e8622a'
 

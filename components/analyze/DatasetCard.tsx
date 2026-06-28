@@ -330,7 +330,9 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   }
 
   // A member changed since this collection last recomputed — rebuild its merged
-  // schema + row_count + analytics, then reload to clear the badge.
+  // schema + row_count + analytics. Use router.refresh() (NOT a full reload) so
+  // the server re-renders the list (clearing the badge) while the client search /
+  // filter / sort state in AnalyzeClient is preserved.
   async function handleRefreshCollection() {
     if (refreshing) return
     setRefreshing(true)
@@ -340,7 +342,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         var err = await res.json().then(function(d) { return d.error }).catch(function() { return null })
         setRefreshing(false); window.alert(err || 'Could not refresh the collection.'); return
       }
-      window.location.reload()
+      router.refresh()
+      setRefreshing(false)
     } catch {
       setRefreshing(false); window.alert('Network error refreshing the collection.')
     }

@@ -709,3 +709,7 @@ Owner queue item #4. The /analyze listing card already said "comments" but the T
 ## 2026-06-28 — Competitive report: statistical significance on the % table
 
 Owner asked: in the matrix where we show %s, can we show if they're statistically different? Added a two-proportion z-test (`twoPropSig`) comparing each competitor's share on a theme to the FOCUS column's share (n = column rowCount, x = cell count). Cells render ▲ sig. / ▼ sig. / ns under the %, with a legend. Competitive only (brand_360 has no focus). WHY: gives the deck statistical credibility; with big review samples most gaps are significant, so the real signal is flagging the rare "ns" (true parity). 2 unit tests. tsc clean.
+
+## 2026-06-28 — Collections source pill + refresh preserves filter state
+
+Two owner follow-ups on the /analyze grid. (1) Added a "Collections" Source filter pill (DatasetFilterBar + AnalyzeClient Filters union + NAMED_SOURCES) so collections are filterable directly instead of buried under "Other". (2) The collection freshness refresh button was doing window.location.reload() → wiped the user's search/source-filter/sort. Switched it to router.refresh() so the server re-renders (badge clears) while AnalyzeClient's client state is preserved. tsc clean, 1057 tests. ANALYTICS.md synced.
