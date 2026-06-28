@@ -27,6 +27,7 @@ import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
 import { renderCommentaryHtml } from '@/lib/commentaryReport'
 import { renderSourceSummaryHtml, type SourceSummary } from '@/lib/sourceSummary'
+import { isPanelMember } from '@/lib/recordings/panel'
 
 const TEAL = '#0f766e'
 const ORANGE = '#c2410c'
@@ -170,7 +171,13 @@ function transcriptSection(input: TownHallReportInput): string {
 }
 
 export function renderTownHallReportHtml(input: TownHallReportInput): string {
-  const allQa = input.pairs.filter(p => p.unit_type === 'qa_pair')
+  const allUnits = input.pairs.filter(p => p.unit_type === 'qa_pair')
+  // Community voices only: drop any pair whose ASKER is on the panel roster — an
+  // organizer asking/commenting is not a community voice, the same way agent
+  // analysis ignores the bot's own turns. We filter on the asker so panel
+  // ANSWERS stay attached to genuine community questions (a community-asked pair
+  // answered by a panelist is kept). Empty roster → nothing excluded.
+  const allQa = allUnits.filter(p => !isPanelMember((p.payload as QaPairPayload).asker_name, input.panel))
   // Commentary-typed pairs are standalone public comments, not Q&A — pull them
   // OUT of the Q&A flow into their own section (shares the renderer with the
   // Agent Study report). Everything else stays a Q&A pair.

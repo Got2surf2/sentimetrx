@@ -625,3 +625,11 @@ Real fix: look the dataset up via **service-role**, then enforce tenancy explici
 Owner hit an error importing component topics into a collection. Root cause: `POST /api/datasets/[id]/merge-themes` (the TextMine collection theme-merge, `forceMode='merge'`) still hard-rejected with `NO_API_KEY` when the caller had no personal Anthropic key — but `mine-themes` had already dropped that gate to fall back to the platform `ANTHROPIC_API_KEY`. So a customer could *mine* themes on each member (platform key) but not *merge* them. Fix: removed the gate (callAI falls back to env key when `apiKey` is empty) and added `org_id` to the `merge_themes` usage log so the platform-key spend is attributed to the org (matches mine-themes). tsc clean. LOCAL/unpushed.
 
 Note (not a code bug): the merge only pulls members that already have mined themes — verified the owner's "NOWOCATS Collection" has 2/3 members with themes (NOWOCATS Meeting 2: 6, Sarina: 7); the third (Community Meeting 2 06/16, a recording) has 0, so it's excluded until themes are mined on it. Surfacing included/excluded members is a future UX nicety.
+
+## 2026-06-28 — Community voices only: panel/organizer exclusion in town-hall reports
+
+Owner principle (verified against the NOWOCATS deck, where Hatem Abou-Senna [Project Manager] + Brian Sanders [Planning Manager] — both on the panel roster — appeared as "community voices"): organizer speech must be excluded from community-voice analysis, the same way agent analysis ignores the bot's own turns.
+
+- `lib/recordings/panel.ts` `isPanelMember(name, panel)` — normalized roster match (middle-initial tolerant, case/punctuation-insensitive, conservative first+last-token so a partial match never false-excludes a community member). Tested (`tests/unit/recordings/panel.test.ts`, 6).
+- `lib/recordings/reportHtml.ts` filters on the **asker**: any Q&A/commentary pair whose asker is a panel member is dropped from the community Q&A + Commentary; panel **answers** stay attached to genuine community-asked pairs. Empty roster → nothing excluded. Works on existing data (render-time, no re-mirror).
+- Follow-up: stamp `speaker_role` on mirrored `dataset_rows_flat` so Ana / TextMine / collection merge also exclude panel content (needs re-mirror). LOCAL/unpushed.
