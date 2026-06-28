@@ -25,6 +25,8 @@ import type {
 import { normalizeSegments, normalizeText, buildReplacements } from '@/lib/recordings/normalize'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import { buildTimelineModel, renderTimelineHtml } from '@/lib/recordings/timeline'
+import { renderCommentaryHtml } from '@/lib/commentaryReport'
+import { renderSourceSummaryHtml, type SourceSummary } from '@/lib/sourceSummary'
 
 const TEAL = '#0f766e'
 const ORANGE = '#c2410c'
@@ -107,33 +109,28 @@ function qaCard(qa: QaPairPayload, nz: (t: string) => string): string {
 // PDF carries both halves of a community meeting, not just the Q&A.
 function proceedingsSection(p: ProceedingsSummary | null | undefined): string {
   if (!p || (!p.overview && (p.items?.length ?? 0) === 0)) return ''
-  const items = (p.items ?? [])
-    .map(it => {
-      const slideRefs = (it.slide_refs?.length ?? 0) > 0
-        ? `<span class="slideref">${it.slide_refs.length === 1 ? 'Slide' : 'Slides'} ${esc(it.slide_refs.join(', '))}</span>`
-        : ''
-      const figs = (it.key_figures?.length ?? 0) > 0
-        ? `<div class="figs">` +
-          it.key_figures.map(f => `<span class="fig"><span class="fl">${esc(f.label)}</span><span class="fv">${esc(f.value)}</span></span>`).join('') +
-          `</div>`
-        : ''
-      return (
-        `<div class="pitem">` +
-        `<div class="pitem-head"><h3 class="pitem-t">${esc(it.title)}</h3>${slideRefs}</div>` +
-        (it.presenter ? `<div class="pres">${esc(it.presenter)}</div>` : '') +
-        (it.what_was_presented ? `<p class="pwhat">${esc(it.what_was_presented)}</p>` : '') +
-        figs +
-        `</div>`
-      )
-    })
-    .join('')
+  // Map the recordings-specific ProceedingsSummary onto the neutral SourceSummary
+  // shape and render with the shared renderer — the same one the Agent Study
+  // report uses for its KB summary, so the two reports open identically.
+  const summary: SourceSummary = {
+    overview: p.overview,
+    items: (p.items ?? []).map(it => ({
+      title: it.title,
+      attribution: it.presenter,
+      body: it.what_was_presented,
+      figures: it.key_figures,
+      refs: (it.slide_refs?.length ?? 0) > 0
+        ? `${it.slide_refs.length === 1 ? 'Slide' : 'Slides'} ${it.slide_refs.join(', ')}`
+        : null,
+    })),
+  }
   return (
-    `<section class="notes">` +
-    `<h2 class="topic">Meeting Notes</h2>` +
-    (p.overview ? `<p class="notes-ov">${esc(p.overview)}</p>` : '') +
-    items +
-    `<p class="caption" style="margin-top:10px">Neutral AI summary of the presentation portion of the meeting. The Q&amp;A below covers the discussion that followed.</p>` +
-    `</section>`
+    `<div class="notes">` +
+    renderSourceSummaryHtml(summary, {
+      heading: 'Meeting Notes',
+      caption: 'Neutral AI summary of the presentation portion of the meeting. The Q&A below covers the discussion that followed.',
+    }) +
+    `</div>`
   )
 }
 
@@ -173,7 +170,13 @@ function transcriptSection(input: TownHallReportInput): string {
 }
 
 export function renderTownHallReportHtml(input: TownHallReportInput): string {
-  const pairs = input.pairs.filter(p => p.unit_type === 'qa_pair')
+  const allQa = input.pairs.filter(p => p.unit_type === 'qa_pair')
+  // Commentary-typed pairs are standalone public comments, not Q&A — pull them
+  // OUT of the Q&A flow into their own section (shares the renderer with the
+  // Agent Study report). Everything else stays a Q&A pair.
+  const isCommentary = (p: typeof allQa[number]) => (p.payload as QaPairPayload).question_typology === 'commentary'
+  const pairs = allQa.filter(p => !isCommentary(p))
+  const commentaryPairs = allQa.filter(isCommentary)
   const summary = input.summary
 
   // Reviewed entity-map spelling corrections, applied on read to ALL AI text
@@ -242,6 +245,26 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
       `</section>`
     : ''
 
+  // Commentary section — standalone public comments (question_typology ==
+  // 'commentary'), grouped by topic. Quote = the comment (verbatim/polished/edited
+  // via displayQuestion), normalized for reviewed spellings like everything else.
+  const commentaryHtml = commentaryPairs.length > 0
+    ? `<div style="margin-top:22px">` +
+      renderCommentaryHtml(
+        commentaryPairs.map(p => {
+          const qa = p.payload as QaPairPayload
+          return {
+            quote: nz(displayQuestion(qa)),
+            topic: p.topic,
+            sentiment: qa.sentiment ?? null,
+            speaker: qa.asker_name ?? null,
+          }
+        }),
+        { accent: TEAL, subtitle: 'Comments and observations from attendees that weren’t questions — grouped by topic.' },
+      ) +
+      `</div>`
+    : ''
+
   const notes = proceedingsSection(input.proceedings)
   // Eyebrow reflects scope: both halves present → "Meeting Summary"; Q&A only → legacy label.
   const eyebrow = notes ? 'Meeting Summary' : 'Meeting Q&amp;A Summary'
@@ -287,19 +310,10 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     // for modern Chromium, the legacy alias for older print engines.
     `h1,.topic,.ov-h{break-after:avoid;page-break-after:avoid}` +
     // Trim single-line widows/orphans on flowing body copy.
-    `.ov-p,.a-text,.pwhat,.notes-ov,.tx .seg{orphans:3;widows:3}` +
+    `.ov-p,.a-text,.tx .seg{orphans:3;widows:3}` +
+    // Presentation/Meeting-Notes styling now lives in the shared source-summary
+    // renderer (lib/sourceSummary.ts); only the .notes wrapper margin stays here.
     `.notes{margin:22px 0}` +
-    `.notes-ov{font-size:14px;line-height:1.6;color:${BODY};margin:0 0 14px;white-space:pre-wrap}` +
-    `.pitem{border:1px solid ${LINE};border-radius:12px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}` +
-    `.pitem-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}` +
-    `.pitem-t{font-size:14px;font-weight:700;color:${INK};margin:0}` +
-    `.slideref{font-size:11px;color:${FAINT};white-space:nowrap}` +
-    `.pres{font-size:11px;color:${MUTE};margin-top:2px}` +
-    `.pwhat{font-size:14px;line-height:1.6;color:${BODY};margin:8px 0 0;white-space:pre-wrap}` +
-    `.figs{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}` +
-    `.fig{display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border:1px solid ${LINE};border-radius:8px;background:#f8fafc;font-size:12px}` +
-    `.fig .fl{color:${MUTE}}` +
-    `.fig .fv{font-weight:700;color:${INK}}` +
     `.qa{border:1px solid ${LINE};border-radius:12px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid}` +
     `.q-head{padding:11px 14px;border-bottom:1px solid #f1f5f9}` +
     `.a-body{padding:11px 14px;background:#f8fafc}` +
@@ -330,6 +344,7 @@ export function renderTownHallReportHtml(input: TownHallReportInput): string {
     overview +
     timeline +
     `<section>${topics}</section>` +
+    commentaryHtml +
     actionsHtml +
     transcriptSection(input) +
     `</div></body></html>`

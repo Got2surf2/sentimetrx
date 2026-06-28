@@ -219,7 +219,7 @@ CREATE POLICY "recording_extractions_org_read" ON recording_extractions
   asker_name?: string,        // if identifiable from setup inputs or self-introduction
   answer: string,
   panelist_name?: string,
-  question_typology: 'ask' | 'complaint' | 'commentary' | 'clarification',  // only 'ask' surfaces in main report
+  question_typology: 'ask' | 'complaint' | 'commentary' | 'clarification',  // descriptive label; ask/complaint/clarification render in Q&A, 'commentary' is routed to the report's standalone Commentary section (2026-06-27)
   sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed',  // tone of the exchange (added 2026-06; optional → old rows default 'neutral')
   presentation_scope?: 'in_scope' | 'out_of_scope' | null,    // (2026-06-07) does the question pertain to the presentation? AI-classified at analyze time (§3.5e) + human-overridable; only for presentation meetings
 }
@@ -266,6 +266,12 @@ Generalizes recordings from a Q&A recorder into a configurable **meeting tool** 
 - **`recordings.presentation_outline` (jsonb)** — AI-vision read of the uploaded slide deck: `{ slides: [{slide_number,title,key_points,figures,presenter,notes}], source_filename, page_count, … }`. The ground-truth seed for the presentation summary (figures/names/dates transcribed verbatim). Built by `lib/recordings/slides.ts` via the shared `lib/vision/` primitive (Sandbox `pdftoppm` render → Claude vision). **PDF only in v1** (PPTX is a fast-follow). Null when no slides or vision fails.
 - **`recordings.proceedings_summary` (jsonb)** — neutral presentation summary: `{ overview, items: [{title,presenter,what_was_presented,key_figures,slide_refs}], … }`. `lib/recordings/presentation.ts`, Sonnet, **reuses the exact no-opining voice directive** from the Q&A synthesis pass (the deck is shareable with the client). Runs only when a presentation phase has content; null otherwise (graceful degrade).
 - **`recording_files.file_role` (text, default `'media'`, CHECK in (`media`,`slides`))** — `slides` files (the presentation deck) ride the same TUS upload path but **skip the ffmpeg extract pipeline** (`extract.ts` filters to `file_role='media'`); they're read by vision instead. At most one `slides` file per recording; ≥1 `media` file required.
+
+**Report layout — shared renderers with the Agent Study report (2026-06-27).** The PDF/share HTML bake (`lib/recordings/reportHtml.ts`) opens with **Meeting Notes** (the presentation summary above) and includes a standalone **Commentary** section, both via renderers shared with the Agent Study report so the two products read as siblings:
+> - `lib/sourceSummary.ts` `renderSourceSummaryHtml()` — the "what was presented" block. Town Hall maps `proceedings_summary` → the neutral `SourceSummary` shape (Meeting Notes); the Agent Study maps a summary of the agent's knowledge base (its "presentation") onto the same shape. Replaced the old inline `proceedingsSection` markup.
+> - `lib/commentaryReport.ts` `renderCommentaryHtml()` — the standalone Commentary section, topic-clustered. Town Hall feeds the `question_typology='commentary'` pairs (pulled OUT of the Q&A flow — `ask`/`complaint`/`clarification` stay in Q&A); the Agent Study feeds `AgentStudy.publicComments`. Quote + topic + sentiment + optional speaker.
+>
+> Scope note: this covers the **HTML bake** (PDF + public `/th` share). The in-app interactive `ReportClient.tsx` (its own `typeFilter`) and the PPTX deck (`recordingDeck.ts`) still show commentary inline — mirroring the split into those surfaces is a follow-up.
 
 Migration `sql/097` is nullable adds on RLS-enabled tables → no new policy; slide PNGs live under the existing `recordings` bucket path (its MIME allowlist was extended to `image/png`/`image/jpeg` in `sql/099` so the rendered pages can be stored). Shared AI-vision support was added to `lib/ai.ts` (image content blocks, Anthropic) — reusable by bot-KB document ingestion later (text-extract-first, vision-fallback). Vision cost ≈ $0.01/slide on Sonnet.
 

@@ -40,6 +40,7 @@ tests/
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
 │   ├── classifyPendingRows.test.ts  # auto-classify-on-sync safety net — pending-row loop drain, maxRows cap/hasMore, real keyword assertions
+│   ├── commentaryReport.test.ts # shared Commentary renderer (Town Hall + Agent Study) — topic clustering/ordering, sentiment dot, escaping, empty-state
 │   ├── deflectionRouter.test.ts
 │   ├── engagementSignals.test.ts
 │   ├── entityAnalysis.test.ts    # PPTX entity slides — splitMentions, catalogToAggregate (catalog-first reuse), entitySlideSpecs slide shape
@@ -54,6 +55,7 @@ tests/
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug)
+│   ├── sourceSummary.test.ts  # shared "what was presented" renderer (Town Hall Meeting Notes + Agent KB summary) — heading/overview/items, optional figures/refs/attribution, escaping, empty-state
 │   ├── taxonomyRollup.test.ts # restaurant taxonomy roll-up — aggregateTaxonomy axis/sub rates + sentiment + alerts; resolveDictionary core⊕overlay layering
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts

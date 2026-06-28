@@ -583,3 +583,15 @@ Filled the appropriate test gaps from the convergence + provenance arc:
 - `tests/unit/botEntityExtraction.test.ts`: + `classifyChunkSource` (now exported) — KB chunk metadata → crawl (URL) vs document (file/text/none), both authoritative.
 - `tests/integration/collection-entities-routes-gate.test.ts` (new): org-gating for the Phase-5 brand-glossary routes (`/api/collections/[id]/entities` GET/POST, `…/[entityId]` PATCH/DELETE, `…/refresh` POST) — 401 no-org + 404 cross-org. Closes the route-handler org-filter gap (not covered by RLS/egress suites). Mirrors `dataset-query-routes-gate.test.ts`.
 - 997 tests pass (+11), tsc clean. Only `export` added to lib code (classifyChunkSource); no behavior change.
+
+## 2026-06-27 — Shared report sections: Commentary + KB-summary (Town Hall ⇄ Agent Study convergence)
+
+Step toward "one report template, two inputs" — the Town Hall report and the Agent Study report now share two sections so they read as siblings (owner vision: virtually identical reports, sections filled only when data exists).
+
+- **`lib/commentaryReport.ts` (new) — `renderCommentaryHtml()`**: standalone, topic-clustered Commentary section (verbatim quote + topic + sentiment dot + optional speaker). Self-contained inline styles + accent param, mirroring `renderTimelineHtml`. Both reports feed it:
+  - Town Hall (`reportHtml.ts`): pulls `question_typology='commentary'` pairs OUT of the Q&A flow into the section (`ask`/`complaint`/`clarification` stay in Q&A). Uses data already classified — no extraction change, no migration. (Fixed the stale RECORDINGS.md:222 "only 'ask' surfaces" comment — the QA prompt says all typologies are retained/shown equally.)
+  - Agent Study (`agentStudyHtml.ts`): finally renders the dormant `AgentStudy.publicComments` (was workbook-only).
+- **`lib/sourceSummary.ts` (new) — `renderSourceSummaryHtml()`**: the "what was presented" block (overview + item cards w/ optional attribution/figures/refs), a neutral superset of recordings' `ProceedingsSummary`. Town Hall's `proceedingsSection` now maps onto it (replaced the inline markup; removed the now-orphaned `.pitem`/`.fig`/etc. CSS).
+- **Agent KB summary = the agent's "presentation"**: `getAgentStudy` computes `presentation: SourceSummary | null` — one `callAI` (standard) summarizing `system_prompt` + `bot_knowledge_chunks` into the shared shape, rendered as a **Knowledge Base** section atop the report. Run only on a study cache miss; cache key folds in a KB content hash (`kbSignature`), `STUDY_SCHEMA_VERSION` → **v6**.
+- Tests: `tests/unit/commentaryReport.test.ts` (7) + `tests/unit/sourceSummary.test.ts` (6) — clustering/ordering/escaping/empty-state/optional-fields. tsc clean. QC-rendered both sections via Playwright (parallel, sibling look confirmed).
+- **Scope:** covers the HTML bake (PDF + public `/th` share). Follow-ups (not done): mirror the commentary split into the in-app `ReportClient.tsx` (has its own `typeFilter`) and the PPTX decks; the project-level (cross-input) roll-up report. All LOCAL/unpushed.

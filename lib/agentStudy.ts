@@ -26,6 +26,7 @@ import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isSubstantive, autoFlagReasons, resolveReviewStatus, includedInReports, duplicateFingerprintSet } from '@/lib/conversationReview'
+import type { SourceSummary } from '@/lib/sourceSummary'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 export interface DailyPoint { date: string; opens: number; conversations: number }
@@ -90,6 +91,11 @@ export interface AgentStudy {
   // The "public comment" record — what makes an agent's "I'll capture this for
   // the record" promise real. Verbatim (lightly cleaned), not paraphrased.
   publicComments: { quote: string; focus: string | null; sentiment: string | null; sessionId: string; createdAt: string }[]
+  // "What this agent is equipped to cover" — a neutral AI summary of the agent's
+  // knowledge base (system prompt + knowledge chunks), shaped like the Town Hall
+  // report's presentation summary so the two reports share the same opening
+  // section. null when the agent has no KB to summarize.
+  presentation: SourceSummary | null
   insights: {
     commonQuestions: string[]
     patterns: string[]
@@ -122,8 +128,65 @@ interface BotRow {
   id: string
   name: string
   org_id: string
+  system_prompt: string | null
   focuses: { slug: string; label: string; description?: string; enabled?: boolean }[]
   intents: { label: string; enabled?: boolean }[]
+}
+
+// One knowledge-base chunk (sql/023): a titled section of the agent's uploaded
+// knowledge. Title + content are the raw material for the KB summary.
+interface KbChunk { title: string; content: string }
+
+// Summarize the agent's knowledge base into the shared SourceSummary shape — the
+// agent's equivalent of the Town Hall presentation. One AI pass; runs only on a
+// study cache miss (the cache key folds in a KB content hash). Returns null when
+// there's nothing meaningful to summarize.
+async function summarizeAgentKb(botId: string, botName: string, systemPrompt: string | null, chunks: KbChunk[]): Promise<SourceSummary | null> {
+  const sp = (systemPrompt || '').trim()
+  const usableChunks = chunks.filter(c => (c.content || '').trim().length > 0)
+  if (sp.length < 40 && usableChunks.length === 0) return null
+
+  // Build a bounded corpus: the system prompt first, then titled chunks, capped
+  // so a large KB doesn't blow the context (mirrors computeInsights' 12k budget).
+  let corpus = sp ? `SYSTEM PROMPT / INSTRUCTIONS:\n${sp.slice(0, 4000)}\n\n` : ''
+  for (const c of usableChunks) {
+    const block = `### ${(c.title || 'Untitled').slice(0, 120)}\n${c.content.slice(0, 1200)}\n\n`
+    if (corpus.length + block.length > 14000) break
+    corpus += block
+  }
+
+  const res = await callAI({
+    tier: 'standard', maxTokens: 1500, timeoutMs: 45000,
+    system: `You are summarizing the knowledge base of an agent called "${botName}" — the information it was equipped to convey to people who chat with it. Produce a NEUTRAL, factual overview of what the agent is set up to cover (its "presentation"). Do NOT invent facts not in the material; do NOT editorialize.
+Return ONLY JSON, no markdown:
+{"overview":"2-4 neutral sentences on what this agent helps with and the ground it covers","items":[{"title":"topic area","body":"1-2 neutral sentences on what the agent can tell people about this"}]}
+5-8 items max, each a distinct topic area the KB covers. Omit the items array if the material is too thin for topics.`,
+    messages: [{ role: 'user', content: corpus }],
+  })
+  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_kb_summary' }, res.usage)
+  try {
+    const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+    const overview = typeof parsed.overview === 'string' ? parsed.overview.trim() : ''
+    const items = Array.isArray(parsed.items)
+      ? parsed.items
+          .filter((x: any) => x && typeof x.title === 'string' && x.title.trim())
+          .slice(0, 8)
+          .map((x: any) => ({ title: String(x.title).trim(), body: typeof x.body === 'string' ? x.body.trim() : null }))
+      : []
+    if (!overview && items.length === 0) return null
+    return { overview, items }
+  } catch {
+    return null
+  }
+}
+
+// Stable signature of the KB content — folded into the study cache key so the KB
+// summary is recomputed when (and only when) the knowledge base actually changes.
+function kbSignature(systemPrompt: string | null, chunks: KbChunk[]): string {
+  const h = crypto.createHash('sha1')
+  h.update(systemPrompt || '')
+  for (const c of chunks) h.update(` ${c.title || ''}${c.content || ''}`)
+  return h.digest('hex').slice(0, 16)
 }
 
 // Internal-prompt leak: before 2026-06-03, the non-English greeting flow
@@ -431,10 +494,10 @@ function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string
 //   AI validation of open questions (open[].restated, autoFiltered, filteredExamples).
 //   v5 (2026-06-09): publicComments[] — substantive resident feedback extracted
 //   in the classify pass (the public-comment record artifact).
-const STUDY_SCHEMA_VERSION = 'v5'
-function cacheKeyFor(pairTotal: number, bot: BotRow): string {
+const STUDY_SCHEMA_VERSION = 'v6'
+function cacheKeyFor(pairTotal: number, bot: BotRow, kbSig: string): string {
   const h = crypto.createHash('sha1')
-  h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}`)
+  h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}|${kbSig}`)
   return h.digest('hex').slice(0, 16)
 }
 
@@ -453,15 +516,22 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const service = createServiceRoleClient()
   const { data: botData } = await service
     .from('agents')
-    .select('id, name, org_id, focuses, intents')
+    .select('id, name, org_id, system_prompt, focuses, intents')
     .eq('id', botId)
     .single()
   if (!botData) return null
   const bot: BotRow = {
     id: botData.id, name: botData.name, org_id: botData.org_id,
+    system_prompt: botData.system_prompt ?? null,
     focuses: Array.isArray(botData.focuses) ? botData.focuses : [],
     intents: Array.isArray(botData.intents) ? botData.intents : [],
   }
+
+  // Knowledge base (sql/023) — raw material for the "what this agent covers"
+  // summary. Loaded up front so its content hash can gate the study cache.
+  const { data: kbData } = await service
+    .from('bot_knowledge_chunks').select('title, content').eq('bot_id', botId).limit(400)
+  const kbChunks: KbChunk[] = (kbData || []).map((r: any) => ({ title: r.title || '', content: r.content || '' }))
 
   const allTurns = await loadTurns(service, botId)
   // Human-in-the-loop review gate: drop troll/bot/off-topic + human-excluded
@@ -484,7 +554,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     else abandonedNoInput++
   }
   const pairTotal = totalPairs
-  const cacheKey = cacheKeyFor(pairTotal, bot)
+  const cacheKey = cacheKeyFor(pairTotal, bot, kbSignature(bot.system_prompt, kbChunks))
 
   // cache hit?
   if (!opts.force) {
@@ -637,8 +707,13 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     }
   }).filter(Boolean) as AgentStudy['publicComments']
 
-  // ── narrative insights (AI) ──
-  const insights = await computeInsights(botId, bot.name, sessions)
+  // ── narrative insights (AI) + KB summary (AI) ──
+  // The KB summary is the agent's "presentation" — what it's equipped to convey.
+  // Run alongside insights; only reached on a cache miss.
+  const [insights, presentation] = await Promise.all([
+    computeInsights(botId, bot.name, sessions),
+    summarizeAgentKb(botId, bot.name, bot.system_prompt, kbChunks),
+  ])
 
   // ── depth distribution ──
   const depthCounts = new Map<string, number>(BUCKET_ORDER.map(b => [b, 0] as [string, number]))
@@ -691,6 +766,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     languages: languagesArr,
     openQuestions,
     publicComments,
+    presentation,
     insights,
     meta: {
       classifiedExchanges: allExchanges.length,

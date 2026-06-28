@@ -11,6 +11,8 @@
 // share time. Every piece of user/agent-derived text is escaped.
 
 import type { AgentStudy } from '@/lib/agentStudy'
+import { renderCommentaryHtml } from '@/lib/commentaryReport'
+import { renderSourceSummaryHtml } from '@/lib/sourceSummary'
 
 const TEAL = '#0F7173'
 const INK = '#111827'
@@ -90,6 +92,17 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     + DN_WORDMARK
     + '</div>'
   )
+
+  // ── Knowledge Base (the agent's "presentation") ──  Mirrors the Town Hall
+  // report's Meeting Notes — a neutral summary of what the agent is equipped to
+  // convey. Shares the renderer so the two reports open with the same section.
+  if (s.presentation) {
+    const kb = renderSourceSummaryHtml(s.presentation, {
+      heading: 'Knowledge Base',
+      subtitle: 'What ' + s.bot.name + ' is equipped to cover — a neutral summary of its knowledge base. The questions and commentary below are how people engaged with it.',
+    })
+    if (kb) parts.push('<div style="' + CARD + '">' + kb + '</div>')
+  }
 
   // ── Overview KPIs ──
   // Hide opens/response-rate until the beacon has real coverage (see ReportClient).
@@ -218,6 +231,20 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     ).join('')
     block += '</div></div>'
     parts.push(block)
+  }
+
+  // ── Commentary ──  (the dormant publicComments, finally surfaced — the
+  // standalone "what residents told us, unprompted" view; shares the renderer
+  // with the Town Hall report so the two read as siblings.)
+  if (s.publicComments.length > 0) {
+    parts.push(
+      '<div style="' + CARD + '">'
+      + renderCommentaryHtml(
+          s.publicComments.map(c => ({ quote: c.quote, topic: c.focus, sentiment: c.sentiment, speaker: null })),
+          { accent: TEAL, subtitle: 'Substantive observations, concerns, and suggestions users raised on their own — captured verbatim, grouped by focus area.' },
+        )
+      + '</div>'
+    )
   }
 
   // ── Intents + Languages (side by side) ──
