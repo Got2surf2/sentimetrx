@@ -112,19 +112,42 @@ describe('datasets/[datasetId] — GET / PATCH / DELETE', () => {
     expect((await dataset.PATCH(req('PATCH', { name: 'x' }), props)).status).not.toBe(403)
   })
 
-  it('DELETE 404 + org-paired lookup when cross-org / missing', async () => {
+  it('DELETE 404 when the dataset is missing', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = analyze('orgA')
     ctx.results['datasets'] = { data: null, error: null }
     expect((await dataset.DELETE(req('DELETE'), props)).status).toBe(404)
-    expect(ctx.eqCalls['datasets']).toContainEqual(['org_id', 'orgA'])
   })
 
-  it('DELETE 403 when a same-org caller is not the creator', async () => {
+  it('DELETE 404 when a non-admin targets another org', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = analyze('orgA', false)
+    ctx.results['datasets'] = { data: { org_id: 'orgB', created_by: 'u1', source: 'upload' }, error: null }
+    expect((await dataset.DELETE(req('DELETE'), props)).status).toBe(404)
+  })
+
+  it('DELETE 403 when a same-org caller is not the creator (normal dataset)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = analyze('orgA')
-    ctx.results['datasets'] = { data: { created_by: 'someone-else' }, error: null }
+    ctx.results['datasets'] = { data: { org_id: 'orgA', created_by: 'someone-else', source: 'upload' }, error: null }
     expect((await dataset.DELETE(req('DELETE'), props)).status).toBe(403)
+  })
+
+  it('DELETE collection skips the creator-only gate (shared grouping)', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = analyze('orgA')
+    ctx.results['datasets'] = { data: { org_id: 'orgA', created_by: 'someone-else', source: 'collection' }, error: null }
+    expect((await dataset.DELETE(req('DELETE'), props)).status).toBe(200)
+  })
+
+  // The reported bug: an admin-org user created a collection whose members live
+  // in a client org, so the collection is in that org — delete must honor isAdmin
+  // (symmetry with the create route), not silently 404.
+  it('DELETE admin may delete a cross-org collection', async () => {
+    ctx.authUser = { id: 'u1', email: 'u1@x' }
+    ctx.results['users'] = analyze('orgA', true)
+    ctx.results['datasets'] = { data: { org_id: 'orgB', created_by: 'u1', source: 'collection' }, error: null }
+    expect((await dataset.DELETE(req('DELETE'), props)).status).toBe(200)
   })
 })
 

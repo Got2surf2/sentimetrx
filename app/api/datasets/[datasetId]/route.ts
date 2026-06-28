@@ -145,30 +145,34 @@ export async function PATCH(req: Request, props: Params) {
 export async function DELETE(_req: Request, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
-  const { user, orgId, isAdmin: _isAdminDel, error } = await getOrgAndCheck(supabase)
+  const { user, orgId, isAdmin, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }
 
-  // Verify user owns the dataset before deleting
-  const { data: ds } = await supabase
+  const service = createServiceRoleClient()
+
+  // Look up the dataset via service-role, then enforce tenancy explicitly. Using
+  // the auth client with `.eq('org_id', orgId)` hard-locked deletes to the
+  // caller's OWN org — but an admin-org user can CREATE a collection in a client
+  // org (the create route honors isAdmin), and could then never delete it
+  // (cross-org → 0 rows → silent 404). Admins may delete cross-org; non-admins
+  // stay scoped to their org.
+  const { data: ds } = await service
     .from('datasets')
-    .select('created_by, source')
+    .select('created_by, source, org_id')
     .eq('id', params.datasetId)
-    .eq('org_id', orgId)
     .single()
 
   if (!ds) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  // Collections are shared groupings, not personal data — deleting one removes
-  // only the grouping (member datasets survive). They're often created by another
-  // session or teammate, so a creator-only gate silently blocked legitimate
-  // deletes. Any member of the owning org (enforced by the org_id match above)
-  // may delete a collection; normal datasets stay creator-only.
+  if (!isAdmin && ds.org_id !== orgId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  // Collections are shared groupings (deleting one keeps the member datasets), so
+  // they aren't creator-locked. Normal datasets stay creator-only.
   if (ds.source !== 'collection' && ds.created_by !== user.id) {
     return NextResponse.json({ error: 'Only the creator can delete a dataset' }, { status: 403 })
   }
-
-  const service = createServiceRoleClient()
 
   // Delete associated review source + locations + user_locations (google_reviews datasets)
   const { data: reviewSources } = await service
