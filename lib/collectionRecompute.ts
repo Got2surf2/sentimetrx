@@ -15,6 +15,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeAnalyticsFromRows } from '@/lib/analyticsCompute'
 import { invalidateSignalStats } from '@/lib/signalStats'
+import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
 
 const FLAT_PAGE = 1000
 
@@ -72,6 +73,35 @@ export async function recomputeCollectionAnalytics(
   // count, but invalidating here guarantees an immediate refresh.
   await invalidateSignalStats(service, collectionDatasetId)
   return { analytics, rowCount: allRows.length }
+}
+
+/**
+ * Full refresh for a collection whose member datasets have changed since it was
+ * built: rebuild the merged SCHEMA over the current members (so new/changed
+ * member fields — e.g. a member that gained Dimensions — flow in), then
+ * recompute analytics + row_count + drop the signal-stats cache. The recompute
+ * bumps the collection's `updated_at`, which clears the "members updated" badge.
+ *
+ * Used by POST /api/collections/[id]/refresh. Returns the recomputed analytics
+ * + row count, or null when the collection is missing.
+ */
+export async function refreshCollection(
+  service: SupabaseClient,
+  collectionDatasetId: string,
+  updatedBy?: string,
+): Promise<{ analytics: any; rowCount: number } | null> {
+  const { data: col } = await service
+    .from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
+  if (!col) return null
+  const { data: members } = await service
+    .from('collection_members').select('dataset_id').eq('collection_id', (col as { id: string }).id)
+  const memberIds = (members || []).map((m: { dataset_id: string }) => m.dataset_id)
+
+  // Rebuild + persist the merged schema first so the analytics recompute reads it.
+  const mergedSchema = await buildMergedCollectionSchema(service, memberIds)
+  await service.from('dataset_state').update({ schema_config: mergedSchema }).eq('dataset_id', collectionDatasetId)
+
+  return recomputeCollectionAnalytics(service, collectionDatasetId, updatedBy)
 }
 
 /**

@@ -135,7 +135,8 @@ export async function DELETE(req: Request, props: Props) {
   await service.from('dataset_state').update({ schema_config: mergedSchema }).eq('dataset_id', collection.dataset_id)
   const { data: remDs } = await service.from('datasets').select('row_count').in('id', remainingIds)
   const totalRows = (remDs || []).reduce((s, d) => s + (d.row_count || 0), 0)
-  await service.from('datasets').update({ row_count: totalRows }).eq('id', collection.dataset_id)
+  // Bump updated_at so the freshness check treats this recompute as the baseline.
+  await service.from('datasets').update({ row_count: totalRows, updated_at: new Date().toISOString() }).eq('id', collection.dataset_id)
 
   return NextResponse.json({ ok: true, remaining_members: remainingIds.length, row_count: totalRows })
 }

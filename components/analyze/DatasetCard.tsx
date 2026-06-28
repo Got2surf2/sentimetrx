@@ -97,6 +97,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   )
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
+  const [refreshing,    setRefreshing]    = useState(false)
 
   const isStudy      = dataset.source === 'study'
   const isReviews    = dataset.source === 'google_reviews'
@@ -319,6 +320,23 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       setSyncing(false); setSyncToast('Report downloaded'); setTimeout(function() { setSyncToast('') }, 3000)
     } catch {
       setSyncing(false); setSyncToast('Network error'); setTimeout(function() { setSyncToast('') }, 3000)
+    }
+  }
+
+  // A member changed since this collection last recomputed — rebuild its merged
+  // schema + row_count + analytics, then reload to clear the badge.
+  async function handleRefreshCollection() {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      var res = await fetch('/api/collections/' + dataset.id + '/refresh', { method: 'POST' })
+      if (!res.ok) {
+        var err = await res.json().then(function(d) { return d.error }).catch(function() { return null })
+        setRefreshing(false); window.alert(err || 'Could not refresh the collection.'); return
+      }
+      window.location.reload()
+    } catch {
+      setRefreshing(false); window.alert('Network error refreshing the collection.')
     }
   }
 
@@ -624,6 +642,20 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.member_count}</span>
             <span style={{ color: '#9ca3af' }}>{dataset.member_count === 1 ? 'dataset' : 'datasets'}</span>
           </div>
+        )}
+        {isCollection && dataset.members_updated && (
+          <button
+            onClick={handleRefreshCollection}
+            disabled={refreshing}
+            title="A member dataset changed (synced or re-analyzed) since this collection last recomputed. Refresh to rebuild its merged schema, row count, and analytics."
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700,
+              padding: '2px 8px', borderRadius: 20, cursor: refreshing ? 'default' : 'pointer',
+              color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', whiteSpace: 'nowrap',
+              opacity: refreshing ? 0.6 : 1,
+            }}>
+            {refreshing ? '↻ Refreshing…' : '↻ Members updated — refresh'}
+          </button>
         )}
         <div style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: 11 }}>
           {timeAgo(dataset.updated_at)}

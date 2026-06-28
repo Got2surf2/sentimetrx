@@ -91,7 +91,9 @@ export async function POST(req: Request, props: Props) {
 
   const { data: allMemberDs } = await service.from('datasets').select('row_count').in('id', allMemberIds)
   const totalRows = (allMemberDs || []).reduce((s, d) => s + (d.row_count || 0), 0)
-  await service.from('datasets').update({ row_count: totalRows }).eq('id', collectionDatasetId)
+  // Bump updated_at = this recompute time so the freshness check (member changed
+  // since collection recompute?) doesn't flag the just-added member as stale.
+  await service.from('datasets').update({ row_count: totalRows, updated_at: new Date().toISOString() }).eq('id', collectionDatasetId)
 
   return NextResponse.json({ ok: true, added: toAdd.length, total_members: allMemberIds.length, row_count: totalRows })
 }

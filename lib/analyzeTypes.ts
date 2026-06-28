@@ -233,6 +233,10 @@ export interface DatasetWithState extends Dataset {
   collection_kind?:     'manual' | 'brand' | null
   member_count?:        number
   collection_id?:       string | null
+  // True when ≥1 member dataset changed (synced / re-analyzed) AFTER the
+  // collection last recomputed its cached schema + row_count — drives the
+  // "members updated — refresh" badge on the card.
+  members_updated?:     boolean
   // Set on member datasets: the brand-collection they belong to. Drives
   // hiding them from the flat /analyze grid (shown via brand drill-in).
   brand_collection_id?: string | null

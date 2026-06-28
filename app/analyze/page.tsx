@@ -87,6 +87,11 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   const collectionMemberCounts: Record<string, number> = {}
   const collectionKindByDsId:   Record<string, 'manual' | 'brand'> = {}
   const collectionIdByDsId:     Record<string, string> = {}
+  const collectionStaleByDsId:  Record<string, boolean> = {}
+  // Collection's last recompute time (its dataset updated_at) — a member that
+  // changed after this is "newer than the cache" → the refresh badge.
+  const collectionUpdatedAt: Record<string, number> = {}
+  ;(collectionDs as any[]).forEach(d => { collectionUpdatedAt[d.id] = d.updated_at ? new Date(d.updated_at).getTime() : 0 })
   if (collectionDs.length > 0) {
     const { data: cols } = await supabase.from('collections').select('id, dataset_id, kind').in('dataset_id', collectionDs.map((d: any) => d.id))
     if (cols && cols.length > 0) {
@@ -97,13 +102,24 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
       const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
         const memberDsIds = Array.from(new Set(members.map(m => m.dataset_id)))
-        const { data: memberDs } = await supabase.from('datasets').select('id, row_count').in('id', memberDsIds)
+        const { data: memberDs } = await supabase.from('datasets').select('id, row_count, updated_at, last_synced_at').in('id', memberDsIds)
         const memberCounts: Record<string, number> = {}
-        ;(memberDs || []).forEach(d => { memberCounts[d.id] = d.row_count || 0 })
+        const memberChangedAt: Record<string, number> = {}
+        ;(memberDs || []).forEach(d => {
+          memberCounts[d.id] = d.row_count || 0
+          // A member's "last changed" = the later of its sync + its analyze/edit.
+          const u = (d as any).updated_at ? new Date((d as any).updated_at).getTime() : 0
+          const s = (d as any).last_synced_at ? new Date((d as any).last_synced_at).getTime() : 0
+          memberChangedAt[d.id] = Math.max(u, s)
+        })
         for (const col of cols) {
           const colMembers = members.filter(m => m.collection_id === col.id)
           collectionRowCounts[col.dataset_id]    = colMembers.reduce((s, m) => s + (memberCounts[m.dataset_id] || 0), 0)
           collectionMemberCounts[col.dataset_id] = colMembers.length
+          // Stale when any member changed after the collection last recomputed.
+          // 5s grace absorbs the recompute's own write-time jitter.
+          const recomputedAt = collectionUpdatedAt[col.dataset_id] || 0
+          collectionStaleByDsId[col.dataset_id] = colMembers.some(m => (memberChangedAt[m.dataset_id] || 0) > recomputedAt + 5000)
         }
       }
     }
@@ -150,6 +166,7 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
       collection_kind: isColl ? (collectionKindByDsId[d.id] || 'manual') : undefined,
       member_count:    isColl ? (collectionMemberCounts[d.id] ?? 0) : undefined,
       collection_id:   isColl ? (collectionIdByDsId[d.id] || null) : undefined,
+      members_updated: isColl ? (collectionStaleByDsId[d.id] || false) : undefined,
     }
   })
 
