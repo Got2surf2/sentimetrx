@@ -28,7 +28,8 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
-  const { name, members } = body as { name: string; members: { dataset_id: string; label: string }[] }
+  const { name, members, purpose: bodyPurpose } = body as { name: string; members: { dataset_id: string; label: string }[]; purpose?: string }
+  const PURPOSES = ['community', 'competitive', 'brand_360'] as const
 
   if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   if (!Array.isArray(members) || members.length < 2) {
@@ -111,6 +112,13 @@ export async function POST(req: Request) {
 
   if (stErr) console.error({ at: 'collections', msg: "state insert error", err: stErr.message })
 
+  // Report purpose: honor an explicit, valid pick; else smart-default from the
+  // member sources (all town halls/agents → community, else competitive — the
+  // same rule inferPurpose uses; brand_360 is only ever an explicit choice).
+  const purpose = (bodyPurpose && (PURPOSES as readonly string[]).includes(bodyPurpose))
+    ? bodyPurpose
+    : (memberDatasets.every((d: any) => d.source === 'recording' || d.source === 'bot') ? 'community' : 'competitive')
+
   // 3. Create collection record
   const { data: collection, error: colErr } = await service
     .from('collections')
@@ -118,6 +126,7 @@ export async function POST(req: Request) {
       dataset_id: dataset.id,
       org_id:     collectionOrgId,
       created_by: user.id,
+      purpose,
     })
     .select('id')
     .single()
@@ -140,5 +149,5 @@ export async function POST(req: Request) {
 
   if (memInsErr) return NextResponse.json({ error: memInsErr.message }, { status: 500 })
 
-  return NextResponse.json({ id: dataset.id, collection_id: collection.id }, { status: 201 })
+  return NextResponse.json({ id: dataset.id, collection_id: collection.id, purpose }, { status: 201 })
 }

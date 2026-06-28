@@ -109,6 +109,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const isRecording  = dataset.source === 'recording'   // Town Halls
   const isBrand = isCollection && dataset.collection_kind === 'brand'
   const isArchived = dataset.status === 'archived'
+  // Purpose-typed reports: a collection offers only the report matching its
+  // purpose. Legacy collections (purpose null) fall back to all three.
+  const colPurpose = isCollection ? (dataset.collection_purpose ?? null) : null
+  const showCommunityReport   = isCollection && (!colPurpose || colPurpose === 'community')
+  const showCompetitiveReport = isCollection && (!colPurpose || colPurpose === 'competitive')
+  const showBrand360Report    = isCollection && (!colPurpose || colPurpose === 'brand_360')
   // Collection id for the brand-glossary editor: a brand card → its own
   // collection; a dataset tagged to a brand → the parent brand collection.
   const glossaryCollectionId = isBrand
@@ -439,6 +445,38 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                   </button>
                 )
               })}
+              {/* Collection reports first — the primary action (owner couldn't
+                  find them buried at the bottom of a long menu). Purpose-typed:
+                  only the relevant report shows. */}
+              {isCollection && (
+                <>
+                  {onManageMembers && (
+                    <button onClick={function() { setMenuOpen(false); onManageMembers(dataset.id, dataset.name) }}
+                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0ea5e9', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      👥 Manage members
+                    </button>
+                  )}
+                  {showCommunityReport && (
+                    <button onClick={function() { handleProjectReport('community') }}
+                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      📊 Community report (PDF)
+                    </button>
+                  )}
+                  {showCompetitiveReport && (
+                    <button onClick={startCompetitive}
+                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      📊 Competitive report (PDF)…
+                    </button>
+                  )}
+                  {showBrand360Report && (
+                    <button onClick={function() { handleProjectReport('brand_360') }}
+                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      📊 Brand 360 report (PDF)
+                    </button>
+                  )}
+                  <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+                </>
+              )}
               {isStudy && (
                 <>
                   <button onClick={function() { handleSync(false) }}
@@ -468,28 +506,6 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sync members
                 </button>
-              )}
-              {isCollection && onManageMembers && (
-                <button onClick={function() { setMenuOpen(false); onManageMembers(dataset.id, dataset.name) }}
-                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0ea5e9', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  👥 Manage members
-                </button>
-              )}
-              {isCollection && (
-                <>
-                  <button onClick={function() { handleProjectReport('community') }}
-                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    📊 Community report (PDF)
-                  </button>
-                  <button onClick={startCompetitive}
-                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    📊 Competitive report (PDF)…
-                  </button>
-                  <button onClick={function() { handleProjectReport('brand_360') }}
-                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    📊 Brand 360 report (PDF)
-                  </button>
-                </>
               )}
               {collectionInfo && (
                 <button onClick={handleRemoveFromCollection}

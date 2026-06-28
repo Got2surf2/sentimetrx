@@ -35,6 +35,9 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
   const [members, setMembers] = useState<{ dataset_id: string; label: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Report purpose — what this collection is for. Drives which report the card
+  // offers. '' = "auto" (let the server smart-default from the member sources).
+  const [purpose, setPurpose] = useState<'' | 'community' | 'competitive' | 'brand_360'>('')
 
   function toggleDataset(id: string) {
     setMembers(function(prev) {
@@ -89,7 +92,7 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
       var res = await fetch('/api/collections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), members: members }),
+        body: JSON.stringify({ name: name.trim(), members: members, purpose: purpose || undefined }),
       })
       var data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create collection'); setSaving(false); return }
@@ -121,6 +124,8 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
         updated_at: new Date().toISOString(),
         creator_name: undefined,
         org_name: datasets[0]?.org_name,
+        collection_kind: 'manual',
+        collection_purpose: data.purpose || null,
       })
       onClose()
     } catch {
@@ -166,6 +171,45 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
             />
           </div>
           )}
+
+          {/* Purpose (create mode only) — drives which report the collection's
+              card offers. Auto = smart-default from the member sources. */}
+          {!isAdd && (function() {
+            var sel = datasets.filter(function(d) { return selected.has(d.id) })
+            var inferred = sel.length > 0 && sel.every(function(d) { return d.source === 'recording' || d.source === 'bot' })
+              ? 'community' : 'competitive'
+            var OPTS: { val: '' | 'community' | 'competitive' | 'brand_360'; label: string; desc: string }[] = [
+              { val: '',            label: 'Auto',        desc: 'Pick the best fit from the datasets (' + inferred + ')' },
+              { val: 'competitive', label: 'Competitive', desc: 'Compare competitors — one focus brand vs the field' },
+              { val: 'community',   label: 'Community',   desc: 'Synthesize town halls + agents into one readout' },
+              { val: 'brand_360',   label: 'Brand 360',   desc: 'Triangulate one brand across its data sources' },
+            ]
+            return (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Purpose <span style={{ fontWeight: 400, color: '#9ca3af' }}>— what report this is for</span>
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {OPTS.map(function(o) {
+                    var on = purpose === o.val
+                    return (
+                      <div key={o.val || 'auto'} onClick={function() { setPurpose(o.val) }}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
+                          border: on ? '1.5px solid #0ea5e9' : '1.5px solid #e5e7eb', background: on ? '#f0f9ff' : 'white',
+                        }}>
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, marginTop: 1, border: on ? '5px solid #0ea5e9' : '2px solid #d1d5db', background: 'white', boxSizing: 'border-box' }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{o.label}</div>
+                          <div style={{ fontSize: 11, color: '#9ca3af' }}>{o.desc}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Dataset list */}
           <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 8 }}>

@@ -233,6 +233,9 @@ export interface DatasetWithState extends Dataset {
   collection_kind?:     'manual' | 'brand' | null
   member_count?:        number
   collection_id?:       string | null
+  // Report purpose typing (collections.purpose); drives which report the card
+  // offers. null/undefined = legacy collection → show all report options.
+  collection_purpose?:  'community' | 'competitive' | 'brand_360' | null
   // True when ≥1 member dataset changed (synced / re-analyzed) AFTER the
   // collection last recomputed its cached schema + row_count — drives the
   // "members updated — refresh" badge on the card.

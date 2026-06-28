@@ -87,22 +87,29 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   const collectionMemberCounts: Record<string, number> = {}
   const collectionKindByDsId:   Record<string, 'manual' | 'brand'> = {}
   const collectionIdByDsId:     Record<string, string> = {}
+  const collectionPurposeByDsId: Record<string, 'community' | 'competitive' | 'brand_360'> = {}
   const collectionStaleByDsId:  Record<string, boolean> = {}
   // Collection's last recompute time (its dataset updated_at) — a member that
   // changed after this is "newer than the cache" → the refresh badge.
   const collectionUpdatedAt: Record<string, number> = {}
   ;(collectionDs as any[]).forEach(d => { collectionUpdatedAt[d.id] = d.updated_at ? new Date(d.updated_at).getTime() : 0 })
   if (collectionDs.length > 0) {
-    const { data: cols } = await supabase.from('collections').select('id, dataset_id, kind').in('dataset_id', collectionDs.map((d: any) => d.id))
+    // Aggregate member counts/rows via service-role: `collectionDs` is already
+    // RLS-filtered, so we only ever roll up collections the caller can see —
+    // but RLS on collection_members hides cross-org rows from an admin viewing
+    // another org's collection (the "0 datasets despite 16,989 comments" bug).
+    const colSvc = createServiceRoleClient()
+    const { data: cols } = await colSvc.from('collections').select('id, dataset_id, kind, purpose').in('dataset_id', collectionDs.map((d: any) => d.id))
     if (cols && cols.length > 0) {
       for (const col of cols) {
         collectionKindByDsId[col.dataset_id] = (col as any).kind === 'brand' ? 'brand' : 'manual'
         collectionIdByDsId[col.dataset_id]   = col.id
+        if ((col as any).purpose) collectionPurposeByDsId[col.dataset_id] = (col as any).purpose
       }
-      const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
+      const { data: members } = await colSvc.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
         const memberDsIds = Array.from(new Set(members.map(m => m.dataset_id)))
-        const { data: memberDs } = await supabase.from('datasets').select('id, row_count, updated_at, last_synced_at').in('id', memberDsIds)
+        const { data: memberDs } = await colSvc.from('datasets').select('id, row_count, updated_at, last_synced_at').in('id', memberDsIds)
         const memberCounts: Record<string, number> = {}
         const memberChangedAt: Record<string, number> = {}
         ;(memberDs || []).forEach(d => {
@@ -166,6 +173,7 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
       collection_kind: isColl ? (collectionKindByDsId[d.id] || 'manual') : undefined,
       member_count:    isColl ? (collectionMemberCounts[d.id] ?? 0) : undefined,
       collection_id:   isColl ? (collectionIdByDsId[d.id] || null) : undefined,
+      collection_purpose: isColl ? (collectionPurposeByDsId[d.id] || null) : undefined,
       members_updated: isColl ? (collectionStaleByDsId[d.id] || false) : undefined,
     }
   })
