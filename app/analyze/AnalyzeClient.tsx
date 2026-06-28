@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import DatasetCard, { type SignalStatsBrief } from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
 import NewCollectionModal from '@/components/analyze/NewCollectionModal'
+import ManageMembersModal from '@/components/analyze/ManageMembersModal'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -36,7 +37,8 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const [query,    setQuery]    = useState('')
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   // Add-datasets-to-existing-collection modal state (null = closed).
-  const [addCollection, setAddCollection] = useState<{ datasetId: string; name: string; existingMemberIds: string[] } | null>(null)
+  const [manageCollection, setManageCollection] = useState<{ datasetId: string; name: string } | null>(null)
+  const [manageDirty, setManageDirty] = useState(false)
   // Brand drill-in: when set, the grid shows only that brand-collection's
   // member datasets instead of the flat listing. Cleared by "Back to all".
   const [drillIn, setDrillIn] = useState<{ collectionId: string; name: string } | null>(null)
@@ -168,14 +170,9 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
 
   // Open the "Add datasets" modal for a collection — fetch its current members
   // first so they're excluded from the picker.
-  async function handleAddDatasets(collectionDatasetId: string, name: string) {
-    let existingMemberIds: string[] = []
-    try {
-      const res = await fetch('/api/collections/' + collectionDatasetId)
-      const data = await res.json()
-      existingMemberIds = (data?.members || []).map(function(m: any) { return m.dataset_id }).filter(Boolean)
-    } catch { /* fall back to no exclusions; the API still rejects dupes */ }
-    setAddCollection({ datasetId: collectionDatasetId, name: name, existingMemberIds: existingMemberIds })
+  function handleManageMembers(collectionDatasetId: string, name: string) {
+    setManageDirty(false)
+    setManageCollection({ datasetId: collectionDatasetId, name: name })
   }
 
   async function handleRename(id: string, name: string) {
@@ -335,7 +332,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                     onTransfer={handleTransfer}
                     signalStats={signalStatsMap[dataset.id]}
                     onDrillIn={function(collectionId, name) { setDrillIn({ collectionId: collectionId, name: name }) }}
-                    onAddDatasets={handleAddDatasets}
+                    onManageMembers={handleManageMembers}
                     initialFavorited={favoriteIds.has(dataset.id)}
                   />
                 </React.Fragment>
@@ -354,15 +351,14 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
         />
       )}
 
-      {/* Add datasets to an existing collection */}
-      {addCollection && (
-        <NewCollectionModal
-          datasets={eligibleForCollection}
-          addToCollection={{ datasetId: addCollection.datasetId, name: addCollection.name }}
-          existingMemberIds={addCollection.existingMemberIds}
-          onClose={function() { setAddCollection(null) }}
-          onAdded={function() { window.location.reload() }}
-          onCreated={function() {}}
+      {/* Manage members (full add + remove) for an existing collection */}
+      {manageCollection && (
+        <ManageMembersModal
+          collectionDatasetId={manageCollection.datasetId}
+          collectionName={manageCollection.name}
+          eligibleDatasets={eligibleForCollection}
+          onChanged={function() { setManageDirty(true) }}
+          onClose={function() { const dirty = manageDirty; setManageCollection(null); if (dirty) window.location.reload() }}
         />
       )}
     </div>

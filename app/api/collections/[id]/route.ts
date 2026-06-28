@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,21 +16,24 @@ export async function GET(_req: Request, props: Props) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const { data: userData } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const orgId = userData?.org_id
   if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+  const orgRow: any = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
+  const isAdmin = !!orgRow?.is_admin_org
 
   const service = createServiceRoleClient()
 
-  // Look up collection by its dataset_id
+  // Look up collection by its dataset_id (admin-aware — collections can live in a
+  // client org, so an admin must still be able to read members for management).
   const { data: collection } = await service
     .from('collections')
-    .select('id')
+    .select('id, org_id')
     .eq('dataset_id', params.id)
-    .eq('org_id', orgId)
     .single()
 
   if (!collection) return NextResponse.json({ error: 'Collection not found' }, { status: 404 })
+  if (!isAdmin && collection.org_id !== orgId) return NextResponse.json({ error: 'Collection not found' }, { status: 404 })
 
   // Fetch members with their dataset names and theme models
   const { data: members } = await service
@@ -81,10 +85,12 @@ export async function DELETE(req: Request, props: Props) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  // Admin-aware (collections can live in a client org — see the dataset-delete fix).
+  const { data: userData } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const orgId = userData?.org_id
   if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+  const orgRow: any = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
+  const isAdmin = !!orgRow?.is_admin_org
 
   const url = new URL(req.url)
   const memberDatasetId = url.searchParams.get('member')
@@ -94,25 +100,26 @@ export async function DELETE(req: Request, props: Props) {
 
   const { data: collection } = await service
     .from('collections')
-    .select('id, dataset_id')
+    .select('id, dataset_id, org_id')
     .eq('dataset_id', params.id)
-    .eq('org_id', orgId)
     .single()
 
   if (!collection) return NextResponse.json({ error: 'Collection not found' }, { status: 404 })
+  if (!isAdmin && collection.org_id !== orgId) return NextResponse.json({ error: 'Collection not found' }, { status: 404 })
 
   // Remove the member
   await service.from('collection_members').delete()
     .eq('collection_id', collection.id)
     .eq('dataset_id', memberDatasetId)
 
-  // Check remaining members
-  const { count } = await service
+  // Remaining members
+  const { data: remaining } = await service
     .from('collection_members')
-    .select('id', { count: 'exact', head: true })
+    .select('dataset_id')
     .eq('collection_id', collection.id)
+  const remainingIds = (remaining || []).map(m => m.dataset_id)
 
-  if ((count || 0) === 0) {
+  if (remainingIds.length === 0) {
     // Last member removed — delete the collection dataset
     try { await service.from('dataset_rows_flat').delete().eq('dataset_id', collection.dataset_id) } catch {}
     await service.from('dataset_rows').delete().eq('dataset_id', collection.dataset_id)
@@ -121,5 +128,13 @@ export async function DELETE(req: Request, props: Props) {
     return NextResponse.json({ ok: true, deleted_collection: true })
   }
 
-  return NextResponse.json({ ok: true, remaining_members: count })
+  // Recompute the merged schema + row_count over the remaining members (parity
+  // with the add-members route so the two can't drift).
+  const mergedSchema = await buildMergedCollectionSchema(service, remainingIds)
+  await service.from('dataset_state').update({ schema_config: mergedSchema }).eq('dataset_id', collection.dataset_id)
+  const { data: remDs } = await service.from('datasets').select('row_count').in('id', remainingIds)
+  const totalRows = (remDs || []).reduce((s, d) => s + (d.row_count || 0), 0)
+  await service.from('datasets').update({ row_count: totalRows }).eq('id', collection.dataset_id)
+
+  return NextResponse.json({ ok: true, remaining_members: remainingIds.length, row_count: totalRows })
 }

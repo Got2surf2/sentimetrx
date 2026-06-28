@@ -664,3 +664,12 @@ The report now adapts to the collection's purpose, and the new types run on a sh
 - Routes accept `?purpose=` / body `{purpose, primary}`; card ⋯ menu offers Community / Competitive (prompts for the focus member) / Brand 360.
 - **Verified on REAL data**: Ruth's Chris competitive deep-dive vs Capital Grille/Nobu/Tabla (65.5K Google reviews) — consultant-grade exec + matrix, PDF standard applied. brand_360 code-complete; no real one-brand-many-sources collection exists to demo.
 - Tests: `projectCompare.test.ts` (6). tsc clean; 1053 tests pass. LOCAL/unpushed.
+
+## 2026-06-28 — Collections: unified "Manage members" (full add + remove) + admin-aware member routes
+
+Owner: needed full add/delete for collection members; the add-only flow + scattered per-card remove (which didn't recompute) wasn't enough, and existing members weren't showing for cross-org collections.
+
+- **`ManageMembersModal`** — one checklist: current members load pre-checked (so you uncheck to remove), other eligible datasets unchecked (check to add); Save applies the diff (`POST …/members` for adds, `DELETE …?member=` for removes). Replaces the add-only modal on the card ⋯ menu ("👥 Manage members").
+- **`DELETE /api/collections/[id]?member=`** now **recomputes** the merged schema + `datasets.row_count` over the remaining members (parity with the add route; previously left them stale) and is **admin-aware** (`is_admin_org`, explicit org check instead of org-locked lookup).
+- **`GET /api/collections/[id]`** made **admin-aware** too — was org-locked, so a cross-org collection (admin viewing a client-org collection) returned 404 and the modal showed no members to remove. Root cause of the reported bug.
+- Updated `core-entity-routes-gate` (collections GET/DELETE now assert explicit cross-org 404, not the old org-paired `.eq`). tsc clean; 1053 tests pass. LOCAL/unpushed.

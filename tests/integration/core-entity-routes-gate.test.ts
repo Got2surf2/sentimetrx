@@ -143,22 +143,21 @@ describe('collections/[id] — GET / DELETE (org-paired)', () => {
     expect((await collection.GET(req('GET'), dsProps)).status).toBe(403)
   })
 
-  it('404 + org-paired lookup when the collection is cross-org / missing (GET)', async () => {
+  it('404 when the collection is missing or cross-org, non-admin (GET)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = { data: { org_id: 'orgA' }, error: null }
-    ctx.results['collections'] = { data: null, error: null }
+    // Admin-aware: the lookup is by dataset_id, tenancy is an explicit org check.
+    ctx.results['collections'] = { data: { id: 'c1', org_id: 'orgB' }, error: null }
     expect((await collection.GET(req('GET'), dsProps)).status).toBe(404)
     expect(ctx.eqCalls['collections']).toContainEqual(['dataset_id', 'ds_1'])
-    expect(ctx.eqCalls['collections']).toContainEqual(['org_id', 'orgA'])
   })
 
-  it('404 + org-paired lookup when the collection is cross-org / missing (DELETE)', async () => {
+  it('404 when the collection is cross-org, non-admin (DELETE)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = { data: { org_id: 'orgA' }, error: null }
-    ctx.results['collections'] = { data: null, error: null }
+    ctx.results['collections'] = { data: { id: 'c1', dataset_id: 'ds_1', org_id: 'orgB' }, error: null }
     const r = await collection.DELETE(req('DELETE', {}, 'http://t/x?member=ds_2'), dsProps)
     expect(r.status).toBe(404)
-    expect(ctx.eqCalls['collections']).toContainEqual(['org_id', 'orgA'])
   })
 })
 
