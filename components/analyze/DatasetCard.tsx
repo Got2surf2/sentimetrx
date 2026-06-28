@@ -856,11 +856,14 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {/* Click-away for menu */}
       {menuOpen && <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={function() { setMenuOpen(false); setConfirmDel(false) }} />}
 
-      {/* Syncing overlay */}
+      {/* Working overlay — label reflects the active operation (report build,
+          sync progress, …) from syncToast; falls back to a sync message. This
+          also surfaces the live per-step sync progress that the overlay used to
+          hide behind a hardcoded label. */}
       {syncing && (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12 }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12, padding: '0 16px' }}>
           <LottieLoader size={64} message="" />
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 8 }}>Syncing responses...</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 8, textAlign: 'center' }}>{syncToast || 'Syncing responses...'}</div>
         </div>
       )}
 

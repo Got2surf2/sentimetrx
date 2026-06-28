@@ -713,3 +713,7 @@ Owner asked: in the matrix where we show %s, can we show if they're statisticall
 ## 2026-06-28 — Collections source pill + refresh preserves filter state
 
 Two owner follow-ups on the /analyze grid. (1) Added a "Collections" Source filter pill (DatasetFilterBar + AnalyzeClient Filters union + NAMED_SOURCES) so collections are filterable directly instead of buried under "Other". (2) The collection freshness refresh button was doing window.location.reload() → wiped the user's search/source-filter/sort. Switched it to router.refresh() so the server re-renders (badge clears) while AnalyzeClient's client state is preserved. tsc clean, 1057 tests. ANALYTICS.md synced.
+
+## 2026-06-28 — Card working-overlay shows the real operation label
+
+Owner: generating a report from the collection card showed a "Syncing responses…" loader — wrong, it's building a report. The overlay hardcoded that label and ignored `syncToast` (which already held the right message, e.g. "Building report — synthesizing across inputs…"). Now the overlay renders `syncToast || 'Syncing responses...'`, so report builds read correctly AND the live per-step sync progress (previously hidden behind the hardcoded label) is finally visible. tsc clean.
