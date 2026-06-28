@@ -284,6 +284,15 @@ Target: WCAG 2.1 AA on every customer-facing surface (`/s/[guid]`,
 `/b/[guid]`, `/th/[guid]`, all `/admin/*` pages). Internal-only
 prototypes can lag.
 
+### PDF template standard (owner directive, 2026-06-28)
+
+Every new PDF template/export MUST, from the start:
+1. **Keep sections intact** — a section title must never sit alone at a page bottom with its content on the next page. Wrap each heading WITH its first content block in a `.keep` container (`break-inside:avoid;page-break-inside:avoid`) and give headings `break-after:avoid`. `break-after:avoid` alone is not reliable enough.
+2. **Brand name in the top-right running header** of every page.
+3. **Confidentiality statement + datanautix references in the bottom footer** of every page (`Confidential…` · datanautix wordmark + datanautix.com · `Page X of Y`).
+
+Use the shared `brandedPdfChrome({ brand, confidentiality })` in `lib/htmlToPdf.ts` (returns the `page.pdf` header/footer templates + the margins that reserve the bands) and the `.keep` CSS pattern in the renderer. Legacy PDFs (recordings `reportPdf`, agent study) predate this — bring them onto the standard when next touched.
+
 - **Keyboard navigation** must work for every interactive element.
   Tab order is logical; focus-visible styles are present.
 - **Color contrast** ≥ 4.5:1 for normal text; 3:1 for ≥18pt.

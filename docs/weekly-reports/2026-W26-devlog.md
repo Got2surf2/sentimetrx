@@ -645,3 +645,11 @@ The complete, source-attributed roll-up across every town hall + agent in a coll
 - Routes: `GET /api/collections/[id]/project-report` (HTML) + `POST …/pdf`; admin cross-org, non-admin org-scoped, maxDuration 300. UI: "📊 Project report (PDF)" in the collection card ⋯ menu (blob download w/ LottieLoader toast).
 - Tests: `tests/unit/projectReport.test.ts` (8). tsc clean; 1048 tests pass. LOCAL/unpushed.
 - Follow-ups: per-input loaders currently set recording entities=[] (agent entities aggregated); a few agent "focus" topics (Respondent Background) are weak as community themes — a light filter could drop survey-metadata focuses.
+
+## 2026-06-28 — PDF template standard (owner directive) + project-report chrome
+
+Owner directive, now a permanent rule for EVERY new PDF (docs/ENGINEERING.md §6 + feedback_pdf_template_rules memory): (1) keep-together pagination — a section title never orphans at a page bottom; (2) brand name top-right running header; (3) confidentiality + datanautix references in the per-page footer.
+
+- `lib/htmlToPdf.ts` `brandedPdfChrome({ brand, confidentiality })` — shared per-page header (brand, top-right) + footer (Confidential · datanautix wordmark + datanautix.com · Page X of Y) templates + margins. Reuse for every PDF route.
+- `lib/projectReportHtml.ts` — `.keep` wrapper (break-inside:avoid) on each section heading+first-content and each theme header+summary+first-exchange; fixed a double "Commentary" heading.
+- Project-report PDF route uses `brandedPdfChrome({ brand: model.name })`. Regenerated the NOWOCATS PDF and QC'd pages (pdftoppm): header/footer correct, no orphaned titles, Q&A cards don't split. tsc clean. LOCAL/unpushed.

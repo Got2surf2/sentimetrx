@@ -72,7 +72,7 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
 
   // Sources manifest
   const manifest =
-    `<section style="margin:22px 0 0"><h2 class="h2">Sources</h2>` +
+    `<section style="margin:22px 0 0"><div class="keep"><h2 class="h2">Sources</h2>` +
     `<div style="display:flex;flex-direction:column;gap:8px">` +
     model.sources.map(s =>
       `<div style="display:flex;align-items:center;gap:10px;border:1px solid ${LINE};border-radius:10px;padding:9px 12px">` +
@@ -81,13 +81,13 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
       (s.date ? `<span style="font-size:11px;color:${MUTE}">${esc(fmtDate(s.date))}</span>` : '') +
       `<span style="margin-left:auto;font-size:11px;color:${FAINT}">${s.rowCount.toLocaleString()} rows</span>` +
       `</div>`).join('') +
-    `</div></section>`
+    `</div></div></section>`
 
   // Presentations / KB summaries (each input's "what was presented")
   const presentations = model.presentations.length > 0
     ? `<section style="margin:24px 0 0"><h2 class="h2">What was presented &amp; covered</h2>` +
       model.presentations.map(p =>
-        `<div style="margin:0 0 16px">` +
+        `<div class="keep" style="margin:0 0 16px">` +
         `<div style="display:flex;align-items:center;gap:8px;margin:0 0 6px">${srcBadge(p.source.kind)}<span style="font-weight:700;color:${INK};font-size:13px">${esc(p.source.name)}</span></div>` +
         `<div style="border-left:2px solid ${LINE};padding-left:12px">` +
         renderSourceSummaryHtml(p.summary, { heading: ' ' }) +
@@ -95,22 +95,27 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
       `</section>`
     : ''
 
-  // Themes (merged cross-input), each with source-attributed Q&A
+  // Themes (merged cross-input), each with source-attributed Q&A. The theme
+  // header + summary + first exchange are wrapped in `.keep` so a theme title
+  // never sits alone at a page bottom (PDF-template standard).
   const themes =
-    `<section style="margin:26px 0 0"><h2 class="h2">Themes across all inputs</h2>` +
-    `<p style="font-size:12px;color:${MUTE};margin:0 0 14px">Topics raised across the meetings and the agent, merged into unified themes. Counts include every Q&amp;A and community comment (not a sample).</p>` +
+    `<section style="margin:26px 0 0">` +
+    `<div class="keep"><h2 class="h2">Themes across all inputs</h2>` +
+    `<p style="font-size:12px;color:${MUTE};margin:0 0 14px">Topics raised across the meetings and the agent, merged into unified themes. Counts include every Q&amp;A and community comment (not a sample).</p></div>` +
     model.themes.map(th => {
       const qa = th.qa.slice(0, 6)
       const more = th.qa.length - qa.length
-      return (
-        `<div style="margin:0 0 20px;page-break-inside:auto">` +
+      const head =
         `<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;border-bottom:1px solid ${LINE};padding-bottom:6px;margin:0 0 10px">` +
         `<h3 style="font-size:16px;font-weight:800;color:${INK};margin:0">${esc(th.title)}</h3>` +
         sentPill(th.sentiment) +
         `<span style="font-size:11px;color:${MUTE}">${th.count} item${th.count === 1 ? '' : 's'} · ${th.sources.length} source${th.sources.length === 1 ? '' : 's'}</span>` +
         `</div>` +
-        (th.summary ? `<p style="font-size:13px;line-height:1.6;color:${BODY};margin:0 0 12px">${esc(th.summary)}</p>` : '') +
-        qa.map(qaCard).join('') +
+        (th.summary ? `<p style="font-size:13px;line-height:1.6;color:${BODY};margin:0 0 12px">${esc(th.summary)}</p>` : '')
+      return (
+        `<div style="margin:0 0 20px">` +
+        `<div class="keep">${head}${qa[0] ? qaCard(qa[0]) : ''}</div>` +
+        qa.slice(1).map(qaCard).join('') +
         (more > 0 ? `<p style="font-size:11px;color:${FAINT};margin:2px 0 0">+ ${more} more exchange${more === 1 ? '' : 's'} in this theme</p>` : '') +
         `</div>`
       )
@@ -119,9 +124,10 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
 
   // Commentary — all community comments, source-tagged (panel already excluded upstream)
   const commentary = model.commentary.length > 0
-    ? `<section style="margin:26px 0 0"><h2 class="h2">Community commentary</h2>` +
+    ? `<section style="margin:26px 0 0">` +
       renderCommentaryHtml(model.commentary, {
         accent: TEAL,
+        heading: 'Community commentary',
         subtitle: 'Comments and concerns community members raised on their own, across every input. Organizer/panel speech is excluded.',
       }) + `</section>`
     : ''
@@ -129,14 +135,14 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
   // Entities
   const entMax = Math.max(1, ...model.entities.map(e => e.mentions))
   const entities = model.entities.length > 0
-    ? `<section style="margin:26px 0 0"><h2 class="h2">Most-mentioned</h2>` +
+    ? `<section style="margin:26px 0 0"><div class="keep"><h2 class="h2">Most-mentioned</h2>` +
       `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">` +
       model.entities.slice(0, 24).map(e =>
         `<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border-radius:8px;padding:6px 10px">` +
         `<span style="flex:1;font-size:12px;font-weight:600;color:${INK};overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.sources.join(', '))}">${esc(e.name)}</span>` +
         `<div style="height:7px;width:60px;background:#e2e8f0;border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.round((e.mentions / entMax) * 100)}%;background:${TEAL}"></div></div>` +
         `<span style="width:26px;text-align:right;font-size:12px;font-weight:700;color:${TEAL}">${e.mentions}</span></div>`).join('') +
-      `</div></section>`
+      `</div></div></section>`
     : ''
 
   const kpi = (v: string | number, l: string) =>
@@ -158,6 +164,10 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
     `.wrap{max-width:760px;margin:0 auto;padding:8px 0 28px}` +
     `.h2{font-size:17px;font-weight:800;color:${INK};border-bottom:1px solid ${LINE};padding-bottom:6px;margin:0 0 12px;break-after:avoid;page-break-after:avoid}` +
     `h1,.h2,h3{break-after:avoid;page-break-after:avoid}` +
+    // PDF-template standard (memory: feedback_pdf_template_rules): a section title
+    // must never sit alone at a page bottom. `.keep` wraps a heading WITH its first
+    // content block so they stay together — more reliable than break-after alone.
+    `.keep{break-inside:avoid;page-break-inside:avoid}` +
     `</style></head><body><div class="wrap">` +
     `<header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">` +
     `<div><div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${FAINT};margin-bottom:6px">Project Report</div>` +

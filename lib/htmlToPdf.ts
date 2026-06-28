@@ -10,6 +10,43 @@
 import 'server-only'
 import { existsSync } from 'fs'
 
+const CHROME_FONT = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
+function escChrome(s: string): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/**
+ * Per-page running header + footer for the PDF-template STANDARD (memory:
+ * feedback_pdf_template_rules) — REQUIRED on every new PDF:
+ *   - header: the brand/project name, top-right
+ *   - footer: confidentiality statement (left) · datanautix wordmark + datanautix.com
+ *     (center) · "Page X of Y" (right)
+ * Returns the templates + the margins that reserve the header/footer bands. Pair
+ * with the `.keep` heading-wrapper CSS in the body so section titles never orphan.
+ */
+export function brandedPdfChrome(opts: { brand: string; confidentiality?: string }): {
+  headerTemplate: string
+  footerTemplate: string
+  margin: { top: string; bottom: string; left: string; right: string }
+} {
+  const brand = escChrome(opts.brand)
+  const conf = escChrome(opts.confidentiality || 'Confidential — for intended recipients only')
+  // page.pdf templates render outside the document with no inherited styles, so
+  // font-size MUST be set explicitly or they render at ~0. .pageNumber/.totalPages
+  // are populated by Chrome.
+  const headerTemplate =
+    `<div style="width:100%;${CHROME_FONT};font-size:9px;color:#64748b;padding:0 12mm;text-align:right">` +
+    `<span style="font-weight:700;color:#0f172a">${brand}</span></div>`
+  const dn = `<span style="font-weight:700"><span style="color:#0F7173">data</span><span style="color:#E85A1A">nautix</span></span>`
+  const footerTemplate =
+    `<div style="width:100%;${CHROME_FONT};font-size:8px;color:#94a3b8;padding:0 12mm;display:flex;justify-content:space-between;align-items:center">` +
+    `<span>${conf}</span>` +
+    `<span>${dn} · datanautix.com</span>` +
+    `<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>` +
+    `</div>`
+  return { headerTemplate, footerTemplate, margin: { top: '16mm', bottom: '18mm', left: '12mm', right: '12mm' } }
+}
+
 function localChromePath(): string | null {
   const candidates = [
     process.env.PUPPETEER_EXECUTABLE_PATH,

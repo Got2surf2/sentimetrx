@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildProjectReportForCollection } from '@/lib/projectReportLoad'
 import { renderProjectReportHtml } from '@/lib/projectReportHtml'
-import { htmlToPdfBuffer } from '@/lib/htmlToPdf'
+import { htmlToPdfBuffer, brandedPdfChrome } from '@/lib/htmlToPdf'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -24,7 +24,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const html = renderProjectReportHtml(built.model)
   const pdf = await htmlToPdfBuffer(html, {
     format: 'a4',
-    margin: { top: '14mm', bottom: '14mm', left: '12mm', right: '12mm' },
+    ...brandedPdfChrome({ brand: built.model.name }),
   })
   const fileName = (built.model.name || 'Project').replace(/[^\w.-]+/g, '_') + '_Project_Report.pdf'
   return new Response(new Uint8Array(pdf), {
