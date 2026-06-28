@@ -53,23 +53,24 @@ export async function GET(_req: Request, props: Props) {
 
   const { data: memberDs } = await service
     .from('datasets')
-    .select('id, name, row_count')
+    .select('id, name, row_count, source')
     .in('id', memberIds)
 
   const stateMap: Record<string, any> = {}
   ;(states || []).forEach(function(s) { stateMap[s.dataset_id] = s.theme_model })
 
-  const dsMap: Record<string, { name: string; row_count: number }> = {}
-  ;(memberDs || []).forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0 } })
+  const dsMap: Record<string, { name: string; row_count: number; source: string }> = {}
+  ;(memberDs || []).forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0, source: d.source } })
 
   const enriched = members.map(function(m) {
     var tm = stateMap[m.dataset_id] || null
-    var ds = dsMap[m.dataset_id] || { name: m.label || 'Unknown', row_count: 0 }
+    var ds = dsMap[m.dataset_id] || { name: m.label || 'Unknown', row_count: 0, source: '' }
     return {
       dataset_id: m.dataset_id,
       label: m.label,
       name: ds.name,
       row_count: ds.row_count,
+      source: ds.source,
       theme_model: tm,
       has_themes: !!(tm && tm.themes && tm.themes.length > 0),
     }

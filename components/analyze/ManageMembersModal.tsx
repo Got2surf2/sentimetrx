@@ -33,17 +33,20 @@ export default function ManageMembersModal({ collectionDatasetId, collectionName
   const [error, setError] = useState('')
 
   const load = useCallback(async function () {
-    let members: { dataset_id: string; name: string; row_count: number }[] = []
+    let members: { dataset_id: string; name: string; row_count: number; source: string }[] = []
     try {
       const res = await fetch('/api/collections/' + collectionDatasetId)
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Could not load members'); }
-      members = (data.members || []).map(function (m: any) { return { dataset_id: m.dataset_id, name: m.name || m.label, row_count: m.row_count || 0 } })
+      members = (data.members || []).map(function (m: any) { return { dataset_id: m.dataset_id, name: m.name || m.label, row_count: m.row_count || 0, source: m.source || '' } })
     } catch { setError('Could not load members') }
 
     const memberIds = new Set(members.map(function (m) { return m.dataset_id }))
     // Members first (pre-checked), then any other eligible dataset not already a member.
-    const memberRows: Row[] = members.map(function (m) { return { id: m.dataset_id, name: m.name, meta: m.row_count.toLocaleString() + ' rows', isMember: true } })
+    const memberRows: Row[] = members.map(function (m) {
+      const src = m.source ? (SOURCE_LABELS[m.source] || m.source) + ' · ' : ''
+      return { id: m.dataset_id, name: m.name, meta: src + m.row_count.toLocaleString() + ' rows', isMember: true }
+    })
     const candidateRows: Row[] = eligibleDatasets
       .filter(function (d) { return !memberIds.has(d.id) })
       .map(function (d) { return { id: d.id, name: d.name, meta: (SOURCE_LABELS[d.source] || d.source) + ' · ' + d.row_count.toLocaleString() + ' rows', isMember: false } })

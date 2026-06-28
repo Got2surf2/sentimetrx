@@ -677,3 +677,7 @@ Owner: needed full add/delete for collection members; the add-only flow + scatte
 ## 2026-06-28 — Recording rename now propagates to the derived dataset name
 
 Owner hit a confusing case: a recording renamed to "Community Meeting 3" still showed its derived dataset (in /analyze + a collection) as "Community Meeting 2". Cause: `PATCH /api/recordings/[id]` updated `recordings.name` but never the derived `datasets.name`. Fix: it now also `UPDATE datasets SET name` for `recordings.dataset_id` when the name changes. (Membership is by `dataset_id` UUID — never by name — so renames never break collection membership; this was purely a stale display name on the dataset itself.) Existing drift needs a one-time backfill (pending owner consent for the prod write). tsc clean. LOCAL/unpushed.
+
+## 2026-06-28 — Manage Members: source label on member rows
+
+Members showed only "N rows" while add-candidates showed "Town Hall · N rows" etc. GET /api/collections/[id] now returns each member's source; the modal renders it the same way for members. Display-only.
