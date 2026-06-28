@@ -14,6 +14,7 @@ import { buildProjectReportModel } from '@/lib/projectReport'
 import { renderProjectReportHtml } from '@/lib/projectReportHtml'
 import { buildCompareModel, renderCompareReportHtml, type ComparePurpose } from '@/lib/projectCompare'
 import { AXES, AXIS_LABEL } from '@/lib/taxonomyRollup'
+import { buildKwRegex, lexiconScore, classifySentiment, type Theme } from '@/lib/themeUtils'
 import { isPanelMember } from '@/lib/recordings/panel'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import type { SourceSummary } from '@/lib/sourceSummary'
@@ -186,14 +187,82 @@ async function loadDimensionsForInput(svc: Svc, datasetId: string): Promise<Proj
   return perAxis.flat().sort((a, b) => b.count - a.count).slice(0, 30)
 }
 
+// ── Shared-theme scoring (deterministic, no AI merge) ────────────────────────
+// A collection's competitive/brand-360 report aligns better when EVERY member is
+// scored against ONE shared theme set (the collection's own unified themes) than
+// when each member's separately-mined, differently-named themes are AI-merged
+// per report (non-deterministic → duplicate rows + blanks). This reads a
+// member's text rows once and counts them against the shared themes' keywords —
+// identical labels across members → the matrix aligns by exact label, no AI.
+const ROW_TEXT_KEYS = ['review_text', 'body', 'user_message', 'comment', 'response_text'] as const
+const rowText = (d: Record<string, any>): string => {
+  for (const k of ROW_TEXT_KEYS) { const v = d[k]; if (v && String(v).trim()) return String(v) }
+  return ''
+}
+
+interface MemberRow { text: string; rating: number | null; sentiment: string | null; author: string | null }
+
+// Page all of a member's flat rows (text + rating), capped so a runaway dataset
+// can't stall the report. Datasets in a competitive set are typically 8–30K.
+async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise<MemberRow[]> {
+  const out: MemberRow[] = []
+  let from = 0
+  for (;;) {
+    const { data } = await svc.from('dataset_rows_flat').select('data')
+      .eq('dataset_id', datasetId).order('row_index', { ascending: true }).range(from, from + 999)
+    if (!data || data.length === 0) break
+    for (const r of data) {
+      const d = (r.data || {}) as Record<string, any>
+      const rv = d.rating
+      const rating = rv != null && rv !== '' && isFinite(Number(rv)) ? Number(rv) : null
+      out.push({ text: rowText(d), rating, sentiment: d.sentiment ?? null, author: d.author ?? d.reviewer ?? null })
+    }
+    from += data.length
+    if (data.length < 1000 || out.length >= cap) break
+  }
+  return out
+}
+
+function scoreSharedThemes(rows: MemberRow[], shared: Theme[]): ProjectInputTheme[] {
+  // Pre-compile each theme's keyword regexes ONCE (buildKwRegex is not cheap).
+  const compiled = shared.map(th => ({ name: String(th.name || 'Theme'), res: (th.keywords || []).map(buildKwRegex) }))
+  const acc = compiled.map(() => ({ count: 0, ratS: 0, ratN: 0, pos: 0, neg: 0 }))
+  for (const r of rows) {
+    if (!r.text) continue
+    const lower = r.text.toLowerCase()
+    let matchedAny = false
+    for (let i = 0; i < compiled.length; i++) {
+      if (compiled[i].res.length && compiled[i].res.some(re => re.test(lower))) {
+        const a = acc[i]; a.count++; matchedAny = true
+        if (r.rating != null) { a.ratS += r.rating; a.ratN++ }
+      }
+    }
+    if (matchedAny) {
+      const lex = lexiconScore(r.text)
+      // Attribute the row's lexicon polarity to each theme it matched.
+      for (let i = 0; i < compiled.length; i++) {
+        if (compiled[i].res.length && compiled[i].res.some(re => re.test(lower))) { acc[i].pos += lex.pos; acc[i].neg += lex.neg }
+      }
+    }
+  }
+  return compiled.map((c, i) => {
+    const a = acc[i]
+    const avgRating = a.ratN > 0 ? Math.round((a.ratS / a.ratN) * 10) / 10 : null
+    let sentiment: string
+    if (avgRating != null) sentiment = avgRating >= 4 ? 'positive' : avgRating <= 3 ? 'negative' : 'mixed'
+    else { const s = classifySentiment(a.pos, a.neg); sentiment = s === 'insufficient' ? 'neutral' : s }
+    return { label: c.name, count: a.count, sentiment, avgRating, samples: [] }
+  })
+}
+
 // ── Generic (reviews / CSAT / upload) member ─────────────────────────────────
 // Reviews + survey/CSAT datasets carry mined themes (theme_model) + rated text
 // rows, not Q&A/panel. These are the substrate for the competitive + brand-360
-// reports (each column an input; each row a theme).
-async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowCount: number, source: string, brandTag: string | null): Promise<ProjectInputModel | null> {
+// reports (each column an input; each row a theme). When `sharedThemes` is
+// passed (the collection's unified theme set), the member is scored against it
+// for deterministic alignment; otherwise its own mined theme_model is used.
+async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowCount: number, source: string, brandTag: string | null, sharedThemes?: Theme[]): Promise<ProjectInputModel | null> {
   const kind = source === 'google_reviews' ? 'reviews' : source === 'study' ? 'survey' : 'dataset'
-  const { data: stateRow } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
-  const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
   const src: ProjectSource = {
     id: datasetId, kind: kind as any,
     name: brandTag || label,
@@ -201,22 +270,36 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
     badge: brandTag || label,
     rowCount,
   }
-  const themes: ProjectInputTheme[] = rawThemes.map(t => ({
-    label: String(t.name || t.label || 'Theme'),
-    count: typeof t.count === 'number' ? t.count : 0,
-    sentiment: typeof t.sentiment === 'string' ? t.sentiment : 'neutral',
-    avgRating: typeof t.avgRating === 'number' ? t.avgRating : null,
-    samples: Array.isArray(t.keywords) ? t.keywords.slice(0, 4).map(String) : [],
-  }))
 
-  // A small sample of verbatim rows for representative quotes.
-  const { data: rows } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
-  const commentary: ProjectComment[] = (rows || []).map(r => {
-    const d = (r.data || {}) as Record<string, any>
-    const text = d.review_text || d.body || d.user_message || d.comment || d.response_text || ''
-    if (!text || String(text).trim().length < 8) return null
-    return { quote: String(text).slice(0, 240), topic: null, sentiment: d.sentiment ?? null, speaker: d.author ?? d.reviewer ?? null, source: src.badge }
-  }).filter(Boolean) as ProjectComment[]
+  let themes: ProjectInputTheme[]
+  let commentary: ProjectComment[]
+
+  if (sharedThemes && sharedThemes.length) {
+    // Shared-theme path: read all rows once, score against the collection's
+    // unified themes (deterministic), and take a commentary sample from the head.
+    const allRows = await readMemberRows(svc, datasetId)
+    themes = scoreSharedThemes(allRows, sharedThemes)
+    commentary = allRows.filter(r => r.text && r.text.trim().length >= 8).slice(0, 40)
+      .map(r => ({ quote: r.text.slice(0, 240), topic: null, sentiment: r.sentiment, speaker: r.author, source: src.badge }))
+  } else {
+    const { data: stateRow } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
+    const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
+    themes = rawThemes.map(t => ({
+      label: String(t.name || t.label || 'Theme'),
+      count: typeof t.count === 'number' ? t.count : 0,
+      sentiment: typeof t.sentiment === 'string' ? t.sentiment : 'neutral',
+      avgRating: typeof t.avgRating === 'number' ? t.avgRating : null,
+      samples: Array.isArray(t.keywords) ? t.keywords.slice(0, 4).map(String) : [],
+    }))
+    // A small sample of verbatim rows for representative quotes.
+    const { data: rows } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
+    commentary = (rows || []).map(r => {
+      const d = (r.data || {}) as Record<string, any>
+      const text = rowText(d)
+      if (!text || text.trim().length < 8) return null
+      return { quote: text.slice(0, 240), topic: null, sentiment: d.sentiment ?? null, speaker: d.author ?? d.reviewer ?? null, source: src.badge }
+    }).filter(Boolean) as ProjectComment[]
+  }
 
   // Input sentiment ≈ theme counts weighted by their sentiment.
   const sentiment = themes.reduce((a, t) => {
@@ -235,10 +318,10 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
 // ── Per-dataset dispatch (shared by collection load + ad-hoc grouping) ───────
 interface DatasetRow { id: string; source: string; name: string; row_count: number | null; description: string | null; brand_tag: string | null }
 
-async function loadInputForDataset(svc: Svc, d: DatasetRow, label: string): Promise<ProjectInputModel | null> {
+async function loadInputForDataset(svc: Svc, d: DatasetRow, label: string, sharedThemes?: Theme[]): Promise<ProjectInputModel | null> {
   if (d.source === 'recording') return loadRecordingInput(svc, d.id, label, d.row_count || 0)
   if (d.source === 'bot') return loadAgentInput(svc, d.id, label, d.row_count || 0, d.description)
-  return loadGenericInput(svc, d.id, label, d.row_count || 0, d.source, d.brand_tag) // reviews / CSAT / upload
+  return loadGenericInput(svc, d.id, label, d.row_count || 0, d.source, d.brand_tag, sharedThemes) // reviews / CSAT / upload
 }
 
 // Load arbitrary datasets (by id, in order) into normalized inputs — used for an
@@ -274,11 +357,22 @@ export async function loadProjectInputs(collectionDatasetId: string): Promise<{ 
   const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', ids)
   const dsMap = new Map((dsRows || []).map(d => [d.id, d]))
 
+  // The collection's OWN unified theme set (mined across all members). When it
+  // exists, score every member against it so the comparison matrix aligns by
+  // exact label — no flaky per-report AI merge of each member's differently-
+  // named themes. Only meaningful when members are review/CSAT (generic loader).
+  const { data: colState } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', collectionDatasetId).single()
+  const sharedThemesRaw = ((colState?.theme_model as any)?.themes ?? []) as any[]
+  const sharedThemes: Theme[] | undefined = sharedThemesRaw.length
+    ? sharedThemesRaw.filter(t => t && (t.keywords?.length)) as Theme[]
+    : undefined
+  const useShared = !!sharedThemes && sharedThemes.length > 0
+
   const inputs: ProjectInputModel[] = []
   for (const mem of members) {
     const d = dsMap.get(mem.dataset_id)
     if (!d) continue
-    const model = await loadInputForDataset(svc, d as DatasetRow, mem.label || d.name)
+    const model = await loadInputForDataset(svc, d as DatasetRow, mem.label || d.name, useShared ? sharedThemes : undefined)
     if (model) inputs.push(model)
   }
   return { name: collectionDs.name, inputs }
