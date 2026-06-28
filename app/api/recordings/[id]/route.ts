@@ -266,7 +266,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const service = createServiceRoleClient()
 
   // Load the recording, org-scoped (platform admins can reach any org).
-  let recQ = service.from('recordings').select('id, org_id, created_by, name').eq('id', recording_id)
+  let recQ = service.from('recordings').select('id, org_id, created_by, name, dataset_id').eq('id', recording_id)
   if (!uc.isAdminOrg) recQ = recQ.eq('org_id', uc.orgId)
   const { data: rec } = await recQ.single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
@@ -404,6 +404,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  // Keep the derived dataset's name in sync with the recording so they don't
+  // drift — the dataset name is what shows in /analyze + collection membership.
+  if ('name' in patch && rec.dataset_id) {
+    await service.from('datasets').update({ name: patch.name }).eq('id', rec.dataset_id as string)
+  }
 
   return NextResponse.json({ ok: true, id: recording_id, ...patch })
 }

@@ -673,3 +673,7 @@ Owner: needed full add/delete for collection members; the add-only flow + scatte
 - **`DELETE /api/collections/[id]?member=`** now **recomputes** the merged schema + `datasets.row_count` over the remaining members (parity with the add route; previously left them stale) and is **admin-aware** (`is_admin_org`, explicit org check instead of org-locked lookup).
 - **`GET /api/collections/[id]`** made **admin-aware** too — was org-locked, so a cross-org collection (admin viewing a client-org collection) returned 404 and the modal showed no members to remove. Root cause of the reported bug.
 - Updated `core-entity-routes-gate` (collections GET/DELETE now assert explicit cross-org 404, not the old org-paired `.eq`). tsc clean; 1053 tests pass. LOCAL/unpushed.
+
+## 2026-06-28 — Recording rename now propagates to the derived dataset name
+
+Owner hit a confusing case: a recording renamed to "Community Meeting 3" still showed its derived dataset (in /analyze + a collection) as "Community Meeting 2". Cause: `PATCH /api/recordings/[id]` updated `recordings.name` but never the derived `datasets.name`. Fix: it now also `UPDATE datasets SET name` for `recordings.dataset_id` when the name changes. (Membership is by `dataset_id` UUID — never by name — so renames never break collection membership; this was purely a stale display name on the dataset itself.) Existing drift needs a one-time backfill (pending owner consent for the prod write). tsc clean. LOCAL/unpushed.
