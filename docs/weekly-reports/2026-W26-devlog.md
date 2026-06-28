@@ -633,3 +633,15 @@ Owner principle (verified against the NOWOCATS deck, where Hatem Abou-Senna [Pro
 - `lib/recordings/panel.ts` `isPanelMember(name, panel)` — normalized roster match (middle-initial tolerant, case/punctuation-insensitive, conservative first+last-token so a partial match never false-excludes a community member). Tested (`tests/unit/recordings/panel.test.ts`, 6).
 - `lib/recordings/reportHtml.ts` filters on the **asker**: any Q&A/commentary pair whose asker is a panel member is dropped from the community Q&A + Commentary; panel **answers** stay attached to genuine community-asked pairs. Empty roster → nothing excluded. Works on existing data (render-time, no re-mirror).
 - Follow-up: stamp `speaker_role` on mirrored `dataset_rows_flat` so Ana / TextMine / collection merge also exclude panel content (needs re-mirror). LOCAL/unpushed.
+
+## 2026-06-28 — Project (brand-level) synthesis report — BUILT
+
+The complete, source-attributed roll-up across every town hall + agent in a collection — the real deliverable behind the Ask Ana preview. Verified end-to-end on the real NOWOCATS Collection (2 town halls + Sarina → 62 Q&A + 63 community comments → 11 AI-merged themes, panel/organizers excluded; PDF generated).
+
+- `lib/projectReport.ts` — normalized `ProjectInputModel`/`ProjectReportModel`; deterministic by-topic pooling (`aggregateRawClusters`) + AI synthesis (`synthesizeThemes` merges synonymous topics across inputs into unified brand themes; `synthesizeExec` writes the cross-input exec summary). AI only names/merges/summarizes — **counts computed in code, always reconcile**.
+- `lib/projectReportLoad.ts` (server-only) — loads each member into the normalized shape (recordings: extractions + proceedings; agents: `getAgentStudy`), **community voices only** via `isPanelMember` (single source of truth), + `buildProjectReportForCollection` (gate + load + build).
+- `lib/projectReportHtml.ts` — renders **reusing the shared `sourceSummary` + `commentary` renderers** (commentary now carries an optional `source` badge), so it's a sibling of the per-input reports. Sources manifest, per-input presentations/KB, merged themes w/ source-attributed Q&A, commentary, entities/sentiment.
+- `lib/htmlToPdf.ts` — shared headless-Chrome HTML→PDF (extracted launcher pattern).
+- Routes: `GET /api/collections/[id]/project-report` (HTML) + `POST …/pdf`; admin cross-org, non-admin org-scoped, maxDuration 300. UI: "📊 Project report (PDF)" in the collection card ⋯ menu (blob download w/ LottieLoader toast).
+- Tests: `tests/unit/projectReport.test.ts` (8). tsc clean; 1048 tests pass. LOCAL/unpushed.
+- Follow-ups: per-input loaders currently set recording entities=[] (agent entities aggregated); a few agent "focus" topics (Respondent Background) are weak as community themes — a light filter could drop survey-metadata focuses.

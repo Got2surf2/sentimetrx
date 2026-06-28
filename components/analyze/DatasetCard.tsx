@@ -282,6 +282,27 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     setRenaming(false); setMenuOpen(false)
   }
 
+  // Project report (collections only): synthesize a brand-level PDF across every
+  // town hall + agent in the collection. POST → PDF blob → download.
+  async function handleProjectReport() {
+    setSyncing(true); setMenuOpen(false); setSyncToast('Building project report — synthesizing across inputs…')
+    try {
+      var res = await fetch('/api/collections/' + dataset.id + '/project-report/pdf', { method: 'POST' })
+      if (!res.ok) {
+        var err = await res.json().then(function(d) { return d.error }).catch(function() { return null })
+        setSyncing(false); setSyncToast(err || 'Could not build the report'); setTimeout(function() { setSyncToast('') }, 5000); return
+      }
+      var blob = await res.blob()
+      var url = URL.createObjectURL(blob)
+      var a = document.createElement('a')
+      a.href = url; a.download = (dataset.name || 'Project').replace(/[^\w.-]+/g, '_') + '_Project_Report.pdf'
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+      setSyncing(false); setSyncToast('Report downloaded'); setTimeout(function() { setSyncToast('') }, 3000)
+    } catch {
+      setSyncing(false); setSyncToast('Network error'); setTimeout(function() { setSyncToast('') }, 3000)
+    }
+  }
+
   function handleDelete() {
     if (confirmDel) {
       if (collectionInfo) {
@@ -415,6 +436,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={function() { setMenuOpen(false); onAddDatasets(dataset.id, dataset.name) }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0ea5e9', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   + Add datasets
+                </button>
+              )}
+              {isCollection && (
+                <button onClick={handleProjectReport}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  📊 Project report (PDF)
                 </button>
               )}
               {collectionInfo && (
