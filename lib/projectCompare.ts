@@ -26,6 +26,11 @@ export interface CompareCell {
                              // across different-sized competitors (the headline number)
   sentiment: string          // dominant
   avgRating: number | null
+  // Competitive only: is THIS column's share on the theme statistically different
+  // from the FOCUS column's (two-proportion z-test, p<0.05)? 'up'/'down' =
+  // significantly higher/lower than focus; 'ns' = tested, not significant; null =
+  // the focus cell itself, or no comparison possible (a side absent / brand_360).
+  sig?: 'up' | 'down' | 'ns' | null
 }
 export interface CompareRow {
   theme: string
@@ -54,6 +59,21 @@ export interface CompareReportModel {
 type LensSelector = (i: ProjectInputModel) => ProjectInputTheme[]
 
 const norm = (s: string) => s.trim().toLowerCase()
+
+// Two-proportion z-test: is competitor (x1/n1) significantly different from the
+// focus (x2/n2) in the share of reviews on this theme? p<0.05 → |z|>1.96.
+// 'up'/'down' = this competitor's share is significantly higher/lower than focus.
+function twoPropSig(x1: number, n1: number, x2: number, n2: number): 'up' | 'down' | 'ns' {
+  if (n1 <= 0 || n2 <= 0) return 'ns'
+  const p1 = Math.min(1, x1 / n1), p2 = Math.min(1, x2 / n2)
+  const pPool = (x1 + x2) / (n1 + n2)
+  const se = Math.sqrt(pPool * (1 - pPool) * (1 / n1 + 1 / n2))
+  if (!(se > 0)) return 'ns'
+  const z = (p1 - p2) / se
+  if (Math.abs(z) < 1.96) return 'ns'
+  return z > 0 ? 'up' : 'down'
+}
+
 function dominant(themes: { sentiment: string; count: number }[]): string {
   const tally: Record<string, number> = {}
   for (const t of themes) { const k = (t.sentiment || 'neutral').toLowerCase(); tally[k] = (tally[k] || 0) + (t.count || 0) }
@@ -144,6 +164,7 @@ async function buildMatrix(
     placed.add(key)
   }
 
+  const focusCol = primary ? columns.find(c => c.name === primary) : undefined
   return aligned.map(r => {
     const cells: Record<string, CompareCell> = {}
     let total = 0
@@ -156,6 +177,15 @@ async function buildMatrix(
       const pct = col.rowCount > 0 ? Math.round((count / col.rowCount) * 100) : null
       cells[col.name] = { present: true, count, pct, sentiment: dominant(members), avgRating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null }
       total += count
+    }
+    // Competitive significance: each competitor's share vs the focus on this theme.
+    if (purpose === 'competitive' && primary && focusCol) {
+      const fc = cells[primary]
+      for (const col of columns) {
+        const c = cells[col.name]
+        if (col.name === primary) { c.sig = null; continue }
+        c.sig = (c.present && fc?.present) ? twoPropSig(c.count, col.rowCount, fc.count, focusCol.rowCount) : null
+      }
     }
     return { theme: r.theme, insight: r.insight, cells, total }
   }).sort((a, b) => b.total - a.total)
@@ -215,7 +245,13 @@ function cellHtml(cell: CompareCell): string {
   // Normalized: % of that competitor's rows on this theme (the headline), raw count
   // in parens — so different-sized competitors are comparable.
   const vol = cell.pct != null ? `${cell.pct}% <span style="color:${PDF.faint}">(${cell.count.toLocaleString()})</span>` : cell.count.toLocaleString()
-  return `<td style="text-align:center;border:1px solid ${PDF.line};padding:6px 4px;background:${pal[s] || pal.neutral}"><div style="font-size:${PDF.size.tiny}px;font-weight:700;color:${fg[s] || fg.neutral};text-transform:capitalize">${esc(s)}</div><div style="font-size:${PDF.size.micro}px;color:${PDF.mute}">${vol}${rating}</div></td>`
+  // Significance vs the focus column (competitive only): ▲/▼ = significantly
+  // higher/lower share than the focus on this theme; "ns" = not significant.
+  let sigHtml = ''
+  if (cell.sig === 'up') sigHtml = `<div style="font-size:${PDF.size.micro}px;font-weight:700;color:#047857">▲ sig.</div>`
+  else if (cell.sig === 'down') sigHtml = `<div style="font-size:${PDF.size.micro}px;font-weight:700;color:#b91c1c">▼ sig.</div>`
+  else if (cell.sig === 'ns') sigHtml = `<div style="font-size:${PDF.size.micro}px;color:${PDF.faint}">ns</div>`
+  return `<td style="text-align:center;border:1px solid ${PDF.line};padding:6px 4px;background:${pal[s] || pal.neutral}"><div style="font-size:${PDF.size.tiny}px;font-weight:700;color:${fg[s] || fg.neutral};text-transform:capitalize">${esc(s)}</div><div style="font-size:${PDF.size.micro}px;color:${PDF.mute}">${vol}${rating}</div>${sigHtml}</td>`
 }
 
 export function renderCompareReportHtml(model: CompareReportModel): string {
@@ -266,7 +302,11 @@ export function renderCompareReportHtml(model: CompareReportModel): string {
     return `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${header}${body}</table>`
   }
   const matrixNote = (unit: string): string =>
-    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: the dominant sentiment + the <strong>% of that ${colName}'s reviews</strong> on the ${unit} (raw count in parentheses)${isComp ? ', plus avg rating' : ''} — normalized so different-sized ${colName}s are comparable. "—" = the ${unit} didn't surface for that ${colName}.</p>`
+    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: the dominant sentiment + the <strong>% of that ${colName}'s reviews</strong> on the ${unit} (raw count in parentheses)${isComp ? ', plus avg rating' : ''} — normalized so different-sized ${colName}s are comparable. "—" = the ${unit} didn't surface for that ${colName}.` +
+    (isComp && model.primary
+      ? ` <strong style="color:#047857">▲</strong>/<strong style="color:#b91c1c">▼</strong> = this competitor's share differs significantly from <strong>${esc(model.primary)}</strong> (higher/lower) on this ${unit}; "ns" = not statistically significant (two-proportion z-test, p&lt;0.05).`
+      : '') +
+    `</p>`
   const insightsHtml = (rows: CompareRow[]): string =>
     rows.filter(r => r.insight).slice(0, 14).map(r =>
       `<div class="keep" style="margin:0 0 10px"><div style="font-size:13px;font-weight:800;color:${PDF.ink}">${esc(r.theme)}</div><p style="font-size:13px;line-height:1.55;color:${PDF.body};margin:2px 0 0">${esc(r.insight)}</p></div>`).join('')

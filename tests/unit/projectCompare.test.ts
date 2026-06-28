@@ -71,6 +71,34 @@ describe('buildCompareModel — Dimensions matrix', () => {
   })
 })
 
+describe('buildCompareModel — significance (two-proportion z-test)', () => {
+  // Big samples: a real gap is significant, a tiny gap is not.
+  const big = (id: string, name: string, n: number, themes: Array<ThemeTuple>) => {
+    const m = input(id, name, themes)
+    m.source.rowCount = n
+    return m
+  }
+  it('flags a real gap significant and a trivial gap as ns; focus cell is null', async () => {
+    // Focus 53% (7800/14721) vs competitor 36% (3140/8654) → significant 'down'.
+    // Parity 17% (2526/14721) vs 16% (1380/8654) → still significant at this n,
+    // so use a genuinely tiny gap to get 'ns': 17.0% vs 16.9%.
+    const focus = big('f', 'Focus', 14721, [['Service', 7800, 'positive', 4.5], ['Parity', 2503, 'positive', 4.4]])
+    const comp  = big('c', 'Comp',  8654,  [['Service', 3140, 'positive', 4.0], ['Parity', 1462, 'positive', 4.2]])
+    const m = await buildCompareModel('Set', 'competitive', [focus, comp], 'x', { synthesize: false, primaryId: 'f' })
+    const service = m.rows.find(r => r.theme === 'Service')!
+    expect(service.cells['Focus'].sig).toBeNull()       // focus column never flagged
+    expect(service.cells['Comp'].sig).toBe('down')        // 36% << 53%
+    const parity = m.rows.find(r => r.theme === 'Parity')!
+    // 2503/14721 = 17.00% vs 1462/8654 = 16.89% → not significant
+    expect(parity.cells['Comp'].sig).toBe('ns')
+  })
+
+  it('does not compute significance for brand_360 (no focus)', async () => {
+    const m = await buildCompareModel('One Brand', 'brand_360', [ruths, capital], 'x', { synthesize: false })
+    for (const r of m.rows) for (const c of Object.values(r.cells)) expect(c.sig).toBeUndefined()
+  })
+})
+
 describe('buildCompareModel — brand_360', () => {
   it('has no primary and keeps input order', async () => {
     const m = await buildCompareModel('One Brand', 'brand_360', [ruths, capital], 'x', { synthesize: false })
