@@ -681,3 +681,7 @@ Owner hit a confusing case: a recording renamed to "Community Meeting 3" still s
 ## 2026-06-28 — Manage Members: source label on member rows
 
 Members showed only "N rows" while add-candidates showed "Town Hall · N rows" etc. GET /api/collections/[id] now returns each member's source; the modal renders it the same way for members. Display-only.
+
+## 2026-06-28 — Competitive focus picker: radio modal (was a window.prompt)
+
+Replaced the crude `window.prompt("enter a number")` focus picker with a proper radio-button modal in DatasetCard ("Competitive deep-dive — pick the focus competitor", radios + Generate report). Display-only UX.

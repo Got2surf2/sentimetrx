@@ -86,6 +86,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [syncing,       setSyncing]       = useState(false)
   const [syncToast,     setSyncToast]     = useState('')
   const [showTransfer,  setShowTransfer]  = useState(false)
+  const [focusMembers,  setFocusMembers]  = useState<{ dataset_id: string; name: string }[] | null>(null)
+  const [focusPick,     setFocusPick]     = useState('')
   // Collection membership preloaded by /analyze/page.tsx in a single
   // batched query — was previously a per-card fetch (Sentry N+1).
   // setCollectionInfo is still used after "Remove from collection" to
@@ -290,13 +292,9 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       var res = await fetch('/api/collections/' + dataset.id)
       var data = await res.json()
       var members = (data.members || []) as { dataset_id: string; name: string }[]
-      if (members.length < 2) { window.alert('Add at least 2 datasets for a competitive report.'); return }
-      var list = members.map(function(m, i) { return (i + 1) + ') ' + m.name }).join('\n')
-      var pick = window.prompt('Which is the FOCUS (primary) competitor the deep-dive should center on? Enter a number:\n\n' + list, '1')
-      if (!pick) return
-      var idx = parseInt(pick, 10) - 1
-      if (isNaN(idx) || idx < 0 || idx >= members.length) { window.alert('Invalid choice.'); return }
-      handleProjectReport('competitive', members[idx].dataset_id)
+      if (members.length < 2) { window.alert('Add at least 2 datasets for a competitive report — open Manage members.'); return }
+      setFocusPick(members[0].dataset_id)
+      setFocusMembers(members)
     } catch { window.alert('Could not load the collection members.') }
   }
 
@@ -826,6 +824,34 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           boxShadow: '0 2px 8px rgba(0,0,0,.1)', zIndex: 20,
         }}>
           {syncToast}
+        </div>
+      )}
+
+      {/* Competitive focus picker — choose the primary the deep-dive centers on */}
+      {focusMembers && (
+        <div onClick={function() { setFocusMembers(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={function(e) { e.stopPropagation() }} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 24px 64px rgba(0,0,0,.28)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid #e5e7eb' }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>Competitive deep-dive</h2>
+              <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Pick the focus competitor. The report centers on it; the others become the benchmark field.</p>
+            </div>
+            <div style={{ padding: '12px 24px', maxHeight: '50vh', overflow: 'auto' }}>
+              {focusMembers.map(function(m) {
+                var sel = focusPick === m.dataset_id
+                return (
+                  <label key={m.dataset_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: sel ? '1.5px solid #0f766e' : '1.5px solid #e5e7eb', background: sel ? '#f0fdfa' : 'white', marginBottom: 6 }}>
+                    <input type="radio" name="competitive-focus" checked={sel} onChange={function() { setFocusPick(m.dataset_id) }} style={{ accentColor: '#0f766e' }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{m.name}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={function() { setFocusMembers(null) }} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={function() { var id = focusPick; setFocusMembers(null); handleProjectReport('competitive', id) }} disabled={!focusPick}
+                style={{ padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', background: focusPick ? '#0f766e' : '#9ca3af', border: 'none', borderRadius: 10, cursor: focusPick ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>Generate report</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
