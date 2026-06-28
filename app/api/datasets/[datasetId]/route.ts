@@ -153,13 +153,18 @@ export async function DELETE(_req: Request, props: Params) {
   // Verify user owns the dataset before deleting
   const { data: ds } = await supabase
     .from('datasets')
-    .select('created_by')
+    .select('created_by, source')
     .eq('id', params.datasetId)
     .eq('org_id', orgId)
     .single()
 
   if (!ds) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (ds.created_by !== user.id) {
+  // Collections are shared groupings, not personal data — deleting one removes
+  // only the grouping (member datasets survive). They're often created by another
+  // session or teammate, so a creator-only gate silently blocked legitimate
+  // deletes. Any member of the owning org (enforced by the org_id match above)
+  // may delete a collection; normal datasets stay creator-only.
+  if (ds.source !== 'collection' && ds.created_by !== user.id) {
     return NextResponse.json({ error: 'Only the creator can delete a dataset' }, { status: 403 })
   }
 

@@ -807,17 +807,18 @@ One handler, two modes, both reading the recording by id paired with the caller'
 - **Update** — body may carry any of `{ name?, brand_tag?, underlying_agent_id?, analysis_org?, analysts?, objectives?, confidentiality_class?, meeting_date?, location?, language?, setup_inputs?, meeting_profile? }`. Owner / org-admin / platform-admin. `name` trim ≤200; `analysts` sanitized to `[{name, member_id?}]`; `objectives` to `{summary, questions[]}` or null; `confidentiality_class` validated against the enum; `setup_inputs` must be an object; `meeting_profile` an object or null. This is the **edit-anytime** path — the unified Setup editor (§5.7) PATCHes any of these at any lifecycle stage. **Metadata** fields (name/date/location/analysts/org/confidentiality/brand/agent) take effect immediately; **analysis-shaping** fields (`setup_inputs`, `meeting_profile`, `objectives`) are saved but only change the Q&A on a re-analyze (a config-version drift check surfaces a "re-analyze to apply" prompt).
 - **Transfer** — body `{ org_id }`. **Platform-admin org only** (403 otherwise) — a cross-tenant move. `checkTransferTarget` validates the destination is an active org and not the current one. Then `transferRecordingOrg()`: (1) relocates every storage object under `<fromOrg>/<id>/…` to `<toOrg>/<id>/…` via `storage.move`, rolling the moves back if any non-"not found" failure occurs; (2) calls the `transfer_recording_org(p_recording_id, p_from_org, p_to_org)` RPC (sql/102) — one transaction that re-org_id's `recordings` + `recording_files` + `recording_transcripts` + `recording_extractions` + the derived `datasets` row (paired on `p_from_org` as the cross-tenant guard) and rewrites the embedded `<org>/` prefix in `recording_files.storage_path`/`audio_storage_path`; on RPC failure the storage moves are rolled back. `dataset_rows_flat` has no `org_id` (keyed by `dataset_id`) so it follows the dataset. Finally `recordOrgTransfer` writes an `org_transfers` audit row. The RPC is `SECURITY DEFINER` with `SET search_path`, exec **revoked from `anon`/`authenticated`** and granted only to `service_role`, so a tenant can't call it directly via PostgREST to bypass the route gate. Gate covered by `tests/integration/recording-transfer-gate.test.ts`.
 
-### 4.4 `POST /api/collections/[id]/members` — **NEW** (fills the gap)
+### 4.4 `POST /api/collections/[id]/members` — **BUILT (2026-06-28)**
 
-**Auth:** session cookie + CSRF.
-**Body:** `{ dataset_id: string, label: string }`
+`[id]` = the collection's **dataset_id** (same convention as `DELETE /api/collections/[id]`). Lets a collection grow after creation (UI: "+ Add datasets" in the collection card's ⋯ menu → `NewCollectionModal` add-mode). Full spec + the collection-delete fix live in **docs/ANALYTICS.md** ("Collection management (2026-06-28)"); summary:
 
-- Insert into `collection_members`.
-- Re-run `buildMergedCollectionSchema()` and update the virtual dataset's `dataset_state.schema_config`.
-- Update `datasets.row_count` (sum across members).
-- Same-org rule: dataset must belong to the same org as the collection.
+**Auth:** `getCallerOrgContext` (session). **Body:** `{ members: [{ dataset_id, label }] }`
 
-Also: fix existing `DELETE /api/collections/[id]?member=X` to re-run schema rebuild after a member is removed (and remaining > 0).
+- Resolve the collection by `dataset_id` paired with `org_id` (404 cross-org for non-admins); validate the new datasets (exist, same org, not themselves collections, not already members; dedupe).
+- Insert into `collection_members` (sort_order continued from the max).
+- Re-run `buildMergedCollectionSchema()` over the **full** member set → update `dataset_state.schema_config`.
+- Update `datasets.row_count` (sum across all members).
+
+Gate test: `tests/integration/collection-members-routes-gate.test.ts`.
 
 ### 4.5 `POST /api/recordings/[id]/report/pdf` — PDF report (built 2026-06-04)
 

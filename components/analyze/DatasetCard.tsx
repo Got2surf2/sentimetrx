@@ -41,6 +41,7 @@ interface Props {
   onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
   signalStats?:        SignalStatsBrief | null  // undefined = still loading, null = no themes/data
   onDrillIn?:          (collectionId: string, name: string) => void  // brand cards only
+  onAddDatasets?:      (collectionDatasetId: string, name: string) => void  // collection cards only
   initialFavorited?:   boolean
 }
 
@@ -76,7 +77,7 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn, initialFavorited = false }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn, onAddDatasets, initialFavorited = false }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [renaming,      setRenaming]      = useState(false)
@@ -408,6 +409,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={function() { handleSourceSync() }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sync members
+                </button>
+              )}
+              {isCollection && onAddDatasets && (
+                <button onClick={function() { setMenuOpen(false); onAddDatasets(dataset.id, dataset.name) }}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0ea5e9', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  + Add datasets
                 </button>
               )}
               {collectionInfo && (

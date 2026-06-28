@@ -605,3 +605,11 @@ Quick path to a cross-input report **today**: drop multiple town-hall + agent da
 - `getSourceLabel`: added `recording` → "town hall Q&A exchanges", `bot` → "agent conversation turns"; `collection` → neutral "responses" (was misleading "survey responses" for a mixed collection).
 - Test: `tests/unit/anaContext.test.ts` (11) — recording/bot/mixed-collection formatting, noise-drop, typology surfacing, truncation, empty-state. tsc clean.
 - This is the **exploratory/sampled** preview (Ana caps at 500 rows) — NOT the authoritative complete project report (that's the deterministic roll-up of per-input report models, still to build). LOCAL/unpushed.
+
+## 2026-06-28 — Collections: add-datasets-to-existing + delete fix
+
+Supports the project-preview workflow (group town halls + agents, grow the group as new ones arrive).
+
+- **Add datasets to an existing collection** (was create-only): new `POST /api/collections/[id]/members` ([id]=collection's dataset_id) — validates same-org / no nested collections / dedupe, inserts `collection_members`, then recomputes merged schema (`buildMergedCollectionSchema` over the full set) + `datasets.row_count`. UI: `NewCollectionModal` extended with an add-mode (hide name, ≥1 pick, exclude current members); triggered by a "+ Add datasets" item in the collection card's ⋯ menu (`AnalyzeClient.handleAddDatasets` fetches current members to exclude, reloads on success).
+- **Fixed collection delete silently failing**: generic `DELETE /api/datasets/[id]` gated on `created_by === user.id`, so a collection created by another session/teammate couldn't be deleted (and the UI swallowed the non-OK response → looked like nothing happened). Collections are shared groupings (members survive deletion), so the creator gate is now skipped for `source='collection'` (org tenancy still enforced by `org_id`); `handleDelete` now alerts the server error instead of silently no-op'ing.
+- Test: `tests/integration/collection-members-routes-gate.test.ts` (4 — 401/400/404 gates). tsc clean. LOCAL/unpushed.

@@ -10,14 +10,27 @@ interface Props {
   datasets:  DatasetWithState[]
   onClose:   () => void
   onCreated: (ds: DatasetWithState) => void
+  // Add-to-existing mode: when set, the modal adds the picked datasets to this
+  // collection (POST /api/collections/[id]/members) instead of creating a new
+  // one. `datasetId` is the collection's dataset_id; existingMemberIds are
+  // hidden from the picker; onAdded fires after a successful add.
+  addToCollection?: { datasetId: string; name: string }
+  existingMemberIds?: string[]
+  onAdded?: () => void
 }
 
 const SOURCE_LABELS: Record<string, string> = {
   study: 'Sarina', upload: 'Upload', google_reviews: 'Google Reviews',
   reddit: 'Reddit', townhall: 'PulseIQ', substack: 'Substack',
+  bot: 'Agent', recording: 'Town Hall',
 }
 
-export default function NewCollectionModal({ datasets, onClose, onCreated }: Props) {
+export default function NewCollectionModal({ datasets, onClose, onCreated, addToCollection, existingMemberIds, onAdded }: Props) {
+  const isAdd = !!addToCollection
+  const minMembers = isAdd ? 1 : 2
+  const pickable = isAdd && existingMemberIds
+    ? datasets.filter(function(d) { return !existingMemberIds.includes(d.id) })
+    : datasets
   const [name, setName] = useState('')
   const [members, setMembers] = useState<{ dataset_id: string; label: string }[]>([])
   const [saving, setSaving] = useState(false)
@@ -38,7 +51,32 @@ export default function NewCollectionModal({ datasets, onClose, onCreated }: Pro
     })
   }
 
+  async function handleAdd() {
+    if (members.length < 1) { setError('Select at least one dataset to add'); return }
+    var emptyLabelA = members.find(function(m) { return !m.label.trim() })
+    if (emptyLabelA) { setError('Every dataset needs a label'); return }
+    setSaving(true)
+    setError('')
+    try {
+      var resA = await fetch('/api/collections/' + addToCollection!.datasetId + '/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ members: members }),
+      })
+      var dataA = await resA.json()
+      if (!resA.ok) { setError(dataA.error || 'Failed to add datasets'); setSaving(false); return }
+      // Recompute the collection's analytics with the new members.
+      fetch('/api/datasets/' + addToCollection!.datasetId + '/compute', { method: 'POST' }).catch(function() {})
+      if (onAdded) onAdded()
+      onClose()
+    } catch {
+      setError('Network error')
+      setSaving(false)
+    }
+  }
+
   async function handleCreate() {
+    if (isAdd) return handleAdd()
     if (!name.trim()) { setError('Give your collection a name'); return }
     if (members.length < 2) { setError('Select at least 2 datasets'); return }
     var emptyLabel = members.find(function(m) { return !m.label.trim() })
@@ -101,15 +139,18 @@ export default function NewCollectionModal({ datasets, onClose, onCreated }: Pro
 
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e5e7eb' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>New Collection</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>{isAdd ? 'Add Datasets' : 'New Collection'}</h2>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-            Combine datasets for cross-dataset analytics. No data is duplicated.
+            {isAdd
+              ? 'Add more datasets to "' + addToCollection!.name + '". No data is duplicated.'
+              : 'Combine datasets for cross-dataset analytics. No data is duplicated.'}
           </p>
         </div>
 
         {/* Body */}
         <div style={{ padding: '16px 24px', overflow: 'auto', flex: 1 }}>
-          {/* Name */}
+          {/* Name (create mode only) */}
+          {!isAdd && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>
               Collection Name
@@ -124,13 +165,14 @@ export default function NewCollectionModal({ datasets, onClose, onCreated }: Pro
               onBlur={function(e) { (e.target as HTMLInputElement).style.borderColor = '#d1d5db' }}
             />
           </div>
+          )}
 
           {/* Dataset list */}
           <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 8 }}>
             Select Datasets ({members.length} selected)
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-            {datasets.map(function(ds) {
+            {pickable.map(function(ds) {
               var isSelected = selected.has(ds.id)
               return (
                 <div key={ds.id}
@@ -207,16 +249,21 @@ export default function NewCollectionModal({ datasets, onClose, onCreated }: Pro
             style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
+          {(function() {
+            var disabled = saving || members.length < minMembers || (!isAdd && !name.trim())
+            return (
           <button onClick={handleCreate}
-            disabled={saving || members.length < 2 || !name.trim()}
+            disabled={disabled}
             style={{
               padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', borderRadius: 10,
-              border: 'none', cursor: saving || members.length < 2 || !name.trim() ? 'not-allowed' : 'pointer',
-              background: saving || members.length < 2 || !name.trim() ? '#9ca3af' : '#0ea5e9',
+              border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
+              background: disabled ? '#9ca3af' : '#0ea5e9',
               fontFamily: 'inherit', transition: 'background .15s',
             }}>
-            {saving ? 'Creating...' : 'Create Collection'}
+            {saving ? (isAdd ? 'Adding...' : 'Creating...') : (isAdd ? 'Add to Collection' : 'Create Collection')}
           </button>
+            )
+          })()}
         </div>
       </div>
     </div>

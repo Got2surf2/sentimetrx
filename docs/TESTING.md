@@ -70,6 +70,7 @@ tests/
 │   ├── auth-flows.test.ts             # env-gated, real Supabase — auth round-trips
 │   ├── campaign-routes-egress.test.ts # env-gated — service-role campaign-by-id routes
 │   ├── dataset-routes-egress.test.ts  # env-gated — service-role dataset/regulations/org routes
+│   ├── collection-members-routes-gate.test.ts # POST /api/collections/[id]/members (add datasets to a collection) — 401 no-org, 400 empty, 404 cross-org / missing
 │   ├── recordings-routes.test.ts      # recordings API routes (incl. documents §4.1e) — auth/feature/org gates + validation (mocked)
 │   ├── export-org-gate.test.ts        # cross-org 404 gate on the service-role export routes incl. recordings pptx (404/409/200+content-type; mocked)
 │   ├── recording-transfer-gate.test.ts # PATCH recording transfer — platform-admin-only 403 gate + RPC/audit orchestration + rename isolation (mocked)
