@@ -68,6 +68,8 @@ export interface ProjectInputModel {
   qa: ProjectQA[]
   commentary: ProjectComment[]
   themes: ProjectInputTheme[]          // per-input themes (reviews/CSAT/recordings/agents)
+  dimensions: ProjectInputTheme[]      // per-input ABSA taxonomy ("Dimensions") subs, when the
+                                       // input is taxonomy-classified (google_reviews etc.); else []
   entities: { name: string; mentions: number }[]
   sentiment: { positive: number; neutral: number; negative: number }
 }

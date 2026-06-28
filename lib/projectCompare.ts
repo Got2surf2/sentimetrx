@@ -14,7 +14,7 @@
 // so the numbers reconcile. Renders on the shared PDF design system (lib/pdf).
 
 import { callAI } from '@/lib/ai'
-import type { ProjectInputModel, ProjectSource } from '@/lib/projectReport'
+import type { ProjectInputModel, ProjectInputTheme, ProjectSource } from '@/lib/projectReport'
 import { PDF, pdfDoc, pdfCoverHeader, pdfSection, pdfKpiGrid, pdfSentPill, pdfPill, pdfEsc as esc } from '@/lib/pdf'
 
 export type ComparePurpose = 'competitive' | 'brand_360'
@@ -42,9 +42,16 @@ export interface CompareReportModel {
   generatedAt: string
   columns: ProjectSource[]
   rows: CompareRow[]
+  /** Second matrix over the ABSA taxonomy ("Dimensions") subs — same shape as
+   *  rows, populated only when ≥1 input is taxonomy-classified; else []. */
+  dimensionRows: CompareRow[]
   execSummary: string
   method: string
 }
+
+// Each input exposes its themes OR its dimensions as the same ProjectInputTheme
+// shape — the matrix engine runs once per lens via this selector.
+type LensSelector = (i: ProjectInputModel) => ProjectInputTheme[]
 
 const norm = (s: string) => s.trim().toLowerCase()
 function dominant(themes: { sentiment: string; count: number }[]): string {
@@ -58,10 +65,10 @@ function dominant(themes: { sentiment: string; count: number }[]): string {
 // ── AI: align synonymous theme labels across columns into unified rows ────────
 interface AlignedRow { theme: string; members: { column: string; label: string }[]; insight: string }
 
-async function alignThemes(columns: ProjectInputModel[], purpose: ComparePurpose, projectName: string, primary: string | null): Promise<AlignedRow[]> {
+async function alignThemes(columns: ProjectInputModel[], selector: LensSelector, lensNoun: string, purpose: ComparePurpose, projectName: string, primary: string | null): Promise<AlignedRow[]> {
   const blocks = columns.map(c =>
     `## ${c.source.name} (${c.source.rowCount.toLocaleString()} total)${primary && c.source.name === primary ? ' [PRIMARY FOCUS]' : ''}\n` +
-    c.themes.map(t => {
+    selector(c).map(t => {
       const pct = c.source.rowCount > 0 ? Math.round((t.count / c.source.rowCount) * 100) : null
       return `- "${t.label}" (${pct != null ? pct + '% of reviews, ' : ''}${t.count} mentions, ${t.sentiment}${t.avgRating != null ? `, ${t.avgRating.toFixed(1)}★` : ''})`
     }).join('\n'),
@@ -72,7 +79,7 @@ async function alignThemes(columns: ProjectInputModel[], purpose: ComparePurpose
     : `These are different DATA SOURCES for ONE brand. For each unified theme write a one-sentence TRIANGULATION insight — do the sources agree or diverge, and does any source uniquely surface it. ${normalize}`
   const res = await callAI({
     tier: 'standard', maxTokens: 2000, timeoutMs: 60000,
-    system: `You are comparing ${columns.length} inputs for "${projectName}". Each input has its own mined themes. Merge themes that mean the same thing across inputs into unified rows (e.g. "Food Quality" + "Taste" → one). Use ONLY the labels provided. ${framing}
+    system: `You are comparing ${columns.length} inputs for "${projectName}". Each input has its own mined ${lensNoun}. Merge ${lensNoun} that mean the same thing across inputs into unified rows (e.g. "Food Quality" + "Taste" → one). Use ONLY the labels provided. ${framing}
 Return ONLY JSON, no markdown:
 {"rows":[{"theme":"Unified Theme","members":[{"column":"exact input name","label":"exact raw label"}],"insight":"one sentence"}]}
 Every raw label must map into exactly one row. Order rows by importance.`,
@@ -111,29 +118,23 @@ async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Prom
 // ── Build ────────────────────────────────────────────────────────────────────
 export interface CompareBuildOpts { synthesize?: boolean; primaryId?: string }
 
-export async function buildCompareModel(name: string, purpose: ComparePurpose, inputs: ProjectInputModel[], generatedAt: string, opts: CompareBuildOpts = {}): Promise<CompareReportModel> {
-  // Competitive deep-dives on a PRIMARY focus (the designated dataset, else the
-  // first input) and orders it first; brand_360 has no primary.
-  let ordered = inputs
-  let primary: string | null = null
-  if (purpose === 'competitive' && inputs.length > 0) {
-    const focus = (opts.primaryId && inputs.find(i => i.source.id === opts.primaryId)) || inputs[0]
-    primary = focus.source.name
-    ordered = [focus, ...inputs.filter(i => i !== focus)]
-  }
-
-  const columns = ordered.map(i => i.source)
-  // theme lookup per column: label(lower) → ProjectInputTheme
-  const byCol = new Map(ordered.map(i => [i.source.name, new Map(i.themes.map(t => [norm(t.label), t]))]))
+// Build ONE matrix (themes × columns) for a given lens. Same align→fallback→cell
+// pipeline; called once for themes and once for dimensions.
+async function buildMatrix(
+  ordered: ProjectInputModel[], columns: ProjectSource[], selector: LensSelector,
+  lensNoun: string, purpose: ComparePurpose, name: string, primary: string | null, synthesize: boolean,
+): Promise<CompareRow[]> {
+  // label(lower) → theme/dimension, per column
+  const byCol = new Map(ordered.map(i => [i.source.name, new Map(selector(i).map(t => [norm(t.label), t]))]))
 
   let aligned: AlignedRow[] = []
-  if (opts.synthesize !== false && ordered.some(i => i.themes.length)) {
-    try { aligned = await alignThemes(ordered, purpose, name, primary) } catch { aligned = [] }
+  if (synthesize && ordered.some(i => selector(i).length)) {
+    try { aligned = await alignThemes(ordered, selector, lensNoun, purpose, name, primary) } catch { aligned = [] }
   }
   // Fallback / unplaced labels → 1:1 rows by exact label across columns.
   const placed = new Set<string>()  // `${column}|${labelLower}`
   for (const r of aligned) for (const m of r.members) placed.add(`${m.column}|${norm(m.label)}`)
-  for (const i of ordered) for (const t of i.themes) {
+  for (const i of ordered) for (const t of selector(i)) {
     const key = `${i.source.name}|${norm(t.label)}`
     if (placed.has(key)) continue
     // group same label across columns into one row
@@ -143,7 +144,7 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
     placed.add(key)
   }
 
-  const rows: CompareRow[] = aligned.map(r => {
+  return aligned.map(r => {
     const cells: Record<string, CompareCell> = {}
     let total = 0
     for (const col of columns) {
@@ -158,12 +159,36 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
     }
     return { theme: r.theme, insight: r.insight, cells, total }
   }).sort((a, b) => b.total - a.total)
+}
 
+export async function buildCompareModel(name: string, purpose: ComparePurpose, inputs: ProjectInputModel[], generatedAt: string, opts: CompareBuildOpts = {}): Promise<CompareReportModel> {
+  // Competitive deep-dives on a PRIMARY focus (the designated dataset, else the
+  // first input) and orders it first; brand_360 has no primary.
+  let ordered = inputs
+  let primary: string | null = null
+  if (purpose === 'competitive' && inputs.length > 0) {
+    const focus = (opts.primaryId && inputs.find(i => i.source.id === opts.primaryId)) || inputs[0]
+    primary = focus.source.name
+    ordered = [focus, ...inputs.filter(i => i !== focus)]
+  }
+
+  const columns = ordered.map(i => i.source)
+  const synthesize = opts.synthesize !== false
+
+  const rows = await buildMatrix(ordered, columns, i => i.themes, 'themes', purpose, name, primary, synthesize)
+  // Second matrix over ABSA Dimensions — only when ≥1 input is taxonomy-classified.
+  const dimensionRows = ordered.some(i => i.dimensions.length)
+    ? await buildMatrix(ordered, columns, i => i.dimensions, 'dimensions', purpose, name, primary, synthesize)
+    : []
+
+  const dimNote = dimensionRows.length > 0
+    ? ' A second matrix compares the ABSA Dimensions (a fixed aspect taxonomy applied to the review text), where the inputs carry it.'
+    : ''
   const base: Omit<CompareReportModel, 'execSummary'> = {
-    name, purpose, primary, generatedAt, columns, rows,
-    method: purpose === 'competitive'
+    name, purpose, primary, generatedAt, columns, rows, dimensionRows,
+    method: (purpose === 'competitive'
       ? `Deep-dive on "${primary}" benchmarked against ${columns.length - 1} competitor(s). Each row is a theme aligned across inputs; cells show each competitor's volume + sentiment (+ avg rating for review data). Themes merged by AI; counts computed in code.`
-      : `Triangulates ${columns.length} data sources for one brand. Each row is a theme aligned across sources; cells show each source's volume + sentiment. Themes merged by AI; counts computed in code.`,
+      : `Triangulates ${columns.length} data sources for one brand. Each row is a theme aligned across sources; cells show each source's volume + sentiment. Themes merged by AI; counts computed in code.`) + dimNote,
   }
   let execSummary = ''
   if (opts.synthesize !== false && rows.length > 0) { try { execSummary = await compareExec(base) } catch { execSummary = '' } }
@@ -228,32 +253,45 @@ export function renderCompareReportHtml(model: CompareReportModel): string {
     `</div>`,
     { keepWith: '' })
 
-  // Comparison matrix (themes × columns)
-  const header = `<tr><th style="text-align:left;border:1px solid ${PDF.line};padding:6px 8px;background:${PDF.panel};font-size:${PDF.size.tiny}px;color:${PDF.ink}">Theme</th>` +
-    model.columns.map(c => {
-      const isFocus = isComp && c.name === model.primary
-      return `<th style="border:1px solid ${PDF.line};padding:6px 4px;background:${isFocus ? PDF.teal : PDF.panel};font-size:${PDF.size.micro}px;color:${isFocus ? '#fff' : PDF.ink}">${esc(c.name)}${isFocus ? ' ★' : ''}</th>`
-    }).join('') + `</tr>`
-  const matrixRows = model.rows.map(r =>
-    `<tr class="keep"><td style="border:1px solid ${PDF.line};padding:6px 8px;font-size:${PDF.size.tiny}px;font-weight:700;color:${PDF.ink}">${esc(r.theme)}</td>` +
-    model.columns.map(c => cellHtml(r.cells[c.name])).join('') + `</tr>`).join('')
-  const matrix = pdfSection('Theme comparison',
-    `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${header}${matrixRows}</table>` +
-    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: the dominant sentiment + the <strong>% of that ${colName}'s reviews</strong> on the theme (raw count in parentheses)${isComp ? ', plus avg rating' : ''} — normalized so different-sized ${colName}s are comparable. "—" = the theme didn't surface for that ${colName}.</p>`,
-    { keepWith: '', margin: '26px' })
+  // Comparison matrix (themes × columns) — reused for the Dimensions lens.
+  const matrixTable = (rows: CompareRow[], rowHeader: string): string => {
+    const header = `<tr><th style="text-align:left;border:1px solid ${PDF.line};padding:6px 8px;background:${PDF.panel};font-size:${PDF.size.tiny}px;color:${PDF.ink}">${esc(rowHeader)}</th>` +
+      model.columns.map(c => {
+        const isFocus = isComp && c.name === model.primary
+        return `<th style="border:1px solid ${PDF.line};padding:6px 4px;background:${isFocus ? PDF.teal : PDF.panel};font-size:${PDF.size.micro}px;color:${isFocus ? '#fff' : PDF.ink}">${esc(c.name)}${isFocus ? ' ★' : ''}</th>`
+      }).join('') + `</tr>`
+    const body = rows.map(r =>
+      `<tr class="keep"><td style="border:1px solid ${PDF.line};padding:6px 8px;font-size:${PDF.size.tiny}px;font-weight:700;color:${PDF.ink}">${esc(r.theme)}</td>` +
+      model.columns.map(c => cellHtml(r.cells[c.name])).join('') + `</tr>`).join('')
+    return `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${header}${body}</table>`
+  }
+  const matrixNote = (unit: string): string =>
+    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: the dominant sentiment + the <strong>% of that ${colName}'s reviews</strong> on the ${unit} (raw count in parentheses)${isComp ? ', plus avg rating' : ''} — normalized so different-sized ${colName}s are comparable. "—" = the ${unit} didn't surface for that ${colName}.</p>`
+  const insightsHtml = (rows: CompareRow[]): string =>
+    rows.filter(r => r.insight).slice(0, 14).map(r =>
+      `<div class="keep" style="margin:0 0 10px"><div style="font-size:13px;font-weight:800;color:${PDF.ink}">${esc(r.theme)}</div><p style="font-size:13px;line-height:1.55;color:${PDF.body};margin:2px 0 0">${esc(r.insight)}</p></div>`).join('')
+
+  const matrix = pdfSection('Theme comparison', matrixTable(model.rows, 'Theme') + matrixNote('theme'), { keepWith: '', margin: '26px' })
 
   // Per-theme insights (the comparative/triangulation one-liners)
   const insights = model.rows.some(r => r.insight)
-    ? pdfSection(isComp ? 'Where they differ' : 'Agreement & divergence',
-      model.rows.filter(r => r.insight).slice(0, 14).map(r =>
-        `<div class="keep" style="margin:0 0 10px"><div style="font-size:13px;font-weight:800;color:${PDF.ink}">${esc(r.theme)}</div><p style="font-size:13px;line-height:1.55;color:${PDF.body};margin:2px 0 0">${esc(r.insight)}</p></div>`).join(''),
-      { keepWith: '', margin: '26px' })
+    ? pdfSection(isComp ? 'Where they differ' : 'Agreement & divergence', insightsHtml(model.rows), { keepWith: '', margin: '26px' })
+    : ''
+
+  // Dimensions lens (ABSA taxonomy) — second matrix, only when present. Each row
+  // is a "Axis: Sub" dimension shared across the inputs' keyword taxonomy.
+  const dims = model.dimensionRows.length > 0
+    ? pdfSection('Dimensions comparison',
+        `<p style="font-size:${PDF.size.tiny}px;color:${PDF.mute};margin:0 0 10px">Aspect-based dimensions (a fixed taxonomy applied to the review text), compared across ${colName}s alongside the organic themes above.</p>` +
+        matrixTable(model.dimensionRows, 'Dimension') + matrixNote('dimension') +
+        (model.dimensionRows.some(r => r.insight) ? `<div style="margin-top:16px">${insightsHtml(model.dimensionRows)}</div>` : ''),
+        { keepWith: '', margin: '26px' })
     : ''
 
   const footer = `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:24px 0 0;border-top:1px solid ${PDF.line};padding-top:10px">${esc(model.method)}</p>` +
     `<div class="faint" style="text-align:center;font-size:${PDF.size.tiny}px;margin-top:18px">Prepared by datanautix.com</div>`
 
-  return pdfDoc({ title: model.name, body: head + overview + manifest + matrix + insights + footer })
+  return pdfDoc({ title: model.name, body: head + overview + manifest + matrix + insights + dims + footer })
 }
 
 function fmt(s: string): string {

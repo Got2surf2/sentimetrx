@@ -13,6 +13,7 @@ import { getAgentStudy } from '@/lib/agentStudy'
 import { buildProjectReportModel } from '@/lib/projectReport'
 import { renderProjectReportHtml } from '@/lib/projectReportHtml'
 import { buildCompareModel, renderCompareReportHtml, type ComparePurpose } from '@/lib/projectCompare'
+import { AXES, AXIS_LABEL } from '@/lib/taxonomyRollup'
 import { isPanelMember } from '@/lib/recordings/panel'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import type { SourceSummary } from '@/lib/sourceSummary'
@@ -93,7 +94,7 @@ async function loadRecordingInput(svc: Svc, datasetId: string, label: string, ro
     samples: (ts.representative_exchanges ?? []).map(e => e.question).filter(Boolean).slice(0, 2),
   }))
 
-  return { source, presentation: proceedingsToSummary(rec.proceedings_summary as ProceedingsSummary | null), qa, commentary, themes, entities: [], sentiment }
+  return { source, presentation: proceedingsToSummary(rec.proceedings_summary as ProceedingsSummary | null), qa, commentary, themes, dimensions: [], entities: [], sentiment }
 }
 
 function dominantSentiment(s: { positive: number; neutral: number; negative: number }): string {
@@ -134,10 +135,55 @@ async function loadAgentInput(svc: Svc, datasetId: string, label: string, rowCou
   return {
     source,
     presentation: study.presentation,
-    qa, commentary, themes,
+    qa, commentary, themes, dimensions: [],
     entities: study.entities.map(e => ({ name: e.name, mentions: e.mentions })),
     sentiment,
   }
+}
+
+// ── Dimensions (ABSA taxonomy) per input ─────────────────────────────────────
+// For taxonomy-classified inputs (typically google_reviews), pull the per-sub
+// rollup into the SAME ProjectInputTheme shape so it drops into the comparison
+// matrix as a second matrix. Uses the server-side aggregate RPCs (sql/115) —
+// NOT a per-row read — so a competitive set of 10–30K-row datasets stays cheap:
+// 1 + 7×2 lightweight aggregate queries per input, no paging. Sentiment is
+// rating-derived (the meaningful signal for review data); avg rating per sub
+// comes from taxonomy_group_stats. Returns [] when the input has no taxonomy.
+const titleCase = (s: string) => s.replace(/\b\w/g, c => c.toUpperCase())
+function ratingSentiment(avg: number | null): string {
+  if (avg == null) return 'neutral'
+  if (avg >= 4.0) return 'positive'
+  if (avg <= 3.0) return 'negative'
+  return 'mixed'
+}
+async function loadDimensionsForInput(svc: Svc, datasetId: string): Promise<ProjectInputTheme[]> {
+  // Primary classified field resolves only when per-field taxonomy exists; null
+  // → no Dimensions for this input, skip the 14 axis calls entirely.
+  const { data: primaryField } = await svc.rpc('taxonomy_primary_field', { p_dataset_id: datasetId })
+  if (!primaryField) return []
+
+  const perAxis = await Promise.all(AXES.map(async axis => {
+    const [{ data: counts }, { data: stats }] = await Promise.all([
+      svc.rpc('taxonomy_sub_counts', { p_dataset_id: datasetId, p_axis: axis }),
+      svc.rpc('taxonomy_group_stats', { p_dataset_id: datasetId, p_axis: axis, p_value_field: 'rating' }),
+    ])
+    const ratingBySub = new Map<string, number>()
+    for (const r of (stats || []) as { group_val: string; avg_val: number | null }[]) {
+      if (r.avg_val != null) ratingBySub.set(String(r.group_val), Number(r.avg_val))
+    }
+    return ((counts || []) as { value: string; count: number }[]).map(c => {
+      const sub = String(c.value)
+      const avg = ratingBySub.has(sub) ? (ratingBySub.get(sub) as number) : null
+      return {
+        label: `${AXIS_LABEL[axis]}: ${titleCase(sub)}`,
+        count: Number(c.count) || 0,
+        sentiment: ratingSentiment(avg),
+        avgRating: avg != null ? Math.round(avg * 10) / 10 : null,
+        samples: [] as string[],
+      }
+    })
+  }))
+  return perAxis.flat().sort((a, b) => b.count - a.count).slice(0, 30)
 }
 
 // ── Generic (reviews / CSAT / upload) member ─────────────────────────────────
@@ -181,7 +227,9 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
     return a
   }, { positive: 0, neutral: 0, negative: 0 })
 
-  return { source: src, presentation: null, qa: [], commentary, themes, entities: [], sentiment }
+  const dimensions = await loadDimensionsForInput(svc, datasetId)
+
+  return { source: src, presentation: null, qa: [], commentary, themes, dimensions, entities: [], sentiment }
 }
 
 // ── Per-dataset dispatch (shared by collection load + ad-hoc grouping) ───────
