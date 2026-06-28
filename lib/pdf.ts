@@ -41,7 +41,12 @@ export function pdfBaseStyles(): string {
   return (
     `*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
     `body{font-family:${P.font};color:${P.ink};margin:0;background:#fff;font-size:${P.size.body}px;line-height:1.5}` +
-    `.wrap{max-width:760px;margin:0 auto;padding:8px 0 28px}` +
+    // Trailing padding kept at 0: any bottom whitespace here can tip content a
+    // hair past a page boundary and emit a blank trailing page in page.pdf().
+    `.wrap{max-width:760px;margin:0 auto;padding:8px 0 0}` +
+    // Belt-and-suspenders against the blank-last-page edge case: the last flow
+    // child never contributes a bottom margin.
+    `.wrap > *:last-child{margin-bottom:0 !important}` +
     `h1{font-size:${P.size.h1}px;font-weight:800;color:${P.ink};margin:0}` +
     `.h2{font-size:${P.size.h2}px;font-weight:800;color:${P.ink};border-bottom:1px solid ${P.line};padding-bottom:6px;margin:0 0 12px}` +
     `h3{font-size:${P.size.h3}px;font-weight:800;color:${P.ink};margin:0}` +

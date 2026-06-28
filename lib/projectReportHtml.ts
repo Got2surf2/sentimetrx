@@ -161,7 +161,8 @@ export function renderProjectReportHtml(model: ProjectReportModel): string {
     `<!doctype html><html><head><meta charset="utf-8"><style>` +
     `*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
     `body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:${INK};margin:0;background:#fff;font-size:14px;line-height:1.5}` +
-    `.wrap{max-width:760px;margin:0 auto;padding:8px 0 28px}` +
+    `.wrap{max-width:760px;margin:0 auto;padding:8px 0 0}` +
+    `.wrap > *:last-child{margin-bottom:0 !important}` +
     `.h2{font-size:17px;font-weight:800;color:${INK};border-bottom:1px solid ${LINE};padding-bottom:6px;margin:0 0 12px;break-after:avoid;page-break-after:avoid}` +
     `h1,.h2,h3{break-after:avoid;page-break-after:avoid}` +
     // PDF-template standard (memory: feedback_pdf_template_rules): a section title

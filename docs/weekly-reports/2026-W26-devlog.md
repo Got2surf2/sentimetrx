@@ -685,3 +685,7 @@ Members showed only "N rows" while add-candidates showed "Town Hall · N rows" e
 ## 2026-06-28 — Competitive focus picker: radio modal (was a window.prompt)
 
 Replaced the crude `window.prompt("enter a number")` focus picker with a proper radio-button modal in DatasetCard ("Competitive deep-dive — pick the focus competitor", radios + Generate report). Display-only UX.
+
+## 2026-06-28 — Competitive report: normalize to % + fix blank last page
+
+Owner: raw mention counts mislead across different-sized competitors. (1) Matrix cells now show **% of that competitor's reviews on the theme** (raw count in parens) — `CompareCell.pct = count/column.rowCount`. (2) The AI `alignThemes` + `compareExec` prompts feed per-brand % and instruct normalized comparison ("36% vs 53% of reviews", not raw counts). (3) Blank-last-page edge case fixed defensively — `.wrap` trailing padding → 0 + `.wrap > *:last-child{margin-bottom:0}` in `lib/pdf.ts` + the project renderer (a hair of trailing whitespace was tipping content past a page boundary in `page.pdf()`). Verified on Darden (Fleming's vs Capital Grille): cells + exec normalized, 2 pages no blank. tsc clean; tests pass.

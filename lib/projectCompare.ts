@@ -22,6 +22,8 @@ export type ComparePurpose = 'competitive' | 'brand_360'
 export interface CompareCell {
   present: boolean
   count: number
+  pct: number | null         // count ÷ that column's total rows × 100 — normalizes
+                             // across different-sized competitors (the headline number)
   sentiment: string          // dominant
   avgRating: number | null
 }
@@ -58,11 +60,16 @@ interface AlignedRow { theme: string; members: { column: string; label: string }
 
 async function alignThemes(columns: ProjectInputModel[], purpose: ComparePurpose, projectName: string, primary: string | null): Promise<AlignedRow[]> {
   const blocks = columns.map(c =>
-    `## ${c.source.name}${primary && c.source.name === primary ? ' [PRIMARY FOCUS]' : ''}\n` + c.themes.map(t => `- "${t.label}" (${t.count}, ${t.sentiment}${t.avgRating != null ? `, ${t.avgRating.toFixed(1)}★` : ''})`).join('\n'),
+    `## ${c.source.name} (${c.source.rowCount.toLocaleString()} total)${primary && c.source.name === primary ? ' [PRIMARY FOCUS]' : ''}\n` +
+    c.themes.map(t => {
+      const pct = c.source.rowCount > 0 ? Math.round((t.count / c.source.rowCount) * 100) : null
+      return `- "${t.label}" (${pct != null ? pct + '% of reviews, ' : ''}${t.count} mentions, ${t.sentiment}${t.avgRating != null ? `, ${t.avgRating.toFixed(1)}★` : ''})`
+    }).join('\n'),
   ).join('\n\n')
+  const normalize = `IMPORTANT: the brands differ in total review volume, so compare on a NORMALIZED basis — use the % of each brand's reviews (the "% of reviews" figure), NOT raw mention counts. Lead with the %; put raw counts in parentheses if useful. Never imply one brand "leads" just because it has more raw mentions when it simply has more reviews.`
   const framing = purpose === 'competitive'
-    ? `This is a deep-dive on "${primary}" with the other competitors as the benchmark field. For each unified theme write a one-sentence insight FROM ${primary}'s POV — does ${primary} lead or lag the field here, and by how much / against whom.`
-    : `These are different DATA SOURCES for ONE brand. For each unified theme write a one-sentence TRIANGULATION insight — do the sources agree or diverge, and does any source uniquely surface it.`
+    ? `This is a deep-dive on "${primary}" with the other competitors as the benchmark field. For each unified theme write a one-sentence insight FROM ${primary}'s POV — does ${primary} lead or lag the field here (on a % basis), and against whom. ${normalize}`
+    : `These are different DATA SOURCES for ONE brand. For each unified theme write a one-sentence TRIANGULATION insight — do the sources agree or diverge, and does any source uniquely surface it. ${normalize}`
   const res = await callAI({
     tier: 'standard', maxTokens: 2000, timeoutMs: 60000,
     system: `You are comparing ${columns.length} inputs for "${projectName}". Each input has its own mined themes. Merge themes that mean the same thing across inputs into unified rows (e.g. "Food Quality" + "Taste" → one). Use ONLY the labels provided. ${framing}
@@ -86,12 +93,13 @@ Every raw label must map into exactly one row. Order rows by importance.`,
 async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Promise<string> {
   const cols = model.columns.map(c => c.name).join(', ')
   const rowLines = model.rows.slice(0, 12).map(r => {
-    const per = model.columns.map(c => { const cell = r.cells[c.name]; return cell?.present ? `${c.name}:${cell.sentiment}${cell.avgRating != null ? `/${cell.avgRating.toFixed(1)}★` : ''}` : `${c.name}:—` }).join(', ')
+    const per = model.columns.map(c => { const cell = r.cells[c.name]; return cell?.present ? `${c.name}:${cell.pct != null ? cell.pct + '% ' : ''}${cell.sentiment}${cell.avgRating != null ? `/${cell.avgRating.toFixed(1)}★` : ''} (${cell.count})` : `${c.name}:—` }).join(', ')
     return `- ${r.theme}: ${per}${r.insight ? ` — ${r.insight}` : ''}`
   }).join('\n')
+  const normalize = `Compare on a NORMALIZED basis: cite the % of each brand's reviews (shown per cell), not raw mention counts — the brands differ in size, so raw counts aren't comparable. Put raw counts in parentheses if useful.`
   const framing = model.purpose === 'competitive'
-    ? `Write the executive summary of a COMPETITIVE deep-dive on "${model.primary}", benchmarked against the field (${cols}). Lead with how ${model.primary} performs overall, then where ${model.primary} leads the field and where it lags (and against whom), on the most important themes. 3-5 sentences, specific, no invented numbers.`
-    : `Write the executive summary of a BRAND 360 report triangulating ${cols} (different sources for one brand). Name where the sources agree, where they diverge, and what each uniquely reveals. 3-5 sentences, specific, no invented numbers.`
+    ? `Write the executive summary of a COMPETITIVE deep-dive on "${model.primary}", benchmarked against the field (${cols}). Lead with how ${model.primary} performs overall, then where ${model.primary} leads the field and where it lags (and against whom), on the most important themes. ${normalize} 3-5 sentences, specific, no invented numbers.`
+    : `Write the executive summary of a BRAND 360 report triangulating ${cols} (different sources for one brand). Name where the sources agree, where they diverge, and what each uniquely reveals. ${normalize} 3-5 sentences, specific, no invented numbers.`
   const res = await callAI({
     tier: 'standard', maxTokens: 700, timeoutMs: 45000,
     system: framing,
@@ -141,10 +149,11 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
     for (const col of columns) {
       const colThemes = byCol.get(col.name)
       const members = r.members.filter(m => m.column === col.name).map(m => colThemes?.get(norm(m.label))).filter(Boolean) as { sentiment: string; count: number; avgRating: number | null }[]
-      if (members.length === 0) { cells[col.name] = { present: false, count: 0, sentiment: 'neutral', avgRating: null }; continue }
+      if (members.length === 0) { cells[col.name] = { present: false, count: 0, pct: null, sentiment: 'neutral', avgRating: null }; continue }
       const count = members.reduce((n, m) => n + (m.count || 0), 0)
       const ratings = members.map(m => m.avgRating).filter((x): x is number => typeof x === 'number')
-      cells[col.name] = { present: true, count, sentiment: dominant(members), avgRating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null }
+      const pct = col.rowCount > 0 ? Math.round((count / col.rowCount) * 100) : null
+      cells[col.name] = { present: true, count, pct, sentiment: dominant(members), avgRating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null }
       total += count
     }
     return { theme: r.theme, insight: r.insight, cells, total }
@@ -178,7 +187,10 @@ function cellHtml(cell: CompareCell): string {
   const fg: Record<string, string> = { positive: '#059669', negative: '#dc2626', mixed: '#b45309', neutral: '#475569' }
   const s = (cell.sentiment || 'neutral').toLowerCase()
   const rating = cell.avgRating != null ? ` · ${cell.avgRating.toFixed(1)}★` : ''
-  return `<td style="text-align:center;border:1px solid ${PDF.line};padding:6px 4px;background:${pal[s] || pal.neutral}"><div style="font-size:${PDF.size.tiny}px;font-weight:700;color:${fg[s] || fg.neutral};text-transform:capitalize">${esc(s)}</div><div style="font-size:${PDF.size.micro}px;color:${PDF.mute}">${cell.count}${rating}</div></td>`
+  // Normalized: % of that competitor's rows on this theme (the headline), raw count
+  // in parens — so different-sized competitors are comparable.
+  const vol = cell.pct != null ? `${cell.pct}% <span style="color:${PDF.faint}">(${cell.count.toLocaleString()})</span>` : cell.count.toLocaleString()
+  return `<td style="text-align:center;border:1px solid ${PDF.line};padding:6px 4px;background:${pal[s] || pal.neutral}"><div style="font-size:${PDF.size.tiny}px;font-weight:700;color:${fg[s] || fg.neutral};text-transform:capitalize">${esc(s)}</div><div style="font-size:${PDF.size.micro}px;color:${PDF.mute}">${vol}${rating}</div></td>`
 }
 
 export function renderCompareReportHtml(model: CompareReportModel): string {
@@ -227,7 +239,7 @@ export function renderCompareReportHtml(model: CompareReportModel): string {
     model.columns.map(c => cellHtml(r.cells[c.name])).join('') + `</tr>`).join('')
   const matrix = pdfSection('Theme comparison',
     `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${header}${matrixRows}</table>` +
-    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: that ${colName}'s dominant sentiment + volume${isComp ? ' (+ avg rating for review data)' : ''}. "—" = the theme didn't surface for that ${colName}.</p>`,
+    `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:8px 0 0">Each cell: the dominant sentiment + the <strong>% of that ${colName}'s reviews</strong> on the theme (raw count in parentheses)${isComp ? ', plus avg rating' : ''} — normalized so different-sized ${colName}s are comparable. "—" = the theme didn't surface for that ${colName}.</p>`,
     { keepWith: '', margin: '26px' })
 
   // Per-theme insights (the comparative/triangulation one-liners)
