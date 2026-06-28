@@ -36,6 +36,7 @@ tests/
 │   ├── auth/             # requireAdmin, logDeckDownload, botPageOrgGate (agent admin-page org gate)
 │   ├── components/       # jsdom render/interaction tests — BrandTagInput (render + onChange + datalist fetch), DatanautixAttribution (brand contract + variants), ModulePlaceholder (counts + settings link), HelpHint (popover open/close/Escape), FavoriteStar (aria state + optimistic POST + re-sync), LottieLoader (message + size; lottie-web stubbed)
 │   ├── recordings/       # coverage (per-topic counting + zero-flag, gap detection, histogram, agenda↔topic casing reconciliation §3.6); analyze (Opus+Sonnet+synthesis parse, flag-merge, sentiment, deterministic counts, overallSentiment, graceful-degrade; callAI mocked); meetingTool (resolveProfile NULL→qa coercion, clampPhases snap/clip, slicePhaseSegments, fallback); brandGlossary (mergeBrandEntities — brand-catalog seeding §3.5c); transcriptRoles (segment→question/answer monotonic split + span tightening de-overlap §3.6 + action-item transcript trace by content-word window); timeline (packLanes overlap staggering + buildTimelineModel geometry); configVersion (isAnalysisConfigDrifted — shaping-vs-metadata drift detection §5.4/§5.7)
+│   ├── anaContext.test.ts    # Ask Ana row→context formatter — town-hall Q&A + agent-turn shape detection, mixed-collection (project preview) labeling, noise-field drop, truncation
 │   ├── botEntityExtraction.test.ts
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts

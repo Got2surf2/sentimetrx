@@ -13,13 +13,13 @@ import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
+import { getSourceLabel, formatRowsForContext } from '@/lib/anaContext'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
 const DEFAULT_SAMPLE = 200    // default if user doesn't configure
-const TEXT_TRUNCATE  = 300    // max chars per text field
 const FETCH_CAP      = 2000   // max rows to pull from DB before filtering
 const MEMBER_FLOOR   = 20     // min rows per collection member in 'floor' strategy
 const URL_ONLY_RE    = /^(\s*(https?:\/\/\S+)\s*)+$/i
@@ -688,73 +688,3 @@ async function streamAnthropicResponse(
   })
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function getSourceLabel(source: string): string {
-  if (source === 'reddit') return 'Reddit comments and posts'
-  if (source === 'substack') return 'Substack reader comments'
-  if (source === 'townhall') return 'PulseIQ conversation responses'
-  if (source === 'study') return 'survey responses'
-  if (source === 'collection') return 'survey responses'
-  if (source === 'google_reviews') return 'Google Reviews'
-  return 'data entries'
-}
-
-function truncate(text: string, max: number): string {
-  if (!text || text.length <= max) return text
-  return text.slice(0, max) + '...'
-}
-
-function formatRowsForContext(rows: Record<string, unknown>[], source: string): string {
-  if (rows.length === 0) return '(no data)'
-
-  if (source === 'reddit') {
-    return rows.map(function(r, i) {
-      const parts: string[] = []
-      if (r.author) parts.push('Author: ' + r.author)
-      if (r.subreddit) parts.push('r/' + r.subreddit)
-      if (r.thread_title) parts.push('Thread: ' + truncate(String(r.thread_title), 80))
-      if (r.score != null) parts.push('Score: ' + r.score)
-      if (r.post_date) parts.push('Date: ' + r.post_date)
-      if (r.depth != null) parts.push(Number(r.depth) === -1 ? 'Type: Post' : 'Type: Comment (depth ' + r.depth + ')')
-      parts.push('Text: ' + truncate(String(r.body || ''), TEXT_TRUNCATE))
-      return '[' + (i + 1) + '] ' + parts.join(' | ')
-    }).join('\n')
-  }
-
-  if (source === 'substack') {
-    return rows.map(function(r, i) {
-      const parts: string[] = []
-      if (r.author) parts.push('Author: ' + r.author)
-      if (r.post_title) parts.push('Post: ' + truncate(String(r.post_title), 80))
-      if (r.likes != null) parts.push('Likes: ' + r.likes)
-      if (r.is_author_reply) parts.push('Author Reply: yes')
-      if (r.children_count) parts.push('Replies: ' + r.children_count)
-      if (r.comment_date) parts.push('Date: ' + String(r.comment_date).slice(0, 10))
-      parts.push('Text: ' + truncate(String(r.body || ''), TEXT_TRUNCATE))
-      return '[' + (i + 1) + '] ' + parts.join(' | ')
-    }).join('\n')
-  }
-
-  if (source === 'townhall') {
-    return rows.map(function(r, i) {
-      const parts: string[] = []
-      if (r.participant_id) parts.push('Participant: ' + r.participant_id)
-      if (r.topic) parts.push('Topic: ' + r.topic)
-      if (r.bot_message) parts.push('Q: ' + truncate(String(r.bot_message), 120))
-      parts.push('A: ' + truncate(String(r.user_message || ''), TEXT_TRUNCATE))
-      if (r.responded_at) parts.push('Date: ' + String(r.responded_at).slice(0, 10))
-      return '[' + (i + 1) + '] ' + parts.join(' | ')
-    }).join('\n')
-  }
-
-  return rows.map(function(r, i) {
-    const parts = Object.entries(r)
-      .filter(function(e) { return e[1] != null && e[1] !== '' })
-      .map(function(e) {
-        const val = typeof e[1] === 'string' ? truncate(e[1], TEXT_TRUNCATE) : e[1]
-        return e[0] + ': ' + val
-      })
-    return '[' + (i + 1) + '] ' + parts.join(' | ')
-  }).join('\n')
-}

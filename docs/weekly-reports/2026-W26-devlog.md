@@ -595,3 +595,13 @@ Step toward "one report template, two inputs" — the Town Hall report and the A
 - **Agent KB summary = the agent's "presentation"**: `getAgentStudy` computes `presentation: SourceSummary | null` — one `callAI` (standard) summarizing `system_prompt` + `bot_knowledge_chunks` into the shared shape, rendered as a **Knowledge Base** section atop the report. Run only on a study cache miss; cache key folds in a KB content hash (`kbSignature`), `STUDY_SCHEMA_VERSION` → **v6**.
 - Tests: `tests/unit/commentaryReport.test.ts` (7) + `tests/unit/sourceSummary.test.ts` (6) — clustering/ordering/escaping/empty-state/optional-fields. tsc clean. QC-rendered both sections via Playwright (parallel, sibling look confirmed).
 - **Scope:** covers the HTML bake (PDF + public `/th` share). Follow-ups (not done): mirror the commentary split into the in-app `ReportClient.tsx` (has its own `typeFilter`) and the PPTX decks; the project-level (cross-input) roll-up report. All LOCAL/unpushed.
+
+## 2026-06-28 — Ask Ana cross-input ("project preview") formatting
+
+Quick path to a cross-input report **today**: drop multiple town-hall + agent datasets into a `collection` and ask Ana to summarize/deck across them (Ana already samples across collection members). The gap was formatting — a collection pools rows from different-shaped members and formats them under `source='collection'` via the generic field-dump branch, which dumped plumbing and didn't label Q&A.
+
+- Extracted Ana's row→context formatter from `app/api/ask-ana/route.ts` into testable **`lib/anaContext.ts`** (`getSourceLabel`, `formatRowsForContext`, `truncate`).
+- **Shape-aware generic branch**: recognizes town-hall Q&A rows (`question/answer/topic/asker/panelist`, non-`ask` typology surfaced) and agent-turn rows (`bot_message/user_message/sentiment`), formatting each as a labeled exchange; everything else falls back to a field dump minus a NOISE denylist (`extraction_id`, `confidence`, `session_id`, `row_index`, …). This fixes single recording/bot dataset queries AND mixed collections in one place.
+- `getSourceLabel`: added `recording` → "town hall Q&A exchanges", `bot` → "agent conversation turns"; `collection` → neutral "responses" (was misleading "survey responses" for a mixed collection).
+- Test: `tests/unit/anaContext.test.ts` (11) — recording/bot/mixed-collection formatting, noise-drop, typology surfacing, truncation, empty-state. tsc clean.
+- This is the **exploratory/sampled** preview (Ana caps at 500 rows) — NOT the authoritative complete project report (that's the deterministic roll-up of per-input report models, still to build). LOCAL/unpushed.
