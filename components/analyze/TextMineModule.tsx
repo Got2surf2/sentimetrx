@@ -2634,7 +2634,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10, marginTop: 'auto' }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
                                     <span style={{ fontSize: 13, color: T.textMid }}>
-                                      <strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> records
+                                      <strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> comments
                                       {(t.snippetCount || 0) > 0 && (
                                         <>
                                           {' \u00b7 '}

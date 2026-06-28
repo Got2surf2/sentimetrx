@@ -690,12 +690,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       )}
       {signalStats && signalStats.themeCount > 0 && signalStats.records > 0 && (function() {
         const fit = FIT_BAND[signalStats.themeFitBand]
-        const tip = signalStats.themeFitPct + '% of records (' + signalStats.inThemes.toLocaleString() +
+        const tip = signalStats.themeFitPct + '% of comments (' + signalStats.inThemes.toLocaleString() +
           ' of ' + signalStats.records.toLocaleString() + ') match at least one of the ' +
           signalStats.themeCount + ' themes.'
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
-            <span style={{ color: '#6b7280' }} title="Sum of per-theme record matches (a row in N themes contributes N).">
+            <span style={{ color: '#6b7280' }} title="Sum of per-theme comment matches (a comment in N themes contributes N).">
               <strong style={{ color: '#111827' }}>{signalStats.signals.toLocaleString()}</strong> signals
               {' '}<span style={{ color: '#9ca3af' }} title="Average number of theme signals per commenting record (signals ÷ comments).">
                 ({(signalStats.signals / signalStats.records).toFixed(1)} per comment)

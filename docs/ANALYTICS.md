@@ -93,8 +93,8 @@ On a **collection** dataset, TextMine's "merge" mode ("import component topics")
 ### Signal-stats toolbar (`lib/signalStats.ts`)
 **Date-field range (2026-06-24):** `computeFieldStats`/`mergeSchemaStats` (`lib/datasetUtils.ts`) now persist true `dateMin`/`dateMax` on date fields (`SchemaFieldConfig` in `analyzeTypes.ts`), widened across incremental sync batches — the categorical `values` list is still capped at 500 (which, sorted ascending, used to drop the *recent* end on long-running review datasets). The `FiltersModal` review-date slider takes its absolute domain from the **union of schema `dateMin`/`dateMax` and the loaded-row extents**, so the recent end can't be lost whichever path truncates.
 
-The TextMine strip ("N records · M signals · theme-fit X% · K themes · ★ R avg rating · 📅 date range") and the
-`/analyze` listing cards are powered by `computeSignalStats`. The **date range** and **avg rating**
+The TextMine strip ("N comments · M signals · theme-fit X% · K themes · ★ R avg rating · 📅 date range") and the
+`/analyze` listing cards are powered by `computeSignalStats`. **Terminology (2026-06-28):** the text unit is called **"comments"** everywhere user-facing (strip label, theme cards "N comments", theme-fit tooltip "% of comments", listing card). The internal field/property stays `records` (= the exact non-empty analyzed-text count); only the displayed noun changed. ("comments" was chosen over "records"/"verbatims" — see the comments-terminology note; the count is still the max non-empty count across analyzed text fields, `signalStats.records`.) The **date range** and **avg rating**
 are added in the `signal-stats` route (not the cached compute). The date range comes from
 `datasets.description.start_date/end_date`; the **avg rating** detects the dataset's rating field from
 `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField` — the same rule TextMine uses) and

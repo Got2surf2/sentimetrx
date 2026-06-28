@@ -7,7 +7,7 @@
 // product wants to lead with: a small dataset that "feels small" by
 // row count alone gets its real size from the signal/theme-fit pair.
 //
-//   480 records  ·  12,400 signals  ·  Theme fit  Tight  79% ▓▓▓▓▓▓▓▓░░
+//   480 comments  ·  12,400 signals  ·  Theme fit  Tight  79% ▓▓▓▓▓▓▓▓░░
 //
 // Data fetched once per mount from /api/datasets/[id]/signal-stats.
 // Skeleton + small Lottie spinner stands in until the response lands
@@ -94,10 +94,10 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     <div style={outerStyle}>
       <span>
         <strong style={{ color: '#111827' }}>{stats.records.toLocaleString()}</strong>{' '}
-        <span style={{ color: '#6b7280' }}>records</span>
+        <span style={{ color: '#6b7280' }}>comments</span>
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
-      <span title="Sum of per-theme record matches. A row mentioning multiple themes contributes to multiple counts.">
+      <span title="Sum of per-theme comment matches. A comment mentioning multiple themes contributes to multiple counts.">
         <strong style={{ color: '#111827' }}>{stats.signals.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>signals</span>
       </span>
@@ -105,7 +105,7 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
         title={
-          stats.themeFitPct + '% of records (' + stats.inThemes.toLocaleString() +
+          stats.themeFitPct + '% of comments (' + stats.inThemes.toLocaleString() +
           ' of ' + stats.records.toLocaleString() + ') match at least one of the ' +
           stats.themeCount + ' themes. ' +
           (stats.themeFitBand === 'Tight'
