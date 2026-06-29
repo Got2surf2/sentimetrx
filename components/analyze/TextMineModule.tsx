@@ -163,6 +163,7 @@ interface Props {
   savedThemeModel:   ThemeModel | null
   datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
   taxonomyEnabled?:  boolean   // org has the 'taxonomy' (Dimensions) capability → show Dimensions on any analyze dataset, not just google_reviews
+  taxonomySuppressed?: boolean // AI detected non-food-service → hide Dimensions even for google_reviews (overrides only the source proxy, not an explicit enable)
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
   outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
@@ -1040,7 +1041,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
@@ -1076,7 +1077,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Populated by fetchServerThemeCounts when the dataset has Dimensions enabled.
   const [serverThemeDimensions, setServerThemeDimensions] = useState<Record<string, { axis: string; sub: string; count: number }[]>>({})
   // Same gate as the Dimensions sub-tab: dataset is classifiable into Dimensions.
-  const dimensionsEnabled = datasetSource === 'google_reviews' || !!taxonomyEnabled
+  const dimensionsEnabled = !!taxonomyEnabled || (datasetSource === 'google_reviews' && !taxonomySuppressed)
   const router = useRouter()
   // Brief banner shown when restaurant data was auto-detected at theme time and
   // Dimensions are being classified in the background (the "zero-click" path).
@@ -1243,7 +1244,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // is still in flight, fall back to the server-prefetched flag so the Entities
   // pill renders on first paint instead of popping in (steady state unchanged —
   // if the catalog comes back empty, the pill drops as before).
-  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities), outletCount: outletCount }
+  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, taxonomySuppressed: taxonomySuppressed, hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities), outletCount: outletCount }
   function sectionAvailable(s: Section): boolean {
     return availableSections(sectionGate).indexOf(s) >= 0
   }
@@ -1817,7 +1818,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         enrichSearchInterest(tm2)
         // Smart Dimensions: the AI flagged this as restaurant/food-service data →
         // enable + classify Dimensions automatically (the route also set the flag).
+        // Not food-service → the route suppressed it; refresh so the (irrelevant)
+        // restaurant Dimensions tab hides for this otherwise-proxied dataset.
         if (data.foodService === true) void autoEnableDimensions(effectiveFields)
+        else if (data.foodService === false && datasetSource === 'google_reviews' && !taxonomyEnabled) router.refresh()
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')

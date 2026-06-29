@@ -504,10 +504,16 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   flag, and the client (`autoEnableDimensions` in `TextMineModule`) auto-enables + classifies in the
   background (PATCH flag → loop the pendingOnly classifier → `router.refresh`), with a 🍽️ "Restaurant
   data detected — classifying Dimensions…" banner — zero clicks. (2) Applying a **restaurant theme library**
-  (`casual_dining`/`fine_dining`/`fast_food` ∈ `RESTAURANT_INDUSTRIES`) triggers the same. NOTE: the
-  `google_reviews`-implies-restaurant proxy in the visibility gate was **kept deliberately** — dropping it
-  would hide Dimensions from restaurant Google-reviews datasets that haven't had themes mined yet (the
-  common case), a worse regression than the rare non-restaurant-Google-reviews false positive. **One-click
+  (`casual_dining`/`fine_dining`/`fast_food` ∈ `RESTAURANT_INDUSTRIES`) triggers the same. (3) The inverse — when the
+  AI judges the data is **NOT** food-service — sets `datasets.taxonomy_suppressed=true` (sql/139), which
+  **hides** the restaurant Dimensions for that dataset even though it's `google_reviews` (a hotel's /
+  clinic's reviews). Suppression overrides **only** the source proxy: an explicit `taxonomy_enabled`
+  (manual Schema toggle) or a restaurant-org capability still wins, so intentional opt-in is never undone.
+  The gate is now `taxonomyEnabled || (datasetSource==='google_reviews' && !taxonomySuppressed)` in all
+  three places (`textmineNav.availableSections`, `TextMineModule`, `ChartsModule`), threaded from both
+  pages. NOTE: the `google_reviews`-implies-restaurant proxy was **kept** (not dropped) — dropping it
+  outright would hide Dimensions from restaurant Google-reviews datasets that haven't had themes mined yet
+  (the common case); the suppression flag is the targeted fix for the non-restaurant false positive instead. **One-click
   enable+classify (2026-06-28):** an unclassified dataset's Dimensions tab shows a single **"Enable
   Dimensions"** button — it PATCHes `taxonomy_enabled=true` (hygiene, idempotent) AND runs the
   classifier in one action (`enableAndClassify` in `TaxonomyModule`), replacing the prior silent

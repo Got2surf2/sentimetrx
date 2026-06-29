@@ -63,10 +63,13 @@ export function viewLocked(section: Section, view: LensView, hasThemes: boolean)
 // Which sections a dataset supports — the single source of truth for the row-1
 // gates (shared by TextMineModule's bar and the reset-if-unavailable guard).
 // Returned in bar order: Themes, Dimensions, Entities, Advanced.
-export interface SectionGateOpts { datasetSource?: string; taxonomyEnabled?: boolean; hasEntities?: boolean; outletCount?: number }
+// taxonomySuppressed: AI detected non-food-service data → hide the restaurant
+// taxonomy even for google_reviews. It overrides ONLY the source proxy, never an
+// explicit taxonomyEnabled (manual opt-in / restaurant-org capability).
+export interface SectionGateOpts { datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean; hasEntities?: boolean; outletCount?: number }
 export function availableSections(opts: SectionGateOpts): Section[] {
   const out: Section[] = ['themes']   // Themes is always available (the mining home)
-  if (opts.datasetSource === 'google_reviews' || opts.taxonomyEnabled) out.push('dimensions')
+  if (opts.taxonomyEnabled || (opts.datasetSource === 'google_reviews' && !opts.taxonomySuppressed)) out.push('dimensions')
   if (opts.hasEntities) out.push('entities')
   if (opts.datasetSource === 'google_reviews' && (opts.outletCount || 0) >= 5) out.push('advanced')
   return out

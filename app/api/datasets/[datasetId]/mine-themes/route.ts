@@ -112,11 +112,16 @@ export async function POST(request: Request, props: Props) {
       return NextResponse.json({ error: 'AI returned no themes' }, { status: 500 })
     }
 
-    // Smart Dimensions: when the AI judges this restaurant/food-service data, flag
-    // the dataset so Dimensions (the restaurant taxonomy) becomes available — the
-    // client then auto-classifies. Best-effort; never blocks the themes response.
+    // Smart Dimensions: act on the AI's restaurant judgement. food-service →
+    // enable (the client then auto-classifies) and clear any prior suppression.
+    // NOT food-service → suppress, which hides the restaurant taxonomy for an
+    // otherwise google_reviews-proxied dataset (a hotel/clinic's reviews); we
+    // leave taxonomy_enabled alone so an explicit manual opt-in still wins.
+    // Best-effort; never blocks the themes response.
     if (parsed.foodService === true) {
-      await supabase.from('datasets').update({ taxonomy_enabled: true }).eq('id', params.datasetId)
+      await supabase.from('datasets').update({ taxonomy_enabled: true, taxonomy_suppressed: false }).eq('id', params.datasetId)
+    } else if (parsed.foodService === false) {
+      await supabase.from('datasets').update({ taxonomy_suppressed: true }).eq('id', params.datasetId)
     }
 
     return NextResponse.json(parsed)

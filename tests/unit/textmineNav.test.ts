@@ -111,6 +111,15 @@ describe('availableSections', () => {
   it('Advanced needs google_reviews, not just outlets', () => {
     expect(availableSections({ datasetSource: 'upload', outletCount: 99 })).toEqual(['themes'])
   })
+
+  it('taxonomySuppressed hides Dimensions on a google_reviews dataset (non-restaurant)', () => {
+    expect(availableSections({ datasetSource: 'google_reviews', taxonomySuppressed: true })).toEqual(['themes'])
+  })
+
+  it('an explicit taxonomy capability still wins over suppression', () => {
+    expect(availableSections({ datasetSource: 'google_reviews', taxonomyEnabled: true, taxonomySuppressed: true }))
+      .toEqual(['themes', 'dimensions'])
+  })
 })
 
 describe('defaultSection', () => {

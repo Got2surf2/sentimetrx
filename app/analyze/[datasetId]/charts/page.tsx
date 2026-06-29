@@ -40,10 +40,10 @@ export default async function ChartsPage(props: Props) {
   var themeModel = stateRow.theme_model || null
 
   // Inject signal_tier for Reddit/Substack datasets
-  var { data: dataset } = await service.from('datasets').select('source, taxonomy_enabled').eq('id', params.datasetId).single()
+  var { data: dataset } = await service.from('datasets').select('source, taxonomy_enabled, taxonomy_suppressed').eq('id', params.datasetId).single()
   if (dataset?.source === 'reddit' || dataset?.source === 'substack') {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled} />
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled} taxonomySuppressed={!!dataset?.taxonomy_suppressed} />
 }

@@ -40,7 +40,7 @@ export default async function TextMinePage(props: Props) {
       .single(),
     service
       .from('datasets')
-      .select('source, ana_library, taxonomy_enabled')
+      .select('source, ana_library, taxonomy_enabled, taxonomy_suppressed')
       .eq('id', params.datasetId)
       .single(),
     resolveEntityScope(service, params.datasetId),
@@ -90,6 +90,7 @@ export default async function TextMinePage(props: Props) {
         savedThemeModel={themeModel}
         datasetSource={(dataset?.source as 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection') || 'upload'}
         taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled}
+        taxonomySuppressed={!!dataset?.taxonomy_suppressed}
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
         outletCount={outletCount}
