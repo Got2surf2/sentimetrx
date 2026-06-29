@@ -739,13 +739,20 @@ analytics export — dataset-row CSV download is not part of this module.
   `withSignal > 0`. Three slides: **Aspect Coverage** (`column_chart`, 7 axes by mention rate)
   + **What Stands Out** (`table`, top sub-aspects × mentions/%-positive/avg ★, lowest %-positive
   = the fix list) + **Heads-Up** (`table`, the exception alerts). The Heads-Up watch list is a
-  pure, grounded engine `lib/dimensionAlerts.ts` (`computeDimensionAlerts`, unit-tested): ranks
-  🔴 pain points (high volume + low %-positive / rating drag), 🟢 bright spots, ⚠️ safety flags
-  (always surfaced), and — when a recent-vs-prior window is supplied — 📉 deteriorating /
-  📈 heating-up / ✨ improving trends. Adaptive min-mention floor (max(8, 2% of classified rows))
-  so thin data doesn't over-flag; every line carries its mention count `n`. Gated by the
-  `includeDimensions` ExportModal toggle (default ON). *Trend tier wired next (the engine
-  already accepts `opts.trend`).*
+  pure, grounded, **lens-agnostic** engine `lib/insightAlerts.ts` (`computeInsightAlerts`,
+  unit-tested) designed to span **three lenses — themes, dimensions, and quant variables**
+  (rating + any other numerics): ranks 🔴 pain points (high volume + low %-positive / rating
+  drag), 🟢 bright spots, ⚠️ safety flags (Dimensions-only, always surfaced), and — when a
+  recent-vs-prior window is supplied — 📉 deteriorating / 📈 heating-up / ✨ improving trends,
+  plus quant trend (avg drift, e.g. ★4.5→★4.2) and low-score-tail surges. Adapters
+  `dimensionsToSignals` / `themesToSignals` map each lens onto a neutral `AlertSignal`; quant
+  variables use `QuantSignal`. Merged into ONE watch list, lens-tagged, deduped to one alert
+  per title (most-urgent wins), capped (default 8) with safety always kept. Adaptive
+  min-mention floor (max(8, 2% of baseline rows)); every line carries `n` or an explicit
+  before→after. Gated by the `includeDimensions` ExportModal toggle (default ON).
+  **Status:** the engine + dimension adapter are wired (the route feeds Dimensions today via
+  the `computeDimensionAlerts` wrapper); the **theme + quant adapters and the windowed
+  recent-vs-prior read are wired next** so the Heads-Up merges all three lenses with trends.
 - **Survey Overview slide (survey sources)**: first slide after the executive summary when
   the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
   schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.

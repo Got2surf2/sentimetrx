@@ -19,7 +19,7 @@ import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/l
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
-import { computeDimensionAlerts, type DimensionAlertKind } from '@/lib/dimensionAlerts'
+import { computeDimensionAlerts, type DimensionAlertKind } from '@/lib/insightAlerts'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
