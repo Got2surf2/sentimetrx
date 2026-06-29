@@ -74,12 +74,20 @@ export async function GET(req: NextRequest, props: Params) {
   // Fetch themes
   const { data: themes } = await db
     .from('townhall_themes')
-    .select('id, label, source, state, sentiment, keywords')
+    .select('id, label, source, state, sentiment, keywords, round_number')
     .eq('session_id', params.id)
     .order('sort_order', { ascending: true })
 
   const themeMap: Record<string, string> = {}
   for (const t of themes || []) themeMap[t.id] = t.label
+
+  // Round-based pacing: per-theme round + the round's tasting-item name, so
+  // exports can group/label by item. Inert (no extra columns) in open mode.
+  const roundsMode = session.config?.pacing_mode === 'rounds'
+  const roundItems: Record<number, string> = {}
+  for (const r of (session.config?.rounds || [])) if (r?.number != null) roundItems[r.number] = r.item_name || ''
+  const themeRound: Record<string, number | null> = {}
+  for (const t of themes || []) themeRound[t.id] = (t as any).round_number ?? null
 
   // Fetch all turns
   const { data: turnsData } = await db
@@ -129,10 +137,10 @@ export async function GET(req: NextRequest, props: Params) {
   if (format === 'csv' || format === 'xlsx') {
     const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
     const date = new Date().toISOString().slice(0, 10)
-    const responses = buildResponsesSheet(turns, themeMap, demoMap, psychoMap, demoKeyArr, psychoKeyArr)
+    const responses = buildResponsesSheet(turns, themeMap, demoMap, psychoMap, demoKeyArr, psychoKeyArr, roundsMode ? { themeRound, roundItems } : null)
     if (format === 'xlsx') {
       // XLSX bundles both responses and theme summary into one workbook.
-      const themesSheet = buildThemesSheet(themes || [], turns)
+      const themesSheet = buildThemesSheet(themes || [], turns, roundsMode ? roundItems : null)
       return dataResponse('xlsx', safeName + '-export-' + date, [responses, themesSheet])
     }
     return dataResponse('csv', safeName + '-responses-' + date, [responses])
@@ -141,7 +149,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (format === 'themes') {
     const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
     const date = new Date().toISOString().slice(0, 10)
-    return dataResponse('csv', safeName + '-themes-' + date, [buildThemesSheet(themes || [], turns)])
+    return dataResponse('csv', safeName + '-themes-' + date, [buildThemesSheet(themes || [], turns, roundsMode ? roundItems : null)])
   }
 
   if (format === 'json') {
@@ -156,6 +164,7 @@ export async function GET(req: NextRequest, props: Params) {
         user_en: t.user_message_en,
         language: t.language,
         topic: t.theme_label || themeMap[t.theme_id] || null,
+        ...(roundsMode ? { round: t.theme_id ? themeRound[t.theme_id] ?? null : null } : {}),
         source: t.source,
         skipped: t.skipped,
         time: t.created_at,
@@ -318,7 +327,7 @@ export async function GET(req: NextRequest, props: Params) {
         ended_at: session.ended_at,
         config: session.config,
       },
-      themes: (themes || []).map(t => ({ id: t.id, label: t.label, source: t.source, state: t.state, sentiment: t.sentiment, keywords: t.keywords })),
+      themes: (themes || []).map(t => ({ id: t.id, label: t.label, source: t.source, state: t.state, sentiment: t.sentiment, keywords: t.keywords, ...(roundsMode ? { round: (t as any).round_number ?? null, item: (t as any).round_number != null ? (roundItems[(t as any).round_number] || null) : null } : {}) })),
       conversations,
       summary: {
         participants: Object.keys(participants).length,
@@ -349,10 +358,13 @@ function buildResponsesSheet(
   psychoMap: Record<string, Record<string, unknown>>,
   demoKeyArr: string[],
   psychoKeyArr: string[],
+  // Non-null only in round-based pacing — adds round + tasting-item columns.
+  rounds: { themeRound: Record<string, number | null>; roundItems: Record<number, string> } | null,
 ): Sheet {
   const headers = [
     'participant_id',
     'turn_number',
+    ...(rounds ? ['round', 'item'] : []),
     'theme',
     'source',
     'bot_message',
@@ -372,10 +384,12 @@ function buildResponsesSheet(
     const sentiment = text ? classifySentiment(score.pos, score.neg) : ''
     const demo = demoMap[t.participant_id] || {}
     const psycho = psychoMap[t.participant_id] || {}
+    const round = rounds && t.theme_id ? rounds.themeRound[t.theme_id] ?? null : null
 
     return [
       t.participant_id,
       t.turn_number,
+      ...(rounds ? [round ?? '', round != null ? (rounds.roundItems[round] || '') : ''] : []),
       t.theme_label || (t.theme_id ? themeMap[t.theme_id] || '' : ''),
       t.source || '',
       t.bot_message || '',
@@ -393,7 +407,7 @@ function buildResponsesSheet(
   return { name: 'Responses', headers, rows }
 }
 
-function buildThemesSheet(themes: any[], turns: any[]): Sheet {
+function buildThemesSheet(themes: any[], turns: any[], roundItems: Record<number, string> | null): Sheet {
   // One row per theme with aggregated stats
   const themeTurnCounts: Record<string, number> = {}
   for (const t of turns) {
@@ -403,11 +417,20 @@ function buildThemesSheet(themes: any[], turns: any[]): Sheet {
   }
   const totalResponses = turns.filter(t => !t.skipped && t.user_message).length
 
-  const headers = ['theme', 'source', 'state', 'sentiment', 'response_count', 'percentage', 'keywords']
-  const rows = themes.map(t => {
+  // In round-based pacing, group the sheet by round (item) for the per-item roll-up.
+  const ordered = roundItems
+    ? [...themes].sort((a, b) => (a.round_number ?? 1e9) - (b.round_number ?? 1e9))
+    : themes
+
+  const headers = [
+    ...(roundItems ? ['round', 'item'] : []),
+    'theme', 'source', 'state', 'sentiment', 'response_count', 'percentage', 'keywords',
+  ]
+  const rows = ordered.map(t => {
     const count = themeTurnCounts[t.id] || 0
     const pct = totalResponses > 0 ? Math.round(count / totalResponses * 100) : 0
     return [
+      ...(roundItems ? [t.round_number ?? '', t.round_number != null ? (roundItems[t.round_number] || '') : ''] : []),
       t.label,
       t.source,
       t.state,

@@ -139,6 +139,12 @@ export async function POST(req: NextRequest, props: Params) {
     return { ...t, matchCount, percentage, quotes }
   })
 
+  // Round-based pacing: group theme slides by tasting round (item) for the
+  // per-item roll-up. Inert in open mode (flat theme slides as before).
+  const roundsMode = (session.config as any)?.pacing_mode === 'rounds'
+  const roundItems: Record<number, string> = {}
+  for (const r of ((session.config as any)?.rounds || [])) if (r?.number != null) roundItems[r.number] = r.item_name || ''
+
   // Overall sentiment
   let posCount = 0, negCount = 0, mixCount = 0, neuCount = 0
   for (const text of responseTexts) {
@@ -244,14 +250,15 @@ export async function POST(req: NextRequest, props: Params) {
   footer(s2, pptx, sessionName)
 
   // ── Slide 3+: Theme cards (2 per slide) ──
-  for (let i = 0; i < enrichedThemes.length; i += 2) {
+  const renderThemeCards = (list: any[], headerTitle = 'Theme Analysis') => {
+  for (let i = 0; i < list.length; i += 2) {
     const slide = pptx.addSlide()
     bgFill(slide, pptx)
-    hdr(slide, pptx, 'Theme Analysis')
+    hdr(slide, pptx, headerTitle)
     logo(slide)
 
-    for (let j = 0; j < 2 && i + j < enrichedThemes.length; j++) {
-      const theme = enrichedThemes[i + j]
+    for (let j = 0; j < 2 && i + j < list.length; j++) {
+      const theme = list[i + j]
       const themeColor = THEME_COLORS[(i + j) % THEME_COLORS.length]
       const cx = PAD + j * ((W - PAD * 2 - 0.3) / 2 + 0.3)
       const cw = (W - PAD * 2 - 0.3) / 2
@@ -310,6 +317,26 @@ export async function POST(req: NextRequest, props: Params) {
     }
 
     footer(slide, pptx, sessionName)
+  }
+  }
+
+  if (roundsMode) {
+    // One section divider per round (tasting item) + that round's theme cards.
+    const rNums = Array.from(new Set(enrichedThemes.map((t: any) => t.round_number ?? 0))).sort((a, b) => (a as number) - (b as number)) as number[]
+    for (const rn of rNums) {
+      const list = enrichedThemes.filter((t: any) => (t.round_number ?? 0) === rn)
+      const item = roundItems[rn] || ''
+      const sec = pptx.addSlide()
+      bgFill(sec, pptx, DN.navy)
+      sec.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.08, fill: { color: DN.gold }, line: { width: 0 } })
+      sec.addText('ROUND ' + (rn || '—'), { x: PAD, y: 2.4, w: W - PAD * 2, h: 0.5, fontSize: 16, bold: true, color: DN.gold, charSpacing: 2 })
+      sec.addText(item || ('Round ' + rn), { x: PAD, y: 2.9, w: W - PAD * 2, h: 1.0, fontSize: 32, bold: true, color: DN.white })
+      sec.addText(list.length + ' theme' + (list.length === 1 ? '' : 's') + '  ·  what guests said about this item', { x: PAD, y: 4.0, w: W - PAD * 2, h: 0.4, fontSize: 12, color: DN.teal })
+      footer(sec, pptx, sessionName)
+      renderThemeCards(list, 'Round ' + rn + (item ? ' — ' + item : ''))
+    }
+  } else {
+    renderThemeCards(enrichedThemes)
   }
 
   // ── Demographics slide (if any) ──
