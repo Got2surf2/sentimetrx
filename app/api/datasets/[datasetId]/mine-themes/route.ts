@@ -67,11 +67,15 @@ export async function POST(request: Request, props: Props) {
     '- Common synonyms and related phrases respondents might use\n' +
     '- Informal/colloquial variants (e.g. "pricey" for expensive, "meh" for mediocre)\n' +
     '- Short phrases (2-3 words) where a single word is ambiguous\n\n' +
+    '\n\nAlso judge whether these responses are reviews or feedback about a ' +
+    'RESTAURANT, bar, café, or other food-service venue (food/drink/service/dining), ' +
+    'as opposed to a hotel, retailer, clinic, app, or anything non-food-service. ' +
+    'Return that as a boolean "foodService".\n\n' +
     'Return:\n' +
     '{"themes":[{"id":"t1","name":"Name","description":"One sentence.",' +
     '"keywords":["core term","synonym1","synonym2","informal variant","short phrase"],' +
     '"sentiment":"positive","count":0,"percentage":0,"relatedThemes":[]}],' +
-    '"summary":"2-3 sentences.","fieldName":"' + fieldLabel + '"}'
+    '"summary":"2-3 sentences.","fieldName":"' + fieldLabel + '","foodService":false}'
 
   try {
     let result
@@ -97,7 +101,7 @@ export async function POST(request: Request, props: Props) {
     const rawText = result.text
 
     const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
-    let parsed: { themes?: unknown[]; summary?: string; fieldName?: string }
+    let parsed: { themes?: unknown[]; summary?: string; fieldName?: string; foodService?: boolean }
     try {
       parsed = JSON.parse(clean)
     } catch {
@@ -106,6 +110,13 @@ export async function POST(request: Request, props: Props) {
 
     if (!parsed || !Array.isArray(parsed.themes) || !parsed.themes.length) {
       return NextResponse.json({ error: 'AI returned no themes' }, { status: 500 })
+    }
+
+    // Smart Dimensions: when the AI judges this restaurant/food-service data, flag
+    // the dataset so Dimensions (the restaurant taxonomy) becomes available — the
+    // client then auto-classifies. Best-effort; never blocks the themes response.
+    if (parsed.foodService === true) {
+      await supabase.from('datasets').update({ taxonomy_enabled: true }).eq('id', params.datasetId)
     }
 
     return NextResponse.json(parsed)

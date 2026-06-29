@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
@@ -138,7 +139,7 @@ const FilteredCommentsPanel = dynamic(
     },
   }
 )
-import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
+import { INDUSTRY_LABELS, RESTAURANT_INDUSTRIES, type Industry } from '@/lib/industryDefaults'
 
 import { T } from '@/lib/analyzeTheme'
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
@@ -1076,6 +1077,40 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [serverThemeDimensions, setServerThemeDimensions] = useState<Record<string, { axis: string; sub: string; count: number }[]>>({})
   // Same gate as the Dimensions sub-tab: dataset is classifiable into Dimensions.
   const dimensionsEnabled = datasetSource === 'google_reviews' || !!taxonomyEnabled
+  const router = useRouter()
+  // Brief banner shown when restaurant data was auto-detected at theme time and
+  // Dimensions are being classified in the background (the "zero-click" path).
+  const [dimAutoNotice, setDimAutoNotice] = useState<string | null>(null)
+
+  // Restaurant data was detected at theme-generation time (AI food-service flag,
+  // or a restaurant theme library was applied) → turn Dimensions on and classify
+  // in the background, no clicks: PATCH the flag, loop the keyword classifier over
+  // untagged rows (idempotent — a no-op if already classified), then refresh so
+  // the Dimensions section appears. Best-effort; failures are silent.
+  const autoEnableDimensions = useCallback(async function (fields: string[]) {
+    if (!fields.length) return
+    setDimAutoNotice('Restaurant data detected — classifying Dimensions…')
+    try {
+      await fetch('/api/datasets/' + datasetId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taxonomy_enabled: true }),
+      })
+      for (var guard = 0; guard < 300; guard++) {
+        var r = await fetch('/api/datasets/' + datasetId + '/taxonomy', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingOnly: true, textFields: fields }),
+        })
+        if (!r.ok) break
+        var j = await r.json()
+        if (j.done) break
+      }
+      setDimAutoNotice('Dimensions ready ✓')
+      router.refresh()
+      setTimeout(function () { setDimAutoNotice(null) }, 4000)
+    } catch {
+      setDimAutoNotice(null)
+    }
+  }, [datasetId, router])
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
@@ -1780,6 +1815,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setIsDirty(true)
         fetchServerThemeCounts(tm2, effectiveFields)
         enrichSearchInterest(tm2)
+        // Smart Dimensions: the AI flagged this as restaurant/food-service data →
+        // enable + classify Dimensions automatically (the route also set the flag).
+        if (data.foodService === true) void autoEnableDimensions(effectiveFields)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
@@ -1804,6 +1842,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setThemeSource(source)
     setThemeLibName(libName)
     setSamplingInfo({ sampled: total, total })
+    // Smart Dimensions: applying a restaurant theme library (casual/fine dining,
+    // fast food) is a strong restaurant signal → enable + classify Dimensions.
+    if (RESTAURANT_INDUSTRIES.some(function (r) { return libName.indexOf(r) !== -1 })) {
+      void autoEnableDimensions(effectiveFields)
+    }
     // Fetch accurate server-side counts on full dataset
     fetchServerThemeCounts(tm, effectiveFields)
     // Enrich with Google search interest (Reddit/Substack only)
@@ -2017,6 +2060,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       )}
 
       {/* ─── Error banner ──────────────────────────────────────────────── */}
+      {dimAutoNotice && (
+        <div style={{ padding: '10px 20px', background: '#fff7ed', borderBottom: '1px solid #fdba74', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 14 }}>{'\uD83C\uDF7D\uFE0F'}</span>
+          <span style={{ fontSize: 12, color: '#9a3412', flex: 1 }}>{dimAutoNotice}</span>
+        </div>
+      )}
       {error && (
         <div style={{ padding: '10px 20px', background: T.redBg, borderBottom: '1px solid ' + T.red + '30', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 14 }}>{'\u26A0'}</span>

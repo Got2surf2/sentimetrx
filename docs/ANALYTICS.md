@@ -497,7 +497,17 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Classification (self-serve from the tab).** `lib/taxonomyClassify.ts`
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and upserts tags,
   idempotent on `(dataset_id,row_id)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
-  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. **One-click
+  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. **Smart auto-detect
+  (2026-06-28):** Dimensions only make sense for restaurant data, so we detect that at theme-generation
+  time instead of trusting the `google_reviews` source. (1) `mine-themes` asks the AI for a `foodService`
+  boolean alongside the themes; when true the route sets `datasets.taxonomy_enabled=true` and returns the
+  flag, and the client (`autoEnableDimensions` in `TextMineModule`) auto-enables + classifies in the
+  background (PATCH flag → loop the pendingOnly classifier → `router.refresh`), with a 🍽️ "Restaurant
+  data detected — classifying Dimensions…" banner — zero clicks. (2) Applying a **restaurant theme library**
+  (`casual_dining`/`fine_dining`/`fast_food` ∈ `RESTAURANT_INDUSTRIES`) triggers the same. NOTE: the
+  `google_reviews`-implies-restaurant proxy in the visibility gate was **kept deliberately** — dropping it
+  would hide Dimensions from restaurant Google-reviews datasets that haven't had themes mined yet (the
+  common case), a worse regression than the rare non-restaurant-Google-reviews false positive. **One-click
   enable+classify (2026-06-28):** an unclassified dataset's Dimensions tab shows a single **"Enable
   Dimensions"** button — it PATCHes `taxonomy_enabled=true` (hygiene, idempotent) AND runs the
   classifier in one action (`enableAndClassify` in `TaxonomyModule`), replacing the prior silent
