@@ -63,6 +63,15 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
     }
   }, [])
 
+  // Re-sync the list whenever the server re-renders (e.g. router.refresh() after
+  // a collection recompute, or any navigation back to /analyze). Without this
+  // the seeded useState keeps the stale rows — the "Members updated — refresh"
+  // badge never clears and refreshed row_count/updated_at never show, so the
+  // refresh button looks like it silently does nothing. initialDatasets only
+  // changes identity on a server re-render, so local archive/delete optimistic
+  // updates between refreshes aren't clobbered.
+  useEffect(function() { setDatasets(initialDatasets) }, [initialDatasets])
+
   function changeSort(next: 'updated' | 'created' | 'name') {
     setSortMode(next)
     if (typeof window !== 'undefined') window.localStorage.setItem('sentimetrx.sort.analyze', next)
