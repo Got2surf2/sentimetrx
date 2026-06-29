@@ -14,7 +14,9 @@ Live group feedback sessions with AI moderation. Participants chat anonymously w
 
 - **`open`** (default) — the existing free-flowing model: participants are assigned starting topics and the engine rotates them through the pool at their own pace.
 - **`rounds`** — moderator-gated tasting-kitchen variant. Each round is one item being served/tasted; topics carry a `round` number (`TownHallGuideTopic.round`) and round metadata lives in `config.rounds[]` (`TownHallRound`: `{number, item_name, item_photo?}`). On activation, round 1 themes seed `active` and later rounds seed `paused` (`townhall_themes.round_number`, sql/140); the moderator advances the room one round at a time and participants hold between rounds. Solves the "speed-runner fills the whole survey before tasting everything" problem. Built on the legacy `townhall_sessions` substrate.
-  - **Phase 1 (model layer, current):** config/types + `round_number` column + round-gated seed-on-activate. Inert until the creator UI sets `pacing_mode` (Phase 2). Open-mode starts do not reference `round_number`, so sql/140 is only required once rounds mode is used.
+  - **Phase 1 (model layer):** config/types + `round_number` column + round-gated seed-on-activate. Open-mode starts do not reference `round_number`, so sql/140 is only required once rounds mode is used.
+  - **Phase 2 (creator UI, current):** `app/townhall/new/NewSessionClient.tsx` — a **Conversation style** toggle (open vs round-based tasting) on the Basics step; in rounds mode the Topics step groups question cards under **rounds** (each = a tasting item with `item_name` + optional `item_photo`), with per-round "+ Add question" and "+ Add Round". Removing a round renumbers the rest contiguously. The flat `discussion_guide` is preserved (each topic carries `round`); round metadata persists in `config.rounds[]`. *Known pilot limitation:* no cross-round move of an existing question, and AI "Generate from Description" lands topics in round 1.
+  - **Next:** Phase 3 moderator "Start Round N" console control + round-aware standby gate in `chat/route.ts`; Phase 4 participant hold screen; Phase 5 round-grouped exports.
 
 ---
 

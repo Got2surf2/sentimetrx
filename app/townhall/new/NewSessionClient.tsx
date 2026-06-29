@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
-import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+import type { TownHallConfig, TownHallGuideTopic, TownHallRound } from '@/lib/types'
 import type { BotFocus } from '@/lib/focusClassifier'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
@@ -654,6 +654,50 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setGuide(g => [...g, DEFAULT_TOPIC()])
   }
 
+  // ── Round-based pacing (tasting mode) ──────────────────────────────────
+  const pacing: 'open' | 'rounds' = config.pacing_mode === 'rounds' ? 'rounds' : 'open'
+
+  const setPacing = (mode: 'open' | 'rounds') => {
+    if (mode === 'rounds') {
+      setConfig(c => ({
+        ...c,
+        pacing_mode: 'rounds',
+        rounds: c.rounds && c.rounds.length ? c.rounds : [{ number: 1, item_name: '' }],
+      }))
+      // Any topic without a round folds into round 1 so nothing goes orphaned.
+      setGuide(g => g.map(t => (t.round ? t : { ...t, round: 1 })))
+    } else {
+      setConfig(c => ({ ...c, pacing_mode: 'open' }))
+    }
+  }
+
+  const addRound = () => {
+    const rounds = config.rounds || []
+    const nextNum = rounds.length ? Math.max(...rounds.map(r => r.number)) + 1 : 1
+    setConfig(c => ({ ...c, rounds: [...(c.rounds || []), { number: nextNum, item_name: '' }] }))
+    setGuide(g => [...g, { ...DEFAULT_TOPIC(), round: nextNum }])
+  }
+
+  const updateRound = (num: number, patch: Partial<TownHallRound>) => {
+    setConfig(c => ({ ...c, rounds: (c.rounds || []).map(r => (r.number === num ? { ...r, ...patch } : r)) }))
+  }
+
+  const removeRound = (num: number) => {
+    // Drop the round + its questions, then renumber remaining rounds to 1..N
+    // (contiguous) and remap each topic's round to match.
+    const remaining = (config.rounds || []).filter(r => r.number !== num).sort((a, b) => a.number - b.number)
+    const remap = new Map<number, number>()
+    remaining.forEach((r, i) => remap.set(r.number, i + 1))
+    setConfig(c => ({ ...c, rounds: remaining.map((r, i) => ({ ...r, number: i + 1 })) }))
+    setGuide(g => g
+      .filter(t => (t.round || 1) !== num)
+      .map(t => ({ ...t, round: remap.get(t.round || 1) || 1 })))
+  }
+
+  const addTopicToRound = (roundNum: number) => {
+    setGuide(g => [...g, { ...DEFAULT_TOPIC(), round: roundNum }])
+  }
+
   const handleSave = async () => {
     if (!name.trim()) { setError('Session name is required'); return }
     if (!config.opening_message.trim()) { setError('Opening message is required'); return }
@@ -751,6 +795,32 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div>
                 <Label>Session name</Label>
                 <Input value={name} onChange={setName} placeholder="e.g. Neighborhood Planning Session — April 2026" />
+              </div>
+
+              <div>
+                <Label sub="How the room is paced">Conversation style</Label>
+                <div className="flex gap-2">
+                  {([
+                    { mode: 'open' as const, title: 'Open conversation', desc: 'Everyone moves at their own pace' },
+                    { mode: 'rounds' as const, title: 'Round-based tasting', desc: 'Moderator gates the room item-by-item' },
+                  ]).map(opt => {
+                    const active = pacing === opt.mode
+                    return (
+                      <button key={opt.mode} onClick={() => setPacing(opt.mode)} type="button"
+                        className={'flex-1 text-left px-3 py-2.5 rounded-xl border-2 transition-colors ' +
+                          (active ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white hover:border-gray-300')}>
+                        <div className={'text-sm font-semibold ' + (active ? 'text-orange-700' : 'text-gray-700')}>{opt.title}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">{opt.desc}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+                {pacing === 'rounds' && (
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Push each item&apos;s questions to everyone at once, then hold participants until you advance the room.
+                    On the Topics step you&apos;ll group questions under each tasting item.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -896,8 +966,9 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-gray-500">
-                  Define the topics you want to explore. Participants will be assigned different starting topics
-                  to ensure broad coverage across the room.
+                  {pacing === 'rounds'
+                    ? 'Group your questions under each tasting item (round). The moderator pushes one round at a time — everyone answers the same questions, then holds until the next item is served.'
+                    : 'Define the topics you want to explore. Participants will be assigned different starting topics to ensure broad coverage across the room.'}
                 </p>
                 <button onClick={generateGuide} disabled={generatingGuide || !config.context.event_description?.trim()}
                   className="flex-shrink-0 ml-4 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
@@ -928,27 +999,92 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
               )}
 
-              <div className="space-y-4">
-                {guide.map((topic, i) => (
-                  <TopicCard
-                    key={topic.id}
-                    topic={topic}
-                    index={i}
-                    onChange={t => updateTopic(i, t)}
-                    onRemove={() => removeTopic(i)}
-                    industry={config.industry}
-                    orgName={config.context.org_name}
-                    eventDesc={config.context.event_description}
-                    expectedAttendees={config.expected_attendees}
-                  />
-                ))}
-              </div>
+              {pacing === 'open' ? (
+                <>
+                  <div className="space-y-4">
+                    {guide.map((topic, i) => (
+                      <TopicCard
+                        key={topic.id}
+                        topic={topic}
+                        index={i}
+                        onChange={t => updateTopic(i, t)}
+                        onRemove={() => removeTopic(i)}
+                        industry={config.industry}
+                        orgName={config.context.org_name}
+                        eventDesc={config.context.event_description}
+                        expectedAttendees={config.expected_attendees}
+                      />
+                    ))}
+                  </div>
 
-              <button
-                onClick={addTopic}
-                className="mt-4 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-colors w-full">
-                + Add Topic
-              </button>
+                  <button
+                    onClick={addTopic}
+                    className="mt-4 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-colors w-full">
+                    + Add Topic
+                  </button>
+                </>
+              ) : (
+                <div className="space-y-5">
+                  {(config.rounds || []).slice().sort((a, b) => a.number - b.number).map(round => {
+                    // Global indices so onChange/onRemove stay wired to the flat guide.
+                    const roundTopics = guide
+                      .map((t, gi) => ({ t, gi }))
+                      .filter(x => (x.t.round || 1) === round.number)
+                    return (
+                      <div key={round.number} className="border-2 border-orange-100 rounded-2xl p-4 bg-orange-50/30">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold text-orange-500 uppercase tracking-wide">Round {round.number}</span>
+                          {(config.rounds || []).length > 1 && (
+                            <button onClick={() => removeRound(round.number)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove round</button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div>
+                            <Label sub="What's being served/tasted this round">Item name</Label>
+                            <Input value={round.item_name} onChange={v => updateRound(round.number, { item_name: v })} placeholder="e.g. Truffle Mac &amp; Cheese" />
+                          </div>
+                          <div>
+                            <Label sub="Optional image URL of the item">Item photo</Label>
+                            <Input value={round.item_photo || ''} onChange={v => updateRound(round.number, { item_photo: v })} placeholder="https://…" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          {roundTopics.map(({ t, gi }, localIdx) => (
+                            <TopicCard
+                              key={t.id}
+                              topic={t}
+                              index={localIdx}
+                              onChange={nt => updateTopic(gi, nt)}
+                              onRemove={() => removeTopic(gi)}
+                              industry={config.industry}
+                              orgName={config.context.org_name}
+                              eventDesc={config.context.event_description}
+                              expectedAttendees={config.expected_attendees}
+                            />
+                          ))}
+                          {roundTopics.length === 0 && (
+                            <p className="text-[11px] text-gray-400 italic">No questions in this round yet.</p>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => addTopicToRound(round.number)}
+                          className="mt-3 px-4 py-2 rounded-lg border-2 border-dashed border-orange-200 text-sm text-orange-500 hover:border-orange-400 hover:text-orange-700 transition-colors w-full">
+                          + Add question to Round {round.number}
+                        </button>
+                      </div>
+                    )
+                  })}
+
+                  <button
+                    onClick={addRound}
+                    className="px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 text-sm font-semibold text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-colors w-full">
+                    + Add Round (next tasting item)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
