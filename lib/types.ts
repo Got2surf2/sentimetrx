@@ -1038,6 +1038,7 @@ export interface TownHallTheme {
   follow_up_angles: string[]
   state:            TownHallThemeState
   source:           TownHallThemeSource
+  round_number?:    number | null   // round-based pacing: which tasting round (1-indexed); null in open mode
   response_target:  number
   response_count:   number
   mention_count:    number

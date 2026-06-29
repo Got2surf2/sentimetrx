@@ -701,14 +701,32 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
       if (testing) debug.push('ALL TOPICS VISITED — entering standby or wrap-up')
 
       const hasOrganic = config?.engine?.theme_detection_mode === 'auto'
-      if (hasOrganic && turnsUsed < maxTurnsForBudget - 2) {
+
+      // Round-based pacing: hold the participant between rounds whenever later
+      // (paused) rounds remain — regardless of organic detection (rounds mode
+      // runs with detection off). The moderator opens the next round and
+      // pickNextTopic routes them into it on their next turn.
+      let roundHold = false
+      if (config?.pacing_mode === 'rounds' && turnsUsed < maxTurnsForBudget - 2) {
+        const { count: laterRounds } = await supabase
+          .from('townhall_themes')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+          .eq('source', 'guide')
+          .eq('state', 'paused')
+          .not('round_number', 'is', null)
+        roundHold = (laterRounds || 0) > 0
+      }
+
+      if (roundHold || (hasOrganic && turnsUsed < maxTurnsForBudget - 2)) {
         const standbyAudience = getAudienceLabels(config)
-        const standbyMsg = config?.engine?.standby_message ||
-          'That is very helpful information — thank you! Stand by while we see what some of the other ' + standbyAudience.participants + ' are talking about. If new topics come up, I may circle back to get your thoughts.'
+        const standbyMsg = config?.engine?.standby_message || (roundHold
+          ? 'Thanks — that\'s really helpful! Please hold here while this round wraps up. When the next item is served I\'ll be back with a few more questions.'
+          : 'That is very helpful information — thank you! Stand by while we see what some of the other ' + standbyAudience.participants + ' are talking about. If new topics come up, I may circle back to get your thoughts.')
         resolvedThemeId = null
         aiSource = 'standby'
         botMessage = standbyMsg
-        if (testing) debug.push('STANDBY: Organic detection active + turns remaining — parking conversation')
+        if (testing) debug.push(roundHold ? 'ROUND HOLD: later rounds still paused — holding participant between rounds' : 'STANDBY: Organic detection active + turns remaining — parking conversation')
       } else {
         return wrapUp(config)
       }

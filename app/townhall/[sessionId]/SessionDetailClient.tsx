@@ -397,6 +397,17 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setActionLoading(null)
   }
 
+  const handleStartRound = async (round: number) => {
+    setActionLoading('round-' + round)
+    await fetch('/api/townhall/sessions/' + sessionId + '/round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ round }),
+    })
+    await fetchData()
+    setActionLoading(null)
+  }
+
   const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/pi/' + (session?.slug || sessionId) : ''
   const copyLink = () => { navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
 
@@ -442,6 +453,21 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const seedTopics = themes.filter(t => t.source === 'guide')
   const organicTopics = themes.filter(t => t.source === 'auto_detected')
   const customTopics = themes.filter(t => t.source === 'custom')
+
+  // Round-based pacing: derive each round's live status from its themes so the
+  // moderator can gate the room round-by-round.
+  const roundsMode = cfg?.pacing_mode === 'rounds'
+  const rounds: { number: number; item_name?: string; item_photo?: string }[] =
+    roundsMode ? (cfg?.rounds || []).slice().sort((a: any, b: any) => a.number - b.number) : []
+  const roundInfo = rounds.map(r => {
+    const rt = seedTopics.filter(t => t.round_number === r.number)
+    const status: 'done' | 'active' | 'pending' =
+      rt.some(t => t.state === 'active') ? 'active'
+      : (rt.length > 0 && rt.every(t => t.state === 'completed')) ? 'done'
+      : 'pending'
+    return { ...r, status, responses: rt.reduce((s, t) => s + (t.response_count || 0), 0) }
+  })
+  const nextRound = roundInfo.find(r => r.status === 'pending')
   const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
   return (
@@ -1262,6 +1288,51 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </a>
               </div>
             </div>
+
+            {/* Round-based pacing: moderator gates the room round-by-round */}
+            {roundsMode && !isSetup && roundInfo.length > 0 && (
+              <div className="bg-white rounded-xl border-2 border-orange-100 p-4">
+                <div className="flex items-center justify-between gap-4 mb-3">
+                  <span className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Tasting Rounds</span>
+                  {isActive && (
+                    nextRound ? (
+                      <button
+                        onClick={() => handleStartRound(nextRound.number)}
+                        disabled={actionLoading === 'round-' + nextRound.number}
+                        className="px-4 py-2 rounded-lg text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
+                        style={{ background: '#E8632A' }}>
+                        {actionLoading === 'round-' + nextRound.number
+                          ? 'Starting…'
+                          : 'Start Round ' + nextRound.number + (nextRound.item_name ? ' — ' + nextRound.item_name : '')}
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-gray-400 italic">All rounds served</span>
+                    )
+                  )}
+                </div>
+                <div className="flex items-stretch gap-2 overflow-x-auto">
+                  {roundInfo.map(r => {
+                    const tint = r.status === 'active'
+                      ? { bg: '#fff4ef', border: '#E8632A', label: '#9a3412' }
+                      : r.status === 'done'
+                        ? { bg: '#f0fdf4', border: '#bbf7d0', label: '#15803d' }
+                        : { bg: '#f9fafb', border: '#e5e7eb', label: '#9ca3af' }
+                    return (
+                      <div key={r.number} className="flex-shrink-0 rounded-lg px-3 py-2 min-w-[120px]"
+                        style={{ background: tint.bg, border: '1.5px solid ' + tint.border }}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold" style={{ color: tint.label }}>Round {r.number}</span>
+                          {r.status === 'active' && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full text-white" style={{ background: '#E8632A' }}>Live</span>}
+                          {r.status === 'done' && <span className="text-[9px]" style={{ color: tint.label }}>✓</span>}
+                        </div>
+                        <div className="text-[11px] text-gray-600 truncate mt-0.5">{r.item_name || <span className="italic text-gray-300">Unnamed item</span>}</div>
+                        {r.status !== 'pending' && <div className="text-[10px] text-gray-400 mt-0.5">{r.responses} responses</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Full-width topics area */}
             <div className="space-y-4">
