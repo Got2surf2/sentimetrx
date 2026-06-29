@@ -91,6 +91,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [includeCustomDecks, setIncludeCustomDecks] = useState(true)
   const [includeProvenance,  setIncludeProvenance]  = useState(true)
   const [includeRecap,       setIncludeRecap]       = useState(true)
+  const [includeDimensions,  setIncludeDimensions]  = useState(true)
   // aiEnabled now flows in from DatasetHeader as a prop (the component that
   // owns the toggle). Was previously a local state polled from localStorage
   // every 2s — wasteful and a memory-leak risk if the modal closed without
@@ -242,7 +243,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap, includeDimensions }
       if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
       if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
@@ -597,6 +598,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
                     includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
                     includeRecap={includeRecap}             setIncludeRecap={setIncludeRecap}
+                    includeDimensions={includeDimensions} setIncludeDimensions={setIncludeDimensions}
                   />
                   {error && <ErrorBox message={error} />}
                 </>
@@ -680,6 +682,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
                     includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
                     includeRecap={includeRecap}             setIncludeRecap={setIncludeRecap}
+                    includeDimensions={includeDimensions} setIncludeDimensions={setIncludeDimensions}
                   />
 
                   {error && <ErrorBox message={error} />}
@@ -743,6 +746,7 @@ function CloserSlidesToggles({
   includeCustomDecks, setIncludeCustomDecks,
   includeProvenance,  setIncludeProvenance,
   includeRecap,       setIncludeRecap,
+  includeDimensions,  setIncludeDimensions,
 }: {
   includeCustomDecks: boolean
   setIncludeCustomDecks: (v: boolean) => void
@@ -750,9 +754,21 @@ function CloserSlidesToggles({
   setIncludeProvenance: (v: boolean) => void
   includeRecap: boolean
   setIncludeRecap: (v: boolean) => void
+  includeDimensions: boolean
+  setIncludeDimensions: (v: boolean) => void
 }) {
   return (
     <div style={{ marginTop: 14, padding: '12px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
+        Analysis Sections
+      </div>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer', marginBottom: 12 }}>
+        <input type="checkbox" checked={includeDimensions} onChange={function(e) { setIncludeDimensions(e.target.checked) }} style={{ marginTop: 3 }} />
+        <span>
+          <b style={{ color: '#111827' }}>Dimensions (ABSA)</b>
+          <span style={{ color: '#6b7280', fontSize: 12 }}> — aspect coverage, what-stands-out, and a heads-up watch list of exception conditions. Shown only when this dataset has Dimensions.</span>
+        </span>
+      </label>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
         Closing Slides
       </div>

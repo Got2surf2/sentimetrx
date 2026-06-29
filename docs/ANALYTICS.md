@@ -730,9 +730,22 @@ analytics export — dataset-row CSV download is not part of this module.
 - **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),
   `full` (full team — most detail, drives theme-impact slide inclusion)
 - **Slides**: Title, executive summary, **survey overview** (survey sources only — see
-  below), about/methodology, NPS/rating distributions, theme deep-dives
-  (keywords + quotes), sentiment breakdown, theme impact on scores, field breakdowns,
-  demographic annotations, methodology appendix
+  below), about/methodology, **Dimensions section** (see below), NPS/rating distributions,
+  theme deep-dives (keywords + quotes), sentiment breakdown, theme impact on scores, field
+  breakdowns, demographic annotations, methodology appendix
+- **Dimensions (ABSA) section (2026-06-29)**: emitted after "About This Report" when the
+  dataset has Dimensions (`taxonomy_enabled`, or the `google_reviews` proxy unless
+  `taxonomy_suppressed` — mirrors `lib/textmineNav`) AND `computeTaxonomyRollup` returns
+  `withSignal > 0`. Three slides: **Aspect Coverage** (`column_chart`, 7 axes by mention rate)
+  + **What Stands Out** (`table`, top sub-aspects × mentions/%-positive/avg ★, lowest %-positive
+  = the fix list) + **Heads-Up** (`table`, the exception alerts). The Heads-Up watch list is a
+  pure, grounded engine `lib/dimensionAlerts.ts` (`computeDimensionAlerts`, unit-tested): ranks
+  🔴 pain points (high volume + low %-positive / rating drag), 🟢 bright spots, ⚠️ safety flags
+  (always surfaced), and — when a recent-vs-prior window is supplied — 📉 deteriorating /
+  📈 heating-up / ✨ improving trends. Adaptive min-mention floor (max(8, 2% of classified rows))
+  so thin data doesn't over-flag; every line carries its mention count `n`. Gated by the
+  `includeDimensions` ExportModal toggle (default ON). *Trend tier wired next (the engine
+  already accepts `opts.trend`).*
 - **Survey Overview slide (survey sources)**: first slide after the executive summary when
   the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
   schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.

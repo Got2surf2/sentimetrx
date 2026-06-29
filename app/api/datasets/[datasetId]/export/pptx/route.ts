@@ -18,6 +18,8 @@ import { renderDeck, type DeckSpec, type SlideSpec, type DistBarsSlide, type Num
 import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/lib/entityAnalysis'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
+import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
+import { computeDimensionAlerts, type DimensionAlertKind } from '@/lib/dimensionAlerts'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -301,6 +303,10 @@ export async function POST(req: Request, props: Params) {
   // Closer-slide toggles — default ON; ExportModal lets the user opt out per export
   const includeCustomDecks: boolean    = body.includeCustomDecks !== false
   const includeProvenance:  boolean    = body.includeProvenance  !== false
+  // Dimensions (ABSA taxonomy) section — coverage + what-stands-out + a
+  // heads-up watch list. Default ON; only emitted when the dataset has
+  // Dimensions enabled AND classified signal exists. (#A)
+  const includeDimensions:  boolean    = body.includeDimensions   !== false
   // Generation-recap appendix — recaps the export inputs (+ verbatim custom
   // instructions) so a deck's storytelling can be retraced. Default ON;
   // suppressible for clean client deliverables. (#10)
@@ -323,7 +329,7 @@ export async function POST(req: Request, props: Params) {
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
-    .from('datasets').select('id, name, source, row_count, ana_library, study_id, org_id, studies(id, name, config)').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, source, row_count, ana_library, study_id, org_id, taxonomy_enabled, taxonomy_suppressed, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
@@ -847,6 +853,72 @@ export async function POST(req: Request, props: Params) {
       const collectionMethod = dataSource === 'study' ? 'Collected using Sarina (AI conversational survey). ' : 'Data uploaded from an external source. '
       const aboutNote = [samplingNote, filterDescription || '', 'Methodology: ' + collectionMethod + 'Analyzed using Datanautix AI Text Analytics.'].filter(Boolean).join('   ')
       slides.push({ type: 'kpi_grid', title: 'About This Report', subtitle: 'Methodology, scope and data coverage', kpis: aboutKpis, insight: aboutNote })
+    }
+
+    // ── Dimensions (ABSA taxonomy) section ────────────────────────────────────
+    // Coverage + What-Stands-Out (mirrors the Operational Review deck) + a
+    // Heads-Up watch list (exception alerts). Gated on the dataset having
+    // Dimensions enabled (explicit flag, or the google_reviews proxy unless
+    // suppressed — mirrors lib/textmineNav). Skipped when no classified signal.
+    const dimEnabled = !!(dataset as any).taxonomy_enabled ||
+      ((dataset as any).source === 'google_reviews' && !(dataset as any).taxonomy_suppressed)
+    if (includeDimensions && dimEnabled) {
+      const { data: dimField } = await service.rpc('taxonomy_primary_field', { p_dataset_id: params.datasetId })
+      if (dimField) {
+        const dim = await computeTaxonomyRollup({ service, datasetId: params.datasetId, orgId: (dataset as any).org_id, field: String(dimField) })
+        if (dim.withSignal > 0) {
+          slides.push({ type: 'section', title: 'Dimensions', subtitle: 'Aspect-level (ABSA) lens — touchpoint, attribute, product, beverage, ambiance, context, outcome', eyebrow: 'Dimensions' })
+
+          // Aspect coverage — the 7 axes by mention rate.
+          slides.push({
+            type: 'column_chart',
+            title: 'Dimensions — Aspect Coverage',
+            subtitle: `${dim.withSignal.toLocaleString()} of ${dim.classifiedRows.toLocaleString()} classified comments carry at least one aspect`,
+            yAxisLabel: '% of classified comments mentioning the axis',
+            valueSuffix: '%',
+            data: dim.axes.map(a => ({ label: a.label, value: Math.round(a.rate) })),
+          })
+
+          // What stands out — top sub-aspects by mention volume.
+          const topSubs = [...dim.subs].sort((a, b) => b.count - a.count).slice(0, 10)
+          const lowest = topSubs.filter(s => s.posPct != null).sort((a, b) => (a.posPct as number) - (b.posPct as number)).slice(0, 3)
+          let standOut = lowest.length
+            ? `The fix list is the lowest %-positive aspects: ${lowest.map(s => `${s.sub} (${s.posPct}%)`).join(', ')}.`
+            : `Counts shown; %-positive where assertion polarity exists.`
+          if (dim.alerts.length) standOut += ` Severity flags: ${dim.alerts.map(a => `${a.tag} (${a.count})`).join(', ')} across ${dim.alertRows.toLocaleString()} comments — review first.`
+          slides.push({
+            type: 'table',
+            title: 'Dimensions — What Stands Out',
+            subtitle: `Top ${topSubs.length} sub-aspects by mention volume`,
+            columns: ['Aspect', 'Axis', 'Mentions', '% Positive', 'Avg ★'],
+            rows: topSubs.map(s => [
+              trunc(s.sub, 28), s.axis, String(s.count),
+              s.posPct != null ? `${s.posPct}%` : '—',
+              s.avgRating != null ? `${s.avgRating.toFixed(1)}★` : '—',
+            ]),
+            insight: standOut,
+          })
+
+          // Heads-Up — the exception alerts (pain / bright / safety).
+          const alerts = computeDimensionAlerts(dim, { max: 8 })
+          if (alerts.length) {
+            const KIND_LABEL: Record<DimensionAlertKind, string> = {
+              safety: 'Safety', pain: 'Pain point', bright: 'Bright spot',
+              deteriorating: 'Trending down', heating: 'Heating up', improving: 'Improving',
+            }
+            const counts = alerts.reduce<Record<string, number>>((m, a) => { m[a.kind] = (m[a.kind] || 0) + 1; return m }, {})
+            const summary = Object.entries(counts).map(([k, n]) => `${n} ${KIND_LABEL[k as DimensionAlertKind].toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ')
+            slides.push({
+              type: 'table',
+              title: 'Dimensions — Heads-Up',
+              subtitle: 'Exception conditions worth acting on — every line carries its mention count',
+              columns: ['Signal', 'Aspect', 'What we see'],
+              rows: alerts.map(a => [`${a.icon} ${KIND_LABEL[a.kind]}`, a.title, a.detail]),
+              insight: summary,
+            })
+          }
+        }
+      }
     }
 
     // ── Field groupings ──────────────────────────────────────────────────────

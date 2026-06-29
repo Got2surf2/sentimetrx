@@ -60,6 +60,7 @@ tests/
 │   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug)
 │   ├── sourceSummary.test.ts  # shared "what was presented" renderer (Town Hall Meeting Notes + Agent KB summary) — heading/overview/items, optional figures/refs/attribution, escaping, empty-state
 │   ├── taxonomyRollup.test.ts # restaurant taxonomy roll-up — aggregateTaxonomy axis/sub rates + sentiment + alerts; resolveDictionary core⊕overlay layering
+│   ├── dimensionAlerts.test.ts # Dimensions "Heads-Up" alert engine — pain/bright/safety static tier + deteriorating/heating/improving trend tier; adaptive min-mention floor, safety-always, per-aspect dedupe, cap
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
