@@ -545,7 +545,8 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
       })
       const data = await res.json()
       if (data.topics?.length) {
-        setGuide(data.topics.map((t: any) => ({
+        const roundsMode = config.pacing_mode === 'rounds'
+        const gen: TownHallGuideTopic[] = data.topics.map((t: any) => ({
           id: generateId(),
           label: t.label || '',
           description: t.description || '',
@@ -553,7 +554,12 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
           follow_up_angles: t.follow_up_angles || [],
           keywords: t.keywords || [],
           response_target: 30,
-        })))
+          // In rounds mode land generated questions in round 1 and append, so
+          // existing rounds/items aren't wiped — the user redistributes them
+          // with the per-question "Move to round" control.
+          ...(roundsMode ? { round: 1 } : {}),
+        }))
+        setGuide(g => (roundsMode ? [...g, ...gen] : gen))
         setGuideGenerated(true)
       }
     } catch {}
@@ -1052,17 +1058,32 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
 
                         <div className="space-y-4">
                           {roundTopics.map(({ t, gi }, localIdx) => (
-                            <TopicCard
-                              key={t.id}
-                              topic={t}
-                              index={localIdx}
-                              onChange={nt => updateTopic(gi, nt)}
-                              onRemove={() => removeTopic(gi)}
-                              industry={config.industry}
-                              orgName={config.context.org_name}
-                              eventDesc={config.context.event_description}
-                              expectedAttendees={config.expected_attendees}
-                            />
+                            <div key={t.id}>
+                              <TopicCard
+                                topic={t}
+                                index={localIdx}
+                                onChange={nt => updateTopic(gi, nt)}
+                                onRemove={() => removeTopic(gi)}
+                                industry={config.industry}
+                                orgName={config.context.org_name}
+                                eventDesc={config.context.event_description}
+                                expectedAttendees={config.expected_attendees}
+                              />
+                              {(config.rounds || []).length > 1 && (
+                                <div className="flex items-center justify-end gap-1.5 mt-1.5">
+                                  <span className="text-[10px] text-gray-400">Move to</span>
+                                  <select
+                                    value={t.round || round.number}
+                                    onChange={e => updateTopic(gi, { ...t, round: parseInt(e.target.value) })}
+                                    className="px-2 py-1 rounded-lg border border-gray-200 bg-white"
+                                    style={{ fontSize: 16 }}>
+                                    {(config.rounds || []).slice().sort((a, b) => a.number - b.number).map(r => (
+                                      <option key={r.number} value={r.number}>Round {r.number}{r.item_name ? ' — ' + r.item_name : ''}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
                           ))}
                           {roundTopics.length === 0 && (
                             <p className="text-[11px] text-gray-400 italic">No questions in this round yet.</p>

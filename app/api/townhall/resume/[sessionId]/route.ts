@@ -69,9 +69,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
   // Active themes + live response counts (mirrors the chat handler's load).
   const { data: activeThemes } = await db
     .from('townhall_themes')
-    .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
+    .select('id, label, description, question, follow_up_angles, keywords, source, response_target, round_number')
     .eq('session_id', session.id)
     .eq('state', 'active')
+  const themeRound: Record<string, number | null> = {}
+  for (const t of activeThemes || []) themeRound[t.id] = (t as any).round_number ?? null
   const { data: turnCounts } = await db
     .from('townhall_turns')
     .select('theme_id')
@@ -97,6 +99,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
   // Nothing new active for this participant yet — keep holding.
   if (!pick.topic) return NextResponse.json({ holding: true })
 
+  // Item-aware lead-in: this is the entry question of a freshly-served round,
+  // so prefix the tasting item's name when we have one (deterministic — no AI
+  // call, keeps the poll fast). Falls back to the question verbatim.
+  const round = themeRound[pick.topic.id]
+  const item = round != null ? (((config?.rounds || []).find((r: any) => r?.number === round)?.item_name) || '') : ''
+  const botMessage = item ? 'Now for ' + item + ' — ' + pick.topic.question : pick.topic.question
+
   // Serve the round's question as a real bot turn so it's in the transcript and
   // the participant's next answer threads onto it normally.
   const nextTurn = lastTurn + 1
@@ -104,7 +113,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     session_id: session.id,
     participant_id,
     turn_number: nextTurn,
-    bot_message: pick.topic.question,
+    bot_message: botMessage,
     user_message: null,
     user_message_en: null,
     language: body.language || 'en',
@@ -117,7 +126,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
 
   return NextResponse.json({
     holding: false,
-    bot_message: pick.topic.question,
+    bot_message: botMessage,
     theme_id: pick.topic.id,
     turn_number: nextTurn,
     source: 'guide',
