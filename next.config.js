@@ -89,6 +89,7 @@ const nextConfig = {
     '/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/bots/[id]/readout/pdf':       ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/collections/[id]/project-report/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/api/datasets/[datasetId]/ad-hoc-report':  ['./node_modules/@sparticuz/chromium/bin/**'],
     // Admin deck PDF routes — same headless-Chrome dependency.
     '/api/community-feedback-deck':     ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/pitch-deck-v2':               ['./node_modules/@sparticuz/chromium/bin/**'],

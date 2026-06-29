@@ -100,14 +100,15 @@ function projectType(id: 'community' | 'competitive' | 'brand-360', label: strin
 }
 
 function adHocType(isCollection: boolean): ReportType {
-  const base = isCollection ? collBase : dsBase
   return {
     id: 'ad-hoc', label: 'Ad-hoc report',
     description: 'Describe exactly what you want — Ask Ana writes a focused report on this data.',
     formats: ['pdf', 'html'],
     configurable: true,   // opens a prompt box
     scopes: isCollection ? ['full'] : ['full', 'in-view'],
-    launch: (id) => ({ url: `${base(id)}/ad-hoc-report`, method: 'POST' }),
+    // Collections are datasets (source='collection'), so the dataset route +
+    // shared loadAnaSample handles both — one endpoint, keyed by dataset_id.
+    launch: (id) => ({ url: `${dsBase(id)}/ad-hoc-report`, method: 'POST' }),
   }
 }
 

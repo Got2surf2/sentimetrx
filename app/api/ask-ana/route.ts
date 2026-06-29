@@ -9,20 +9,17 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
-import { getSourceLabel, formatRowsForContext } from '@/lib/anaContext'
+import { getSourceLabel } from '@/lib/anaContext'
+import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
 const DEFAULT_SAMPLE = 200    // default if user doesn't configure
-const FETCH_CAP      = 2000   // max rows to pull from DB before filtering
-const MEMBER_FLOOR   = 20     // min rows per collection member in 'floor' strategy
-const URL_ONLY_RE    = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 interface Message {
   role: 'user' | 'assistant'
@@ -145,44 +142,6 @@ const RECOMMEND_SAMPLING_TOOL = {
   },
 }
 
-// ── Per-member budget computation for collections ─────────────────────────
-function computeMemberBudgets(
-  members: { dataset_id: string; name: string; row_count: number }[],
-  totalBudget: number,
-  strategy: 'proportional' | 'equal' | 'floor'
-): { dataset_id: string; budget: number }[] {
-  const totalRows = members.reduce(function(s, m) { return s + m.row_count }, 0)
-  if (totalRows === 0) return members.map(function(m) { return { dataset_id: m.dataset_id, budget: 0 } })
-
-  if (strategy === 'equal') {
-    const perMember = Math.floor(totalBudget / members.length)
-    return members.map(function(m) {
-      return { dataset_id: m.dataset_id, budget: Math.min(perMember, m.row_count) }
-    })
-  }
-
-  if (strategy === 'floor') {
-    // Give each member at least MEMBER_FLOOR rows (or all rows if smaller)
-    let remaining = totalBudget
-    const floors = members.map(function(m) {
-      const f = Math.min(MEMBER_FLOOR, m.row_count)
-      remaining -= f
-      return f
-    })
-    if (remaining < 0) remaining = 0
-    const nonFloorTotal = members.reduce(function(s, m) { return s + Math.max(0, m.row_count - MEMBER_FLOOR) }, 0)
-    return members.map(function(m, i) {
-      const extra = nonFloorTotal > 0 ? Math.round(Math.max(0, m.row_count - MEMBER_FLOOR) / nonFloorTotal * remaining) : 0
-      return { dataset_id: m.dataset_id, budget: Math.min(floors[i] + extra, m.row_count) }
-    })
-  }
-
-  // Default: proportional
-  return members.map(function(m) {
-    return { dataset_id: m.dataset_id, budget: Math.min(Math.max(1, Math.round(m.row_count / totalRows * totalBudget)), m.row_count) }
-  })
-}
-
 export async function POST(req: Request) {
   // Auth + admin-org context. Admin-org users get cross-org dataset visibility
   // (same pattern as the rest of the platform; see lib/auth/orgAccess.ts).
@@ -254,24 +213,8 @@ export async function POST(req: Request) {
     }
   } catch { /* entities are optional context */ }
 
-  // ── Resolve collection members ──────────────────────────────────────────
-  let collectionMembers: { dataset_id: string; name: string; row_count: number }[] = []
-  if (dataset.source === 'collection') {
-    const { data: col } = await service.from('collections').select('id').eq('dataset_id', datasetId).single()
-    if (col) {
-      const { data: mems } = await service.from('collection_members').select('dataset_id, label, sort_order').eq('collection_id', col.id).order('sort_order', { ascending: true })
-      if (mems && mems.length > 0) {
-        const memIds = mems.map(function(m) { return m.dataset_id })
-        const { data: memDs } = await service.from('datasets').select('id, name, row_count').in('id', memIds)
-        const dsMap: Record<string, { name: string; row_count: number }> = {}
-        if (memDs) memDs.forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0 } })
-        collectionMembers = mems.map(function(m) {
-          const info = dsMap[m.dataset_id] || { name: m.label || 'Unknown', row_count: 0 }
-          return { dataset_id: m.dataset_id, name: m.label || info.name, row_count: info.row_count }
-        })
-      }
-    }
-  }
+  // ── Resolve collection members (shared with the ad-hoc report route) ─────
+  const collectionMembers = await resolveCollectionMembers(service, { id: datasetId, source: dataset.source })
 
   // ── Metadata-only mode: Ana recommends sampling config ──────────────────
   if (metadataOnly) {
@@ -322,108 +265,13 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
     return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools, dataset.org_id)
   }
 
-  // ── Normal mode: fetch data rows with sampling ──────────────────────────
-  const allRows: Record<string, unknown>[] = []
-  const fetchBudget = Math.min(sampleSize * 3, FETCH_CAP)
-  const totalDatasetRows = dataset.source === 'collection'
-    ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
-    : (dataset.row_count || 0)
+  // ── Normal mode: fetch + filter + sample rows (shared pipeline) ─────────
+  const { rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, afterSignalCount, sampled, signalNote } =
+    await loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters, collectionMembers })
 
-  if (dataset.source === 'collection' && collectionMembers.length > 0) {
-    // Collection: distribute fetch budget across members
-    const budgets = computeMemberBudgets(collectionMembers, fetchBudget, samplingStrategy)
-    for (const b of budgets) {
-      if (b.budget <= 0) continue
-      const memberInfo = collectionMembers.find(function(m) { return m.dataset_id === b.dataset_id })
-      const memberRows = memberInfo ? memberInfo.row_count : 0
-      const fetched = await fetchDatasetRows(service, b.dataset_id, b.budget, memberRows)
-      for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
-    }
-  } else {
-    // Single dataset
-    const fetched = await fetchDatasetRows(service, datasetId, fetchBudget, dataset.row_count || 0)
-    for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
-  }
-
-  if (allRows.length === 0) {
+  if (filteredRows.length === 0) {
     return NextResponse.json({ error: 'No rows found in dataset' }, { status: 400 })
   }
-
-  // Apply filters client-side if provided
-  let filteredRows = allRows
-  if (filters && Object.keys(filters).length > 0) {
-    filteredRows = allRows.filter(function(row) {
-      for (const field of Object.keys(filters)) {
-        const f = filters[field]
-        const val = row[field]
-        if (f.type === 'cat') {
-          const allowed = new Set(f.values || [])
-          if (val == null && f.excludeBlanks) return false
-          if (val != null && !allowed.has(String(val))) return false
-        } else if (f.type === 'range') {
-          const num = Number(val)
-          if (isNaN(num)) { if (!f.includeBlanks) return false }
-          else if (num < f.values[0] || num > f.values[1]) return false
-        }
-      }
-      return true
-    })
-  }
-
-  // Filter out URL-only rows (no meaningful text content)
-  if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {
-    filteredRows = filteredRows.filter(function(r) {
-      var text = String(r.body || r.user_message || r.review_text || '').trim()
-      return text && !URL_ONLY_RE.test(text)
-    })
-  }
-
-  // Reddit: vote-weighted sampling — only mainstream + controversial comments
-  const totalFiltered = filteredRows.length
-  let sampled = false
-  let signalNote = ''
-
-  if (dataset.source === 'reddit' && filteredRows.length > 0) {
-    const MAINSTREAM_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.mainstream
-    const NOISE_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.noise
-    const threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
-    filteredRows.forEach(function(r) {
-      const tid = String(r.thread_id || 'unknown')
-      if (!threads[tid]) threads[tid] = []
-      threads[tid].push({ score: Number(r.score) || 0, row: r })
-    })
-
-    const signalRows: Record<string, unknown>[] = []
-    Object.values(threads).forEach(function(entries) {
-      const sorted = [...entries].sort(function(a, b) { return b.score - a.score })
-      const count = sorted.length
-      sorted.forEach(function(entry, rank) {
-        const percentile = count > 1 ? Math.round((1 - rank / (count - 1)) * 100) : 50
-        if (percentile >= NOISE_CUTOFF && entry.score >= 0) {
-          signalRows.push(entry.row)
-        }
-      })
-    })
-
-    if (signalRows.length >= 10) {
-      filteredRows = signalRows
-      signalNote = '\n\nNote: Only mainstream and controversial comments are included (top ' + (100 - NOISE_CUTOFF) + '% by score within each thread). ' + (totalFiltered - signalRows.length) + ' noise/fringe comments excluded.'
-    }
-  }
-
-  // Random sample if still too many rows for the context window
-  const afterSignalCount = filteredRows.length
-  if (filteredRows.length > sampleSize) {
-    for (let i = filteredRows.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      var tmp = filteredRows[i]; filteredRows[i] = filteredRows[j]; filteredRows[j] = tmp
-    }
-    filteredRows = filteredRows.slice(0, sampleSize)
-    sampled = true
-  }
-
-  // Format rows for context — keep it compact
-  const dataContext = formatRowsForContext(filteredRows, dataset.source)
 
   // Build system prompt
   const sourceLabel = getSourceLabel(dataset.source)
@@ -511,45 +359,6 @@ Here is the dataset:
 ${dataContext}`
 
   return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS, dataset.org_id)
-}
-
-// ── Fetch rows from a single dataset, using RPC sampling for large ones ───
-async function fetchDatasetRows(
-  service: ReturnType<typeof createServiceRoleClient>,
-  datasetId: string,
-  budget: number,
-  totalRows: number
-): Promise<Record<string, unknown>[]> {
-  // Small dataset: fetch all rows sequentially
-  if (totalRows <= budget) {
-    const rows: Record<string, unknown>[] = []
-    const PAGE = 1000
-    let offset = 0
-    let fetchMore = true
-    while (fetchMore) {
-      const { data: flatRows, error } = await service
-        .from('dataset_rows_flat')
-        .select('data')
-        .eq('dataset_id', datasetId)
-        .order('row_index', { ascending: true })
-        .range(offset, offset + PAGE - 1)
-
-      if (error || !flatRows || flatRows.length === 0) break
-      for (let i = 0; i < flatRows.length; i++) rows.push(flatRows[i].data)
-      if (flatRows.length < PAGE) fetchMore = false
-      offset += PAGE
-    }
-    return rows
-  }
-
-  // Large dataset: use RPC random sampling
-  const { data: sampled, error } = await service.rpc('sample_row_pairs', {
-    p_dataset_id: datasetId,
-    p_fields: [],
-    p_limit: budget,
-  })
-  if (error || !sampled) return []
-  return sampled.map(function(r: any) { return r.data })
 }
 
 // ── Stream Anthropic response ─────────────────────────────────────────────

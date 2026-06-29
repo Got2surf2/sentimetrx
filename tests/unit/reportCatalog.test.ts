@@ -64,7 +64,7 @@ describe('availableReports — collection', () => {
   it('ad-hoc on a collection is full-scope only', () => {
     const adhoc = availableReports(ctx({ isCollection: true, collectionPurpose: 'community', memberCount: 2 })).find(r => r.id === 'ad-hoc')!
     expect(adhoc.scopes).toEqual(['full'])
-    expect(adhoc.launch('c1', 'pdf').url).toBe('/api/collections/c1/ad-hoc-report')
+    expect(adhoc.launch('c1', 'pdf').url).toBe('/api/datasets/c1/ad-hoc-report')
   })
 })
 
