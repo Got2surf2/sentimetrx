@@ -10,6 +10,12 @@
 
 Live group feedback sessions with AI moderation. Participants chat anonymously with a bot that rotates through discussion topics, probes for deeper insights, and detects emerging themes in real-time. Facilitators monitor via a live console with topic cards, sentiment tracking, and organic topic discovery.
 
+### Pacing modes (`config.pacing_mode`)
+
+- **`open`** (default) — the existing free-flowing model: participants are assigned starting topics and the engine rotates them through the pool at their own pace.
+- **`rounds`** — moderator-gated tasting-kitchen variant. Each round is one item being served/tasted; topics carry a `round` number (`TownHallGuideTopic.round`) and round metadata lives in `config.rounds[]` (`TownHallRound`: `{number, item_name, item_photo?}`). On activation, round 1 themes seed `active` and later rounds seed `paused` (`townhall_themes.round_number`, sql/140); the moderator advances the room one round at a time and participants hold between rounds. Solves the "speed-runner fills the whole survey before tasting everything" problem. Built on the legacy `townhall_sessions` substrate.
+  - **Phase 1 (model layer, current):** config/types + `round_number` column + round-gated seed-on-activate. Inert until the creator UI sets `pacing_mode` (Phase 2). Open-mode starts do not reference `round_number`, so sql/140 is only required once rounds mode is used.
+
 ---
 
 ## Session Creation (`app/townhall/new/`)

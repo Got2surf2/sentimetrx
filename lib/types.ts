@@ -910,6 +910,16 @@ export interface TownHallGuideTopic {
   target_mode?:      'fixed' | 'percentage'   // fixed count vs % of expected_attendees
   target_pct?:       number                   // e.g. 30 = 30% of expected_attendees
   enabled?:          boolean   // default true — disabled topics not assigned to participants
+  round?:            number    // round-based pacing: which tasting round/item (1-indexed); absent = round 1 / open mode
+}
+
+// Round-based pacing (tasting-kitchen variant): each round is one tasting item.
+// The moderator gates the room round-by-round — round 1 topics start active,
+// later rounds wait paused until "Start Round N". Lives in config.rounds[].
+export interface TownHallRound {
+  number:      number    // 1-indexed round order
+  item_name:   string    // what is being tasted/shown this round (e.g. "Truffle Mac")
+  item_photo?: string    // optional image URL of the item being served
 }
 
 export type TownHallSessionType = 'community' | 'employee' | 'customer' | 'student' | 'member' | 'other'
@@ -919,6 +929,11 @@ export interface TownHallConfig {
   bot_emoji: string
   industry?: string   // matches Industry type from industryDefaults.ts
   session_type?: TownHallSessionType   // drives AI language: "residents" vs "team members" vs "customers" etc.
+  // Pacing: 'open' = current free-flowing conversation; 'rounds' = moderator-gated
+  // tasting rounds (each round = one item; participants hold between rounds until
+  // the moderator pushes the next one). Default 'open'.
+  pacing_mode?: 'open' | 'rounds'
+  rounds?: TownHallRound[]   // round metadata when pacing_mode === 'rounds'
   context: {
     org_name:          string
     event_description: string

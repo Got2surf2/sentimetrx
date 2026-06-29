@@ -905,18 +905,32 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
       if (session?.discussion_guide && Array.isArray(session.discussion_guide)) {
         const enabledTopics = session.discussion_guide.filter((t: any) => t.enabled !== false)
-        const guideThemes = enabledTopics.map((topic: any, idx: number) => ({
+        // Round-based pacing: round 1 (lowest authored round) starts active; later
+        // rounds wait paused until the moderator pushes "Start Round N". In open
+        // mode round_number stays null and every topic seeds active (legacy behavior).
+        const roundsMode = session.config?.pacing_mode === 'rounds'
+        const firstRound = roundsMode
+          ? Math.min(...enabledTopics.map((t: any) => t.round || 1))
+          : null
+        const guideThemes = enabledTopics.map((topic: any, idx: number) => {
+          const round = topic.round || 1
+          return {
           session_id: params.id,
           label: topic.label,
           description: topic.description || null,
           question: topic.opening_question,
           follow_up_angles: topic.follow_up_angles || [],
           keywords: topic.keywords || [],
-          state: 'active',
+          state: roundsMode && round !== firstRound ? 'paused' : 'active',
           source: 'guide',
           response_target: topic.response_target || session.config?.engine?.default_response_target || 30,
           sort_order: idx,
-        }))
+          // Only reference round_number in rounds mode so open-mode starts don't
+          // require sql/140 (column absent until applied). roundsMode is only
+          // reachable once the Phase 2 creator UI sets pacing_mode.
+          ...(roundsMode ? { round_number: round } : {}),
+          }
+        })
 
       if (guideThemes.length > 0) {
         await db.from('townhall_themes').insert(guideThemes)
