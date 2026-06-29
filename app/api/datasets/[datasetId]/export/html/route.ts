@@ -686,7 +686,7 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string, na
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(datasetName)} — StoryTime Report</title>
+<title>${esc(datasetName)} — Report</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
 <style>
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0D2B45;font-family:'Inter',system-ui,-apple-system,sans-serif}

@@ -87,7 +87,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
-        Controls every outbound AI call this org makes (theme mining, StoryTime, agents, search re-rank, embeddings, moderation).
+        Controls every outbound AI call this org makes (theme mining, Reports, agents, search re-rank, embeddings, moderation).
       </p>
 
       <div className="flex flex-col gap-2">

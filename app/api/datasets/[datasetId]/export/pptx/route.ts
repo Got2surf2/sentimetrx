@@ -1256,7 +1256,7 @@ export async function POST(req: Request, props: Params) {
         title: 'Every deck is custom.',
         tagline: 'Not template-filled — generated for your data, your fields, your questions.',
         capabilities: [
-          'StoryTime composes itself from your dataset — slides chosen by what the data shows.',
+          'This report composes itself from your dataset — slides chosen by what the data shows.',
           'Give us a question, get a deck — entity analysis, churn drivers, theme deep-dives, segment comparisons.',
           'Every run is fresh — same chrome, different content. Take it from analysis to readout in minutes.',
         ],

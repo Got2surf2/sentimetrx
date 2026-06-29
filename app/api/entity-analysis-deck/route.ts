@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 
   const deck: DeckSpec = {
     title: customTitle || `${datasetName} — ${field} entity analysis`,
-    subtitle: 'Entity analysis · add-on to the StoryTime deck',
+    subtitle: 'Entity analysis · add-on to the report deck',
     slides: entitySlideSpecs(field, agg),
   }
 

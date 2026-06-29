@@ -4,7 +4,7 @@
 // Ana-style header with two zones:
 //   LEFT (flexible):  back + brand → module tabs → Filters → Ask Ana (tabs shrink padding responsively)
 //   RIGHT (fixed):    More dropdown → source pill → row count/sync → AI toggle
-// Action items (StoryTime, Share Analytics, Save) always live in the More dropdown.
+// Action items (Report, Share Analytics, Save) always live in the More dropdown.
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
@@ -241,16 +241,17 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span>{'\uD83D\uDD0D'}</span><span className="ana-lbl">Search</span>
           </button>
 
-          {/* StoryTime \u2014 AI-driven; hidden entirely when the org has AI off. */}
+          {/* Report (AI-driven deck; formerly "StoryTime") \u2014 hidden when the org has AI off.
+              Run from the analyze view, it honors the current filters/view (in-view scope). */}
           {!aiDisabledByOrg && (
-            <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
+            <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="Build a report from this view"
               style={{
                 height: '100%', display: 'flex', alignItems: 'center', gap: 5,
                 fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
                 background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
                 cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}>
-              <span>{'\uD83C\uDFAC'}</span><span className="ana-lbl">StoryTime</span>
+              <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Report</span>
             </button>
           )}
 

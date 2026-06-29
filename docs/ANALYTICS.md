@@ -710,6 +710,7 @@ analytics export — dataset-row CSV download is not part of this module.
 > **Org gate:** every export route (`/api/datasets/[datasetId]/export/{pptx,html,signals-pptx,html/share}`) resolves the dataset with the service role, so it pairs the lookup with the caller's `org_id` via `getCallerOrgContext` (admin-org may export any) and returns 404 cross-org. See `docs/SECURITY.md` § 2; regression in `tests/integration/export-org-gate.test.ts`.
 
 ### PPTX (Consulting-Quality Deck)
+> **Naming (2026-06-29):** the user-facing label is **"Report"** (📊, in the analyze-view More menu). The old cutesy "StoryTime" name was retired as opaque. Internal route/code names (`export/pptx`, `renderDeck`, etc.) are unchanged. A future **unified "Reports" picker** will offer this deck plus the collection (community/competitive/brand-360), Operational Review, and an **ad-hoc Ask-Ana report** under one entry — run from a card → full dataset; run from the analyze view → honors the current filters/saved-view (`scope: 'full' | 'in-view'`).
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the
