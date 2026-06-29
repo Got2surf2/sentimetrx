@@ -20,7 +20,7 @@ function reset() { ctx.authUser = null; ctx.results = {} }
 
 function builder(table: string): any {
   const b: any = {}
-  for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert']) b[m] = () => b
+  for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert', 'not', 'lt', 'gt', 'gte', 'lte']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
   b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
@@ -35,6 +35,8 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import * as themes from '@/app/api/townhall/themes/[id]/route'
 import * as duplicate from '@/app/api/townhall/sessions/[id]/duplicate/route'
+import * as round from '@/app/api/townhall/sessions/[id]/round/route'
+import * as resume from '@/app/api/townhall/resume/[sessionId]/route'
 
 const idProps = { params: Promise.resolve({ id: 'x_1' }) } as any
 const post = (body: any = {}) => new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as any
@@ -113,5 +115,71 @@ describe('POST /api/townhall/sessions/[id]/duplicate — caller-org gate', () =>
     ctx.results['users'] = admin
     ctx.results['townhall_sessions'] = { data: { name: 'S', config: {}, discussion_guide: null, org_id: 'orgB' }, error: null }
     expect((await dup()).status).toBe(201)
+  })
+})
+
+// Round-based pacing: POST /api/townhall/sessions/[id]/round advances the room
+// to round N. Same org-gate contract as the other mutating routes.
+describe('POST /api/townhall/sessions/[id]/round — caller-org gate', () => {
+  const start = (body: any = { round: 2 }) => round.POST(post(body), idProps)
+
+  it('401 unauthenticated', async () => {
+    expect((await start()).status).toBe(401)
+  })
+
+  it('401 when the user has no org and is not an admin', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = { data: { org_id: null, organizations: { is_admin_org: false } }, error: null }
+    expect((await start()).status).toBe(401)
+  })
+
+  it('400 on an invalid round number', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = nonAdmin('orgA')
+    expect((await start({ round: 0 })).status).toBe(400)
+  })
+
+  it('404 cross-org for a non-admin', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = nonAdmin('orgA')
+    ctx.results['townhall_sessions'] = { data: { org_id: 'orgB' }, error: null }
+    expect((await start()).status).toBe(404)
+  })
+
+  it('advances for the owning org (200)', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = nonAdmin('orgA')
+    ctx.results['townhall_sessions'] = { data: { org_id: 'orgA' }, error: null }
+    expect((await start()).status).toBe(200)
+  })
+
+  it('allows a platform admin to bypass the org check (200)', async () => {
+    ctx.authUser = { id: 'admin' }
+    ctx.results['users'] = admin
+    ctx.results['townhall_sessions'] = { data: { org_id: 'orgB' }, error: null }
+    expect((await start()).status).toBe(200)
+  })
+})
+
+// Participant-facing resume probe (public, scoped by session+participant ids
+// like /chat — no user-auth/org gate). Just assert the basic guard contract.
+describe('POST /api/townhall/resume/[sessionId] — guards', () => {
+  const sidProps = { params: Promise.resolve({ sessionId: 'sess1' }) } as any
+
+  it('400 when participant_id is missing', async () => {
+    const res = await resume.POST(post({}), sidProps)
+    expect(res.status).toBe(400)
+  })
+
+  it('404 when the session does not exist', async () => {
+    const res = await resume.POST(post({ participant_id: 'p1' }), sidProps)
+    expect(res.status).toBe(404)
+  })
+
+  it('holds when the session is not active', async () => {
+    ctx.results['townhall_sessions'] = { data: { id: 'sess1', status: 'paused', config: {} }, error: null }
+    const res = await resume.POST(post({ participant_id: 'p1' }), sidProps)
+    expect(res.status).toBe(200)
+    expect((await res.json()).holding).toBe(true)
   })
 })
