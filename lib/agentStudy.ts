@@ -494,7 +494,7 @@ function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string
 //   AI validation of open questions (open[].restated, autoFiltered, filteredExamples).
 //   v5 (2026-06-09): publicComments[] — substantive resident feedback extracted
 //   in the classify pass (the public-comment record artifact).
-const STUDY_SCHEMA_VERSION = 'v6'
+const STUDY_SCHEMA_VERSION = 'v7'   // v7: store full sample question/answer (was clipped to 300/320)
 function cacheKeyFor(pairTotal: number, bot: BotRow, kbSig: string): string {
   const h = crypto.createHash('sha1')
   h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}|${kbSig}`)
@@ -610,7 +610,10 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
     const sent = ex.question.sentiment
     if (sent === 'positive' || sent === 'negative') f.sentiment[sent]++
     else f.sentiment.neutral++
-    if (f.samples.length < 6) f.samples.push({ question: text(ex.question).slice(0, 300), answer: ex.answer ? text(ex.answer).slice(0, 320) : '', language: ex.question.language, sentiment: sent })
+    // Store the FULL question + answer — consumers are wrapping HTML reports
+    // (Agent Study report + the collection community report) that show the
+    // complete response; truncating here clipped verbatims mid-word.
+    if (f.samples.length < 6) f.samples.push({ question: text(ex.question), answer: ex.answer ? text(ex.answer) : '', language: ex.question.language, sentiment: sent })
   })
   // per-focus entity cross-tab + canonical entity casing
   const canonical = new Map<string, string>()
