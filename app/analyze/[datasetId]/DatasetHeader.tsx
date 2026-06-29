@@ -13,6 +13,8 @@ import ExportModal from '@/components/analyze/ExportModal'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
+import ReportsMenu from '@/components/analyze/ReportsMenu'
+import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection' | 'bot' | 'recording'; visibility: 'private' | 'public'
@@ -54,6 +56,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
   var [apiKey,      setApiKey]      = useState('')
   var [showExport,  setShowExport]  = useState(false)
+  var [reportMenuOpen, setReportMenuOpen] = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showSearch,  setShowSearch]  = useState(false)
   var [aiToggling,  setAiToggling]  = useState(false)
@@ -74,6 +77,39 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   }, [])
 
   var activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
+
+  // Unified Reports (catalog-driven). In the analyze view the deck honors the
+  // current filters/view (the ExportModal carries them); ad-hoc stays gated.
+  var reportCtx: ReportContext = {
+    isCollection: dataset.source === 'collection',
+    source: dataset.source,
+    aiEnabled: !aiDisabledByOrg,
+    adHocEnabled: false,
+  }
+  var datasetReports = availableReports(reportCtx)
+  function handleReportClick() {
+    // One configurable report → open it directly; otherwise show the picker.
+    if (datasetReports.length === 1 && datasetReports[0].configurable) { setShowExport(true); return }
+    setReportMenuOpen(function(o) { return !o })
+  }
+  async function handleReportLaunch(type: ReportType, format: ReportFormat) {
+    setReportMenuOpen(false)
+    if (type.id === 'deck') { setShowExport(true); return }   // configurable → its own modal
+    var req = type.launch(dataset.id, format)
+    if (req.method === 'GET') { window.open(req.url, '_blank', 'noopener'); return }
+    // POST → fetch → blob download (collection synthesis reports, etc.)
+    try {
+      var res = await fetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body || {}) })
+      if (!res.ok) { window.alert('Could not build the report'); return }
+      var blob = await res.blob()
+      var url = URL.createObjectURL(blob)
+      var a = document.createElement('a')
+      a.href = url
+      a.download = (dataset.name || 'Report').replace(/[^\w.-]+/g, '_') + '_' + type.id + '.' + format
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { window.alert('Network error building the report') }
+  }
 
   var [reviewSyncing, setReviewSyncing] = useState(false)
   var [syncing, setSyncing] = useState(false)
@@ -241,18 +277,39 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span>{'\uD83D\uDD0D'}</span><span className="ana-lbl">Search</span>
           </button>
 
-          {/* Report (AI-driven deck; formerly "StoryTime") \u2014 hidden when the org has AI off.
-              Run from the analyze view, it honors the current filters/view (in-view scope). */}
-          {!aiDisabledByOrg && (
-            <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="Build a report from this view"
-              style={{
-                height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
-                background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-              }}>
-              <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Report</span>
-            </button>
+          {/* Report (unified picker; deck formerly "StoryTime") \u2014 hidden when the
+              org has AI off. Single report \u2192 opens directly; multiple (e.g. a
+              restaurant's deck + Operational Review) \u2192 a small picker. Run from
+              here, the deck honors the current filters/view (in-view scope). */}
+          {!aiDisabledByOrg && datasetReports.length > 0 && (
+            <div style={{ position: 'relative', display: 'flex' }}>
+              <button onClick={handleReportClick} className="ana-tab ana-c7" title="Build a report from this view"
+                style={{
+                  height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+                  fontSize: 13, fontWeight: reportMenuOpen ? 700 : 500,
+                  color: reportMenuOpen ? 'white' : 'rgba(255,255,255,.65)',
+                  background: reportMenuOpen ? 'rgba(255,255,255,.18)' : 'transparent',
+                  border: 'none', borderBottom: reportMenuOpen ? '3px solid white' : '3px solid transparent',
+                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Report</span>
+              </button>
+              {reportMenuOpen && (
+                <>
+                  <div onClick={function() { setReportMenuOpen(false) }}
+                    style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41,
+                    minWidth: 260, background: 'white', borderRadius: 10,
+                    boxShadow: '0 10px 30px rgba(0,0,0,.18)', border: '1px solid #e5e7eb',
+                    paddingTop: 6, paddingBottom: 6, color: '#111827',
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 14px 4px' }}>Reports</div>
+                    <ReportsMenu ctx={reportCtx} onLaunch={handleReportLaunch} />
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {/* Share Analytics */}
