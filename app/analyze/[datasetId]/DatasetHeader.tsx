@@ -14,6 +14,7 @@ import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
 
 interface DatasetMeta {
@@ -57,6 +58,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [apiKey,      setApiKey]      = useState('')
   var [showExport,  setShowExport]  = useState(false)
   var [reportMenuOpen, setReportMenuOpen] = useState(false)
+  var [adHocOpen, setAdHocOpen] = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showSearch,  setShowSearch]  = useState(false)
   var [aiToggling,  setAiToggling]  = useState(false)
@@ -84,7 +86,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     isCollection: dataset.source === 'collection',
     source: dataset.source,
     aiEnabled: !aiDisabledByOrg,
-    adHocEnabled: false,
+    adHocEnabled: true,
   }
   var datasetReports = availableReports(reportCtx)
   function handleReportClick() {
@@ -95,6 +97,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   async function handleReportLaunch(type: ReportType, format: ReportFormat) {
     setReportMenuOpen(false)
     if (type.id === 'deck') { setShowExport(true); return }   // configurable → its own modal
+    if (type.id === 'ad-hoc') { setAdHocOpen(true); return }
     var req = type.launch(dataset.id, format)
     if (req.method === 'GET') { window.open(req.url, '_blank', 'noopener'); return }
     // POST → fetch → blob download (collection synthesis reports, etc.)
@@ -168,6 +171,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           aiEnabled={aiEnabled}
           onClose={function() { setShowExport(false) }}
         />
+      )}
+      {adHocOpen && (
+        <AdHocReportModal datasetId={dataset.id} datasetName={dataset.name} onClose={function() { setAdHocOpen(false) }} />
       )}
       {showShareAnalytics && (
         <ShareAnalyticsModal

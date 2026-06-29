@@ -15,6 +15,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { hasAnyReport } from '@/lib/reportCatalog'
 import type { ReportContext, ReportType, ReportFormat } from '@/lib/reportCatalog'
 
@@ -101,6 +102,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
   const [refreshing,    setRefreshing]    = useState(false)
+  const [adHocOpen,     setAdHocOpen]     = useState(false)
 
   const isStudy      = dataset.source === 'study'
   const isReviews    = dataset.source === 'google_reviews'
@@ -314,9 +316,10 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     collectionPurpose: colPurpose,
     memberCount: dataset.member_count,
     aiEnabled: true,
-    adHocEnabled: false,
+    adHocEnabled: true,
   }
   function handleReportLaunch(type: ReportType, format: ReportFormat) {
+    if (type.id === 'ad-hoc') { setMenuOpen(false); setAdHocOpen(true); return }
     const purpose = type.id === 'brand-360' ? 'brand_360' : type.id as 'community' | 'competitive'
     if (format === 'html') {
       // GET route returns the report HTML — open it in a new tab.
@@ -590,6 +593,10 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       </div>
 
       {/* Transfer panel — admin only */}
+      {adHocOpen && (
+        <AdHocReportModal datasetId={dataset.id} datasetName={dataset.name} onClose={function() { setAdHocOpen(false) }} />
+      )}
+
       {showTransfer && (
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>
