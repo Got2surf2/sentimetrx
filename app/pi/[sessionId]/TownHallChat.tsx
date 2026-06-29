@@ -82,6 +82,9 @@ export default function TownHallChat({ sessionId }: Props) {
   const [resolvedId, setResolvedId] = useState(sessionId) // UUID from join — slug resolved server-side
   const [turn, setTurn] = useState(0)
   const [themeId, setThemeId] = useState<string | null>(null)
+  // Round-based pacing: participant held between tasting rounds (round_hold)
+  const [held, setHeld] = useState(false)
+  const [holdMsg, setHoldMsg] = useState('')
 
   // Question config
   const [questionPosition, setQuestionPosition] = useState<'before' | 'after'>('after')
@@ -260,8 +263,15 @@ export default function TownHallChat({ sessionId }: Props) {
       }
       // Typing dots are already showing (loading=true) — wait for realistic duration
       await typingDelay(d.bot_message)
-      setMessages(p => [...p, { who: 'bot', text: d.bot_message, ...(d._debug ? { _debug: d._debug } : {}) }])
-      if (d.is_final) await startPostSession()
+      // Round-based pacing: the moderator hasn't opened the next item yet —
+      // show a hold card instead of a bot bubble and poll for the next round.
+      if (d.round_hold) {
+        setHoldMsg(d.bot_message || 'Thanks! Please hold here — the next item is coming up.')
+        setHeld(true)
+      } else {
+        setMessages(p => [...p, { who: 'bot', text: d.bot_message, ...(d._debug ? { _debug: d._debug } : {}) }])
+        if (d.is_final) await startPostSession()
+      }
     } catch { setMessages(p => [...p, { who: 'bot', text: 'Something went wrong. Let me try again — what were you saying?' }]) }
     setLoading(false)
   }
@@ -310,6 +320,33 @@ export default function TownHallChat({ sessionId }: Props) {
       setPhase('done')
     }
   }, [questionPosition, psychoBank, psychoCount, demoFields, botMessages])
+
+  // Round-based pacing: while held between rounds, poll for the next round.
+  // The moderator advances the room; once the next item's themes are active,
+  // /resume serves the round's question and we drop the hold card.
+  useEffect(() => {
+    if (!held) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/townhall/resume/' + resolvedId, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participant_id: pid, language: selectedLang || 'en' }),
+        })
+        const d = await r.json()
+        if (cancelled || !d || d.holding) return
+        setHeld(false)
+        if (d.bot_message) {
+          if (typeof d.turn_number === 'number') setTurn(d.turn_number)
+          if ('theme_id' in d) setThemeId(d.theme_id ?? null)
+          setMessages(p => [...p, { who: 'bot', text: d.bot_message }])
+        }
+        if (d.is_final) await startPostSession()
+      } catch { /* network blip — keep polling */ }
+    }
+    const id = setInterval(tick, 4000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [held, resolvedId, pid, selectedLang, startPostSession])
 
   const handleDone = async () => {
     setMessages(p => [...p, { who: 'user', text: doneLabel || display.done_label || "I'm done sharing", italic: true }])
@@ -535,7 +572,16 @@ export default function TownHallChat({ sessionId }: Props) {
       </div>
 
       {/* Input area — changes based on phase */}
-      {phase === 'chat' ? (
+      {phase === 'chat' && held ? (
+        <div style={{ padding: '16px 18px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0, textAlign: 'center' }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>{'⏸️'}</div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: '#374151', lineHeight: 1.4, marginBottom: 6 }}>{holdMsg}</p>
+          <div style={{ display: 'flex', gap: 5, justifyContent: 'center', alignItems: 'center', color: '#9CA3AF', fontSize: 12 }}>
+            <Dots />
+            <span>Waiting for the next item…</span>
+          </div>
+        </div>
+      ) : phase === 'chat' ? (
         <div style={{ padding: '8px 10px', paddingBottom: 'max(8px, env(safe-area-inset-bottom))', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, maxHeight: '50vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="Message" disabled={loading} rows={1}

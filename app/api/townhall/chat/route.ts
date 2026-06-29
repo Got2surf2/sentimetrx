@@ -611,6 +611,7 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
   let botMessage: string
   let resolvedThemeId: string | null = null
   let aiSource: string = 'guide'
+  let isRoundHold = false   // round-based pacing: held between rounds (vs disengagement standby)
 
   if (isOpeningResponse && message && !skipped) {
     // ── OPENING RESPONSE: Match to best topic ────────────────────────────
@@ -725,6 +726,7 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
           : 'That is very helpful information — thank you! Stand by while we see what some of the other ' + standbyAudience.participants + ' are talking about. If new topics come up, I may circle back to get your thoughts.')
         resolvedThemeId = null
         aiSource = 'standby'
+        isRoundHold = roundHold
         botMessage = standbyMsg
         if (testing) debug.push(roundHold ? 'ROUND HOLD: later rounds still paused — holding participant between rounds' : 'STANDBY: Organic detection active + turns remaining — parking conversation')
       } else {
@@ -789,6 +791,7 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
     bot_message: botMessage,
     theme_id: resolvedThemeId,
     source: aiSource,
+    round_hold: isRoundHold,
     is_final: false,
     turn_number: nextTurnNumber,
     ...(testing ? { _debug: debug } : {}),
