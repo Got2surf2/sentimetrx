@@ -51,6 +51,7 @@ export interface ReportContext {
   taxonomySuppressed?: boolean
   memberCount?:      number
   aiEnabled?:        boolean
+  adHocEnabled?:     boolean   // ad-hoc Ask-Ana report — off until its endpoint ships
 }
 
 const dsBase   = (id: string) => `/api/datasets/${id}`
@@ -130,7 +131,8 @@ export function availableReports(ctx: ReportContext): ReportType[] {
     if (hasDimensions(ctx)) out.push(operationalReviewType())
   }
 
-  if (ctx.aiEnabled !== false) out.push(adHocType(ctx.isCollection))
+  // Ad-hoc is gated on its endpoint being live (off by default) AND AI being on.
+  if (ctx.adHocEnabled && ctx.aiEnabled !== false) out.push(adHocType(ctx.isCollection))
   return out
 }
 

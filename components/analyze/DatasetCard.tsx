@@ -14,6 +14,9 @@ import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
+import ReportsMenu from '@/components/analyze/ReportsMenu'
+import { hasAnyReport } from '@/lib/reportCatalog'
+import type { ReportContext, ReportType, ReportFormat } from '@/lib/reportCatalog'
 
 interface OrgOption { id: string; name: string }
 
@@ -112,9 +115,6 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   // Purpose-typed reports: a collection offers only the report matching its
   // purpose. Legacy collections (purpose null) fall back to all three.
   const colPurpose = isCollection ? (dataset.collection_purpose ?? null) : null
-  const showCommunityReport   = isCollection && (!colPurpose || colPurpose === 'community')
-  const showCompetitiveReport = isCollection && (!colPurpose || colPurpose === 'competitive')
-  const showBrand360Report    = isCollection && (!colPurpose || colPurpose === 'brand_360')
   // Collection id for the brand-glossary editor: a brand card → its own
   // collection; a dataset tagged to a brand → the parent brand collection.
   const glossaryCollectionId = isBrand
@@ -305,6 +305,30 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     } catch { window.alert('Could not load the collection members.') }
   }
 
+  // Unified Reports menu (catalog-driven). Maps a chosen (type, format) onto the
+  // existing launch flows so all the working logic — the competitive focus
+  // picker, the PDF blob download — stays put. adHocEnabled stays false until
+  // the Ask-Ana endpoint ships, so the menu never shows a dead option.
+  const reportCtx: ReportContext = {
+    isCollection,
+    collectionPurpose: colPurpose,
+    memberCount: dataset.member_count,
+    aiEnabled: true,
+    adHocEnabled: false,
+  }
+  function handleReportLaunch(type: ReportType, format: ReportFormat) {
+    const purpose = type.id === 'brand-360' ? 'brand_360' : type.id as 'community' | 'competitive'
+    if (format === 'html') {
+      // GET route returns the report HTML — open it in a new tab.
+      setMenuOpen(false)
+      window.open(type.launch(dataset.id, 'html').url, '_blank', 'noopener')
+      return
+    }
+    // PDF: competitive needs the focus picker first; the rest generate directly.
+    if (type.id === 'competitive') startCompetitive()
+    else handleProjectReport(purpose)
+  }
+
   // Project report (collections only): synthesize a purpose-specific PDF across the
   // collection's inputs. POST → PDF blob → download.
   async function handleProjectReport(purpose?: 'community' | 'competitive' | 'brand_360', primary?: string) {
@@ -459,25 +483,13 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                       👥 Manage members
                     </button>
                   )}
-                  {showCommunityReport && (
-                    <button onClick={function() { handleProjectReport('community') }}
-                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      📊 Community report (PDF)
-                    </button>
+                  {hasAnyReport(reportCtx) && (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', padding: '6px 14px 2px' }}>Reports</div>
+                      <ReportsMenu ctx={reportCtx} busy={syncing} onLaunch={handleReportLaunch} />
+                      <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+                    </>
                   )}
-                  {showCompetitiveReport && (
-                    <button onClick={startCompetitive}
-                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      📊 Competitive report (PDF)…
-                    </button>
-                  )}
-                  {showBrand360Report && (
-                    <button onClick={function() { handleProjectReport('brand_360') }}
-                      style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#0f766e', fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      📊 Brand 360 report (PDF)
-                    </button>
-                  )}
-                  <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
                 </>
               )}
               {isStudy && (

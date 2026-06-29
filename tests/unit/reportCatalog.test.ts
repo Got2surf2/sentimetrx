@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { availableReports, hasAnyReport, type ReportContext } from '@/lib/reportCatalog'
 
-const ctx = (p: Partial<ReportContext>): ReportContext => ({ isCollection: false, aiEnabled: true, ...p })
+const ctx = (p: Partial<ReportContext>): ReportContext => ({ isCollection: false, aiEnabled: true, adHocEnabled: true, ...p })
 
 describe('availableReports — single dataset', () => {
   it('offers the Full report + ad-hoc for a plain dataset', () => {
@@ -65,6 +65,13 @@ describe('availableReports — collection', () => {
     const adhoc = availableReports(ctx({ isCollection: true, collectionPurpose: 'community', memberCount: 2 })).find(r => r.id === 'ad-hoc')!
     expect(adhoc.scopes).toEqual(['full'])
     expect(adhoc.launch('c1', 'pdf').url).toBe('/api/collections/c1/ad-hoc-report')
+  })
+})
+
+describe('ad-hoc gating', () => {
+  it('is hidden until its endpoint is enabled', () => {
+    const ids = availableReports(ctx({ source: 'upload', adHocEnabled: false })).map(r => r.id)
+    expect(ids).toEqual(['deck'])
   })
 })
 

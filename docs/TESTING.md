@@ -62,7 +62,7 @@ tests/
 │   ├── taxonomyRollup.test.ts # restaurant taxonomy roll-up — aggregateTaxonomy axis/sub rates + sentiment + alerts; resolveDictionary core⊕overlay layering
 │   ├── insightAlerts.test.ts  # lens-agnostic "Heads-Up" alert engine (themes + dimensions + quant) — pain/bright/safety static + deteriorating/heating/improving trend + quant avg-drift/low-tail; adaptive min-mention floor, safety-always, cross-lens merge+dedupe+cap, dimensionsToSignals/themesToSignals adapters
 │   ├── trendWindows.test.ts   # dynamic time-framing for trend charts + recent-vs-prior windows — adaptive bucket unit (week/month/quarter), auto third-vs-third split, YoY (same period last year), explicit trailing window, too-short-span fallback, bucketKey
-│   ├── reportCatalog.test.ts  # unified Reports picker source-of-truth — availableReports(ctx) gating (dataset deck + Operational Review for restaurants, collection community/competitive/brand-360 by purpose+member-count, ad-hoc everywhere, AI-off drops AI reports) + per-type formats/scopes + launch URL/method builders
+│   ├── reportCatalog.test.ts  # unified Reports picker source-of-truth — availableReports(ctx) gating (dataset deck + Operational Review for restaurants, collection community/competitive/brand-360 by purpose+member-count, ad-hoc gated until its endpoint ships, AI-off drops AI reports) + per-type formats/scopes + launch URL/method builders
 │   ├── uiHints.test.ts        # ui_hints extractor (canvas demo intent layer) — parse/validate, context plumbing, revert_canvas signal, prompt-text invariants
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
