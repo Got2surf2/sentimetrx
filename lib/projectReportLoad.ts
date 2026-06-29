@@ -200,10 +200,10 @@ const rowText = (d: Record<string, any>): string => {
   return ''
 }
 
-interface MemberRow { text: string; rating: number | null; sentiment: string | null; author: string | null }
+interface MemberRow { text: string; rating: number | null; sentiment: string | null; author: string | null; date: string | null }
 
-// Page all of a member's flat rows (text + rating), capped so a runaway dataset
-// can't stall the report. Datasets in a competitive set are typically 8–30K.
+// Page all of a member's flat rows (text + rating + date), capped so a runaway
+// dataset can't stall the report. Datasets in a competitive set are ~8–30K.
 async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise<MemberRow[]> {
   const out: MemberRow[] = []
   let from = 0
@@ -215,12 +215,28 @@ async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise
       const d = (r.data || {}) as Record<string, any>
       const rv = d.rating
       const rating = rv != null && rv !== '' && isFinite(Number(rv)) ? Number(rv) : null
-      out.push({ text: rowText(d), rating, sentiment: d.sentiment ?? null, author: d.author ?? d.reviewer ?? null })
+      const rawDate = d.review_date ?? d.date ?? null
+      out.push({ text: rowText(d), rating, sentiment: d.sentiment ?? null, author: d.author ?? d.reviewer ?? null, date: rawDate ? String(rawDate) : null })
     }
     from += data.length
     if (data.length < 1000 || out.length >= cap) break
   }
   return out
+}
+
+// Compact monthly rating aggregate (rated, dated rows only) — the substrate for
+// the rating-over-time chart, re-bucketed to the report's shared cadence later.
+function monthlyRatingsFromRows(rows: MemberRow[]): { ym: string; sum: number; n: number }[] {
+  const m = new Map<string, { sum: number; n: number }>()
+  for (const r of rows) {
+    if (r.rating == null || !r.date) continue
+    const ym = r.date.slice(0, 7)               // YYYY-MM from an ISO-ish date
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue
+    const a = m.get(ym) || { sum: 0, n: 0 }
+    a.sum += r.rating; a.n++
+    m.set(ym, a)
+  }
+  return [...m.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(([ym, a]) => ({ ym, sum: a.sum, n: a.n }))
 }
 
 // Collapse the union of members' separately-mined themes into ONE shared set,
@@ -317,6 +333,9 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
 
   let themes: ProjectInputTheme[]
   let commentary: ProjectComment[]
+  // Rating-over-time substrate — computed for free from the rows the shared-theme
+  // path already reads (the path competitive reports use).
+  let monthlyRatings: { ym: string; sum: number; n: number }[] | undefined
 
   if (sharedThemes && sharedThemes.length) {
     // Shared-theme path: read all rows once, score against the collection's
@@ -325,6 +344,10 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
     themes = scoreSharedThemes(allRows, sharedThemes)
     commentary = allRows.filter(r => r.text && r.text.trim().length >= 8).slice(0, 40)
       .map(r => ({ quote: r.text.slice(0, 240), topic: null, sentiment: r.sentiment, speaker: r.author, source: src.badge }))
+    if (kind === 'reviews') {
+      const mr = monthlyRatingsFromRows(allRows)
+      if (mr.length) monthlyRatings = mr
+    }
   } else {
     const { data: stateRow } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
     const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
@@ -356,7 +379,7 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
 
   const dimensions = await loadDimensionsForInput(svc, datasetId)
 
-  return { source: src, presentation: null, qa: [], commentary, themes, dimensions, entities: [], sentiment }
+  return { source: src, presentation: null, qa: [], commentary, themes, dimensions, entities: [], sentiment, monthlyRatings }
 }
 
 // ── Per-dataset dispatch (shared by collection load + ad-hoc grouping) ───────

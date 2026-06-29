@@ -16,6 +16,7 @@
 import { callAI } from '@/lib/ai'
 import type { ProjectInputModel, ProjectInputTheme, ProjectSource } from '@/lib/projectReport'
 import { PDF, pdfDoc, pdfCoverHeader, pdfSection, pdfKpiGrid, pdfSentPill, pdfPill, pdfEsc as esc } from '@/lib/pdf'
+import { buildRatingTrend, renderRatingTrendSvg, type RatingTrendModel } from '@/lib/ratingTrend'
 
 export type ComparePurpose = 'competitive' | 'brand_360'
 
@@ -50,6 +51,9 @@ export interface CompareReportModel {
   /** Second matrix over the ABSA taxonomy ("Dimensions") subs — same shape as
    *  rows, populated only when ≥1 input is taxonomy-classified; else []. */
   dimensionRows: CompareRow[]
+  /** Competitive only — per-competitor rating-over-time + recent-vs-prior delta,
+   *  when ≥2 review inputs carry dated ratings; null otherwise. */
+  competitorTrends?: RatingTrendModel | null
   execSummary: string
   method: string
 }
@@ -211,11 +215,16 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
     ? await buildMatrix(ordered, columns, i => i.dimensions, 'dimensions', purpose, name, primary, synthesize)
     : []
 
+  // Rating-over-time per competitor (competitive only; needs ≥2 dated review inputs).
+  const competitorTrends = purpose === 'competitive'
+    ? (buildRatingTrend(ordered.map(i => ({ name: i.source.name, focus: i.source.name === primary, monthlyRatings: i.monthlyRatings }))) || null)
+    : null
+
   const dimNote = dimensionRows.length > 0
     ? ' A second matrix compares the ABSA Dimensions (a fixed aspect taxonomy applied to the review text), where the inputs carry it.'
     : ''
   const base: Omit<CompareReportModel, 'execSummary'> = {
-    name, purpose, primary, generatedAt, columns, rows, dimensionRows,
+    name, purpose, primary, generatedAt, columns, rows, dimensionRows, competitorTrends,
     method: (purpose === 'competitive'
       ? `Deep-dive on "${primary}" benchmarked against ${columns.length - 1} competitor(s). Each row is a theme aligned across inputs; cells show each competitor's volume + sentiment (+ avg rating for review data). Themes merged by AI; counts computed in code.`
       : `Triangulates ${columns.length} data sources for one brand. Each row is a theme aligned across sources; cells show each source's volume + sentiment. Themes merged by AI; counts computed in code.`) + dimNote,
@@ -311,6 +320,15 @@ export function renderCompareReportHtml(model: CompareReportModel): string {
     rows.filter(r => r.insight).slice(0, 14).map(r =>
       `<div class="keep" style="margin:0 0 10px"><div style="font-size:13px;font-weight:800;color:${PDF.ink}">${esc(r.theme)}</div><p style="font-size:13px;line-height:1.55;color:${PDF.body};margin:2px 0 0">${esc(r.insight)}</p></div>`).join('')
 
+  // Rating trajectory — multi-line chart of each competitor's avg rating over
+  // time, focus brand emphasized. Frames the whole report in "up or down".
+  const trend = isComp && model.competitorTrends
+    ? pdfSection('Rating trajectory',
+        `<p style="font-size:${PDF.size.tiny}px;color:${PDF.mute};margin:0 0 12px">Average star rating over time (${model.competitorTrends.unit}ly), per ${colName} — so you can see who's climbing or sliding and how far apart they are. <strong>${esc(model.primary || '')}</strong> is emphasized; ▲/▼ shows the recent-vs-prior move.</p>` +
+        renderRatingTrendSvg(model.competitorTrends),
+        { keepWith: '', margin: '26px' })
+    : ''
+
   const matrix = pdfSection('Theme comparison', matrixTable(model.rows, 'Theme') + matrixNote('theme'), { keepWith: '', margin: '26px' })
 
   // Per-theme insights (the comparative/triangulation one-liners)
@@ -331,7 +349,7 @@ export function renderCompareReportHtml(model: CompareReportModel): string {
   const footer = `<p class="faint" style="font-size:${PDF.size.tiny}px;margin:24px 0 0;border-top:1px solid ${PDF.line};padding-top:10px">${esc(model.method)}</p>` +
     `<div class="faint" style="text-align:center;font-size:${PDF.size.tiny}px;margin-top:18px">Prepared by datanautix.com</div>`
 
-  return pdfDoc({ title: model.name, body: head + overview + manifest + matrix + insights + dims + footer })
+  return pdfDoc({ title: model.name, body: head + overview + manifest + trend + matrix + insights + dims + footer })
 }
 
 function fmt(s: string): string {

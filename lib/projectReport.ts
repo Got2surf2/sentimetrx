@@ -72,6 +72,10 @@ export interface ProjectInputModel {
                                        // input is taxonomy-classified (google_reviews etc.); else []
   entities: { name: string; mentions: number }[]
   sentiment: { positive: number; neutral: number; negative: number }
+  // Compact monthly rating aggregate (rated, dated rows only) for the
+  // rating-over-time trend chart. Present for review inputs that carry dates;
+  // undefined otherwise. Re-bucketed to the shared cadence at render time.
+  monthlyRatings?: { ym: string; sum: number; n: number }[]
 }
 
 // ── Aggregate (brand-level) shapes ───────────────────────────────────────────
