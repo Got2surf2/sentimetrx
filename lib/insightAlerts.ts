@@ -174,7 +174,7 @@ export function computeInsightAlerts(opts: {
   safety?: SafetyFlag[]
   overallAvgRating?: number | null
   baselineRows?: number          // floor basis for the min-mention guard
-  windowLabel?: string
+  windowLabel?: string | null
   minMentions?: number
   max?: number
 } = {}): Alert[] {

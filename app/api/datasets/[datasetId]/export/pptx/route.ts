@@ -19,7 +19,8 @@ import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/l
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
-import { computeDimensionAlerts, type DimensionAlertKind } from '@/lib/insightAlerts'
+import { computeInsightAlerts, dimensionsToSignals, type AlertKind } from '@/lib/insightAlerts'
+import { buildQuantSignals } from '@/lib/quantSignals'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -899,20 +900,36 @@ export async function POST(req: Request, props: Params) {
             insight: standOut,
           })
 
-          // Heads-Up — the exception alerts (pain / bright / safety).
-          const alerts = computeDimensionAlerts(dim, { max: 8 })
+          // Heads-Up — merged exception alerts across Dimensions + quant
+          // variables (rating + numerics, with recent-vs-prior trends from the
+          // in-view date range). Theme signals are a follow-on.
+          const rk = (f: string) => rowKeyMap[normalize(f)] || f
+          const numFields = ((schema?.fields || []) as any[]).filter(f => f.type === 'numeric' && f.status !== 'ignored')
+          const ratingFieldName = numFields.find(f => f.sqt === 'rating' || f.scoreField || f.field === 'rating')?.field
+          const quantSpecs = numFields.map(f => ({ key: rk(f.field), label: f.label || f.field, isRating: f.field === ratingFieldName }))
+          const dateRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
+          const { signals: quantSignals, windowLabel } = buildQuantSignals(allRows, dateRaw ? rk(dateRaw) : null, quantSpecs)
+          const alerts = computeInsightAlerts({
+            signals: dimensionsToSignals(dim),
+            quant: quantSignals,
+            safety: dim.alerts,
+            overallAvgRating: dim.overallAvgRating,
+            baselineRows: dim.classifiedRows,
+            windowLabel,
+            max: 8,
+          })
           if (alerts.length) {
-            const KIND_LABEL: Record<DimensionAlertKind, string> = {
+            const KIND_LABEL: Record<AlertKind, string> = {
               safety: 'Safety', pain: 'Pain point', bright: 'Bright spot',
               deteriorating: 'Trending down', heating: 'Heating up', improving: 'Improving',
             }
             const counts = alerts.reduce<Record<string, number>>((m, a) => { m[a.kind] = (m[a.kind] || 0) + 1; return m }, {})
-            const summary = Object.entries(counts).map(([k, n]) => `${n} ${KIND_LABEL[k as DimensionAlertKind].toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ')
+            const summary = Object.entries(counts).map(([k, n]) => `${n} ${KIND_LABEL[k as AlertKind].toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ')
             slides.push({
               type: 'table',
-              title: 'Dimensions — Heads-Up',
-              subtitle: 'Exception conditions worth acting on — every line carries its mention count',
-              columns: ['Signal', 'Aspect', 'What we see'],
+              title: 'Heads-Up',
+              subtitle: 'Exception conditions worth acting on — across Dimensions and the numbers, grounded in the data',
+              columns: ['Signal', 'What', 'Detail'],
               rows: alerts.map(a => [`${a.icon} ${KIND_LABEL[a.kind]}`, a.title, a.detail]),
               insight: summary,
             })

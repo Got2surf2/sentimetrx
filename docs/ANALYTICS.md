@@ -752,9 +752,14 @@ analytics export — dataset-row CSV download is not part of this module.
   per title (most-urgent wins), capped (default 8) with safety always kept. Adaptive
   min-mention floor (max(8, 2% of baseline rows)); every line carries `n` or an explicit
   before→after. Gated by the `includeDimensions` ExportModal toggle (default ON).
-  **Status:** the engine + dimension adapter are wired (the route feeds Dimensions today via
-  the `computeDimensionAlerts` wrapper); the **theme + quant adapters and the windowed
-  recent-vs-prior read are wired next** so the Heads-Up merges all three lenses with trends.
+  **Status (2026-06-29):** the Heads-Up slide is **merged across Dimensions + quant** — the
+  route feeds `computeInsightAlerts` the dimension signals (static pain/bright/safety) AND
+  **quant signals with trends**: `lib/quantSignals.ts` (`buildQuantSignals`, pure + tested)
+  averages the rating + every numeric field over the **recent vs prior window** (dynamic via
+  `trendWindows`, from the in-view dated rows) and flags a low-score-tail surge — so "Overall
+  rating ★4.6→★4.1 (last 6 months vs prior)" lands next to the aspect pain points. The slide
+  is now titled just **"Heads-Up"** (Signal · What · Detail). **Theme signals + dimension
+  trends + making the Heads-Up universal (non-Dimensions datasets) are the remaining follow-ons.**
 - **Survey Overview slide (survey sources)**: first slide after the executive summary when
   the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
   schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.
