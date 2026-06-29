@@ -603,6 +603,10 @@ needs `'./node_modules/@sparticuz/chromium/bin/**'` traced in:
 '/api/recordings/[id]/report/send': ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/bots/[id]/study/pdf':         ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/bots/[id]/readout/pdf':       ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/collections/[id]/project-report/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/community-feedback-deck':     ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/pitch-deck-v2':               ['./node_modules/@sparticuz/chromium/bin/**'],
+'/api/pitch-deck-v3':               ['./node_modules/@sparticuz/chromium/bin/**'],
 ```
 
 When you add a new headless-Chrome PDF route, add its path here too —
