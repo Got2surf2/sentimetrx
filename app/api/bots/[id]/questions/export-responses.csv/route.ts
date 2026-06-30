@@ -33,24 +33,34 @@ export async function GET(req: NextRequest, props: Params) {
   if (!bot) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const batch = req.nextUrl.searchParams.get('batch')
+  const batchId = req.nextUrl.searchParams.get('batch')   // batch_id when downloading one batch
   const answeredOnly = req.nextUrl.searchParams.get('answered') === '1'
 
   let q = service
     .from('logged_questions')
-    .select('user_message, original_comment, answer_text, external_contact, status, batch_label, created_at, resolved_at')
+    .select('user_message, original_comment, answer_text, external_contact, source, classification, status, batch_id, batch_label, created_at, resolved_at')
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
-    .eq('source', 'external')
     .order('created_at', { ascending: false })
     .limit(10000)
-  if (batch) q = q.eq('batch_label', batch)
+  // Scoped to one batch → include everything in it (a curated batch can mix the
+  // comment log with live questions). Unscoped → just the comment-log responses.
+  if (batchId) q = q.eq('batch_id', batchId)
+  else q = q.eq('source', 'external')
   if (answeredOnly) q = q.eq('status', 'answered')
 
   const { data: rows, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const header = ['Question', 'Full comment', 'Response', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']
+  const originOf = (source: string | null, cls: string | null): string => {
+    if (source === 'external') return 'Comment log'
+    if (cls === 'kb_miss') return 'Website — no agent answer'
+    if (cls === 'deflect') return 'Website — off-topic/sensitive'
+    if (cls === 'ai_uncertain') return 'Website — agent unsure'
+    return source === 'agent' ? 'Website' : (source || '')
+  }
+
+  const header = ['Question', 'Full comment', 'Response', 'Origin', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']
   const lines = [header.join(',')]
   for (const r of rows || []) {
     const c = (r.external_contact || {}) as { name?: string; email?: string; phone?: string; address?: string; agency?: string }
@@ -58,6 +68,7 @@ export async function GET(req: NextRequest, props: Params) {
       r.user_message,
       r.original_comment || '',
       r.answer_text || '',
+      originOf(r.source, r.classification),
       c.name || '',
       c.email || '',
       c.phone || '',
