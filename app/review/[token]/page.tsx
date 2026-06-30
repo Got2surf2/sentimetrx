@@ -29,7 +29,7 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
   // Only the batch's questions are exposed — never any org/agent internals.
   const { data: qs } = await service
     .from('logged_questions')
-    .select('id, user_message, original_comment, answer_text, status, external_contact')
+    .select('id, user_message, original_comment, answer_text, draft_response, status, external_contact')
     .eq('batch_id', batch.id)
     .order('created_at', { ascending: true })
 
@@ -37,7 +37,9 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
     id: q.id,
     question: q.user_message,
     comment: q.original_comment || '',
-    answer: q.answer_text || '',
+    // Accepted answer if any, else the AI-drafted suggestion (pre-filled, editable).
+    answer: q.answer_text || q.draft_response || '',
+    accepted: q.status === 'answered',
     status: q.status as string,
     asker: ((q.external_contact || {}) as { name?: string }).name || '',
   }))

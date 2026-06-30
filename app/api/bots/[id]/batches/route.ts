@@ -22,6 +22,8 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
+import { draftAnswerFromKB } from '@/lib/agentDraft'
+import { runConcurrent } from '@/lib/agentStudy'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -82,6 +84,26 @@ export async function POST(req: NextRequest, props: Params) {
   if (rows.length === 0) return NextResponse.json({ error: 'No comments found — each row needs comment text.' }, { status: 400 })
 
   const extracted = await extractQuestions(bot.org_id, params.id, rows.map(r => ({ comment: r.comment, wouldLike: r.wouldLike })))
+  const userMessages = rows.map((r, i) => {
+    const ex = extracted[i] || { question: '', summary: '' }
+    return ex.question || ex.summary || r.comment.slice(0, 300)
+  })
+
+  // Pre-draft each response from the agent's KB at import time, so a suggestion is
+  // ready the moment the queue (or the client review link) opens — never on demand
+  // (an empty box has no value). Capped + concurrent to stay within maxDuration;
+  // rows beyond the cap fall back to on-demand drafting. Stored on draft_response
+  // (NOT suggested_kb_addition — that flags "in knowledge base"; a draft isn't).
+  const DRAFT_CAP = 80
+  const drafts: (string | null)[] = userMessages.map(() => null)
+  const { data: botFull } = await service.from('agents').select('id, org_id, name, system_prompt').eq('id', params.id).single()
+  if (botFull) {
+    const idx = userMessages.map((_, i) => i).slice(0, DRAFT_CAP)
+    const out = await runConcurrent(idx, 6, async (i) => {
+      try { return await draftAnswerFromKB(service, botFull, userMessages[i]) } catch { return null }
+    })
+    idx.forEach((i, k) => { drafts[i] = out[k] })
+  }
 
   const { data: batch, error: batchErr } = await service
     .from('question_batches')
@@ -89,23 +111,20 @@ export async function POST(req: NextRequest, props: Params) {
     .select('id').single()
   if (batchErr || !batch) return NextResponse.json({ error: batchErr?.message || 'Could not create batch' }, { status: 500 })
 
-  const inserts = rows.map((r, i) => {
-    const ex = extracted[i] || { question: '', summary: '' }
-    const userMessage = ex.question || ex.summary || r.comment.slice(0, 300)
-    return {
-      org_id: bot.org_id,
-      bot_id: params.id,
-      batch_id: batch.id,
-      session_id: 'ext:' + crypto.randomUUID(),
-      user_message: userMessage,
-      original_comment: r.comment,
-      classification: 'external',
-      source: 'external',
-      status: 'open',
-      external_contact: Object.keys(r.contact).length ? r.contact : null,
-      batch_label: label,
-    }
-  })
+  const inserts = rows.map((r, i) => ({
+    org_id: bot.org_id,
+    bot_id: params.id,
+    batch_id: batch.id,
+    session_id: 'ext:' + crypto.randomUUID(),
+    user_message: userMessages[i],
+    original_comment: r.comment,
+    classification: 'external',
+    source: 'external',
+    status: 'open',
+    draft_response: drafts[i] || null,   // the AI-suggested response (pre-filled in review)
+    external_contact: Object.keys(r.contact).length ? r.contact : null,
+    batch_label: label,
+  }))
 
   const { error: insErr } = await service.from('logged_questions').insert(inserts)
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })

@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 
-interface Item { id: string; question: string; comment: string; answer: string; status: string; asker: string }
+interface Item { id: string; question: string; comment: string; answer: string; accepted?: boolean; status: string; asker: string }
 
 const TEAL = '#0F7173', ORANGE = '#E85A1A'
 
@@ -15,7 +15,6 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
 }) {
   const [items, setItems] = useState<Item[]>(initial)
   const [i, setI] = useState(() => { const f = initial.findIndex(x => x.status !== 'answered'); return f >= 0 ? f : 0 })
-  const [draftText, setDraftText] = useState('')
   const [drafting, setDrafting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -24,13 +23,12 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
   const cur = items[i]
   const answeredCount = useMemo(() => items.filter(x => x.status === 'answered').length, [items])
 
-  // The editor value: the saved/accepted answer, else the in-session draft.
-  const editorValue = cur ? (cur.answer || draftText) : ''
-
+  // The suggested response is pre-filled (drafted at import); the client edits it
+  // in place. `answer` is the single editable value per item.
+  const editorValue = cur ? cur.answer : ''
   function setEditor(v: string) {
     if (!cur) return
-    if (cur.answer) setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: v } : x))
-    else setDraftText(v)
+    setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: v } : x))
   }
 
   async function generateDraft() {
@@ -43,13 +41,13 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
       })
       const d = await r.json()
       if (!r.ok) { setErr(d?.error || 'Could not draft'); return }
-      setDraftText(d.draft || '')
+      setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: d.draft || '' } : x))
     } catch { setErr('Network error') } finally { setDrafting(false) }
   }
 
   async function accept() {
     if (!cur) return
-    const answer = (cur.answer || draftText).trim()
+    const answer = cur.answer.trim()
     if (answer.length < 2) { setErr('Write or generate a response first.'); return }
     setSaving(true); setErr(null)
     try {
@@ -59,12 +57,12 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
       })
       const d = await r.json()
       if (!r.ok) { setErr(d?.error || 'Could not save'); return }
-      setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer, status: 'answered' } : x))
+      setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer, accepted: true, status: 'answered' } : x))
       next()
     } catch { setErr('Network error') } finally { setSaving(false) }
   }
 
-  function go(idx: number) { setI(idx); setDraftText(''); setShowComment(false); setErr(null) }
+  function go(idx: number) { setI(idx); setShowComment(false); setErr(null) }
   function next() { const n = items.findIndex((x, idx) => idx > i && x.status !== 'answered'); go(n >= 0 ? n : Math.min(i + 1, items.length - 1)) }
   function prev() { if (i > 0) go(i - 1) }
 

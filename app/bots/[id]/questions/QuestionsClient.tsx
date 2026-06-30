@@ -35,6 +35,7 @@ interface Question {
   notes: string | null
   suggested_kb_addition: string | null
   answer_text: string | null
+  draft_response: string | null    // AI-suggested response, drafted at import (pre-fills the answer box)
   original_comment: string | null  // full comment when imported from a CSV; user_message holds the extracted question
   source: string | null            // 'agent' (live capture) | 'external' (pasted community list)
   external_contact: { name?: string; email?: string; phone?: string; address?: string; agency?: string } | null
@@ -569,8 +570,9 @@ export default function QuestionsClient({
               const st = STATUS_STYLES[q.status] || { bg: '#f3f4f6', text: '#374151', label: q.status }
               const noteDraft = notesDraft[q.id] ?? (q.notes || '')
               const noteDirty = noteDraft !== (q.notes || '')
-              const ansDraft = answerDraft[q.id] ?? (q.suggested_kb_addition || '')
+              const ansDraft = answerDraft[q.id] ?? (q.suggested_kb_addition || q.draft_response || '')
               const ansDirty = ansDraft !== (q.suggested_kb_addition || '')
+              const isAiDraft = !q.suggested_kb_addition && !!q.draft_response
               const hasKb = !!q.suggested_kb_addition
               return (
                 <div key={q.id} className='p-4'>
@@ -662,7 +664,7 @@ export default function QuestionsClient({
                   {/* Answer → feeds the agent's knowledge base (correction loop) */}
                   <div className='mt-3'>
                     <label className='block text-xs font-medium text-gray-600 mb-1'>
-                      {hasKb ? 'Correct the answer (re-trains the agent)' : 'Answer this — the agent learns it for next time'}
+                      {hasKb ? 'Correct the answer (re-trains the agent)' : isAiDraft ? `✨ Suggested from ${botName}'s knowledge — edit & accept` : 'Answer this — the agent learns it for next time'}
                     </label>
                     <textarea
                       value={ansDraft}
