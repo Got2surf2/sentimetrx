@@ -395,42 +395,50 @@ Then the quote from Dr. Okumus. This is the credibility close before we talk abo
   pg++
   s11.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
   s11.addShape('rect', { x: 0, y: 0, w: 0.18, h: H, fill: { color: DN.sarinaBlue } })
-  s11.addText('For EA: The Membership Study', { x: 0.7, y: 0.55, w: 12, h: 0.8, fontSize: 30, fontFace: 'Arial', color: DN.white, bold: true })
-  s11.addText('A conversational study purpose-built for your new membership program.', { x: 0.7, y: 1.4, w: 12, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.sarinaBlue })
-  // Left: what we'd measure
-  s11.addText('What we’d measure', { x: 0.7, y: 2.15, w: 5.9, h: 0.4, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true })
+  s11.addText('For EA: Growing the Value of MVP+', { x: 0.7, y: 0.5, w: 12, h: 0.7, fontSize: 30, fontFace: 'Arial', color: DN.white, bold: true })
+  s11.addText('What would make MVP+ more valuable — to your members, and to the players who haven’t joined.', { x: 0.7, y: 1.28, w: 12, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.sarinaBlue })
+  // Left: your members
+  s11.addText('Your members', { x: 0.7, y: 1.95, w: 5.9, h: 0.4, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true })
   s11.addText(
-    'Why members joined — and what they expected\n' +
-    'Perceived value of each perk (vault, early access, cloud, pricing)\n' +
-    'Renewal intent — and the specific drivers behind it\n' +
-    'Where the program over- or under-delivers vs. expectations\n' +
-    'Differences by tier, platform, playtime, and region',
-    { x: 0.8, y: 2.6, w: 5.8, h: 3.3, fontSize: 13.5, fontFace: 'Arial', color: DN.white, bullet: { code: '2022', indent: 18 }, lineSpacing: 22, paraSpaceAfter: 8, valign: 'top' }
+    'What’s delivering value — and what they forgot they had\n' +
+    'What’s missing that would make next year an obvious yes\n' +
+    'Which new perk would make it a no-brainer\n' +
+    'How it differs by mode, tier, and platform',
+    { x: 0.8, y: 2.4, w: 5.8, h: 2.1, fontSize: 13, fontFace: 'Arial', color: DN.white, bullet: { code: '2022', indent: 18 }, lineSpacing: 21, paraSpaceAfter: 8, valign: 'top' }
   )
-  // Right: how it runs
-  s11.addText('How it runs', { x: 6.9, y: 2.15, w: 5.9, h: 0.4, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true })
+  // Right: the players who haven't joined
+  s11.addText('The players who haven’t joined', { x: 6.9, y: 1.95, w: 5.9, h: 0.4, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true })
   s11.addText(
-    'Branded conversational agent — embeds in email, launcher, or web\n' +
-    'Adaptive follow-ups that probe vague or negative answers live\n' +
-    'Multilingual for your global player base, analyzed in English\n' +
-    'Live dashboard + presentation-ready readout for stakeholders\n' +
-    'Repeatable wave-over-wave to track the program over time',
-    { x: 7.0, y: 2.6, w: 5.8, h: 3.3, fontSize: 13.5, fontFace: 'Arial', color: DN.white, bullet: { code: '2022', indent: 18 }, lineSpacing: 22, paraSpaceAfter: 8, valign: 'top' }
+    'Whether they even know what MVP+ is\n' +
+    'What’s holding them back from joining\n' +
+    'What would make it worth it to them\n' +
+    'The one change that flips them to yes',
+    { x: 7.0, y: 2.4, w: 5.8, h: 2.1, fontSize: 13, fontFace: 'Arial', color: DN.white, bullet: { code: '2022', indent: 18 }, lineSpacing: 21, paraSpaceAfter: 8, valign: 'top' }
   )
-  s11.addShape('rect', { x: 0.7, y: 6.1, w: 12.0, h: 0.8, fill: { color: DN.sarinaBlue }, rectRadius: 0.08 })
-  s11.addText('Let’s scope a first wave.   sentimetrx.ai  ·  info@datanautix.com', {
-    x: 0.7, y: 6.1, w: 12.0, h: 0.8, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true, align: 'center', valign: 'middle',
+  // Longitudinal "walk the journey" band
+  s11.addShape('rect', { x: 0.7, y: 4.75, w: 12.0, h: 1.15, fill: { color: DN.navyMid }, rectRadius: 0.08 })
+  s11.addShape('rect', { x: 0.7, y: 4.75, w: 0.16, h: 1.15, fill: { color: DN.sarinaBlue } })
+  s11.addText('Then we walk the journey', { x: 1.0, y: 4.9, w: 11.5, h: 0.4, fontSize: 15, fontFace: 'Arial', color: DN.gold, bold: true })
+  s11.addText('Re-ask as the perk mix grows, so every change becomes a read on what moved the value — and why. Baseline now; the insight compounds wave over wave.', {
+    x: 1.0, y: 5.28, w: 11.5, h: 0.55, fontSize: 13, fontFace: 'Arial', color: DN.white, lineSpacing: 18, valign: 'top',
+  })
+  // CTA
+  s11.addShape('rect', { x: 0.7, y: 6.15, w: 12.0, h: 0.78, fill: { color: DN.sarinaBlue }, rectRadius: 0.08 })
+  s11.addText('Let’s baseline a first wave.   sentimetrx.ai  ·  sanjay@datanautix.com', {
+    x: 0.7, y: 6.15, w: 12.0, h: 0.78, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true, align: 'center', valign: 'middle',
   })
   s11.addNotes(
-`The close — make it about EA, not us. This is where you turn capability into a concrete next step.
+`The close — answer EA's exact ask back to them: "what would make the membership valuable to members and non-members," and "grow its value over time." Make it about MVP+, not us.
 
-WHAT WE'D MEASURE: why they joined and what they expected, perceived value of each perk, renewal intent and its drivers, where the program beats or misses expectations, and how all of it differs by tier / platform / playtime / region.
+TWO POPULATIONS (this is what Graddy asked for in writing):
+- YOUR MEMBERS — what's delivering value, what they ignore, what's missing, and which new perk would make next year an obvious yes. Cut by mode (Franchise/Dynasty vs. Ultimate Team), tier, platform.
+- THE PLAYERS WHO HAVEN'T JOINED — awareness, what's holding them back, what would make it worth it, and the single change that flips them to yes. This is the acquisition lever telemetry can't see.
 
-HOW IT RUNS: a branded conversational agent embedded wherever your members are (email, launcher, web), adaptive follow-ups, multilingual, with a live dashboard plus an exportable readout — and it is repeatable wave over wave so you can track the program as it evolves.
+WALK THE JOURNEY (the headline idea): MVP+ is a moving target — the perk mix will grow. So baseline it now, then re-ask as perks change; every change becomes a near-experiment on what moved the value, in members' own words. The insight compounds — a true time-series, not disconnected snapshots. This is the partnership, not a one-off report.
 
-CTA: "Let's scope a first wave." Keep it low-friction — propose a short pilot on one member segment.
+CTA: "Let's baseline a first wave." Low-friction — a slice of members + a slice of non-members.
 
-CUSTOMIZE before sending: confirm the exact perk names and the program name; swap info@datanautix.com / calendly link for the preferred contact.`
+CUSTOMIZE before sending: confirm any specific perk names; contact is set to sanjay@datanautix.com — swap to larry@datanautix.com if Larry fronts the EA relationship.`
   )
 
   return pptx
