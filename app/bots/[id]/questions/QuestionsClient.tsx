@@ -45,6 +45,12 @@ interface Question {
 
 type ConvTurn = { role: string; content: string; content_en: string | null; source: string | null }
 
+interface Batch {
+  id: string; label: string | null; source_kind: string
+  share_token: string | null; share_enabled: boolean; share_expires_at: string | null
+  created_at: string; counts: { total: number; answered: number }
+}
+
 interface Props {
   botId: string
   botName: string
@@ -120,6 +126,9 @@ export default function QuestionsClient({
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [csvOpen, setCsvOpen] = useState(false)
   const [csvToast, setCsvToast] = useState<string | null>(null)
+  const [batches, setBatches] = useState<Batch[]>([])
+  const [shareBusy, setShareBusy] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   async function refreshQuestions() {
     try {
@@ -127,6 +136,28 @@ export default function QuestionsClient({
       if (d?.error) setError(d.error)
       else setQuestions(Array.isArray(d?.questions) ? d.questions : [])
     } catch { setError('Failed to load questions') }
+    try {
+      const b = await fetch('/api/bots/' + botId + '/batches').then(r => r.json())
+      if (Array.isArray(b?.batches)) setBatches(b.batches)
+    } catch { /* batches are optional */ }
+  }
+
+  async function toggleShare(batch: Batch) {
+    setShareBusy(batch.id)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/batches/' + batch.id + '/share', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !batch.share_enabled }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d?.error || 'Could not update sharing'); return }
+      setBatches(prev => prev.map(x => x.id === batch.id ? { ...x, share_enabled: d.enabled, share_token: d.token ?? x.share_token } : x))
+      if (d.enabled && d.path) copyLink(batch.id, location.origin + d.path)
+    } catch { alert('Network error') } finally { setShareBusy(null) }
+  }
+
+  function copyLink(batchId: string, url: string) {
+    navigator.clipboard?.writeText(url).then(() => { setCopied(batchId); setTimeout(() => setCopied(null), 2500) }).catch(() => {})
   }
 
   useEffect(() => {
@@ -450,6 +481,37 @@ export default function QuestionsClient({
           />
         )}
         {csvToast && <div className='mb-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-3 py-2'>{csvToast}</div>}
+
+        {/* Imported batches — share a client-review link so the client accepts/edits the drafts */}
+        {batches.length > 0 && (
+          <div className='mb-5 rounded-xl border border-gray-200 bg-white'>
+            <div className='px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100'>Imported batches</div>
+            <div className='divide-y divide-gray-100'>
+              {batches.map(b => {
+                const link = b.share_token ? location.origin + '/review/' + b.share_token : ''
+                return (
+                  <div key={b.id} className='px-4 py-3 flex items-center justify-between gap-3 flex-wrap'>
+                    <div className='min-w-0'>
+                      <div className='text-sm font-medium text-gray-900 truncate'>{b.label || 'Untitled batch'} <span className='text-xs font-normal text-gray-400'>· {b.source_kind.toUpperCase()}</span></div>
+                      <div className='text-xs text-gray-500'>{b.counts.answered}/{b.counts.total} responded</div>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      {b.share_enabled && link && (
+                        <button onClick={() => copyLink(b.id, link)} className='px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'>
+                          {copied === b.id ? '✓ Copied' : 'Copy link'}</button>
+                      )}
+                      <a href={'/api/bots/' + botId + '/questions/export-responses.csv?batch=' + encodeURIComponent(b.label || '')}
+                        className='px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'>Download</a>
+                      <button onClick={() => toggleShare(b)} disabled={shareBusy === b.id}
+                        className={'px-2.5 py-1.5 rounded-lg text-xs font-medium ' + (b.share_enabled ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-sky-600 text-white hover:bg-sky-700')}>
+                        {shareBusy === b.id ? '…' : b.share_enabled ? 'Sharing ✓' : 'Share with client'}</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Summary chips */}
         <div className='flex flex-wrap gap-2 mb-4'>

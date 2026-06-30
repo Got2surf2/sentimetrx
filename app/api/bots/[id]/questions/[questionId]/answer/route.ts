@@ -23,6 +23,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { generateEmbedding } from '@/lib/embeddings'
 import { logBotChange } from '@/lib/auditLog'
+import { materializeExternalExchange } from '@/lib/externalExchange'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -189,51 +190,4 @@ export async function POST(req: NextRequest, props: Params) {
   }
 
   return NextResponse.json({ question: updated, chunkId, created, merged, wroteKb: writeKb })
-}
-
-/**
- * Materialize an accepted external Q→A as a one-exchange conversation so the
- * agent's reporting (What We Heard, etc.) treats it like a live exchange. The
- * conversation is keyed by the question's synthetic session_id, so re-answering
- * updates the assistant turn in place rather than duplicating.
- */
-async function materializeExternalExchange(
-  service: ReturnType<typeof createServiceRoleClient>,
-  args: { botId: string; orgId: string; sessionId: string; questionId: string; question: string; answer: string },
-): Promise<void> {
-  const { botId, orgId, sessionId, questionId, question, answer } = args
-
-  let conversationId: string
-  const { data: existing } = await service
-    .from('conversations').select('id')
-    .eq('bot_id', botId).eq('session_id', sessionId).maybeSingle()
-
-  if (existing) {
-    conversationId = existing.id
-    // Update the reply turn (correction loop); leave the question turn as-is.
-    await service.from('conversation_turns')
-      .update({ content: answer, content_en: answer })
-      .eq('conversation_id', conversationId).eq('role', 'assistant')
-    return
-  }
-
-  // Provenance lives on the CONVERSATION (source='external' + metadata.external)
-  // so these can always be told apart from Sarina's organic chats and filtered.
-  const { data: conv, error: convErr } = await service
-    .from('conversations')
-    .insert({ org_id: orgId, bot_id: botId, session_id: sessionId, source: 'external', turn_count: 2, metadata: { external: true, logged_question_id: questionId } })
-    .select('id').single()
-  if (convErr || !conv) throw new Error(convErr?.message || 'conversation insert failed')
-  conversationId = conv.id
-
-  // The TURNS are source='normal' — `isSubstantive` (lib/conversationReview) only
-  // counts source='normal'/null user turns, so an 'external' question turn would
-  // be silently dropped from What We Heard. The question is the visitor's `user`
-  // turn; Sarina is only the `assistant` (the answerer), never the asker.
-  const turns = [
-    { conversation_id: conversationId, org_id: orgId, turn_number: 1, role: 'user',      content: question, content_en: question, source: 'normal' },
-    { conversation_id: conversationId, org_id: orgId, turn_number: 2, role: 'assistant', content: answer,   content_en: answer,   source: 'normal', sentiment: 'neutral' },
-  ]
-  const { error: turnErr } = await service.from('conversation_turns').insert(turns)
-  if (turnErr) throw new Error(turnErr.message)
 }
