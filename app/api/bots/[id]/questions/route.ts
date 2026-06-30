@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, props: Params) {
 
   const { data: rows, error } = await service
     .from('logged_questions')
-    .select('id, session_id, conversation_id, turn_id, user_message, language, classification, status, resolved_by, resolved_at, notes, suggested_kb_addition, created_at')
+    .select('id, session_id, conversation_id, turn_id, user_message, language, classification, status, resolved_by, resolved_at, notes, suggested_kb_addition, answer_text, source, external_contact, batch_label, created_at')
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
     .order('created_at', { ascending: false })

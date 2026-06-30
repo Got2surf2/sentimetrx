@@ -32,6 +32,10 @@ interface Question {
   resolved_at: string | null
   notes: string | null
   suggested_kb_addition: string | null
+  answer_text: string | null
+  source: string | null            // 'agent' (live capture) | 'external' (pasted community list)
+  external_contact: { name?: string; email?: string; phone?: string } | null
+  batch_label: string | null
   created_at: string
   agent_response: string | null   // the assistant reply that followed this question (context for review)
 }
@@ -54,6 +58,7 @@ const CLASSIFICATION_STYLES: Record<string, { bg: string; text: string; label: s
   deflect:      { bg: '#ede9fe', text: '#5b21b6', label: 'Deflected',    desc: 'Off-topic or sensitive — the agent chose not to answer.' },
   kb_miss:      { bg: '#fef3c7', text: '#92400e', label: 'KB miss',      desc: 'The knowledge base had no good match for this question.' },
   ai_uncertain: { bg: '#fee2e2', text: '#991b1b', label: 'AI uncertain', desc: 'The agent’s reply matched an "I don’t know" pattern.' },
+  external:     { bg: '#e0f2fe', text: '#075985', label: 'External',     desc: 'Pasted from a client-supplied community question list — answered with the agent’s KB.' },
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -101,17 +106,64 @@ export default function QuestionsClient({
   // Near-duplicate guard: set when the server flags the answer as ~identical to
   // an existing KB chunk; the reviewer chooses replace / add-anyway / cancel.
   const [dupPrompt, setDupPrompt] = useState<{ qId: string; answer: string; duplicate: { chunkId: string; title: string; content: string; similarity: number } } | null>(null)
+  // Opt-in: write accepted answers back into the agent's knowledge base (default on
+  // for the live capture loop; uncheck for one-off external replies).
+  const [writeKb, setWriteKb] = useState(true)
+  // Paste-import (external community questions).
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importBatch, setImportBatch] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+
+  async function refreshQuestions() {
+    try {
+      const d = await fetch('/api/bots/' + botId + '/questions').then(r => r.json())
+      if (d?.error) setError(d.error)
+      else setQuestions(Array.isArray(d?.questions) ? d.questions : [])
+    } catch { setError('Failed to load questions') }
+  }
 
   useEffect(() => {
-    fetch('/api/bots/' + botId + '/questions')
-      .then(r => r.json())
-      .then(d => {
-        if (d?.error) setError(d.error)
-        else setQuestions(Array.isArray(d?.questions) ? d.questions : [])
-      })
-      .catch(() => setError('Failed to load questions'))
-      .finally(() => setLoading(false))
+    refreshQuestions().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId])
+
+  // Parse a pasted block of external questions: one per line; tab- or
+  // comma-separated extra cells become contact info (email/phone detected by
+  // pattern, the remaining cell as name).
+  function parseImportRows(textBlock: string): { question: string; name?: string; email?: string; phone?: string }[] {
+    const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+    const PHONE = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/
+    return textBlock.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
+      const cells = (line.includes('\t') ? line.split('\t') : line.split(',')).map(c => c.trim()).filter(Boolean)
+      const question = cells.shift() || ''
+      let name: string | undefined, email: string | undefined, phone: string | undefined
+      for (const p of cells) {
+        if (!email && EMAIL.test(p)) { email = p; continue }
+        if (!phone && PHONE.test(p)) { phone = p; continue }
+        if (!name) name = p
+      }
+      return { question, name, email, phone }
+    }).filter(r => r.question.length >= 3)
+  }
+
+  async function handleImport() {
+    const rows = parseImportRows(importText)
+    if (rows.length === 0) { setImportMsg('No questions found — put one question per line.'); return }
+    setImporting(true); setImportMsg(null)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/questions/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows, batchLabel: importBatch.trim() || undefined }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setImportMsg(d?.error || 'Import failed'); return }
+      setImportText(''); setImportBatch(''); setImportOpen(false)
+      await refreshQuestions()
+    } catch (e: any) { setImportMsg(e?.message || 'Network error') }
+    finally { setImporting(false) }
+  }
 
   async function updateQuestion(qId: string, patch: { status?: Question['status']; notes?: string; suggested_kb_addition?: string }) {
     setSavingId(qId)
@@ -142,7 +194,7 @@ export default function QuestionsClient({
       const r = await fetch('/api/bots/' + botId + '/questions/' + qId + '/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer, force: opts.force, replaceChunkId: opts.replaceChunkId }),
+        body: JSON.stringify({ answer, force: opts.force, replaceChunkId: opts.replaceChunkId, writeKb }),
       })
       const d = await r.json()
       if (d?.duplicate) {
@@ -309,27 +361,76 @@ export default function QuestionsClient({
               {' '}Captured automatically at three signals: deflection, KB miss, AI uncertainty.
             </p>
           </div>
-          <div className='flex gap-2'>
+          <div className='flex gap-2 flex-wrap'>
             {counts.open > 0 && (
               <button
                 onClick={startReview}
                 className='px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700'
               >Review unanswered ({counts.open}) →</button>
             )}
+            <button
+              onClick={() => { setImportMsg(null); setImportOpen(true) }}
+              className='px-3 py-1.5 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700'
+              title='Paste a client-supplied list of community questions to answer with this agent.'
+            >+ Add questions</button>
+            <a
+              href={'/api/bots/' + botId + '/questions/export-responses.csv'}
+              className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
+              title='Download external questions with the accepted response and contact info, to send replies back.'
+            >Download responses</a>
             <Link
               href={'/bots/' + botId + '/knowledge/health'}
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
             >KB health</Link>
-            <Link
-              href={'/bots/' + botId + '/conversations'}
-              className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
-            >View transcripts</Link>
             <a
               href={'/api/bots/' + botId + '/questions/export.csv'}
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
             >Export CSV</a>
           </div>
         </div>
+
+        {/* KB opt-in — applies to every answer accepted on this page */}
+        <label className='flex items-center gap-2 mb-4 text-sm text-gray-600 select-none w-fit'>
+          <input type='checkbox' checked={writeKb} onChange={e => setWriteKb(e.target.checked)} className='rounded' />
+          Add accepted answers to {botName}’s knowledge base
+          <span className='text-gray-400' title='On: the agent learns each answer (live-capture loop). Off: the answer is recorded (and external Q&A still flows into reports) without teaching the agent — good for one-off replies.'>ⓘ</span>
+        </label>
+
+        {importOpen && (
+          <div className='fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto' onClick={() => !importing && setImportOpen(false)}>
+            <div className='bg-white rounded-xl shadow-xl w-full max-w-2xl mt-12 p-6' onClick={e => e.stopPropagation()}>
+              <h2 className='text-lg font-semibold text-gray-900 mb-1'>Add community questions</h2>
+              <p className='text-sm text-gray-600 mb-4'>
+                One question per line. Optionally add contact info on the same line, separated by a tab or comma
+                (e.g. <span className='font-mono text-xs bg-gray-100 px-1 rounded'>Question, Name, email@x.com, 555-123-4567</span>) so you can send a reply back.
+                Each becomes an answerable question — draft from {botName}’s knowledge, accept or edit, then download the responses.
+              </p>
+              <input
+                value={importBatch}
+                onChange={e => setImportBatch(e.target.value)}
+                placeholder='Batch label (optional, e.g. “June town hall submissions”)'
+                className='w-full mb-2 px-3 py-2 border border-gray-300 rounded-lg'
+                style={{ fontSize: '16px' }}
+              />
+              <textarea
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                rows={10}
+                placeholder={'When will the new park open?\nIs there parking near the venue?\tJane Doe\tjane@example.com'}
+                className='w-full px-3 py-2 border border-gray-300 rounded-lg font-mono'
+                style={{ fontSize: '16px' }}
+              />
+              {importMsg && <p className='text-sm text-red-600 mt-2'>{importMsg}</p>}
+              <div className='flex justify-end gap-2 mt-4'>
+                <button onClick={() => setImportOpen(false)} disabled={importing}
+                  className='px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'>Cancel</button>
+                <button onClick={handleImport} disabled={importing}
+                  className='px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700 disabled:opacity-50'>
+                  {importing ? 'Adding…' : 'Add ' + (parseImportRows(importText).length || '') + ' questions'}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Summary chips */}
         <div className='flex flex-wrap gap-2 mb-4'>
@@ -409,6 +510,12 @@ export default function QuestionsClient({
                     )}
                     <div className='flex-1 min-w-0'>
                       <div className='text-sm text-gray-900 whitespace-pre-wrap break-words'>{q.user_message}</div>
+                      {q.source === 'external' && q.external_contact && (q.external_contact.name || q.external_contact.email || q.external_contact.phone) && (
+                        <div className='text-xs text-sky-700 mt-1'>
+                          ✉ {[q.external_contact.name, q.external_contact.email, q.external_contact.phone].filter(Boolean).join(' · ')}
+                          {q.batch_label ? <span className='text-gray-400'> · {q.batch_label}</span> : null}
+                        </div>
+                      )}
                       <div className='text-xs text-gray-500 mt-1'>
                         {formatRelative(q.created_at)} ·{' '}
                         <span title={new Date(q.created_at).toLocaleString()}>{new Date(q.created_at).toLocaleString()}</span>
