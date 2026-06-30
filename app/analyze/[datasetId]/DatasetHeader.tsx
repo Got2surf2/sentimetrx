@@ -36,6 +36,7 @@ interface Props {
   onAskAna?: () => void
   askAnaOpen?: boolean
   outletCount?: number
+  inViewFilters?: Record<string, unknown>   // serialized active filters → ad-hoc report honors the in-view scope
 }
 
 var HERMES = '#E8632A'
@@ -51,7 +52,7 @@ var TABS: { key: string; label: string; icon: string; collapse: number; sources?
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen, outletCount = 0 }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen, outletCount = 0, inViewFilters }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -173,7 +174,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         />
       )}
       {adHocOpen && (
-        <AdHocReportModal datasetId={dataset.id} datasetName={dataset.name} onClose={function() { setAdHocOpen(false) }} />
+        <AdHocReportModal datasetId={dataset.id} datasetName={dataset.name} filters={inViewFilters} onClose={function() { setAdHocOpen(false) }} />
       )}
       {showShareAnalytics && (
         <ShareAnalyticsModal

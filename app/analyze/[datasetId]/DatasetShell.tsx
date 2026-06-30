@@ -156,20 +156,23 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
     return matched
   }, [ctxRows, ctxLoaded, ctxSampled, ctxSampledCount, ctxTotalRows, effectiveFilters])
 
+  // Serialize the active filters (Sets → arrays for JSON) — the wire shape the
+  // export / ask-ana / ad-hoc-report routes apply. Computed at render so the
+  // "Report" picker can pass the in-view scope to an ad-hoc report.
+  const serializeFilters = function(): Record<string, any> {
+    const out: Record<string, any> = {}
+    Object.entries(filters).forEach(function(entry) {
+      const field = entry[0], f = entry[1]
+      if (f.type === 'cat') out[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
+      else out[field] = f
+    })
+    return out
+  }
+  const serializedFilters = serializeFilters()
+
   // Save session handler
   const handleSaveSession = function() {
     setSessionSaving(true)
-    // Serialize filters (Sets → arrays for JSON)
-    const serializedFilters: Record<string, any> = {}
-    Object.entries(filters).forEach(function(entry) {
-      const field = entry[0], f = entry[1]
-      if (f.type === 'cat') {
-        serializedFilters[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
-      } else {
-        serializedFilters[field] = f
-      }
-    })
-
     const sessionState = {
       filters: serializedFilters,
       savedAt: new Date().toISOString(),
@@ -188,7 +191,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   return (
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} inViewFilters={Object.keys(serializedFilters).length ? serializedFilters : undefined} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Metric strip (records / signals / theme-fit) + Saved Views switcher
           share ONE row to save vertical space — visible on every tab. Metrics
