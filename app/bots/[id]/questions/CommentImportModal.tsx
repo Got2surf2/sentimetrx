@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
+import FileDrop from '@/components/ui/FileDrop'
 
 type FieldKey = 'comment' | 'name' | 'email' | 'phone' | 'address' | 'agency' | 'wouldLike'
 const FIELDS: { key: FieldKey; label: string; required?: boolean }[] = [
@@ -99,8 +100,10 @@ export default function CommentImportModal({ botId, onClose, onImported }: {
           then drafted from the agent’s knowledge for review.
         </p>
 
-        <input type='file' accept='.csv,.xlsx,.xls' onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f) }}
-          className='block w-full text-sm mb-4 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-sky-600 file:text-white hover:file:bg-sky-700' />
+        <div className='mb-4'>
+          <FileDrop accept='.csv,.xlsx,.xls' onFile={onFile} compact
+            title='Drag and drop your comment log' hint='CSV or Excel (.csv, .xlsx)' icon='🗂️' />
+        </div>
 
         {headers.length > 0 && (
           <>
