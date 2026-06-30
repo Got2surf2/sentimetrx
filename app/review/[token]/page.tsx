@@ -29,9 +29,19 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
   // Only the batch's questions are exposed — never any org/agent internals.
   const { data: qs } = await service
     .from('logged_questions')
-    .select('id, user_message, original_comment, answer_text, draft_response, status, external_contact')
+    .select('id, user_message, original_comment, answer_text, draft_response, status, source, classification, external_contact')
     .eq('batch_id', batch.id)
     .order('created_at', { ascending: true })
+
+  // Per-item origin label so a reviewer sees where each came from (a curated batch
+  // can mix the pasted/CSV comment log with live website questions).
+  const originOf = (source: string | null, cls: string | null): string => {
+    if (source === 'external') return 'From the comment log'
+    if (cls === 'kb_miss') return 'Asked on the website — agent had no answer'
+    if (cls === 'deflect') return 'Asked on the website — off-topic/sensitive'
+    if (cls === 'ai_uncertain') return 'Asked on the website — agent was unsure'
+    return 'Asked on the website'
+  }
 
   const questions = (qs || []).map(q => ({
     id: q.id,
@@ -41,6 +51,7 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
     answer: q.answer_text || '',               // the client's own response (what gets sent); empty until written/accepted
     accepted: q.status === 'answered',
     status: q.status as string,
+    origin: originOf(q.source, q.classification),
     asker: ((q.external_contact || {}) as { name?: string }).name || '',
   }))
 

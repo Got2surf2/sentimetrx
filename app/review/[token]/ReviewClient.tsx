@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 
-interface Item { id: string; question: string; comment: string; aiDraft: string; answer: string; accepted?: boolean; status: string; asker: string }
+interface Item { id: string; question: string; comment: string; aiDraft: string; answer: string; accepted?: boolean; status: string; origin: string; asker: string }
 
 const TEAL = '#0F7173', ORANGE = '#E85A1A'
 
@@ -91,7 +91,10 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
       </div>
 
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
-        {cur.asker && <div style={{ fontSize: 12, color: TEAL, fontWeight: 600, marginBottom: 6 }}>{cur.asker}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', background: '#f1f5f9', borderRadius: 999, padding: '2px 10px' }}>{cur.origin}</span>
+          {cur.asker && <span style={{ fontSize: 12, color: TEAL, fontWeight: 600 }}>{cur.asker}</span>}
+        </div>
         <div style={{ fontSize: 17, fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{cur.question}</div>
         {cur.comment && cur.comment.trim() !== cur.question.trim() && (
           <div style={{ marginTop: 8 }}>

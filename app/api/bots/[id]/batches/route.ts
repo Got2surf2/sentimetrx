@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, props: Params) {
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({})) as { label?: string; sourceKind?: string; rows?: InRow[] }
+  const body = await req.json().catch(() => ({})) as { label?: string; sourceKind?: string; rows?: InRow[]; createEmpty?: boolean }
   const label = clean(body.label, 120) || null
   const sourceKind = body.sourceKind === 'csv' ? 'csv' : 'paste'
   const incoming = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : []
@@ -67,6 +67,16 @@ export async function POST(req: NextRequest, props: Params) {
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Empty batch — a container the admin curates live questions into (no rows).
+  if (body.createEmpty) {
+    const { data: b, error } = await service
+      .from('question_batches')
+      .insert({ org_id: bot.org_id, bot_id: params.id, label, source_kind: 'curated', created_by: userId })
+      .select('id').single()
+    if (error || !b) return NextResponse.json({ error: error?.message || 'Could not create batch' }, { status: 500 })
+    return NextResponse.json({ batchId: b.id, imported: 0 })
+  }
 
   // Keep rows that actually carry a comment (contact-only rows aren't questions).
   const rows = incoming.map(r => ({

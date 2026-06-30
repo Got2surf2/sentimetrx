@@ -39,6 +39,7 @@ interface Question {
   original_comment: string | null  // full comment when imported from a CSV; user_message holds the extracted question
   source: string | null            // 'agent' (live capture) | 'external' (pasted community list)
   external_contact: { name?: string; email?: string; phone?: string; address?: string; agency?: string } | null
+  batch_id: string | null
   batch_label: string | null
   created_at: string
   agent_response: string | null   // the assistant reply that followed this question (context for review)
@@ -159,6 +160,35 @@ export default function QuestionsClient({
 
   function copyLink(batchId: string, url: string) {
     navigator.clipboard?.writeText(url).then(() => { setCopied(batchId); setTimeout(() => setCopied(null), 2500) }).catch(() => {})
+  }
+
+  // Curate a (live) question into a client-review batch — assigns batch_id and
+  // drafts a response. '__new__' creates a fresh batch first; '' detaches it.
+  async function addToReviewBatch(qId: string, choice: string) {
+    let batchId: string | null = choice || null
+    if (choice === '__new__') {
+      const name = window.prompt('Name this review batch (the client sees responses for it):', 'Questions for review')
+      if (name == null) return
+      try {
+        const r = await fetch('/api/bots/' + botId + '/batches', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ createEmpty: true, label: name.trim() || 'Questions for review' }),
+        })
+        const d = await r.json()
+        if (!r.ok) { alert(d?.error || 'Could not create batch'); return }
+        batchId = d.batchId
+      } catch { alert('Network error'); return }
+    }
+    try {
+      const r = await fetch('/api/bots/' + botId + '/questions/' + qId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d?.error || 'Could not update'); return }
+      setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...d.question } : q))
+      refreshQuestions()
+    } catch { alert('Network error') }
   }
 
   useEffect(() => {
@@ -659,6 +689,19 @@ export default function QuestionsClient({
                       </button>
                     ))}
                     {savingId === q.id && <span className='text-gray-400'>saving…</span>}
+                    {/* Curate into a client-review batch (so it rides the shared review link) */}
+                    <span className='text-gray-300'>·</span>
+                    <span className='text-gray-500'>Client review:</span>
+                    <select
+                      value={q.batch_id || ''}
+                      onChange={e => addToReviewBatch(q.id, e.target.value)}
+                      className='px-1.5 py-1 rounded-md border border-gray-200 bg-white text-gray-700'
+                      style={{ fontSize: '12px' }}
+                      title='Add this question to a client-review batch — it then appears in that batch’s share link with an AI-drafted response.'>
+                      <option value=''>— not shared —</option>
+                      {batches.map(b => <option key={b.id} value={b.id}>{b.label || 'Untitled batch'}</option>)}
+                      <option value='__new__'>＋ New review batch…</option>
+                    </select>
                   </div>
 
                   {/* Answer → feeds the agent's knowledge base (correction loop) */}
