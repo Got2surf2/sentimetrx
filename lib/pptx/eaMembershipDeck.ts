@@ -52,7 +52,7 @@ export function buildEaMembershipDeck(pptx: any) {
   s1.addShape('rect', { x: 0, y: 0, w: 0.18, h: H, fill: { color: DN.sarinaBlue } })
   s1.addText('Listening to Your Members', { x: 0.8, y: 1.7, w: 11.5, h: 1.2, fontSize: 46, fontFace: 'Arial', color: DN.white, bold: true })
   s1.addText('Conversational research that gets a real answer the first time you ask.', { x: 0.8, y: 2.95, w: 11, h: 0.7, fontSize: 20, fontFace: 'Arial', color: DN.sarinaBlue })
-  s1.addText('A Sentimetrx capability overview — prepared for EA\nMembership program member research', { x: 0.8, y: 4.1, w: 11, h: 0.9, fontSize: 15, fontFace: 'Arial', color: DN.slate, lineSpacing: 24 })
+  s1.addText('A Sentimetrx capability overview — prepared for EA\nEA SPORTS MVP+ Membership  ·  member & non-member research', { x: 0.8, y: 4.1, w: 11, h: 0.9, fontSize: 15, fontFace: 'Arial', color: DN.slate, lineSpacing: 24 })
   s1.addText('Sentimetrx', { x: 0.8, y: 6.0, w: 5, h: 0.5, fontSize: 18, fontFace: 'Arial', color: DN.white, bold: true })
   s1.addText('sentimetrx.ai  ·  powered by Datanautix', { x: 0.8, y: 6.5, w: 8, h: 0.4, fontSize: 12, fontFace: 'Arial', color: DN.gold })
   s1.addShape('rect', { x: 0, y: H - 0.06, w: W, h: 0.06, fill: { color: DN.sarinaBlue } })
@@ -61,9 +61,9 @@ export function buildEaMembershipDeck(pptx: any) {
 
 "What we do is conversational research. Instead of a static form, your members talk to a branded AI agent that asks a smart follow-up the moment an answer is vague — so you get a real answer the first time, not a shrug."
 
-Tee up the agenda: who we are, the problem with how member feedback is collected today, what conversational surveys change, how the analysis ties directly into collection, and how we'd run the study for your new membership program.
+Tee up the agenda: who we are, the problem with how member feedback is collected today, what conversational surveys change, how the analysis ties directly into collection, and how we'd run the study for MVP+ — across members and the players who haven't joined.
 
-CUSTOMIZE before sending: swap "Membership program member research" for the actual program name once confirmed.`
+Note: warm, relationship-first meeting (Graddy invited us in). Use this as a leave-behind / "here's how it'd work" backup, not a front-to-back script — lead the conversation, reach for the deck if he wants substance.`
   )
 
   // ═══════════════════════════════════════════════════════════════
@@ -213,12 +213,12 @@ Close on the consolidation point: collection + follow-up + translation + analysi
   addFooter(s6, pg)
   s6.addShape('rect', { x: 0.5, y: 1.35, w: 5.85, h: 4.7, fill: { color: 'FEF2F2' }, rectRadius: 0.1 })
   s6.addText('Static Survey', { x: 0.5, y: 1.45, w: 5.85, h: 0.45, fontSize: 14, fontFace: 'Arial', color: 'DC2626', bold: true, align: 'center' })
-  s6.addText('Q: How do you feel about your membership?\n★★★ (3/5)\n\nQ: Anything to add?\n“It’s OK.”\n\n———\n\nWhat you can act on:\nNeutral sentiment. Nothing else.', {
+  s6.addText('Q: How do you feel about your MVP+ membership?\n★★★ (3/5)\n\nQ: Anything to add?\n“It’s OK.”\n\n———\n\nWhat you can act on:\nNeutral sentiment. Nothing else.', {
     x: 0.8, y: 2.05, w: 5.3, h: 3.8, fontSize: 13, fontFace: 'Arial', color: DN.ink, lineSpacing: 22,
   })
   s6.addShape('rect', { x: 7.0, y: 1.35, w: 5.85, h: 4.7, fill: { color: 'F0FDF4' }, rectRadius: 0.1 })
   s6.addText('Sentimetrx Conversation', { x: 7.0, y: 1.45, w: 5.85, h: 0.45, fontSize: 14, fontFace: 'Arial', color: '16A34A', bold: true, align: 'center' })
-  s6.addText('Agent: How do you feel about your membership? [taps 3/5]\nAgent: What’s holding it back from a 5?\nMember: I joined for the early access\nAgent: How’s that working out?\nMember: The games I actually want aren’t in the vault yet\nAgent: Anything that would make it worth renewing?\nMember: More day-one titles, fewer old ones\n\n———\n\nWhat you can act on:\n• Joined for early access (acquisition driver)\n• Vault catalog gap (value gap)\n• Renewal hinges on day-one titles (churn lever)', {
+  s6.addText('Agent: How do you feel about your MVP+ membership? [taps 3/5]\nAgent: What’s holding it back from a 5?\nMember: I got it for the early access to Madden\nAgent: How’s the rest of it landing?\nMember: Most of the perks are Ultimate Team packs — I only play Franchise\nAgent: What would’ve made it a 5?\nMember: Franchise stuff, not just MUT rewards\n\n———\n\nWhat you can act on:\n• Joined for early access (acquisition driver)\n• Franchise player, UT-tilted rewards (value mismatch by mode)\n• Wants mode-specific perks (roadmap lever)', {
     x: 7.3, y: 2.05, w: 5.3, h: 3.8, fontSize: 11.5, fontFace: 'Arial', color: DN.ink, lineSpacing: 17,
   })
   s6.addText('3–5× more actionable text per respondent. Same survey length. No interviewer required.', {
@@ -227,11 +227,11 @@ Close on the consolidation point: collection + follow-up + translation + analysi
   s6.addNotes(
 `The slide that makes a research/insights lead lean in. Walk both columns.
 
-LEFT: "How do you feel about your membership? 3 out of 5. Anything to add? It's OK." All you can act on is a neutral score.
+LEFT: "How do you feel about your MVP+ membership? 3 out of 5. Anything to add? It's OK." All you can act on is a neutral score.
 
-RIGHT: same opener, but the agent probes — "what's holding it back from a 5?" → "I joined for early access" → "how's that working out?" → "the games I want aren't in the vault" → "what would make it worth renewing?" → "more day-one titles."
+RIGHT: same opener, but the agent probes — "what's holding it back from a 5?" → "I got it for the early access to Madden" → "how's the rest landing?" → "most of the perks are Ultimate Team packs and I only play Franchise" → "what would've made it a 5?" → "Franchise stuff, not just MUT."
 
-From one member you now have an acquisition driver, a value gap, AND the specific churn lever — three things a product/membership team can act on this quarter.
+From one member you now have the acquisition driver (early access), a value mismatch by mode (a Franchise player getting UT-tilted rewards), AND a concrete roadmap lever (mode-specific perks) — three things Graddy's team can act on. Note: illustrative; the real drivers come from EA's members.
 
 Punchline: "3 to 5 times more actionable text per respondent, same survey length, no interviewer." Note: the membership example is illustrative — the real drivers come from EA's actual members.`
   )
@@ -251,7 +251,7 @@ Punchline: "3 to 5 times more actionable text per respondent, same survey length
     { t: 'Conversational\ncollection', d: 'Adaptive follow-ups capture specifics, not shrugs', c: DN.sarinaBlue },
     { t: 'Structured\nresponses', d: 'Every answer scored, tagged, and tied to the member', c: DN.teal },
     { t: 'Themes, entities\n& key drivers', d: 'What members raise, about which features, and what moves renewal', c: DN.hermesOrange },
-    { t: 'Significance\n& cohorts', d: 'By tier, playtime, and segment — what’s real vs. noise', c: DN.navy },
+    { t: 'Significance\n& cohorts', d: 'By game, mode, and segment — what’s real vs. noise', c: DN.navy },
   ]
   const sw = 2.85, gap = 0.45
   const totalW = stages.length * sw + (stages.length - 1) * gap
@@ -275,7 +275,7 @@ Punchline: "3 to 5 times more actionable text per respondent, same survey length
 
 "Garbage in, garbage out is the real problem with feedback programs. We attack it at the source — the conversation captures specifics, so by the time it reaches the models there is real signal to work with."
 
-Walk the pipeline: conversational collection → structured, scored responses → themes, entities and key drivers → statistical significance and cohort breakdowns by tier and segment. Same login, same platform — the verbatims never leave to a separate text-analytics tool.`
+Walk the pipeline: conversational collection → structured, scored responses → themes, entities and key drivers → statistical significance and cohort breakdowns by game, mode, and segment. Same login, same platform — the verbatims never leave to a separate text-analytics tool.`
   )
 
   // ═══════════════════════════════════════════════════════════════
@@ -290,9 +290,9 @@ Walk the pipeline: conversational collection → structured, scored responses �
   })
   const outs = [
     { t: 'Themes & key drivers', d: 'The handful of things driving satisfaction and renewal intent — ranked by impact, not just frequency.', c: DN.sarinaBlue },
-    { t: 'Feature-level sentiment', d: 'Entity analysis pins sentiment to specific perks — vault, early access, cloud, pricing — so you see exactly what lands.', c: DN.teal },
+    { t: 'Feature-level sentiment', d: 'Entity analysis pins sentiment to specific perks — early access, the monthly Ultimate Team packs, the two-game bundle, mode progression — so you see exactly what lands.', c: DN.teal },
     { t: 'Significance testing', d: 'Differences flagged as statistically real vs. noise, so you act on signal — no data-science team required.', c: DN.hermesOrange },
-    { t: 'Tier & segment cohorts', d: 'Cut every theme by membership tier, playtime, platform, or region to see who feels what.', c: DN.gold },
+    { t: 'Segment & cohort cuts', d: 'Cut every theme by game played, mode (Franchise/Dynasty/UT), platform, or region to see who feels what.', c: DN.gold },
   ]
   outs.forEach((o, i) => {
     const col = i % 2, row = Math.floor(i / 2)
@@ -310,9 +310,9 @@ Walk the pipeline: conversational collection → structured, scored responses �
 `What EA actually receives. Keep it concrete and tied to membership decisions.
 
 THEMES & KEY DRIVERS — ranked by impact on renewal intent, not just how often something is mentioned. This is the "what should we fix first" answer.
-FEATURE-LEVEL SENTIMENT — entity analysis attaches sentiment to specific perks (vault, early access, cloud play, price), so "value" stops being a vague score and becomes a per-feature read.
+FEATURE-LEVEL SENTIMENT — entity analysis attaches sentiment to specific perks (early access, the monthly Ultimate Team packs, the two-game bundle, mode progression), so "value" stops being a vague score and becomes a per-feature read.
 SIGNIFICANCE TESTING — we flag what's statistically real so you don't chase noise.
-TIER & SEGMENT COHORTS — every theme sliced by tier, playtime, platform, region.
+SEGMENT & COHORT CUTS — every theme sliced by game played, mode, platform, region.
 
 Close: it shows up as a live dashboard plus an exportable, presentation-ready readout — the kind of deck this one was built in.`
   )
@@ -403,7 +403,7 @@ Then the quote from Dr. Okumus. This is the credibility close before we talk abo
     'What’s delivering value — and what they forgot they had\n' +
     'What’s missing that would make next year an obvious yes\n' +
     'Which new perk would make it a no-brainer\n' +
-    'How it differs by mode, tier, and platform',
+    'How it differs by game, mode, and platform',
     { x: 0.8, y: 2.4, w: 5.8, h: 2.1, fontSize: 13, fontFace: 'Arial', color: DN.white, bullet: { code: '2022', indent: 18 }, lineSpacing: 21, paraSpaceAfter: 8, valign: 'top' }
   )
   // Right: the players who haven't joined
@@ -431,7 +431,7 @@ Then the quote from Dr. Okumus. This is the credibility close before we talk abo
 `The close — answer EA's exact ask back to them: "what would make the membership valuable to members and non-members," and "grow its value over time." Make it about MVP+, not us.
 
 TWO POPULATIONS (this is what Graddy asked for in writing):
-- YOUR MEMBERS — what's delivering value, what they ignore, what's missing, and which new perk would make next year an obvious yes. Cut by mode (Franchise/Dynasty vs. Ultimate Team), tier, platform.
+- YOUR MEMBERS — what's delivering value, what they ignore, what's missing, and which new perk would make next year an obvious yes. Cut by game played, mode (Franchise/Dynasty vs. Ultimate Team), platform.
 - THE PLAYERS WHO HAVEN'T JOINED — awareness, what's holding them back, what would make it worth it, and the single change that flips them to yes. This is the acquisition lever telemetry can't see.
 
 WALK THE JOURNEY (the headline idea): MVP+ is a moving target — the perk mix will grow. So baseline it now, then re-ask as perks change; every change becomes a near-experiment on what moved the value, in members' own words. The insight compounds — a true time-series, not disconnected snapshots. This is the partnership, not a one-off report.
