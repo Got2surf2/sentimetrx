@@ -54,7 +54,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const { data: bot } = await service.from('agents').select('id, org_id, name, system_prompt').eq('id', batch.bot_id).single()
     if (!bot) return NextResponse.json({ error: 'not found' }, { status: 404 })
     try {
-      const draft = await draftAnswerFromKB(service, bot, question.user_message, '', { asyncReply: true })
+      const draft = await draftAnswerFromKB(service, bot, question.original_comment || question.user_message, '', { asyncReply: true })
       return NextResponse.json({ draft })
     } catch {
       return NextResponse.json({ error: 'Could not draft a response right now. Please try again.' }, { status: 503 })

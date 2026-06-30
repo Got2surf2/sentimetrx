@@ -35,24 +35,25 @@ interface InRow { comment?: string; name?: string; email?: string; phone?: strin
 const clean = (v: unknown, max = 6000) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 type ReplyTier = 'contact_list' | 'acknowledge' | 'answer'
-interface Extracted { question: string; summary: string; tier: ReplyTier }
+interface Extracted { question: string; topic: string; tier: ReplyTier }
 
-// One AI pass over all comments → the answerable question (or '' + a short label)
-// AND a reply TIER: 'answer' (a real question needing a KB-grounded reply),
-// 'contact_list' (just wants to be added / kept updated), or 'acknowledge'
-// (general comment, no question). The tier drives concise vs full drafting.
+// One AI pass over all comments. For each it returns an honest title (the real
+// question ONLY if one was actually asked, never invented) + a topic label, and a
+// reply TIER that drives concise vs full drafting. The response itself is drafted
+// from the FULL original comment (not this title), so a complaint with no question
+// still gets a relevant reply instead of an answer to a fabricated question.
 async function extractQuestions(orgId: string, botId: string, comments: { comment: string; wouldLike: string }[]): Promise<Extracted[]> {
   const blocks = comments.map((c, i) =>
     `### ${i + 1}${c.wouldLike ? ` (form intent: ${c.wouldLike})` : ''}\n${c.comment.slice(0, 3000)}`).join('\n\n')
   const system = `You triage a community comment log for a public agency engagement. For EACH numbered comment return:
-- "question": the single most important ANSWERABLE question the team should respond to, in the commenter's voice. Empty string if there is no real question.
-- "summary": a short (≤8-word) label of the concern.
+- "question": the question the person ACTUALLY asked, lightly cleaned up, in their voice. CRITICAL: if they did not explicitly ask a question or explicitly request specific information, this MUST be an empty string. NEVER invent, infer, or rephrase a statement/complaint/observation into a question.
+- "topic": a short neutral label (3–8 words, a noun phrase, NO question mark) describing what the comment is about.
 - "tier": one of "answer" | "contact_list" | "acknowledge".
-   • "answer" — the comment asks a real, specific question or makes a specific request that needs a substantive reply. ANY genuine question → "answer".
-   • "contact_list" — the person just wants to be added to the contact list, kept updated, or receive materials, with no real question (the form intent often says "be added to the contacts list").
-   • "acknowledge" — a general comment, observation, thanks, or feedback with no question and no contact request.
+   • "answer" — DEFAULT for anything substantive: a genuine question, an explicit request for information, a concern/issue/feedback the team should respond to (traffic, safety, development, etc.), OR someone who identifies themselves as a REPRESENTATIVE or point of contact (HOA, business, agency, neighborhood) — a stakeholder warrants a real, informative reply, not a one-line list-add. When in doubt, choose "answer".
+   • "contact_list" — ONLY when the ENTIRE comment is nothing more than a bare request to be added or kept updated (e.g. "please add me", "keep me posted"), from an individual, with NO concern, question, role, organization, or information need. A stated role/organization (e.g. "as a point of contact for the HOA") DISQUALIFIES this tier → use "answer". Ignore the form-intent checkbox when the comment text itself carries substance or a role.
+   • "acknowledge" — a brief, content-free comment, observation, or thanks with nothing for the team to act on or answer.
 Do NOT invent facts. Return ONLY a JSON array aligned by index, no markdown:
-[{"question":"...","summary":"short label","tier":"answer"}, ...]
+[{"question":"...","topic":"short label","tier":"answer"}, ...]
 Exactly ${comments.length} objects, in order.`
   try {
     const res = await callAI({ tier: 'standard', maxTokens: 2000, timeoutMs: 90000, system, messages: [{ role: 'user', content: blocks }] })
@@ -61,11 +62,11 @@ Exactly ${comments.length} objects, in order.`
     if (Array.isArray(parsed)) return parsed.map((p: any): Extracted => {
       const t = p?.tier
       const tier: ReplyTier = t === 'contact_list' || t === 'acknowledge' ? t : 'answer'
-      return { question: clean(p?.question, 500), summary: clean(p?.summary, 120), tier }
+      return { question: clean(p?.question, 500), topic: clean(p?.topic, 120), tier }
     })
   } catch { /* fall through to a deterministic fallback */ }
-  // Fallback (no AI): treat everything as answerable.
-  return comments.map(c => ({ question: c.comment.split(/(?<=[.!?])\s/)[0].slice(0, 300), summary: '', tier: 'answer' as ReplyTier }))
+  // Fallback (no AI): treat everything as answerable, no invented question.
+  return comments.map(c => ({ question: '', topic: c.comment.slice(0, 80), tier: 'answer' as ReplyTier }))
 }
 
 export async function POST(req: NextRequest, props: Params) {
@@ -110,9 +111,11 @@ export async function POST(req: NextRequest, props: Params) {
   if (rows.length === 0) return NextResponse.json({ error: 'No comments found — each row needs comment text.' }, { status: 400 })
 
   const extracted = await extractQuestions(bot.org_id, params.id, rows.map(r => ({ comment: r.comment, wouldLike: r.wouldLike })))
+  // The TITLE shown in review = the real question if one was actually asked, else
+  // an honest topic label — never a fabricated question.
   const userMessages = rows.map((r, i) => {
-    const ex = extracted[i] || { question: '', summary: '', tier: 'answer' as ReplyTier }
-    return ex.question || ex.summary || r.comment.slice(0, 300)
+    const ex = extracted[i] || { question: '', topic: '', tier: 'answer' as ReplyTier }
+    return ex.question || ex.topic || r.comment.slice(0, 120)
   })
 
   // Pre-draft each response at import. Concise mode (default on): simple
@@ -134,8 +137,10 @@ export async function POST(req: NextRequest, props: Params) {
     const idx = userMessages.map((_, i) => i)
       .filter(i => !concise || (extracted[i]?.tier ?? 'answer') === 'answer')
       .slice(0, DRAFT_CAP)
+    // Draft from the FULL original comment (not the title) so a complaint with no
+    // explicit question still gets a relevant, on-point reply.
     const out = await runConcurrent(idx, 6, async (i) => {
-      try { return await draftAnswerFromKB(service, botFull, userMessages[i], '', { asyncReply: true }) } catch { return null }
+      try { return await draftAnswerFromKB(service, botFull, rows[i].comment, '', { asyncReply: true }) } catch { return null }
     })
     idx.forEach((i, k) => { drafts[i] = out[k] })
     // Canned lines for the concise tiers.

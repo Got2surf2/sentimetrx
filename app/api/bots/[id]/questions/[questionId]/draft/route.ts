@@ -36,15 +36,20 @@ export async function POST(req: NextRequest, props: Params) {
 
   const { data: question } = await service
     .from('logged_questions')
-    .select('id, user_message')
+    .select('id, user_message, original_comment, source')
     .eq('id', params.questionId)
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
     .single()
   if (!question) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // Comment-log items: draft from the full original comment (the user_message is
+  // just the title/topic), and treat them as async one-way submissions.
+  const isExternal = (question as any).source === 'external'
+  const draftInput = (question as any).original_comment || question.user_message
+
   try {
-    const draft = await draftAnswerFromKB(service, bot, question.user_message, agentReply)
+    const draft = await draftAnswerFromKB(service, bot, draftInput, agentReply, { asyncReply: isExternal })
     return NextResponse.json({ draft })
   } catch (err) {
     if (err instanceof Error && err.name === 'TimeoutError') {
