@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, props: Params) {
 
   let q = service
     .from('logged_questions')
-    .select('user_message, original_comment, answer_text, external_contact, source, classification, status, batch_id, batch_label, created_at, resolved_at')
+    .select('user_message, original_comment, answer_text, draft_response, external_contact, source, classification, status, batch_id, batch_label, created_at, resolved_at')
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
     .order('created_at', { ascending: false })
@@ -60,13 +60,14 @@ export async function GET(req: NextRequest, props: Params) {
     return source === 'agent' ? 'Website' : (source || '')
   }
 
-  const header = ['Question', 'Full comment', 'Response', 'Origin', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']
+  const header = ['Question', 'Full comment', 'AI suggested response', 'Final response', 'Origin', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']
   const lines = [header.join(',')]
   for (const r of rows || []) {
     const c = (r.external_contact || {}) as { name?: string; email?: string; phone?: string; address?: string; agency?: string }
     lines.push([
       r.user_message,
       r.original_comment || '',
+      r.draft_response || '',
       r.answer_text || '',
       originOf(r.source, r.classification),
       c.name || '',

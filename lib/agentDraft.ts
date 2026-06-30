@@ -29,7 +29,10 @@ export async function draftAnswerFromKB(
   // isn't in a live chat to answer back — so the reply must be complete and must
   // not pose a follow-up question to them.
   const asyncRule = opts.asyncReply
-    ? `\nThis was submitted via a website form / comment card, NOT a live chat — the submitter is not waiting to reply. Write a COMPLETE, self-contained response and do NOT ask them any follow-up or clarifying questions. Address them directly and courteously.`
+    ? `\nThis was submitted via a website comment card / form — it is a ONE-WAY submission. The person is NOT in a conversation and CANNOT answer you back. Therefore:
+- Your reply MUST NOT contain ANY question directed at the submitter — no clarifying questions, no "could you…", "would you…", "can you tell us…". Never end with a question mark aimed at them.
+- If the submission is general commentary or feedback rather than a question, do NOT turn it into a Q&A. Acknowledge their input, confirm it has been recorded for the team, add any directly relevant information from the knowledge, and stop.
+- Write in complete, final statements addressed courteously to the person.`
     : ''
   const system = `You are drafting a SUGGESTED answer for a human reviewer to approve or edit — it is NOT sent to anyone directly. Write the answer the agent "${bot.name}" should give to the visitor's question next time: concise, plain, factual, in the agent's voice.
 GROUND IT ONLY in the agent knowledge below. Do NOT invent facts, numbers, hours, dates, names, URLs, prices, or policies that aren't in the knowledge. If the knowledge does not contain the answer, draft a short honest response that acknowledges what isn't available and points the visitor to a reasonable next step — never fabricate specifics.${asyncRule}
