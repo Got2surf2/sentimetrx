@@ -100,7 +100,7 @@ export async function POST(req: NextRequest, props: Params) {
   if (botFull) {
     const idx = userMessages.map((_, i) => i).slice(0, DRAFT_CAP)
     const out = await runConcurrent(idx, 6, async (i) => {
-      try { return await draftAnswerFromKB(service, botFull, userMessages[i]) } catch { return null }
+      try { return await draftAnswerFromKB(service, botFull, userMessages[i], '', { asyncReply: true }) } catch { return null }
     })
     idx.forEach((i, k) => { drafts[i] = out[k] })
   }

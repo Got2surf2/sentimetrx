@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 
-interface Item { id: string; question: string; comment: string; answer: string; accepted?: boolean; status: string; asker: string }
+interface Item { id: string; question: string; comment: string; aiDraft: string; answer: string; accepted?: boolean; status: string; asker: string }
 
 const TEAL = '#0F7173', ORANGE = '#E85A1A'
 
@@ -23,14 +23,20 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
   const cur = items[i]
   const answeredCount = useMemo(() => items.filter(x => x.status === 'answered').length, [items])
 
-  // The suggested response is pre-filled (drafted at import); the client edits it
-  // in place. `answer` is the single editable value per item.
+  // The AI suggestion (cur.aiDraft) is shown read-only and preserved; the client
+  // writes their OWN response in a separate field (cur.answer).
   const editorValue = cur ? cur.answer : ''
   function setEditor(v: string) {
     if (!cur) return
     setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: v } : x))
   }
+  function useSuggested() {
+    if (!cur) return
+    setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: x.aiDraft } : x))
+  }
 
+  // Re-draft regenerates the AI SUGGESTION (the read-only reference), not the
+  // client's response — their wording is never overwritten.
   async function generateDraft() {
     if (!cur) return
     setDrafting(true); setErr(null)
@@ -41,7 +47,7 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
       })
       const d = await r.json()
       if (!r.ok) { setErr(d?.error || 'Could not draft'); return }
-      setItems(prev => prev.map((x, idx) => idx === i ? { ...x, answer: d.draft || '' } : x))
+      setItems(prev => prev.map((x, idx) => idx === i ? { ...x, aiDraft: d.draft || '' } : x))
     } catch { setErr('Network error') } finally { setDrafting(false) }
   }
 
@@ -96,19 +102,33 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
           </div>
         )}
 
-        <div style={{ marginTop: 16, fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>Suggested response</div>
+        {/* AI suggestion — read-only reference, preserved as you write your own */}
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>✨ Suggested by {agentName}</span>
+          <button onClick={generateDraft} disabled={drafting}
+            style={{ fontSize: 12, color: TEAL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+            {drafting ? 'Drafting…' : '↻ Re-draft'}</button>
+        </div>
+        <div style={{ marginTop: 6, padding: 12, background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: 10, fontSize: 14, lineHeight: 1.5, color: '#134e4a', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>
+          {cur.aiDraft || <span style={{ color: '#94a3b8' }}>No suggestion yet — click “Re-draft”.</span>}
+        </div>
+        {cur.aiDraft && (
+          <button onClick={useSuggested}
+            style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, border: '1px solid ' + TEAL, background: 'white', color: TEAL, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            ↧ Use this as my response (then edit)</button>
+        )}
+
+        {/* The client's OWN response — what actually gets sent back */}
+        <div style={{ marginTop: 18, fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '.05em' }}>Your response</div>
         <textarea
           value={editorValue}
           onChange={e => setEditor(e.target.value)}
-          placeholder={'Generate a suggested response, or write your own…'}
+          placeholder={'Write your response here — or use the suggestion above as a starting point.'}
           rows={7}
-          style={{ width: '100%', marginTop: 6, padding: 12, border: '1px solid #cbd5e1', borderRadius: 10, fontSize: 16, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+          style={{ width: '100%', marginTop: 6, padding: 12, border: '2px solid ' + (editorValue.trim() ? TEAL : '#cbd5e1'), borderRadius: 10, fontSize: 16, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
         />
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'center' }}>
-          <button onClick={generateDraft} disabled={drafting}
-            style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid ' + TEAL, background: 'white', color: TEAL, fontWeight: 600, fontSize: 14, cursor: 'pointer', opacity: drafting ? 0.6 : 1 }}>
-            {drafting ? 'Drafting…' : editorValue ? '↻ Re-draft from knowledge' : '✨ Draft from knowledge'}</button>
           <button onClick={accept} disabled={saving || editorValue.trim().length < 2}
             style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: editorValue.trim().length < 2 ? '#cbd5e1' : ORANGE, color: 'white', fontWeight: 700, fontSize: 14, cursor: editorValue.trim().length < 2 ? 'default' : 'pointer' }}>
             {saving ? 'Saving…' : cur.status === 'answered' ? 'Update response →' : 'Accept & next →'}</button>

@@ -37,8 +37,8 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
     id: q.id,
     question: q.user_message,
     comment: q.original_comment || '',
-    // Accepted answer if any, else the AI-drafted suggestion (pre-filled, editable).
-    answer: q.answer_text || q.draft_response || '',
+    aiDraft: q.draft_response || '',          // AI suggestion — shown read-only, preserved
+    answer: q.answer_text || '',               // the client's own response (what gets sent); empty until written/accepted
     accepted: q.status === 'answered',
     status: q.status as string,
     asker: ((q.external_contact || {}) as { name?: string }).name || '',
