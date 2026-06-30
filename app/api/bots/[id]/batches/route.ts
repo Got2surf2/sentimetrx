@@ -34,22 +34,38 @@ interface InRow { comment?: string; name?: string; email?: string; phone?: strin
 
 const clean = (v: unknown, max = 6000) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
-// One AI pass over all comments → the answerable question (or '' + a short label).
-async function extractQuestions(orgId: string, botId: string, comments: { comment: string; wouldLike: string }[]): Promise<{ question: string; summary: string }[]> {
+type ReplyTier = 'contact_list' | 'acknowledge' | 'answer'
+interface Extracted { question: string; summary: string; tier: ReplyTier }
+
+// One AI pass over all comments → the answerable question (or '' + a short label)
+// AND a reply TIER: 'answer' (a real question needing a KB-grounded reply),
+// 'contact_list' (just wants to be added / kept updated), or 'acknowledge'
+// (general comment, no question). The tier drives concise vs full drafting.
+async function extractQuestions(orgId: string, botId: string, comments: { comment: string; wouldLike: string }[]): Promise<Extracted[]> {
   const blocks = comments.map((c, i) =>
-    `### ${i + 1}${c.wouldLike ? ` (intent: ${c.wouldLike})` : ''}\n${c.comment.slice(0, 3000)}`).join('\n\n')
-  const system = `You triage a community comment log for a public agency engagement. For EACH numbered comment, distill the single most important ANSWERABLE question the team should respond to — phrased as one concise question in the commenter's voice. If the comment is purely commentary/feedback with no question, return an empty string for "question" and a short (≤8-word) "summary" label of the concern. Do NOT invent facts.
-Return ONLY a JSON array aligned by index, no markdown:
-[{"question":"...","summary":"short label"}, ...]
+    `### ${i + 1}${c.wouldLike ? ` (form intent: ${c.wouldLike})` : ''}\n${c.comment.slice(0, 3000)}`).join('\n\n')
+  const system = `You triage a community comment log for a public agency engagement. For EACH numbered comment return:
+- "question": the single most important ANSWERABLE question the team should respond to, in the commenter's voice. Empty string if there is no real question.
+- "summary": a short (≤8-word) label of the concern.
+- "tier": one of "answer" | "contact_list" | "acknowledge".
+   • "answer" — the comment asks a real, specific question or makes a specific request that needs a substantive reply. ANY genuine question → "answer".
+   • "contact_list" — the person just wants to be added to the contact list, kept updated, or receive materials, with no real question (the form intent often says "be added to the contacts list").
+   • "acknowledge" — a general comment, observation, thanks, or feedback with no question and no contact request.
+Do NOT invent facts. Return ONLY a JSON array aligned by index, no markdown:
+[{"question":"...","summary":"short label","tier":"answer"}, ...]
 Exactly ${comments.length} objects, in order.`
   try {
     const res = await callAI({ tier: 'standard', maxTokens: 2000, timeoutMs: 90000, system, messages: [{ role: 'user', content: blocks }] })
     logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'question_extract' }, res.usage)
     const parsed = JSON.parse(res.text.replace(/^```json\s*|\s*```$/g, '').trim())
-    if (Array.isArray(parsed)) return parsed.map((p: any) => ({ question: clean(p?.question, 500), summary: clean(p?.summary, 120) }))
+    if (Array.isArray(parsed)) return parsed.map((p: any): Extracted => {
+      const t = p?.tier
+      const tier: ReplyTier = t === 'contact_list' || t === 'acknowledge' ? t : 'answer'
+      return { question: clean(p?.question, 500), summary: clean(p?.summary, 120), tier }
+    })
   } catch { /* fall through to a deterministic fallback */ }
-  // Fallback: first sentence as the "question", no AI.
-  return comments.map(c => ({ question: c.comment.split(/(?<=[.!?])\s/)[0].slice(0, 300), summary: '' }))
+  // Fallback (no AI): treat everything as answerable.
+  return comments.map(c => ({ question: c.comment.split(/(?<=[.!?])\s/)[0].slice(0, 300), summary: '', tier: 'answer' as ReplyTier }))
 }
 
 export async function POST(req: NextRequest, props: Params) {
@@ -95,24 +111,42 @@ export async function POST(req: NextRequest, props: Params) {
 
   const extracted = await extractQuestions(bot.org_id, params.id, rows.map(r => ({ comment: r.comment, wouldLike: r.wouldLike })))
   const userMessages = rows.map((r, i) => {
-    const ex = extracted[i] || { question: '', summary: '' }
+    const ex = extracted[i] || { question: '', summary: '', tier: 'answer' as ReplyTier }
     return ex.question || ex.summary || r.comment.slice(0, 300)
   })
 
-  // Pre-draft each response from the agent's KB at import time, so a suggestion is
-  // ready the moment the queue (or the client review link) opens — never on demand
-  // (an empty box has no value). Capped + concurrent to stay within maxDuration;
-  // rows beyond the cap fall back to on-demand drafting. Stored on draft_response
-  // (NOT suggested_kb_addition — that flags "in knowledge base"; a draft isn't).
+  // Pre-draft each response at import. Concise mode (default on): simple
+  // contact-list / acknowledgement comments get the agency's terse canned line
+  // (matching the consultant house style) instead of a 3-paragraph essay; only a
+  // real question ('answer' tier) goes through the KB. The reviewer can always hit
+  // "Re-draft from knowledge" to upgrade a canned reply to the full answer.
+  // Capped + concurrent; rows past the cap fall back to on-demand drafting. Stored
+  // on draft_response (NOT suggested_kb_addition — that flags "in knowledge base").
   const DRAFT_CAP = 80
   const drafts: (string | null)[] = userMessages.map(() => null)
-  const { data: botFull } = await service.from('agents').select('id, org_id, name, system_prompt').eq('id', params.id).single()
+  const { data: botFull } = await service.from('agents').select('id, org_id, name, system_prompt, config').eq('id', params.id).single()
   if (botFull) {
-    const idx = userMessages.map((_, i) => i).slice(0, DRAFT_CAP)
+    const cfg = ((botFull as any).config || {}) as { conciseAcknowledgements?: boolean; replies?: { contactList?: string; acknowledge?: string } }
+    const concise = cfg.conciseAcknowledgements !== false
+    const contactLine = cfg.replies?.contactList || 'We’ll add you to the project contact list.'
+    const ackLine = cfg.replies?.acknowledge || 'Thank you — your comment has been recorded for the project team.'
+    // Only the 'answer' tier needs an AI/KB draft; canned tiers are instant.
+    const idx = userMessages.map((_, i) => i)
+      .filter(i => !concise || (extracted[i]?.tier ?? 'answer') === 'answer')
+      .slice(0, DRAFT_CAP)
     const out = await runConcurrent(idx, 6, async (i) => {
       try { return await draftAnswerFromKB(service, botFull, userMessages[i], '', { asyncReply: true }) } catch { return null }
     })
     idx.forEach((i, k) => { drafts[i] = out[k] })
+    // Canned lines for the concise tiers.
+    if (concise) {
+      for (let i = 0; i < drafts.length; i++) {
+        if (drafts[i] != null) continue
+        const tier = extracted[i]?.tier ?? 'answer'
+        if (tier === 'contact_list') drafts[i] = contactLine
+        else if (tier === 'acknowledge') drafts[i] = ackLine
+      }
+    }
   }
 
   const { data: batch, error: batchErr } = await service

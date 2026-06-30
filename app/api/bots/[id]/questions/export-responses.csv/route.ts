@@ -29,12 +29,13 @@ export async function GET(req: NextRequest, props: Params) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('agents').select('id, name, slug, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, name, slug, org_id, config').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const batchId = req.nextUrl.searchParams.get('batch')   // batch_id when downloading one batch
   const answeredOnly = req.nextUrl.searchParams.get('answered') === '1'
+  const emailsMode = req.nextUrl.searchParams.get('emails') === '1'   // warm, copy-paste email drafts
 
   let q = service
     .from('logged_questions')
@@ -58,6 +59,36 @@ export async function GET(req: NextRequest, props: Params) {
     if (cls === 'deflect') return 'Website — off-topic/sensitive'
     if (cls === 'ai_uncertain') return 'Website — agent unsure'
     return source === 'agent' ? 'Website' : (source || '')
+  }
+
+  // ── Email-draft mode: a warm, copy-paste-ready email per contact who gave an
+  //    email address (owner: "only write draft emails for people who provided an
+  //    email"). Body = warm greeting + the response + warm sign-off. ──────────
+  if (emailsMode) {
+    const cfg = ((bot as any).config || {}) as { emailSignoff?: string; emailSubject?: string }
+    const signoff = cfg.emailSignoff || 'The Project Team'
+    const subject = cfg.emailSubject || 'Thank you for your comment'
+    const firstName = (full?: string) => (full || '').trim().split(/\s+/)[0] || ''
+    const header = ['Name', 'Email', 'Subject', 'Email draft']
+    const lines = [header.join(',')]
+    for (const r of rows || []) {
+      const c = (r.external_contact || {}) as { name?: string; email?: string }
+      const email = (c.email || '').trim()
+      const response = (r.answer_text || r.draft_response || '').trim()
+      if (!email || !response) continue   // only people with an email + a response to send
+      const fn = firstName(c.name)
+      const body = `Hi ${fn || 'there'},\n\n${response}\n\nWarm regards,\n${signoff}`
+      lines.push([c.name || '', email, subject, body].map(csvEscape).join(','))
+    }
+    const agentName = (bot.name || bot.slug || 'Agent').replace(/[^\w.-]+/g, '_')
+    const stamp = new Date().toISOString().slice(0, 10)
+    return new NextResponse(lines.join('\n'), {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${agentName}_Email_Drafts_${stamp}.csv"`,
+      },
+    })
   }
 
   const header = ['Question', 'Full comment', 'AI suggested response', 'Final response', 'Origin', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']

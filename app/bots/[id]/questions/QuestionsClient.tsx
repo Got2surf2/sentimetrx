@@ -534,6 +534,9 @@ export default function QuestionsClient({
                       <a href={'/api/bots/' + botId + '/questions/export-responses.csv?batch=' + b.id}
                         className='px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'
                         title='Export this batch as CSV — question, AI suggested response, final response, and contact info.'>⬇ Export responses</a>
+                      <a href={'/api/bots/' + botId + '/questions/export-responses.csv?emails=1&batch=' + b.id}
+                        className='px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'
+                        title='Warm, copy-paste-ready email drafts — only for people who gave an email address.'>📧 Email drafts</a>
                       <button onClick={() => toggleShare(b)} disabled={shareBusy === b.id}
                         className={'px-2.5 py-1.5 rounded-lg text-xs font-medium ' + (b.share_enabled ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-sky-600 text-white hover:bg-sky-700')}>
                         {shareBusy === b.id ? '…' : b.share_enabled ? 'Sharing ✓' : 'Share with client'}</button>
