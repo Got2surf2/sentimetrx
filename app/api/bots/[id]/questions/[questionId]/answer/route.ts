@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, props: Params) {
 
   const { data: question } = await service
     .from('logged_questions')
-    .select('id, bot_id, org_id, user_message, source, session_id')
+    .select('id, bot_id, org_id, user_message, source, session_id, original_comment')
     .eq('id', params.questionId)
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
@@ -154,7 +154,9 @@ export async function POST(req: NextRequest, props: Params) {
     try {
       await materializeExternalExchange(service, {
         botId: params.id, orgId: bot.org_id, sessionId: question.session_id,
-        questionId: params.questionId, question: question.user_message, answer,
+        // The user turn carries the FULL original comment when we have it (so What
+        // We Heard sees the real words — question + commentary), else the question.
+        questionId: params.questionId, question: question.original_comment || question.user_message, answer,
       })
     } catch (e: any) {
       console.error({ at: 'question-answer', msg: 'external corpus materialize failed (answer still saved)', err: e?.message })

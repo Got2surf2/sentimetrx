@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, props: Params) {
 
   let q = service
     .from('logged_questions')
-    .select('user_message, answer_text, external_contact, status, batch_label, created_at, resolved_at')
+    .select('user_message, original_comment, answer_text, external_contact, status, batch_label, created_at, resolved_at')
     .eq('bot_id', params.id)
     .eq('org_id', bot.org_id)
     .eq('source', 'external')
@@ -50,16 +50,19 @@ export async function GET(req: NextRequest, props: Params) {
   const { data: rows, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const header = ['Question', 'Response', 'Name', 'Email', 'Phone', 'Status', 'Batch', 'Submitted', 'Answered']
+  const header = ['Question', 'Full comment', 'Response', 'Name', 'Email', 'Phone', 'Address', 'Agency', 'Status', 'Batch', 'Submitted', 'Answered']
   const lines = [header.join(',')]
   for (const r of rows || []) {
-    const c = (r.external_contact || {}) as { name?: string; email?: string; phone?: string }
+    const c = (r.external_contact || {}) as { name?: string; email?: string; phone?: string; address?: string; agency?: string }
     lines.push([
       r.user_message,
+      r.original_comment || '',
       r.answer_text || '',
       c.name || '',
       c.email || '',
       c.phone || '',
+      c.address || '',
+      c.agency || '',
       r.status,
       r.batch_label || '',
       r.created_at,

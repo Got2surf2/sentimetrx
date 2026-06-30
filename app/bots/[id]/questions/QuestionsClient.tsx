@@ -15,6 +15,8 @@
 // tagging (§ 9.x.1) ships; classification is the placeholder grouping.
 
 import { useEffect, useState, useMemo } from 'react'
+import dynamic from 'next/dynamic'
+const CommentImportModal = dynamic(() => import('./CommentImportModal'), { ssr: false })
 import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -33,8 +35,9 @@ interface Question {
   notes: string | null
   suggested_kb_addition: string | null
   answer_text: string | null
+  original_comment: string | null  // full comment when imported from a CSV; user_message holds the extracted question
   source: string | null            // 'agent' (live capture) | 'external' (pasted community list)
-  external_contact: { name?: string; email?: string; phone?: string } | null
+  external_contact: { name?: string; email?: string; phone?: string; address?: string; agency?: string } | null
   batch_label: string | null
   created_at: string
   agent_response: string | null   // the assistant reply that followed this question (context for review)
@@ -115,6 +118,8 @@ export default function QuestionsClient({
   const [importBatch, setImportBatch] = useState('')
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [csvOpen, setCsvOpen] = useState(false)
+  const [csvToast, setCsvToast] = useState<string | null>(null)
 
   async function refreshQuestions() {
     try {
@@ -373,6 +378,11 @@ export default function QuestionsClient({
               className='px-3 py-1.5 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700'
               title='Paste a client-supplied list of community questions to answer with this agent.'
             >+ Add questions</button>
+            <button
+              onClick={() => { setCsvToast(null); setCsvOpen(true) }}
+              className='px-3 py-1.5 rounded-lg border border-sky-600 text-sky-700 text-sm font-medium hover:bg-sky-50'
+              title='Import a CSV/Excel comment log — each comment is AI-read to pull the answerable question.'
+            >Import CSV</button>
             <a
               href={'/api/bots/' + botId + '/questions/export-responses.csv'}
               className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white'
@@ -431,6 +441,15 @@ export default function QuestionsClient({
             </div>
           </div>
         )}
+
+        {csvOpen && (
+          <CommentImportModal
+            botId={botId}
+            onClose={() => setCsvOpen(false)}
+            onImported={(n) => { setCsvOpen(false); setCsvToast(`Imported ${n} comment${n === 1 ? '' : 's'} — drafting from ${botName}'s knowledge.`); refreshQuestions(); setTimeout(() => setCsvToast(null), 6000) }}
+          />
+        )}
+        {csvToast && <div className='mb-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-3 py-2'>{csvToast}</div>}
 
         {/* Summary chips */}
         <div className='flex flex-wrap gap-2 mb-4'>
@@ -510,9 +529,15 @@ export default function QuestionsClient({
                     )}
                     <div className='flex-1 min-w-0'>
                       <div className='text-sm text-gray-900 whitespace-pre-wrap break-words'>{q.user_message}</div>
-                      {q.source === 'external' && q.external_contact && (q.external_contact.name || q.external_contact.email || q.external_contact.phone) && (
+                      {q.original_comment && q.original_comment.trim() !== q.user_message.trim() && (
+                        <details className='mt-1'>
+                          <summary className='text-xs text-gray-500 cursor-pointer hover:text-gray-700'>Full comment</summary>
+                          <div className='text-xs text-gray-600 whitespace-pre-wrap break-words mt-1 bg-gray-50 border border-gray-200 rounded-md p-2 max-h-48 overflow-auto'>{q.original_comment}</div>
+                        </details>
+                      )}
+                      {q.source === 'external' && q.external_contact && (q.external_contact.name || q.external_contact.email || q.external_contact.phone || q.external_contact.address) && (
                         <div className='text-xs text-sky-700 mt-1'>
-                          ✉ {[q.external_contact.name, q.external_contact.email, q.external_contact.phone].filter(Boolean).join(' · ')}
+                          ✉ {[q.external_contact.name, q.external_contact.email, q.external_contact.phone, q.external_contact.address].filter(Boolean).join(' · ')}
                           {q.batch_label ? <span className='text-gray-400'> · {q.batch_label}</span> : null}
                         </div>
                       )}
