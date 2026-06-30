@@ -215,6 +215,8 @@ async function materializeExternalExchange(
     return
   }
 
+  // Provenance lives on the CONVERSATION (source='external' + metadata.external)
+  // so these can always be told apart from Sarina's organic chats and filtered.
   const { data: conv, error: convErr } = await service
     .from('conversations')
     .insert({ org_id: orgId, bot_id: botId, session_id: sessionId, source: 'external', turn_count: 2, metadata: { external: true, logged_question_id: questionId } })
@@ -222,9 +224,13 @@ async function materializeExternalExchange(
   if (convErr || !conv) throw new Error(convErr?.message || 'conversation insert failed')
   conversationId = conv.id
 
+  // The TURNS are source='normal' — `isSubstantive` (lib/conversationReview) only
+  // counts source='normal'/null user turns, so an 'external' question turn would
+  // be silently dropped from What We Heard. The question is the visitor's `user`
+  // turn; Sarina is only the `assistant` (the answerer), never the asker.
   const turns = [
-    { conversation_id: conversationId, org_id: orgId, turn_number: 1, role: 'user',      content: question, content_en: question, source: 'external' },
-    { conversation_id: conversationId, org_id: orgId, turn_number: 2, role: 'assistant', content: answer,   content_en: answer,   source: 'external', sentiment: 'neutral' },
+    { conversation_id: conversationId, org_id: orgId, turn_number: 1, role: 'user',      content: question, content_en: question, source: 'normal' },
+    { conversation_id: conversationId, org_id: orgId, turn_number: 2, role: 'assistant', content: answer,   content_en: answer,   source: 'normal', sentiment: 'neutral' },
   ]
   const { error: turnErr } = await service.from('conversation_turns').insert(turns)
   if (turnErr) throw new Error(turnErr.message)
