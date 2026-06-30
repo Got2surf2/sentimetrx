@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
+import { deriveTrendWindows } from './trendWindows'
 
 export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 export type Axis = typeof AXES[number]
@@ -21,6 +22,7 @@ export interface TaxonomyRow {
   axis_outcome: string[];    alert_tags: string[]
   assertions: { axis: string; sub: string; polarity?: string }[]
   rating?: number | null     // attached by computeTaxonomyRollup from dataset_rows_flat
+  dateMs?: number | null     // attached when a trend date field is requested
 }
 
 export interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
@@ -32,6 +34,14 @@ export interface TaxonomyRollup {
   subs:   SubStat[]
   alerts: { tag: string; count: number }[]
   alertRows: number
+}
+
+// computeTaxonomyRollup return when a trend date field is supplied: the full
+// rollup plus recent/prior-window rollups (for the Heads-Up 📉📈 dimension lens).
+export interface TaxonomyTrendRollup extends TaxonomyRollup {
+  recent: TaxonomyRollup | null
+  prior:  TaxonomyRollup | null
+  windowLabel: string | null
 }
 
 /** mean of a [sum, n] accumulator, rounded to 1dp; null when no values. */
@@ -140,8 +150,11 @@ async function detectRatingField(service: SupabaseClient, datasetId: string): Pr
  *  Dimensions view reflects whichever open-end the user is analyzing. */
 export async function computeTaxonomyRollup(opts: {
   service: SupabaseClient; datasetId: string; orgId: string; field: string; topSubs?: number
-}): Promise<TaxonomyRollup> {
-  const { service, datasetId, orgId, field, topSubs } = opts
+  /** When set, also compute recent/prior-window rollups bucketed by this date
+   *  field (the JSONB key, e.g. 'review_date') so dimensions can trend. */
+  dateField?: string | null
+}): Promise<TaxonomyTrendRollup> {
+  const { service, datasetId, orgId, field, topSubs, dateField } = opts
 
   // Resolve the rating field once (dynamic — supports survey/aliased fields, not
   // just a literal `rating` column). The key can carry spaces/commas/apostrophes
@@ -182,6 +195,21 @@ export async function computeTaxonomyRollup(opts: {
         if (!isNaN(v)) ratingById.set(r.id, v)
       }
       for (const r of page) r.rating = ratingById.get(r.row_id) ?? null
+
+      // Attach each row's timestamp (for recent/prior trend windows). Best-effort:
+      // a simple `field` name uses a direct select; anything exotic (survey
+      // question text) goes through the bind-param RPC. Failure → no trend.
+      if (dateField) {
+        try {
+          const dateById = new Map<number, number>()
+          const simple = /^[a-z0-9_]+$/i.test(dateField)
+          const drows: { id: number; val: string | null }[] = simple
+            ? ((await service.from('dataset_rows_flat').select(`id, val:data->>${dateField}`).in('id', ids)).data as unknown as { id: number; val: string | null }[] || [])
+            : ((await service.rpc('dataset_field_values', { p_dataset_id: datasetId, p_field: dateField, p_ids: ids })).data as { id: number; val: string | null }[] || [])
+          for (const r of drows) { const t = r.val != null ? Date.parse(String(r.val)) : NaN; if (isFinite(t)) dateById.set(r.id, t) }
+          for (const r of page) r.dateMs = dateById.get(r.row_id) ?? null
+        } catch { /* leave dateMs undefined → no trend */ }
+      }
     }
 
     all.push(...page)
@@ -205,5 +233,29 @@ export async function computeTaxonomyRollup(opts: {
     }
   } catch { /* keep the classified-rows overall if the all-rows RPC fails */ }
 
-  return rollup
+  // Recent/prior-window rollups for the trend lens — derived from the dated rows
+  // we just attached. Each window is aggregated exactly like the full set, so a
+  // sub's recent-vs-prior count/posPct/avgRating drives 📉📈 in the Heads-Up.
+  let recent: TaxonomyRollup | null = null
+  let prior:  TaxonomyRollup | null = null
+  let windowLabel: string | null = null
+  if (dateField) {
+    const ms = all.map(r => r.dateMs).filter((x): x is number => x != null)
+    if (ms.length >= 8) {
+      let min = Infinity, max = -Infinity
+      for (const t of ms) { if (t < min) min = t; if (t > max) max = t }
+      if (max > min) {
+        const win = deriveTrendWindows(min, max)
+        if (win.recent && win.prior) {
+          const inWin = (r: TaxonomyRow, w: { startMs: number; endMs: number }) =>
+            r.dateMs != null && r.dateMs >= w.startMs && r.dateMs < w.endMs
+          recent = aggregateTaxonomy(all.filter(r => inWin(r, win.recent!)), topSubs)
+          prior  = aggregateTaxonomy(all.filter(r => inWin(r, win.prior!)), topSubs)
+          windowLabel = win.windowLabel
+        }
+      }
+    }
+  }
+
+  return { ...rollup, recent, prior, windowLabel }
 }

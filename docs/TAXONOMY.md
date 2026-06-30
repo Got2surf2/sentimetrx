@@ -107,7 +107,15 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   read via the `dataset_field_values(dataset, field, ids[])` RPC (field passed as a bind
   param, so keys with spaces/commas/apostrophes work); a plain `rating`-named field still
   uses a direct `data->>rating` select so existing google_reviews rollups don't depend on
-  the new RPC. `aggregateTaxonomy` then averages over matching rows. The UI shows a
+  the new RPC. `aggregateTaxonomy` then averages over matching rows. **Trend windows
+  (2026-06-29):** `computeTaxonomyRollup` accepts an optional `dateField` — when set it also
+  attaches each row's timestamp (direct `data->>field` select for a simple identifier, else
+  the `dataset_field_values` RPC; best-effort, failure → no trend) and returns
+  `recent`/`prior`-window rollups (`TaxonomyTrendRollup extends TaxonomyRollup`) by deriving
+  recent-vs-prior windows from the dated rows (`lib/trendWindows.deriveTrendWindows`) and
+  re-running `aggregateTaxonomy` on each partition. This is what lets the StoryTime/Report
+  **Heads-Up** fire 📉📈 per sub-aspect (`dimensionsToSignals(dim.recent || dim, dim.prior)`);
+  default callers omit `dateField` and get the full rollup unchanged. The UI shows a
   ★ badge (red→green ramp) on the KPIs, axis pills, and sub-dimension cards — complements the
   text-polarity sentiment with the actual scores (e.g. on Cheddar's, `touchpoint·manager`
   ★2.4 vs `attribute·flavor` ★4.1; on Carrabba's GSS, `attribute·temp` ★2.35 vs

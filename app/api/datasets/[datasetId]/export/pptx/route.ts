@@ -19,8 +19,9 @@ import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/l
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
-import { computeInsightAlerts, dimensionsToSignals, type AlertKind } from '@/lib/insightAlerts'
+import { computeInsightAlerts, dimensionsToSignals, themesToSignals, type AlertKind } from '@/lib/insightAlerts'
 import { buildQuantSignals } from '@/lib/quantSignals'
+import { buildThemeSignals } from '@/lib/themeSignals'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -856,86 +857,117 @@ export async function POST(req: Request, props: Params) {
       slides.push({ type: 'kpi_grid', title: 'About This Report', subtitle: 'Methodology, scope and data coverage', kpis: aboutKpis, insight: aboutNote })
     }
 
-    // ── Dimensions (ABSA taxonomy) section ────────────────────────────────────
-    // Coverage + What-Stands-Out (mirrors the Operational Review deck) + a
-    // Heads-Up watch list (exception alerts). Gated on the dataset having
-    // Dimensions enabled (explicit flag, or the google_reviews proxy unless
-    // suppressed — mirrors lib/textmineNav). Skipped when no classified signal.
+    // ── Heads-Up watch list (universal exception alerts) ──────────────────────
+    // Lens-agnostic: themes (organic topics) + Dimensions (ABSA, when enabled) +
+    // quant variables (rating + numerics), each with recent-vs-prior trends from
+    // the in-view date range. Renders for ANY dataset that surfaces ≥1 alert — no
+    // longer gated on Dimensions. Placed up front as the executive exception list.
+    const rk = (f: string) => rowKeyMap[normalize(f)] || f
+    const dateRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
+    const dateKey = dateRaw ? rk(dateRaw) : null
+
+    // Dimensions rollup (with trend windows) — computed ONCE here and reused by
+    // the Dimensions section below. Gated on Dimensions being enabled (explicit
+    // flag, or the google_reviews proxy unless suppressed — mirrors textmineNav).
     const dimEnabled = !!(dataset as any).taxonomy_enabled ||
       ((dataset as any).source === 'google_reviews' && !(dataset as any).taxonomy_suppressed)
+    let dim: Awaited<ReturnType<typeof computeTaxonomyRollup>> | null = null
     if (includeDimensions && dimEnabled) {
       const { data: dimField } = await service.rpc('taxonomy_primary_field', { p_dataset_id: params.datasetId })
       if (dimField) {
-        const dim = await computeTaxonomyRollup({ service, datasetId: params.datasetId, orgId: (dataset as any).org_id, field: String(dimField) })
-        if (dim.withSignal > 0) {
-          slides.push({ type: 'section', title: 'Dimensions', subtitle: 'Aspect-level (ABSA) lens — touchpoint, attribute, product, beverage, ambiance, context, outcome', eyebrow: 'Dimensions' })
-
-          // Aspect coverage — the 7 axes by mention rate.
-          slides.push({
-            type: 'column_chart',
-            title: 'Dimensions — Aspect Coverage',
-            subtitle: `${dim.withSignal.toLocaleString()} of ${dim.classifiedRows.toLocaleString()} classified comments carry at least one aspect`,
-            yAxisLabel: '% of classified comments mentioning the axis',
-            valueSuffix: '%',
-            data: dim.axes.map(a => ({ label: a.label, value: Math.round(a.rate) })),
-          })
-
-          // What stands out — top sub-aspects by mention volume.
-          const topSubs = [...dim.subs].sort((a, b) => b.count - a.count).slice(0, 10)
-          const lowest = topSubs.filter(s => s.posPct != null).sort((a, b) => (a.posPct as number) - (b.posPct as number)).slice(0, 3)
-          let standOut = lowest.length
-            ? `The fix list is the lowest %-positive aspects: ${lowest.map(s => `${s.sub} (${s.posPct}%)`).join(', ')}.`
-            : `Counts shown; %-positive where assertion polarity exists.`
-          if (dim.alerts.length) standOut += ` Severity flags: ${dim.alerts.map(a => `${a.tag} (${a.count})`).join(', ')} across ${dim.alertRows.toLocaleString()} comments — review first.`
-          slides.push({
-            type: 'table',
-            title: 'Dimensions — What Stands Out',
-            subtitle: `Top ${topSubs.length} sub-aspects by mention volume`,
-            columns: ['Aspect', 'Axis', 'Mentions', '% Positive', 'Avg ★'],
-            rows: topSubs.map(s => [
-              trunc(s.sub, 28), s.axis, String(s.count),
-              s.posPct != null ? `${s.posPct}%` : '—',
-              s.avgRating != null ? `${s.avgRating.toFixed(1)}★` : '—',
-            ]),
-            insight: standOut,
-          })
-
-          // Heads-Up — merged exception alerts across Dimensions + quant
-          // variables (rating + numerics, with recent-vs-prior trends from the
-          // in-view date range). Theme signals are a follow-on.
-          const rk = (f: string) => rowKeyMap[normalize(f)] || f
-          const numFields = ((schema?.fields || []) as any[]).filter(f => f.type === 'numeric' && f.status !== 'ignored')
-          const ratingFieldName = numFields.find(f => f.sqt === 'rating' || f.scoreField || f.field === 'rating')?.field
-          const quantSpecs = numFields.map(f => ({ key: rk(f.field), label: f.label || f.field, isRating: f.field === ratingFieldName }))
-          const dateRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
-          const { signals: quantSignals, windowLabel } = buildQuantSignals(allRows, dateRaw ? rk(dateRaw) : null, quantSpecs)
-          const alerts = computeInsightAlerts({
-            signals: dimensionsToSignals(dim),
-            quant: quantSignals,
-            safety: dim.alerts,
-            overallAvgRating: dim.overallAvgRating,
-            baselineRows: dim.classifiedRows,
-            windowLabel,
-            max: 8,
-          })
-          if (alerts.length) {
-            const KIND_LABEL: Record<AlertKind, string> = {
-              safety: 'Safety', pain: 'Pain point', bright: 'Bright spot',
-              deteriorating: 'Trending down', heating: 'Heating up', improving: 'Improving',
-            }
-            const counts = alerts.reduce<Record<string, number>>((m, a) => { m[a.kind] = (m[a.kind] || 0) + 1; return m }, {})
-            const summary = Object.entries(counts).map(([k, n]) => `${n} ${KIND_LABEL[k as AlertKind].toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ')
-            slides.push({
-              type: 'table',
-              title: 'Heads-Up',
-              subtitle: 'Exception conditions worth acting on — across Dimensions and the numbers, grounded in the data',
-              columns: ['Signal', 'What', 'Detail'],
-              rows: alerts.map(a => [`${a.icon} ${KIND_LABEL[a.kind]}`, a.title, a.detail]),
-              insight: summary,
-            })
-          }
-        }
+        const r = await computeTaxonomyRollup({ service, datasetId: params.datasetId, orgId: (dataset as any).org_id, field: String(dimField), dateField: dateRaw })
+        if (r.withSignal > 0) dim = r
       }
+    }
+
+    {
+      // Quant lens — numeric fields (rating + any other numerics), recent-vs-prior.
+      const numFields = ((schema?.fields || []) as any[]).filter(f => f.type === 'numeric' && f.status !== 'ignored')
+      const ratingFieldName = numFields.find(f => f.sqt === 'rating' || f.scoreField || f.field === 'rating')?.field
+      const quantSpecs = numFields.map(f => ({ key: rk(f.field), label: f.label || f.field, isRating: f.field === ratingFieldName }))
+      const { signals: quantSignals, windowLabel: quantWin } = buildQuantSignals(allRows, dateKey, quantSpecs)
+
+      // Theme lens — organic themes, windowed keyword re-matching + rating pos/neg.
+      const themeSpecs = (canonicalThemes as any[]).map(t => ({ label: t.name || '', keywords: t.keywords || [] }))
+      const { signals: themeSig, windowLabel: themeWin } = buildThemeSignals({
+        themes: themeSpecs, rows: allRows, textKeys: themeFields.map(fk => rk(fk)),
+        ratingKey: ratingKey || null, dateKey,
+      })
+
+      // Dimension lens — recent window is the "now" when we can trend, else full.
+      const dimSignals = dim ? dimensionsToSignals(dim.recent || dim, dim.prior) : []
+
+      // Overall rating baseline for the static "rating-drag" detection (all-rows
+      // dimensions overall when classified; else the in-view rating mean).
+      let overallRating: number | null = dim?.overallAvgRating ?? null
+      if (overallRating == null && ratingKey) {
+        let s = 0, c = 0
+        for (const row of allRows) { const v = parseFloat(String(row[ratingKey] ?? '')); if (!isNaN(v)) { s += v; c++ } }
+        if (c > 0) overallRating = +(s / c).toFixed(2)
+      }
+
+      const alerts = computeInsightAlerts({
+        signals: [...themesToSignals(themeSig), ...dimSignals],
+        quant: quantSignals,
+        safety: dim?.alerts || [],
+        overallAvgRating: overallRating,
+        baselineRows: dim?.classifiedRows ?? allRows.length,
+        windowLabel: dim?.windowLabel || quantWin || themeWin || null,
+        max: 8,
+      })
+      if (alerts.length) {
+        const KIND_LABEL: Record<AlertKind, string> = {
+          safety: 'Safety', pain: 'Pain point', bright: 'Bright spot',
+          deteriorating: 'Trending down', heating: 'Heating up', improving: 'Improving',
+        }
+        const counts = alerts.reduce<Record<string, number>>((m, a) => { m[a.kind] = (m[a.kind] || 0) + 1; return m }, {})
+        const summary = Object.entries(counts).map(([k, n]) => `${n} ${KIND_LABEL[k as AlertKind].toLowerCase()}${n > 1 ? 's' : ''}`).join(' · ')
+        slides.push({
+          type: 'table',
+          title: 'Heads-Up',
+          subtitle: 'Exception conditions worth acting on — across themes, Dimensions and the numbers, grounded in the data',
+          columns: ['Signal', 'What', 'Detail'],
+          rows: alerts.map(a => [`${a.icon} ${KIND_LABEL[a.kind]}`, a.title, a.detail]),
+          insight: summary,
+        })
+      }
+    }
+
+    // ── Dimensions (ABSA taxonomy) section ────────────────────────────────────
+    // Coverage + What-Stands-Out (mirrors the Operational Review deck), reusing
+    // the rollup computed above. The Heads-Up moved out to the universal block.
+    if (dim) {
+      slides.push({ type: 'section', title: 'Dimensions', subtitle: 'Aspect-level (ABSA) lens — touchpoint, attribute, product, beverage, ambiance, context, outcome', eyebrow: 'Dimensions' })
+
+      // Aspect coverage — the 7 axes by mention rate.
+      slides.push({
+        type: 'column_chart',
+        title: 'Dimensions — Aspect Coverage',
+        subtitle: `${dim.withSignal.toLocaleString()} of ${dim.classifiedRows.toLocaleString()} classified comments carry at least one aspect`,
+        yAxisLabel: '% of classified comments mentioning the axis',
+        valueSuffix: '%',
+        data: dim.axes.map(a => ({ label: a.label, value: Math.round(a.rate) })),
+      })
+
+      // What stands out — top sub-aspects by mention volume.
+      const topSubs = [...dim.subs].sort((a, b) => b.count - a.count).slice(0, 10)
+      const lowest = topSubs.filter(s => s.posPct != null).sort((a, b) => (a.posPct as number) - (b.posPct as number)).slice(0, 3)
+      let standOut = lowest.length
+        ? `The fix list is the lowest %-positive aspects: ${lowest.map(s => `${s.sub} (${s.posPct}%)`).join(', ')}.`
+        : `Counts shown; %-positive where assertion polarity exists.`
+      if (dim.alerts.length) standOut += ` Severity flags: ${dim.alerts.map(a => `${a.tag} (${a.count})`).join(', ')} across ${dim.alertRows.toLocaleString()} comments — review first.`
+      slides.push({
+        type: 'table',
+        title: 'Dimensions — What Stands Out',
+        subtitle: `Top ${topSubs.length} sub-aspects by mention volume`,
+        columns: ['Aspect', 'Axis', 'Mentions', '% Positive', 'Avg ★'],
+        rows: topSubs.map(s => [
+          trunc(s.sub, 28), s.axis, String(s.count),
+          s.posPct != null ? `${s.posPct}%` : '—',
+          s.avgRating != null ? `${s.avgRating.toFixed(1)}★` : '—',
+        ]),
+        insight: standOut,
+      })
     }
 
     // ── Field groupings ──────────────────────────────────────────────────────

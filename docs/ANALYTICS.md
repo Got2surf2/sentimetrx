@@ -752,14 +752,26 @@ analytics export — dataset-row CSV download is not part of this module.
   per title (most-urgent wins), capped (default 8) with safety always kept. Adaptive
   min-mention floor (max(8, 2% of baseline rows)); every line carries `n` or an explicit
   before→after. Gated by the `includeDimensions` ExportModal toggle (default ON).
-  **Status (2026-06-29):** the Heads-Up slide is **merged across Dimensions + quant** — the
-  route feeds `computeInsightAlerts` the dimension signals (static pain/bright/safety) AND
-  **quant signals with trends**: `lib/quantSignals.ts` (`buildQuantSignals`, pure + tested)
-  averages the rating + every numeric field over the **recent vs prior window** (dynamic via
-  `trendWindows`, from the in-view dated rows) and flags a low-score-tail surge — so "Overall
-  rating ★4.6→★4.1 (last 6 months vs prior)" lands next to the aspect pain points. The slide
-  is now titled just **"Heads-Up"** (Signal · What · Detail). **Theme signals + dimension
-  trends + making the Heads-Up universal (non-Dimensions datasets) are the remaining follow-ons.**
+  **Status (2026-06-29, all three lenses + universal):** the Heads-Up is now a **full
+  three-lens, lens-agnostic** slide rendered for **ANY dataset** that surfaces ≥1 alert —
+  it is no longer nested inside (or gated on) the Dimensions section; it's assembled in its
+  own block right after "About This Report" as the executive exception list, and the
+  Dimensions section reuses the same rollup it computes.
+  • **Quant** — `lib/quantSignals.ts` (`buildQuantSignals`) averages the rating + every numeric
+    field over the **recent vs prior window** (dynamic via `trendWindows`) + low-score-tail
+    surge ("Overall rating ★4.6→★4.1 (last 6 months vs prior)").
+  • **Theme** — `lib/themeSignals.ts` (`buildThemeSignals`, pure + tested) re-matches each
+    theme's keywords over the actual rows to compute **real per-theme pos/neg + avg ★** from
+    the rated rows (rating ≥4 = positive, ≤2 = negative; null when no rating field — no
+    invented precision) AND **recent-vs-prior windowed re-matching**, so an organic theme can
+    fire 📉/📈/✨ just like a dimension. `themesToSignals` maps them onto the neutral signal.
+  • **Dimension trends** — `computeTaxonomyRollup` accepts an optional `dateField` and returns
+    `recent`/`prior` window rollups (`TaxonomyTrendRollup`); the route feeds
+    `dimensionsToSignals(dim.recent || dim, dim.prior)` so sub-aspects get 📉📈, not just static
+    pain/bright/safety. Per the engine contract, the recent window is the "now" when a trend is
+    available, else the full-period snapshot. Slide titled **"Heads-Up"** (Signal · What · Detail).
+  Gated by the `includeDimensions`/`includeThemeSlides` ExportModal toggles only for the lenses
+  they control; the slide itself renders whenever any lens produces an alert.
 - **Survey Overview slide (survey sources)**: first slide after the executive summary when
   the dataset is survey-shaped — `dataset.study_id` set, OR a collection whose member
   schema carries `custom`/`psychographic`/`demographic` sections, OR rows carry a `status`.
