@@ -90,9 +90,15 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     adHocEnabled: true,
   }
   var datasetReports = availableReports(reportCtx)
+  // The deck (ex-StoryTime) is the common case — when it's available the Report
+  // button runs it DIRECTLY (no extra click), and a caret ▾ opens the full picker
+  // for the other report types. Without a deck (collections), the button is the
+  // picker toggle itself.
+  var deckReport = datasetReports.find(function(r) { return r.id === 'deck' })
+  var showReportCaret = !!deckReport && datasetReports.length > 1
   function handleReportClick() {
-    // One configurable report → open it directly; otherwise show the picker.
-    if (datasetReports.length === 1 && datasetReports[0].configurable) { setShowExport(true); return }
+    if (deckReport) { setShowExport(true); return }                       // primary = deck modal
+    if (datasetReports.length === 1) { handleReportLaunch(datasetReports[0], datasetReports[0].formats[0]); return }
     setReportMenuOpen(function(o) { return !o })
   }
   async function handleReportLaunch(type: ReportType, format: ReportFormat) {
@@ -284,13 +290,14 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span>{'\uD83D\uDD0D'}</span><span className="ana-lbl">Search</span>
           </button>
 
-          {/* Report (unified picker; deck formerly "StoryTime") \u2014 hidden when the
-              org has AI off. Single report \u2192 opens directly; multiple (e.g. a
-              restaurant's deck + Operational Review) \u2192 a small picker. Run from
-              here, the deck honors the current filters/view (in-view scope). */}
+          {/* Report \u2014 hidden when the org has AI off. When a deck is available the
+              button runs it DIRECTLY (the common case) and a caret \u25BE opens the full
+              picker (Operational Review, ad-hoc, \u2026); a collection (no deck) makes the
+              button the picker toggle. Run from here, the deck honors the in-view scope. */}
           {!aiDisabledByOrg && datasetReports.length > 0 && (
             <div style={{ position: 'relative', display: 'flex' }}>
-              <button onClick={handleReportClick} className="ana-tab ana-c7" title="Build a report from this view"
+              <button onClick={handleReportClick} className="ana-tab ana-c7"
+                title={deckReport ? 'Build the full report from this view' : 'Build a report from this view'}
                 style={{
                   height: '100%', display: 'flex', alignItems: 'center', gap: 5,
                   fontSize: 13, fontWeight: reportMenuOpen ? 700 : 500,
@@ -298,9 +305,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                   background: reportMenuOpen ? 'rgba(255,255,255,.18)' : 'transparent',
                   border: 'none', borderBottom: reportMenuOpen ? '3px solid white' : '3px solid transparent',
                   cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                  paddingRight: showReportCaret ? 4 : undefined,
                 }}>
                 <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Report</span>
               </button>
+              {showReportCaret && (
+                <button onClick={function() { setReportMenuOpen(function(o) { return !o }) }}
+                  title="More report options" aria-label="More report options"
+                  style={{
+                    height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px 0 2px',
+                    fontSize: 11, color: reportMenuOpen ? 'white' : 'rgba(255,255,255,.6)',
+                    background: reportMenuOpen ? 'rgba(255,255,255,.18)' : 'transparent',
+                    border: 'none', borderBottom: reportMenuOpen ? '3px solid white' : '3px solid transparent',
+                    cursor: 'pointer', flexShrink: 0,
+                  }}>{'\u25BE'}</button>
+              )}
               {reportMenuOpen && (
                 <>
                   <div onClick={function() { setReportMenuOpen(false) }}
