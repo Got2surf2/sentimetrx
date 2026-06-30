@@ -785,16 +785,23 @@ export async function POST(req: Request, props: Params) {
       : undefined
     const metaSub = (base: string) => canonMeta ? base + ' · ' + canonMeta.comments.toLocaleString() + ' comments · ' + canonMeta.signals.toLocaleString() + ' signals' : base
 
-    // ── 1. Executive Summary (KPI grid + key findings) ───────────────────────
+    // ── 1. Executive Summary (findings — NOT the scope/method metrics, which
+    //    live in "About This Report" so the two slides don't repeat each other).
+    //    KPIs here are the headline *findings* (overall score, top theme, themes
+    //    count); the narrative bullets are the real summary of what the data says.
     const numericField = selectedFields.find(f => f.type === 'numeric')
     const openField = selectedFields.find(f => f.type === 'open-ended')
-    const execKpis: { value: string; label: string; sub?: string; color?: string }[] = [
-      { value: displayRows.toLocaleString(), label: 'Total Responses', sub: 'in this analysis' },
-    ]
-    if (numericField?.summary?.avg != null) execKpis.push({ value: String(Math.round(numericField.summary.avg)), label: trunc(numericField.label || numericField.field, 18) })
-    if (canonicalThemes.length > 0) execKpis.push({ value: String(canonicalThemes.length), label: 'Themes Identified' })
-    if (openField?.summary?.avgWordCount) execKpis.push({ value: String(openField.summary.avgWordCount), label: 'Avg Words / Response' })
-    slides.push({ type: 'kpi_grid', title: 'Executive Summary', subtitle: metaSub('Headline metrics for ' + datasetName), kpis: execKpis })
+    const execKpis: { value: string; label: string; sub?: string; color?: string }[] = []
+    const ratingNum = selectedFields.find(f => f.type === 'numeric' && ((f as any).sqt === 'rating' || (f as any).scoreField || f.field === 'rating')) || numericField
+    if (ratingNum?.summary?.avg != null) {
+      const isStar = (ratingNum.summary.max ?? 5) <= 5
+      execKpis.push({ value: (isStar ? '★' : '') + ratingNum.summary.avg.toFixed(1), label: 'Overall ' + trunc(ratingNum.label || ratingNum.field, 16) })
+    }
+    if (canonicalThemes[0]) execKpis.push({ value: (canonicalThemes[0].percentage || 0) + '%', label: 'Top theme', sub: trunc(canonicalThemes[0].name || '', 22) })
+    if (canonicalThemes.length > 0) execKpis.push({ value: String(canonicalThemes.length), label: canonicalThemes.length === 1 ? 'Theme identified' : 'Themes identified' })
+    if (execKpis.length === 0 && openField?.summary?.avgWordCount) execKpis.push({ value: String(openField.summary.avgWordCount), label: 'Avg Words / Response' })
+    if (execKpis.length === 0) execKpis.push({ value: displayRows.toLocaleString(), label: 'Total Responses' })
+    slides.push({ type: 'kpi_grid', title: 'Executive Summary', subtitle: metaSub('What the data is telling us'), kpis: execKpis })
     const execBullets = (narratives.executiveSummary || []).filter(b => b && b.length > 10)
     if (execBullets.length > 0) slides.push({ type: 'bullets', title: 'Key Findings', bullets: execBullets })
 
@@ -847,8 +854,23 @@ export async function POST(req: Request, props: Params) {
       const openCount = selectedFields.filter(f => f.type === 'open-ended').length
       const catCount = selectedFields.filter(f => f.type === 'categorical').length
       const numCount = selectedFields.filter(f => f.type === 'numeric').length
+      // Date range of the DATA in the report (distinct from the generation date).
+      let dataRange: string | undefined
+      {
+        const dRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
+        if (dRaw) {
+          const dk = rowKeyMap[normalize(dRaw)] || dRaw
+          let mn = Infinity, mx = -Infinity
+          for (const row of allRows) { const t = Date.parse(String(row[dk] ?? '')); if (isFinite(t)) { if (t < mn) mn = t; if (t > mx) mx = t } }
+          if (isFinite(mn) && mx >= mn) {
+            const f = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            dataRange = f(mn) === f(mx) ? f(mn) : f(mn) + ' – ' + f(mx)
+          }
+        }
+      }
       const aboutKpis = [
         { value: displayRows.toLocaleString(), label: samplingNote ? 'Sampled Responses' : 'Total Responses', sub: completionNote || (samplingNote ? 'sampled for this analysis' : 'in this analysis') },
+        ...(dataRange ? [{ value: dataRange, label: 'Data Range', sub: 'span of responses analyzed' }] : []),
         { value: String(selectedFields.length), label: 'Fields Analyzed', sub: openCount + ' open · ' + catCount + ' cat · ' + numCount + ' num' },
         { value: dateStr, label: 'Report Generated', sub: audience + ' edition · v' + STORYTIME_VERSION },
       ]

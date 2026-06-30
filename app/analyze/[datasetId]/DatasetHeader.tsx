@@ -6,7 +6,7 @@
 //   RIGHT (fixed):    More dropdown → source pill → row count/sync → AI toggle
 // Action items (Report, Share Analytics, Save) always live in the More dropdown.
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
@@ -59,6 +59,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [apiKey,      setApiKey]      = useState('')
   var [showExport,  setShowExport]  = useState(false)
   var [reportMenuOpen, setReportMenuOpen] = useState(false)
+  var [reportMenuPos, setReportMenuPos] = useState<{ top: number; left: number } | null>(null)
   var [adHocOpen, setAdHocOpen] = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showSearch,  setShowSearch]  = useState(false)
@@ -90,16 +91,25 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     adHocEnabled: true,
   }
   var datasetReports = availableReports(reportCtx)
-  // The deck (ex-StoryTime) is the common case — when it's available the Report
+  // The deck (ex-StoryTime) is the common case — when it's available the Reports
   // button runs it DIRECTLY (no extra click), and a caret ▾ opens the full picker
   // for the other report types. Without a deck (collections), the button is the
-  // picker toggle itself.
+  // picker toggle and the caret still appears for consistency.
   var deckReport = datasetReports.find(function(r) { return r.id === 'deck' })
-  var showReportCaret = !!deckReport && datasetReports.length > 1
+  var showReportCaret = datasetReports.length > 1
+  // The dropdown is rendered position:fixed (the header tab strip is overflow:hidden,
+  // which would clip an absolutely-positioned menu) — anchor it to the button rect.
+  var reportAnchorRef = useRef<HTMLDivElement>(null)
+  function openReportMenu() {
+    var el = reportAnchorRef.current
+    if (el) { var r = el.getBoundingClientRect(); setReportMenuPos({ top: r.bottom + 4, left: r.left }) }
+    setReportMenuOpen(true)
+  }
+  function toggleReportMenu() { if (reportMenuOpen) setReportMenuOpen(false); else openReportMenu() }
   function handleReportClick() {
     if (deckReport) { setShowExport(true); return }                       // primary = deck modal
     if (datasetReports.length === 1) { handleReportLaunch(datasetReports[0], datasetReports[0].formats[0]); return }
-    setReportMenuOpen(function(o) { return !o })
+    toggleReportMenu()
   }
   async function handleReportLaunch(type: ReportType, format: ReportFormat) {
     setReportMenuOpen(false)
@@ -295,7 +305,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               picker (Operational Review, ad-hoc, \u2026); a collection (no deck) makes the
               button the picker toggle. Run from here, the deck honors the in-view scope. */}
           {!aiDisabledByOrg && datasetReports.length > 0 && (
-            <div style={{ position: 'relative', display: 'flex' }}>
+            <div ref={reportAnchorRef} style={{ position: 'relative', display: 'flex' }}>
               <button onClick={handleReportClick} className="ana-tab ana-c7"
                 title={deckReport ? 'Build the full report from this view' : 'Build a report from this view'}
                 style={{
@@ -307,10 +317,10 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                   cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                   paddingRight: showReportCaret ? 4 : undefined,
                 }}>
-                <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Report</span>
+                <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Reports</span>
               </button>
               {showReportCaret && (
-                <button onClick={function() { setReportMenuOpen(function(o) { return !o }) }}
+                <button type="button" onClick={toggleReportMenu}
                   title="More report options" aria-label="More report options"
                   style={{
                     height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px 0 2px',
@@ -320,12 +330,12 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                     cursor: 'pointer', flexShrink: 0,
                   }}>{'\u25BE'}</button>
               )}
-              {reportMenuOpen && (
+              {reportMenuOpen && reportMenuPos && (
                 <>
                   <div onClick={function() { setReportMenuOpen(false) }}
-                    style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    style={{ position: 'fixed', inset: 0, zIndex: 2099 }} />
                   <div style={{
-                    position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41,
+                    position: 'fixed', top: reportMenuPos.top, left: reportMenuPos.left, zIndex: 2100,
                     minWidth: 260, background: 'white', borderRadius: 10,
                     boxShadow: '0 10px 30px rgba(0,0,0,.18)', border: '1px solid #e5e7eb',
                     paddingTop: 6, paddingBottom: 6, color: '#111827',

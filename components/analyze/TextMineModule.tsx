@@ -1904,10 +1904,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     } catch (_e) { /* SSR / no history — nav state still updates */ }
   }
   // Section click: keep the current view if the target section offers it, else
-  // fall back to Overview.
+  // fall back to Overview. The Comments view is the exception — it renders the
+  // same comment list across every lens (it only differs once you pick an entity/
+  // dimension), so preserving it makes switching INTO a section read as "nothing
+  // happened" (e.g. on Comments, clicking Entities). Land on the section's
+  // Overview instead — its home, where the lens's own content (the entity cloud /
+  // list, the dimensions grid) actually lives.
   function selectSection(nextSection: Section) {
     if (nextSection === 'advanced') return   // Advanced is a link, never routed here
-    const v: LensView = viewsFor(nextSection).indexOf(view) >= 0 ? view : 'overview'
+    let v: LensView = viewsFor(nextSection).indexOf(view) >= 0 ? view : 'overview'
+    if (v === 'comments') v = 'overview'
     navTo(nextSection, v)
   }
 
