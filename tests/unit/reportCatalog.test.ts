@@ -54,11 +54,12 @@ describe('availableReports — collection', () => {
     expect(ids).not.toContain('competitive')
   })
 
-  it('project reports launch html via GET and pdf via POST with the purpose', () => {
+  it('project reports launch html via GET, pdf + pptx via POST with the purpose', () => {
     const comp = availableReports(ctx({ isCollection: true, collectionPurpose: 'competitive', memberCount: 2 })).find(r => r.id === 'competitive')!
-    expect(comp.formats).toEqual(['pdf', 'html'])
+    expect(comp.formats).toEqual(['pdf', 'pptx', 'html'])
     expect(comp.launch('c1', 'html')).toEqual({ url: '/api/collections/c1/project-report?purpose=competitive', method: 'GET' })
     expect(comp.launch('c1', 'pdf')).toEqual({ url: '/api/collections/c1/project-report/pdf', method: 'POST', body: { purpose: 'competitive' } })
+    expect(comp.launch('c1', 'pptx')).toEqual({ url: '/api/collections/c1/project-report/pptx', method: 'POST', body: { purpose: 'competitive' } })
   })
 
   it('ad-hoc on a collection is full-scope only', () => {

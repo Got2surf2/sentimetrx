@@ -92,6 +92,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [showTransfer,  setShowTransfer]  = useState(false)
   const [focusMembers,  setFocusMembers]  = useState<{ dataset_id: string; name: string }[] | null>(null)
   const [focusPick,     setFocusPick]     = useState('')
+  const [projectFormat, setProjectFormat] = useState<'pdf' | 'pptx'>('pdf')
   // Collection membership preloaded by /analyze/page.tsx in a single
   // batched query — was previously a per-card fetch (Sentry N+1).
   // setCollectionInfo is still used after "Remove from collection" to
@@ -327,17 +328,19 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       window.open(type.launch(dataset.id, 'html').url, '_blank', 'noopener')
       return
     }
-    // PDF: competitive needs the focus picker first; the rest generate directly.
-    if (type.id === 'competitive') startCompetitive()
-    else handleProjectReport(purpose)
+    // PDF / PPTX blob download. Competitive needs the focus picker first (which
+    // generates after the pick) — stash the chosen format for it; the rest go now.
+    const docFormat: 'pdf' | 'pptx' = format === 'pptx' ? 'pptx' : 'pdf'
+    if (type.id === 'competitive') { setProjectFormat(docFormat); startCompetitive() }
+    else handleProjectReport(purpose, undefined, docFormat)
   }
 
-  // Project report (collections only): synthesize a purpose-specific PDF across the
-  // collection's inputs. POST → PDF blob → download.
-  async function handleProjectReport(purpose?: 'community' | 'competitive' | 'brand_360', primary?: string) {
+  // Project report (collections only): synthesize a purpose-specific PDF/PPTX
+  // across the collection's inputs. POST → blob → download.
+  async function handleProjectReport(purpose?: 'community' | 'competitive' | 'brand_360', primary?: string, format: 'pdf' | 'pptx' = 'pdf') {
     setSyncing(true); setMenuOpen(false); setSyncToast('Building report — synthesizing across inputs…')
     try {
-      var res = await fetch('/api/collections/' + dataset.id + '/project-report/pdf', {
+      var res = await fetch('/api/collections/' + dataset.id + '/project-report/' + format, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ purpose: purpose, primary: primary }),
       })
@@ -348,7 +351,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       var blob = await res.blob()
       var url = URL.createObjectURL(blob)
       var a = document.createElement('a')
-      a.href = url; a.download = (dataset.name || 'Project').replace(/[^\w.-]+/g, '_') + '_Project_Report.pdf'
+      a.href = url; a.download = (dataset.name || 'Project').replace(/[^\w.-]+/g, '_') + '_Project_Report.' + format
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
       setSyncing(false); setSyncToast('Report downloaded'); setTimeout(function() { setSyncToast('') }, 3000)
     } catch {
@@ -921,7 +924,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             </div>
             <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button onClick={function() { setFocusMembers(null) }} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-              <button onClick={function() { var id = focusPick; setFocusMembers(null); handleProjectReport('competitive', id) }} disabled={!focusPick}
+              <button onClick={function() { var id = focusPick; setFocusMembers(null); handleProjectReport('competitive', id, projectFormat) }} disabled={!focusPick}
                 style={{ padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', background: focusPick ? '#0f766e' : '#9ca3af', border: 'none', borderRadius: 10, cursor: focusPick ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>Generate report</button>
             </div>
           </div>

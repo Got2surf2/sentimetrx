@@ -10,9 +10,9 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { getAgentStudy } from '@/lib/agentStudy'
-import { buildProjectReportModel } from '@/lib/projectReport'
+import { buildProjectReportModel, type ProjectReportModel } from '@/lib/projectReport'
 import { renderProjectReportHtml } from '@/lib/projectReportHtml'
-import { buildCompareModel, renderCompareReportHtml, type ComparePurpose } from '@/lib/projectCompare'
+import { buildCompareModel, renderCompareReportHtml, type ComparePurpose, type CompareReportModel } from '@/lib/projectCompare'
 import { AXES, AXIS_LABEL } from '@/lib/taxonomyRollup'
 import { buildKwRegex, lexiconScore, classifySentiment, type Theme } from '@/lib/themeUtils'
 import { isPanelMember } from '@/lib/recordings/panel'
@@ -471,14 +471,20 @@ export function inferPurpose(inputs: ProjectInputModel[]): ReportPurpose {
 }
 
 // Route-facing: gate (collection + admin-aware org), load, pick the purpose-
-// specific report, render. Routes own auth; this owns tenancy + dispatch so the
-// HTML and PDF routes can't drift. Returns rendered HTML directly.
-export async function buildProjectReportForCollection(
+// specific report, build the MODEL. Routes own auth; this owns tenancy +
+// dispatch so the HTML / PDF / PPTX routes can't drift. The `kind` discriminant
+// lets each renderer narrow to the right model without re-resolving the purpose.
+export type ProjectBuilt =
+  | { ok: true; name: string; purpose: 'community'; kind: 'community'; model: ProjectReportModel }
+  | { ok: true; name: string; purpose: ComparePurpose; kind: 'compare'; model: CompareReportModel }
+  | { ok: false; status: number; error: string }
+
+export async function buildProjectModelForCollection(
   collectionDatasetId: string,
   caller: { orgId: string; isAdmin: boolean },
   purpose?: ReportPurpose,
   primaryId?: string,   // competitive only — the dataset_id of the focus competitor
-): Promise<{ ok: true; name: string; purpose: ReportPurpose; html: string } | { ok: false; status: number; error: string }> {
+): Promise<ProjectBuilt> {
   const svc = createServiceRoleClient()
   const { data: ds } = await svc.from('datasets').select('id, source, org_id').eq('id', collectionDatasetId).single()
   if (!ds) return { ok: false, status: 404, error: 'Not found' }
@@ -492,13 +498,24 @@ export async function buildProjectReportForCollection(
 
   const resolved: ReportPurpose = purpose || inferPurpose(loaded.inputs)
   const stamp = new Date().toISOString()
-  let html: string
   if (resolved === 'community') {
     const model = await buildProjectReportModel(loaded.name, loaded.inputs, stamp, { synthesize: true })
-    html = renderProjectReportHtml(model)
-  } else {
-    const model = await buildCompareModel(loaded.name, resolved, loaded.inputs, stamp, { synthesize: true, primaryId })
-    html = renderCompareReportHtml(model)
+    return { ok: true, name: loaded.name, purpose: 'community', kind: 'community', model }
   }
-  return { ok: true, name: loaded.name, purpose: resolved, html }
+  const model = await buildCompareModel(loaded.name, resolved, loaded.inputs, stamp, { synthesize: true, primaryId })
+  return { ok: true, name: loaded.name, purpose: resolved, kind: 'compare', model }
+}
+
+// HTML convenience — builds the model then renders it. The HTML + PDF routes
+// use this; the PPTX route renders the model directly (lib/pptx/projectReportDeck).
+export async function buildProjectReportForCollection(
+  collectionDatasetId: string,
+  caller: { orgId: string; isAdmin: boolean },
+  purpose?: ReportPurpose,
+  primaryId?: string,
+): Promise<{ ok: true; name: string; purpose: ReportPurpose; html: string } | { ok: false; status: number; error: string }> {
+  const built = await buildProjectModelForCollection(collectionDatasetId, caller, purpose, primaryId)
+  if (!built.ok) return built
+  const html = built.kind === 'community' ? renderProjectReportHtml(built.model) : renderCompareReportHtml(built.model)
+  return { ok: true, name: built.name, purpose: built.purpose, html }
 }

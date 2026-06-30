@@ -90,12 +90,14 @@ function operationalReviewType(): ReportType {
 function projectType(id: 'community' | 'competitive' | 'brand-360', label: string, description: string, purpose: string): ReportType {
   return {
     id, label, description,
-    formats: ['pdf', 'html'],   // pptx for collection reports is a fast-follow
+    formats: ['pdf', 'pptx', 'html'],
     configurable: false,
     scopes: ['full'],
     launch: (cid, format) => format === 'html'
       ? { url: `${collBase(cid)}/project-report?purpose=${purpose}`, method: 'GET' }
-      : { url: `${collBase(cid)}/project-report/pdf`, method: 'POST', body: { purpose } },
+      : format === 'pptx'
+        ? { url: `${collBase(cid)}/project-report/pptx`, method: 'POST', body: { purpose } }
+        : { url: `${collBase(cid)}/project-report/pdf`, method: 'POST', body: { purpose } },
   }
 }
 
