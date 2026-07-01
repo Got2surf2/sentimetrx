@@ -43,7 +43,9 @@ ${knowledge || '(no agent knowledge available)'}`
 
   const userContent = `Visitor asked: ${questionText}\n\nThe agent previously replied (flagged as inadequate): ${agentReply || '(no reply captured)'}`
 
-  const res = await callAI({ tier: 'standard', maxTokens: 500, timeoutMs: 30000, system, messages: [{ role: 'user', content: userContent }] })
+  // 1200 tokens (~900 words) so multi-part comments — a resident asking six
+  // questions at once — get a complete reply instead of one cut off mid-sentence.
+  const res = await callAI({ tier: 'standard', maxTokens: 1200, timeoutMs: 45000, system, messages: [{ role: 'user', content: userContent }] })
   logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'question_answer_draft' }, res.usage)
   return res.text.trim()
 }
