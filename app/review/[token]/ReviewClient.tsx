@@ -103,11 +103,11 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
               </div>
               <h2 style={{ fontSize: 21, fontWeight: 700, color: INK, lineHeight: 1.35, letterSpacing: '-.01em', margin: 0 }}>{cur.question}</h2>
               {cur.comment && cur.comment.trim() !== cur.question.trim() && (
-                <div style={{ marginTop: 10 }}>
-                  <button onClick={() => setShowComment(s => !s)} className="rv-link" style={{ fontSize: 12.5 }}>
-                    {showComment ? '▾ Hide original comment' : '▸ Read the original comment'}
+                <div style={{ marginTop: 12 }}>
+                  <button onClick={() => setShowComment(s => !s)} className="rv-pill" aria-expanded={showComment}>
+                    <span>💬</span>{showComment ? 'Hide original comment' : 'Read the original comment'}<span style={{ color: '#94a3b8', fontWeight: 800 }}>{showComment ? '▾' : '▸'}</span>
                   </button>
-                  {showComment && <div style={{ fontSize: 13.5, color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.55, marginTop: 8, background: '#f8fafc', border: '1px solid #eaeff5', borderRadius: 12, padding: 14, maxHeight: 260, overflow: 'auto' }}>{cur.comment}</div>}
+                  {showComment && <div style={{ fontSize: 13.5, color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.55, marginTop: 10, background: '#f8fafc', border: '1px solid #eaeff5', borderRadius: 12, padding: 14, maxHeight: 260, overflow: 'auto' }}>{cur.comment}</div>}
                 </div>
               )}
             </div>
@@ -226,6 +226,8 @@ const CSS = `
 .rv-ghost:disabled{opacity:.4;cursor:default}
 .rv-link{background:none;border:none;color:#0b5658;cursor:pointer;font-size:12.5px;padding:0}
 .rv-link:hover{text-decoration:underline}
+.rv-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;border:1px solid #d6efeb;background:#f0fdfa;color:#0b5658;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .15s}
+.rv-pill:hover{background:#dff5f2;border-color:#0F7173}
 .rv-dot{transition:width .2s,background .2s}
 .rv-done{display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,#effaf8,#e3f5f1);border:1px solid #c5e9e2;border-radius:14px;padding:14px 18px;margin-bottom:18px}
 .rv-done-check{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:#0F7173;color:#fff;font-weight:800;flex-shrink:0}
