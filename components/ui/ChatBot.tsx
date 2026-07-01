@@ -193,6 +193,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
   const [messages, setMessages] = useState<Message[]>([EN_INITIAL])
   const [input, setInput] = useState('')
+  // When the server ends the session (e.g. the strike-escalation shutdown after
+  // repeated profanity/abuse), the input is locked — no further messages allowed.
+  const [sessionEnded, setSessionEnded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [demoMode, setDemoMode] = useState(false)
@@ -362,7 +365,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   // a user message immediately cancels the pending probe.
   useEffect(() => {
     clearSilenceTimer()
-    if (silenceProbeFiredRef.current) return
+    if (silenceProbeFiredRef.current || sessionEnded) return
     if (!hasFirstMessage || loading) return
     if (messages.length === 0) return
     const last = messages[messages.length - 1]
@@ -396,10 +399,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     }, SILENCE_TIMEOUT_MS)
 
     return () => clearSilenceTimer()
-  }, [messages, loading, hasFirstMessage, nameExchangeMessages, sessionId, selectedLang, config.apiEndpoint, EN_INITIAL.content])
+  }, [messages, loading, hasFirstMessage, nameExchangeMessages, sessionId, selectedLang, config.apiEndpoint, EN_INITIAL.content, sessionEnded])
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || loading) return
+    if (!text.trim() || loading || sessionEnded) return
 
     // Check for verbose/sanjay commands
     const cmd = checkVerboseCommand(text.trim())
@@ -504,7 +507,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       setLastFailedInput(null)
       const raw = data.reply || 'Sorry, something went wrong.'
       const { text, chips } = config.dynamicChips ? extractChips(raw) : { text: raw, chips: [] }
-      setMessages(prev => [...prev, { role: 'assistant', content: text, _debug: data._debug, _signals: data._signals, _chips: chips.length ? chips : undefined }])
+      // Server terminated the session → lock the input (no chips either).
+      const ended = data.ended === true
+      setMessages(prev => [...prev, { role: 'assistant', content: text, _debug: data._debug, _signals: data._signals, _chips: ended ? undefined : (chips.length ? chips : undefined) }])
+      if (ended) setSessionEnded(true)
     } catch {
       // All retries exhausted. Save the user's message so they can hit
       // Retry instead of having to retype it; show a friendlier error.
@@ -827,6 +833,14 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         borderTop: '1px solid #e5e7eb',
         background: 'white',
       }}>
+        {sessionEnded && (
+          <div style={{
+            maxWidth: 800, margin: '0 auto 8px', textAlign: 'center',
+            fontSize: 12.5, color: '#9ca3af', fontStyle: 'italic',
+          }}>
+            This conversation has ended.
+          </div>
+        )}
         <div style={{
           maxWidth: 800, margin: '0 auto',
           display: 'flex', gap: 8, alignItems: 'flex-end',
@@ -836,7 +850,8 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             value={input}
             onChange={e => { setInput(e.target.value); clearSilenceTimer() }}
             onKeyDown={handleKeyDown}
-            placeholder={isNonEnglish ? (PLACEHOLDER_TRANSLATIONS[selectedLang!] || config.placeholder) : config.placeholder}
+            disabled={sessionEnded}
+            placeholder={sessionEnded ? 'This conversation has ended.' : (isNonEnglish ? (PLACEHOLDER_TRANSLATIONS[selectedLang!] || config.placeholder) : config.placeholder)}
             rows={1}
             autoCorrect="on"
             autoCapitalize="sentences"
@@ -848,9 +863,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               border: '1.5px solid #e5e7eb', outline: 'none',
               fontSize: '16px', fontFamily: 'inherit',
               lineHeight: 1.5, maxHeight: 120,
-              background: '#f9fafb',
+              background: sessionEnded ? '#f3f4f6' : '#f9fafb',
+              color: sessionEnded ? '#9ca3af' : 'inherit',
+              cursor: sessionEnded ? 'not-allowed' : 'text',
             }}
-            onFocus={e => { (e.target as HTMLElement).style.borderColor = config.accentColor }}
+            onFocus={e => { if (!sessionEnded) (e.target as HTMLElement).style.borderColor = config.accentColor }}
             onBlur={e => (e.target as HTMLElement).style.borderColor = '#e5e7eb'}
             onInput={e => {
               const t = e.target as HTMLTextAreaElement
@@ -860,12 +877,12 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={!input.trim() || loading}
+            disabled={!input.trim() || loading || sessionEnded}
             style={{
               width: 42, height: 42, borderRadius: '50%',
-              background: input.trim() && !loading ? config.userBubbleBg : '#e5e7eb',
-              color: input.trim() && !loading ? 'white' : '#9ca3af',
-              border: 'none', cursor: input.trim() && !loading ? 'pointer' : 'default',
+              background: input.trim() && !loading && !sessionEnded ? config.userBubbleBg : '#e5e7eb',
+              color: input.trim() && !loading && !sessionEnded ? 'white' : '#9ca3af',
+              border: 'none', cursor: input.trim() && !loading && !sessionEnded ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '1.1rem', fontWeight: 700, flexShrink: 0,
               transition: 'all 0.15s',

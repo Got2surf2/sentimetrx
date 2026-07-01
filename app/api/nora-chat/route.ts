@@ -309,7 +309,7 @@ export async function POST(req: NextRequest) {
   if (lastUserMsg) {
     const check = checkMessage('nora_' + (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon'), lastUserMsg.content)
     if (!check.safe) {
-      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Tabla?" }, { headers: cors })
+      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Tabla?", ended: check.shutdown === true }, { headers: cors })
     }
   }
 

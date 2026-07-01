@@ -208,7 +208,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   if (lastUserMsg) {
     const check = checkMessage('cbot_' + ip, lastUserMsg.content)
     if (!check.safe) {
-      return { reply: check.warning || "Let's keep things respectful. How can I help you?" }
+      // `shutdown` = the strike-escalation ended the session (3rd severe
+      // violation). Propagate `ended` so the widget locks the input — no
+      // further messages can be sent after a terminated session.
+      return { reply: check.warning || "Let's keep things respectful. How can I help you?", ended: check.shutdown === true }
     }
   }
 

@@ -197,7 +197,8 @@ export async function POST(req: NextRequest) {
   if (lastUserMsg) {
     const check = checkMessage('bot_' + (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon'), lastUserMsg.content)
     if (!check.safe) {
-      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Datanautix products?" }, { headers: cors })
+      // `ended` (strike-escalation shutdown) locks the widget input.
+      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Datanautix products?", ended: check.shutdown === true }, { headers: cors })
     }
   }
 

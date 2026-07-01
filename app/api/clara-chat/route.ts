@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
   if (lastUserMsg) {
     const check = checkMessage('clara_' + (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon'), lastUserMsg.content)
     if (!check.safe) {
-      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Craniometrix?" }, { headers: cors })
+      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Craniometrix?", ended: check.shutdown === true }, { headers: cors })
     }
   }
 
