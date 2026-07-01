@@ -111,11 +111,17 @@ export async function POST(req: NextRequest, props: Params) {
   if (rows.length === 0) return NextResponse.json({ error: 'No comments found — each row needs comment text.' }, { status: 400 })
 
   const extracted = await extractQuestions(bot.org_id, params.id, rows.map(r => ({ comment: r.comment, wouldLike: r.wouldLike })))
-  // The TITLE shown in review = the real question if one was actually asked, else
-  // an honest topic label — never a fabricated question.
+  // The TITLE shown in review = the real question ONLY when it's a single, concise
+  // one; a multi-question comment (someone asking six things at once) or a long
+  // run-on falls back to the short topic label — never a fabricated question, and
+  // never an unwieldy header. The full text lives in the comment + the draft.
   const userMessages = rows.map((r, i) => {
     const ex = extracted[i] || { question: '', topic: '', tier: 'answer' as ReplyTier }
-    return ex.question || ex.topic || r.comment.slice(0, 120)
+    const q = ex.question || ''
+    const oneShortQuestion = q.length > 0 && q.length <= 120 && (q.match(/\?/g) || []).length <= 1
+    let title = oneShortQuestion ? q : (ex.topic || q || r.comment.slice(0, 120))
+    if (title.length > 140) title = title.slice(0, 137).trimEnd() + '…'
+    return title
   })
 
   // Pre-draft each response at import. Concise mode (default on): simple
