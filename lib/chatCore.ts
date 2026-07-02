@@ -1126,8 +1126,24 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         else if (insertedGreetingThisTurn) turnBase = 1  // T0=greeting; user → T1, reply → T2.
         var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
         if (auditFlags.length > 0) userTurn.content_flags = auditFlags
+        // Translate-to-English for analysis (convergence item 4 — legacy
+        // PulseIQ parity, now for agents too): non-English user turns get a
+        // content_en translation so theme detection / TextMine read English,
+        // and the (English-lexicon) sentiment scorer scores the translation.
+        // Best-effort with a short cap; on failure store without.
+        if (userContent && botLang && botLang !== 'en') {
+          try {
+            const tr = await callAI({
+              tier: 'fast', maxTokens: 500, timeoutMs: 3000,
+              system: 'You are a translator. Translate the following text to English. Return ONLY the translation, nothing else.',
+              messages: [{ role: 'user', content: userContent }],
+            })
+            logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'translate' }, tr.usage)
+            if (tr.text && tr.text.trim().length > 2) userTurn.content_en = tr.text.trim()
+          } catch { /* store without translation */ }
+        }
         if (userContent) {
-          var sentResult = scoreSentimentFull(userContent)
+          var sentResult = scoreSentimentFull((userTurn.content_en as string) || userContent)
           userTurn.sentiment = sentResult.label
           userTurn.sentiment_score = sentResult.score
         }

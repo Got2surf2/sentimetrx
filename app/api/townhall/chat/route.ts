@@ -24,6 +24,7 @@ import {
 import { handleChatTurn } from '@/lib/chatCore'
 import { isTownHallViaAgentHandlerEnabled } from '@/lib/phase4Flags'
 import { logError } from '@/lib/log'
+import { mirrorTurns } from '@/lib/phase3DualWrite'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 
 export const dynamic = 'force-dynamic'
@@ -198,6 +199,56 @@ export async function POST(req: NextRequest) {
         }
         if (messages.length === 0) {
           return NextResponse.json({ error: 'No message and no prior turns' }, { status: 400 })
+        }
+
+        // ── Language switch (convergence item 4 — legacy parity). AI-based,
+        // ≥95%-confidence detector; doesn't count as a conversational turn.
+        // Confirm bilingually, replay the previous bot message translated,
+        // and return the localized skip/done labels. Subsequent requests
+        // carry language=<target>, which chatCore already honors.
+        if (message && !skipped) {
+          _usageCtx = { org_id: townHall.org_id, resource_type: 'townhall', resource_id: townHall.id, event_type: 'chat' }
+          const langSwitch = await detectLanguageSwitch(message.trim(), async (m) => {
+            const r = await callClaude(LANGUAGE_SWITCH_CLASSIFIER_PROMPT, m, 3000)
+            return r.text || null
+          })
+          if (langSwitch) {
+            const targetLang = langSwitch.lang
+            const lastBotMsg = [...messages].reverse().find(m => m.role === 'assistant')?.content
+              || cohortConfig.opening_message || 'What\'s on your mind?'
+            let translatedMsg = lastBotMsg
+            if (targetLang !== 'en') {
+              try {
+                const tr = await callClaude('Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone.', lastBotMsg, 3000)
+                if (tr.text) translatedMsg = tr.text
+              } catch { /* keep original */ }
+            }
+            const confirm = SWITCH_CONFIRM[targetLang] || 'Sure — switching languages!'
+            const switchBotMsg = confirm + '\n\n' + translatedMsg
+            const labels = TH_LABELS[targetLang] || TH_LABELS.en
+
+            // Store the exchange in the synchronous store (+ mirror) so the
+            // conversation review shows the switch, mirroring legacy markers.
+            const lastNum = (priorTurns || []).reduce((m, t) => Math.max(m, t.turn_number || 0), 0)
+            const switchRows = [
+              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 1, role: 'user', content: '[Language switch: ' + targetLang + '] ' + message, language: language || 'en', source: 'normal' },
+              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 2, role: 'assistant', content: switchBotMsg, language: targetLang, source: 'normal' },
+            ]
+            const { error: swErr } = await supabase.from('bot_conversation_turns').insert(switchRows)
+            if (swErr) void logError('townhall.chat.langSwitch', swErr, { orgId: townHall.org_id })
+            void mirrorTurns(supabase as any, { botId: agent.id, orgId: townHall.org_id, sessionId: unifiedSessionId, language: targetLang, rows: switchRows as any, townHallId: townHall.id, participantId: participant_id }).then(function() {})
+
+            return NextResponse.json({
+              bot_message: switchBotMsg,
+              theme_id: null,
+              source: 'language_switch',
+              is_final: false,
+              turn_number: turn_number + 1,
+              language_switched: targetLang,
+              skip_label: labels.skip,
+              done_label: labels.done,
+            })
+          }
         }
 
         const result = await handleChatTurn(

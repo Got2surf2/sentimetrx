@@ -132,7 +132,10 @@ export async function detectLanguageSwitch(
   try {
     const raw = await aiClassifier(msg)
     if (!raw) return null
-    const parsed = JSON.parse(raw)
+    // Models increasingly fence JSON responses (```json … ```); strip before
+    // parsing or every AI-detected switch silently fails.
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+    const parsed = JSON.parse(cleaned)
     if (parsed.is_switch && parsed.confidence >= 95 && LANG_CODES.includes(parsed.lang)) {
       return { lang: parsed.lang, confidence: parsed.confidence }
     }
