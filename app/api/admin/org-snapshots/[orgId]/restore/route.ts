@@ -18,7 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { downloadOrgSnapshot } from '@/lib/backupS3'
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { recordAdminAction } from '@/lib/orgTransfer'
 import type { OrgSnapshot } from '@/lib/orgSnapshot'
 
 export const dynamic = 'force-dynamic'
@@ -121,6 +122,20 @@ export async function POST(req: NextRequest, props: Params) {
 
     reports.push(report)
   }
+
+  // Audit: restoring a snapshot overwrites (merge) or replaces a tenant's live
+  // data — the most destructive admin op there is. Always traced.
+  const supabase = await createClient()
+  const actor = await getAuthUser(supabase)
+  const totals = reports.reduce(
+    (acc, r) => ({ upserted: acc.upserted + r.upserted, deleted: acc.deleted + r.deleted, errors: acc.errors + r.errors }),
+    { upserted: 0, deleted: 0, errors: 0 },
+  )
+  await recordAdminAction({
+    service, actionType: 'org.snapshot_restore', resourceType: 'org', resourceId: params.orgId,
+    targetOrgId: params.orgId, initiatedBy: actor?.id || null, initiatedByEmail: actor?.email || null,
+    metadata: { key, mode, snapshot_taken_at: snapshot.meta.taken_at, tables_restored: reports.length, ...totals },
+  })
 
   return NextResponse.json({
     ok: true,

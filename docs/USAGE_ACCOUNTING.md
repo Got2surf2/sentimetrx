@@ -200,7 +200,7 @@ const DEFAULT_MAX_TOKENS: Record<ModelTier, number> = {
 When `opts.usage?.org_id` is set, `callAI` consults `resolveOrgAiConfig(orgId)` from `lib/aiKey.ts` (cached 60s per org). Three modes:
 
 - `off` — throws `AIDisabledError`. No outbound vendor call. Used to fully disable AI for an org (e.g. paused billing).
-- `byo` — caller's customer brings their own key. `callAI` forces `providerConfig` to the configured provider + key, overriding any `opts.apiKey` the caller passed. This prevents export routes that hardcode `ANTHROPIC_API_KEY` from bypassing the BYOK redirect.
+- `byo` — caller's customer brings their own key. `callAI` forces `providerConfig` to the configured provider + key, overriding any `opts.apiKey` the caller passed. This prevents export routes that hardcode `ANTHROPIC_API_KEY` from bypassing the BYOK redirect. The stored key (`organizations.ai_api_key`) is **encrypted at rest** (`lib/secretbox.ts`, AES-256-GCM, `enc:v1:` envelope) keyed by `AI_KEY_ENC_SECRET`; `resolveOrgAiConfig` decrypts on read (legacy plaintext still reads; unset secret ⇒ plaintext, unchanged behavior). Transparent to accounting — the resolved plaintext key is what `callAI` uses.
 - `platform` (default) — falls through to standard env-key resolution.
 
 The gate fires unconditionally when `org_id` is present, even if the caller passed an explicit `apiKey`.

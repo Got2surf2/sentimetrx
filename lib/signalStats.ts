@@ -11,6 +11,7 @@
 
 import { createHash } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
 
 export interface SignalStats {
   records: number
@@ -276,21 +277,18 @@ export async function computeSignalStats(
     return stats
   }
 
-  // Compute fresh, persist
+  // Compute fresh, persist. Merge only the signal_stats key so a concurrent
+  // writer of another analytics key (e.g. the compute route's totalRows/
+  // fieldSummaries) isn't clobbered by a full-blob rewrite.
   const stats = await computeSignalStatsRaw(service, datasetId)
-  const nextAnalytics = {
-    ...(row.analytics || {}),
+  await mergeDatasetAnalytics(service, datasetId, {
     signal_stats: {
       ...stats,
       theme_model_hash: currentHash,
       row_count: currentRowCount,
       computed_at: new Date().toISOString(),
     } satisfies CachedSignalStats,
-  }
-  await service
-    .from('dataset_state')
-    .update({ analytics: nextAnalytics })
-    .eq('dataset_id', datasetId)
+  })
 
   return stats
 }
@@ -305,15 +303,7 @@ export async function invalidateSignalStats(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<void> {
-  const { data: stateRow } = await service
-    .from('dataset_state')
-    .select('analytics')
-    .eq('dataset_id', datasetId)
-    .single()
-  if (!stateRow) return
-  const analytics = (stateRow as { analytics: Record<string, unknown> | null }).analytics || {}
-  if (!('signal_stats' in analytics)) return
-  const next = { ...analytics }
-  delete (next as Record<string, unknown>).signal_stats
-  await service.from('dataset_state').update({ analytics: next }).eq('dataset_id', datasetId)
+  // Atomic single-key delete — removing only signal_stats can't clobber a
+  // concurrent writer of another analytics key. No-op if the key is absent.
+  await deleteDatasetAnalyticsKey(service, datasetId, 'signal_stats')
 }

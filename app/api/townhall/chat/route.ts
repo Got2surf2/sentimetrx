@@ -313,12 +313,14 @@ export async function POST(req: NextRequest) {
     // Note: topics that hit their response target stay active (facilitator manually closes).
     // The next-topic selection below deprioritizes target-reached topics.
 
-    // Increment session response counter
-    const newCounter = (session.response_counter || 0) + 1
-    await supabase
-      .from('townhall_sessions')
-      .update({ response_counter: newCounter })
-      .eq('id', session.id)
+    // Increment session response counter atomically (concurrent submits during a
+    // live town hall would otherwise clobber each other via read-modify-write and
+    // undercount). RPC returns the post-increment value for the theme trigger below.
+    const { data: incremented } = await supabase
+      .rpc('increment_townhall_response_counter', { p_session_id: session.id })
+    const newCounter = typeof incremented === 'number'
+      ? incremented
+      : (session.response_counter || 0) + 1
 
     // Auto theme detection: trigger every N responses (fire-and-forget, don't block chat)
     if (config?.engine?.theme_detection_mode === 'auto' && !skipped) {

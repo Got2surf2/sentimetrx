@@ -74,9 +74,12 @@ first commit. URL obscurity is not a defense.
   or magic-link. Sessions use `HttpOnly`, `Secure`, `SameSite=Lax`
   cookies. CSRF protection is enforced by application middleware on
   every cookie-authed mutating route.
-- **SSO**: Google Workspace / SAML SSO is available at customer
-  request and can be configured as a hard requirement for the
-  customer's tenant.
+- **SSO**: Not yet implemented (roadmap). Authentication today is
+  Supabase email magic-link (passwordless), plus a password path for
+  invite acceptance. Google Workspace / SAML SSO and SCIM provisioning
+  are on the roadmap; Supabase Auth supports the underlying providers,
+  but no SSO/SAML/SCIM flow is wired in the application yet. Do not
+  represent SSO as available until the flow ships.
 - **Embeddable widgets** (public-facing survey, agent, and PulseIQ
   pages) authenticate via opaque 122-bit identifiers bound to the
   owning organization. No cookies, no inferable IDs.

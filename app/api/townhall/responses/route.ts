@@ -21,6 +21,7 @@
 
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,16 @@ export async function POST(req: Request) {
   if (!session_id || !participant_id) {
     return NextResponse.json({ error: 'Missing session_id or participant_id' }, { status: 400 })
   }
+
+  // Public unauthenticated write — rate-limit like the sibling townhall/chat route
+  // so it can't be flooded (storage/DoS / theme-detection poisoning). This is an
+  // upsert-once-per-participant endpoint, so the per-participant cap is tight; the
+  // per-IP backstop is sized for a full venue submitting at the end of a session.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const rlPart = await checkRateLimit('townhall-responses:p:' + participant_id, 10, 60000)
+  if (rlPart.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
+  const rlIp = await checkRateLimit('townhall-responses:ip:' + ip, 600, 60000)
+  if (rlIp.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
 
   const service = createServiceRoleClient()
 

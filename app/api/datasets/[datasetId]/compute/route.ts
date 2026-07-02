@@ -12,6 +12,7 @@ import { waitUntil } from '@vercel/functions'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { mergeDatasetAnalytics } from '@/lib/datasetAnalytics'
 import { recomputeCollectionAnalytics } from '@/lib/collectionRecompute'
 import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
 
@@ -119,11 +120,13 @@ export async function POST(_req: Request, props: Params) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 
-  // Write analytics back to dataset_state
+  // Write analytics back to dataset_state. Merge the computed keys (totalRows /
+  // fieldSummaries / computedAt) rather than replacing the whole blob so a
+  // concurrently-cached signal_stats key isn't wiped (and vice-versa).
+  await mergeDatasetAnalytics(service, params.datasetId, analytics as unknown as Record<string, unknown>)
   const { error: updateErr } = await service
     .from('dataset_state')
     .update({
-      analytics:  analytics,
       updated_at: new Date().toISOString(),
       updated_by: user.id,
     })

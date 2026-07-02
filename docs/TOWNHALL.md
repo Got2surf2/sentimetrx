@@ -91,7 +91,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ### Three Tabs
 1. **Topics** — Live topic cards with actions
-2. **Responses** — Participant list, conversation viewer, bulk delete
+2. **Responses** — Participant list, conversation viewer, bulk delete. Per-session participant + response counts come from `townhall_session_counts_for_ids` (sql/146, aggregated in Postgres) — the prior `.in()` turn fetch was capped at 1000 rows and silently undercounted once an org's listed sessions exceeded that. The public `POST /api/townhall/responses` write is rate-limited (per-participant 10/min + per-IP 600/min), matching `townhall/chat`.
 3. **Analytics** — Sentiment breakdown, response timeline, topic frequency
 
 ### Topic Cards
@@ -152,7 +152,7 @@ community, employee, customer, student, member, other — drives AI tone and pee
 6. **Language switch detection** — Hybrid: fast regex first, then AI classifier at >=95% confidence; bilingual confirmation + previous bot message translated
 7. **Translation** — Non-English input translated to English; stored in `user_message_en` for analysis
 8. **Sentiment scoring** — Every non-skipped user turn gets `sentiment` (label) and `sentiment_score` columns via `scoreSentimentFull()`
-9. **Response counter + auto theme detection** — Counter incremented; if `theme_detection_mode='auto'`, detection fires every N responses (fire-and-forget)
+9. **Response counter + auto theme detection** — Counter incremented **atomically** via `increment_townhall_response_counter` (sql/144, returns the new value) — a live town hall is peak concurrency, and the old read-modify-write undercounted; if `theme_detection_mode='auto'`, detection fires every N responses (fire-and-forget) off the returned counter
 10. **Deflection** — Smart off-topic/sensitive topic detection (see below)
 11. **Move-on signal** — Fast regex (`/^(stop|enough|next|move on|done|skip|pass)/i`) — zero AI cost; immediately skips clarifier
 12. **Subtle disengagement AI tone check** — When a clarifier would trigger on a borderline phrase (`ok`, `sure`, `whatever`, `idk`, `not really`, etc.), AI classifies `move_on` vs `clarify`; defaults to `move_on` on AI failure (don't annoy participants). Fast path: skip the AI call entirely if 2+ consecutive curt responses

@@ -36,20 +36,33 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Get participant + turn counts per session
+  // Get participant + response counts per session. Aggregated in Postgres so it
+  // can't silently undercount: the previous approach fetched every turn via
+  // .in(...) (capped at 1000 rows) and tallied in JS, so an org with >1000 turns
+  // across its listed sessions got wrong numbers. RPC mirrors sql/038.
   const sessionIds = (data || []).map(s => s.id)
   let stats: Record<string, { participants: number; responses: number }> = {}
   if (sessionIds.length > 0) {
-    const { data: turnData } = await db
-      .from('townhall_turns')
-      .select('session_id, participant_id, skipped, user_message')
-      .in('session_id', sessionIds)
-
-    for (const sid of sessionIds) {
-      const sessionTurns = (turnData || []).filter(t => t.session_id === sid)
-      const uniqueParticipants = new Set(sessionTurns.map(t => t.participant_id))
-      const answered = sessionTurns.filter(t => !t.skipped && t.user_message)
-      stats[sid] = { participants: uniqueParticipants.size, responses: answered.length }
+    const { data: countRows, error: countErr } = await db
+      .rpc('townhall_session_counts_for_ids', { p_session_ids: sessionIds })
+    if (!countErr && countRows) {
+      for (const r of countRows as { session_id: string; participants: number; responses: number }[]) {
+        stats[r.session_id] = { participants: Number(r.participants), responses: Number(r.responses) }
+      }
+    } else {
+      // Fallback if the RPC isn't present yet (pre-sql/146): the old JS tally.
+      // Still 1000-row-capped, but no worse than before — remove once applied.
+      const { data: turnData } = await db
+        .from('townhall_turns')
+        .select('session_id, participant_id, skipped, user_message')
+        .in('session_id', sessionIds)
+      for (const sid of sessionIds) {
+        const sessionTurns = (turnData || []).filter(t => t.session_id === sid)
+        stats[sid] = {
+          participants: new Set(sessionTurns.map(t => t.participant_id)).size,
+          responses: sessionTurns.filter(t => !t.skipped && t.user_message).length,
+        }
+      }
     }
   }
 

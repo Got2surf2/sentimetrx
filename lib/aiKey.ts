@@ -12,6 +12,7 @@ import 'server-only'
 // route handlers).
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { decryptSecret } from '@/lib/secretbox'
 
 export type AiMode = 'off' | 'platform' | 'byo'
 export type AiProvider = 'anthropic' | 'openai'
@@ -51,7 +52,9 @@ export async function resolveOrgAiConfig(orgId: string): Promise<OrgAiConfig> {
     const row = data as any
     const mode: AiMode = (row?.ai_key_mode as AiMode) || 'platform'
     const provider: AiProvider = (row?.ai_provider as AiProvider) || 'anthropic'
-    const key: string | undefined = mode === 'byo' && row?.ai_api_key ? (row.ai_api_key as string) : undefined
+    // Stored key may be an encrypted envelope (enc:v1:…) or legacy plaintext;
+    // decryptSecret handles both. undefined if it can't be decrypted.
+    const key: string | undefined = mode === 'byo' && row?.ai_api_key ? decryptSecret(row.ai_api_key as string) : undefined
     const value: OrgAiConfig = { mode, provider, key }
     cache.set(orgId, { value, expiresAt: now + TTL_MS })
     return value

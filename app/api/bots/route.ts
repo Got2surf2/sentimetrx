@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { logBotChange } from '@/lib/auditLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
 
   const { data, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.list')
 
   // Live session counts via RPC (count distinct session_id per bot in
   // Postgres, served from idx_bot_turns_session). Replaces a fetch-all-turns
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
     created_by: ctx.userId,
   }).select('id, name, slug, status').single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.create')
 
   const { ip, userAgent } = eventContextFromRequest(req)
   await recordUserEvent({

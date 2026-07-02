@@ -118,7 +118,17 @@ collection members); `signals` / `inThemes` come from `count_theme_matches`.
 Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
 the theme-model hash **and** the current row count: editing/re-mining the themes
 flips the hash, and syncing rows in/out changes the count — either forces a
-recompute on the next read. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). The row-count key matters because a sync that adds
+recompute on the next read. **Atomic analytics writes (2026-07-02):**
+`dataset_state.analytics` is a shared JSONB blob (independent keys `signal_stats`,
+`totalRows`, `fieldSummaries`…). All writers now go through
+`lib/datasetAnalytics.ts` (`mergeDatasetAnalytics` / `deleteDatasetAnalyticsKey`
+→ jsonb `||` / `-` RPCs, sql/145) so each touches only its own key — the prior
+read-modify-write let a concurrent writer (e.g. the compute route) clobber the
+cached `signal_stats`. **Bulk-row cap (2026-07-02):** `GET
+/api/datasets/[id]/rows?all=true` reservoir-samples while paging, bounded by
+`BULK_ROWS_HARD_CAP` (50K), so it never buffers a full 500K-row dataset into
+memory even when the client omits `sampleMax` (the cap previously lived only in
+the TextMine client). **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). The row-count key matters because a sync that adds
 rows leaves the theme model (and its hash) untouched, which previously left the
 strip frozen at a stale snapshot while the live Themes panel counted the new
 rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can

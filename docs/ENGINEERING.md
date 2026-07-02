@@ -216,6 +216,19 @@ its corresponding entry.
   strings in breadcrumb messages. Also drops the Microsoft Office
   "Object Not Found Matching Id…" content-script false positive.
   SECURITY.md Open `<TBD>` item 1 is closed.
+- **`serverError()` is the standard 500 (`lib/apiError.ts`, added
+  2026-07-02).** Route handlers catch their own errors and return
+  JSON, so those errors never reach Sentry's auto-instrumentation
+  (which only sees UNhandled throws) — and returning `{ error:
+  err.message }` leaks raw Postgres/driver strings to clients. Use
+  `return serverError(err, 'where.tag', {extra})` at every
+  Supabase-error branch and catch-site instead: it `captureException`s
+  the real error (with a `where` tag) + `console.error`s it, and
+  returns a generic `{ error: 'Internal server error' }`. Adopted in
+  the `bots/*` + `ana/render-deck` routes; **~90 other routes still
+  return raw `error.message`** (grep `error\.message.*status: 500`) —
+  migrate opportunistically when touching a route. This is the
+  concrete first step on Open `<TBD>` item 12 (structured logger).
 - **Request IDs:** *target* state — generated in `proxy.ts`
   (or upstream), added to every response header (`x-request-id`),
   included in every log payload's `request_id` field for that

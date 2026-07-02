@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { logBotChange, snapshotForDiff, diffSnapshots } from '@/lib/auditLog'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,7 +114,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   if (!auth.isAdmin) updateQuery = updateQuery.eq('org_id', auth.orgId)
   const { error } = await updateQuery
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.update')
 
   // Phase 3 (shared brand-correction layer): tagging an agent with a brand seeds
   // that brand's shared entity catalog from the agent's curated entities, so the
@@ -198,7 +199,7 @@ export async function DELETE(req: NextRequest, props: Params) {
   if (!auth.isAdmin) q = q.eq('org_id', auth.orgId)
   const { error } = await q
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.delete')
 
   if (beforeRow) {
     const user = await getAuthUser(supabase)

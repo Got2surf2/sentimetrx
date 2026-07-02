@@ -94,6 +94,48 @@ export interface AdminActionContext {
   metadata?:         Record<string, unknown>
 }
 
+/**
+ * Record an explicit admin action to admin_action_log — ALWAYS (no same-org
+ * skip). Use this from platform-admin routes that mutate a customer's config or
+ * data (credential changes, snapshot restores, deletes) where traceability is
+ * required regardless of whose org it is. `resourceType` is free text so it can
+ * cover resources beyond the transferable set. Best-effort: never throws.
+ */
+export async function recordAdminAction(ctx: {
+  service:           SupabaseClient
+  actionType:        string
+  resourceType:      string
+  resourceId:        string
+  resourceName?:     string | null
+  targetOrgId?:      string | null
+  initiatedBy?:      string | null
+  initiatedByEmail?: string | null
+  metadata?:         Record<string, unknown>
+}): Promise<void> {
+  try {
+    let targetOrgName: string | null = null
+    if (ctx.targetOrgId) {
+      const { data: orgRow } = await ctx.service
+        .from('organizations').select('name').eq('id', ctx.targetOrgId).single()
+      targetOrgName = (orgRow as { name?: string } | null)?.name || null
+    }
+    const { error } = await ctx.service.from('admin_action_log').insert({
+      action_type:        ctx.actionType,
+      resource_type:      ctx.resourceType,
+      resource_id:        ctx.resourceId,
+      resource_name:      ctx.resourceName || null,
+      target_org_id:      ctx.targetOrgId || null,
+      target_org_name:    targetOrgName,
+      initiated_by:       ctx.initiatedBy || null,
+      initiated_by_email: ctx.initiatedByEmail || null,
+      metadata:           ctx.metadata || {},
+    })
+    if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
+  } catch (e: any) {
+    console.warn('[adminAction] audit log threw: ' + (e?.message || e))
+  }
+}
+
 export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promise<void> {
   // Same-org actions don't need a row — they're just regular user activity.
   if (!ctx.targetOrgId || ctx.targetOrgId === ctx.actorOrgId) return

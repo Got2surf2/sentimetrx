@@ -117,7 +117,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 | IAM-03 | Are user identities uniquely identifiable? | **Yes** | One identity per user in Supabase Auth |
 | IAM-04 | Is MFA available for customer-facing accounts? | **Roadmap** | Supabase Auth supports it; enforcement policy ratification pending; available on request |
 | IAM-05 | Is MFA enforced for personnel with production access? | **Roadmap** | Supabase, Vercel, GitHub, AWS — MFA enforced at the account level on the provider side today; formal Sentimetrx policy ratification pending |
-| IAM-06 | Is SSO supported for customer-facing accounts? | **Yes** | Google Workspace / SAML SSO available at customer request |
+| IAM-06 | Is SSO supported for customer-facing accounts? | **Roadmap** | Not yet implemented. Auth today is Supabase email magic-link (+ password for invite acceptance); no SSO/SAML/SCIM flow is wired in the app. Supabase Auth supports the underlying providers; SSO is on the roadmap, not available on request today |
 | IAM-07 | Are privileged actions logged? | **Yes** | `admin_action_log` table; append-only; 2-year retention |
 | IAM-08 | Are sessions invalidated on logout / timeout? | **Yes** | Supabase-managed session lifetimes; `HttpOnly` + `Secure` + `SameSite=Lax` cookies |
 
@@ -136,7 +136,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 |---|---|---|---|
 | IPY-01 | Can customer data be exported in a standard format? | **Yes** | CSV, JSON, and PPTX export from the UI |
 | IPY-02 | Are APIs documented? | **Internal** | Internal API surface documented in `docs/`; public API not exposed at pilot scale |
-| IPY-03 | Are open standards used where possible? | **Yes** | HTTP / JSON / Postgres / OAuth / SAML |
+| IPY-03 | Are open standards used where possible? | **Yes** | HTTP / JSON / Postgres / OAuth2 (PKCE, via Supabase Auth). SAML is roadmap, not yet implemented — see IAM-06 |
 
 ## LOG — Logging & Monitoring
 

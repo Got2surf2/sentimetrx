@@ -13,7 +13,9 @@
 //                                by dataset_id, so the same dataset always yields the
 //                                same sample (e.g. Stats numbers don't drift across
 //                                refreshes). If totalRows <= sampleMax, all rows are
-//                                returned unchanged.
+//                                returned unchanged. Bounded above by BULK_ROWS_HARD_CAP
+//                                (below) no matter what — the endpoint never buffers a
+//                                whole 500K-row dataset even if sampleMax is omitted.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -23,7 +25,34 @@ import { ROWS_PER_BATCH } from '@/lib/constants'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
 
+// Hard ceiling on how many rows a bulk (all=true) fetch will ever hold in memory
+// / return. TextMine loads all rows client-side under 50K by design, so 50K is the
+// product cap; above it TextMine already switches to sampling. The client passes
+// sampleMax, but the SERVER must enforce its own bound — an all=true call with no
+// (or a huge) sampleMax would otherwise page an entire 500K-row dataset into the
+// function heap and JSON-serialize it (OOM + hundreds of MB response).
+const BULK_ROWS_HARD_CAP = 50000
+
 interface Params { params: Promise<{ datasetId: string }> }
+
+// Streaming reservoir sample (Algorithm R): keep a uniform random `capacity`-size
+// sample over an unbounded stream in O(capacity) memory. Seed the rng from a stable
+// key (dataset_id) so the selected sample is identical across refreshes. When the
+// stream has <= capacity items, every item is kept (no sampling), in arrival order.
+function makeReservoir(capacity: number, rng: () => number) {
+  const items: Record<string, unknown>[] = []
+  let seen = 0
+  return {
+    push(item: Record<string, unknown>) {
+      seen++
+      if (items.length < capacity) { items.push(item); return }
+      const j = Math.floor(rng() * seen)
+      if (j < capacity) items[j] = item
+    },
+    get seen() { return seen },
+    get items() { return items },
+  }
+}
 
 // Tiny deterministic PRNG (mulberry32). Same seed → same sequence.
 function mulberry32(seed: number): () => number {
@@ -41,15 +70,6 @@ function seedFromString(s: string): number {
   for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) | 0
   return h
 }
-// Fisher-Yates shuffle in place using a provided RNG, then truncate to `n`.
-function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp
-  }
-  arr.length = n
-}
-
 async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
@@ -112,9 +132,12 @@ export async function GET(req: Request, props: Params) {
 
   // ── BULK MODE: return all rows (or a sample) in one response ─
   if (allMode) {
-    const doSample = sampleMax !== null && totalRows > sampleMax
+    // Effective cap = the smaller of the caller's sampleMax and the hard ceiling;
+    // reservoir-sample as we page so heap is bounded to `cap` even if the dataset
+    // is 500K rows (fixes the unbounded-buffer path when sampleMax is omitted).
+    const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
+    const reservoir = makeReservoir(cap, mulberry32(seedFromString(params.datasetId)))
     const FLAT_PAGE = 1000
-    const allRows: Record<string, unknown>[] = []
     let offset = 0
     let fetchMore = true
     while (fetchMore) {
@@ -128,20 +151,18 @@ export async function GET(req: Request, props: Params) {
       for (let i = 0; i < flatRows.length; i++) {
         const r = projectRow((flatRows[i] as any).data, fieldSet)
         if (withRowIds) r._rowId = (flatRows[i] as any).id
-        allRows.push(r)
+        reservoir.push(r)
       }
       if (flatRows.length < FLAT_PAGE) fetchMore = false
       offset += FLAT_PAGE
     }
-    // Seeded random sampling — same dataset always yields the same sample
-    if (doSample && allRows.length > sampleMax!) {
-      sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(params.datasetId)))
-    }
+    const rows = reservoir.items
+    const sampled = reservoir.seen > rows.length
     return NextResponse.json({
-      rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
-      field: field || undefined, sampled: doSample,
-      sampleSize: doSample ? allRows.length : totalRows,
-      sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
+      rows, page: 1, pageSize: rows.length, totalRows, totalPages: 1,
+      field: field || undefined, sampled,
+      sampleSize: rows.length,
+      sampleRate: sampled ? parseFloat((rows.length / Math.max(reservoir.seen, 1)).toFixed(4)) : 1,
     })
   }
 
@@ -186,8 +207,11 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
   const sampleMaxP = url.searchParams.get('sampleMax')
   const sampleMax  = sampleMaxP ? Math.max(1, parseInt(sampleMaxP)) : null
 
-  // Fetch rows from each member dataset
-  const allRows: Record<string, unknown>[] = []
+  // Reservoir-sample the union so a collection over several large members can't
+  // buffer millions of rows at once. Bounded to the smaller of sampleMax and the
+  // hard cap; seeded by the collection's dataset_id for a stable sample.
+  const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
+  const reservoir = makeReservoir(cap, mulberry32(seedFromString(datasetId)))
   const FLAT_PAGE = 1000
 
   for (var mi = 0; mi < members.length; mi++) {
@@ -200,26 +224,22 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
       var { data: flatRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', memberId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
       if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
       for (var fi = 0; fi < flatRows.length; fi++) {
-        allRows.push({ ...flatRows[fi].data, _collection_label: label })
+        reservoir.push({ ...flatRows[fi].data, _collection_label: label })
       }
       if (flatRows.length < FLAT_PAGE) fetchMore = false
       offset += FLAT_PAGE
     }
   }
 
-  var totalRows = allRows.length
-
-  // Seeded random sampling — same dataset always yields the same sample
-  var doSample = sampleMax !== null && totalRows > sampleMax
-  if (doSample) {
-    sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(datasetId)))
-  }
+  var rows = reservoir.items
+  var totalRows = reservoir.seen
+  var doSample = reservoir.seen > rows.length
 
   return NextResponse.json({
-    rows: allRows, page: 1, pageSize: allRows.length, totalRows: totalRows, totalPages: 1,
+    rows, page: 1, pageSize: rows.length, totalRows: totalRows, totalPages: 1,
     sampled: doSample,
-    sampleSize: doSample ? allRows.length : totalRows,
-    sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
+    sampleSize: rows.length,
+    sampleRate: doSample ? parseFloat((rows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
   })
 }
 

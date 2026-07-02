@@ -17,6 +17,8 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { getOrgAiKeyStatus, invalidateOrgAiKey } from '@/lib/aiKey'
+import { encryptSecret } from '@/lib/secretbox'
+import { recordAdminAction } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +67,7 @@ export async function PUT(req: Request, props: Params) {
       if (apiKey === '') {
         return NextResponse.json({ error: 'api_key cannot be empty when mode=byo' }, { status: 400 })
       }
-      updates.ai_api_key = apiKey
+      updates.ai_api_key = encryptSecret(apiKey)
       updates.ai_api_key_set_at = new Date().toISOString()
       updates.ai_api_key_set_by = user.id
     }
@@ -76,6 +78,13 @@ export async function PUT(req: Request, props: Params) {
   const { error } = await service.from('organizations').update(updates).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Audit: an admin changed a customer org's AI-key config (credential-sensitive).
+  await recordAdminAction({
+    service, actionType: 'org.ai_key_set', resourceType: 'org', resourceId: params.id,
+    targetOrgId: params.id, initiatedBy: user.id, initiatedByEmail: user.email || null,
+    metadata: { mode, provider: provider || null, key_changed: apiKey !== undefined },
+  })
+
   invalidateOrgAiKey(params.id)
   const status = await getOrgAiKeyStatus(params.id)
   return NextResponse.json(status)
@@ -85,6 +94,9 @@ export async function DELETE(_req: Request, props: Params) {
   const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
+  const supabase = await createClient()
+  const user = await getAuthUser(supabase)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const service = createServiceRoleClient()
   const { error } = await service.from('organizations').update({
     ai_key_mode:        'platform',
@@ -93,6 +105,10 @@ export async function DELETE(_req: Request, props: Params) {
     ai_api_key_set_by:  null,
   }).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recordAdminAction({
+    service, actionType: 'org.ai_key_delete', resourceType: 'org', resourceId: params.id,
+    targetOrgId: params.id, initiatedBy: user.id, initiatedByEmail: user.email || null,
+  })
   invalidateOrgAiKey(params.id)
   const status = await getOrgAiKeyStatus(params.id)
   return NextResponse.json(status)

@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { renderDeck } from '@/lib/pptx/slideRenderer'
 import type { DeckSpec } from '@/lib/pptx/slideRenderer'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -35,6 +36,6 @@ export async function POST(req: Request) {
       },
     })
   } catch (err: any) {
-    return NextResponse.json({ error: 'Render failed: ' + (err?.message || String(err)) }, { status: 500 })
+    return serverError(err, 'ana.render-deck')
   }
 }

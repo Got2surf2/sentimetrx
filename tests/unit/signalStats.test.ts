@@ -24,7 +24,7 @@ interface FakeOpts {
 //   dataset_state .select().eq().single()        -> { theme_model, analytics }
 //   datasets      .select().eq().single()        -> { id, source:'study' }
 //   dataset_rows_flat .select(count,head).…       -> { count }
-//   dataset_state .update().eq()                  -> { error:null }
+//   .rpc('merge_dataset_analytics')               -> { error:null } (persist path)
 //   .rpc('count_theme_matches')                   -> { data }
 function makeService(o: FakeOpts): SupabaseClient {
   function chain(table: string) {
@@ -50,13 +50,18 @@ function makeService(o: FakeOpts): SupabaseClient {
     from(table: string) {
       return {
         select: () => chain(table),
-        update: (payload: unknown) => {
-          o.updateSpy(payload)
-          return { eq: () => Promise.resolve({ error: null }) }
-        },
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
       }
     },
-    rpc: () => Promise.resolve({ data: o.rpcVal }),
+    // Persistence now goes through the atomic merge RPC (lib/datasetAnalytics),
+    // so the persist-spy tracks that call; the theme-match count RPCs return rpcVal.
+    rpc: (fn: string, args: unknown) => {
+      if (fn === 'merge_dataset_analytics') {
+        o.updateSpy(args)
+        return Promise.resolve({ error: null })
+      }
+      return Promise.resolve({ data: o.rpcVal })
+    },
   } as unknown as SupabaseClient
 }
 

@@ -9,6 +9,7 @@ import { generateEmbeddings } from '@/lib/embeddings'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,7 +108,7 @@ export async function POST(req: Request, props: Params) {
 
   const { data: inserted, error } = await service.from('agent_knowledge_chunks').insert(rows).select('id, title, content')
   if (error) {
-    return NextResponse.json({ error: 'Failed to store chunks: ' + error.message }, { status: 500 })
+    return serverError(error, 'bots.knowledge.store')
   }
 
   // Generate and store embeddings (non-blocking — chunks work without them via full-text fallback)
@@ -240,7 +241,7 @@ export async function DELETE(req: Request, props: Params) {
   }
 
   const { error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.knowledge.list')
 
   void logBotChange({
     botId: params.id,
