@@ -23,6 +23,7 @@ import {
 } from '@/lib/languageSwitch'
 import { handleChatTurn } from '@/lib/chatCore'
 import { isTownHallViaAgentHandlerEnabled } from '@/lib/phase4Flags'
+import { logError } from '@/lib/log'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 
 export const dynamic = 'force-dynamic'
@@ -77,34 +78,108 @@ export async function POST(req: NextRequest) {
   // way in; it activates only after Phase 6 creates the first row.
   if (isTownHallViaAgentHandlerEnabled()) {
     const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
+    const EV_COLS = 'id, slug, org_id, bot_id, name, status, cohort_config, started_at'
     let townHall: any = null
     if (isUUID4) {
-      const { data } = await supabase.from('pulseiq_events').select('id, slug, org_id, bot_id, name, status').eq('id', session_id).single()
+      const { data } = await supabase.from('pulseiq_events').select(EV_COLS).eq('id', session_id).single()
       townHall = data
     }
     if (!townHall) {
-      const { data } = await supabase.from('pulseiq_events').select('id, slug, org_id, bot_id, name, status').eq('slug', session_id.toLowerCase()).single()
+      const { data } = await supabase.from('pulseiq_events').select(EV_COLS).eq('slug', session_id.toLowerCase()).single()
       townHall = data
     }
     if (townHall) {
       const { data: agent } = await supabase.from('agents').select('*').eq('id', townHall.bot_id).single()
       if (agent && agent.status === 'active') {
+        const cohortConfig = (townHall.cohort_config || {}) as any
+        const unifiedSessionId = townHall.id + ':' + participant_id
+
+        // ── Session lifecycle (convergence item 2 — ports the legacy
+        // auto-end / paused / ended / turn-cap orchestration). Event ↔
+        // legacy status mapping: live=active, paused=paused, closed=ended.
+        const sessionEnd = cohortConfig.session_end || {}
+        if (townHall.status === 'live' && sessionEnd.mode && sessionEnd.mode !== 'manual') {
+          let shouldEnd = false
+          if (sessionEnd.mode === 'timed' && townHall.started_at) {
+            const elapsed = (Date.now() - new Date(townHall.started_at).getTime()) / 60000
+            if (elapsed >= (sessionEnd.duration_minutes || 90)) shouldEnd = true
+          }
+          if (sessionEnd.mode === 'inactivity') {
+            // Event-wide latest participant activity, via the event's linked
+            // conversations (mirrors the legacy session-wide check).
+            const { data: linked } = await supabase
+              .from('pulseiq_event_conversations')
+              .select('conversation_id')
+              .eq('town_hall_id', townHall.id)
+            const convIds = (linked || []).map(r => r.conversation_id)
+            if (convIds.length > 0) {
+              const { data: lastTurn } = await supabase
+                .from('conversation_turns')
+                .select('created_at')
+                .in('conversation_id', convIds)
+                .eq('role', 'user')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+              if (lastTurn) {
+                const idle = (Date.now() - new Date(lastTurn.created_at).getTime()) / 60000
+                if (idle >= (sessionEnd.inactivity_timeout_minutes || 30)) shouldEnd = true
+              }
+            }
+          }
+          if (shouldEnd) {
+            const { error: endErr } = await supabase.from('pulseiq_events')
+              .update({ status: 'closed', ended_at: new Date().toISOString() })
+              .eq('id', townHall.id)
+            if (endErr) void logError('townhall.chat.autoEnd', endErr, { orgId: townHall.org_id })
+            else townHall.status = 'closed'
+          }
+        }
+        if (townHall.status === 'closed') {
+          return NextResponse.json({
+            bot_message: cohortConfig.closing_message || sessionEnd.closing_message || 'This session has ended. Thank you for participating.',
+            is_final: true, theme_id: null, source: null, turn_number: turn_number + 1,
+          })
+        }
+        if (townHall.status === 'paused') {
+          return NextResponse.json({
+            bot_message: 'This session is currently paused. Please check back shortly.',
+            is_final: false, theme_id: null, source: null, turn_number: turn_number, paused: true,
+          })
+        }
+
         // Synthesize messages[] from prior turns for this (session, participant).
-        // Read from townhall_turns (the legacy storage) since this path runs in
-        // the transitional window before Phase 5 rewires storage onto
-        // conversation_turns. Each townhall_turns row carries both bot_message
-        // and user_message for one turn pair.
+        // Reads bot_conversation_turns — handleChatTurn's SYNCHRONOUS store
+        // (the conversations/conversation_turns mirror is async + gated on
+        // DUAL_WRITE_PHASE3, so reading it here would race the mirror and go
+        // blind when the flag is off). The earlier townhall_turns read
+        // returned nothing on this path, so the engine had no memory across
+        // requests.
         const { data: priorTurns } = await supabase
-          .from('townhall_turns')
-          .select('bot_message, user_message, turn_number')
-          .eq('session_id', townHall.id)
-          .eq('participant_id', participant_id)
+          .from('bot_conversation_turns')
+          .select('role, content, turn_number')
+          .eq('bot_id', agent.id)
+          .eq('session_id', unifiedSessionId)
           .order('turn_number', { ascending: true })
         const messages: { role: 'user' | 'assistant'; content: string }[] = []
+        let assistantTurnsUsed = 0
         for (const t of (priorTurns || [])) {
-          if (t.bot_message) messages.push({ role: 'assistant', content: t.bot_message })
-          if (t.user_message) messages.push({ role: 'user', content: t.user_message })
+          if (t.role === 'assistant' || t.role === 'user') {
+            messages.push({ role: t.role as 'assistant' | 'user', content: t.content })
+            if (t.role === 'assistant') assistantTurnsUsed++
+          }
         }
+
+        // Per-participant turn cap (legacy config.engine.max_turns_per_participant,
+        // new home cohort_config.max_turns_per_participant; default 20).
+        const maxTurns = cohortConfig.max_turns_per_participant || 20
+        if (assistantTurnsUsed >= maxTurns) {
+          return NextResponse.json({
+            bot_message: cohortConfig.closing_message || 'Thank you for sharing your thoughts. Your input is really valuable.',
+            is_final: true, theme_id: null, source: null, turn_number: 999,
+          })
+        }
+
         if (message) messages.push({ role: 'user', content: message })
         if (messages.length === 0) {
           return NextResponse.json({ error: 'No message and no prior turns' }, { status: 400 })
@@ -112,7 +187,7 @@ export async function POST(req: NextRequest) {
 
         const result = await handleChatTurn(
           { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug, participantId: participant_id } },
-          { messages, session_id: townHall.id + ':' + participant_id, language, debug: body.debug },
+          { messages, session_id: unifiedSessionId, language, debug: body.debug },
         )
 
         return NextResponse.json({

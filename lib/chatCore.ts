@@ -785,9 +785,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // sitting 'paused', hold the participant between rounds instead of
           // closing out — the moderator advancing the round flips them
           // active and pickNextTopic routes held participants into them.
-          // (The legacy turns-budget guard on this branch arrives with
-          // item 2, per-participant turn caps.)
-          if (cohortConfig?.pacing_mode === 'rounds') {
+          // Legacy turns-budget guard (item 2): only hold when the
+          // participant has ≥2 turns of budget left — otherwise fall
+          // through to the plain standby and let the shim's turn cap
+          // close the conversation on the next request.
+          const assistantTurnsUsed = (Array.isArray(body?.messages) ? body.messages : [])
+            .filter((m: any) => m?.role === 'assistant').length
+          const maxTurnsBudget = Number(cohortConfig?.max_turns_per_participant) || 20
+          if (cohortConfig?.pacing_mode === 'rounds' && assistantTurnsUsed < maxTurnsBudget - 2) {
             // source='seed' is the new-schema spelling of legacy 'guide'
             // (pulseiq_topics CHECK allows seed/auto_detected/manual).
             const { count: laterRounds, error: roundsErr } = await service
