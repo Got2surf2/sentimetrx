@@ -257,6 +257,7 @@ fields, deflection (shared router), guardrails/refusal handling, usage logging.
 
 | # | Feature | Size | Notes |
 |---|---|---|---|
+| 0 | **Rename the new-schema tables `town_halls` / `town_hall_topics` / `town_hall_conversations` → `pulseiq_events` / `pulseiq_topics` / `pulseiq_event_conversations`** (owner-approved 2026-07-03) | S | The permanent PulseIQ home must not carry the other product's name ("Town Hall" = recordings). Near-zero risk TODAY only: tables are dark in prod (zero prod writes, flags off; the 3 existing rows are local-dev artifacts). One migration (`ALTER TABLE RENAME` ×3 + index/policy renames) + grep-sweep of the modest code surface (chatCore, phase3DualWrite/phase3Read, phase4 shim, cohortThemeAggregator, cron). MUST land before items 1–7 build on the old names. Code identifiers (`townHallContext`, `TownHallChat.tsx`) and `/townhall` route slugs rename opportunistically during the port; public `/pi/[guid]` already correct. |
 | 1 | Round-based pacing (`pacing_mode='rounds'`, paused-round hold, `round_hold` response flag) | S–M | Named must-port-first by the freeze; client reads `round_hold` |
 | 2 | Session lifecycle: auto-end (timed/inactivity), ended/paused replies, per-participant turn cap + wrap-up closing message | S–M | Belongs in the townhall shim, not chatCore proper |
 | 3 | Client protocol adapter: `/pi` client speaks `turn_number`/`theme_id`/`skipped`/`[done]`/`round_hold` + localized skip/done labels; the current Phase-4 shim returns `theme_id:null` and ignores `skipped` | M | Either fatten the shim or update `TownHallChat.tsx`; also decide **write-back**: unified path must keep writing `townhall_turns` during transition or all 37 legacy readers break |
@@ -271,11 +272,12 @@ search, themes CRUD, favorites, `/m` monitor). With write-back (#3) they keep
 working unchanged; rewire + legacy-table drop + Phase-3 Tier-5 cleanup is a
 second tranche.
 
-**Estimate:** Tranche 1 (engine cutover: items 1–7 + a PulseIQ regression set
+**Estimate:** Tranche 1 (engine cutover: items 0–7 + a PulseIQ regression set
 mirroring the Sarina harness + prod flag flip + one real test town hall) ≈
-**4–6 focused sessions**. Tranche 2 (reader rewiring, legacy drop, Tier 5) ≈
-**3–5 sessions**, schedulable anytime after. Acceptance test stays Phase 6:
-one town hall run end-to-end on the unified path with the dashboard live.
+**4–6 focused sessions** (item 0 is small and comes first). Tranche 2 (reader
+rewiring, legacy drop, Tier 5) ≈ **3–5 sessions**, schedulable anytime after.
+Acceptance test stays Phase 6: one town hall run end-to-end on the unified
+path with the dashboard live.
 
 ## 5. What stays the same vs. what changes
 
