@@ -283,7 +283,7 @@ export default function AddRecordingClient({
         </span>
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={() => { void handleSubmit() }}
           disabled={!canSubmit}
           className="px-6 py-3 rounded-lg text-sm font-semibold text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
           style={{ backgroundColor: canSubmit ? HERMES : undefined }}

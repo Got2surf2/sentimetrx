@@ -162,8 +162,8 @@ export default function TownHallChat({ sessionId }: Props) {
   }, [sessionId])
 
   useEffect(() => {
-    poll()
-    pollRef.current = setInterval(poll, 3000)
+    void poll()
+    pollRef.current = setInterval(() => { void poll() }, 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [poll])
 
@@ -344,7 +344,7 @@ export default function TownHallChat({ sessionId }: Props) {
         if (d.is_final) await startPostSession()
       } catch { /* network blip — keep polling */ }
     }
-    const id = setInterval(tick, 4000)
+    const id = setInterval(() => { void tick() }, 4000)
     return () => { cancelled = true; clearInterval(id) }
   }, [held, resolvedId, pid, selectedLang, startPostSession])
 
@@ -429,7 +429,7 @@ export default function TownHallChat({ sessionId }: Props) {
     setPhase('chat')
   }
 
-  const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
+  const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend() } }
 
   // --- RENDER ---
 
@@ -492,7 +492,7 @@ export default function TownHallChat({ sessionId }: Props) {
   // Auto-join once language is selected — skip landing page
   if (!joined && selectedLang && !loading && status === 'active' && !joiningRef.current) {
     joiningRef.current = true
-    setTimeout(() => handleJoin(), 0)
+    setTimeout(() => { void handleJoin() }, 0)
     return <Screen><Dots /></Screen>
   }
   if (!joined && joiningRef.current) {
@@ -587,13 +587,13 @@ export default function TownHallChat({ sessionId }: Props) {
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="Message" disabled={loading} rows={1}
               style={{ flex: 1, resize: 'none', border: '1px solid #C7C7CC', borderRadius: 20, padding: '9px 14px', fontSize: 16, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#F6F6F6' : 'white' }}
               onInput={e => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' }} />
-            <button onClick={() => handleSend()} disabled={loading || !input.trim()}
+            <button onClick={() => { void handleSend() }} disabled={loading || !input.trim()}
               style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: input.trim() ? IMSG_BLUE : '#C7C7CC', color: 'white', fontSize: 16, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>{'\u2191'}</button>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <button onClick={() => handleSend(undefined, true)} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{skipLabel || display.skip_label || "I'd rather not answer that"}</button>
+            <button onClick={() => { void handleSend(undefined, true) }} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{skipLabel || display.skip_label || "I'd rather not answer that"}</button>
             <span style={{ color: '#D1D1D6', fontSize: 12 }}>|</span>
-            <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{doneLabel || display.done_label || "I'm done sharing"}</button>
+            <button onClick={() => { void handleDone() }} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{doneLabel || display.done_label || "I'm done sharing"}</button>
           </div>
         </div>
       ) : phase === 'pre-psycho' && psychoQuestions[psychoIdx] ? (
@@ -601,7 +601,7 @@ export default function TownHallChat({ sessionId }: Props) {
           <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8, lineHeight: 1.4 }}>{psychoQuestions[psychoIdx].q}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {psychoQuestions[psychoIdx].opts.map(opt => (
-              <button key={opt} onClick={async () => {
+              <button key={opt} onClick={() => { void (async () => {
                 const q = psychoQuestions[psychoIdx]
                 setPsychoAnswers(p => ({ ...p, [q.key]: opt }))
                 setMessages(p => [...p, { who: 'user', text: opt }])
@@ -619,9 +619,9 @@ export default function TownHallChat({ sessionId }: Props) {
                   setMessages(p => [...p, { who: 'bot', text: demoMsg }])
                   setLoading(false)
                 } else {
-                  submitPreSession({ ...psychoAnswers, [q.key]: opt }, {})
+                  void submitPreSession({ ...psychoAnswers, [q.key]: opt }, {})
                 }
-              }}
+              })() }}
                 style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E0E0E0', background: 'white', fontSize: 15, color: '#374151', cursor: 'pointer', transition: 'all 0.15s' }}
                 onMouseOver={e => { (e.target as HTMLElement).style.borderColor = IMSG_BLUE; (e.target as HTMLElement).style.background = '#EBF5FF' }}
                 onMouseOut={e => { (e.target as HTMLElement).style.borderColor = '#E0E0E0'; (e.target as HTMLElement).style.background = 'white' }}>
@@ -629,7 +629,7 @@ export default function TownHallChat({ sessionId }: Props) {
               </button>
             ))}
           </div>
-          <button onClick={async () => {
+          <button onClick={() => { void (async () => {
             const nextIdx = psychoIdx + 1
             setMessages(p => [...p, { who: 'user', text: 'Skipped', italic: true }])
             if (nextIdx < psychoQuestions.length) {
@@ -637,9 +637,9 @@ export default function TownHallChat({ sessionId }: Props) {
             } else if (demoFields.length > 0) {
               setPhase('pre-demo')
             } else {
-              submitPreSession(psychoAnswers, {})
+              void submitPreSession(psychoAnswers, {})
             }
-          }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
+          })() }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
             Skip this question
           </button>
         </div>
@@ -664,11 +664,11 @@ export default function TownHallChat({ sessionId }: Props) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => submitPreSession(psychoAnswers, demoAnswers)}
+            <button onClick={() => { void submitPreSession(psychoAnswers, demoAnswers) }}
               style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: IMSG_BLUE, color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
               Continue
             </button>
-            <button onClick={() => submitPreSession(psychoAnswers, {})}
+            <button onClick={() => { void submitPreSession(psychoAnswers, {}) }}
               style={{ padding: '11px 16px', borderRadius: 12, border: '1px solid #D1D5DB', background: 'white', color: '#8E8E93', fontSize: 14, cursor: 'pointer' }}>
               Skip
             </button>
@@ -681,7 +681,7 @@ export default function TownHallChat({ sessionId }: Props) {
           <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8, lineHeight: 1.4 }}>{psychoQuestions[psychoIdx].q}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {psychoQuestions[psychoIdx].opts.map(opt => (
-              <button key={opt} onClick={async () => {
+              <button key={opt} onClick={() => { void (async () => {
                 const q = psychoQuestions[psychoIdx]
                 setPsychoAnswers(p => ({ ...p, [q.key]: opt }))
                 setMessages(p => [...p, { who: 'user', text: opt }])
@@ -699,9 +699,9 @@ export default function TownHallChat({ sessionId }: Props) {
                   setMessages(p => [...p, { who: 'bot', text: demoMsg }])
                   setLoading(false)
                 } else {
-                  submitPostSession({ ...psychoAnswers, [q.key]: opt }, {})
+                  void submitPostSession({ ...psychoAnswers, [q.key]: opt }, {})
                 }
-              }}
+              })() }}
                 style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E0E0E0', background: 'white', fontSize: 15, color: '#374151', cursor: 'pointer', transition: 'all 0.15s' }}
                 onMouseOver={e => { (e.target as HTMLElement).style.borderColor = IMSG_BLUE; (e.target as HTMLElement).style.background = '#EBF5FF' }}
                 onMouseOut={e => { (e.target as HTMLElement).style.borderColor = '#E0E0E0'; (e.target as HTMLElement).style.background = 'white' }}>
@@ -709,7 +709,7 @@ export default function TownHallChat({ sessionId }: Props) {
               </button>
             ))}
           </div>
-          <button onClick={async () => {
+          <button onClick={() => { void (async () => {
             const nextIdx = psychoIdx + 1
             setMessages(p => [...p, { who: 'user', text: 'Skipped', italic: true }])
             if (nextIdx < psychoQuestions.length) {
@@ -717,9 +717,9 @@ export default function TownHallChat({ sessionId }: Props) {
             } else if (demoFields.length > 0) {
               setPhase('demo')
             } else {
-              submitPostSession(psychoAnswers, {})
+              void submitPostSession(psychoAnswers, {})
             }
-          }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
+          })() }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
             Skip this question
           </button>
         </div>
@@ -744,11 +744,11 @@ export default function TownHallChat({ sessionId }: Props) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => submitPostSession(psychoAnswers, demoAnswers)}
+            <button onClick={() => { void submitPostSession(psychoAnswers, demoAnswers) }}
               style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: IMSG_BLUE, color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
               Submit
             </button>
-            <button onClick={() => submitPostSession(psychoAnswers, {})}
+            <button onClick={() => { void submitPostSession(psychoAnswers, {}) }}
               style={{ padding: '11px 16px', borderRadius: 12, border: '1px solid #D1D5DB', background: 'white', color: '#8E8E93', fontSize: 14, cursor: 'pointer' }}>
               Skip
             </button>

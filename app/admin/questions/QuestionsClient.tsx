@@ -666,7 +666,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
       {demoModal && (
         <DemoModal
           initial={demoModal.mode === 'edit' ? demoModal.item : null}
-          onSave={saveDemo}
+          onSave={(d) => { void saveDemo(d) }}
           onClose={function() { setDemoModal(null) }}
           saving={saving}
         />
@@ -674,14 +674,14 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
       {psychoModal && (
         <PsychoModal
           initial={psychoModal.mode === 'edit' ? psychoModal.item : null}
-          onSave={savePsycho}
+          onSave={(d) => { void savePsycho(d) }}
           onClose={function() { setPsychoModal(null) }}
           saving={saving}
         />
       )}
       {deleteTarget && (
         <ConfirmDelete
-          onConfirm={confirmDelete}
+          onConfirm={() => { void confirmDelete() }}
           onCancel={function() { setDeleteTarget(null) }}
           deleting={deleting}
         />

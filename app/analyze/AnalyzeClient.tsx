@@ -332,10 +332,10 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                   )}
                   <DatasetCard
                     dataset={dataset}
-                    onDelete={handleDelete}
-                    onRename={handleRename}
-                    onToggleVisibility={handleToggleVisibility}
-                    onToggleArchive={handleToggleArchive}
+                    onDelete={(id) => { void handleDelete(id) }}
+                    onRename={(id, name) => { void handleRename(id, name) }}
+                    onToggleVisibility={(id, visibility) => { void handleToggleVisibility(id, visibility) }}
+                    onToggleArchive={(id, status) => { void handleToggleArchive(id, status) }}
                     isAdmin={isAdmin}
                     allOrgs={allOrgs}
                     onTransfer={handleTransfer}

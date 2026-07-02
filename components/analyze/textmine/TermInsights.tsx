@@ -118,7 +118,7 @@ function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights;
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {copyHint && <span style={{ fontSize: 10, color: '#059669', fontWeight: 600 }}>{copyHint}</span>}
-          <button onClick={copyTSV}
+          <button onClick={function() { void copyTSV() }}
             style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #d1d5db', background: 'white', color: '#374151', cursor: 'pointer', fontWeight: 600 }}>
             Copy (TSV)
           </button>

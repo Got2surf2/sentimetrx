@@ -50,7 +50,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [orgId])
+  useEffect(() => { void load() }, [orgId])
 
   const submit = async (body: Record<string, unknown>, successMsg: string) => {
     setSaving(true); setError(null)
@@ -75,7 +75,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
   const pickPlatform = () => submit({ mode: 'platform' }, 'Using Sentimetrx AI')
   const saveBYO      = () => {
     if (!keyInput.trim()) return
-    submit({ mode: 'byo', provider: providerInput, api_key: keyInput.trim() }, 'BYO key saved')
+    void submit({ mode: 'byo', provider: providerInput, api_key: keyInput.trim() }, 'BYO key saved')
   }
   const rotateProvider = (p: Provider) => submit({ mode: 'byo', provider: p }, 'Provider updated')
 
@@ -94,7 +94,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
         {/* Off */}
         <label className="flex items-start gap-2 cursor-pointer">
           <input type="radio" name={'aimode-' + orgId} checked={onMode === 'off'}
-            onChange={pickOff} disabled={saving} className="mt-0.5" />
+            onChange={() => { void pickOff() }} disabled={saving} className="mt-0.5" />
           <span>
             <span className="text-sm font-semibold text-red-700">AI Off</span>
             <span className="block text-xs text-gray-500">No data leaves the platform to any AI vendor. AI-powered features will be unavailable for this org. For customers with data-residency or privacy concerns.</span>
@@ -104,7 +104,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
         {/* Platform */}
         <label className="flex items-start gap-2 cursor-pointer">
           <input type="radio" name={'aimode-' + orgId} checked={onMode === 'platform'}
-            onChange={pickPlatform} disabled={saving} className="mt-0.5" />
+            onChange={() => { void pickPlatform() }} disabled={saving} className="mt-0.5" />
           <span>
             <span className="text-sm font-semibold text-gray-800">Sentimetrx AI</span>
             <span className="block text-xs text-gray-500">Routes through Sentimetrx's Anthropic + OpenAI accounts. Cost absorbed by the platform; per-org usage logged in <code className="font-mono">usage_log</code> for billing.</span>
@@ -114,7 +114,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
         {/* BYO */}
         <label className="flex items-start gap-2 cursor-pointer">
           <input type="radio" name={'aimode-' + orgId} checked={onMode === 'byo'}
-            onChange={() => { if (status?.isSet) submit({ mode: 'byo', provider: status.provider }, 'Switched to BYO'); else setEditing(true) }}
+            onChange={() => { if (status?.isSet) void submit({ mode: 'byo', provider: status.provider }, 'Switched to BYO'); else setEditing(true) }}
             disabled={saving} className="mt-0.5" />
           <span>
             <span className="text-sm font-semibold text-gray-800">BYO key (Anthropic or OpenAI)</span>
@@ -130,13 +130,13 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
           {setAtPretty && <div className="text-blue-700 mt-0.5">Last updated {setAtPretty}{status.setBy ? ' by ' + status.setBy.slice(0, 8) + '…' : ''}</div>}
           <div className="mt-2 flex flex-wrap gap-2 items-center">
             {status.provider !== 'anthropic' && (
-              <button onClick={() => rotateProvider('anthropic')} disabled={saving}
+              <button onClick={() => { void rotateProvider('anthropic') }} disabled={saving}
                 className="text-[11px] px-2 py-1 rounded bg-white border border-blue-300 text-blue-700 hover:bg-blue-100">
                 Switch to Anthropic
               </button>
             )}
             {status.provider !== 'openai' && (
-              <button onClick={() => rotateProvider('openai')} disabled={saving}
+              <button onClick={() => { void rotateProvider('openai') }} disabled={saving}
                 className="text-[11px] px-2 py-1 rounded bg-white border border-blue-300 text-blue-700 hover:bg-blue-100">
                 Switch to OpenAI
               </button>
@@ -145,7 +145,7 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
               className="text-[11px] px-2 py-1 rounded bg-white border border-blue-300 text-blue-700 hover:bg-blue-100">
               Replace key
             </button>
-            <button onClick={() => { if (confirm('Revert this org to Sentimetrx AI?')) pickPlatform() }} disabled={saving}
+            <button onClick={() => { if (confirm('Revert this org to Sentimetrx AI?')) void pickPlatform() }} disabled={saving}
               className="text-[11px] px-2 py-1 rounded bg-white border border-red-300 text-red-700 hover:bg-red-50">
               Clear & revert
             </button>

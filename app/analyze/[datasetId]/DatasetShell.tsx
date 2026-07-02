@@ -89,7 +89,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   useEffect(function() {
     if (!showFilters || rowsLoaded || loadingRows) return
     setLoadingRows(true)
-    ;(async function() {
+    void (async function() {
       try {
         const r = await fetch('/api/datasets/' + datasetId + '/filter-options')
         if (!r.ok) throw new Error('Failed')

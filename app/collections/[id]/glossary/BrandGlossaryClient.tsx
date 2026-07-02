@@ -95,7 +95,7 @@ export default function BrandGlossaryClient({
     setHiddenCount(d.hidden_count || 0)
     setLoading(false)
   }
-  useEffect(() => { setLoading(true); reload({ includeHidden: showHidden }) }, [collectionId, showHidden])
+  useEffect(() => { setLoading(true); void reload({ includeHidden: showHidden }) }, [collectionId, showHidden])
 
   async function addEntity() {
     const canonical = addCanonical.trim()
@@ -186,7 +186,7 @@ export default function BrandGlossaryClient({
             <button onClick={() => { setAddOpen(v => !v); setAddError(null) }}
               className='px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50'
             >+ Add entity</button>
-            <button onClick={pullFromAgents} disabled={pulling}
+            <button onClick={() => { void pullFromAgents() }} disabled={pulling}
               className='px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50'
             >{pulling ? 'Pulling…' : 'Pull from agents'}</button>
           </div>
@@ -212,7 +212,7 @@ export default function BrandGlossaryClient({
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </label>
-              <button onClick={addEntity} disabled={addSaving}
+              <button onClick={() => { void addEntity() }} disabled={addSaving}
                 className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
               >{addSaving ? 'Adding…' : 'Add'}</button>
               <button onClick={() => { setAddOpen(false); setAddError(null) }}
@@ -286,16 +286,16 @@ export default function BrandGlossaryClient({
                     <div className='flex gap-2 flex-shrink-0'>
                       {isEditing ? (
                         <>
-                          <button onClick={() => saveEdit(e.id)} disabled={savingId === e.id}
+                          <button onClick={() => { void saveEdit(e.id) }} disabled={savingId === e.id}
                             className='px-2.5 py-1 rounded-md bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50'>{savingId === e.id ? 'Saving…' : 'Save'}</button>
                           <button onClick={() => setEditingId(null)} className='px-2.5 py-1 rounded-md border border-gray-300 text-xs text-gray-600 hover:bg-gray-50'>Cancel</button>
                         </>
                       ) : (
                         <>
                           <button onClick={() => startEdit(e)} className='px-2.5 py-1 rounded-md border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'>Edit</button>
-                          <button onClick={() => setHidden(e.id, !e.hidden)} className='px-2.5 py-1 rounded-md border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'>{e.hidden ? 'Unhide' : 'Hide'}</button>
+                          <button onClick={() => { void setHidden(e.id, !e.hidden) }} className='px-2.5 py-1 rounded-md border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'>{e.hidden ? 'Unhide' : 'Hide'}</button>
                           {e.source === 'manual' && (
-                            <button onClick={() => deleteEntity(e.id, e.canonical)} className='px-2.5 py-1 rounded-md border border-red-200 text-xs text-red-600 hover:bg-red-50'>Delete</button>
+                            <button onClick={() => { void deleteEntity(e.id, e.canonical) }} className='px-2.5 py-1 rounded-md border border-red-200 text-xs text-red-600 hover:bg-red-50'>Delete</button>
                           )}
                         </>
                       )}

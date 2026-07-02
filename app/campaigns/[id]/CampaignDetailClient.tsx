@@ -192,7 +192,7 @@ function EditCampaignModal({ campaign, onSave, onClose }: {
         <div className="flex gap-3 justify-end mt-6">
           <button onClick={onClose}
             className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Cancel</button>
-          <button onClick={handleSave} disabled={saving || !name.trim()}
+          <button onClick={() => { void handleSave() }} disabled={saving || !name.trim()}
             className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
             style={{ background: HERMES }}>
             {saving ? 'Saving...' : 'Save Changes'}
@@ -228,10 +228,10 @@ function AddSingleRecipient({ campaignId, onDone }: { campaignId: string; onDone
   return (
     <div className="mb-4 flex items-center gap-2">
       <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
         placeholder="Enter email address..."
         className="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-orange-400" />
-      <button onClick={handleAdd} disabled={saving || !email.trim()}
+      <button onClick={() => { void handleAdd() }} disabled={saving || !email.trim()}
         className="text-xs px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-50"
         style={{ background: HERMES }}>
         {saving ? 'Adding...' : 'Add'}
@@ -435,7 +435,7 @@ function RespondentUpload({ campaignId, hiddenFields, onDone }: {
         <div className="flex gap-2 mt-4">
           <button onClick={() => setStep('map')}
             className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-medium">Back</button>
-          <button onClick={handleUpload} disabled={included.size === 0 || uploading}
+          <button onClick={() => { void handleUpload() }} disabled={included.size === 0 || uploading}
             className="text-xs px-4 py-1.5 rounded-lg text-white font-medium disabled:opacity-50"
             style={{ background: HERMES }}>
             {uploading ? 'Importing...' : 'Import ' + included.size + ' respondents'}
@@ -555,7 +555,7 @@ function RespondentUpload({ campaignId, hiddenFields, onDone }: {
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragEnter={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
+      onDrop={(e) => { void handleDrop(e) }}
       onClick={() => fileRef.current?.click()}
     >
       <div className="text-3xl mb-2">{dragging ? '📥' : '📄'}</div>
@@ -565,7 +565,7 @@ function RespondentUpload({ campaignId, hiddenFields, onDone }: {
       <p className="text-xs text-gray-400 mb-1">Supported formats: CSV, TSV, JSON, Excel (.xlsx)</p>
       <p className="text-xs text-gray-400 mb-4">Required column: email. Optional: {hiddenFields.join(', ') || 'none'}</p>
       {parseError && <p className="text-xs text-red-500 mb-3">{parseError}</p>}
-      <input ref={fileRef} type="file" accept=".csv,.tsv,.tab,.txt,.json,.xlsx,.xls" onChange={handleFile} className="hidden" />
+      <input ref={fileRef} type="file" accept=".csv,.tsv,.tab,.txt,.json,.xlsx,.xls" onChange={(e) => { void handleFile(e) }} className="hidden" />
       <button onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
         className="px-4 py-2 rounded-lg text-white text-sm font-medium" style={{ background: HERMES }}>
         Choose file
@@ -1285,7 +1285,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                   <p className="text-[9px] text-gray-400 mt-0.5">{sendTime ? 'ET' : 'Any time'}</p>
                 </div>
               </div>
-              <button onClick={() => saveEmail(email.id)} disabled={saving}
+              <button onClick={() => { void saveEmail(email.id) }} disabled={saving}
                 className="text-xs px-4 py-1.5 rounded-lg text-white font-medium disabled:opacity-50"
                 style={{ background: HERMES }}>
                 {saving ? 'Saving...' : 'Save'}
@@ -1301,7 +1301,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
         </div>
       ))}
 
-      <button onClick={addEmail}
+      <button onClick={() => { void addEmail() }}
         className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-all">
         + Add {emails.length === 0 ? 'initial email' : 'reminder'}
       </button>
@@ -1408,7 +1408,7 @@ function ReminderModal({ campaignId, emails, statusCounts, onSendResult, onClose
 
           <div className="flex gap-3 justify-end pt-2">
             <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Cancel</button>
-            <button onClick={doSend} disabled={reminderSending || counts[audience] === 0}
+            <button onClick={() => { void doSend() }} disabled={reminderSending || counts[audience] === 0}
               className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
               style={{ background: HERMES }}>
               {reminderSending ? 'Sending...' : 'Send Now'}
@@ -1495,7 +1495,7 @@ function CampaignScheduleCard({ campaignId, campaignStatus }: { campaignId: stri
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
             <p className="text-[9px] text-gray-400 mt-0.5">Eastern Time</p>
           </div>
-          <button onClick={handleSchedule} disabled={saving || !launchDate}
+          <button onClick={() => { void handleSchedule() }} disabled={saving || !launchDate}
             className="text-xs px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50 hover:opacity-90"
             style={{ background: HERMES }}>
             {saved ? 'Scheduled!' : saving ? 'Saving...' : 'Schedule'}
@@ -1637,11 +1637,11 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
               Share
             </button>
             <button
-              onClick={async () => {
+              onClick={() => { void (async () => {
                 if (!confirm('Delete "' + campaign.name + '"? This cannot be undone.')) return
                 const res = await fetch('/api/campaigns/' + campaign.id, { method: 'DELETE' })
                 if (res.ok) window.location.href = '/campaigns'
-              }}
+              })() }}
               className="text-xs px-3 py-1.5 rounded-lg font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
             >
               Delete
@@ -1883,7 +1883,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <button onClick={() => handleTestSend(0)} disabled={testSending}
+                      <button onClick={() => { void handleTestSend(0) }} disabled={testSending}
                         className="w-full flex items-center gap-3 text-sm px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all disabled:opacity-50">
                         <span className="text-lg">📨</span>
                         <div className="text-left flex-1">
@@ -1891,7 +1891,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
                           <div className="text-[10px] text-gray-400">Preview in your inbox first</div>
                         </div>
                       </button>
-                      <button onClick={() => handleSend(0)} disabled={sending || statusCounts.pending === 0}
+                      <button onClick={() => { void handleSend(0) }} disabled={sending || statusCounts.pending === 0}
                         className="w-full flex items-center gap-3 text-sm px-4 py-3 rounded-xl text-white font-medium disabled:opacity-50 transition-all"
                         style={{ background: statusCounts.pending > 0 ? HERMES : '#9ca3af' }}>
                         <span className="text-lg">🚀</span>
@@ -2029,12 +2029,12 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
             </div>
 
             {showAddSingle && (
-              <AddSingleRecipient campaignId={campaign.id} onDone={() => { setShowAddSingle(false); refreshRespondents() }} />
+              <AddSingleRecipient campaignId={campaign.id} onDone={() => { setShowAddSingle(false); void refreshRespondents() }} />
             )}
 
             {showUpload && (
               <div className="mb-4">
-                <RespondentUpload campaignId={campaign.id} hiddenFields={campaign.hidden_fields} onDone={refreshRespondents} />
+                <RespondentUpload campaignId={campaign.id} hiddenFields={campaign.hidden_fields} onDone={() => { void refreshRespondents() }} />
               </div>
             )}
 
@@ -2105,7 +2105,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
                             <td className="px-3 py-2 text-center">
                               {r.status === 'pending' && (
                                 <button
-                                  onClick={async (e) => {
+                                  onClick={(e) => { void (async () => {
                                     e.stopPropagation()
                                     if (!confirm('Remove ' + r.email + '?')) return
                                     const res = await fetch('/api/campaigns/' + campaign.id + '/respondents', {
@@ -2114,7 +2114,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
                                       body: JSON.stringify({ respondent_ids: [r.id] }),
                                     })
                                     if (res.ok) setRespondents(prev => prev.filter(x => x.id !== r.id))
-                                  }}
+                                  })() }}
                                   title="Remove recipient"
                                   className="text-gray-300 hover:text-red-500 transition-colors text-xs"
                                 >✕</button>

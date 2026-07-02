@@ -49,7 +49,7 @@ export default function ReadoutClient() {
     } catch { setError('Failed to load readout') }
     finally { setLoading(false); setRefreshing(false) }
   }
-  useEffect(() => { load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function download(kind: 'pdf' | 'pptx') {
     const set = kind === 'pdf' ? setPdfState : setPptxState
@@ -83,9 +83,9 @@ export default function ReadoutClient() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/bots')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: MUTE }}>&larr; Agents</button>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => load(true)} disabled={refreshing} style={{ ...btn, opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
-          <button onClick={() => download('pdf')} disabled={pdfState === 'working'} style={{ ...btn, opacity: pdfState === 'working' ? 0.6 : 1 }}>{pdfState === 'working' ? 'Preparing…' : 'Download PDF'}</button>
-          <button onClick={() => download('pptx')} disabled={pptxState === 'working'} style={{ ...btn, color: 'white', background: TEAL, borderColor: TEAL, opacity: pptxState === 'working' ? 0.6 : 1 }}>{pptxState === 'working' ? 'Building…' : 'Export PPTX'}</button>
+          <button onClick={() => { void load(true) }} disabled={refreshing} style={{ ...btn, opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+          <button onClick={() => { void download('pdf') }} disabled={pdfState === 'working'} style={{ ...btn, opacity: pdfState === 'working' ? 0.6 : 1 }}>{pdfState === 'working' ? 'Preparing…' : 'Download PDF'}</button>
+          <button onClick={() => { void download('pptx') }} disabled={pptxState === 'working'} style={{ ...btn, color: 'white', background: TEAL, borderColor: TEAL, opacity: pptxState === 'working' ? 0.6 : 1 }}>{pptxState === 'working' ? 'Building…' : 'Export PPTX'}</button>
         </div>
       </div>
       <div dangerouslySetInnerHTML={{ __html: renderAgentReadoutFragment(readout) }} />

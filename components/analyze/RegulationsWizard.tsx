@@ -145,12 +145,12 @@ export default function RegulationsWizard({ onBack }: Props) {
           type="text"
           value={query}
           onChange={function(e) { setQuery(e.target.value) }}
-          onKeyDown={function(e) { if (e.key === 'Enter' && query.trim()) handleSearch() }}
+          onKeyDown={function(e) { if (e.key === 'Enter' && query.trim()) void handleSearch() }}
           placeholder="Search dockets — e.g. 'EPA water quality' or 'FDA-2024-N-0001'"
           className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors"
         />
         <button
-          onClick={function() { handleSearch() }}
+          onClick={function() { void handleSearch() }}
           disabled={loading || !query.trim()}
           className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all"
           style={{ background: HERMES }}
@@ -175,7 +175,7 @@ export default function RegulationsWizard({ onBack }: Props) {
               return (
                 <button
                   key={d.id}
-                  onClick={function() { if (isSelected) setSelectedDocket(null); else handleSelectDocket(d) }}
+                  onClick={function() { if (isSelected) setSelectedDocket(null); else void handleSelectDocket(d) }}
                   className={'flex items-start gap-3 px-4 py-3 rounded-xl border transition-all text-left ' + (isSelected ? 'border-orange-400 bg-orange-50' : 'bg-white border-gray-200 hover:border-orange-400 hover:bg-orange-50')}
                 >
                   <div className="flex-1 min-w-0">
@@ -196,7 +196,7 @@ export default function RegulationsWizard({ onBack }: Props) {
           </div>
           {dockets.length < totalResults && (
             <button
-              onClick={function() { handleSearch(searchPage + 1) }}
+              onClick={function() { void handleSearch(searchPage + 1) }}
               disabled={loading}
               className="text-xs font-semibold px-4 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 self-center"
             >
@@ -241,7 +241,7 @@ export default function RegulationsWizard({ onBack }: Props) {
           <p className="text-xs text-gray-400">Comments will download automatically in the background after you create the dataset.</p>
 
           <button
-            onClick={handleCreate}
+            onClick={function() { void handleCreate() }}
             disabled={!datasetName.trim() || loadingCount || creating}
             className="px-6 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}

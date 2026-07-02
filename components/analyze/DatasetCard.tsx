@@ -331,8 +331,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     // PDF / PPTX blob download. Competitive needs the focus picker first (which
     // generates after the pick) — stash the chosen format for it; the rest go now.
     const docFormat: 'pdf' | 'pptx' = format === 'pptx' ? 'pptx' : 'pdf'
-    if (type.id === 'competitive') { setProjectFormat(docFormat); startCompetitive() }
-    else handleProjectReport(purpose, undefined, docFormat)
+    if (type.id === 'competitive') { setProjectFormat(docFormat); void startCompetitive() }
+    else void handleProjectReport(purpose, undefined, docFormat)
   }
 
   // Project report (collections only): synthesize a purpose-specific PDF/PPTX
@@ -500,11 +500,11 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
               )}
               {isStudy && (
                 <>
-                  <button onClick={function() { handleSync(false) }}
+                  <button onClick={function() { void handleSync(false) }}
                     style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                     Sync new responses
                   </button>
-                  <button onClick={function() { if (window.confirm('Re-import all responses from scratch? Use this if you added new survey fields.')) handleSync(true) }}
+                  <button onClick={function() { if (window.confirm('Re-import all responses from scratch? Use this if you added new survey fields.')) void handleSync(true) }}
                     style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                     Re-import all
                   </button>
@@ -517,19 +517,19 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 </button>
               )}
               {(isReviews || isTownHall) && (
-                <button onClick={function() { handleSourceSync() }}
+                <button onClick={function() { void handleSourceSync() }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sync {isReviews ? 'reviews' : 'responses'}
                 </button>
               )}
               {isCollection && (
-                <button onClick={function() { handleSourceSync() }}
+                <button onClick={function() { void handleSourceSync() }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sync members
                 </button>
               )}
               {collectionInfo && (
-                <button onClick={handleRemoveFromCollection}
+                <button onClick={function() { void handleRemoveFromCollection() }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#d97706', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Remove from collection
                 </button>
@@ -614,7 +614,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           </select>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
-              onClick={handleTransferConfirm}
+              onClick={function() { void handleTransferConfirm() }}
               disabled={!transferOrgId || transferring}
               style={{ flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 700, color: 'white', background: transferring || !transferOrgId ? '#9ca3af' : HERMES, border: 'none', borderRadius: 7, cursor: transferring || !transferOrgId ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
               {transferring ? 'Moving…' : 'Move'}
@@ -686,7 +686,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         )}
         {isCollection && dataset.members_updated && (
           <button
-            onClick={handleRefreshCollection}
+            onClick={function() { void handleRefreshCollection() }}
             disabled={refreshing}
             title="A member dataset changed (synced or re-analyzed) since this collection last recomputed. Refresh to rebuild its merged schema, row count, and analytics."
             style={{
@@ -924,7 +924,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             </div>
             <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button onClick={function() { setFocusMembers(null) }} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-              <button onClick={function() { var id = focusPick; setFocusMembers(null); handleProjectReport('competitive', id, projectFormat) }} disabled={!focusPick}
+              <button onClick={function() { var id = focusPick; setFocusMembers(null); void handleProjectReport('competitive', id, projectFormat) }} disabled={!focusPick}
                 style={{ padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', background: focusPick ? '#0f766e' : '#9ca3af', border: 'none', borderRadius: 10, cursor: focusPick ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>Generate report</button>
             </div>
           </div>

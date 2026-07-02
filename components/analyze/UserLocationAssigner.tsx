@@ -200,7 +200,7 @@ export default function UserLocationAssigner({ sourceId }: Props) {
                 )
               })}
             </div>
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={function() { void handleSave() }} disabled={saving}
               className="self-start px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
               style={{ background: HERMES }}>
               {saving ? 'Saving...' : 'Save Assignments'}

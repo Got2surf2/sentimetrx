@@ -300,11 +300,11 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                       autoFocus
                       value={renameVal}
                       onChange={(e) => setRenameVal(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') submitRename(r.id); if (e.key === 'Escape') setRenameId(null) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void submitRename(r.id); if (e.key === 'Escape') setRenameId(null) }}
                       className="flex-1 min-w-0 px-2 py-1 border border-orange-400 rounded-lg outline-none"
                       style={{ fontSize: '16px' }}
                     />
-                    <button onClick={() => submitRename(r.id)} className="shrink-0 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-lg px-2.5 py-1.5">Save</button>
+                    <button onClick={() => { void submitRename(r.id) }} className="shrink-0 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-lg px-2.5 py-1.5">Save</button>
                     <button onClick={() => setRenameId(null)} className="shrink-0 text-sm text-gray-400 hover:text-gray-600 px-1">✕</button>
                   </div>
                 </div>
@@ -387,7 +387,7 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                 className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={confirmDelete} disabled={deleting}
+              <button onClick={() => { void confirmDelete() }} disabled={deleting}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">
                 {deleting ? 'Deleting…' : 'Delete everything'}
               </button>
@@ -417,7 +417,7 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
                 className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={confirmTransfer} disabled={xferring || !xferOrgId}
+              <button onClick={() => { void confirmTransfer() }} disabled={xferring || !xferOrgId}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
                 style={{ background: '#e8622a' }}>
                 {xferring ? 'Moving…' : 'Move recording'}

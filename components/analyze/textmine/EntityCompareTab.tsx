@@ -608,7 +608,7 @@ export default function EntityCompareTab({
             <div style={{ padding: '12px 22px', borderTop: '1px solid ' + T.border, display: 'flex', justifyContent: 'flex-end' as const, gap: 8 }}>
               <button
                 onClick={function() {
-                  navigator.clipboard.writeText(summaryText)
+                  void navigator.clipboard.writeText(summaryText)
                   setCopied(true)
                   setTimeout(function() { setCopied(false) }, 1600)
                 }}

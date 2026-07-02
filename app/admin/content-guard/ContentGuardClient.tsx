@@ -68,7 +68,7 @@ export default function ContentGuardClient() {
   function handlePasteRun() {
     var lines = inputText.split('\n').map(function(l) { return l.trim() }).filter(function(l) { return l.length > 0 })
     if (lines.length === 0) return
-    runTest(lines)
+    void runTest(lines)
   }
 
   function handleCSV(e: React.ChangeEvent<HTMLInputElement>) {
@@ -109,7 +109,7 @@ export default function ContentGuardClient() {
         }
       }
 
-      runTest(texts, labels.length > 0 ? labels : undefined)
+      void runTest(texts, labels.length > 0 ? labels : undefined)
     }
     reader.readAsText(file)
   }

@@ -296,7 +296,7 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
           {(function() {
             var disabled = saving || members.length < minMembers || (!isAdd && !name.trim())
             return (
-          <button onClick={handleCreate}
+          <button onClick={function() { void handleCreate() }}
             disabled={disabled}
             style={{
               padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', borderRadius: 10,

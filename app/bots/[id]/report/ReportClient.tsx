@@ -93,7 +93,7 @@ export default function ReportClient() {
     } catch { setError('Failed to load study') }
     finally { setLoading(false); setRefreshing(false) }
   }
-  useEffect(() => { load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function exportPptx() {
     setExporting(true)
@@ -198,10 +198,10 @@ export default function ReportClient() {
           <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}><span style={{ color: '#0F7173' }}>data</span><span style={{ color: '#E8632A' }}>nautix</span></span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={() => router.push('/bots/' + botId + '/conversations')} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Transcripts</button>
-          <button onClick={() => load(true)} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
-          <button onClick={shareReport} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
-          <button onClick={downloadPdf} disabled={pdfState === 'working'} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pdfState === 'working' ? 0.6 : 1 }}>{pdfState === 'working' ? 'Generating…' : 'PDF'}</button>
-          <button onClick={exportPptx} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
+          <button onClick={() => { void load(true) }} disabled={refreshing} style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+          <button onClick={() => { void shareReport() }} disabled={shareState === 'sharing'} title="Create a read-only snapshot link of this report" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: shareState === 'copied' ? '#ECFDF5' : 'white', color: shareState === 'copied' ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.6 : 1 }}>{shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? '✓ Link copied' : shareState === 'error' ? 'Failed — retry' : 'Share'}</button>
+          <button onClick={() => { void downloadPdf() }} disabled={pdfState === 'working'} title="Download a flat PDF (summary only — no conversation drill-downs)" style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pdfState === 'working' ? 0.6 : 1 }}>{pdfState === 'working' ? 'Generating…' : 'PDF'}</button>
+          <button onClick={() => { void exportPptx() }} disabled={exporting} style={{ padding: '8px 16px', borderRadius: 20, border: 'none', background: TEAL, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Exporting…' : 'Export PPTX'}</button>
           </div>
         </div>
       </div>

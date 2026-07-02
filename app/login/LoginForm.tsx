@@ -129,7 +129,7 @@ function LoginFormInner() {
         <p className="text-sm text-center leading-relaxed" style={{ color: '#6b7280' }}>
           Enter your email and we’ll send you a one-time sign-in link. No password needed.
         </p>
-        <form onSubmit={handleMagicLink} className="flex flex-col gap-3">
+        <form onSubmit={(e) => { void handleMagicLink(e) }} className="flex flex-col gap-3">
           <input
             type="email"
             placeholder="Email address"
@@ -171,7 +171,7 @@ function LoginFormInner() {
         <p className="text-sm text-center leading-relaxed" style={{ color: '#6b7280' }}>
           Enter your email and we’ll send you a link to reset your password.
         </p>
-        <form onSubmit={handleForgot} className="flex flex-col gap-3">
+        <form onSubmit={(e) => { void handleForgot(e) }} className="flex flex-col gap-3">
           <input
             type="email"
             placeholder="Email address"
@@ -202,7 +202,7 @@ function LoginFormInner() {
   }
 
   return (
-    <form onSubmit={handleLogin} className="flex flex-col gap-3">
+    <form onSubmit={(e) => { void handleLogin(e) }} className="flex flex-col gap-3">
       {urlError && (
         <div
           className="px-4 py-3 rounded-xl text-xs leading-relaxed"

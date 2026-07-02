@@ -234,13 +234,13 @@ function ExpandableTerms({ terms, onChange, color = 'purple', context }: {
             {kw}
             {!isExpanded && (
               <>
-                <button onClick={() => toggleExpand(kw, 'similar')}
+                <button onClick={() => { void toggleExpand(kw, 'similar') }}
                   disabled={!!isLoading}
                   className={`px-1 py-0 rounded text-[8px] font-bold leading-none transition-colors ${hasSimilar ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-blue-200 hover:text-blue-600'}`}
                   title={hasSimilar ? 'Remove similar terms' : 'Add similar word forms (lemmas, plurals, tenses)'}>
                   {isLoading === 'similar' ? '·' : 'S'}
                 </button>
-                <button onClick={() => toggleExpand(kw, 'associated')}
+                <button onClick={() => { void toggleExpand(kw, 'associated') }}
                   disabled={!!isLoading}
                   className={`px-1 py-0 rounded text-[8px] font-bold leading-none transition-colors ${hasAssociated ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-emerald-200 hover:text-emerald-600'}`}
                   title={hasAssociated ? 'Remove associated terms' : 'Add associated/related terms'}>
@@ -328,7 +328,7 @@ function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventD
             <div className="flex-1">
               <Input value={topic.label} onChange={v => onChange({ ...topic, label: v })} placeholder="e.g. Transportation" />
             </div>
-            <button onClick={generateWithAI} disabled={generating || !topic.label.trim()}
+            <button onClick={() => { void generateWithAI() }} disabled={generating || !topic.label.trim()}
               className="px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex-shrink-0 flex items-center gap-1.5"
               style={{ background: '#7c3aed' }}
               title="AI fills in description, question, keywords, and follow-up angles">
@@ -495,7 +495,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const gradeDescription = useCallback((desc: string, industry?: string) => {
     if (gradeTimer.current) clearTimeout(gradeTimer.current)
     if (!desc.trim()) { setDescGrade(null); return }
-    gradeTimer.current = setTimeout(async () => {
+    gradeTimer.current = setTimeout(() => { void (async () => {
       setGrading(true)
       try {
         const res = await fetch('/api/townhall/grade-description', {
@@ -506,7 +506,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
         setDescGrade({ score: data.score || 0, suggestion: data.suggestion || '' })
       } catch {}
       setGrading(false)
-    }, 1200)
+    })() }, 1200)
   }, [])
 
   // Sensitive topics AI
@@ -785,7 +785,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               currentStep={step}
               highestVisited={highestVisited}
               onStepClick={i => { if (i <= highestVisited || canProceed()) goToStep(i) }}
-              onSave={handleSave}
+              onSave={() => { void handleSave() }}
               saving={saving}
             />
           </div>
@@ -976,7 +976,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                     ? 'Group your questions under each tasting item (round). The moderator pushes one round at a time — everyone answers the same questions, then holds until the next item is served.'
                     : 'Define the topics you want to explore. Participants will be assigned different starting topics to ensure broad coverage across the room.'}
                 </p>
-                <button onClick={generateGuide} disabled={generatingGuide || !config.context.event_description?.trim()}
+                <button onClick={() => { void generateGuide() }} disabled={generatingGuide || !config.context.event_description?.trim()}
                   className="flex-shrink-0 ml-4 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
                   style={{ background: '#7c3aed' }}
                   title="AI generates topics from your event description">
@@ -1115,7 +1115,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Label sub="Topics the AI should never ask about">Sensitive topics</Label>
-                  <button onClick={suggestSensitiveTopics}
+                  <button onClick={() => { void suggestSensitiveTopics() }}
                     disabled={suggestingTopics || (!config.context.event_description?.trim() && !config.industry)}
                     className="text-[10px] font-semibold px-2.5 py-1 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
                     style={{ background: '#7c3aed' }}>
@@ -1460,7 +1460,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </button>
             ) : (
               <button
-                onClick={handleSave}
+                onClick={() => { void handleSave() }}
                 disabled={saving}
                 className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: HERMES }}>

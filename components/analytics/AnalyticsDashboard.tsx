@@ -75,7 +75,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
     }
   }, [studyId, from, to])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { void fetchData() }, [fetchData])
 
   const setLast30 = () => { setFrom(defaultFrom()); setTo(defaultTo()) }
   const setAllTime = () => { setFrom('2024-01-01'); setTo(defaultTo()) }

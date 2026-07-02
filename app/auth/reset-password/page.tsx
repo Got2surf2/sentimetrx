@@ -46,7 +46,7 @@ export default function ResetPasswordPage() {
             <p className="text-slate-400 text-sm mt-1">Taking you to Analytics...</p>
           </div>
         ) : (
-          <form onSubmit={handleReset} className="flex flex-col gap-3">
+          <form onSubmit={(e) => { void handleReset(e) }} className="flex flex-col gap-3">
             <input
               type="password"
               placeholder="New password (min 8 characters)"

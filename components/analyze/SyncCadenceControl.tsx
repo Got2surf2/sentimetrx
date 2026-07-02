@@ -131,7 +131,7 @@ export default function SyncCadenceControl({ sourceId }: Props) {
           return (
             <button
               key={opt.value}
-              onClick={function() { changeCadence(opt.value) }}
+              onClick={function() { void changeCadence(opt.value) }}
               disabled={saving}
               style={{
                 padding: '12px 14px', borderRadius: 10, textAlign: 'left',
@@ -184,7 +184,7 @@ export default function SyncCadenceControl({ sourceId }: Props) {
             <option value="week">week(s)</option>
           </select>
           <button
-            onClick={applyCustom}
+            onClick={function() { void applyCustom() }}
             disabled={saving}
             style={{ background: HERMES }}
             className="ml-auto text-xs font-semibold text-white px-3 py-1.5 rounded-lg disabled:opacity-50">

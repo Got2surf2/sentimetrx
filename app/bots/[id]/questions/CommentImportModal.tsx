@@ -128,7 +128,7 @@ export default function CommentImportModal({ botId, onClose, onImported }: {
         {err && <p className='text-sm text-red-600 mb-2'>{err}</p>}
         <div className='flex justify-end gap-2'>
           <button onClick={onClose} disabled={busy} className='px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'>Cancel</button>
-          <button onClick={submit} disabled={busy || withComment === 0}
+          <button onClick={() => { void submit() }} disabled={busy || withComment === 0}
             className='px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700 disabled:opacity-50'>
             {busy ? 'Importing & drafting…' : 'Import ' + (withComment || '') + ' comments'}</button>
         </div>

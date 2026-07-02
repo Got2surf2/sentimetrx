@@ -128,7 +128,7 @@ export default function InvitePage(props: Props) {
                 </p>
               </div>
 
-              <form onSubmit={handleRegister} className="flex flex-col gap-3">
+              <form onSubmit={(e) => { void handleRegister(e) }} className="flex flex-col gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: '#6b7280' }}>
                     Email <span className="font-normal text-gray-400">· locked to this invitation</span>

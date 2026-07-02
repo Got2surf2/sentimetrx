@@ -243,16 +243,16 @@ export default function DownloadMonitor({
           <span style={{ fontSize: 12, color: '#374151' }}>Set frequency:</span>
           <select
             disabled={bulkBusy}
-            onChange={e => { const v = Number(e.target.value); if (!Number.isNaN(v)) bulkSetFrequency(v); e.target.value = '' }}
+            onChange={e => { const v = Number(e.target.value); if (!Number.isNaN(v)) void bulkSetFrequency(v); e.target.value = '' }}
             style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: 'white', cursor: bulkBusy ? 'wait' : 'pointer' }}>
             <option value="">Choose…</option>
             {FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <button onClick={() => bulkSetStatus('paused')} disabled={bulkBusy}
+          <button onClick={() => { void bulkSetStatus('paused') }} disabled={bulkBusy}
             style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #fcd34d', background: '#fef3c7', color: '#92400e', cursor: bulkBusy ? 'wait' : 'pointer' }}>
             Pause
           </button>
-          <button onClick={() => bulkSetStatus('active')} disabled={bulkBusy}
+          <button onClick={() => { void bulkSetStatus('active') }} disabled={bulkBusy}
             style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #a7f3d0', background: '#d1fae5', color: '#065f46', cursor: bulkBusy ? 'wait' : 'pointer' }}>
             Resume
           </button>
@@ -336,7 +336,7 @@ export default function DownloadMonitor({
                       <select
                         value={FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) ? s.sync_frequency_hours : ''}
                         disabled={isSaving}
-                        onChange={e => changeFrequency(s.id, Number(e.target.value))}
+                        onChange={e => { void changeFrequency(s.id, Number(e.target.value)) }}
                         style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: 'white', cursor: isSaving ? 'wait' : 'pointer' }}>
                         {!FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) && (
                           <option value="">{fmtFrequency(s.sync_frequency_hours)} (custom)</option>

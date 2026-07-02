@@ -71,7 +71,7 @@ export default function TransferOrg({ resourceName, resourceLabel, apiUrl, allOr
 
         <button
           disabled={transferring || !targetOrgId}
-          onClick={async function() {
+          onClick={function() { void (async function() {
             if (!targetOrgId) return
             var orgLabel = allOrgs.find(function(o) { return o.id === targetOrgId })?.name || targetOrgId
             if (!confirm('Transfer "' + resourceName + '" to ' + orgLabel + '? This cannot be undone.')) return
@@ -94,7 +94,7 @@ export default function TransferOrg({ resourceName, resourceLabel, apiUrl, allOr
               setError(e.message || 'Transfer failed')
               setTransferring(false)
             }
-          }}
+          })() }}
           style={{
             padding: '8px 20px', borderRadius: 10, border: 'none',
             background: HERMES, color: 'white', fontSize: 13, fontWeight: 600,

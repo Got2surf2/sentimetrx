@@ -503,11 +503,11 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
           <div className="flex gap-2">
             <input
               type="text" value={studyGuid} onChange={e => setStudyGuid(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') loadStudy() }}
+              onKeyDown={e => { if (e.key === 'Enter') void loadStudy() }}
               placeholder="Paste study GUID..."
               className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-400 focus:outline-none"
             />
-            <button onClick={loadStudy} disabled={loadingStudy || !studyGuid.trim()}
+            <button onClick={() => { void loadStudy() }} disabled={loadingStudy || !studyGuid.trim()}
               className="px-4 py-2 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-40"
               style={{ background: HERMES }}>
               {loadingStudy ? 'Loading...' : 'Load'}
@@ -565,7 +565,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={runSim} disabled={simRunning || !studyConfig}
+                <button onClick={() => { void runSim() }} disabled={simRunning || !studyConfig}
                   className="px-5 py-2.5 text-white rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                   style={{ background: HERMES }}>
                   {simRunning ? 'Generating...' : `Generate ${simCount} responses`}
@@ -636,20 +636,20 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
               <label className="block text-xs font-semibold text-gray-500 mb-2">Test a respondent reply</label>
               <div className="flex gap-2 mb-3">
                 <input type="text" value={aiInput} onChange={e => setAiInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && aiInput.trim()) runAI(aiInput.trim(), 'deflect') }}
+                  onKeyDown={e => { if (e.key === 'Enter' && aiInput.trim()) void runAI(aiInput.trim(), 'deflect') }}
                   placeholder="Type what a respondent might say..."
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-400 focus:outline-none" disabled={aiRunning} />
-                <button onClick={() => runAI(aiInput.trim(), 'deflect')} disabled={aiRunning || !aiInput.trim()}
+                <button onClick={() => { void runAI(aiInput.trim(), 'deflect') }} disabled={aiRunning || !aiInput.trim()}
                   className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-40">Deflect</button>
-                <button onClick={() => runAI(aiInput.trim(), 'clarify')} disabled={aiRunning || !aiInput.trim()}
+                <button onClick={() => { void runAI(aiInput.trim(), 'clarify') }} disabled={aiRunning || !aiInput.trim()}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-40">Clarify</button>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => runAIBatch('deflect')} disabled={aiBatch}
+                <button onClick={() => { void runAIBatch('deflect') }} disabled={aiBatch}
                   className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium hover:bg-orange-200 disabled:opacity-40">
                   {aiBatch ? 'Running...' : `Run all deflect tests (${DEFLECT_EXAMPLES.length})`}
                 </button>
-                <button onClick={() => runAIBatch('clarify')} disabled={aiBatch}
+                <button onClick={() => { void runAIBatch('clarify') }} disabled={aiBatch}
                   className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 disabled:opacity-40">
                   {aiBatch ? 'Running...' : `Run all clarify tests (${CLARIFY_EXAMPLES.length})`}
                 </button>
@@ -752,7 +752,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
               </div>
 
               <div className="flex items-center gap-3">
-                <button onClick={runLeakageTest} disabled={leakRunning || !studyConfig || studyQuestions.length === 0}
+                <button onClick={() => { void runLeakageTest() }} disabled={leakRunning || !studyConfig || studyQuestions.length === 0}
                   className="px-5 py-2.5 text-white rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all"
                   style={{ background: HERMES }}>
                   {leakRunning ? 'Testing...' : 'Run Leakage Test'}

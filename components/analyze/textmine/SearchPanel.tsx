@@ -122,7 +122,7 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
             type="text"
             value={query}
             onChange={function(e) { setQuery(e.target.value) }}
-            onKeyDown={function(e) { if (e.key === 'Enter') search(query) }}
+            onKeyDown={function(e) { if (e.key === 'Enter') void search(query) }}
             placeholder={aiMode ? 'Describe what you\'re looking for...' : 'Search comments...'}
             style={{
               width: '100%', padding: '8px 12px', paddingRight: query ? 32 : 12, borderRadius: 8,
@@ -145,7 +145,7 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
         </label>
 
         <button
-          onClick={function() { search(query) }}
+          onClick={function() { void search(query) }}
           disabled={searching || !query.trim()}
           style={{
             padding: '8px 18px', borderRadius: 8, border: 'none',

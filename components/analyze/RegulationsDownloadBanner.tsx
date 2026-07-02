@@ -79,7 +79,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
       window.location.reload()
     }
 
-    downloadLoop()
+    void downloadLoop()
   }, [status])
 
   if (!meta?.docket_id || meta.download_status === 'complete') return null

@@ -117,7 +117,7 @@ function SurveySession({
   useEffect(() => {
     if (!startedRef.current) {
       startedRef.current = true
-      renderInput('start')
+      void renderInput('start')
     }
   }, [renderInput])
 

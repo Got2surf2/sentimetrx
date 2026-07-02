@@ -190,7 +190,7 @@ export default function OrgBackupsClient({ orgId, targetOrgName, targetOrgSlug, 
                       />
                       <div className='flex gap-2 mt-3'>
                         <button
-                          onClick={() => restore(s.key)}
+                          onClick={() => { void restore(s.key) }}
                           disabled={isRunning || typedOrgSlug !== targetOrgSlug}
                           className='px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
                         >{isRunning ? 'Restoring…' : 'Confirm restore'}</button>

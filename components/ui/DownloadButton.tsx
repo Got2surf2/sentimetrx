@@ -42,7 +42,7 @@ export default function DownloadButton({ hrefFor, onChoose, label = 'Download', 
 
   const choose = (fmt: 'csv' | 'xlsx') => {
     setOpen(false)
-    if (onChoose) { onChoose(fmt); return }
+    if (onChoose) { void onChoose(fmt); return }
     if (hrefFor) { window.location.href = hrefFor(fmt) }
   }
 

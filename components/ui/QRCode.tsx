@@ -26,7 +26,7 @@ export default function QRCode({ url, size = 160, color = '#000000', background 
   useEffect(function() {
     if (!url) { setSrc(''); return }
     let cancelled = false
-    import('qrcode').then(function(mod) {
+    void import('qrcode').then(function(mod) {
       if (cancelled) return
       const lib = (mod as any).default || mod
       lib.toDataURL(url, { width: size * 2, margin, color: { dark: color, light: background } })

@@ -118,7 +118,7 @@ export default function EntitiesClient({
 
   useEffect(() => {
     setLoading(true)
-    reload({ includeHidden: showHidden }).finally(() => setLoading(false))
+    void reload({ includeHidden: showHidden }).finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId, showHidden])
 
@@ -293,7 +293,7 @@ export default function EntitiesClient({
               className='px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50'
             >+ Add entity</button>
             <button
-              onClick={runExtract}
+              onClick={() => { void runExtract() }}
               disabled={extracting}
               className='px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50'
             >{extracting ? 'Extracting…' : 'Re-extract entities'}</button>
@@ -315,7 +315,7 @@ export default function EntitiesClient({
                 className='border border-gray-300 rounded-lg px-3 py-2' style={{ fontSize: '16px', minWidth: 220 }} />
             </label>
             <button
-              onClick={saveBrand}
+              onClick={() => { void saveBrand() }}
               disabled={brandSaving || brand.trim() === (brandTag ?? '')}
               className='px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50'
             >{brandSaving ? 'Saving…' : 'Save brand'}</button>
@@ -357,7 +357,7 @@ export default function EntitiesClient({
                   {['person', 'place', 'organization', 'product', 'program', 'event', 'policy', 'other'].map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </label>
-              <button onClick={addEntity} disabled={addSaving}
+              <button onClick={() => { void addEntity() }} disabled={addSaving}
                 className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
               >{addSaving ? 'Adding…' : 'Add'}</button>
               <button onClick={() => { setAddOpen(false); setAddError(null) }}
@@ -491,7 +491,7 @@ export default function EntitiesClient({
                       <>
                         <button
                           disabled={savingId === e.id}
-                          onClick={() => saveEdit(e.id)}
+                          onClick={() => { void saveEdit(e.id) }}
                           className='px-3 py-1 rounded-md bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50'
                         >Save</button>
                         <button
@@ -507,13 +507,13 @@ export default function EntitiesClient({
                         >Edit</button>
                         <button
                           disabled={savingId === e.id}
-                          onClick={() => setHidden(e.id, !e.hidden)}
+                          onClick={() => { void setHidden(e.id, !e.hidden) }}
                           className='px-2 py-1 rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 disabled:opacity-50'
                         >{e.hidden ? 'Unhide' : 'Hide'}</button>
                         {e.source === 'manual' && (
                           <button
                             disabled={savingId === e.id}
-                            onClick={() => deleteEntity(e.id, e.canonical)}
+                            onClick={() => { void deleteEntity(e.id, e.canonical) }}
                             className='px-2 py-1 rounded-md text-red-600 font-medium hover:bg-red-50 disabled:opacity-50'
                             title='Permanently delete this manual entity'
                           >Delete</button>

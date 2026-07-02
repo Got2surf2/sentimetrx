@@ -154,7 +154,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
     if (flagType) params.set('flag_type', flagType)
     if (search) params.set('search', search)
 
-    fetch('/api/social/comments?' + params.toString())
+    void fetch('/api/social/comments?' + params.toString())
       .then(function(r) { return r.json() })
       .then(function(d) {
         setComments(d.comments || [])
@@ -165,13 +165,13 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   }, [page, platform, sentiment, flaggedOnly, handledFilter, statusFilter, flagType, search])
 
   const fetchStats = useCallback(function() {
-    fetch('/api/social/stats')
+    void fetch('/api/social/stats')
       .then(function(r) { return r.json() })
       .then(function(d) { setStats(d) })
   }, [])
 
   const fetchConnections = useCallback(function() {
-    fetch('/api/social/connections')
+    void fetch('/api/social/connections')
       .then(function(r) { return r.json() })
       .then(function(d) { setConnections(d.connections || []) })
   }, [])
@@ -359,11 +359,11 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         )}
         {/* Actions */}
         <div style={{ display: 'flex', gap: 6, paddingLeft: 28 }}>
-          <ActionBtn label={(c as any).is_handled ? 'Undo Handled' : 'Mark Handled'} onClick={function() { handleToggleHandled(c.id) }} active={(c as any).is_handled} />
-          <ActionBtn label={c.is_hidden ? 'Unhide' : 'Hide'} onClick={function() { handleHide(c.id) }} />
-          <ActionBtn label="Delete" onClick={function() { handleDelete(c.id) }} danger />
+          <ActionBtn label={(c as any).is_handled ? 'Undo Handled' : 'Mark Handled'} onClick={function() { void handleToggleHandled(c.id) }} active={(c as any).is_handled} />
+          <ActionBtn label={c.is_hidden ? 'Unhide' : 'Hide'} onClick={function() { void handleHide(c.id) }} />
+          <ActionBtn label="Delete" onClick={function() { void handleDelete(c.id) }} danger />
           <ActionBtn label="Reply" onClick={function() { setReplyingTo(isReplying ? null : c.id); setReplyText('') }} active={isReplying} />
-          <ActionBtn label="AI Reply" onClick={function() { handleAiReply(c.id) }} loading={replyLoading && replyingTo === c.id} />
+          <ActionBtn label="AI Reply" onClick={function() { void handleAiReply(c.id) }} loading={replyLoading && replyingTo === c.id} />
         </div>
         {/* Reply composer */}
         {isReplying && replyLoading && replyingTo === c.id && (
@@ -375,11 +375,11 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         {isReplying && !(replyLoading && replyingTo === c.id) && (
           <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <textarea value={replyText} onChange={function(e) { setReplyText(e.target.value) }}
-              onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(c.id) } }}
+              onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleReply(c.id) } }}
               placeholder="Type your reply..."
               rows={Math.max(2, Math.ceil((replyText.length || 1) / 60))}
               style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
-            <button onClick={function() { handleReply(c.id) }} disabled={replyLoading || !replyText.trim()}
+            <button onClick={function() { void handleReply(c.id) }} disabled={replyLoading || !replyText.trim()}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: replyLoading || !replyText.trim() ? '#d1d5db' : HERMES, color: 'white' }}>
               {replyLoading ? '...' : 'Send'}
             </button>
@@ -428,7 +428,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
       {tab === 'settings' ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        <SettingsPanel connections={connections} onDisconnect={handleDisconnect} />
+        <SettingsPanel connections={connections} onDisconnect={(id) => { void handleDisconnect(id) }} />
         </div>
       ) : (
         <>
@@ -494,7 +494,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
               <button
-                onClick={handleExportToTextMine}
+                onClick={() => { void handleExportToTextMine() }}
                 disabled={exporting}
                 title={socialDataset ? 'Last synced: ' + new Date(socialDataset.last_synced_at).toLocaleString() + ' (' + socialDataset.row_count + ' rows)' : 'Export comments as a TextMine dataset'}
                 style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #4f46e5', fontSize: 12, fontWeight: 600, background: '#4f46e5', color: 'white', cursor: 'pointer', opacity: exporting ? 0.6 : 1, whiteSpace: 'nowrap' }}>
@@ -575,11 +575,11 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe',
             }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{selected.size} selected</span>
-              <button onClick={function() { handleBulkAction('hide') }}
+              <button onClick={function() { void handleBulkAction('hide') }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, background: 'white', cursor: 'pointer' }}>
                 Hide All
               </button>
-              <button onClick={function() { handleBulkAction('delete') }}
+              <button onClick={function() { void handleBulkAction('delete') }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 12, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>
                 Delete All
               </button>
@@ -861,7 +861,7 @@ function AlertRulesPanel() {
   const [loading, setLoading] = useState(true)
 
   useEffect(function() {
-    fetch('/api/social/alerts').then(function(r) { return r.json() }).then(function(d) {
+    void fetch('/api/social/alerts').then(function(r) { return r.json() }).then(function(d) {
       setRules(d.rules || [])
     }).finally(function() { setLoading(false) })
   }, [])
@@ -928,11 +928,11 @@ function AlertRulesPanel() {
               </span>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={function() { toggleRule(r.id, r.enabled) }}
+              <button onClick={function() { void toggleRule(r.id, r.enabled) }}
                 style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, background: 'white', cursor: 'pointer' }}>
                 {r.enabled ? 'Pause' : 'Enable'}
               </button>
-              <button onClick={function() { deleteRule(r.id) }}
+              <button onClick={function() { void deleteRule(r.id) }}
                 style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 11, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>
                 Remove
               </button>
@@ -944,7 +944,7 @@ function AlertRulesPanel() {
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {['hate_speech', 'negative_spike', 'keyword', 'volume_spike'].map(function(type) {
           return (
-            <button key={type} onClick={function() { addRule(type) }}
+            <button key={type} onClick={function() { void addRule(type) }}
               style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: 'white', cursor: 'pointer' }}>
               + {RULE_LABELS[type]}
             </button>
@@ -1049,7 +1049,7 @@ function AutoConfigPanel() {
   const [saved, setSaved] = useState(false)
 
   useEffect(function() {
-    fetch('/api/social/auto-config').then(function(r) { return r.json() }).then(function(d) {
+    void fetch('/api/social/auto-config').then(function(r) { return r.json() }).then(function(d) {
       setSavedConfig(d.config)
       setConfig(d.config)
     }).finally(function() { setLoading(false) })
@@ -1207,7 +1207,7 @@ function AutoConfigPanel() {
       {/* Save button */}
       <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
-          onClick={handleSave}
+          onClick={() => { void handleSave() }}
           disabled={!hasChanges || saving}
           style={{
             padding: '10px 24px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 600, cursor: hasChanges ? 'pointer' : 'default',

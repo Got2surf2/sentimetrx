@@ -597,7 +597,7 @@ export default function UploadClient() {
           <div className="flex gap-3">
             <button onClick={function() { setStep(2) }} disabled={creating}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 disabled:opacity-50">Back</button>
-            <button onClick={handleCreate} disabled={creating}
+            <button onClick={() => { void handleCreate() }} disabled={creating}
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all" style={{ background: HERMES }}>
               {creating ? 'Uploading...' : 'Create Dataset'}
             </button>

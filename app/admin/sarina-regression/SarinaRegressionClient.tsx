@@ -216,7 +216,7 @@ export default function SarinaRegressionClient({ botId, logoUrl, orgName, userEm
             </div>
             <div className='flex gap-2'>
               <button
-                onClick={runAll}
+                onClick={() => { void runAll() }}
                 disabled={running}
                 className='px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
               >
@@ -338,7 +338,7 @@ export default function SarinaRegressionClient({ botId, logoUrl, orgName, userEm
                   </div>
                   <div className='flex flex-col gap-1 items-end'>
                     <button
-                      onClick={() => runOne(test)}
+                      onClick={() => { void runOne(test) }}
                       disabled={running}
                       className='px-2 py-1 rounded text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50'
                     >Re-run</button>

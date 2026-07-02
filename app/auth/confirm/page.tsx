@@ -25,7 +25,7 @@ export default function AuthConfirmPage() {
       return
     }
 
-    supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
+    void supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
       if (error) {
         router.replace('/login?error=Reset+link+expired.+Please+request+a+new+one.')
       } else if (type === 'recovery') {

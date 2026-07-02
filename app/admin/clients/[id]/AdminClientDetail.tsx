@@ -437,7 +437,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             {!org.is_admin_org && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleTogglePlan}
+                  onClick={() => { void handleTogglePlan() }}
                   disabled={togglingPlan}
                   className={'text-sm px-4 py-2 rounded-xl transition-all disabled:opacity-50 ' + (orgPlan === 'suspended' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-red-500/15 hover:bg-red-500/25 text-red-400')}
                 >
@@ -445,7 +445,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 </button>
                 {orgPlan === 'suspended' && (
                   <button
-                    onClick={openDeleteModal}
+                    onClick={() => { void openDeleteModal() }}
                     className="text-sm px-4 py-2 rounded-xl transition-all bg-red-600 text-white hover:bg-red-700"
                     title="Delete org permanently (already suspended, ready for hard delete)"
                   >
@@ -472,12 +472,12 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 {uploadingLogo ? 'Uploading...' : logoUrl ? 'Change' : 'Upload Logo'}
               </button>
               {logoUrl && (
-                <button onClick={removeLogo} disabled={uploadingLogo}
+                <button onClick={() => { void removeLogo() }} disabled={uploadingLogo}
                   className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-red-900 border border-gray-200 text-red-400 transition-colors">
                   Remove
                 </button>
               )}
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { void uploadLogo(e) }} />
             </div>
           </div>
         </div>
@@ -515,7 +515,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
               />
             </div>
             <button
-              onClick={handleSaveReviewLimit}
+              onClick={() => { void handleSaveReviewLimit() }}
               disabled={savingLimit}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
             >
@@ -582,7 +582,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                           if (e.target.value) {
                             const targetName = allOrgs.find(o => o.id === e.target.value)?.name || 'another org'
                             if (confirm('Transfer ' + (m.full_name || m.email) + ' to ' + targetName + '? Their per-user feature overrides will be cleared.')) {
-                              handleTransferUser(m.id, e.target.value)
+                              void handleTransferUser(m.id, e.target.value)
                             } else {
                               e.target.value = ''
                             }
@@ -632,7 +632,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                         value=""
                         onChange={e => {
                           if (e.target.value && confirm('Transfer "' + study.name + '" to another organization?')) {
-                            handleTransferStudy(study.id, e.target.value)
+                            void handleTransferStudy(study.id, e.target.value)
                           } else {
                             e.target.value = ''
                           }
@@ -646,7 +646,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                       </select>
                     )}
                     <button
-                      onClick={() => handleToggleStudyStatus(study)}
+                      onClick={() => { void handleToggleStudyStatus(study) }}
                       disabled={togglingStudy === study.id}
                       className={'text-xs px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50 ' + (study.status === 'closed' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-red-500/15 hover:bg-red-500/25 text-red-400')}
                     >
@@ -692,7 +692,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 className="flex-1 min-w-[200px] bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400"
               />
               <button
-                onClick={handleGenerateInvite}
+                onClick={() => { void handleGenerateInvite() }}
                 disabled={generatingInv}
                 className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
               >
@@ -737,7 +737,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 <div className="flex-1" />
                 {bulkSendEmail && (
                   <button
-                    onClick={handlePreviewEmail}
+                    onClick={() => { void handlePreviewEmail() }}
                     disabled={previewLoading}
                     className="px-3 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-800 font-semibold text-sm transition-all"
                   >
@@ -745,7 +745,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                   </button>
                 )}
                 <button
-                  onClick={handleBulkInvite}
+                  onClick={() => { void handleBulkInvite() }}
                   disabled={bulkSending || parseBulk(bulkPaste).length === 0}
                   className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
                 >
@@ -907,7 +907,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 Cancel
               </button>
               <button
-                onClick={handleDeleteOrg}
+                onClick={() => { void handleDeleteOrg() }}
                 disabled={deleting || deleteTyped.trim().toLowerCase() !== org.name.trim().toLowerCase()}
                 style={{
                   padding: '8px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, border: 'none',

@@ -567,7 +567,7 @@ export default function TownhallSimulatorClient() {
           </details>
 
           <div className="flex items-center gap-3">
-            <button onClick={run} disabled={running || !selectedId}
+            <button onClick={() => { void run() }} disabled={running || !selectedId}
               className="px-5 py-2.5 text-white rounded-lg font-semibold text-sm hover:opacity-90 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
               style={{ background: '#E8632A' }}>
               {running ? 'Running...' : 'Run Simulation'}

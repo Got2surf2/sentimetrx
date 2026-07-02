@@ -188,12 +188,12 @@ export default function QuestionsClient({
       const d = await r.json()
       if (!r.ok) { alert(d?.error || 'Could not update'); return }
       setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...d.question } : q))
-      refreshQuestions()
+      void refreshQuestions()
     } catch { alert('Network error') }
   }
 
   useEffect(() => {
-    refreshQuestions().finally(() => setLoading(false))
+    void refreshQuestions().finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId])
 
@@ -497,7 +497,7 @@ export default function QuestionsClient({
               <div className='flex justify-end gap-2 mt-4'>
                 <button onClick={() => setImportOpen(false)} disabled={importing}
                   className='px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'>Cancel</button>
-                <button onClick={handleImport} disabled={importing}
+                <button onClick={() => { void handleImport() }} disabled={importing}
                   className='px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700 disabled:opacity-50'>
                   {importing ? 'Adding…' : 'Add ' + (parseImportRows(importText).length || '') + ' questions'}</button>
               </div>
@@ -509,7 +509,7 @@ export default function QuestionsClient({
           <CommentImportModal
             botId={botId}
             onClose={() => setCsvOpen(false)}
-            onImported={(n) => { setCsvOpen(false); setCsvToast(`Imported ${n} comment${n === 1 ? '' : 's'} — drafting from ${botName}'s knowledge.`); refreshQuestions(); setTimeout(() => setCsvToast(null), 6000) }}
+            onImported={(n) => { setCsvOpen(false); setCsvToast(`Imported ${n} comment${n === 1 ? '' : 's'} — drafting from ${botName}'s knowledge.`); void refreshQuestions(); setTimeout(() => setCsvToast(null), 6000) }}
           />
         )}
         {csvToast && <div className='mb-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-3 py-2'>{csvToast}</div>}
@@ -538,7 +538,7 @@ export default function QuestionsClient({
                       <a href={'/api/bots/' + botId + '/questions/export-responses.csv?emails=1&batch=' + b.id}
                         className='px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50'
                         title='Warm, copy-paste-ready email drafts — only for people who gave an email address.'>📧 Email drafts</a>
-                      <button onClick={() => toggleShare(b)} disabled={shareBusy === b.id}
+                      <button onClick={() => { void toggleShare(b) }} disabled={shareBusy === b.id}
                         className={'px-2.5 py-1.5 rounded-lg text-xs font-medium ' + (b.share_enabled ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-sky-600 text-white hover:bg-sky-700')}>
                         {shareBusy === b.id ? '…' : b.share_enabled ? 'Sharing ✓' : 'Share with client'}</button>
                     </div>
@@ -648,7 +648,7 @@ export default function QuestionsClient({
                           session {q.session_id.slice(-8)}
                         </Link>
                         {' · '}
-                        <button onClick={() => openConversation(q)} className='text-blue-700 hover:underline font-medium'>
+                        <button onClick={() => { void openConversation(q) }} className='text-blue-700 hover:underline font-medium'>
                           💬 View full conversation
                         </button>
                       </div>
@@ -664,7 +664,7 @@ export default function QuestionsClient({
                       <div className='mt-1 flex gap-2 flex-wrap'>
                         <button
                           disabled={answeringId === q.id}
-                          onClick={() => saveAnswer(q.id, (q.agent_response || '').trim())}
+                          onClick={() => { void saveAnswer(q.id, (q.agent_response || '').trim()) }}
                           className='px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
                           title={'Accept this reply as-is and add it to ' + botName + "'s knowledge base."}
                         >✓ Accept {botName}&apos;s reply as the answer</button>
@@ -684,7 +684,7 @@ export default function QuestionsClient({
                       <button
                         key={s}
                         disabled={savingId === q.id || q.status === s}
-                        onClick={() => updateQuestion(q.id, { status: s })}
+                        onClick={() => { void updateQuestion(q.id, { status: s }) }}
                         className={'px-2 py-1 rounded-md font-medium transition-colors ' +
                           (q.status === s
                             ? 'bg-gray-200 text-gray-500 cursor-default'
@@ -699,7 +699,7 @@ export default function QuestionsClient({
                     <span className='text-gray-500'>Client review:</span>
                     <select
                       value={q.batch_id || ''}
-                      onChange={e => addToReviewBatch(q.id, e.target.value)}
+                      onChange={e => { void addToReviewBatch(q.id, e.target.value) }}
                       className='px-1.5 py-1 rounded-md border border-gray-200 bg-white text-gray-700'
                       style={{ fontSize: '12px' }}
                       title='Add this question to a client-review batch — it then appears in that batch’s share link with an AI-drafted response.'>
@@ -724,7 +724,7 @@ export default function QuestionsClient({
                     <div className='mt-1 flex gap-2 items-center'>
                       <button
                         disabled={answeringId === q.id || !ansDraft.trim() || (hasKb && !ansDirty)}
-                        onClick={() => saveAnswer(q.id, ansDraft.trim())}
+                        onClick={() => { void saveAnswer(q.id, ansDraft.trim()) }}
                         className='px-2 py-1 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50'
                       >{answeringId === q.id ? 'Saving…' : hasKb ? 'Update knowledge' : 'Save answer & add to knowledge'}</button>
                       {ansDirty && hasKb && (
@@ -749,7 +749,7 @@ export default function QuestionsClient({
                       <div className='mt-1 flex gap-2'>
                         <button
                           disabled={savingId === q.id}
-                          onClick={() => updateQuestion(q.id, { notes: noteDraft })}
+                          onClick={() => { void updateQuestion(q.id, { notes: noteDraft }) }}
                           className='px-2 py-1 rounded-md bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50'
                         >Save notes</button>
                         <button
@@ -799,7 +799,7 @@ export default function QuestionsClient({
               {convQ.agent_response && (
                 <button
                   disabled={answeringId === convQ.id}
-                  onClick={() => saveAnswer(convQ.id, (convQ.agent_response || '').trim())}
+                  onClick={() => { void saveAnswer(convQ.id, (convQ.agent_response || '').trim()) }}
                   className='mb-2 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50'
                 >✓ Accept {botName}&apos;s reply as the answer</button>
               )}
@@ -816,7 +816,7 @@ export default function QuestionsClient({
               <div className='mt-2 flex gap-2 items-center'>
                 <button
                   disabled={answeringId === convQ.id || !mAns.trim() || (mHasKb && !mDirty)}
-                  onClick={() => saveAnswer(convQ.id, mAns.trim())}
+                  onClick={() => { void saveAnswer(convQ.id, mAns.trim()) }}
                   className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
                 >{answeringId === convQ.id ? 'Saving…' : mHasKb ? 'Update knowledge' : 'Save answer & add to knowledge'}</button>
                 {mHasKb && <span className='text-xs text-emerald-700 font-medium'>✓ In knowledge base</span>}
@@ -878,13 +878,13 @@ export default function QuestionsClient({
               <div className='mt-3 flex items-center gap-2 flex-wrap'>
                 <button
                   disabled={answeringId === reviewQ.id || !rAns.trim()}
-                  onClick={() => reviewSave(reviewQ, rAns)}
+                  onClick={() => { void reviewSave(reviewQ, rAns) }}
                   className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50'
                 >{answeringId === reviewQ.id ? 'Saving…' : rHasKb ? 'Update & next →' : 'Save answer & next →'}</button>
                 {reviewQ.agent_response && (
                   <button
                     disabled={answeringId === reviewQ.id}
-                    onClick={() => reviewAccept(reviewQ)}
+                    onClick={() => { void reviewAccept(reviewQ) }}
                     className='px-3 py-1.5 rounded-md bg-white border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50 disabled:opacity-50'
                     title={'Accept ' + botName + "'s own reply (shown above) as the answer."}
                   >✓ Accept {botName}&apos;s reply</button>
@@ -911,12 +911,12 @@ export default function QuestionsClient({
             <div className='mt-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md p-2 max-h-36 overflow-auto whitespace-pre-wrap break-words'>{dupPrompt.duplicate.content}</div>
             <div className='mt-3 flex gap-2 flex-wrap'>
               <button
-                onClick={() => { const dp = dupPrompt; setDupPrompt(null); saveAnswer(dp.qId, dp.answer, { replaceChunkId: dp.duplicate.chunkId }) }}
+                onClick={() => { const dp = dupPrompt; setDupPrompt(null); void saveAnswer(dp.qId, dp.answer, { replaceChunkId: dp.duplicate.chunkId }) }}
                 className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700'
                 title='Overwrite the existing answer with this one (keeps the KB to one entry).'
               >Replace existing</button>
               <button
-                onClick={() => { const dp = dupPrompt; setDupPrompt(null); saveAnswer(dp.qId, dp.answer, { force: true }) }}
+                onClick={() => { const dp = dupPrompt; setDupPrompt(null); void saveAnswer(dp.qId, dp.answer, { force: true }) }}
                 className='px-3 py-1.5 rounded-md bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50'
                 title='Keep both — add this as a separate knowledge entry.'
               >Add as separate</button>

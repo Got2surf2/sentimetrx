@@ -603,14 +603,14 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
                     You can upload and process it, or discard it and start fresh.
                   </p>
                   <div className="mt-3 flex items-center gap-2">
-                    <button type="button" onClick={recoverPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>Upload &amp; process</button>
-                    <button type="button" onClick={discardPending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Discard</button>
+                    <button type="button" onClick={() => { void recoverPending() }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: HERMES }}>Upload &amp; process</button>
+                    <button type="button" onClick={() => { void discardPending() }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Discard</button>
                   </div>
                 </div>
               )}
               <button
                 type="button"
-                onClick={start}
+                onClick={() => { void start() }}
                 disabled={phase === 'requesting'}
                 className="mt-6 px-8 py-3 rounded-lg text-sm font-semibold text-white disabled:opacity-60 self-start"
                 style={{ backgroundColor: HERMES }}
@@ -626,7 +626,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
               devices={devices}
               settings={micSettings}
               onChange={patchMic}
-              onShowNames={enableDeviceNames}
+              onShowNames={() => { void enableDeviceNames() }}
               disabled={phase === 'requesting'}
               channelNames={channelNames}
               onChannelName={setChannelName}
@@ -718,7 +718,7 @@ export default function LiveClient({ recordingId, name, language }: { recordingI
 
             <button
               type="button"
-              onClick={stop}
+              onClick={() => { void stop() }}
               className="mt-6 px-8 py-3 rounded-lg text-sm font-semibold text-white bg-gray-900 hover:bg-black"
             >
               Stop &amp; process

@@ -77,7 +77,7 @@ export default function AdHocReportModal({ datasetId, datasetName, filters, onCl
           })}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} disabled={busy} style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'transparent', border: 'none', cursor: busy ? 'default' : 'pointer', padding: '6px 10px' }}>Cancel</button>
-          <button onClick={generate} disabled={busy || !prompt.trim()}
+          <button onClick={function() { void generate() }} disabled={busy || !prompt.trim()}
             style={{ fontSize: 13, fontWeight: 700, color: 'white', background: (busy || !prompt.trim()) ? '#9ca3af' : '#0f766e', border: 'none', borderRadius: 10, padding: '8px 18px', cursor: (busy || !prompt.trim()) ? 'default' : 'pointer', fontFamily: 'inherit' }}>
             {busy ? 'Writing…' : 'Generate'}
           </button>

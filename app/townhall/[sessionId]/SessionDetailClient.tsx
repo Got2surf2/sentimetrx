@@ -148,7 +148,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       setCheckedPids(new Set())
       setDeleteToast('Deleted ' + (json.deleted ?? checkedPids.size) + ' conversation' + (json.deleted !== 1 ? 's' : ''))
       setTimeout(() => setDeleteToast(null), 3000)
-      fetchData()
+      void fetchData()
     } catch (e: any) {
       setDeleteToast('Error: ' + e.message)
       setTimeout(() => setDeleteToast(null), 4000)
@@ -166,7 +166,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const gradeDescription = useCallback((desc: string, industry?: string) => {
     if (gradeTimer.current) clearTimeout(gradeTimer.current)
     if (!desc.trim()) { setDescGrade(null); return }
-    gradeTimer.current = setTimeout(async () => {
+    gradeTimer.current = setTimeout(() => { void (async () => {
       setGrading(true)
       try {
         const res = await fetch('/api/townhall/grade-description', {
@@ -177,7 +177,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         setDescGrade({ score: data.score || 0, suggestion: data.suggestion || '' })
       } catch {}
       setGrading(false)
-    }, 1200)
+    })() }, 1200)
   }, [])
 
   // Sensitive topics AI
@@ -200,7 +200,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const setDetailTopic = (t: TownHallTheme | null) => {
     setDetailTopicState(t)
     // Fetch full analytics (quotes, match reasons) on-demand when opening detail popup
-    if (t) fetchData(true)
+    if (t) void fetchData(true)
   }
 
   // Compact vs expanded view for topic sections
@@ -251,7 +251,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const sessionStatusRef = useRef(session?.status)
   sessionStatusRef.current = session?.status
   useEffect(() => {
-    fetchData()
+    void fetchData()
     // Only 'active' sessions produce new data (turns, participants joining,
     // theme detection). 'setup' has no participants yet, 'paused' is
     // intentionally frozen, 'ended' is final. Admin actions (start/pause/
@@ -260,7 +260,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     const interval = setInterval(() => {
       if (document.hidden) return
       if (sessionStatusRef.current !== 'active') return
-      fetchData()
+      void fetchData()
     }, 4000)
     return () => clearInterval(interval)
   }, [fetchData])
@@ -409,7 +409,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   }
 
   const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/pi/' + (session?.slug || sessionId) : ''
-  const copyLink = () => { navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
+  const copyLink = () => { void navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
 
   if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
   if (!session) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Session not found</div></Shell>
@@ -507,7 +507,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
             )}
             {isSetup && (
               <div className="flex flex-col items-end gap-1">
-                <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start' || !canStart}
+                <button onClick={() => { void handleSessionAction('start') }} disabled={actionLoading === 'start' || !canStart}
                   className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: canStart ? '#22c55e' : '#9ca3af' }}
                   title={canStart ? 'Start the session' : activationMissing.join('\n')}>
@@ -521,14 +521,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </div>
             )}
             {(isActive || isPaused) && (
-              <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}
+              <button onClick={() => { void handleSessionAction('end') }} disabled={actionLoading === 'end'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#ef4444' }}>
                 {actionLoading === 'end' ? 'Ending...' : 'End Session'}
               </button>
             )}
             {isEnded && (
-              <button onClick={async () => {
+              <button onClick={() => { void (async () => {
                 setActionLoading('reopen')
                 setError(null)
                 try {
@@ -540,14 +540,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 } catch (err: any) { setError('Network error: ' + (err?.message || 'unknown')) }
                 await fetchData()
                 setActionLoading(null)
-              }} disabled={actionLoading === 'reopen'}
+              })() }} disabled={actionLoading === 'reopen'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#22c55e' }}>
                 {actionLoading === 'reopen' ? 'Reopening...' : 'Reopen Session'}
               </button>
             )}
             {isEnded && (
-              <button onClick={() => handleSessionAction('restart')} disabled={actionLoading === 'restart'}
+              <button onClick={() => { void handleSessionAction('restart') }} disabled={actionLoading === 'restart'}
                 className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600 disabled:opacity-50">
                 {actionLoading === 'restart' ? 'Restarting...' : 'Restart (clear data)'}
               </button>
@@ -588,7 +588,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               currentStep={editStep}
               highestVisited={TH_STEP_LABELS.length - 1}
               onStepClick={setEditStep}
-              onSave={saveEdit}
+              onSave={() => { void saveEdit() }}
               saving={saving}
               freeNav
               saveLabel="Save Changes"
@@ -693,7 +693,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               {editStep === 2 && (<div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <ELabel>Sensitive Topics</ELabel>
-                  <button onClick={async () => {
+                  <button onClick={() => { void (async () => {
                     setSuggestingTopics(true); setSuggestedCategories(null)
                     try {
                       const res = await fetch('/api/townhall/suggest-sensitive', {
@@ -704,7 +704,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       if (data.categories) setSuggestedCategories(data.categories)
                     } catch {}
                     setSuggestingTopics(false)
-                  }} disabled={suggestingTopics || (!editConfig.context.event_description?.trim() && !editConfig.industry)}
+                  })() }} disabled={suggestingTopics || (!editConfig.context.event_description?.trim() && !editConfig.industry)}
                     className="text-[9px] font-semibold px-2 py-0.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
                     style={{ background: '#7c3aed' }}>
                     {suggestingTopics ? '...' : '\u2728 AI Suggest'}
@@ -995,7 +995,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
             {somePidsChecked && (
               <div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold" style={{ background: '#FFF4EF', borderBottom: '1px solid #FBD5C2', color: HERMES }}>
                 <span>{checkedPids.size} conversation{checkedPids.size !== 1 ? 's' : ''} selected</span>
-                <button onClick={deleteSelectedPids} disabled={deleting}
+                <button onClick={() => { void deleteSelectedPids() }} disabled={deleting}
                   className="px-3 py-1 rounded-lg text-white text-xs font-semibold transition-all"
                   style={{ background: deleting ? '#ccc' : '#dc2626' }}>
                   {deleting ? 'Deleting...' : 'Delete selected'}
@@ -1044,14 +1044,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       </button>
                     </td>
                     <td className="px-4 py-2.5">
-                      <button onClick={async () => {
+                      <button onClick={() => { void (async () => {
                         try {
                           const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=json')
                           const data = await res.json()
                           const conv = data.conversations?.find((c: any) => c.participant_id === p.participant_id)
                           if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns, demographics: conv.demographics, psychographics: conv.psychographics, name: conv.name || null, persona: conv.persona || null })
                         } catch {}
-                      }} title="View conversation"
+                      })() }} title="View conversation"
                         className={'w-6 h-6 rounded-full flex items-center justify-center transition-all ' + (p.is_complete ? 'hover:bg-green-100' : 'hover:bg-orange-100')}
                         style={{ color: p.is_complete ? '#16a34a' : HERMES }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1173,7 +1173,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
               {/* Footer: Share + Download + JSON + PPTX */}
               <div className="flex items-center gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
-                <button onClick={async () => {
+                <button onClick={() => { void (async () => {
                   setConvShareState('sharing')
                   const botName = cfg?.bot_name || 'PulseIQ'
                   const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
@@ -1185,7 +1185,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     if (data.url) { await navigator.clipboard.writeText(data.url); setConvShareState('copied'); setTimeout(() => setConvShareState('idle'), 3000) }
                     else setConvShareState('idle')
                   } catch { setConvShareState('idle') }
-                }} disabled={convShareState === 'sharing'}
+                })() }} disabled={convShareState === 'sharing'}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
                   style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
                   {convShareState === 'sharing' ? 'Creating...' : convShareState === 'copied' ? 'Link copied!' : 'Share'}
@@ -1228,7 +1228,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <div className="flex items-center gap-2">
                       <button onClick={() => {
                         const json = JSON.stringify({ participant_id: convModal.pid, session_id: sessionId, session_name: session?.name, turns: convModal.turns, demographics: convModal.demographics, psychographics: convModal.psychographics }, null, 2)
-                        navigator.clipboard.writeText(json)
+                        void navigator.clipboard.writeText(json)
                         setJsonCopied(true); setTimeout(() => setJsonCopied(false), 2000)
                       }}
                         className="text-xs font-semibold px-3 py-1.5 rounded-lg"
@@ -1297,7 +1297,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   {isActive && (
                     nextRound ? (
                       <button
-                        onClick={() => handleStartRound(nextRound.number)}
+                        onClick={() => { void handleStartRound(nextRound.number) }}
                         disabled={actionLoading === 'round-' + nextRound.number}
                         className="px-4 py-2 rounded-lg text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
                         style={{ background: '#E8632A' }}>
@@ -1408,7 +1408,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                         {sorted.map(t => (
                           <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
-                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                             defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setDetailTopic(t)} />
                         ))}
                       </div>
@@ -1474,31 +1474,31 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       {/* Context-appropriate action buttons */}
                       <div className="flex gap-2 mt-3">
                         {topicState === 'detected' && <>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'approve', { response_target: defaultResponseTarget }); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'approve', { response_target: defaultResponseTarget }); setDetailTopic(null) }}
                             className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Approve</button>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
                             className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Park</button>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
                             className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
                         </>}
                         {topicState === 'active' && <>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'close'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'close'); setDetailTopic(null) }}
                             className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Close</button>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
                             className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200">Park</button>
                         </>}
                         {topicState === 'parked' && <>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'activate'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'activate'); setDetailTopic(null) }}
                             className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Activate</button>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
                             className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
                         </>}
                         {topicState === 'completed' && <>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'reopen'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'reopen'); setDetailTopic(null) }}
                             className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Reopen</button>
                         </>}
                         {topicState === 'dismissed' && <>
-                          <button onClick={() => { handleThemeAction(detailTopic.id, 'undismiss'); setDetailTopic(null) }}
+                          <button onClick={() => { void handleThemeAction(detailTopic.id, 'undismiss'); setDetailTopic(null) }}
                             className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Restore</button>
                         </>}
                       </div>
@@ -1592,7 +1592,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {activeTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                        onAction={(action) => { void handleThemeAction(t.id, action) }} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
                         onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
@@ -1623,7 +1623,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {parkedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="parked"
-                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                         defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
                         onDetailClick={() => setDetailTopic(t)} />
                     ))}
@@ -1653,7 +1653,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {pendingTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                        onAction={(action) => { void handleThemeAction(t.id, action) }} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
                         onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
@@ -1702,7 +1702,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {completedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="completed"
-                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                         defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
                         onDetailClick={() => setDetailTopic(t)} />
                     ))}
@@ -1732,7 +1732,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {dismissedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="dismissed"
-                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                         defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
                         onDetailClick={() => setDetailTopic(t)} />
                     ))}
@@ -1776,7 +1776,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                         {activeTopics.map(t => (
                           <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                            onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                            onAction={(action) => { void handleThemeAction(t.id, action) }} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
                             onDetailClick={() => setDetailTopic(t)} />
                         ))}
                       </div>
@@ -1821,7 +1821,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         {seedTopics.map(t => (
                           <ThemeCard key={t.id} theme={t} isActive={isActive}
                             variant={t.state === 'completed' ? 'completed' : t.state === 'dismissed' ? 'dismissed' : t.state === 'parked' ? 'parked' : 'active'}
-                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                             defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
                             onDetailClick={() => setDetailTopic(t)} />
                         ))}
@@ -1864,7 +1864,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         {organicTopics.sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0)).map(t => (
                           <ThemeCard key={t.id} theme={t} isActive={isActive}
                             variant={t.state === 'detected' ? 'suggested' : t.state === 'dismissed' ? 'dismissed' : t.state === 'parked' ? 'parked' : t.state === 'completed' ? 'completed' : 'active'}
-                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            onAction={(action, extras) => { void handleThemeAction(t.id, action, extras) }} loading={actionLoading === t.id}
                             defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
                             onDetailClick={() => setDetailTopic(t)} />
                         ))}
@@ -1895,7 +1895,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                           className="w-20 px-2 py-1 rounded border border-gray-200 text-sm" />
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={handleCustomPush} disabled={actionLoading === 'custom' || !customLabel.trim() || !customQuestion.trim()}
+                        <button onClick={() => { void handleCustomPush() }} disabled={actionLoading === 'custom' || !customLabel.trim() || !customQuestion.trim()}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:opacity-90 disabled:opacity-50" style={{ background: HERMES }}>Push</button>
                         <button onClick={() => setShowCustom(false)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-50">Cancel</button>
                       </div>
@@ -2004,13 +2004,13 @@ function ExpandableTerms({ terms, onChange, color = 'purple', context }: {
             {kw}
             {!isExpanded && (
               <>
-                <button onClick={() => toggleExpand(kw, 'similar')}
+                <button onClick={() => { void toggleExpand(kw, 'similar') }}
                   disabled={!!isLoading}
                   className={`px-0.5 py-0 rounded text-[7px] font-bold leading-none transition-colors ${hasSimilar ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-blue-200 hover:text-blue-600'}`}
                   title={hasSimilar ? 'Remove similar terms' : 'Similar word forms'}>
                   {isLoading === 'similar' ? '·' : 'S'}
                 </button>
-                <button onClick={() => toggleExpand(kw, 'associated')}
+                <button onClick={() => { void toggleExpand(kw, 'associated') }}
                   disabled={!!isLoading}
                   className={`px-0.5 py-0 rounded text-[7px] font-bold leading-none transition-colors ${hasAssociated ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-emerald-200 hover:text-emerald-600'}`}
                   title={hasAssociated ? 'Remove associated terms' : 'Associated terms'}>
@@ -2077,7 +2077,7 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
       </div>
       <div className="flex gap-2">
         <div className="flex-1"><EInput value={t.label} onChange={v => onChange({ label: v })} placeholder="Topic label" /></div>
-        <button onClick={generateWithAI} disabled={generating || !t.label.trim()}
+        <button onClick={() => { void generateWithAI() }} disabled={generating || !t.label.trim()}
           className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50 flex-shrink-0"
           style={{ background: '#7c3aed' }}>
           {generating ? '...' : '\u2728 Generate'}

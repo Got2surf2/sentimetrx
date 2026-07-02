@@ -118,7 +118,7 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span className="rv-ai-badge">✦ Suggested by {agentName}</span>
                   <span style={{ flex: 1 }} />
-                  <button onClick={generateDraft} disabled={drafting} className="rv-link" style={{ fontWeight: 600 }}>
+                  <button onClick={() => { void generateDraft() }} disabled={drafting} className="rv-link" style={{ fontWeight: 600 }}>
                     {drafting ? 'Drafting…' : '↻ Re-draft'}
                   </button>
                 </div>
@@ -146,7 +146,7 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
                 style={{ borderColor: editorValue.trim() ? TEAL : '#d8e0e9' }}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14, alignItems: 'center' }}>
-                <button onClick={accept} disabled={saving || editorValue.trim().length < 2} className="rv-primary"
+                <button onClick={() => { void accept() }} disabled={saving || editorValue.trim().length < 2} className="rv-primary"
                   style={{ background: editorValue.trim().length < 2 ? '#cbd5e1' : ORANGE, cursor: editorValue.trim().length < 2 ? 'default' : 'pointer', boxShadow: editorValue.trim().length < 2 ? 'none' : '0 6px 16px -6px rgba(232,90,26,.6)' }}>
                   {saving ? 'Saving…' : responded ? 'Update response' : 'Accept & continue'} <span style={{ opacity: .85 }}>→</span>
                 </button>

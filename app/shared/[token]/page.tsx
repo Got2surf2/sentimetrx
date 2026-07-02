@@ -27,7 +27,7 @@ export default function SharedDashboard(props: { params: Promise<{ token: string
     finally { setLoading(false); setRefreshing(false) }
   }, [params.token])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { void fetchData() }, [fetchData])
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -48,13 +48,13 @@ export default function SharedDashboard(props: { params: Promise<{ token: string
   if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at}
     ratingScale={data.ratingScale} ratingLabel={data.ratingLabel} npsEnabled={data.npsEnabled} experienceEnabled={data.experienceEnabled}
     ratingPrompt={data.ratingPrompt} npsPrompt={data.npsPrompt} themes={data.themes || []}
-    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => { void fetchData(true) }} />
   if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at}
-    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => { void fetchData(true) }} />
   if (data.type === 'townhall') return <SharedTownHallDashboard session={data.session} themes={data.themes} stats={data.stats} expiresAt={data.expires_at}
-    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => { void fetchData(true) }} />
   if (data.type === 'analytics') return <SharedAnalyticsDashboard token={params.token} expiresAt={data.expires_at}
-    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => { void fetchData(true) }} />
   return null
 }
 
@@ -694,7 +694,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
       } catch { setError('Failed to load analytics') }
       finally { setLoading(false) }
     }
-    load()
+    void load()
   }, [token])
 
   if (loading) return (

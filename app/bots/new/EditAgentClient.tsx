@@ -513,7 +513,7 @@ function BotCreatorInner() {
               style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               Cancel
             </button>
-            <button onClick={save} disabled={saving || !dirty}
+            <button onClick={() => { void save() }} disabled={saving || !dirty}
               style={{
                 padding: '7px 18px', borderRadius: 8, border: 'none',
                 background: (saving || !dirty) ? '#e5e7eb' : HERMES,
@@ -742,7 +742,7 @@ function BotCreatorInner() {
                   rows={2}
                   style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginBottom: 6 }}
                 />
-                <button onClick={runDeepCrawl} disabled={crawling || !crawlUrl.trim()}
+                <button onClick={() => { void runDeepCrawl() }} disabled={crawling || !crawlUrl.trim()}
                   style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: crawling ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: crawling ? 'not-allowed' : 'pointer' }}>
                   {crawling ? 'Crawling...' : 'Crawl'}
                 </button>
@@ -754,10 +754,10 @@ function BotCreatorInner() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Web Research</span>
                 <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Search the web and auto-summarize top results.</p>
                 <input type="text" value={researchQuery} onChange={function(e) { setResearchQuery(e.target.value) }}
-                  onKeyDown={function(e) { if (e.key === 'Enter' && !researching) runResearch() }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && !researching) void runResearch() }}
                   placeholder="e.g., ACLU, Tesla Cybertruck"
                   style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, marginBottom: 6 }} />
-                <button onClick={runResearch} disabled={researching || !researchQuery.trim()}
+                <button onClick={() => { void runResearch() }} disabled={researching || !researchQuery.trim()}
                   style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: researching ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: researching ? 'not-allowed' : 'pointer' }}>
                   {researching ? 'Researching...' : 'Research'}
                 </button>
@@ -773,7 +773,7 @@ function BotCreatorInner() {
                 <textarea value={trainingUrls} onChange={function(e) { setTrainingUrls(e.target.value) }}
                   placeholder={"https://example.com/about\nhttps://example.com/faq"} rows={3}
                   style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }} />
-                <button onClick={fetchTrainingContent} disabled={fetchingUrls || !trainingUrls.trim()}
+                <button onClick={() => { void fetchTrainingContent() }} disabled={fetchingUrls || !trainingUrls.trim()}
                   style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #d1d5db', background: fetchingUrls ? '#f3f4f6' : 'white', color: '#374151', fontSize: 11, fontWeight: 500, cursor: fetchingUrls ? 'not-allowed' : 'pointer', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
                   {fetchingUrls ? 'Fetching...' : 'Fetch'}
                 </button>
@@ -1025,7 +1025,7 @@ function BotCreatorInner() {
             <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>Topics the agent is expected to cover. After each reply, an AI classifier tags which focus(es) the response addressed — so you can later filter conversations by &quot;people who got an answer about X.&quot; Different from Intents (which are user-side signals); Focuses are bot-side coverage.</p>
             {editId && (
               <div style={{ marginBottom: 12 }}>
-                <button onClick={async function() {
+                <button onClick={() => { void (async function() {
                   if (suggestingFocuses) return
                   if (!systemPrompt || systemPrompt.length < 100) { alert('System prompt is too short to suggest focuses from. Add a system prompt first.'); return }
                   if (focuses.length > 0 && !confirm('This will replace your current ' + focuses.length + ' focus(es) with AI-suggested ones. Continue?')) return
@@ -1039,7 +1039,7 @@ function BotCreatorInner() {
                     }
                   } catch { alert('Failed to suggest focuses') }
                   finally { setSuggestingFocuses(false) }
-                }} disabled={suggestingFocuses} style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #0E7B7B', background: suggestingFocuses ? '#f3f4f6' : '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 600, cursor: suggestingFocuses ? 'wait' : 'pointer' }}>
+                })() }} disabled={suggestingFocuses} style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #0E7B7B', background: suggestingFocuses ? '#f3f4f6' : '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 600, cursor: suggestingFocuses ? 'wait' : 'pointer' }}>
                   {suggestingFocuses ? 'Analyzing prompt…' : '✨ Suggest focuses from system prompt'}
                 </button>
                 <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>Saves nothing until you click Save Agent.</span>
@@ -1231,7 +1231,7 @@ function BotCreatorInner() {
                 Next
               </button>
             ) : (
-              <button onClick={save} disabled={saving}
+              <button onClick={() => { void save() }} disabled={saving}
                 style={{
                   padding: '10px 28px', borderRadius: 20, border: 'none',
                   background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,

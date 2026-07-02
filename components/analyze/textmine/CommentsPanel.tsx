@@ -707,7 +707,7 @@ export default function CommentsPanel({
         {!aiSummary && !summaryLoading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
-              onClick={generateSummary}
+              onClick={function() { void generateSummary() }}
               disabled={!apiKey || !matched.length}
               style={{
                 padding: '7px 14px', fontSize: 12, fontWeight: 700,

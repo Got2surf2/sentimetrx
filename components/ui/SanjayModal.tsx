@@ -55,7 +55,7 @@ export default function SanjayModal({ onSuccess, onCancel }: SanjayModalProps) {
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') verifyPassword() }}
+            onKeyDown={e => { if (e.key === 'Enter') void verifyPassword() }}
             autoFocus
             style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }}
           />
@@ -71,7 +71,7 @@ export default function SanjayModal({ onSuccess, onCancel }: SanjayModalProps) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
           <button
-            onClick={verifyPassword}
+            onClick={() => { void verifyPassword() }}
             disabled={!password}
             style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#E8632A', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Verify

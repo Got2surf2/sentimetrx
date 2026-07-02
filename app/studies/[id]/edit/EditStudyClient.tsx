@@ -101,7 +101,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             currentStep={step}
             highestVisited={9}
             onStepClick={goTo}
-            onPublish={() => handleSave('active')}
+            onPublish={() => { void handleSave('active') }}
             onImport={(imported) => setDraft(prev => ({ ...prev, name: imported.name || prev.name, bot_name: imported.bot_name || prev.bot_name, bot_emoji: imported.bot_emoji || prev.bot_emoji, slug: imported.slug || prev.slug, config: imported.config }))}
             saving={saving}
             translating={translating}
@@ -138,8 +138,8 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <StepReview
             {...stepProps}
             onBack={() => goTo(8)}
-            onSaveDraft={() => handleSave('draft')}
-            onPublish={() => handleSave('active')}
+            onSaveDraft={() => { void handleSave('draft') }}
+            onPublish={() => { void handleSave('active') }}
             saving={saving}
             studyId={study.guid}
           />

@@ -76,4 +76,4 @@ async function main() {
   console.log(`reo_gold_review now has ${count} pending reviews awaiting spot-check.`)
 }
 
-main().then(() => process.exit(0))
+void main().then(() => process.exit(0))

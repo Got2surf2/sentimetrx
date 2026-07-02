@@ -132,7 +132,7 @@ export default function IntentsClient() {
                       type="checkbox"
                       checked={intent.enabled}
                       disabled={toggling === intent.label}
-                      onChange={function(e) { toggleIntent(intent.label, e.target.checked) }}
+                      onChange={function(e) { void toggleIntent(intent.label, e.target.checked) }}
                       style={{ width: 16, height: 16, accentColor: HERMES }}
                     />
                   </label>

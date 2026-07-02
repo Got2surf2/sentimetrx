@@ -419,7 +419,7 @@ export default function ThemeEditor({ onApply, onClose, onMineWithAI, initialDat
                               + add
                             </button>
                             {apiKey && datasetId && (
-                              <button onClick={function() { expandKeywords(t.id) }}
+                              <button onClick={function() { void expandKeywords(t.id) }}
                                 disabled={expandingId === t.id}
                                 style={{ fontSize: 11, padding: '3px 10px', background: expandingId === t.id ? T.bg : T.accentBg, border: '1px solid ' + T.accent + '40', borderRadius: 20, color: T.accent, cursor: expandingId === t.id ? 'wait' : 'pointer', fontWeight: 600 }}>
                                 {expandingId === t.id ? 'Expanding...' : '✦ Expand with AI'}

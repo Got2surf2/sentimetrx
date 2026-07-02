@@ -278,11 +278,11 @@ export default function SubstackWizard({ onBack }: Props) {
             <input
               value={urlInput}
               onChange={function(e) { setUrlInput(e.target.value) }}
-              onKeyDown={function(e) { if (e.key === 'Enter') handleFetch() }}
+              onKeyDown={function(e) { if (e.key === 'Enter') void handleFetch() }}
               placeholder="e.g. mattyglesias or https://www.slowboring.com"
               className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-orange-400"
             />
-            <button onClick={handleFetch} disabled={loading || !urlInput.trim()}
+            <button onClick={function() { void handleFetch() }} disabled={loading || !urlInput.trim()}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
               style={{ background: HERMES }}>
               {loading ? 'Loading...' : 'Fetch Posts'}
@@ -445,7 +445,7 @@ export default function SubstackWizard({ onBack }: Props) {
 
           {/* Load more */}
           {hasMore && (
-            <button onClick={handleLoadMore} disabled={loadingMore}
+            <button onClick={function() { void handleLoadMore() }} disabled={loadingMore}
               style={{ fontSize: 13, fontWeight: 600, color: ROSE, background: 'none', border: 'none', cursor: 'pointer' }}>
               {loadingMore ? 'Loading more...' : 'Load more posts'}
             </button>
@@ -537,7 +537,7 @@ export default function SubstackWizard({ onBack }: Props) {
             <div className="flex gap-3">
               <button onClick={function() { setStep(2) }}
                 className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600">Back</button>
-              <button onClick={handleCreate} disabled={!datasetName.trim()}
+              <button onClick={function() { void handleCreate() }} disabled={!datasetName.trim()}
                 className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
                 style={{ background: '#e11d48' }}>
                 Start Download

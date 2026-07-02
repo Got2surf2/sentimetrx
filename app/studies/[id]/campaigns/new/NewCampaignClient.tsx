@@ -174,7 +174,7 @@ export default function NewCampaignClient({ user, study, hiddenFields, studyUrl,
               className="px-5 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium transition-all">
               Cancel
             </button>
-            <button onClick={handleCreate} disabled={saving}
+            <button onClick={() => { void handleCreate() }} disabled={saving}
               className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all disabled:opacity-50"
               style={{ background: HERMES }}>
               {saving ? 'Creating...' : 'Create Campaign'}

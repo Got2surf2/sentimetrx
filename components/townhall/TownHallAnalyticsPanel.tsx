@@ -65,7 +65,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
     setLoading(false)
   }, [sessionId, bucketOverride])
 
-  useEffect(() => { fetchAnalytics() }, [fetchAnalytics])
+  useEffect(() => { void fetchAnalytics() }, [fetchAnalytics])
 
   if (loading) return <div className="py-12 text-center text-gray-400 text-sm">Loading analytics...</div>
   if (error) return <div className="py-8 text-center text-red-500 text-sm">{error}</div>
@@ -79,7 +79,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
       {/* Refresh bar */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">Last refreshed: {new Date().toLocaleTimeString()}</span>
-        <button onClick={() => { setLoading(true); fetchAnalytics() }}
+        <button onClick={() => { setLoading(true); void fetchAnalytics() }}
           className="px-3 py-1 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
           Refresh
         </button>

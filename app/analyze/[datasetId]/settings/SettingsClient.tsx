@@ -270,7 +270,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           />
         </div>
         <button
-          onClick={handleSaveDetails}
+          onClick={() => { void handleSaveDetails() }}
           disabled={saving || !name.trim()}
           className="self-start px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
           style={{ background: HERMES }}
@@ -305,7 +305,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         <h2 className="font-bold text-gray-800">Dimensions</h2>
         <label className="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" checked={taxonomyEnabled} disabled={taxSaving}
-            onChange={async function() {
+            onChange={() => { void (async function() {
               const next = !taxonomyEnabled
               setTaxonomyEnabled(next); setTaxSaving(true); setError('')
               try {
@@ -313,7 +313,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
                 if (!res.ok) { setTaxonomyEnabled(!next); const d = await res.json().catch(function() { return {} }); setError(d.error || 'Failed to update Dimensions') }
               } catch { setTaxonomyEnabled(!next); setError('Failed to update Dimensions') }
               finally { setTaxSaving(false) }
-            }}
+            })() }}
             className="accent-orange-500 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-gray-700">Apply Dimensions{taxSaving && <span className="text-xs text-gray-400 font-normal"> · saving…</span>}</p>
@@ -333,7 +333,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
               {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
             </p>
           </div>
-          <button onClick={handleRefreshSchema} disabled={refreshingSchema}
+          <button onClick={() => { void handleRefreshSchema() }} disabled={refreshingSchema}
             title="Re-scan all rows and widen the filter value lists. Use this if filter options look incomplete (e.g. only one city showing up)."
             className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap flex-shrink-0">
             {refreshingSchema ? 'Refreshing…' : '↻ Refresh from data'}
@@ -367,7 +367,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             <p className="font-semibold text-gray-700">{appendPreview.rowCount.toLocaleString()} rows found</p>
             <p className="text-xs text-gray-400 mt-1">Columns: {appendPreview.headers.slice(0, 8).join(', ')}{appendPreview.headers.length > 8 ? ' + ' + (appendPreview.headers.length - 8) + ' more' : ''}</p>
             <div className="flex items-center gap-3 mt-3">
-              <button onClick={handleAppend} disabled={appending}
+              <button onClick={() => { void handleAppend() }} disabled={appending}
                 className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
                 style={{ background: HERMES }}>
                 {appending ? 'Uploading...' : 'Append ' + appendPreview.rowCount.toLocaleString() + ' rows'}
@@ -409,7 +409,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
                 className={inputCls} style={{ width: 180 }} />
             </div>
             <button
-              onClick={async function() {
+              onClick={() => { void (async function() {
                 if (!trimField || !trimDate) return
                 if (!trimConfirm) { setTrimConfirm(true); return }
                 setTrimming(true); setTrimResult(null); setTrimConfirm(false)
@@ -429,7 +429,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
                 } catch (err: any) {
                   setTrimResult('Error: ' + (err?.message || 'Failed'))
                 } finally { setTrimming(false) }
-              }}
+              })() }}
               disabled={trimming || !trimField || !trimDate}
               className={'px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 disabled:opacity-50 ' +
                 (trimConfirm ? 'bg-red-600 text-white hover:bg-red-700' : 'text-white hover:opacity-90')}
@@ -490,7 +490,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
               </p>
             </div>
             <button
-              onClick={handleArchive}
+              onClick={() => { void handleArchive() }}
               className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors flex-shrink-0"
             >
               {dataset.status === 'active' ? 'Archive' : 'Restore'}
@@ -502,7 +502,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
               <p className="text-xs text-gray-400">Permanently deletes all rows and analysis state. This cannot be undone.</p>
             </div>
             <button
-              onClick={handleDelete}
+              onClick={() => { void handleDelete() }}
               disabled={deleting}
               className={'px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex-shrink-0 ' +
                 (delConfirm ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100')}

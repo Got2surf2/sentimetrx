@@ -57,7 +57,7 @@ export default function KbHealthClient() {
       else setChunks(Array.isArray(d?.chunks) ? d.chunks : [])
     } catch { setError('Failed to load knowledge base') }
   }
-  useEffect(() => { load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const list = chunks || []
@@ -155,7 +155,7 @@ export default function KbHealthClient() {
               {sources.map(st => (
                 <div key={st} className="flex items-center justify-between gap-2">
                   <span className="text-sm text-gray-700">{sourceLabel(st)} · <span className="text-gray-500">{stats.bySource[st]}</span></span>
-                  <button disabled={busy} onClick={() => clearSource(st)} className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50">Clear all</button>
+                  <button disabled={busy} onClick={() => { void clearSource(st) }} className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50">Clear all</button>
                 </div>
               ))}
             </div>
@@ -201,7 +201,7 @@ export default function KbHealthClient() {
                       </div>
                       {isOpen && <div className="mt-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md p-2 whitespace-pre-wrap break-words">{c.content}</div>}
                     </div>
-                    <button disabled={busy} onClick={() => deleteChunk(c.id)} className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50 shrink-0">Delete</button>
+                    <button disabled={busy} onClick={() => { void deleteChunk(c.id) }} className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50 shrink-0">Delete</button>
                   </div>
                 </div>
               )

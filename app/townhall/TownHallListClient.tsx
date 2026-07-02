@@ -370,7 +370,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                       {/* Session ID — admin only, click to copy (for debug mode) */}
                       {user.isAdmin && (
                         <button
-                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(s.id); const el = e.currentTarget.querySelector('span')!; el.textContent = '\u2713 Copied!'; setTimeout(() => { el.textContent = 'ID: ' + s.id }, 1500) }}
+                          onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(s.id); const el = e.currentTarget.querySelector('span')!; el.textContent = '\u2713 Copied!'; setTimeout(() => { el.textContent = 'ID: ' + s.id }, 1500) }}
                           className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
                           title="Click to copy session ID (for debug mode)">
                           <span>ID: {s.id}</span>
@@ -382,7 +382,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         onClick={e => {
                           e.stopPropagation()
                           const url = window.location.origin + '/pi/' + (s.slug || s.id)
-                          navigator.clipboard.writeText(url)
+                          void navigator.clipboard.writeText(url)
                           const span = e.currentTarget.querySelector('span')
                           if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/pi/' + (s.slug || s.id) }, 1500) }
                         }}
@@ -434,7 +434,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         <button
                           onClick={() => {
                             const isLive = s.status === 'active' || s.status === 'paused'
-                            handleAction(s.id, isLive ? 'end' : s.status === 'ended' ? 'reopen' : 'start')
+                            void handleAction(s.id, isLive ? 'end' : s.status === 'ended' ? 'reopen' : 'start')
                           }}
                           disabled={!!actionLoading}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
@@ -447,7 +447,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                           Delete
                         </button>
-                        <button onClick={() => handleArchive(s.id, !archived)}
+                        <button onClick={() => { void handleArchive(s.id, !archived) }}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                           {archived ? 'Unarchive' : 'Archive'}
@@ -459,12 +459,12 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                           Manage
                         </Link>
-                        <button onClick={() => handleDuplicate(s.id)}
+                        <button onClick={() => { void handleDuplicate(s.id) }}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                           Duplicate
                         </button>
-                        <button onClick={() => handleShare(s.id)}
+                        <button onClick={() => { void handleShare(s.id) }}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
                           {shareLoading === s.id ? 'Copied!' : 'Share'}
@@ -493,7 +493,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                 className="px-4 py-2 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50">
                 Cancel
               </button>
-              <button onClick={() => handleDelete(confirmDelete)}
+              <button onClick={() => { void handleDelete(confirmDelete) }}
                 className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-500 hover:bg-red-600">
                 Delete
               </button>
@@ -536,7 +536,7 @@ function AnalyzeInAnaButton({ sessionId, disabled }: { sessionId: string; disabl
   }
 
   return (
-    <button onClick={handleClick} disabled={loading}
+    <button onClick={() => { void handleClick() }} disabled={loading}
       className="col-span-3 text-xs py-1.5 rounded-lg font-semibold transition-all text-center"
       style={{ background: '#E8632A', color: 'white', border: 'none', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
       {loading ? status : '\uD83D\uDCCA Analyze in Ana'}

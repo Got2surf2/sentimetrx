@@ -971,7 +971,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       state.current.psychoAnswers[q.key] = origIdx >= 0 && q.opts[origIdx] ? q.opts[origIdx] : opt
       state.current.psychoIdx++
       savePartial()
-      stepPsychoQ()
+      void stepPsychoQ()
     }
     tOpts.forEach(opt => {
       const btn = document.createElement('button')
@@ -1281,7 +1281,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
             skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
             skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
-            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); submit('') }
+            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); void submit('') }
             wrap.appendChild(skipBtn)
           }
           clearInput()
@@ -1990,7 +1990,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       // Store immediately and save — belt-and-suspenders, don't rely solely on handleOpenEnded
       state.current.answers[qKey] = val
       savePartialRef.current()
-      handleOpenEndedRef.current(qKey, val)
+      void handleOpenEndedRef.current(qKey, val)
     }
 
     wrap.append(ta, sendBtn)
@@ -2113,12 +2113,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         addMsg('user', val)
         state.current.answers[qKey] = val
         savePartialRef.current()
-        handleOpenEndedRef.current(qKey, val)
+        void handleOpenEndedRef.current(qKey, val)
       } else {
         addMsg('user', 'Skip')
         state.current.answers[qKey] = ''
         clearInput()
-        progressFlowRef.current(qKey)
+        void progressFlowRef.current(qKey)
       }
     }
 
@@ -2131,7 +2131,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       addMsg('user', 'Skip')
       state.current.answers[qKey] = ''
       clearInput()
-      progressFlowRef.current(qKey)
+      void progressFlowRef.current(qKey)
     }
 
     row.append(ta, sendBtn)

@@ -336,7 +336,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
               ⚠ <strong>{pending.toLocaleString()}</strong> {fieldLabel || ''} row{pending === 1 ? '' : 's'} aren’t tagged yet (new since the last classify).
             </span>
             <button
-              onClick={() => runClassifier(true)}
+              onClick={() => { void runClassifier(true) }}
               title={`Classify only the new rows on ${fieldLabel || 'the selected field(s)'} (existing tags are untouched)`}
               style={{ marginLeft: 'auto', background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Classify {pending.toLocaleString()} new row{pending === 1 ? '' : 's'}

@@ -263,7 +263,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
         {showNew && (
           <div className="mb-8 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <h2 className="font-bold text-gray-800 text-base mb-5">New Organization</h2>
-            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+            <form onSubmit={(e) => { void handleCreate(e) }} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Organization name</label>
@@ -338,7 +338,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             <SectionHeader label="Admin" count={adminOrgs.length} dot="#7c3aed" />
             <div className="flex flex-col gap-3 mb-2">
               {adminOrgs.map(org => (
-                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={handleTogglePlan} />
+                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={(o) => { void handleTogglePlan(o) }} />
               ))}
             </div>
           </>
@@ -350,7 +350,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             <SectionHeader label="Active" count={activeOrgs.length} dot="#16a34a" />
             <div className="flex flex-col gap-3 mb-2">
               {activeOrgs.map(org => (
-                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={handleTogglePlan} />
+                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={(o) => { void handleTogglePlan(o) }} />
               ))}
             </div>
           </>
@@ -362,7 +362,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             <SectionHeader label="Inactive" count={inactiveOrgs.length} dot="#dc2626" />
             <div className="flex flex-col gap-3 mb-2">
               {inactiveOrgs.map(org => (
-                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={handleTogglePlan} />
+                <OrgCard key={org.id} org={org} toggling={toggling} onToggle={(o) => { void handleTogglePlan(o) }} />
               ))}
             </div>
           </>

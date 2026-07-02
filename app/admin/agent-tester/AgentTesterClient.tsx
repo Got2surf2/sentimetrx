@@ -234,7 +234,7 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
               <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
                 placeholder="Type or paste a message here…"
                 className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-orange-300 font-mono resize-y" />
-              <button onClick={runTest} disabled={!text.trim() || loading}
+              <button onClick={() => { void runTest() }} disabled={!text.trim() || loading}
                 className="px-5 py-2 sm:py-0 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-40 hover:bg-orange-700 sm:min-w-[140px] flex-shrink-0 flex items-center justify-center">
                 {loading ? 'Running…' : 'Run all checks'}
               </button>

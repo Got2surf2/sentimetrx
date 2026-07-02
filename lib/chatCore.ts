@@ -144,7 +144,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
       return { reply: null, skipped: 'insert_failed' }
     }
-    mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+    void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
     return { reply: probeText, _silence: true }
   }
 
@@ -293,8 +293,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber, role: 'user', content: lastUserMsg.content, language: botLang || 'en', content_flags: auditFlags, source: 'normal' },
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber + 1, role: 'assistant', content: deflectText, language: botLang || 'en', source: 'deflect' },
             ]
-            service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
-            mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+            void service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
+            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
           }
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
@@ -302,7 +302,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // Question Log — record the deflected ask (NOWOCATS PM-2
           // requirement; generic across every bot). Fire-and-forget.
           if (session_id && lastUserMsg?.content) {
-            logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'deflect' })
+            void logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'deflect' })
           }
           return { reply: deflectText, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
         }
@@ -599,7 +599,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // and-forget; logQuestion's isLoggableMessage guard filters
           // greetings/acks so this doesn't bury the queue in noise.
           if (session_id && lastUserMsg?.content) {
-            logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'kb_miss' })
+            void logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'kb_miss' })
           }
         } else if (hasOnlyNegative) {
           // Query matches only negative content
@@ -1116,7 +1116,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const turnsForMirror = pickedTopicId
           ? (turnsToInsert as any[]).map(r => ({ ...r, topic_id: pickedTopicId }))
           : (turnsToInsert as any[])
-        mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+        void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
 
         // Focus classify happens after the insert lands — best-effort
         // tag of the just-saved assistant turn. Slow AI call must not
@@ -1132,7 +1132,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               if (focusResult.slugs.length > 0) {
                 const flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
                 service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', (assistantRow as any).id).then(function() {})
-                mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (assistantRow as any).turn_number, flags }).then(function() {})
+                void mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (assistantRow as any).turn_number, flags }).then(function() {})
               }
             }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
           }
@@ -1153,7 +1153,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         if (session_id && typeof user_name === 'string') {
           var widgetName = user_name.trim().slice(0, 60)
           if (widgetName && widgetName !== '_skip') {
-            ;(async function persistWidgetName() {
+            ;void (async function persistWidgetName() {
               try {
                 const { data: existing, error: existingErr } = await service
                   .from('agent_session_personas')
@@ -1179,7 +1179,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const userTurnCountForName = lastUserMsg ? (turnBase / 2) + 1 : 0
         if (askNameOn && session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
           const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
-          ;(async function captureName() {
+          ;void (async function captureName() {
             try {
               const { data: existing, error: existingErr } = await service
                 .from('agent_session_personas')
@@ -1209,7 +1209,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         if (insertedRows && insertedRows.length > 0 && lastUserMsg?.content && session_id) {
           const userRow = insertedRows.find(function(r: any) { return r.role === 'user' && r.turn_number === turnBase })
           if (userRow) {
-            (async function() {
+            void (async function() {
               try {
                 const entitySlugs = await detectEntityMentions(service, bot.id, lastUserMsg.content)
                 let topicSlugs: string[] = []
@@ -1265,7 +1265,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     // this turn — the admin UI dedupes by (session_id, user_message) on
     // display, so two rows for the same turn are surfaced as one.
     if (session_id && lastUserMsg?.content && replyLooksUncertain(scrubbed.reply)) {
-      logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'ai_uncertain' })
+      void logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'ai_uncertain' })
     }
     return { reply: scrubbed.reply, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
   } catch (err: any) {

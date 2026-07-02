@@ -54,7 +54,7 @@ export function FavoriteStar({ resourceType, resourceId, initialFavorited, size 
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={(e) => { void toggle(e) }}
       aria-label={label || (favorited ? 'Remove from favorites' : 'Add to favorites')}
       aria-pressed={favorited}
       disabled={pending}

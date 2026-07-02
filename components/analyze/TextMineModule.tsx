@@ -950,7 +950,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 <p style={{ fontSize: 11, color: T.textMute, margin: 0 }}>{outliers.length} statistically significant outlier{outliers.length !== 1 ? 's' : ''} {'\u00B7'} {breakdownFields.map(fieldLabel).join(' \u00D7 ')}</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={function() { navigator.clipboard.writeText(summaryText).then(function() { setCopied(true); setTimeout(function() { setCopied(false) }, 2000) }) }}
+                <button onClick={function() { void navigator.clipboard.writeText(summaryText).then(function() { setCopied(true); setTimeout(function() { setCopied(false) }, 2000) }) }}
                   style={{ padding: '7px 14px', fontSize: 12, fontWeight: 700, background: copied ? T.greenBg : T.accentBg, color: copied ? T.green : T.accent, border: '1px solid ' + (copied ? T.greenMid : T.accentMid), borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {copied ? '\u2713 Copied!' : '\u2767 Copy'}
                 </button>
@@ -1027,7 +1027,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
           </div>
           <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{pinnedSigData.text}</div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(pinnedSigData!.text).then(function() { setCopiedSig(true) }) }}
+            <button onClick={function(e) { e.stopPropagation(); void navigator.clipboard.writeText(pinnedSigData!.text).then(function() { setCopiedSig(true) }) }}
               style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
               {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
             </button>
@@ -1184,7 +1184,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
   }, [datasetId])
 
-  useEffect(function() { loadEntityCatalog() }, [loadEntityCatalog])
+  useEffect(function() { void loadEntityCatalog() }, [loadEntityCatalog])
 
   // Entity drill mode — set when user clicks an entity pill in EntitiesCard.
   // Comments tab enters entity mode: shows API-fetched rows instead of client filteredRows.
@@ -1510,8 +1510,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (savedThemeModel && savedThemeModel.themes) {
       const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
       const fields = Array.isArray(field) ? field : (field ? [field] : [])
-      if (fields.length > 0) fetchServerThemeCounts(savedThemeModel, fields)
-      enrichSearchInterest(savedThemeModel)
+      if (fields.length > 0) void fetchServerThemeCounts(savedThemeModel, fields)
+      void enrichSearchInterest(savedThemeModel)
     }
   }, [rowsLoaded])
 
@@ -1780,8 +1780,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setLastRunPct(samplePct)
         setSection('themes'); setView('overview')
         setIsDirty(true)
-        fetchServerThemeCounts(tm, effectiveFields)
-        enrichSearchInterest(tm)
+        void fetchServerThemeCounts(tm, effectiveFields)
+        void enrichSearchInterest(tm)
       } else {
         // ── Standard: mine from combined corpus ──────────────────────
         var { texts, total } = prepareCorpus()
@@ -1815,8 +1815,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setLastRunPct(samplePct)
         setSection('themes'); setView('overview')
         setIsDirty(true)
-        fetchServerThemeCounts(tm2, effectiveFields)
-        enrichSearchInterest(tm2)
+        void fetchServerThemeCounts(tm2, effectiveFields)
+        void enrichSearchInterest(tm2)
         // Smart Dimensions: the AI flagged this as restaurant/food-service data →
         // enable + classify Dimensions automatically (the route also set the flag).
         // Not food-service → the route suppressed it; refresh so the (irrelevant)
@@ -1853,9 +1853,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       void autoEnableDimensions(effectiveFields)
     }
     // Fetch accurate server-side counts on full dataset
-    fetchServerThemeCounts(tm, effectiveFields)
+    void fetchServerThemeCounts(tm, effectiveFields)
     // Enrich with Google search interest (Reddit/Substack only)
-    enrichSearchInterest(tm)
+    void enrichSearchInterest(tm)
     setLastRunPct(null)
     setShowThemeEditor(false)
     setSection('themes'); setView('overview')
@@ -2143,7 +2143,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </button>
               )}
               {false && openFields.length > 0 && (
-                <button onClick={function() { mineThemes() }} disabled={!canMine || loading || !aiEnabled}
+                <button onClick={function() { void mineThemes() }} disabled={!canMine || loading || !aiEnabled}
                   title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
                   style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading && aiEnabled ? T.accent : T.borderMid, color: canMine && !loading && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading && aiEnabled ? 'pointer' : 'not-allowed' }}>
                   {loading ? 'Mining...' : '\u29E1 Mine'}
@@ -2177,7 +2177,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 >{hideFlagged ? '\u26A0 Flagged hidden' : '\u26A0 Content flags'}</button>
               )}
               {hasThemes && isDirty && (
-                <button onClick={function() { saveThemeModel() }} disabled={saving}
+                <button onClick={function() { void saveThemeModel() }} disabled={saving}
                   style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 20, cursor: saving ? 'not-allowed' : 'pointer' }}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -2254,7 +2254,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     {rows.length > 0 && (
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
                         {!aiDisabledByOrg && (
-                          <button onClick={function() { mineThemes() }} disabled={!canMine || !aiEnabled}
+                          <button onClick={function() { void mineThemes() }} disabled={!canMine || !aiEnabled}
                             title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
                             style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
                             {'\u29E1'} Mine with AI
@@ -3084,7 +3084,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, color: T.textMid, cursor: 'pointer' }}>
             Discard
           </button>
-          <button onClick={function() { saveThemeModel() }}
+          <button onClick={function() { void saveThemeModel() }}
             disabled={saving}
             style={{ padding: '7px 20px', fontSize: 12, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             {saving ? 'Saving...' : saved ? '\u2714 Saved' : 'Save Theme Model'}
@@ -3100,7 +3100,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         <ThemeEditor
           onApply={handleThemeEditorApply}
           onClose={function() { setShowThemeEditor(false) }}
-          onMineWithAI={canMine && aiEnabled && !aiDisabledByOrg ? function() { setShowThemeEditor(false); mineThemes() } : undefined}
+          onMineWithAI={canMine && aiEnabled && !aiDisabledByOrg ? function() { setShowThemeEditor(false); void mineThemes() } : undefined}
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
           datasetId={datasetId}
@@ -3130,7 +3130,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             </div>
             <div style={{ padding: '8px 24px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
-                onClick={function() { setShowMineChoice(false); mineThemes('merge') }}
+                onClick={function() { setShowMineChoice(false); void mineThemes('merge') }}
                 style={{ padding: '14px 16px', borderRadius: 10, border: '1.5px solid #bae6fd', background: '#f0f9ff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#0284c7' }}>Merge from members</div>
                 <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
@@ -3139,7 +3139,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </div>
               </button>
               <button
-                onClick={function() { setShowMineChoice(false); mineThemes('fresh') }}
+                onClick={function() { setShowMineChoice(false); void mineThemes('fresh') }}
                 style={{ padding: '14px 16px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>Mine fresh</div>
                 <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>

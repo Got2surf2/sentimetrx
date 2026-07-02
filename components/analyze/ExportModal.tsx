@@ -409,14 +409,14 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
               Click below to choose where to save it.
             </div>
           </div>
-          <button onClick={handleSaveFile}
+          <button onClick={function() { void handleSaveFile() }}
             style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>💾</span> Save file…
           </button>
 
           {/* AWS share — HTML only */}
           {format === 'html' && shareState !== 'done' && (
-            <button onClick={handleShare} disabled={shareState === 'uploading'}
+            <button onClick={function() { void handleShare() }} disabled={shareState === 'uploading'}
               style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: '#0284c7', background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 8, cursor: shareState === 'uploading' ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: shareState === 'uploading' ? 0.7 : 1 }}>
               <span style={{ fontSize: 16 }}>{shareState === 'uploading' ? '⏳' : '🔗'}</span>
               {shareState === 'uploading' ? 'Uploading…' : 'Get shareable link (7 days)'}
@@ -436,7 +436,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
               <div style={{ display: 'flex', gap: 6 }}>
                 <input readOnly value={shareUrl}
                   style={{ flex: 1, fontSize: 10, border: '1px solid #d1fae5', borderRadius: 5, padding: '5px 8px', fontFamily: 'monospace', background: 'white', color: '#374151', minWidth: 0 }} />
-                <button onClick={handleCopyShareUrl}
+                <button onClick={function() { void handleCopyShareUrl() }}
                   style={{ flexShrink: 0, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: 'white', background: shareCopied ? '#059669' : '#0284c7', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                   {shareCopied ? 'Copied!' : 'Copy'}
                 </button>
@@ -553,7 +553,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
 
             {/* Signal Tiers card — Reddit/Substack only */}
             {(datasetSource === 'reddit' || datasetSource === 'substack') && (
-              <button onClick={generateSignalTiers}
+              <button onClick={function() { void generateSignalTiers() }}
                 style={{ width: '100%', textAlign: 'left', padding: '18px 20px', borderRadius: 10, border: '1.5px solid ' + S.border, background: S.bg, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .12s' }}
                 onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.borderColor = '#059669'; (e.currentTarget as HTMLElement).style.background = '#f0fdf4' }}
                 onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.borderColor = S.border; (e.currentTarget as HTMLElement).style.background = S.bg }}>
@@ -607,7 +607,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
             <ModalFooter
               disabled={loading || selected.size === 0}
               label={(format === 'html' ? '🌐 Generate HTML Presentation' : '📊 Generate PowerPoint') + ' (' + selected.size + ' fields)'}
-              onGenerate={function() { handleGenerate('quick') }}
+              onGenerate={function() { void handleGenerate('quick') }}
               onCancel={onClose}
               aiOff={!aiEnabled}
             />
@@ -692,7 +692,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
             <ModalFooter
               disabled={loading}
               label={format === 'html' ? '🌐 Build Custom HTML Presentation' : '🎯 Build Custom PowerPoint'}
-              onGenerate={function() { handleGenerate('builder') }}
+              onGenerate={function() { void handleGenerate('builder') }}
               onCancel={onClose}
               aiOff={!aiEnabled}
             />

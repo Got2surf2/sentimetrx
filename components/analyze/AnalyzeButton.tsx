@@ -108,7 +108,7 @@ export default function AnalyzeButton({ studyId }: Props) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <button onClick={handleClick} disabled={loading}
+      <button onClick={function() { void handleClick() }} disabled={loading}
         style={{ padding: '8px 18px', fontSize: 13, fontWeight: 700, borderRadius: 8, color: 'white', background: loading ? HERMES + 'cc' : HERMES, border: 'none', cursor: loading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity .15s' }}>
         {loading ? (
           <>

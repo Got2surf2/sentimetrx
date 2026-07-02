@@ -166,9 +166,9 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
   }, [recordingId])
 
   useEffect(() => {
-    fetchStatus()
+    void fetchStatus()
     if (isTerminal || isPaused || isSetup) return
-    const id = setInterval(fetchStatus, POLL_INTERVAL_MS)
+    const id = setInterval(() => { void fetchStatus() }, POLL_INTERVAL_MS)
     return () => clearInterval(id)
   }, [fetchStatus, isTerminal, isPaused, isSetup])
 
@@ -274,7 +274,7 @@ export default function StatusClient({ recordingId, initialName, initialStatus }
           <p className="text-sm text-red-800 whitespace-pre-wrap">{data.recording.error_message}</p>
           <button
             type="button"
-            onClick={handleRetry}
+            onClick={() => { void handleRetry() }}
             disabled={retrying}
             className="mt-3 px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-60"
           >
@@ -607,7 +607,7 @@ function GateTranscriptReview({ recordingId }: { recordingId: string }) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50">
-      <button type="button" onClick={toggle}
+      <button type="button" onClick={() => { void toggle() }}
         className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700">
         <span>📝 Review &amp; correct transcript <span className="font-normal text-gray-500">— fix names, wording, or mislabeled speakers before extraction</span></span>
         <span className="text-gray-400">{open ? '▲' : '▼'}</span>
@@ -766,7 +766,7 @@ function GeneratePanel({
         <div className="shrink-0 flex flex-col items-stretch gap-1.5">
           <button
             type="button"
-            onClick={() => handleGenerate(false)}
+            onClick={() => { void handleGenerate(false) }}
             disabled={busy}
             className="px-5 py-2.5 text-sm font-semibold rounded-lg text-white disabled:opacity-60"
             style={{ backgroundColor: '#E8632A' }}
@@ -775,7 +775,7 @@ function GeneratePanel({
           </button>
           <button
             type="button"
-            onClick={() => handleGenerate(true)}
+            onClick={() => { void handleGenerate(true) }}
             disabled={busy}
             className="px-5 py-1.5 text-xs font-medium rounded-lg text-gray-600 border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
           >

@@ -20,7 +20,7 @@ export default function LottieLoader({ size = 140, message, className }: Props) 
     var anim: any = null
     // Clear any leftover SVG from a prior mount (React 18 Strict Mode race)
     containerRef.current.innerHTML = ''
-    import('lottie-web').then(function(mod) {
+    void import('lottie-web').then(function(mod) {
       if (cancelled || !containerRef.current) return
       var lottie = mod.default || mod
       anim = lottie.loadAnimation({

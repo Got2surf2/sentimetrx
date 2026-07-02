@@ -262,7 +262,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
     return (
       <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s', opacity: isIgnored(s) ? 0.55 : 1 }}>
         {/* Card header — clickable */}
-        <button onClick={function() { loadSession(s.session_id) }}
+        <button onClick={function() { void loadSession(s.session_id) }}
           style={{ display: 'block', width: '100%', padding: '14px 16px 10px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f3f4f6' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -294,21 +294,21 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             {s.review_status === 'auto_flagged' && (
               <>
-                <button onClick={function() { reviewSession(s.session_id, 'approve') }} title="Include this conversation in reports"
+                <button onClick={function() { void reviewSession(s.session_id,'approve') }} title="Include this conversation in reports"
                   style={{ background: '#D1FAE5', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Approve</button>
-                <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Confirm junk — keep out of reports"
+                <button onClick={function() { void reviewSession(s.session_id,'exclude') }} title="Confirm junk — keep out of reports"
                   style={{ background: '#FEE2E2', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
               </>
             )}
             {s.review_status === 'clean' && (
-              <button onClick={function() { reviewSession(s.session_id, 'exclude') }} title="Exclude this conversation from reports"
+              <button onClick={function() { void reviewSession(s.session_id,'exclude') }} title="Exclude this conversation from reports"
                 style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Exclude</button>
             )}
             {(s.review_status === 'excluded' || s.review_status === 'approved') && (
-              <button onClick={function() { reviewSession(s.session_id, 'reset') }} title="Undo the review decision"
+              <button onClick={function() { void reviewSession(s.session_id,'reset') }} title="Undo the review decision"
                 style={{ background: 'none', border: '1px solid #e5e7eb', color: '#9ca3af', cursor: 'pointer', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 10 }}>Reset</button>
             )}
-            <button onClick={function() { deleteSession(s.session_id) }}
+            <button onClick={function() { void deleteSession(s.session_id) }}
               style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}
               title="Delete conversation">&times;</button>
           </div>
@@ -349,7 +349,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
           />
           {/* Combined client workbook: Summary + Q&A pairs + Unanswered + Transcript
               in one .xlsx (multi-sheet → no CSV variant). */}
-          <button onClick={downloadWorkbook}
+          <button onClick={() => { void downloadWorkbook() }}
             disabled={sessions.length === 0 || workbookLoading}
             title="One Excel file with four tabs: Summary, Q&A Pairs, Low-Confidence Answers, and the Full Transcript"
             className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50">
@@ -467,7 +467,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{turns.length}</span>
-                <button onClick={refreshSession} disabled={turnsLoading || !selectedSession}
+                <button onClick={() => { void refreshSession() }} disabled={turnsLoading || !selectedSession}
                   title="Re-fetch this conversation from the database — new turns added in the live widget won't appear until you refresh"
                   style={{ padding: '5px 10px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: turnsLoading ? 'wait' : 'pointer', opacity: turnsLoading ? 0.5 : 1 }}>
                   {turnsLoading ? '…' : '↻'}
@@ -481,12 +481,12 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
                     AI labels
                   </label>
                 )}
-                <button onClick={shareConversation} disabled={shareState === 'sharing' || !selectedSession}
+                <button onClick={() => { void shareConversation() }} disabled={shareState === 'sharing' || !selectedSession}
                   title="Share — re-fetches the latest turns before generating the snapshot so the share link is always current"
                   style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                   {shareState === 'sharing' ? 'Sharing…' : shareState === 'copied' ? 'Copied!' : 'Share'}
                 </button>
-                <button onClick={function() { if (selectedSession) deleteSession(selectedSession) }}
+                <button onClick={function() { if (selectedSession) void deleteSession(selectedSession) }}
                   style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,100,100,0.4)', background: 'transparent', color: '#fca5a5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                   Delete
                 </button>

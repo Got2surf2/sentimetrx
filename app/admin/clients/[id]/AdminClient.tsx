@@ -125,7 +125,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: P
         {showNew && (
           <div className="mb-8 bg-slate-900 border border-slate-700 rounded-2xl p-6">
             <h2 className="font-semibold text-white mb-5">New Organization</h2>
-            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+            <form onSubmit={(e) => { void handleCreate(e) }} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-slate-400 font-medium">Organization name</label>
@@ -235,7 +235,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: P
                   </Link>
                   {!org.is_admin_org && (
                     <button
-                      onClick={() => handleTogglePlan(org)}
+                      onClick={() => { void handleTogglePlan(org) }}
                       disabled={toggling === org.id}
                       className={'text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ' + (
                         org.plan === 'suspended'

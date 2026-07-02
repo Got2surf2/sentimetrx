@@ -163,7 +163,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
 
         {/* Refresh icon — absolute top-right */}
-        <button onClick={handleRefresh} disabled={refreshing}
+        <button onClick={() => { void handleRefresh() }} disabled={refreshing}
           title="Refresh stats"
           style={{ position: 'absolute', top: 10, right: 10, zIndex: 2, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: refreshing ? '#fff4ef' : 'transparent', cursor: 'pointer', color: refreshing ? HERMES : '#9ca3af', transition: 'all 0.15s' }}
           onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = HERMES; (e.currentTarget as HTMLElement).style.background = '#fff4ef' }}
@@ -238,7 +238,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
           {/* GUID — admin only, click to copy (for debug mode) */}
           {isAdmin && (
             <button
-              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); setGuidCopied(true); setTimeout(() => setGuidCopied(false), 1500) }}
+              onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(study.guid); setGuidCopied(true); setTimeout(() => setGuidCopied(false), 1500) }}
               className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
               title="Click to copy study GUID (for debug mode)">
               {guidCopied ? '✓ Copied!' : 'GUID: ' + study.guid}
@@ -251,7 +251,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
               onClick={e => {
                 e.stopPropagation()
                 const url = window.location.origin + '/s/' + (study.slug || study.guid)
-                navigator.clipboard.writeText(url)
+                void navigator.clipboard.writeText(url)
                 const span = e.currentTarget.querySelector('span')
                 if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/s/' + (study.slug || study.guid) }, 1500) }
               }}
@@ -303,14 +303,14 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
               <button
                 onClick={() => setConfirm({
                   msg: 'Are you sure you want to ' + (status === 'active' ? 'close' : status === 'closed' ? 'reopen' : 'activate') + ' this study?',
-                  action: () => do_patch({ status: status === 'active' ? 'closed' : 'active' })
+                  action: () => { void do_patch({ status: status === 'active' ? 'closed' : 'active' }) }
                 })}
                 disabled={busy}
                 className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
                 style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                 {status === 'active' ? 'Close' : 'Reopen'}
               </button>
-              <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => onDelete(study.id) })}
+              <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => { void onDelete(study.id) } })}
                 disabled={busy}
                 className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
                 style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
@@ -325,7 +325,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
                 style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                 Edit
               </Link>
-              <button onClick={() => onDuplicate(study)}
+              <button onClick={() => { void onDuplicate(study) }}
                 className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                 style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                 Duplicate
@@ -366,7 +366,7 @@ function AnalyzeInAnaButton({ studyId }: { studyId: string }) {
   }
 
   return (
-    <button onClick={handleClick} disabled={loading}
+    <button onClick={() => { void handleClick() }} disabled={loading}
       className="col-span-3 text-xs py-1.5 rounded-lg font-semibold transition-all text-center"
       style={{ background: '#E8632A', color: 'white', border: 'none', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
       {loading ? status : '\uD83D\uDCCA Analyze in Ana'}

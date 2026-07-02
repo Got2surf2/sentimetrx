@@ -274,7 +274,7 @@ export default function TranscriptReview({
                 )}
               </div>
 
-              <button type="button" onClick={saveNames} disabled={savingNames}
+              <button type="button" onClick={() => { void saveNames() }} disabled={savingNames}
                 className="mt-1 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
                 {savingNames ? 'Saving…' : 'Save speakers'}
               </button>
@@ -311,7 +311,7 @@ export default function TranscriptReview({
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">⚡ Auto-fill speakers</button>
               <button type="button" onClick={cancelEdit} disabled={savingSegs}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-              <button type="button" onClick={saveSegs} disabled={savingSegs}
+              <button type="button" onClick={() => { void saveSegs() }} disabled={savingSegs}
                 className="text-sm px-3 py-1.5 rounded-lg bg-orange-600 text-white font-semibold disabled:opacity-50">
                 {savingSegs ? 'Saving…' : `Save${dirty.size ? ` (${dirty.size})` : ''}`}
               </button>

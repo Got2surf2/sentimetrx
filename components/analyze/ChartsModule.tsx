@@ -260,11 +260,11 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     // and ref.current is null. newPlot(null) throws "DOM element
     // provided is null or undefined" — Sentry caught this in prod
     // 2026-05-12. Null-check inside the .then.
-    getPlotly().then(function(Plotly) { if (ref.current) Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
+    void getPlotly().then(function(Plotly) { if (ref.current) Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
     return function() {
       const el = ref.current
       if (!el) return
-      getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
+      void getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
     }
   }, [traces, layout])
   return <div ref={ref} style={style || { width: '100%', height: 400 }} />
@@ -2202,7 +2202,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var chartBodyRef = useRef<HTMLDivElement>(null)
 
   var downloadCSV = function() {
-    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+    void fetch('/api/datasets/' + datasetId + '/rows?all=true')
       .then(function(r) { return r.json() })
       .then(function(data) {
         var allRows: Record<string, unknown>[] = data.rows || []
@@ -2298,7 +2298,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     // every SVG and composites them onto one canvas).
     var plotDivs = chartBodyRef.current.querySelectorAll('.js-plotly-plot')
     if (plotDivs.length === 1) {
-      getPlotly().then(function(Plotly) {
+      void getPlotly().then(function(Plotly) {
         Plotly.downloadImage(plotDivs[0] as HTMLElement, { format: 'png', width: 1200, height: 700, filename: activeChart + '_chart' })
       })
       return

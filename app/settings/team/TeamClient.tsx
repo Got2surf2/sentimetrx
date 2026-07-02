@@ -116,12 +116,12 @@ export default function TeamClient({ org, members: initialMembers, invites: init
   }
 
   function copyLink(token: string) {
-    navigator.clipboard.writeText(`${BASE}/invite/${token}`)
+    void navigator.clipboard.writeText(`${BASE}/invite/${token}`)
     flash('Link copied to clipboard')
   }
 
   function copyInvite(inv: PendingInvite) {
-    navigator.clipboard.writeText(`${BASE}/invite/${inv.token}`)
+    void navigator.clipboard.writeText(`${BASE}/invite/${inv.token}`)
     flash('Link copied to clipboard')
   }
 
@@ -253,13 +253,13 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                 {logoUrl ? 'Change Logo' : 'Upload Logo'}
               </button>
               {logoUrl && (
-                <button onClick={removeLogo} disabled={busy}
+                <button onClick={() => { void removeLogo() }} disabled={busy}
                   className="text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 border border-red-300 text-red-500 transition-colors font-semibold">
                   Remove
                 </button>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { void uploadLogo(e) }} />
           </div>
         </section>
 
@@ -290,12 +290,12 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                           }>
                           Permissions
                         </button>
-                        <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
+                        <select value={m.role} onChange={e => { void changeRole(m.id, e.target.value) }}
                           className="text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-600 focus:border-orange-400 outline-none">
                           <option value="owner">Owner</option>
                           <option value="member">Member</option>
                         </select>
-                        <button onClick={() => toggleDisabled(m.id, !m.disabled)}
+                        <button onClick={() => { void toggleDisabled(m.id, !m.disabled) }}
                           className="text-xs px-2 py-1 rounded border transition-colors font-semibold"
                           style={m.disabled
                             ? { color: '#16a34a', borderColor: '#bbf7d0', background: '#f0fdf4' }
@@ -303,7 +303,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                           }>
                           {m.disabled ? 'Re-enable' : 'Disable'}
                         </button>
-                        <button onClick={() => removeMember(m.id)}
+                        <button onClick={() => { void removeMember(m.id) }}
                           className="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors font-semibold">
                           Remove
                         </button>
@@ -327,7 +327,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                             {orgEnabled ? (
                               <ToggleSwitch
                                 enabled={userEnabled}
-                                onToggle={() => toggleUserFeature(m.id, key)}
+                                onToggle={() => { void toggleUserFeature(m.id, key) }}
                                 disabled={savingFeature}
                               />
                             ) : (
@@ -359,7 +359,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                 <option value="owner">Owner</option>
                 <option value="member">Member</option>
               </select>
-              <button onClick={generateInvite} disabled={busy}
+              <button onClick={() => { void generateInvite() }} disabled={busy}
                 style={{ backgroundColor: HERMES }}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50">
                 Generate Link

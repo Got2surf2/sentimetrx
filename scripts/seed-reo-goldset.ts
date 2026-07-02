@@ -62,4 +62,4 @@ async function main() {
   console.log(`seeded into org "${org.name}": ${inserted} upserted, ${skipped} left untouched (already reviewed)`)
 }
 
-main().then(() => process.exit(0))
+void main().then(() => process.exit(0))

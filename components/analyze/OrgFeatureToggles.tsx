@@ -117,7 +117,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
               {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
               <ToggleSwitch
                 enabled={lockedOff ? false : !!features[key]}
-                onToggle={() => toggle(key)}
+                onToggle={() => { void toggle(key) }}
                 disabled={saving || lockedOff}
               />
             </div>
@@ -140,7 +140,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
               <input
                 type="checkbox"
                 checked={primaryIndustries.includes(industry)}
-                onChange={() => toggleIndustry(industry)}
+                onChange={() => { void toggleIndustry(industry) }}
                 disabled={saving}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
               />

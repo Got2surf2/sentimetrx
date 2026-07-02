@@ -33,7 +33,7 @@ export default function ShareButton({ type, targetId }: Props) {
 
   const copy = () => {
     if (shareUrl) {
-      navigator.clipboard.writeText(shareUrl)
+      void navigator.clipboard.writeText(shareUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -73,7 +73,7 @@ export default function ShareButton({ type, targetId }: Props) {
                 ))}
               </div>
             </div>
-            <button onClick={create} disabled={creating}
+            <button onClick={() => { void create() }} disabled={creating}
               className="w-full py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
               style={{ background: HERMES }}>
               {creating ? 'Creating...' : 'Create Share Link'}

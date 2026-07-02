@@ -27,8 +27,9 @@ export default [
     },
     rules: {
       'react/no-unescaped-entities': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-misused-promises': 'warn',
+      // Burned to 0 on 2026-07-02 → promoted to error (ratchet doctrine).
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/no-explicit-any': 'warn',
       // Burned to 0 on 2026-07-02 → promoted to error (ratchet doctrine).
       '@typescript-eslint/consistent-type-imports': 'error',

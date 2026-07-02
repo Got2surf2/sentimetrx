@@ -371,7 +371,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     const last = messages[messages.length - 1]
     if (last.role !== 'assistant') return
 
-    silenceTimerRef.current = setTimeout(async function() {
+    silenceTimerRef.current = setTimeout(function() { void (async function() {
       if (silenceProbeFiredRef.current) return
       silenceProbeFiredRef.current = true
       try {
@@ -396,7 +396,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
         }
       } catch { /* silent — probe failure must not disrupt UX */ }
-    }, SILENCE_TIMEOUT_MS)
+    })() }, SILENCE_TIMEOUT_MS)
 
     return () => clearSilenceTimer()
   }, [messages, loading, hasFirstMessage, nameExchangeMessages, sessionId, selectedLang, config.apiEndpoint, EN_INITIAL.content, sessionEnded])
@@ -418,7 +418,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       if (!isCleanName(name)) {
         if (isNonEnglish) {
           setLoading(true)
-          fetch(config.apiEndpoint, {
+          void fetch(config.apiEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: [{ role: 'user', content: 'The user gave an inappropriate name. Ask them to try a different name. One sentence.' }], session_id: sessionId, language: selectedLang, ...(config.extraBody || {}) }),
@@ -525,7 +525,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage(input)
+      void sendMessage(input)
     }
   }
 
@@ -754,7 +754,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
            retype after a connectivity blip. */}
         {lastFailedInput && !loading && (
           <div style={{ display: 'flex', marginTop: 8 }}>
-            <button onClick={() => { const t = lastFailedInput; setLastFailedInput(null); sendMessage(t) }}
+            <button onClick={() => { const t = lastFailedInput; setLastFailedInput(null); void sendMessage(t) }}
               style={{
                 padding: '8px 16px', borderRadius: 20,
                 background: config.accentColor, border: 'none',
@@ -778,7 +778,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         {!hasFirstMessage && !loading && userName !== null && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {config.suggestions.map((s, i) => (
-              <button key={i} onClick={() => sendMessage(s)}
+              <button key={i} onClick={() => { void sendMessage(s) }}
                 style={{
                   padding: '8px 16px', borderRadius: 20,
                   background: 'white', border: '1.5px solid #e5e7eb',
@@ -806,7 +806,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
               {last._chips.map((c, i) => (
-                <button key={i} onClick={() => sendMessage(c)}
+                <button key={i} onClick={() => { void sendMessage(c) }}
                   style={{
                     padding: '8px 16px', borderRadius: 20,
                     background: 'white', border: '1.5px solid #e5e7eb',
@@ -876,7 +876,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             }}
           />
           <button
-            onClick={() => sendMessage(input)}
+            onClick={() => { void sendMessage(input) }}
             disabled={!input.trim() || loading || sessionEnded}
             style={{
               width: 42, height: 42, borderRadius: '50%',

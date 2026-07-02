@@ -167,7 +167,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 {surveyUrl}
               </div>
               <button
-                onClick={handleCopy}
+                onClick={() => { void handleCopy() }}
                 className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
                   copied
                     ? 'bg-green-500/20 text-green-400 border border-green-500/30'
@@ -213,9 +213,9 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                   ))}
                 </div>
                 <button
-                  onClick={async () => {
+                  onClick={() => { void (async () => {
                     await navigator.clipboard.writeText(templateUrl)
-                  }}
+                  })() }}
                   className="mt-3 px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition-all"
                 >
                   Copy template URL
@@ -266,7 +266,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 {kioskUrl}
               </div>
               <button
-                onClick={async () => { await navigator.clipboard.writeText(kioskUrl); setKioskCopied(true); setTimeout(() => setKioskCopied(false), 2000) }}
+                onClick={() => { void (async () => { await navigator.clipboard.writeText(kioskUrl); setKioskCopied(true); setTimeout(() => setKioskCopied(false), 2000) })() }}
                 className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
                   kioskCopied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 hover:bg-slate-600 text-white'
                 }`}
@@ -299,7 +299,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-gray-200 outline-none mb-4"
               />
               <button
-                onClick={handleSaveKioskCopy}
+                onClick={() => { void handleSaveKioskCopy() }}
                 disabled={kioskSaving}
                 className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
                   kioskSaved ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 hover:bg-slate-600 text-white'
@@ -355,15 +355,15 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                               {!link.last_accessed_at && <> <span className="text-gray-300">·</span> Never viewed</>}
                             </p>
                           </div>
-                          <button onClick={() => { navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
+                          <button onClick={() => { void navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
                             className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ' +
                               (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}>
                             {shareCopied === link.url ? 'Copied!' : 'Copy'}
                           </button>
-                          <button onClick={async () => {
+                          <button onClick={() => { void (async () => {
                             const res = await fetch('/api/share?token=' + encodeURIComponent(link.token), { method: 'DELETE' })
                             if (res.ok) setShareLinks(prev => prev.filter(l => l.token !== link.token))
-                          }}
+                          })() }}
                             className="px-2 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                             title="Delete link">
                             &times;
@@ -387,7 +387,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 <option value="7d">Expires in 7 days</option>
                 <option value="30d">Expires in 30 days</option>
               </select>
-              <button disabled={shareLoading} onClick={async () => {
+              <button disabled={shareLoading} onClick={() => { void (async () => {
                 setShareLoading(true)
                 try {
                   const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -395,7 +395,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                   const data = await res.json()
                   if (res.ok) setShareLinks(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString(), last_accessed_at: null }, ...prev])
                 } finally { setShareLoading(false) }
-              }} className="px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
+              })() }} className="px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#E8632A' }}>
                 {shareLoading ? 'Creating...' : '+ Create New Link'}
               </button>
@@ -412,7 +412,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
               }
             </p>
             <button
-              onClick={handleToggleStatus}
+              onClick={() => { void handleToggleStatus() }}
               disabled={toggling}
               className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 ${
                 isActive

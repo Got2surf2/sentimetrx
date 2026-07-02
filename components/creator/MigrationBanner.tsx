@@ -141,7 +141,7 @@ export default function MigrationBanner({ studyId, currentConfig, onStudyTypeAdd
               return (
                 <button
                   key={type}
-                  onClick={() => handleSelectStudyType(type)}
+                  onClick={() => { void handleSelectStudyType(type) }}
                   disabled={saving}
                   style={{
                     display: 'flex',

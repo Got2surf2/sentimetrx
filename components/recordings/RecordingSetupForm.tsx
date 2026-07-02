@@ -414,7 +414,7 @@ export default function RecordingSetupForm({
                         {d.file_role === 'slides' ? 'Presentation deck' : 'Brief'}
                       </span>
                     </span>
-                    <button type="button" onClick={() => removeDoc(d.id)} disabled={attachBusy || busy}
+                    <button type="button" onClick={() => { void removeDoc(d.id) }} disabled={attachBusy || busy}
                       className="shrink-0 text-gray-400 hover:text-red-500 disabled:opacity-30 px-1" title="Remove">✕</button>
                   </li>
                 ))}
@@ -424,12 +424,12 @@ export default function RecordingSetupForm({
               <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${(attachBusy || docBusy) ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
                 <span>📊 {attachBusy ? 'Attaching…' : 'Attach presentation deck (PDF)'}</span>
                 <input type="file" accept="application/pdf,.pdf" className="hidden" disabled={attachBusy || busy}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) attachDoc(f, 'slides'); e.target.value = '' }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void attachDoc(f, 'slides'); e.target.value = '' }} />
               </label>
               <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer ${attachBusy ? 'opacity-60 cursor-wait' : 'hover:bg-gray-50'}`}>
                 <span>📎 Attach a brief / document</span>
                 <input type="file" className="hidden" disabled={attachBusy || busy}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) attachDoc(f, 'document'); e.target.value = '' }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void attachDoc(f, 'document'); e.target.value = '' }} />
               </label>
               {(attachBusy || docBusy) && <LottieLoader size={28} />}
             </div>
@@ -446,7 +446,7 @@ export default function RecordingSetupForm({
                 <input
                   type="file" accept="application/pdf,.pdf" className="hidden"
                   disabled={docBusy || busy}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleDoc(f); e.target.value = '' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void handleDoc(f); e.target.value = '' }}
                 />
               </label>
               {docBusy && <LottieLoader size={28} />}
@@ -685,7 +685,7 @@ export default function RecordingSetupForm({
             ? (isEdit ? 'Name is required' : 'Name and at least one agenda topic are required')
             : ''}
         </span>
-        <button type="button" onClick={handleSubmit} disabled={!canSubmit}
+        <button type="button" onClick={() => { void handleSubmit() }} disabled={!canSubmit}
           className="px-6 py-3 rounded-lg text-sm font-semibold text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
           style={{ backgroundColor: canSubmit ? HERMES : undefined }}>
           {busy ? (isEdit ? 'Saving…' : 'Creating…') : (isEdit ? 'Save setup' : 'Create project')}

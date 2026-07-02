@@ -383,7 +383,7 @@ export default function SimulatorClient() {
               </div>
             )}
             <div className="flex gap-3 mb-4">
-              <button onClick={async () => {
+              <button onClick={() => { void (async () => {
                 if (!demoCandidate.trim()) return
                 setDemoLoading(true); setDemoResult(null)
                 try {
@@ -391,19 +391,19 @@ export default function SimulatorClient() {
                   setDemoResult(await r.json())
                 } catch { setDemoResult({ error: 'Failed' }) }
                 setDemoLoading(false)
-              }} disabled={demoLoading || !demoCandidate.trim()}
+              })() }} disabled={demoLoading || !demoCandidate.trim()}
                 className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: HERMES }}>
                 {demoLoading ? 'Generating...' : 'Generate Demo Comments'}
               </button>
-              <button onClick={async () => {
+              <button onClick={() => { void (async () => {
                 if (!confirm('Delete all demo/test comments?')) return
                 setDemoLoading(true)
                 const r = await fetch('/api/social/demo', { method: 'DELETE' })
                 const d = await r.json()
                 setDemoResult({ deleted: d.deleted })
                 setDemoLoading(false)
-              }} disabled={demoLoading}
+              })() }} disabled={demoLoading}
                 className="px-5 py-2 rounded-lg text-sm font-semibold border border-red-300 text-red-600 bg-red-50 hover:bg-red-100">
                 Clear Demo Data
               </button>
@@ -487,7 +487,7 @@ export default function SimulatorClient() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={run}
+              onClick={() => { void run() }}
               disabled={running || !guid.trim()}
               className="px-5 py-2.5 bg-teal-700 text-white rounded-lg font-semibold text-sm hover:bg-teal-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >

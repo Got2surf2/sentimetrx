@@ -127,7 +127,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
   useEffect(() => {
     if (!pendingMessage) return
     onPendingMessageConsumed?.()
-    send(pendingMessage)
+    void send(pendingMessage)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMessage])
 
@@ -248,7 +248,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
             {showHeader && <div className="chips-header">Common Searches</div>}
             <div className="chips">
               {chipsToShow.map((c) => (
-                <button key={c} className="chip" onClick={() => send(c)} disabled={pending}>{c}</button>
+                <button key={c} className="chip" onClick={() => { void send(c) }} disabled={pending}>{c}</button>
               ))}
             </div>
           </div>
@@ -260,11 +260,11 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !pending) send(input) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !pending) void send(input) }}
           placeholder={placeholder}
           autoFocus
         />
-        <button onClick={() => send(input)} disabled={pending || !input.trim()} aria-label="Send">➤</button>
+        <button onClick={() => { void send(input) }} disabled={pending || !input.trim()} aria-label="Send">➤</button>
       </div>
     </div>
   )

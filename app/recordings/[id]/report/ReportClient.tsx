@@ -197,7 +197,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
             />
             <button
               type="button"
-              onClick={reviewAndSignOff}
+              onClick={() => { void reviewAndSignOff() }}
               disabled={signing}
               className="shrink-0 px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
               style={{ backgroundColor: '#E8632A' }}
@@ -468,7 +468,7 @@ function DriftBanner({ recordingId, analyzedVersion }: { recordingId: string; an
         </div>
         {confirming ? (
           <div className="shrink-0 flex items-center gap-2">
-            <button type="button" onClick={reanalyze} disabled={busy}
+            <button type="button" onClick={() => { void reanalyze() }} disabled={busy}
               className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: HERMES }}>
               {busy ? 'Re-analyzing…' : 'Yes, re-analyze (~$1)'}
             </button>
@@ -875,7 +875,7 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
           </button>
           <button
             type="button"
-            onClick={handleConfirm}
+            onClick={() => { void handleConfirm() }}
             disabled={busy}
             className="text-sm px-4 py-2 rounded text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: HERMES }}
@@ -1046,10 +1046,10 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             {hasPresentation && (
               <span className="inline-flex items-center gap-1 ml-1">
                 <span className="text-gray-400">Scope:</span>
-                <button type="button" onClick={() => setScope('in_scope')}
+                <button type="button" onClick={() => { void setScope('in_scope') }}
                   className={`px-2 py-0.5 rounded-full border transition-colors ${scope === 'in_scope' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
                   title="This question is about the presentation">In presentation</button>
-                <button type="button" onClick={() => setScope('out_of_scope')}
+                <button type="button" onClick={() => { void setScope('out_of_scope') }}
                   className={`px-2 py-0.5 rounded-full border transition-colors ${scope === 'out_of_scope' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'}`}
                   title="This question is outside the presentation's scope">Outside scope</button>
               </span>
@@ -1085,7 +1085,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             {flagged && (
               <button
                 type="button"
-                onClick={markReviewed}
+                onClick={() => { void markReviewed() }}
                 disabled={reviewing}
                 className="text-xs px-2 py-1 border border-yellow-300 rounded text-yellow-800 bg-yellow-50 hover:bg-yellow-100 disabled:opacity-50 ml-auto"
                 title="Clear the needs-review flag — you've checked (and if needed corrected) this pair"
@@ -1111,7 +1111,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={handleRegenerate}
+                  onClick={() => { void handleRegenerate() }}
                   disabled={busy}
                   className="text-xs px-3 py-1 rounded text-white font-semibold disabled:opacity-60"
                   style={{ backgroundColor: HERMES }}
@@ -1358,7 +1358,7 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
           className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment end to the current playhead">Set end ⇥</button>
         {changed && (
           <>
-            <button type="button" onClick={saveSpan} disabled={spanBusy}
+            <button type="button" onClick={() => { void saveSpan() }} disabled={spanBusy}
               className="px-2 py-0.5 rounded text-white font-semibold disabled:opacity-40" style={{ background: HERMES }}>{spanBusy ? 'Saving…' : 'Save segment'}</button>
             <button type="button" onClick={resetSpan} disabled={spanBusy} className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40">Reset</button>
           </>
@@ -1431,12 +1431,12 @@ function EditPairModal({ recordingId, extraction, onClose, onSaved }: {
         </div>
         {err && <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
         <div className="flex items-center gap-3 mt-5">
-          <button onClick={save} disabled={busy}
+          <button onClick={() => { void save() }} disabled={busy}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>
             {busy ? 'Saving…' : 'Save edit'}
           </button>
           {isEdited(payload) && (
-            <button onClick={revert} disabled={busy}
+            <button onClick={() => { void revert() }} disabled={busy}
               className="px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
               Revert to AI
             </button>
@@ -1540,9 +1540,9 @@ function ActionItemRow({ extraction, trace, recordingId, canEdit, onReplaced, on
               className="w-40 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} />
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => { void save() }} disabled={busy} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
             <button type="button" onClick={() => { setDesc(v.description); setOwner(v.owner); setDue(v.due_date); setEditing(false) }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-            {v.isEdited && <button type="button" onClick={revert} disabled={busy} className="text-xs text-gray-500 hover:text-red-600 ml-auto">Revert to AI</button>}
+            {v.isEdited && <button type="button" onClick={() => { void revert() }} disabled={busy} className="text-xs text-gray-500 hover:text-red-600 ml-auto">Revert to AI</button>}
           </div>
         </div>
       ) : (
@@ -1645,7 +1645,7 @@ function StaleQaBanner({ recordingId, canEdit }: { recordingId: string; canEdit:
       <div className="flex-1 text-sm text-amber-900">
         <span className="font-semibold">Q&amp;A is out of date.</span> The transcript was updated by a span re-transcribe, so the pairs below don&apos;t reflect the recovered speech yet.
         {canEdit && (
-          <button type="button" onClick={rerun} disabled={busy}
+          <button type="button" onClick={() => { void rerun() }} disabled={busy}
             className="ml-2 align-baseline text-xs font-medium underline underline-offset-2 text-amber-900 hover:text-amber-700 disabled:opacity-50">
             {busy ? 'Starting…' : 'Re-run Q&A →'}
           </button>
@@ -1896,7 +1896,7 @@ function CoverageTab({ recording, extractions, transcript, recordingId, canEdit,
                     )
                   }
                   return canEdit ? (
-                    <button type="button" onClick={() => retranscribeSpan(g, i)} disabled={spanBusy !== null}
+                    <button type="button" onClick={() => { void retranscribeSpan(g, i) }} disabled={spanBusy !== null}
                       className="text-xs px-2 py-0.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
                       {spanBusy === i ? 'Starting…' : '↻ Re-transcribe span'}
                     </button>
@@ -2041,7 +2041,7 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
               <option value="whisper">Whisper</option>
               <option value="deepgram">Deepgram</option>
             </select>
-            <button type="button" onClick={retranscribe} disabled={retBusy}
+            <button type="button" onClick={() => { void retranscribe() }} disabled={retBusy}
               className="text-sm px-3 py-1.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 disabled:opacity-50">
               {retBusy ? 'Starting…' : '↻ Re-transcribe'}
             </button>
@@ -2071,7 +2071,7 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
               ))}
               <div className="flex items-center gap-2 pt-1">
                 <button type="button" onClick={() => setEnts(p => [...p, { canonical: '', variants: [] }])} className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">+ Add term</button>
-                <button type="button" onClick={saveEnts} disabled={savingEnts} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{savingEnts ? 'Saving…' : 'Save corrections'}</button>
+                <button type="button" onClick={() => { void saveEnts() }} disabled={savingEnts} className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">{savingEnts ? 'Saving…' : 'Save corrections'}</button>
               </div>
             </div>
           )}
@@ -2127,7 +2127,7 @@ function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
       if (r.ok) setVersions((d.versions ?? []) as ConfigVersion[])
     } finally { setLoading(false) }
   }, [recordingId])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { void load() }, [load])
 
   const saveVersion = async () => {
     setBusy(true); setErr(null)
@@ -2174,14 +2174,14 @@ function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
               {signoff.approved_at ? ` on ${new Date(signoff.approved_at).toLocaleString()}` : ''}
               {signoff.note ? <span className="block text-xs text-gray-500 mt-0.5">“{signoff.note}”</span> : null}
             </p>
-            <button type="button" onClick={revoke} disabled={busy}
+            <button type="button" onClick={() => { void revoke() }} disabled={busy}
               className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">Revoke</button>
           </div>
         ) : (
           <div className="mt-2 flex items-center gap-2">
             <input type="text" value={signNote} onChange={e => setSignNote(e.target.value)} placeholder="Optional note (e.g. reviewed against the recording)"
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} disabled={busy} />
-            <button type="button" onClick={approve} disabled={busy}
+            <button type="button" onClick={() => { void approve() }} disabled={busy}
               className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: '#0d9488' }}>
               Mark reviewed &amp; approved
             </button>
@@ -2198,7 +2198,7 @@ function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
         <div className="flex items-center gap-2 mb-3">
           <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="What changed? (optional)"
             className="flex-1 border border-gray-300 rounded-lg px-3 py-2" style={{ fontSize: '16px' }} disabled={busy} />
-          <button type="button" onClick={saveVersion} disabled={busy}
+          <button type="button" onClick={() => { void saveVersion() }} disabled={busy}
             className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: HERMES }}>Save version</button>
         </div>
         {loading ? (
@@ -2438,7 +2438,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </label>
-            <button onClick={saveLink} disabled={linkBusy}
+            <button onClick={() => { void saveLink() }} disabled={linkBusy}
               className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50">
               {linkBusy ? 'Saving…' : 'Save'}
             </button>
@@ -2459,7 +2459,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
           )}
         </div>
         <button
-          onClick={handleExport}
+          onClick={() => { void handleExport() }}
           disabled={!ready}
           className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
           style={{ background: HERMES }}
@@ -2478,7 +2478,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
             {!ready && <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete (status: {status}).</p>}
           </div>
           <button
-            onClick={handlePdf}
+            onClick={() => { void handlePdf() }}
             disabled={!ready}
             className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
             style={{ background: HERMES }}
@@ -2508,7 +2508,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
               {!ready && <p className="text-xs text-amber-600 mt-1.5">Available once analysis is complete.</p>}
             </div>
             <button
-              onClick={() => toggleShare(!shareEnabled)}
+              onClick={() => { void toggleShare(!shareEnabled) }}
               disabled={!ready || shareBusy}
               className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 ${shareEnabled ? 'border border-gray-300 text-gray-700 hover:bg-gray-50' : 'text-white'}`}
               style={shareEnabled ? undefined : { background: HERMES }}
@@ -2527,7 +2527,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
                   style={{ fontSize: '16px' }}
                 />
                 <button
-                  onClick={copyLink}
+                  onClick={() => { void copyLink() }}
                   className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   {copied ? 'Copied' : 'Copy'}
@@ -2538,14 +2538,14 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
                 <span className="text-gray-500">Show:</span>
                 <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
                   <button
-                    onClick={() => setVerbatim(false)}
+                    onClick={() => { void setVerbatim(false) }}
                     disabled={shareBusy}
                     className={`px-3 py-1.5 font-medium transition-colors ${!shareVerbatim ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
                   >
                     Polished
                   </button>
                   <button
-                    onClick={() => setVerbatim(true)}
+                    onClick={() => { void setVerbatim(true) }}
                     disabled={shareBusy}
                     className={`px-3 py-1.5 font-medium transition-colors border-l border-gray-300 ${shareVerbatim ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
                   >
@@ -2630,7 +2630,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
           <div className="mt-3 flex items-center gap-3">
             <button
-              onClick={handleSend}
+              onClick={() => { void handleSend() }}
               disabled={!ready || sendBusy || !recipients.trim() || (!sendPdf && !(sendLink && shareEnabled))}
               className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
               style={{ background: HERMES }}
@@ -2839,7 +2839,7 @@ function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
                   className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40" title="Set the segment end to the current playhead">Set end ⇥</button>
                 {span.changed && !span.saved && (
                   <>
-                    <button type="button" onClick={span.save} disabled={span.busy} className="px-2 py-0.5 rounded text-white font-semibold disabled:opacity-40" style={{ background: HERMES }}>{span.busy ? 'Saving…' : 'Save segment'}</button>
+                    <button type="button" onClick={() => { void span.save() }} disabled={span.busy} className="px-2 py-0.5 rounded text-white font-semibold disabled:opacity-40" style={{ background: HERMES }}>{span.busy ? 'Saving…' : 'Save segment'}</button>
                     <button type="button" onClick={span.reset} disabled={span.busy} className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40">Reset</button>
                   </>
                 )}

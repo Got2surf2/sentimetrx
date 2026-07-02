@@ -47,7 +47,7 @@ export default function QRHandoffModal({ botId, sessionId, messages, onClose }: 
     if (messages.length === 0) { setState('empty'); return }
     setState('loading')
     let aborted = false
-    ;(async () => {
+    void (async () => {
       try {
         const res = await fetch('/api/mco/handoff', {
           method: 'POST',

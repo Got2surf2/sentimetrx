@@ -46,7 +46,7 @@ export default function GoldSetClient() {
     else { setIdx(Math.max(0, list.length - 1)); setDone(list.length > 0) }   // already all reviewed → land on the done screen
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { void load() }, [])
 
   const cur = reviews[idx]
   useEffect(() => {
@@ -212,9 +212,9 @@ export default function GoldSetClient() {
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-            <button disabled={saving} onClick={() => save('approved')} style={{ ...btn(GREEN), opacity: saving ? 0.6 : 1 }}>✓ All correct</button>
-            <button disabled={saving} onClick={() => save('edited')} style={{ ...btn(HERMES), opacity: saving ? 0.6 : 1 }}>Save my judgments</button>
-            <button disabled={saving} onClick={() => save('skipped')} style={{ ...btn('#fff', SLATE), fontWeight: 600, fontSize: 13 }}>Not sure — skip</button>
+            <button disabled={saving} onClick={() => { void save('approved') }} style={{ ...btn(GREEN), opacity: saving ? 0.6 : 1 }}>✓ All correct</button>
+            <button disabled={saving} onClick={() => { void save('edited') }} style={{ ...btn(HERMES), opacity: saving ? 0.6 : 1 }}>Save my judgments</button>
+            <button disabled={saving} onClick={() => { void save('skipped') }} style={{ ...btn('#fff', SLATE), fontWeight: 600, fontSize: 13 }}>Not sure — skip</button>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               <button disabled={idx === 0} onClick={() => goTo(Math.max(0, idx - 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.4 : 1 }}>← Prev</button>
               <button disabled={idx >= reviews.length - 1} onClick={() => goTo(Math.min(reviews.length - 1, idx + 1))} style={{ fontSize: 13, color: NAVY, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', cursor: idx >= reviews.length - 1 ? 'default' : 'pointer', opacity: idx >= reviews.length - 1 ? 0.4 : 1 }}>Next →</button>

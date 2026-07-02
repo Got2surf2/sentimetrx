@@ -85,20 +85,20 @@ export default function PendingInvitesList({ invites, onResend, onCopy, onRevoke
                   </span>
                 )}
                 <button
-                  onClick={() => handleResend(inv)}
+                  onClick={() => { void handleResend(inv) }}
                   disabled={rs?.status === 'sending'}
                   className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors disabled:opacity-50"
                 >
                   {rs?.status === 'sending' ? 'Sending…' : 'Resend'}
                 </button>
                 <button
-                  onClick={() => handleCopy(inv)}
+                  onClick={() => { void handleCopy(inv) }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
                 >
                   {copiedId === inv.id ? 'Copied!' : 'Copy Link'}
                 </button>
                 <button
-                  onClick={() => onRevoke(inv.id, inv.email)}
+                  onClick={() => { void onRevoke(inv.id, inv.email) }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-600 hover:text-white text-red-600 transition-colors"
                 >
                   Revoke

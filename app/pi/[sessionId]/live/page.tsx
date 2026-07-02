@@ -70,8 +70,8 @@ export default function LivePresenter() {
   }, [sessionId])
 
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 10000)
+    void fetchData()
+    const interval = setInterval(() => { void fetchData() }, 10000)
     return () => clearInterval(interval)
   }, [fetchData])
 

@@ -114,7 +114,7 @@ export default function MobileChat({ botId, initialMessages, code }: Props) {
 
       <form
         className="mob-input"
-        onSubmit={(e) => { e.preventDefault(); send(input) }}
+        onSubmit={(e) => { e.preventDefault(); void send(input) }}
       >
         <input
           type="text"

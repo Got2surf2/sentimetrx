@@ -108,7 +108,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   function toggleReportMenu() { if (reportMenuOpen) setReportMenuOpen(false); else openReportMenu() }
   function handleReportClick() {
     if (deckReport) { setShowExport(true); return }                       // primary = deck modal
-    if (datasetReports.length === 1) { handleReportLaunch(datasetReports[0], datasetReports[0].formats[0]); return }
+    if (datasetReports.length === 1) { void handleReportLaunch(datasetReports[0], datasetReports[0].formats[0]); return }
     toggleReportMenu()
   }
   async function handleReportLaunch(type: ReportType, format: ReportFormat) {
@@ -341,7 +341,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                     paddingTop: 6, paddingBottom: 6, color: '#111827',
                   }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 14px 4px' }}>Reports</div>
-                    <ReportsMenu ctx={reportCtx} onLaunch={handleReportLaunch} />
+                    <ReportsMenu ctx={reportCtx} onLaunch={(type, format) => { void handleReportLaunch(type, format) }} />
                   </div>
                 </>
               )}
@@ -396,14 +396,14 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                 : dataset.row_count.toLocaleString()} rows
             </span>
             {(dataset.source === 'study' || dataset.source === 'townhall') && (
-              <button onClick={handleResync} disabled={syncing}
+              <button onClick={() => { void handleResync() }} disabled={syncing}
                 title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new data from source'}
                 style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.6 : 1, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {syncing ? 'Syncing...' : '\u21BB Sync'}
               </button>
             )}
             {dataset.source === 'google_reviews' && (
-              <button onClick={handleReviewSync} disabled={reviewSyncing}
+              <button onClick={() => { void handleReviewSync() }} disabled={reviewSyncing}
                 title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new reviews'}
                 style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: reviewSyncing ? 'wait' : 'pointer', opacity: reviewSyncing ? 0.6 : 1, whiteSpace: 'nowrap' }}>
                 {reviewSyncing ? 'Syncing...' : '\u21BB Sync Reviews'}
@@ -437,13 +437,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             ) : (
               <>
                 <button
-                  onClick={async function() {
+                  onClick={() => { void (async function() {
                     if (aiToggling || orgAi.loading) return
                     setAiToggling(true)
                     var result = await orgAi.setUserEnabled(!aiEnabled)
                     setAiToggling(false)
                     if (!result.ok && result.error) alert(result.error)
-                  }}
+                  })() }}
                   disabled={aiToggling || orgAi.loading}
                   title={
                     orgAi.loading

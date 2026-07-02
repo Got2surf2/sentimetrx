@@ -138,7 +138,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
 
   function copyLink(bot: Bot) {
     var url = typeof window !== 'undefined' ? window.location.origin + '/b/' + bot.slug : '/b/' + bot.slug
-    navigator.clipboard.writeText(url)
+    void navigator.clipboard.writeText(url)
   }
 
   if (loading) return <div className="flex items-center justify-center py-32"><LottieLoader size={80} /></div>
@@ -395,7 +395,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                     Edit
                   </button>
                   <button
-                    onClick={function() { toggleStatus(bot) }}
+                    onClick={function() { void toggleStatus(bot) }}
                     style={{
                       fontSize: 11, padding: '6px 0', borderRadius: 8, fontWeight: 600,
                       background: bot.status === 'active' ? '#fef3c7' : '#d1fae5',
@@ -457,7 +457,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                     </a>
                   </div>
                   <button
-                    onClick={function() { deleteBot(bot) }}
+                    onClick={function() { void deleteBot(bot) }}
                     style={{
                       fontSize: 10, color: '#d1d5db', background: 'none', border: 'none',
                       cursor: 'pointer', transition: 'color 0.15s',
@@ -511,7 +511,7 @@ function ImportBotButton({ onImported }: { onImported: () => void }) {
         accept='.json,application/json'
         style={{ display: 'none' }}
         disabled={busy}
-        onChange={async function(e) {
+        onChange={(e) => { void (async function() {
           const file = e.target.files?.[0]
           if (!file) return
           setBusy(true); setErr('')
@@ -533,7 +533,7 @@ function ImportBotButton({ onImported }: { onImported: () => void }) {
             setBusy(false)
             ;(e.target as HTMLInputElement).value = ''
           }
-        }}
+        })() }}
       />
       {busy ? 'Importing…' : '↓ Import'}
     </label>
@@ -561,7 +561,7 @@ function AnalyzeInAnaButton({ botId }: { botId: string }) {
   }
 
   return (
-    <button onClick={handleClick} disabled={loading}
+    <button onClick={() => { void handleClick() }} disabled={loading}
       style={{
         marginTop: 8, padding: '6px 0', borderRadius: 8, fontWeight: 600, fontSize: 11,
         background: '#E8632A', color: 'white', border: 'none',

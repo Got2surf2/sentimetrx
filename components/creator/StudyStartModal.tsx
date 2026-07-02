@@ -190,7 +190,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
             ref={taRef}
             value={description}
             onChange={function(e) { setDescription(e.target.value); setError('') }}
-            onKeyDown={function(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate() }}
+            onKeyDown={function(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleGenerate() }}
             placeholder="e.g. 'We want to understand why patients at our clinic aren't scheduling follow-up appointments'"
             rows={3}
             style={{
@@ -233,7 +233,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button onClick={handleGenerate} disabled={loading || description.trim().length < 10}
+          <button onClick={() => { void handleGenerate() }} disabled={loading || description.trim().length < 10}
             style={{
               flex: 1, padding: '11px 0', fontSize: 14, fontWeight: 700, color: 'white',
               background: loading || description.trim().length < 10 ? '#f3a07a' : HERMES,

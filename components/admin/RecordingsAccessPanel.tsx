@@ -48,7 +48,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
     }
   }
 
-  useEffect(() => { load() }, [orgId])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [orgId])  // eslint-disable-line react-hooks/exhaustive-deps
 
   function flash(msg: string) {
     setStatus(msg)
@@ -71,7 +71,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
       flash('Saved')
     } catch (e: any) {
       flash(e.message || 'Save failed')
-      load()  // re-sync on failure
+      void load()  // re-sync on failure
     } finally {
       setBusy(false)
     }
@@ -90,7 +90,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
       flash('Saved')
     } catch (e: any) {
       flash(e.message || 'Save failed')
-      load()
+      void load()
     } finally {
       setBusy(false)
     }
@@ -110,7 +110,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
             Paid, metered feature. Off = nobody in this org can create recordings. Requires the Analytics module too.
           </p>
         </div>
-        <ToggleSwitch enabled={orgEnabled} disabled={busy} onToggle={() => { const n = !orgEnabled; setOrgEnabled(n); saveOrg(n, quota) }} />
+        <ToggleSwitch enabled={orgEnabled} disabled={busy} onToggle={() => { const n = !orgEnabled; setOrgEnabled(n); void saveOrg(n, quota) }} />
       </div>
 
       {/* Monthly quota */}
@@ -123,7 +123,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
           <input
             type="number" min={1} value={quota} placeholder="∞"
             onChange={e => setQuota(e.target.value)}
-            onBlur={() => saveOrg(orgEnabled, quota)}
+            onBlur={() => { void saveOrg(orgEnabled, quota) }}
             disabled={busy || !orgEnabled}
             style={{ fontSize: '16px', width: 90 }}
             className="border border-gray-300 rounded px-2 py-1 text-right disabled:bg-gray-100"
@@ -149,7 +149,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
               <select
                 value={enabledToChoice(u.enabled)}
                 disabled={busy}
-                onChange={e => saveUser(u.user_id, e.target.value as UserChoice)}
+                onChange={e => { void saveUser(u.user_id, e.target.value as UserChoice) }}
                 style={{ fontSize: '16px' }}
                 className="border border-gray-300 rounded px-2 py-1 text-sm">
                 <option value="inherit">Inherit{orgEnabled ? ' (on)' : ' (off)'}</option>

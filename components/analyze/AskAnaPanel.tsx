@@ -406,7 +406,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage(input)
+      void sendMessage(input)
     }
   }
 
@@ -432,7 +432,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   function handleAnaHelp() {
     setPhase('deciding')
     setTimeout(function() {
-      sendMessage('Help me figure out the right sampling configuration for my analysis of this dataset.')
+      void sendMessage('Help me figure out the right sampling configuration for my analysis of this dataset.')
     }, 100)
   }
 
@@ -667,7 +667,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
               {STARTERS.map(function(s, i) {
                 return (
-                  <button key={i} onClick={function() { sendMessage(s) }}
+                  <button key={i} onClick={function() { void sendMessage(s) }}
                     style={{
                       textAlign: 'left', padding: '10px 14px', fontSize: 13, color: '#374151',
                       background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10,
@@ -713,7 +713,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                 <div style={{ marginLeft: 36, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, maxWidth: '85%' }}>
                   {m.actions.map(function(action, ai) {
                     return <ActionCard key={ai} action={action} msgId={m.id} actionIdx={ai}
-                      onApprove={applyAction} onReject={rejectAction} />
+                      onApprove={function(mid, idx) { void applyAction(mid, idx) }} onReject={rejectAction} />
                   })}
                 </div>
               )}
@@ -722,7 +722,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   <CopyButton text={m.content} />
                   {m.content.length > 200 && (
                     <button
-                      onClick={function() { sendMessage('Convert your previous analysis into a downloadable slide deck. Use the most appropriate slide types for the data.') }}
+                      onClick={function() { void sendMessage('Convert your previous analysis into a downloadable slide deck. Use the most appropriate slide types for the data.') }}
                       disabled={loading}
                       style={{
                         fontSize: 10, color: '#6b7280', background: 'none', border: '1px solid #e5e7eb',
@@ -763,7 +763,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               }}
             />
             <button
-              onClick={function() { sendMessage(input) }}
+              onClick={function() { void sendMessage(input) }}
               disabled={!input.trim() || loading}
               style={{
                 width: 40, height: 40, borderRadius: '50%',
@@ -1017,7 +1017,7 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
 function CopyButton({ text }: { text: string }) {
   var [copied, setCopied] = useState(false)
   function handleCopy() {
-    navigator.clipboard.writeText(text).then(function() {
+    void navigator.clipboard.writeText(text).then(function() {
       setCopied(true)
       setTimeout(function() { setCopied(false) }, 2000)
     })

@@ -202,7 +202,7 @@ export default function KnowledgeClient() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
             <button onClick={function() { setShowAdd(false) }}
               style={{ padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
-            <button onClick={addChunk} disabled={saving || !addContent.trim()}
+            <button onClick={() => { void addChunk() }} disabled={saving || !addContent.trim()}
               style={{ padding: '6px 16px', borderRadius: 16, border: 'none', background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               {saving ? <><LottieLoader size={16} /> Adding...</> : 'Add'}
             </button>
@@ -248,7 +248,7 @@ export default function KnowledgeClient() {
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                     <button onClick={function() { setEditId(null) }}
                       style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
-                    <button onClick={updateChunk} disabled={saving}
+                    <button onClick={() => { void updateChunk() }} disabled={saving}
                       style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: HERMES, color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                       {saving ? <><LottieLoader size={14} /> Saving...</> : 'Save'}
                     </button>
@@ -267,7 +267,7 @@ export default function KnowledgeClient() {
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={function() { setEditId(c.id); setEditTitle(c.title); setEditContent(c.content) }}
                       style={{ padding: '3px 10px', borderRadius: 10, border: '1px solid #d1d5db', background: 'white', color: '#6b7280', fontSize: 10, fontWeight: 500, cursor: 'pointer' }}>Edit</button>
-                    <button onClick={function() { deleteChunk(c.id) }}
+                    <button onClick={function() { void deleteChunk(c.id) }}
                       style={{ padding: '3px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 10, fontWeight: 500, cursor: 'pointer' }}>Delete</button>
                   </div>
                 </div>

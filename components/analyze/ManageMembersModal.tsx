@@ -55,7 +55,7 @@ export default function ManageMembersModal({ collectionDatasetId, collectionName
     setSelected(new Set(memberIds))   // members start checked
   }, [collectionDatasetId, eligibleDatasets])
 
-  useEffect(function () { load() }, [load])
+  useEffect(function () { void load() }, [load])
 
   function toggle(id: string) {
     setSelected(function (prev) { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
@@ -119,7 +119,7 @@ export default function ManageMembersModal({ collectionDatasetId, collectionName
           <span style={{ fontSize: 12, color: '#6b7280' }}>{dirty ? `${toAdd.length} to add · ${toRemove.length} to remove` : 'No changes'}</span>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={onClose} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={save} disabled={busy || !dirty}
+            <button onClick={function() { void save() }} disabled={busy || !dirty}
               style={{ padding: '9px 24px', fontSize: 13, fontWeight: 700, color: 'white', borderRadius: 10, border: 'none', cursor: busy || !dirty ? 'not-allowed' : 'pointer', background: busy || !dirty ? '#9ca3af' : '#0ea5e9', fontFamily: 'inherit' }}>
               {busy ? 'Saving…' : 'Save changes'}
             </button>

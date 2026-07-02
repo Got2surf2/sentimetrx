@@ -79,7 +79,7 @@ export default function BackupsClient({ orgs, logoUrl, orgName, userEmail, fullN
                     className='px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'
                   >Browse snapshots</Link>
                   <button
-                    onClick={() => snapshotNow(org.id)}
+                    onClick={() => { void snapshotNow(org.id) }}
                     disabled={isRunning}
                     className='px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
                   >{isRunning ? 'Working…' : 'Snapshot now'}</button>

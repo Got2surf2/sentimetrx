@@ -20,7 +20,7 @@ function notifyCompletion(title: string, body: string) {
 
 function requestNotifyPermission() {
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-    Notification.requestPermission()
+    void Notification.requestPermission()
   }
 }
 
@@ -81,7 +81,7 @@ export default function LocationManager({ sourceId }: Props) {
         if (autoStart) {
           const unsynced = (data.locations || []).filter(function(l: Location) { return l.selected && !l.last_synced_at && !l.error_message })
           if (unsynced.length > 0 && !autoSyncRef.current) {
-            startAutoSync(data.locations || [])
+            void startAutoSync(data.locations || [])
           }
         }
       })
@@ -255,7 +255,7 @@ export default function LocationManager({ sourceId }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handlePauseResume}
+          <button onClick={function() { void handlePauseResume() }}
             className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ' +
               (source.status === 'active'
                 ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
@@ -268,7 +268,7 @@ export default function LocationManager({ sourceId }: Props) {
               Stop Download
             </button>
           ) : (
-            <button onClick={unsyncedCount > 0 ? function() { startAutoSync(locations) } : handleSync}
+            <button onClick={unsyncedCount > 0 ? function() { void startAutoSync(locations) } : handleSync}
               disabled={syncing}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
               style={{ background: HERMES }}>
@@ -351,14 +351,14 @@ export default function LocationManager({ sourceId }: Props) {
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="font-semibold">{errorCount} location(s) failed:</p>
-            <button onClick={async function() {
+            <button onClick={function() { void (async function() {
               await fetch('/api/review-sources/' + sourceId + '/locations', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ clear_errors: true }),
               })
               loadSource()
-            }} className="text-xs font-semibold px-3 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50">
+            })() }} className="text-xs font-semibold px-3 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50">
               Retry Failed
             </button>
           </div>

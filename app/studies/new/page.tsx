@@ -79,7 +79,7 @@ export default function NewStudyPage() {
         console.error('Failed to fetch org settings:', e)
       }
     }
-    fetchOrgSettings()
+    void fetchOrgSettings()
   }, [])
 
   const update = useCallback((partial: Partial<StudyDraft>) => {
@@ -252,8 +252,8 @@ export default function NewStudyPage() {
           <StepReview
             {...stepProps}
             onBack={() => goTo(8)}
-            onSaveDraft={() => handleSave('draft')}
-            onPublish={() => handleSave('active')}
+            onSaveDraft={() => { void handleSave('draft') }}
+            onPublish={() => { void handleSave('active') }}
             saving={saving}
             studyId={savedGuid ?? undefined}
           />

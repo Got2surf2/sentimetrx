@@ -42,7 +42,7 @@ export default function SentryDigest() {
     }
   }
 
-  useEffect(() => { fetchIssues() }, [])
+  useEffect(() => { void fetchIssues() }, [])
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
@@ -51,7 +51,7 @@ export default function SentryDigest() {
           <h1 className="text-2xl font-bold text-gray-800">Sentry Digest</h1>
           <p className="text-sm text-gray-500 mt-1">Unresolved production issues, freshest first.</p>
         </div>
-        <button onClick={fetchIssues} disabled={loading}
+        <button onClick={() => { void fetchIssues() }} disabled={loading}
           className="px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition-all disabled:opacity-50"
           style={{ background: HERMES }}>
           {loading ? 'Refreshing…' : 'Refresh'}

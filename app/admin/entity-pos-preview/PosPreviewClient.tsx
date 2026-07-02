@@ -117,7 +117,7 @@ export default function PosPreviewClient({ datasets }: { datasets: Dataset[] }) 
           <input type="number" value={sampleSize} onChange={function(e) { setSampleSize(Number(e.target.value)) }} min={25} max={500}
             style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 7, border: '1px solid ' + C.border, background: C.white, color: C.text, fontFamily: 'inherit' }} />
         </div>
-        <button onClick={run} disabled={loading || !datasetId}
+        <button onClick={() => { void run() }} disabled={loading || !datasetId}
           style={{ padding: '9px 18px', fontSize: 13, fontWeight: 700, borderRadius: 7, background: loading || !datasetId ? C.bg : C.accent, color: loading || !datasetId ? C.faint : C.white, border: 'none', cursor: loading || !datasetId ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
           {loading ? 'Running…' : 'Run comparison'}
         </button>

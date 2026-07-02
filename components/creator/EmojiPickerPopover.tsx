@@ -113,7 +113,7 @@ export default function EmojiPickerPopover({
     let picker: any = null
     let cancelled = false
 
-    import('emoji-picker-element').then(({ Picker }) => {
+    void import('emoji-picker-element').then(({ Picker }) => {
       if (cancelled || !pickerRef.current) return
       pickerRef.current.innerHTML = ''
       picker = new Picker({ skinToneEmoji: '👋' })

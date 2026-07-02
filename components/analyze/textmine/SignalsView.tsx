@@ -155,7 +155,7 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
     var body = activeItems.map(function(c, i) {
       return (i + 1) + '. [Score: ' + (c.score >= 0 ? '+' : '') + c.score + ' | ' + c.percentile + 'th pctl] u/' + c.author + '\n' + c.text + '\n'
     }).join('\n')
-    navigator.clipboard.writeText(header + body).then(function() {
+    void navigator.clipboard.writeText(header + body).then(function() {
       setCopied(true)
       setTimeout(function() { setCopied(false) }, 2000)
     })

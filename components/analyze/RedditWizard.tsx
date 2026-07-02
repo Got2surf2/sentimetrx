@@ -337,7 +337,7 @@ export default function RedditWizard({ onBack }: Props) {
                 <input
                   value={keyword}
                   onChange={function(e) { setKeyword(e.target.value.replace(/\s/g, '')) }}
-                  onKeyDown={function(e) { if (e.key === 'Enter') handleSearch() }}
+                  onKeyDown={function(e) { if (e.key === 'Enter') void handleSearch() }}
                   placeholder='politics, FloridaMan, healthcare...'
                   className="flex-1 px-2 py-2.5 text-sm outline-none"
                   style={{ border: 'none' }}
@@ -350,7 +350,7 @@ export default function RedditWizard({ onBack }: Props) {
                 <option value="top">Top</option>
               </select>
               <button
-                onClick={function() { handleSearch() }}
+                onClick={function() { void handleSearch() }}
                 disabled={searching || !keyword.trim()}
                 className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
                 style={{ background: HERMES }}>
@@ -644,7 +644,7 @@ export default function RedditWizard({ onBack }: Props) {
           <div className="flex gap-3">
             <button onClick={function() { setStep(2) }}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600">Back</button>
-            <button onClick={handleCreate} disabled={!datasetName.trim()}
+            <button onClick={function() { void handleCreate() }} disabled={!datasetName.trim()}
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
               style={{ background: HERMES }}>
               Start Download

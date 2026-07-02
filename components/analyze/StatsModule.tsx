@@ -25,13 +25,13 @@ function PlotlyChart({ data, layout, style }: { data: any[]; layout?: any; style
     // Same null-ref guard as ChartsModule's PlotlyChart — getPlotly()
     // is async, ref.current can be null if the user navigated away
     // before the dynamic import resolved.
-    getPlotly().then(function(Plotly) {
+    void getPlotly().then(function(Plotly) {
       if (ref.current) Plotly.newPlot(ref.current, data, merged, { responsive: true, displayModeBar: false })
     })
     return function() {
       const el = ref.current
       if (!el) return
-      getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
+      void getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
     }
   }, [data, layout])
   return <div ref={ref} style={style || { width: '100%', height: 260 }} />
@@ -545,7 +545,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
     if (!dimInvolved) { setDimResult(null); return }
     var cancelled = false
     var post = function(body: any) { return fetch('/api/datasets/' + datasetId + '/aggregate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r) { return r.json() }) }
-    ;(async function() {
+    void (async function() {
       try {
         if (testType === 'chisq') {
           var axis = chiDimA || chiDimB
@@ -1379,7 +1379,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
       {!running && findings !== null && findings.length > 0 && (
         <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 18 }}>
           <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 10 }}>Want a more polished narrative? Generate one with AI.</div>
-          <button onClick={generateNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
+          <button onClick={function() { void generateNarrative() }} disabled={aiLoading || !aiEnabled || !apiKey}
             style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
             {aiLoading ? <><LottieLoader size={18} /> Writing summary&hellip;</> : '\u2726 Generate Narrative Summary'}
           </button>
@@ -1536,7 +1536,7 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
           + fmtP(r.p).padStart(10)
           + '  ' + flag
       }).join('\n')
-    navigator.clipboard.writeText(header + colH + sep + body).then(function() {
+    void navigator.clipboard.writeText(header + colH + sep + body).then(function() {
       setCopied(true); setTimeout(function() { setCopied(false) }, 2000)
     })
   }
@@ -1691,7 +1691,7 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
               <span>{'⚠'}</span>{apiKey ? 'AI is turned off — enable it in the header to summarize outliers.' : 'Add an API key via the AI button in the header to enable summaries.'}
             </div>
           )}
-          <button onClick={generateOutlierNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
+          <button onClick={function() { void generateOutlierNarrative() }} disabled={aiLoading || !aiEnabled || !apiKey}
             style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
             {aiLoading ? <><LottieLoader size={18} /> Summarizing&hellip;</> : '✦ Summarize Outliers'}
           </button>

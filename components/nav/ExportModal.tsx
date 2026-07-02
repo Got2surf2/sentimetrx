@@ -244,7 +244,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
             className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium transition-colors">
             Cancel
           </button>
-          <button onClick={handleExport} disabled={exporting}
+          <button onClick={() => { void handleExport() }} disabled={exporting}
             className="px-5 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}>
             {exporting ? 'Exporting…' : ('↓ Download ' + (fileFmt === 'xlsx' ? 'Excel' : 'CSV'))}

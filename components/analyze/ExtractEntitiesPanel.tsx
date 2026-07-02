@@ -161,7 +161,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
   }
 
   useEffect(function() {
-    loadPreview()
+    void loadPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId, manageOpen])
 
@@ -371,7 +371,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
           {manageOpen ? (
             <>
               <button
-                onClick={saveHidden}
+                onClick={function() { void saveHidden() }}
                 disabled={savingHidden || dirtyCount === 0}
                 title={dirtyCount === 0 ? 'No unsaved visibility changes' : 'Save your hide/show changes'}
                 style={{
@@ -405,7 +405,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
             </button>
           )}
           <button
-            onClick={runDiscover}
+            onClick={function() { void runDiscover() }}
             disabled={discovering || !!schemaDirty}
             title={schemaDirty ? 'Save your schema changes before re-running discovery — the field selection affects which text is scanned' : undefined}
             style={{
@@ -475,7 +475,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
               style={{ flex: '1 1 200px', minWidth: 160, fontSize: 12, padding: '5px 9px', borderRadius: 6, border: '1px solid ' + P.border, background: P.white, fontFamily: 'inherit' }}
             />
             <button
-              onClick={addOne}
+              onClick={function() { void addOne() }}
               disabled={adding || addCanonical.trim().length < 2}
               style={{
                 fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
@@ -513,7 +513,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                 <button
-                  onClick={submitBulk}
+                  onClick={function() { void submitBulk() }}
                   disabled={bulkSubmitting || bulkText.trim().length === 0}
                   style={{
                     fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
@@ -662,7 +662,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                         Cancel
                       </button>
                       <button
-                        onClick={saveEdit}
+                        onClick={function() { void saveEdit() }}
                         disabled={editSaving || editCanonical.trim().length < 2}
                         style={{
                           fontSize: 11, fontWeight: 600, padding: '5px 14px', borderRadius: 6,
@@ -744,7 +744,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                   <div style={{ display: 'flex', justifyContent: 'center' as const }}>
                     {isManual ? (
                       <button
-                        onClick={function() { deleteManual(e) }}
+                        onClick={function() { void deleteManual(e) }}
                         disabled={busy}
                         title="Delete this manual entry (cannot undo)"
                         style={{
@@ -785,7 +785,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
                 Cancel
               </button>
               <button
-                onClick={resetDiscovered}
+                onClick={function() { void resetDiscovered() }}
                 disabled={resetting}
                 style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: P.danger, color: P.white, border: '1px solid ' + P.danger, cursor: resetting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
                 {resetting ? 'Resetting…' : 'Yes, reset discovered'}

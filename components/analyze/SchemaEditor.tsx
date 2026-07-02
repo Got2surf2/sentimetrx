@@ -713,7 +713,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
             </button>
           )}
           {!readOnly && onChange && (
-            <button onClick={handleSave} disabled={saving || (!isDirty && !saved)}
+            <button onClick={function() { void handleSave() }} disabled={saving || (!isDirty && !saved)}
               style={{ ...btnBase, fontSize: 12, padding: '5px 18px', borderRadius: 9,
                 background: saved ? P.accentBg : (!isDirty || saving) ? P.bg : HERMES,
                 color: saved ? P.accent : (!isDirty || saving) ? P.textFaint : 'white',

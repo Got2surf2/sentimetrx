@@ -50,14 +50,14 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
       setSlugStatus('invalid'); return
     }
     setSlugStatus('checking')
-    slugTimer.current = setTimeout(async () => {
+    slugTimer.current = setTimeout(() => { void (async () => {
       try {
         const studyId = draft.id || ''
         const res = await fetch(`/api/studies/check-slug?slug=${encodeURIComponent(clean)}&exclude=${studyId}`)
         const data = await res.json()
         setSlugStatus(data.available ? 'available' : 'taken')
       } catch { setSlugStatus('idle') }
-    }, 400)
+    })() }, 400)
   }, [draft])
 
   const handleSlugChange = (val: string) => {
@@ -483,7 +483,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
     const updatedConfig = { ...draft.config, languages: next, translations }
     updateConfig({ languages: next, translations })
     // Auto-translate when adding a new language
-    if (!wasEnabled) translateLang(code, updatedConfig)
+    if (!wasEnabled) void translateLang(code, updatedConfig)
   }
 
   async function translateLang(code: string, configOverride?: typeof draft.config) {
@@ -603,7 +603,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
                   ) : (
                     <button
                       type="button"
-                      onClick={() => translateLang(code)}
+                      onClick={() => { void translateLang(code) }}
                       disabled={translating !== null}
                       className="text-xs font-semibold px-2 py-0.5 rounded-full transition-all"
                       style={{ background: '#e8622a', color: 'white', opacity: translating ? 0.5 : 1 }}
@@ -614,7 +614,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
                   {hasTranslation && (
                     <button
                       type="button"
-                      onClick={() => translateLang(code)}
+                      onClick={() => { void translateLang(code) }}
                       disabled={translating !== null}
                       className={'text-xs underline ' + (isStale ? 'text-amber-500 hover:text-amber-600 font-semibold' : 'text-gray-400 hover:text-gray-600')}
                     >
@@ -628,7 +628,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
           {untranslated.length > 1 && (
             <button
               type="button"
-              onClick={translateAll}
+              onClick={() => { void translateAll() }}
               disabled={translating !== null}
               className="self-start px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all"
               style={{ background: translating ? '#ccc' : '#e8622a' }}

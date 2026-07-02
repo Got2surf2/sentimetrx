@@ -122,7 +122,7 @@ function CampaignCard({ campaign, stats, respondents = [], onDelete }: {
             <p className="text-gray-700 text-sm mb-5">Delete &quot;{campaign.name}&quot;? This cannot be undone.</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteConf(false)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Cancel</button>
-              <button onClick={handleDelete} disabled={busy} className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90" style={{ background: HERMES }}>Delete</button>
+              <button onClick={() => { void handleDelete() }} disabled={busy} className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90" style={{ background: HERMES }}>Delete</button>
             </div>
           </div>
         </div>
@@ -254,20 +254,20 @@ function CampaignCard({ campaign, stats, respondents = [], onDelete }: {
                 Edit
               </Link>
               {status === 'active' && (
-                <button onClick={() => handleStatusChange('paused')} disabled={busy}
+                <button onClick={() => { void handleStatusChange('paused') }} disabled={busy}
                   className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
                   style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
                   Pause
                 </button>
               )}
               {status === 'paused' && (
-                <button onClick={() => handleStatusChange('active')} disabled={busy}
+                <button onClick={() => { void handleStatusChange('active') }} disabled={busy}
                   className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
                   style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
                   Resume
                 </button>
               )}
-              <button onClick={async () => {
+              <button onClick={() => { void (async () => {
                   setBusy(true)
                   try {
                     const res = await fetch('/api/campaigns/' + campaign.id + '/clone', {
@@ -276,7 +276,7 @@ function CampaignCard({ campaign, stats, respondents = [], onDelete }: {
                     })
                     if (res.ok) { const data = await res.json(); window.location.href = '/campaigns/' + data.id }
                   } finally { setBusy(false) }
-                }} disabled={busy}
+                })() }} disabled={busy}
                 className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
                 style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                 Clone

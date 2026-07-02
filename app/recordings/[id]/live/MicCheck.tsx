@@ -703,7 +703,7 @@ export default function MicCheck({
           )}
           <button
             type="button"
-            onClick={() => (testing ? stopTest(true) : startTest())}
+            onClick={() => { if (testing) stopTest(true); else void startTest() }}
             disabled={disabled || autotune.phase !== 'idle'}
             className={`text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40 ${
               testing ? 'bg-gray-900 text-white hover:bg-black' : 'border border-orange-300 text-orange-700 hover:bg-orange-50'

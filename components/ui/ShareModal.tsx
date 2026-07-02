@@ -81,7 +81,7 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
   }
 
   function handleCopy(url: string) {
-    navigator.clipboard.writeText(url)
+    void navigator.clipboard.writeText(url)
     setCopied(url)
     setTimeout(function() { setCopied(null) }, 2000)
   }
@@ -137,7 +137,7 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
                       }}>
                       {copied === link.url ? 'Copied!' : 'Copy'}
                     </button>
-                    <button onClick={function() { handleDelete(link.token) }}
+                    <button onClick={function() { void handleDelete(link.token) }}
                       style={{ fontSize: 14, color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}
                       title="Delete link">
                       &times;
@@ -176,7 +176,7 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
             </div>
           )}
 
-          <button onClick={handleCreate} disabled={loading}
+          <button onClick={function() { void handleCreate() }} disabled={loading}
             style={{
               width: '100%', padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, border: 'none',
               cursor: 'pointer', background: HERMES, color: 'white', opacity: loading ? 0.6 : 1,

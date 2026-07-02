@@ -166,7 +166,7 @@ export default function IndoorMapCard({ hint }: { hint: IndoorMapHint }) {
           const sibling = d.other_floors.find(f => f.id === overrideMapId) || (d.map?.id === overrideMapId ? d.map : null)
           if (sibling) {
             // refetch with explicit level
-            fetch('/api/mco/indoor-map', {
+            void fetch('/api/mco/indoor-map', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

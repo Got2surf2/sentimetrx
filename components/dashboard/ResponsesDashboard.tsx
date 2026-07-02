@@ -89,7 +89,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
       setCheckedIds(new Set())
       setDeleteToast('Deleted ' + (json.deleted ?? checkedIds.size) + ' response' + (json.deleted !== 1 ? 's' : ''))
       setTimeout(() => setDeleteToast(null), 3000)
-      fetchResponses()
+      void fetchResponses()
     } catch (e: any) {
       setDeleteToast('Error: ' + e.message)
       setTimeout(() => setDeleteToast(null), 4000)
@@ -118,7 +118,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
     setLoading(false)
   }, [studyId, sentiment, minNps, maxNps, statusFilter, dateFrom, dateTo, offset])
 
-  useEffect(() => { fetchResponses() }, [fetchResponses])
+  useEffect(() => { void fetchResponses() }, [fetchResponses])
 
   // Fetch funnel data lazily (only when user expands)
   const [funnelLoading, setFunnelLoading] = useState(false)
@@ -351,7 +351,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                     )
                   })}
                 </div>
-                <button onClick={copyFunnelPng}
+                <button onClick={() => { void copyFunnelPng() }}
                   className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
                   {funnelCopied ? 'Copied!' : 'Copy as PNG'}
                 </button>
@@ -391,7 +391,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                       className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
                       Clear selection
                     </button>
-                    <button type="button" onClick={deleteSelected} disabled={deleting}
+                    <button type="button" onClick={() => { void deleteSelected() }} disabled={deleting}
                       className="px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-all">
                       {deleting ? "Deleting..." : "Delete selected"}
                     </button>
@@ -579,7 +579,7 @@ function ShareConversationButton({ msgs, botName, botEmoji, theme, response, stu
 
   return (
     <div className="flex gap-1">
-      <button onClick={share} disabled={sharing}
+      <button onClick={() => { void share() }} disabled={sharing}
         className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
         style={{ background: isLight ? '#f0fdf4' : 'rgba(34,197,94,0.15)', color: '#16a34a', border: '1px solid ' + (isLight ? '#bbf7d0' : 'rgba(34,197,94,0.3)') }}>
         {sharing ? 'Creating...' : copied ? 'Link copied!' : shareUrl ? 'Copy link' : 'Share'}
@@ -919,7 +919,7 @@ function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button onClick={() => {
                   const json = JSON.stringify({ response_id: response.id, study_id: studyId, payload: response.payload, experience_score: response.experience_score, nps_score: response.nps_score, status: response.status, duration_sec: response.duration_sec }, null, 2)
-                  navigator.clipboard.writeText(json)
+                  void navigator.clipboard.writeText(json)
                   setJsonCopied(true); setTimeout(() => setJsonCopied(false), 2000)
                 }}
                   style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 8, background: jsonCopied ? '#dcfce7' : (isLight ? '#f0f9ff' : 'rgba(2,132,199,0.15)'), color: jsonCopied ? '#16a34a' : '#0284c7', border: '1px solid ' + (jsonCopied ? '#bbf7d0' : '#bae6fd') }}>
