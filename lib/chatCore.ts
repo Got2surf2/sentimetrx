@@ -797,10 +797,41 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }))
           .sort((a, b) => a.response_count - b.response_count)
 
-        const pick = pickNextTopic(pickerTopics, {
-          discussedTopicIds: participantDiscussed,
-          currentMessage: lastUserMsg?.content,
-        })
+        // ── Opening-response topic match (convergence item 6 — ports
+        // legacy matchResponseToTopic). On the participant's FIRST message
+        // (no assistant turns yet), semantically classify their response
+        // against the topic pool so the conversation threads onto what
+        // they actually opened with, instead of the fewest-responses
+        // default. AI does classification only; the main engine below
+        // still generates the follow-up with full persona/guardrails.
+        // No match (or AI failure) falls through to pickNextTopic, whose
+        // keyword smart-probe is the legacy fallback anyway.
+        let openingTopic: NextTopic | null = null
+        const isOpeningResponse = (Array.isArray(body?.messages) ? body.messages : [])
+          .filter((m: any) => m?.role === 'assistant').length === 0
+        if (isOpeningResponse && lastUserMsg?.content && pickerTopics.length > 0) {
+          try {
+            const topicList = pickerTopics.map((t, i) => (i + 1) + '. "' + t.label + '" — ' + (t.description || t.question || '')).join('\n')
+            const cls = await callAI({
+              tier: 'fast', maxTokens: 60, timeoutMs: 3000,
+              system: 'You classify a participant\'s opening response in a facilitated discussion against a list of topics.\n\nTOPICS:\n' + topicList + '\n\nReturn ONLY a JSON object: {"topic_number": <1-based index of the best-matching topic, or 0 if none clearly match>}. When in doubt, return 0.',
+              messages: [{ role: 'user', content: 'The participant was asked a broad opening question and responded:\n\n"' + lastUserMsg.content + '"' }],
+            })
+            logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'topic_match' }, cls.usage)
+            const cleaned = (cls.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+            const m = cleaned.match(/\{[\s\S]*\}/)
+            const idx = m ? (Number(JSON.parse(m[0])?.topic_number) || 0) - 1 : -1
+            if (idx >= 0 && idx < pickerTopics.length) openingTopic = pickerTopics[idx]
+          } catch { /* classification is best-effort; fall through to picker */ }
+          if (debugMode) _debug.push('Town hall opening match: ' + (openingTopic ? '"' + openingTopic.label + '"' : 'none — falling through to picker'))
+        }
+
+        const pick = openingTopic
+          ? { topic: openingTopic, reason: 'opening_match' as string, matchedKeyword: undefined as string | undefined }
+          : pickNextTopic(pickerTopics, {
+              discussedTopicIds: participantDiscussed,
+              currentMessage: lastUserMsg?.content,
+            })
 
         if (pick.topic) {
           pickedTopicId = pick.topic.id
@@ -809,10 +840,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             ? '\nIf the participant has more to share, follow up on one of these angles: ' + angles.join(' | ')
             : ''
           systemParts.push(
-            '\n\n--- TOWN HALL TOPIC FOCUS ---\nYou are facilitating a cohort discussion about "' + pick.topic.label + '". ' +
-            'Ask this question (rephrase naturally to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
-            anglesNote +
-            '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
+            pick.reason === 'opening_match'
+              ? '\n\n--- TOWN HALL TOPIC FOCUS ---\nThe participant\'s opening message already speaks to the topic "' + pick.topic.label + '". Ask a warm, natural follow-up that digs deeper into what they just said, guided by this topic\'s focus: "' + (pick.topic.question || pick.topic.label) + '"' +
+                anglesNote +
+                '\nDo not re-ask the topic question from scratch — build on their words. One question only.'
+              : '\n\n--- TOWN HALL TOPIC FOCUS ---\nYou are facilitating a cohort discussion about "' + pick.topic.label + '". ' +
+                'Ask this question (rephrase naturally to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
+                anglesNote +
+                '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
           )
           if (debugMode) _debug.push('Town hall topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
         } else if (pick.reason === 'all_covered') {
