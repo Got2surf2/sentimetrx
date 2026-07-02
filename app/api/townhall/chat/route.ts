@@ -180,7 +180,22 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        if (message) messages.push({ role: 'user', content: message })
+        // Skip / done semantics (convergence item 3). "[done]" ends the
+        // conversation with the closing message (legacy wrapUp). A plain
+        // skip stores the legacy marker as the user turn — the bracketed
+        // text both matches legacy transcript conventions and tells the
+        // model to change topics without pressing.
+        if (skipped && message === '[done]') {
+          return NextResponse.json({
+            bot_message: cohortConfig.closing_message || 'Thank you for sharing your thoughts. Your input is really valuable.',
+            is_final: true, theme_id: null, source: null, turn_number: turn_number + 1,
+          })
+        }
+        if (skipped) {
+          messages.push({ role: 'user', content: '[Skipped — participant declined to answer. Acknowledge briefly and move to a different topic without pressing them on this one.]' })
+        } else if (message) {
+          messages.push({ role: 'user', content: message })
+        }
         if (messages.length === 0) {
           return NextResponse.json({ error: 'No message and no prior turns' }, { status: 400 })
         }
