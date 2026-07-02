@@ -28,7 +28,7 @@ export interface NameExtractResult {
 
 const EMPTY: NameExtractResult = { name: null, source: null, confidence: null }
 
-export async function extractName(userMessages: string[]): Promise<NameExtractResult> {
+export async function extractName(userMessages: string[], orgId?: string): Promise<NameExtractResult> {
   if (!userMessages || userMessages.length === 0) return EMPTY
   // Need at least one substantive turn to extract from.
   const corpus = userMessages.filter(m => (m || '').trim().length >= 3).join('\n---\n')
@@ -39,7 +39,7 @@ export async function extractName(userMessages: string[]): Promise<NameExtractRe
       tier: 'fast',
       maxTokens: 80,
       timeoutMs: 5000,
-      usage: { resource_type: 'bot', event_type: 'name_extract' },
+      usage: { org_id: orgId, resource_type: 'bot', event_type: 'name_extract' },
       messages: [{ role: 'user', content: 'User messages from a conversation:\n"""\n' + corpus.slice(0, 2000) + '\n"""' }],
       system:
         'Extract the speaker\'s first name from these user messages if present. ' +

@@ -1200,7 +1200,7 @@ export async function POST(req: Request, props: Params) {
         if (entityRows.length > 0) {
           if (!skipAI) {
             try {
-              const focusMap = await categoriseEntityNames(entityRows.map(e => e.canonical))
+              const focusMap = await categoriseEntityNames(entityRows.map(e => e.canonical), orgId ?? undefined)
               if (Object.keys(focusMap).length > 0) entityRows = entityRows.map(e => ({ ...e, category: focusMap[e.canonical] || e.category }))
             } catch (e) { console.error({ at: 'export/pptx', msg: 'entity recategorisation failed', err: e }) }
           }

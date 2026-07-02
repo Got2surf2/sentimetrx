@@ -498,11 +498,14 @@ export async function buildProjectModelForCollection(
 
   const resolved: ReportPurpose = purpose || inferPurpose(loaded.inputs)
   const stamp = new Date().toISOString()
+  // The collection's owning org — attribute the report's AI spend to it and gate
+  // off-mode (per-org BYOK / AI-disabled) via callAI's usage.org_id.
+  const ownerOrgId = (ds as { org_id?: string }).org_id
   if (resolved === 'community') {
-    const model = await buildProjectReportModel(loaded.name, loaded.inputs, stamp, { synthesize: true })
+    const model = await buildProjectReportModel(loaded.name, loaded.inputs, stamp, { synthesize: true, orgId: ownerOrgId })
     return { ok: true, name: loaded.name, purpose: 'community', kind: 'community', model }
   }
-  const model = await buildCompareModel(loaded.name, resolved, loaded.inputs, stamp, { synthesize: true, primaryId })
+  const model = await buildCompareModel(loaded.name, resolved, loaded.inputs, stamp, { synthesize: true, primaryId, orgId: ownerOrgId })
   return { ok: true, name: loaded.name, purpose: resolved, kind: 'compare', model }
 }
 

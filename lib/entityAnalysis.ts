@@ -25,7 +25,7 @@ export function splitMentions(raw: string): string[] {
 /** Call Claude Haiku to canonicalise a list of raw mentions to canonical
  *  names plus a category. Returns a map { rawMention: { canonical, category } }.
  *  Done in batches of up to 200 unique mentions per call. */
-export async function canonicaliseEntities(uniqueRaw: string[]): Promise<Record<string, { canonical: string; category: string }>> {
+export async function canonicaliseEntities(uniqueRaw: string[], orgId?: string): Promise<Record<string, { canonical: string; category: string }>> {
   const result: Record<string, { canonical: string; category: string }> = {}
   const BATCH = 200
   for (let i = 0; i < uniqueRaw.length; i += BATCH) {
@@ -53,7 +53,7 @@ ${batch.map(s => `- ${s}`).join('\n')}`
     try {
       const res = await callAI({
         tier: 'fast',
-        usage: { resource_type: 'dataset', event_type: 'entity_canonicalize' },
+        usage: { org_id: orgId, resource_type: 'dataset', event_type: 'entity_canonicalize' },
         system: 'You are a precise data normaliser. Output valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 4000,
@@ -105,7 +105,7 @@ const FOCUS_AREA_TAXONOMY =
  * place are omitted — the caller should fall back to the existing category.
  * Returns {} on any failure so the caller degrades gracefully (no thrown error).
  */
-export async function categoriseEntityNames(names: string[]): Promise<Record<string, string>> {
+export async function categoriseEntityNames(names: string[], orgId?: string): Promise<Record<string, string>> {
   const unique = Array.from(new Set(names.map(n => n.trim()).filter(n => n.length >= 2)))
   if (unique.length === 0) return {}
   const result: Record<string, string> = {}
@@ -125,7 +125,7 @@ ${batch.map(s => `- ${s}`).join('\n')}`
     try {
       const res = await callAI({
         tier: 'fast',
-        usage: { resource_type: 'dataset', event_type: 'entity_categorize' },
+        usage: { org_id: orgId, resource_type: 'dataset', event_type: 'entity_categorize' },
         system: 'You are a precise data categoriser. Output valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 4000,
@@ -178,7 +178,7 @@ export interface EntityAggregate {
  * split → AI-canonicalise → aggregate. Returns null when there are no usable
  * mentions. Caps unique mentions at 1000 per AI canonicalisation pass.
  */
-export async function aggregateEntities(rawValues: (string | null | undefined)[]): Promise<EntityAggregate | null> {
+export async function aggregateEntities(rawValues: (string | null | undefined)[], orgId?: string): Promise<EntityAggregate | null> {
   const allRaw: string[] = []
   for (const v of rawValues) {
     if (typeof v === 'string' && v.trim()) {
@@ -188,7 +188,7 @@ export async function aggregateEntities(rawValues: (string | null | undefined)[]
   if (allRaw.length === 0) return null
 
   const uniqueRaw = Array.from(new Set(allRaw.map(s => s.trim()))).slice(0, 1000)
-  const mapping = await canonicaliseEntities(uniqueRaw)
+  const mapping = await canonicaliseEntities(uniqueRaw, orgId)
 
   type AggRow = { canonical: string; category: string; count: number; raw: Set<string> }
   const agg: Record<string, AggRow> = {}

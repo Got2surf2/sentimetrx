@@ -44,7 +44,7 @@ Rules:
 - glossary: proper names, places, projects, and technical terms whose spelling matters (so the transcriber can be corrected). [] if none.
 - Use ONLY what is on the slides. Do NOT invent names, figures, or topics. Prefer fewer, confident items over guesses. Empty strings/arrays are correct when the deck doesn't say.`
 
-export async function extractSetupFromPdf(pdfStoragePath: string, outPrefix: string): Promise<SetupProposal> {
+export async function extractSetupFromPdf(pdfStoragePath: string, outPrefix: string, orgId?: string): Promise<SetupProposal> {
   const service = createServiceRoleClient()
 
   const { page_paths } = await renderPdfToPng({ pdf_storage_path: pdfStoragePath, out_prefix: outPrefix })
@@ -72,7 +72,7 @@ export async function extractSetupFromPdf(pdfStoragePath: string, outPrefix: str
     modelOverride: SONNET_MODEL,
     maxTokens: 2000,
     timeoutMs: 180000,
-    usage: { resource_type: 'recording', event_type: 'recording_setup_extract' },
+    usage: { org_id: orgId, resource_type: 'recording', event_type: 'recording_setup_extract' },
     system: [{ type: 'text', text: SETUP_SYSTEM, cache: true }],
     messages: [{ role: 'user', content }],
   })

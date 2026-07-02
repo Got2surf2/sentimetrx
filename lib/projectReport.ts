@@ -157,7 +157,7 @@ interface ThemeMerge { theme: string; memberTopics: string[]; summary: string; s
 
 // Ask the model to merge synonymous raw topics into unified brand themes. Returns
 // a mapping; the regrouping + counts stay deterministic in buildProjectReportModel.
-export async function synthesizeThemes(clusters: RawCluster[], projectName: string): Promise<ThemeMerge[]> {
+export async function synthesizeThemes(clusters: RawCluster[], projectName: string, orgId?: string): Promise<ThemeMerge[]> {
   const list = clusters.map(c => {
     const sample = [...c.qa.map(q => q.question), ...c.commentary.map(m => m.quote)]
       .filter(Boolean).slice(0, 3).map(s => s.slice(0, 120))
@@ -166,7 +166,7 @@ export async function synthesizeThemes(clusters: RawCluster[], projectName: stri
 
   const res = await callAI({
     tier: 'standard', maxTokens: 1800, timeoutMs: 60000,
-    usage: { resource_type: 'dataset', event_type: 'project_report_themes' },
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'project_report_themes' },
     system: `You are synthesizing community-engagement findings across multiple inputs (town halls + an agent) for "${projectName}". You are given raw topic labels mined separately from each input. Merge labels that mean the same thing into unified themes (e.g. "Funding" + "Budget" → one theme). Keep genuinely distinct topics separate. Use ONLY the labels provided — do not invent topics.
 Return ONLY JSON, no markdown:
 {"themes":[{"theme":"Unified Theme Name","memberTopics":["exact raw label","exact raw label"],"summary":"1 neutral sentence on what the community raised here, across the inputs","sentiment":"positive|neutral|negative|mixed"}]}
@@ -189,14 +189,14 @@ Every raw label must appear in exactly one theme's memberTopics. Order themes by
   }
 }
 
-export async function synthesizeExec(model: Omit<ProjectReportModel, 'execSummary'>): Promise<string> {
+export async function synthesizeExec(model: Omit<ProjectReportModel, 'execSummary'>, orgId?: string): Promise<string> {
   const themeLines = model.themes.slice(0, 10)
     .map(t => `- ${t.title} (${t.count} items, ${t.sentiment}; ${t.sources.length} source${t.sources.length === 1 ? '' : 's'})${t.summary ? ': ' + t.summary : ''}`)
     .join('\n')
   const srcLines = model.sources.map(s => `${s.name} (${s.kind === 'town_hall' ? 'town hall' : 'agent'})`).join(', ')
   const res = await callAI({
     tier: 'standard', maxTokens: 700, timeoutMs: 45000,
-    usage: { resource_type: 'dataset', event_type: 'project_report_exec' },
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'project_report_exec' },
     system: `You are writing the executive summary of a community-engagement report for "${model.name}". It synthesizes findings ACROSS ${model.totals.sources} inputs (${model.totals.townHalls} town hall(s) + ${model.totals.agents} agent(s)): ${srcLines}. Base it ONLY on the themes + counts given. 3-5 sentences, neutral and specific, naming the dominant concerns and how widely they recurred across inputs. No invented statistics.`,
     messages: [{ role: 'user', content: `Themes:\n${themeLines}\n\nTotals: ${model.totals.qa} Q&A, ${model.totals.comments} community comments.` }],
   })
@@ -205,7 +205,7 @@ export async function synthesizeExec(model: Omit<ProjectReportModel, 'execSummar
 
 // ── Orchestration ────────────────────────────────────────────────────────────
 
-export interface BuildOpts { synthesize?: boolean }   // synthesize=false → deterministic only (no AI)
+export interface BuildOpts { synthesize?: boolean; orgId?: string }   // synthesize=false → deterministic only (no AI); orgId → per-org AI logging + off-mode gating
 
 export async function buildProjectReportModel(
   name: string,
@@ -222,7 +222,7 @@ export async function buildProjectReportModel(
   // Merge raw clusters → unified themes (AI), else 1:1 fallback by raw topic.
   let merges: ThemeMerge[] = []
   if (opts.synthesize !== false && clusters.length > 0) {
-    try { merges = await synthesizeThemes(clusters, name) } catch { merges = [] }
+    try { merges = await synthesizeThemes(clusters, name, opts.orgId) } catch { merges = [] }
   }
   const byKey = new Map(clusters.map(c => [keyOf(c.topic), c]))
   const used = new Set<string>()
@@ -266,7 +266,7 @@ export async function buildProjectReportModel(
 
   let execSummary = ''
   if (opts.synthesize !== false && themes.length > 0) {
-    try { execSummary = await synthesizeExec(base) } catch { execSummary = '' }
+    try { execSummary = await synthesizeExec(base, opts.orgId) } catch { execSummary = '' }
   }
   return { ...base, execSummary }
 }

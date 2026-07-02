@@ -1173,7 +1173,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                 .eq('session_id', session_id)
                 .maybeSingle()
               if (existing && (existing as any).name) return // already captured; no AI call
-              const r = await extractName(userMsgs)
+              const r = await extractName(userMsgs, bot.org_id)
               if (!r.name) return
               logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'name_extract' }, undefined)
               await service.from('agent_session_personas')

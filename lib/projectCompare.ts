@@ -89,7 +89,7 @@ function dominant(themes: { sentiment: string; count: number }[]): string {
 // ── AI: align synonymous theme labels across columns into unified rows ────────
 interface AlignedRow { theme: string; members: { column: string; label: string }[]; insight: string }
 
-async function alignThemes(columns: ProjectInputModel[], selector: LensSelector, lensNoun: string, purpose: ComparePurpose, projectName: string, primary: string | null): Promise<AlignedRow[]> {
+async function alignThemes(columns: ProjectInputModel[], selector: LensSelector, lensNoun: string, purpose: ComparePurpose, projectName: string, primary: string | null, orgId?: string): Promise<AlignedRow[]> {
   const blocks = columns.map(c =>
     `## ${c.source.name} (${c.source.rowCount.toLocaleString()} total)${primary && c.source.name === primary ? ' [PRIMARY FOCUS]' : ''}\n` +
     selector(c).map(t => {
@@ -103,7 +103,7 @@ async function alignThemes(columns: ProjectInputModel[], selector: LensSelector,
     : `These are different DATA SOURCES for ONE brand. For each unified theme write a one-sentence TRIANGULATION insight — do the sources agree or diverge, and does any source uniquely surface it. ${normalize}`
   const res = await callAI({
     tier: 'standard', maxTokens: 2000, timeoutMs: 60000,
-    usage: { resource_type: 'dataset', event_type: 'compare_report_themes' },
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'compare_report_themes' },
     system: `You are comparing ${columns.length} inputs for "${projectName}". Each input has its own mined ${lensNoun}. Merge ${lensNoun} that mean the same thing across inputs into unified rows (e.g. "Food Quality" + "Taste" → one). Use ONLY the labels provided. ${framing}
 Return ONLY JSON, no markdown:
 {"rows":[{"theme":"Unified Theme","members":[{"column":"exact input name","label":"exact raw label"}],"insight":"one sentence"}]}
@@ -122,7 +122,7 @@ Every raw label must map into exactly one row. Order rows by importance.`,
   } catch { return [] }
 }
 
-async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Promise<string> {
+async function compareExec(model: Omit<CompareReportModel, 'execSummary'>, orgId?: string): Promise<string> {
   const cols = model.columns.map(c => c.name).join(', ')
   const rowLines = model.rows.slice(0, 12).map(r => {
     const per = model.columns.map(c => { const cell = r.cells[c.name]; return cell?.present ? `${c.name}:${cell.pct != null ? cell.pct + '% ' : ''}${cell.sentiment}${cell.avgRating != null ? `/${cell.avgRating.toFixed(1)}★` : ''} (${cell.count})` : `${c.name}:—` }).join(', ')
@@ -134,7 +134,7 @@ async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Prom
     : `Write the executive summary of a BRAND 360 report triangulating ${cols} (different sources for one brand). Name where the sources agree, where they diverge, and what each uniquely reveals. ${normalize} 3-5 sentences, specific, no invented numbers.`
   const res = await callAI({
     tier: 'standard', maxTokens: 700, timeoutMs: 45000,
-    usage: { resource_type: 'dataset', event_type: 'compare_report_exec' },
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'compare_report_exec' },
     system: framing,
     messages: [{ role: 'user', content: `Themes across inputs:\n${rowLines}` }],
   })
@@ -142,20 +142,20 @@ async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Prom
 }
 
 // ── Build ────────────────────────────────────────────────────────────────────
-export interface CompareBuildOpts { synthesize?: boolean; primaryId?: string }
+export interface CompareBuildOpts { synthesize?: boolean; primaryId?: string; orgId?: string }
 
 // Build ONE matrix (themes × columns) for a given lens. Same align→fallback→cell
 // pipeline; called once for themes and once for dimensions.
 async function buildMatrix(
   ordered: ProjectInputModel[], columns: ProjectSource[], selector: LensSelector,
-  lensNoun: string, purpose: ComparePurpose, name: string, primary: string | null, synthesize: boolean,
+  lensNoun: string, purpose: ComparePurpose, name: string, primary: string | null, synthesize: boolean, orgId?: string,
 ): Promise<CompareRow[]> {
   // label(lower) → theme/dimension, per column
   const byCol = new Map(ordered.map(i => [i.source.name, new Map(selector(i).map(t => [norm(t.label), t]))]))
 
   let aligned: AlignedRow[] = []
   if (synthesize && ordered.some(i => selector(i).length)) {
-    try { aligned = await alignThemes(ordered, selector, lensNoun, purpose, name, primary) } catch { aligned = [] }
+    try { aligned = await alignThemes(ordered, selector, lensNoun, purpose, name, primary, orgId) } catch { aligned = [] }
   }
   // Fallback / unplaced labels → 1:1 rows by exact label across columns.
   const placed = new Set<string>()  // `${column}|${labelLower}`
@@ -211,10 +211,10 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
   const columns = ordered.map(i => i.source)
   const synthesize = opts.synthesize !== false
 
-  const rows = await buildMatrix(ordered, columns, i => i.themes, 'themes', purpose, name, primary, synthesize)
+  const rows = await buildMatrix(ordered, columns, i => i.themes, 'themes', purpose, name, primary, synthesize, opts.orgId)
   // Second matrix over ABSA Dimensions — only when ≥1 input is taxonomy-classified.
   const dimensionRows = ordered.some(i => i.dimensions.length)
-    ? await buildMatrix(ordered, columns, i => i.dimensions, 'dimensions', purpose, name, primary, synthesize)
+    ? await buildMatrix(ordered, columns, i => i.dimensions, 'dimensions', purpose, name, primary, synthesize, opts.orgId)
     : []
 
   // Rating-over-time per competitor (competitive only; needs ≥2 dated review inputs).
@@ -232,7 +232,7 @@ export async function buildCompareModel(name: string, purpose: ComparePurpose, i
       : `Triangulates ${columns.length} data sources for one brand. Each row is a theme aligned across sources; cells show each source's volume + sentiment. Themes merged by AI; counts computed in code.`) + dimNote,
   }
   let execSummary = ''
-  if (opts.synthesize !== false && rows.length > 0) { try { execSummary = await compareExec(base) } catch { execSummary = '' } }
+  if (opts.synthesize !== false && rows.length > 0) { try { execSummary = await compareExec(base, opts.orgId) } catch { execSummary = '' } }
   return { ...base, execSummary }
 }
 

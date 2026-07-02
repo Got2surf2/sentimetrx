@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     const uploaded = (head ?? []).find((o: { name?: string }) => o?.name === fileName)
     if (!uploaded) return NextResponse.json({ error: 'upload not found — please try again' }, { status: 400 })
 
-    const proposal = await extractSetupFromPdf(storage_path, outPrefix)
+    const proposal = await extractSetupFromPdf(storage_path, outPrefix, ctx.orgId)
 
     // Collect rendered page PNGs for cleanup too.
     const { data: pages } = await service.storage.from(BUCKET).list(outPrefix, { limit: 1000 })

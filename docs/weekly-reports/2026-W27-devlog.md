@@ -206,3 +206,10 @@ tsc clean; 1130 tests (added orgDelete ×3); check:no-legacy-rows green. No migr
 - **#1 (CI/tests write to prod DB) — decision + prep.** Owner chose a paid Supabase test project. Can't create it (billing = owner dashboard action), so shipped the bootstrap: `scripts/bootstrap-test-db.sh` (schema-only dump of prod → apply to the test project's connection string) + a runbook in TESTING.md. Owner steps: create project → run bootstrap → repoint the 3 `SUPABASE_TEST_*` secrets from prod to the test project.
 
 tsc clean; 1130 tests (usageLog suite green). No migrations.
+
+## 2026-07-02 — #3 follow-through: org attribution/gating on helper AI calls + RATES refresh
+
+- **3a — org threading.** The ~7 helper `callAI()` sites that were logging without `org_id` (so they attributed to null and bypassed off-mode/BYOK gating) now thread `org_id` from their calling routes: projectReport + projectCompare (from the collection owner via `projectReportLoad`), entityAnalysis (`canonicalize`/`categorize` from the export route; the admin entity-analysis-deck stays org-less by design), nameExtractor (`bot.org_id` via chatCore), recordings/setupExtract (from the extract-setup route). Left intentionally org-less: reoExtractor (admin-only internal tool). `embeddings.ts` still bypasses callAI entirely (separate follow-up).
+- **3b — RATES refreshed (`lib/usageRates.ts`).** Verified Anthropic pricing against the claude-api reference. Prior "May 2025" table had **Haiku under-priced** ($0.80→$1.00) and **Opus at $15/$75** (old Opus-3-era) when current Opus 4.x is **$5/$25** — so recording-analysis cost (hardcoded Opus) had been logged **~3× too high**; since cost is derived from stored tokens at display time, the fix corrects historical rows too. Added Opus 4.8 + Fable 5; changed the `estimateCost` unknown-model fallback from Haiku (cheapest) to Sonnet (standard) so new models aren't silently under-priced.
+
+tsc clean; 1130 tests. USAGE_ACCOUNTING synced. No migrations.
