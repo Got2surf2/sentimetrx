@@ -224,3 +224,10 @@ tsc clean; 1135 tests (+ log.test ×6). ENGINEERING + TESTING synced. No migrati
 ## 2026-07-02 — Formal freeze on the legacy PulseIQ orchestrator (high-list #3)
 
 The audit's structural finding: the ~1075-line legacy town-hall chat route keeps gaining features (round-based tasting mode was built only there) while the `chatCore` convergence (Phases 4–6) is stalled behind a dark flag — every legacy-only feature widens the parity gap. *Finishing* the migration is a separate multi-week project; what's actionable now is stopping the gap from widening. Added a formal **freeze policy**: docs/CONVERGENCE.md §4.1 (no new features on the legacy orchestrator — land them in chatCore or defer; round-based pacing must be ported before the next feature), a ⚠️ header warning on `app/api/townhall/chat/route.ts` where an editor will see it, and a line in CLAUDE.md so future sessions honor it. Bug/security fixes to the legacy path stay allowed. Doc/comment-only, no behavior change.
+
+## 2026-07-02 — Medium tier: embeddings COGS + org-delete Storage/auth purge
+
+- **embeddings.ts now logged (last AI-cost blind spot).** `lib/embeddings.ts` makes its own OpenAI call (bypasses callAI), so it was invisible to accounting. It now `logUsage`s the response `prompt_tokens` (`resource_type:'system'`, `event_type:'embedding'`, model `text-embedding-3-small`, provider `openai`) with the caller's org_id. Added the rate to `RATES` ($0.02/1M input). USAGE_ACCOUNTING synced.
+- **Org-delete extended beyond Postgres.** `deleteOrgStorage` removes Supabase Storage objects under the `<org_id>/` prefix (`org-logos` + the `recordings` media bucket, recursive list→remove), and `purgeOrgAuthUsers` deletes the org's `auth.users` (ids collected before the sweep clears `public.users`). Both best-effort — DB data is already erased, so a partial failure surfaces as `warnings` rather than stranding the org row. S3 org-snapshots stay a documented break-glass purge (backup IAM has no s3:DeleteObject by design). SECURITY.md §7 TBD-5 updated.
+
+tsc clean; 1135 tests (one flaky one-off, stable on re-run). No migrations.

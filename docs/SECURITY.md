@@ -392,11 +392,19 @@ cross-org access attempts."
   derived from `information_schema`) in a retry-to-fixpoint loop and
   is **fail-closed**: if any table can't be cleared, the org row is
   NOT deleted (no silent half-erasure). `app/api/admin/orgs/[id]`
-  DELETE runs the sweep before removing the org.
-  **Still open (`<TBD>` item 5):** the sweep does not yet purge
-  Supabase Storage objects (recording audio), S3 org snapshots, or
-  `auth.users` rows — those live outside Postgres and need their own
-  deletion path. A delete-path egress test is still to be added.
+  DELETE runs the sweep before removing the org. **Non-Postgres data
+  (2026-07-02):** the route also purges Supabase **Storage** objects
+  under the org prefix (`org-logos` + the `recordings` media bucket, via
+  `deleteOrgStorage`) and the org's **`auth.users`** rows (via
+  `purgeOrgAuthUsers`, ids collected before the sweep clears
+  `public.users`). Both are best-effort — the DB data is already erased,
+  so a partial failure surfaces as `warnings` in the response for manual
+  follow-up rather than stranding the org row.
+  **Still manual (`<TBD>` item 5):** S3 org-snapshot objects are NOT
+  runtime-deletable — the backup IAM role deliberately has no
+  `s3:DeleteObject` (ransomware posture), so purging a deleted org's
+  snapshots is a documented **break-glass** step. A delete-path egress
+  test is still to be added.
 - **User-level deletion within an org:** removing a user from an
   org does NOT delete the rows they created — those belong to the
   org. For a GDPR data-subject "erase me" request where the user

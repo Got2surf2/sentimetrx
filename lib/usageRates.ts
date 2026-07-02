@@ -23,9 +23,11 @@ export const RATES: Record<string, { input: number; output: number; cache_read: 
   'claude-fable-5':            { input: 10.00, output: 50.00, cache_read: 1.00 },
   // Anthropic — retired snapshot kept for historical rows (Sonnet 4 = $3/$15)
   'claude-sonnet-4-20250514':  { input: 3.00, output: 15.00, cache_read: 0.30 },
-  // OpenAI (text via callAI; embeddings/moderation are billed separately as flat cost)
+  // OpenAI text (via callAI)
   'gpt-4o-mini':               { input: 0.15, output: 0.60, cache_read: 0.075 },
   'gpt-4o':                    { input: 2.50, output: 10.00, cache_read: 1.25 },
+  // OpenAI embeddings (lib/embeddings — token-priced, input only, no output/cache)
+  'text-embedding-3-small':    { input: 0.02, output: 0.00, cache_read: 0.00 },
 }
 
 /**

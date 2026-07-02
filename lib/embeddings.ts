@@ -15,9 +15,21 @@ import 'server-only'
 // only from admin-only / platform-only paths that genuinely have no tenant.
 
 import { resolveOrgAiConfig } from '@/lib/aiKey'
+import { logUsage } from '@/lib/usageLog'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIMS = 1536
+
+// Log the OpenAI embedding spend to usage_logs (this path bypasses callAI, so it
+// was previously invisible to cost accounting). input_tokens = prompt_tokens
+// from OpenAI's response; embeddings have no output/cache tokens.
+function logEmbeddingUsage(orgId: string | undefined, promptTokens: number): void {
+  if (!promptTokens || promptTokens <= 0) return
+  logUsage(
+    { org_id: orgId, resource_type: 'system', event_type: 'embedding' },
+    { input_tokens: promptTokens, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0, model: EMBEDDING_MODEL, provider: 'openai', tier: 'fast' },
+  )
+}
 
 async function resolveOpenAIKey(orgId: string | undefined): Promise<string | null> {
   if (orgId) {
@@ -46,6 +58,7 @@ export async function generateEmbedding(text: string, orgId: string | undefined)
   }
 
   const data = await res.json()
+  logEmbeddingUsage(orgId, data.usage?.prompt_tokens || 0)
   return data.data?.[0]?.embedding || null
 }
 
@@ -67,6 +80,7 @@ export async function generateEmbeddings(texts: string[], orgId: string | undefi
   }
 
   const data = await res.json()
+  logEmbeddingUsage(orgId, data.usage?.prompt_tokens || 0)
   const embeddings: (number[] | null)[] = texts.map(function() { return null })
   if (data.data && Array.isArray(data.data)) {
     for (var i = 0; i < data.data.length; i++) {

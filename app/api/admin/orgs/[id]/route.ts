@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { recordAdminAction } from '@/lib/orgTransfer'
-import { deleteOrgScopedData } from '@/lib/orgDelete'
+import { deleteOrgScopedData, deleteOrgStorage, purgeOrgAuthUsers } from '@/lib/orgDelete'
 
 export const dynamic = 'force-dynamic'
 
@@ -130,6 +130,11 @@ export async function DELETE(req: Request, props: Params) {
     metadata:         { action: 'org_hard_delete', org_name: (org as any).name },
   })
 
+  // Collect the org's auth user ids BEFORE the sweep clears public.users —
+  // auth.users lives outside the public schema and the row sweep can't touch it.
+  const { data: orgUsers } = await service.from('users').select('id').eq('org_id', params.id)
+  const userIds = ((orgUsers || []) as { id: string }[]).map(u => u.id)
+
   // Explicitly erase all org-scoped data. Deleting the organizations row does
   // NOT cascade to every table (many carry org_id with no cascading FK — see
   // lib/orgDelete), so relying on cascade orphaned tenant content. Fail closed:
@@ -145,6 +150,16 @@ export async function DELETE(req: Request, props: Params) {
     }, { status: 500 })
   }
 
+  // Non-Postgres tenant data: Storage objects + auth users. Best-effort — the
+  // DB data is already erased, so a partial failure here shouldn't strand the
+  // org row; surface any leftovers as `warnings` for manual follow-up. (S3
+  // org-snapshots are a documented break-glass purge — the backup role has no
+  // delete permission by design.)
+  const storage = await deleteOrgStorage((org as any).id)
+  const auth = await purgeOrgAuthUsers(userIds)
+  const warnings = [...storage.errors.map(e => 'storage: ' + e), ...auth.errors.map(e => 'auth: ' + e)]
+  if (warnings.length > 0) console.error('[org.delete] cleanup warnings for ' + (org as any).id + ':', JSON.stringify(warnings))
+
   // Finally the org row itself (cascades the few org_id-CASCADE tables, already
   // emptied by the sweep above).
   const { error } = await service.from('organizations').delete().eq('id', params.id)
@@ -154,5 +169,8 @@ export async function DELETE(req: Request, props: Params) {
     ok: true,
     deleted: { id: (org as any).id, name: (org as any).name },
     tables_cleared: sweep.deleted.length,
+    storage_objects_removed: storage.removed,
+    auth_users_deleted: auth.deleted,
+    ...(warnings.length > 0 ? { warnings } : {}),
   })
 }

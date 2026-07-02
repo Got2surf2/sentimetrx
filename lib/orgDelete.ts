@@ -83,3 +83,67 @@ export async function deleteOrgScopedData(orgId: string): Promise<OrgDeleteResul
   for (const table of remaining) failed[table] = lastError[table] || 'unknown error'
   return { deleted, failed }
 }
+
+// ── Storage + auth erasure (non-Postgres tenant data) ──────────────────────────
+
+// Supabase Storage buckets whose objects are keyed under an `<org_id>/…` prefix.
+// (S3 org-snapshot objects are intentionally NOT deletable at runtime — the
+// backup IAM role has no s3:DeleteObject; purging those is a documented break-
+// glass step, see docs/SECURITY.md.)
+const ORG_PREFIXED_BUCKETS = ['org-logos', process.env.RECORDINGS_BUCKET || 'recordings']
+
+// Recursively collect every object path under `prefix` in a bucket. Supabase's
+// list() returns one directory level; folder entries have `id === null`.
+async function listAllObjectPaths(service: ReturnType<typeof createServiceRoleClient>, bucket: string, prefix: string): Promise<string[]> {
+  const out: string[] = []
+  const { data, error } = await service.storage.from(bucket).list(prefix, { limit: 1000 })
+  if (error || !data) return out
+  for (const entry of data as { name: string; id: string | null }[]) {
+    const full = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.id === null) out.push(...await listAllObjectPaths(service, bucket, full))
+    else out.push(full)
+  }
+  return out
+}
+
+/** Remove all Supabase Storage objects under the org's prefix. Best-effort. */
+export async function deleteOrgStorage(orgId: string): Promise<{ removed: number; errors: string[] }> {
+  const service = createServiceRoleClient()
+  let removed = 0
+  const errors: string[] = []
+  for (const bucket of ORG_PREFIXED_BUCKETS) {
+    try {
+      const paths = await listAllObjectPaths(service, bucket, orgId)
+      for (let i = 0; i < paths.length; i += 100) {
+        const chunk = paths.slice(i, i + 100)
+        const { error } = await service.storage.from(bucket).remove(chunk)
+        if (error) errors.push(`${bucket}: ${error.message}`)
+        else removed += chunk.length
+      }
+    } catch (e: any) {
+      errors.push(`${bucket}: ${e?.message || String(e)}`)
+    }
+  }
+  return { removed, errors }
+}
+
+/**
+ * Delete the org's Supabase Auth users. Pass the ids collected from public.users
+ * BEFORE the Postgres sweep clears that table (auth.users lives outside the
+ * public schema and isn't touched by the row sweep). Best-effort.
+ */
+export async function purgeOrgAuthUsers(userIds: string[]): Promise<{ deleted: number; errors: string[] }> {
+  const service = createServiceRoleClient()
+  let deleted = 0
+  const errors: string[] = []
+  for (const id of userIds) {
+    try {
+      const { error } = await service.auth.admin.deleteUser(id)
+      if (error) errors.push(`${id}: ${error.message}`)
+      else deleted++
+    } catch (e: any) {
+      errors.push(`${id}: ${e?.message || String(e)}`)
+    }
+  }
+  return { deleted, errors }
+}
