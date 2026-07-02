@@ -254,10 +254,20 @@ Supabase is acceptable. The test data is namespaced and cleaned up; the
 risk is one stale row if the test crashes mid-run, which is recoverable
 by hand via the `_rlstest_` prefix.
 
-**Once customers exist**: stand up a dedicated Supabase test project and
-set `NEXT_PUBLIC_SUPABASE_URL`/keys in `.env.local` to that project before
-running. Real auth.users rows shouldn't share an instance with paying
-customers, regardless of how careful the cleanup is.
+**Dedicated test project (decided 2026-07-02: paid Supabase project).**
+Until it exists, CI + local isolation runs hit **prod** (the `SUPABASE_TEST_*`
+secrets hold prod values) — a real risk: the prod service-role key lives in
+GitHub Actions and CI writes `_rlstest_*` rows to prod on every run. To close
+it:
+1. **Owner:** create the paid Supabase test project in the dashboard; copy its
+   Postgres connection URI + anon/service_role keys.
+2. Seed its schema from prod (schema-only, no data):
+   `TEST_DB_URL='postgresql://…' bash scripts/bootstrap-test-db.sh`
+3. Repoint the three `SUPABASE_TEST_*` GitHub secrets (and optionally
+   `.env.local`) from prod values to the test project.
+4. Re-run the bootstrap after any prod migration to keep schema parity.
+Real auth.users rows shouldn't share an instance with paying customers,
+regardless of how careful the cleanup is.
 
 ### Cross-org data egress (`tests/integration/cross-org-egress.test.ts`)
 

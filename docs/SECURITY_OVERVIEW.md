@@ -28,9 +28,13 @@ hardening track and is tracked in our internal Open Items log.
 | Application compute | Vercel (Fluid Compute) | US (primarily `iad1`) | No execution outside the US |
 | Database | Supabase Postgres | AWS `us-east-1` | All tenant data |
 | Object storage | Supabase Storage / AWS S3 | `us-east-1` | Uploaded files & generated artifacts |
+| AI inference (LLM) | Anthropic Claude | US | Analysis, chat, extraction; scoped prompts |
+| AI inference (transcription/embeddings/moderation) | OpenAI | US | **Meeting audio** (Whisper), text embeddings, social-comment moderation |
+| AI inference (transcription) | Deepgram | US | **Meeting audio** transcription + diarization |
+| AI inference (optional) | Azure OpenAI | US | Text prompts when the `azure-openai` provider is selected |
 | Transactional email | Resend | US | Only if customer enables outbound surveys |
 | Error monitoring | Sentry | US | Operational metadata only |
-| Search-data enrichment | DataForSEO | US | Public review fetch; no customer PII |
+| Search-data enrichment | DataForSEO | US | Public review fetch (no PII outbound); returns reviewer identities we store |
 
 All data in transit is protected by TLS 1.2+ (enforced by Vercel and
 Supabase). Data at rest is encrypted with AES-256 (Supabase managed

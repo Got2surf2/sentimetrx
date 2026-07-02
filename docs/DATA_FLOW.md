@@ -40,6 +40,8 @@ flowchart LR
     %% Third parties
     subgraph ThirdParties["Subprocessors (US)"]
         Anthropic["Anthropic API<br/>(Claude)"]
+        OpenAI["OpenAI<br/>(audio transcription,<br/>embeddings, moderation)"]
+        Deepgram["Deepgram<br/>(audio transcription)"]
         Resend["Resend<br/>(transactional email)"]
         DFS["DataForSEO<br/>(public review fetch)"]
         Sentry["Sentry<br/>(error monitoring)"]
@@ -56,6 +58,9 @@ flowchart LR
 
     Func -->|Single-org prompts only| Guard
     Guard -->|HTTPS + API key| Anthropic
+    Func -->|HTTPS + API key<br/>text embeddings, moderation| OpenAI
+    Func -->|HTTPS + signed URL<br/>meeting audio| OpenAI
+    Func -->|HTTPS + signed URL<br/>meeting audio| Deepgram
 
     Func -->|HTTPS + API key| Resend
     Func -->|HTTPS + API key<br/>no PII| DFS
@@ -89,6 +94,9 @@ flowchart LR
 | Subprocessor | Data sent | Purpose | Retained at subprocessor? |
 |---|---|---|---|
 | **Anthropic API** | Scoped, single-org prompts (feedback text + analysis context) | AI inference | Not used for model training (per Anthropic commercial API terms). Inputs and outputs retained by Anthropic for up to 30 days for trust & safety / abuse monitoring, then deleted (UserSafety classifier results may persist as labels). Zero Data Retention is an enterprise contractual upgrade; request is in progress with Anthropic. |
+| **OpenAI** | **Town-hall meeting audio** (Whisper transcription), customer open-ended text (embeddings for vector search), social-comment text (Moderation) | Transcription / embeddings / toxicity scoring | ⚠️ Retention posture not yet confirmed; DPA not yet in place. OpenAI API data is not used for training by default, but audio/text retention must be confirmed contractually before a government deployment. |
+| **Deepgram** | **Town-hall meeting audio** (via signed Storage URL) | Speech-to-text transcription + speaker diarization | ⚠️ Retention posture not yet confirmed; DPA not yet in place. Confirm audio retention before a government deployment. |
+| **Azure OpenAI** | Text prompts (when the `azure-openai` provider is selected) | AI inference | Not used for training by default (Azure OpenAI terms). |
 | **Resend** | Recipient email + transactional email body | Survey invitations & system email — only if customer enables outbound | Standard Resend retention |
 | **DataForSEO** | Brand / location names + public review queries | Fetch of publicly available reviews | No customer PII sent |
 | **Sentry** | Stack traces, request metadata | Error monitoring | PII fields scrubbed at boundary _(scrubbing handler in progress for the pilot window)_ |

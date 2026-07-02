@@ -103,6 +103,7 @@ async function alignThemes(columns: ProjectInputModel[], selector: LensSelector,
     : `These are different DATA SOURCES for ONE brand. For each unified theme write a one-sentence TRIANGULATION insight — do the sources agree or diverge, and does any source uniquely surface it. ${normalize}`
   const res = await callAI({
     tier: 'standard', maxTokens: 2000, timeoutMs: 60000,
+    usage: { resource_type: 'dataset', event_type: 'compare_report_themes' },
     system: `You are comparing ${columns.length} inputs for "${projectName}". Each input has its own mined ${lensNoun}. Merge ${lensNoun} that mean the same thing across inputs into unified rows (e.g. "Food Quality" + "Taste" → one). Use ONLY the labels provided. ${framing}
 Return ONLY JSON, no markdown:
 {"rows":[{"theme":"Unified Theme","members":[{"column":"exact input name","label":"exact raw label"}],"insight":"one sentence"}]}
@@ -133,6 +134,7 @@ async function compareExec(model: Omit<CompareReportModel, 'execSummary'>): Prom
     : `Write the executive summary of a BRAND 360 report triangulating ${cols} (different sources for one brand). Name where the sources agree, where they diverge, and what each uniquely reveals. ${normalize} 3-5 sentences, specific, no invented numbers.`
   const res = await callAI({
     tier: 'standard', maxTokens: 700, timeoutMs: 45000,
+    usage: { resource_type: 'dataset', event_type: 'compare_report_exec' },
     system: framing,
     messages: [{ role: 'user', content: `Themes across inputs:\n${rowLines}` }],
   })

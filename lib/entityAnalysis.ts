@@ -53,6 +53,7 @@ ${batch.map(s => `- ${s}`).join('\n')}`
     try {
       const res = await callAI({
         tier: 'fast',
+        usage: { resource_type: 'dataset', event_type: 'entity_canonicalize' },
         system: 'You are a precise data normaliser. Output valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 4000,
@@ -124,6 +125,7 @@ ${batch.map(s => `- ${s}`).join('\n')}`
     try {
       const res = await callAI({
         tier: 'fast',
+        usage: { resource_type: 'dataset', event_type: 'entity_categorize' },
         system: 'You are a precise data categoriser. Output valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 4000,

@@ -166,6 +166,7 @@ export async function synthesizeThemes(clusters: RawCluster[], projectName: stri
 
   const res = await callAI({
     tier: 'standard', maxTokens: 1800, timeoutMs: 60000,
+    usage: { resource_type: 'dataset', event_type: 'project_report_themes' },
     system: `You are synthesizing community-engagement findings across multiple inputs (town halls + an agent) for "${projectName}". You are given raw topic labels mined separately from each input. Merge labels that mean the same thing into unified themes (e.g. "Funding" + "Budget" → one theme). Keep genuinely distinct topics separate. Use ONLY the labels provided — do not invent topics.
 Return ONLY JSON, no markdown:
 {"themes":[{"theme":"Unified Theme Name","memberTopics":["exact raw label","exact raw label"],"summary":"1 neutral sentence on what the community raised here, across the inputs","sentiment":"positive|neutral|negative|mixed"}]}
@@ -195,6 +196,7 @@ export async function synthesizeExec(model: Omit<ProjectReportModel, 'execSummar
   const srcLines = model.sources.map(s => `${s.name} (${s.kind === 'town_hall' ? 'town hall' : 'agent'})`).join(', ')
   const res = await callAI({
     tier: 'standard', maxTokens: 700, timeoutMs: 45000,
+    usage: { resource_type: 'dataset', event_type: 'project_report_exec' },
     system: `You are writing the executive summary of a community-engagement report for "${model.name}". It synthesizes findings ACROSS ${model.totals.sources} inputs (${model.totals.townHalls} town hall(s) + ${model.totals.agents} agent(s)): ${srcLines}. Base it ONLY on the themes + counts given. 3-5 sentences, neutral and specific, naming the dominant concerns and how widely they recurred across inputs. No invented statistics.`,
     messages: [{ role: 'user', content: `Themes:\n${themeLines}\n\nTotals: ${model.totals.qa} Q&A, ${model.totals.comments} community comments.` }],
   })

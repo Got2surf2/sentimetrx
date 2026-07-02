@@ -540,12 +540,13 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/bot-chat` | system | `chat` | fast |
 | `/api/suggest` | system | `ghost_suggest` | fast |
 
-**Unlogged AI calls** — these helpers call `callAI()` without a `usage:` context, so they don't appear in the dashboard or get billed against any org:
+**Logging reliability (2026-07-02).** `logUsage`/`logFlatCost` insert via `waitUntil` (`lib/usageLog.ts`) so the row lands even when the handler returns first — previously the un-awaited insert could be dropped on Fluid Compute's response-flush, systematically UNDER-counting spend under load.
 
-- `/api/architecture-deck`, `/api/engineering-reality-deck` — no live `callAI`, narrative slides only.
-- `/api/entity-analysis-deck` — does call `callAI` (entity canonicalisation batch, 30 s timeout) without `usage:`. Worth wiring up if entity-deck volume grows.
+**Previously-unlogged helper calls — now logged (2026-07-02).** An earlier audit found ~7 `lib/` helpers calling `callAI()` with no `usage:`, so their spend was invisible AND (because gating keys off `usage.org_id`) ungated. Now each passes a `usage:` context so `callAI` auto-logs them: `projectReport` (`project_report_themes`/`project_report_exec`), `projectCompare` (`compare_report_themes`/`compare_report_exec`), `entityAnalysis` (`entity_canonicalize`/`entity_categorize`), `nameExtractor` (`name_extract`), `reoExtractor` (`reo_classify`), `recordings/setupExtract` (`recording_setup_extract`). **Still open:** these pass no `org_id` (the pure helpers don't have it in scope), so they log against `org_id = null` — total COGS is now captured but per-org attribution + off-mode gating for these platform-processing calls still needs `org_id` threaded from the calling routes. `lib/embeddings.ts` still bypasses `callAI` entirely (its own OpenAI call — logs nothing).
 
-> **Best practice when adding a new AI call: always pass `usage:`.** Routes that omit it are invisible to the dashboard and to BYOK / off-mode gating.
+> **RATES table is a "May 2025 snapshot" (`lib/usageRates.ts`) — 14 months old.** Any cost/margin figure derived from `usage_logs` is only as accurate as those rates; refresh against current Anthropic/OpenAI/Deepgram pricing before quoting COGS in a data room. `estimateCost` falls back to Haiku rates for an unknown model, which understates an Opus-priced unknown by ~19×.
+
+> **Best practice when adding a new AI call: always pass `usage:` (with `org_id` where you have it).** Calls that omit it are invisible to the dashboard and — with no `org_id` — bypass BYOK / off-mode gating.
 
 ---
 

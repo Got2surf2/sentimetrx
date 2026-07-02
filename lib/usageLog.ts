@@ -7,10 +7,22 @@
 // them safely; both /admin/usage and /admin/estimator share that source of truth.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { waitUntil } from '@vercel/functions'
 import type { AIUsage } from '@/lib/ai'
 
 // Re-export the pure constants so existing server callers don't need to update imports.
 export { RATES, TIER_DEFAULT_MODEL, estimateCost } from '@/lib/usageRates'
+
+// Keep the function alive until the insert lands. logUsage is called right before
+// a handler returns its response; on Fluid Compute the instance can freeze on
+// response-flush and drop an un-awaited insert, systematically under-counting AI
+// spend under load. waitUntil defers shutdown until the promise settles. Guarded:
+// outside a request context (some cron/script paths) waitUntil throws — fall back
+// to letting the promise run best-effort.
+function persist(p: PromiseLike<unknown>): void {
+  const promise = Promise.resolve(p)
+  try { waitUntil(promise) } catch { void promise }
+}
 
 export interface UsageContext {
   org_id?: string
@@ -28,7 +40,7 @@ export function logUsage(context: UsageContext, usage: AIUsage | undefined): voi
 
   try {
     var service = createServiceRoleClient()
-    service.from('usage_logs').insert({
+    persist(service.from('usage_logs').insert({
       org_id: context.org_id || null,
       resource_type: context.resource_type,
       resource_id: context.resource_id || null,
@@ -42,7 +54,7 @@ export function logUsage(context: UsageContext, usage: AIUsage | undefined): voi
       cache_creation_tokens: usage.cache_creation_tokens,
     }).then(function(r: any) {
       if (r.error) console.error('[usage] log failed:', r.error.message)
-    })
+    }))
   } catch (e: any) {
     // Never block the caller
     console.error('[usage] log error:', e?.message)
@@ -65,7 +77,7 @@ export function logFlatCost(
 
   try {
     var service = createServiceRoleClient()
-    service.from('usage_logs').insert({
+    persist(service.from('usage_logs').insert({
       org_id: context.org_id || null,
       resource_type: context.resource_type,
       resource_id: context.resource_id || null,
@@ -80,7 +92,7 @@ export function logFlatCost(
       cost_cents: Math.round(costCents),
     }).then(function(r: any) {
       if (r.error) console.error('[usage] flat-cost log failed:', r.error.message)
-    })
+    }))
   } catch (e: any) {
     console.error('[usage] flat-cost log error:', e?.message)
   }

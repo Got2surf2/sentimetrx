@@ -282,9 +282,13 @@ requires a logged-in caller and reads no tenant data by id.)
   2026-05-12):**
   - Supabase service-role key: **90 days**
   - Anthropic API key: **90 days**
-  - Resend API key: **180 days**
-  - DataForSEO key: **180 days**
+  - OpenAI API key (`OPENAI_API_KEY`): **90 days**
+  - Deepgram key (`DEEPGRAM_API_KEY` / `DEEPGRAM_GRANT_KEY`): **90 days**
+  - Azure OpenAI key (`AZURE_OPENAI_API_KEY`): **90 days**
+  - Resend API key + webhook secret (`RESEND_WEBHOOK_SECRET`): **180 days**
+  - DataForSEO login/password: **180 days**
   - AWS S3 access keys: **90 days**
+  - `CRON_SECRET`, `META_APP_SECRET`, `AI_KEY_ENC_SECRET` (BYOK envelope key — rotating requires re-encrypting stored keys): **90 days**
   - Any suspected-leaked key: **immediately**
 
   Rotation lands in the next devlog entry with a SECURITY tag.
@@ -428,13 +432,18 @@ quarterly):
 
 | Service | Data sent | Auth | DPA status |
 |---|---|---|---|
-| Anthropic Claude | scoped prompts + AI tool inputs | API key | Standard ToS today; request DPA at first paying customer |
+| Anthropic Claude | scoped prompts + AI tool inputs (analysis, chat, extraction) | API key | Standard ToS today (30-day retention, ZDR requested); request DPA at first paying customer |
+| OpenAI | **meeting audio** (Whisper `whisper-1` transcription), customer text (embeddings `text-embedding-3-small` for vector search), social-comment text (Moderation API). `OPENAI_API_KEY` (platform) + per-org BYOK OpenAI keys | API key | **⚠️ No DPA yet; retention posture not confirmed.** Request DPA + confirm audio/text retention before any government contract |
+| Deepgram | **meeting audio** (Nova-3 batch transcription + diarization) via signed Storage URL | API key (`DEEPGRAM_API_KEY` / `DEEPGRAM_GRANT_KEY`) | **⚠️ No DPA yet; retention posture not confirmed.** Request DPA + confirm audio retention before any government contract |
+| Azure OpenAI | text prompts when an org/route selects the `azure-openai` provider | API key (`AZURE_OPENAI_API_KEY`) | Standard ToS today; request DPA at first paying customer. (Azure OpenAI does not train on inputs by default) |
 | Supabase | all primary data | service-role + RLS | Standard ToS today; request DPA at first paying customer |
 | Vercel | application code + runtime traffic | OIDC + token | Standard ToS today; request DPA at first paying customer |
 | Resend | transactional email payloads | API key | Standard ToS today; request DPA at first paying customer |
-| DataForSEO | search queries (no PII) | API key | Not required (no PII sent) |
-| AWS S3 | file uploads | IAM creds | Yes (AWS DPA) |
+| DataForSEO | search queries outbound (no PII sent); **inbound** it returns reviewer identities/profile names we then store | login/password (shared basic-auth) | Not required outbound; inbound reviewer PII is classified in §5 |
+| AWS S3 | file uploads + per-tenant backup snapshots | IAM creds | Yes (AWS DPA) |
 | Sentry | error traces (PII-scrubbed) | DSN | Standard ToS today; request DPA at first paying customer |
+
+> **Government/enterprise note:** OpenAI and Deepgram receive **town-hall meeting audio** — identifiable constituent voices (biometric-adjacent PII). Both must be on the subprocessor disclosure and carry a signed DPA + stated audio-retention terms before a government deployment. This is a hard gate on a gov infosec questionnaire.
 
 **AI-specific guardrails:**
 

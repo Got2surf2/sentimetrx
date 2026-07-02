@@ -39,6 +39,7 @@ export async function extractName(userMessages: string[]): Promise<NameExtractRe
       tier: 'fast',
       maxTokens: 80,
       timeoutMs: 5000,
+      usage: { resource_type: 'bot', event_type: 'name_extract' },
       messages: [{ role: 'user', content: 'User messages from a conversation:\n"""\n' + corpus.slice(0, 2000) + '\n"""' }],
       system:
         'Extract the speaker\'s first name from these user messages if present. ' +

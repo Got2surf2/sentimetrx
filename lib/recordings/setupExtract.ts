@@ -72,6 +72,7 @@ export async function extractSetupFromPdf(pdfStoragePath: string, outPrefix: str
     modelOverride: SONNET_MODEL,
     maxTokens: 2000,
     timeoutMs: 180000,
+    usage: { resource_type: 'recording', event_type: 'recording_setup_extract' },
     system: [{ type: 'text', text: SETUP_SYSTEM, cache: true }],
     messages: [{ role: 'user', content }],
   })
