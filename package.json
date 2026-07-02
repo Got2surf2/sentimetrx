@@ -25,6 +25,8 @@
     "spec-drift": "tsx scripts/spec-drift.ts",
     "check:sql-tx": "tsx scripts/check-sql-tx-wrap.ts",
     "check:no-legacy-rows": "tsx scripts/check-no-legacy-dataset-rows.ts",
+    "migrate": "tsx scripts/apply-migration.ts",
+    "migrate:status": "tsx scripts/migrations-status.ts",
     "check:spec-staged": "tsx scripts/check-spec-drift-staged.ts",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },

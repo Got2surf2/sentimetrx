@@ -231,3 +231,7 @@ The audit's structural finding: the ~1075-line legacy town-hall chat route keeps
 - **Org-delete extended beyond Postgres.** `deleteOrgStorage` removes Supabase Storage objects under the `<org_id>/` prefix (`org-logos` + the `recordings` media bucket, recursive list→remove), and `purgeOrgAuthUsers` deletes the org's `auth.users` (ids collected before the sweep clears `public.users`). Both best-effort — DB data is already erased, so a partial failure surfaces as `warnings` rather than stranding the org row. S3 org-snapshots stay a documented break-glass purge (backup IAM has no s3:DeleteObject by design). SECURITY.md §7 TBD-5 updated.
 
 tsc clean; 1135 tests (one flaky one-off, stable on re-run). No migrations.
+
+## 2026-07-02 — Migration ledger (schema_migrations)
+
+The repo had ~146 hand-applied SQL files with no record of what's applied where — "applied to prod but not committed" was undetectable. Built the tooling: `sql/147` creates a `schema_migrations` ledger table (RLS: platform-admin read, service-role write, mirrors admin_action_log); `scripts/apply-migration.ts` (`npm run migrate <file>`) applies a migration AND records filename/sha256/applied_by; `scripts/migrations-status.ts` (`npm run migrate:status`) diffs sql/ files vs the ledger and reports the three drift classes (committed-not-applied, sha-changed, applied-but-gone), with `--backfill` to seed the ledger once. ENGINEERING §3 updated. **Owner bootstrap:** apply sql/147 → `tsx scripts/migrations-status.ts --backfill`; then migrate:status is a CI candidate. tsc clean.

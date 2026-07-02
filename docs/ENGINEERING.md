@@ -133,9 +133,22 @@ service-role import.
 
 ## 3. Migration safety
 
-SQL migrations live in `sql/` numbered `NNNN_name.sql`. Applied to
-prod via `supabase db query --linked --file sql/NNNN_name.sql` (CLI
-already linked).
+SQL migrations live in `sql/` numbered `NNNN_name.sql`. Apply with
+**`npm run migrate sql/NNNN_name.sql`** (`scripts/apply-migration.ts`) —
+it runs the file against the linked project **and records it in the
+`schema_migrations` ledger** (sql/147) so "applied to prod but not
+committed" (or vice-versa) is detectable. The bare
+`supabase db query --linked --file …` still works but skips the ledger —
+prefer `npm run migrate`.
+
+- **Applied-state ledger (`schema_migrations`, added 2026-07-02).**
+  `npm run migrate:status` (`scripts/migrations-status.ts`) diffs the
+  `sql/NNN_*.sql` files against the ledger and reports drift: committed-
+  but-not-applied, sha-changed-since-apply, and applied-but-file-gone.
+  **One-time bootstrap (owner):** apply `sql/147`, then
+  `tsx scripts/migrations-status.ts --backfill` to seed the ledger with
+  every current file marked applied. After that, `migrate:status` is a
+  candidate CI step.
 
 Rules:
 
