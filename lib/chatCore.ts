@@ -38,6 +38,9 @@ export interface TownHallContext {
   participantId?: string
   themes?: any[]
   coverage?: any
+  /** Session-level content-safety toggles (cohort_config.content_safety) —
+   *  merged over the agent's own config.content_safety (item 5). */
+  contentSafety?: Record<string, unknown>
 }
 
 export interface ChatCoreContext {
@@ -206,15 +209,47 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     recentMessages = messages.slice(-12)
   }
 
-  // Content safety check on latest user message
+  // Content safety check on latest user message (item 5 — full legacy
+  // parity): per-agent toggles (bot.config.content_safety) merged under
+  // any session-level override; strikes keyed per PARTICIPANT in town-hall
+  // mode (a venue's shared NAT IP must not pool the whole room's strikes).
   const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
+  let toneNudge = false
   if (lastUserMsg) {
-    const check = checkMessage('cbot_' + ip, lastUserMsg.content)
+    const safetyConfig = {
+      enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true,
+      ...(((bot.config as any)?.content_safety) || {}),
+      ...((ctx.townHallContext?.contentSafety) || {}),
+    }
+    const strikeKey = ctx.townHallContext
+      ? 'th_' + ctx.townHallContext.townHallId + ':' + (ctx.townHallContext.participantId || ip)
+      : 'cbot_' + ip
+    const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as any, maxLength: 1200 })
+    if (check.nudge) toneNudge = true
     if (!check.safe) {
+      const warning = check.warning || "Let's keep things respectful. How can I help you?"
+      // Audit trail (legacy parity): persist the violation as a filtered
+      // turn + the warning, so conversation review shows the moderation.
+      if (check.category !== 'empty') {
+        try {
+          const { data: maxRow } = await service
+            .from('bot_conversation_turns').select('turn_number')
+            .eq('bot_id', bot.id).eq('session_id', session_id)
+            .order('turn_number', { ascending: false }).limit(1).maybeSingle()
+          const base = ((maxRow as any)?.turn_number || 0) + 1
+          const guardRows = [
+            { bot_id: bot.id, session_id, turn_number: base, role: 'user', content: '[filtered]', language: userLanguage || 'en', source: 'normal', content_flags: ['filtered'] },
+            { bot_id: bot.id, session_id, turn_number: base + 1, role: 'assistant', content: warning, language: userLanguage || 'en', source: 'normal' },
+          ]
+          const { error: guardErr } = await service.from('bot_conversation_turns').insert(guardRows)
+          if (guardErr) void logError('chatCore.guardStore', guardErr, { orgId: bot.org_id })
+          else void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+        } catch { /* audit-trail storage is best-effort */ }
+      }
       // `shutdown` = the strike-escalation ended the session (3rd severe
       // violation). Propagate `ended` so the widget locks the input — no
       // further messages can be sent after a terminated session.
-      return { reply: check.warning || "Let's keep things respectful. How can I help you?", ended: check.shutdown === true }
+      return { reply: warning, ended: check.shutdown === true }
     }
   }
 
@@ -481,6 +516,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // Build system prompt from personality + config + knowledge base
   const systemParts = []
   systemParts.push('Today is ' + new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + '.')
+  // Item 5 (legacy toneNudge parity): borderline-heated message — respond
+  // calmly, acknowledge the frustration, do not mirror the tone.
+  if (toneNudge) systemParts.push('NOTE: The participant\'s last message reads as heated or frustrated. Stay calm and warm, briefly acknowledge the frustration, and de-escalate — do not mirror the tone or lecture them.')
 
   // MCO-specific live data injection. Placed AT THE TOP of the system prompt
   // (before personality, system_prompt, factual-accuracy, and guardrails)

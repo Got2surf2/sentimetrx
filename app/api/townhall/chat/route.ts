@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
         }
 
         const result = await handleChatTurn(
-          { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug, participantId: participant_id } },
+          { agent, service: supabase, ip, townHallContext: { townHallId: townHall.id, slug: townHall.slug, participantId: participant_id, contentSafety: cohortConfig.content_safety || undefined } },
           { messages, session_id: unifiedSessionId, language, debug: body.debug },
         )
 
@@ -261,7 +261,8 @@ export async function POST(req: NextRequest) {
           theme_id: null,
           source: 'agent_handler',
           round_hold: !!result.roundHold,
-          is_final: false,
+          is_final: !!result.ended,
+          ...(result.ended ? { shutdown: true } : {}),
           turn_number: turn_number + 1,
           ...(result._debug ? { _debug: result._debug } : {}),
         })
