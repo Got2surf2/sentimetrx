@@ -7,7 +7,8 @@ import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtil
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
-import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
+import type { TimeBucket} from '@/lib/timeBucket';
+import { BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 import { useRows } from '@/components/analyze/RowsContext'

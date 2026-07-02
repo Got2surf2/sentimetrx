@@ -9,7 +9,7 @@
 // `townHallContext` field is plumbed on the context but is not yet
 // consumed — that wiring happens in Phase 4 commit 2.
 
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'

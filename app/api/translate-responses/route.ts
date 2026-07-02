@@ -2,7 +2,8 @@
 // Public endpoint — translates survey responses back to English on submission.
 // Called client-side when autoTranslateResponses is enabled and lang !== 'en'.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'

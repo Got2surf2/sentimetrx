@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { detectScale } from '@/lib/scaleUtils'
-import { autoBucket, bucketKey, formatBucketLabel, TimeBucket, BUCKET_OPTIONS } from '@/lib/timeBucket'
+import type { TimeBucket} from '@/lib/timeBucket';
+import { autoBucket, bucketKey, formatBucketLabel, BUCKET_OPTIONS } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 const SARINA = '#00b4d8'

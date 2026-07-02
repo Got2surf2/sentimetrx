@@ -2,7 +2,8 @@
 // POST — run text samples through content guard + tagging pipeline
 // Returns per-sample flags, severity, sentiment, and actions
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { auditContent } from '@/lib/contentGuard'
 import { tagComment } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'

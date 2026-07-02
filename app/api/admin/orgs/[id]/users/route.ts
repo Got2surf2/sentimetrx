@@ -6,7 +6,8 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 
 interface Params { params: Promise<{ id: string }> }
 

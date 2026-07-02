@@ -2,7 +2,8 @@
 // PATCH — update a custom demo or psychographic question
 // DELETE — remove a custom demo or psychographic question
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'

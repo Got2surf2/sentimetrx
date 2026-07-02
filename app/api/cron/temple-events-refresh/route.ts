@@ -18,7 +18,8 @@
 // vercel.json config:
 // { "crons": [{ "path": "/api/cron/temple-events-refresh", "schedule": "0 11 * * 1" }] }
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // One-off: run the client's authoritative cross-brand classification scheme
 // (Darden "Classification Categories" PDF, 2026-06-02) through our legacy
 // mapper to see which of THEIR canonical labels we cover vs. drop to _unmapped.

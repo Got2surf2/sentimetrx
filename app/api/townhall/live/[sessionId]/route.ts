@@ -2,7 +2,8 @@
 // GET — Public endpoint for live presenter screen. No auth required.
 // Returns ONLY aggregate data — no PII, no individual responses.
 
-import { NextResponse, NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { bleepText } from '@/lib/contentGuard'

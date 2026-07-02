@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { SLUG_REGEX } from '@/lib/constants'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { serverError } from '@/lib/apiError'

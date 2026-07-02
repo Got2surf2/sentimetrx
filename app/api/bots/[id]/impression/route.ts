@@ -9,7 +9,8 @@
 // Public + wildcard-CORS like /chat (CSRF-bypassed in proxy.ts). Rate-limited
 // per bot+IP. Writes service-role; never reads back any tenant data.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 

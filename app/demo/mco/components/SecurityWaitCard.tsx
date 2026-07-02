@@ -76,7 +76,7 @@ export default function SecurityWaitCard({ hint }: { hint: SecurityWaitHint }) {
       .catch(() => { /* keep whatever's on screen */ })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   // Real upstream freshness — max lastUpdatedTimestamp across rows.

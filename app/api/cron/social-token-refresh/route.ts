@@ -2,7 +2,8 @@
 // Cron endpoint: refreshes Meta long-lived tokens before they expire.
 // Runs daily. Tokens expire after 60 days; refresh when <7 days remaining.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'

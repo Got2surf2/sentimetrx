@@ -4,7 +4,8 @@
 // All chat logic lives in lib/chatCore.ts so the PulseIQ townhall route can
 // share the same handler (Phase 4 of the agents/PulseIQ convergence).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { handleChatTurn } from '@/lib/chatCore'

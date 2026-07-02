@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Ruth's Chris taxonomy pilot — CSV ingest.
 //
 // Reads /Users/sanjaypatel/Downloads/RC Verbatims 15-months ending 093025.csv

@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Independent audit of the VENDOR's food-safety alerts: of every review the
 // vendor tagged 'Alert - Food Safety' / 'Food Safety', how many describe an
 // ACTUAL food-safety hazard? An LLM judge (Haiku) reads each with a strict,

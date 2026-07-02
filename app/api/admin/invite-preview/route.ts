@@ -7,7 +7,8 @@
 //
 // Doesn't write to the invites table. Doesn't send mail. Pure preview.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildInviteEmail } from '@/lib/email/inviteTemplate'
 

@@ -2,7 +2,8 @@
 // GET ?format=csv|xlsx — export campaign respondent data
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 
 export const dynamic = 'force-dynamic'

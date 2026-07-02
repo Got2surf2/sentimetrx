@@ -81,9 +81,11 @@ npm run test:auth-flows   # env-gated: real Supabase auth round-trips
 npm run test:e2e          # Playwright (env-gated)
 ```
 
-CI runs `typecheck` + `npm test` on every push and PR. Env-gated suites run locally against the linked prod project (with `_<prefix>_<runId>_` namespacing) until a dedicated test project exists.
+CI runs `typecheck` + `npm test` on every push and PR. Env-gated suites run against the dedicated **Sentimetrx-Test** Supabase project (creds in `.env.local` as `SUPABASE_TEST_*`; re-sync its schema after prod migrations with `TEST_DB_URL=... bash scripts/bootstrap-test-db.sh`).
 
 After multi-file sweeps, run `rm tsconfig.tsbuildinfo && npx tsc --noEmit` — incremental tsc cache can mask stale-import bugs.
+
+**Lint ratchet + touch-it-fix-it:** CI runs `npm run lint:ci` (`eslint .` with a `--max-warnings` ceiling in `package.json`) — warnings can never increase. Write no new `any`; when you substantively edit a file, fix the `no-explicit-any` warnings in the parts you touch in the same commit, and lower the ceiling when the total drops. Once a rule hits 0, promote it to `error` in `eslint.config.mjs`.
 
 ## Content rules for shipped UI
 

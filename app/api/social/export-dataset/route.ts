@@ -4,7 +4,8 @@
 // Subsequent calls: incremental sync — only adds comments since last sync
 // GET — check if a social dataset already exists for this org
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'

@@ -5,7 +5,8 @@
 // attempts are blocked at the auth layer. Re-enabling clears both flags.
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { serverError } from '@/lib/apiError'
 
 const FAR_FUTURE = '2099-12-31T23:59:59Z'

@@ -4,7 +4,8 @@
 // object backs both. Org-scoped (the owning org or an admin), per the deck-
 // export brand exception.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeOutletPredictor } from '@/lib/outletReport'

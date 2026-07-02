@@ -6,7 +6,8 @@
 // { "crons": [{ "path": "/api/cron/review-sync", "schedule": "0 */6 * * *" }] }
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { syncReviewSource } from '@/lib/reviewSync'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'

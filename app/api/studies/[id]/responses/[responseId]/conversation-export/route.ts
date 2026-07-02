@@ -1,7 +1,8 @@
 // app/api/studies/[id]/responses/[responseId]/conversation-export/route.ts
 // Render a single response's conversation as a branded PPTX slide
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import PptxGenJS from 'pptxgenjs'
 

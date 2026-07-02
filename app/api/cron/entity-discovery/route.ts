@@ -14,7 +14,8 @@
 // { "crons": [{ "path": "/api/cron/entity-discovery", "schedule": "0 5 * * 0" }] }
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'

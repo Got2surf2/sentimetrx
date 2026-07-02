@@ -3,7 +3,8 @@
 // POST — create/update DM template
 // Stored as alert_rules with rule_type = 'dm_template'
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 

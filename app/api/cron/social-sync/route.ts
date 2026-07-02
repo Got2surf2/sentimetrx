@@ -3,7 +3,8 @@
 // Runs every 15 minutes via Vercel Cron.
 // On ingest: runs content guard for auto-flagging + lexicon sentiment scoring.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { tagComment, routeResponse, type ModerationSensitivity } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'

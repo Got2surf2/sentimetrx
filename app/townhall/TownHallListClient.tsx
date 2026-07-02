@@ -6,6 +6,7 @@ import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DownloadButton from '@/components/ui/DownloadButton'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface Session {
   id: string
@@ -28,7 +29,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean }
   orgId?: string
   orgFilter?: string

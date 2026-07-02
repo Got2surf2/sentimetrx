@@ -3,7 +3,8 @@
 // Sends the initial email (sequence 0) to all pending respondents
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { getEmailProvider, interpolateTemplate, buildSurveyUrl, getSMSProvider, buildSMSBody } from '@/lib/email/provider'
 import type { EmailProviderType, CampaignChannel } from '@/lib/types'
 

@@ -6,7 +6,8 @@
 //   offset   — pagination offset (default 0)
 //   ai       — if 'true', expand the query with AI synonyms then re-rank candidates by relevance
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'

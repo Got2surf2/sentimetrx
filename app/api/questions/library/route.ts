@@ -7,7 +7,8 @@
 // library without traversing an /api/admin/* path. The admin path now hosts
 // only the POST handler (super-admin-only custom-question creation).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import psychographicData from '@/QuestionBank/psychographic_profiling_mobile_v4-2.json'
 import industryQuestionsData from '@/lib/data/industryQuestions.json'

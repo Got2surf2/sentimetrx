@@ -15,7 +15,8 @@
 // Built for handing a client a single self-contained file. Org-member or
 // admin gated (same gate as the conversations export).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { type Sheet } from '@/lib/xlsxExport'
 import { buildStyledWorkbook } from '@/lib/styledWorkbook'

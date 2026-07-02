@@ -1,7 +1,8 @@
 // app/api/social/connections/[id]/route.ts
 // DELETE — disconnect a social account
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 

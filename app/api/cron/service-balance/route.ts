@@ -12,7 +12,8 @@
 // is re-emailed only if it hasn't been alerted in the last 20h), so a broke
 // vendor nags daily instead of every 6h.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { getEmailProvider } from '@/lib/email/provider'

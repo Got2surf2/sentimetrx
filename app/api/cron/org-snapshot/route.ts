@@ -9,7 +9,8 @@
 // Auth: Vercel cron header via lib/cronAuth.ts. Same fail-closed semantics
 // as every other /api/cron route.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { dumpOrgSnapshot } from '@/lib/orgSnapshot'

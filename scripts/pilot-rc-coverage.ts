@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Ruth's Chris taxonomy pilot — COVERAGE comparison: our classifier vs the
 // client's existing vendor labels (the CSV `Classification` column).
 //

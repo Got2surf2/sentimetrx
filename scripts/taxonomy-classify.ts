@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Generalized taxonomy classifier driver — keyword tier, persists to
 // dataset_row_taxonomy for ANY dataset. Replaces the RC/Chuy's one-offs
 // (pilot-rc-classify is AI-tier + RC-hardcoded; chuys-classify was console-only).

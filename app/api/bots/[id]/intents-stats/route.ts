@@ -1,7 +1,8 @@
 // app/api/bots/[id]/intents-stats/route.ts
 // GET — returns detection counts and recent detections for each configured intent
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 

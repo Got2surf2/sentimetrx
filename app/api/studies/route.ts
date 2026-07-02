@@ -1,5 +1,6 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { generateStudyGuid } from '@/lib/guid'
 import { SLUG_REGEX } from '@/lib/constants'
 import type { StudyConfig } from '@/lib/types'

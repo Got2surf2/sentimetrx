@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // scripts/pm1-smoke.ts
 //
 // Phase 1 #11 / Phase 4 #25-27 smoke test — runs the Claude analytical pass

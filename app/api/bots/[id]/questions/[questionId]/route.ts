@@ -6,7 +6,8 @@
 // multi-tenancy invariants. Audit fields (resolved_by, resolved_at) are
 // populated server-side, never trusted from the client.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

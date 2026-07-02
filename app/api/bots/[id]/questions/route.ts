@@ -6,7 +6,8 @@
 // multi-tenancy invariants. RLS would also gate the SELECT, but service
 // role bypasses it — the explicit org check is what protects us.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

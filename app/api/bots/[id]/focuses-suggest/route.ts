@@ -4,7 +4,8 @@
 // nothing is saved here. Save happens on the bot PATCH when the owner clicks
 // "Save Agent" in the editor.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { suggestFocusesFromPrompt } from '@/lib/focusClassifier'
 import { logUsage } from '@/lib/usageLog'

@@ -3,7 +3,8 @@
 // stale, memoized in agent_study_cache. ?force=1 recomputes. Consumed by the
 // HTML report page; the PPTX export renders the same object.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getAgentStudy } from '@/lib/agentStudy'

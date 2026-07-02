@@ -2,7 +2,8 @@
 // GET  /api/datasets  -- list all datasets for the user's org
 // POST /api/datasets  -- create a new dataset + initial state record
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'

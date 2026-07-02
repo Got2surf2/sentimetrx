@@ -4,7 +4,8 @@
 // ?force=1 recomputes. Consumed by the interactive readout page; the PDF and
 // PPTX exports render the same object. Mirrors the Agent Study route.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getAgentReadout } from '@/lib/agentReadout'

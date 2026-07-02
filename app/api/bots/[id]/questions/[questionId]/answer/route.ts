@@ -18,7 +18,8 @@
 // invariants; chunks are bot-scoped (agent_knowledge_chunks has no org_id, FK to
 // agents).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

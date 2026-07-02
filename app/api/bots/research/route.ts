@@ -2,7 +2,8 @@
 // POST — research a person/org/topic: SERP search → fetch pages → keep full text
 // Returns full page content structured for RAG chunking (no AI compression)
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchGoogle } from '@/lib/dataforseo'
 import { serverError } from '@/lib/apiError'

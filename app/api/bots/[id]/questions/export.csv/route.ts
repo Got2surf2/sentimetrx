@@ -8,7 +8,8 @@
 // setting. For now this is a defensible default for the NOWOCATS PM-2
 // public-record export.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

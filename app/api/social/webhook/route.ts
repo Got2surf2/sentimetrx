@@ -3,7 +3,8 @@
 // GET  — verification handshake (Meta sends challenge on setup)
 // POST — incoming events (new comments, edits, deletes)
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { auditContent, scoreSentimentFull } from '@/lib/contentGuard'
 import { createHmac, timingSafeEqual } from 'crypto'

@@ -5,7 +5,8 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
-import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
+import type { Theme} from '@/lib/themeUtils';
+import { THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'

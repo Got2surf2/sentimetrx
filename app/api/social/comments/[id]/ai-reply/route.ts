@@ -1,7 +1,8 @@
 // app/api/social/comments/[id]/ai-reply/route.ts
 // POST — generate AI reply using agent engine, then post to platform
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

@@ -8,7 +8,8 @@
 // 200 OK, and the client UX is uniformly "check your email" regardless of
 // whether the email is known.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rateLimit'
 

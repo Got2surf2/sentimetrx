@@ -30,7 +30,8 @@ export default [
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-misused-promises': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/consistent-type-imports': 'warn',
+      // Burned to 0 on 2026-07-02 → promoted to error (ratchet doctrine).
+      '@typescript-eslint/consistent-type-imports': 'error',
       // eslint-plugin-react-hooks v6 (bundled with next 16) added these as
       // ERRORS. Over the existing god-components they'd hard-fail CI on day one;
       // demote to warn so they ride the same ratchet as everything else, then

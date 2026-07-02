@@ -1,5 +1,6 @@
 // POST — download a batch of comments from regulations.gov into a dataset
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { listComments, fetchCommentsBatch, commentToRow } from '@/lib/regulations'
 import { mergeSchemaStats } from '@/lib/datasetUtils'

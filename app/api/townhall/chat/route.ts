@@ -5,7 +5,8 @@
 // so agents + town halls share them, or defer. Round-based pacing (the last
 // legacy-only feature) must be ported to chatCore before the next one. Bug/
 // security fixes are fine; net-new behavior is not.
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isOutputClean, cleanAiOutput, cleanDeflectResponse, looksLikeAIRefusal } from '@/lib/guardrails'

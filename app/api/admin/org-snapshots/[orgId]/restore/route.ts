@@ -15,7 +15,8 @@
 //   - all writes use service role; per-row upsert by `id`
 //   - returns a per-table report of inserts / updates / deletes / errors
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { downloadOrgSnapshot } from '@/lib/backupS3'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'

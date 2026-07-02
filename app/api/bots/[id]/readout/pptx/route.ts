@@ -3,7 +3,8 @@
 // town hall / campaign stakeholder). Renders the SAME readout object the HTML
 // page + PDF show, via buildReadoutDeck + slideRenderer. Datanautix-branded.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getAgentReadout } from '@/lib/agentReadout'

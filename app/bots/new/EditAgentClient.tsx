@@ -10,7 +10,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import TransferOrg from '@/components/ui/TransferOrg'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
-import ContentSafetyEditor from '@/components/agent/ContentSafetyEditor'
+import ContentSafetyEditor, { type ContentSafetyConfigValue } from '@/components/agent/ContentSafetyEditor'
 
 const HERMES = '#E8632A'
 
@@ -38,7 +38,7 @@ interface BotConfig {
   languages: string[]
   askName: string
   dynamicChips?: boolean
-  content_safety?: import('@/components/agent/ContentSafetyEditor').ContentSafetyConfigValue
+  content_safety?: ContentSafetyConfigValue
 }
 
 const DEFAULT_CONFIG: BotConfig = {

@@ -2,7 +2,8 @@
 // POST — duplicate a Town Hall session (copies config + discussion guide into new setup session)
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }

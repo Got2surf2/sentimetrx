@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { serverError } from '@/lib/apiError'
 
 // POST /api/townhall/sessions/[id]/round — round-based pacing: advance the room

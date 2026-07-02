@@ -9,8 +9,9 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
-import {
-  Theme, ThemeModel, THEME_PALETTE,
+import type {
+  Theme, ThemeModel} from '@/lib/themeUtils';
+import { THEME_PALETTE,
   recountThemes, sampleSize95, evenSample,
   commentMatchesTheme, getRowText, sentColor, sentBg,
   ratingColor,
@@ -34,7 +35,7 @@ import HelpHint from '@/components/analyze/textmine/HelpHint'
 // Nav types + the pure (section, view) ⇄ (subTab, viewBy) state map (shared with
 // the Advanced pages' bar + unit-tested in tests/unit/textmineNav).
 import { type SubTab, type Section, type LensView, sectionOf, viewOf, deriveLegacy, viewsFor, cellHasContent, availableSections } from '@/lib/textmineNav'
-import EntitiesCard from '@/components/analyze/EntitiesCard'
+import EntitiesCard, { type EntityRow } from '@/components/analyze/EntitiesCard'
 import TaxonomyModule from '@/components/analyze/TaxonomyModule'
 import DimensionCloud from '@/components/analyze/textmine/DimensionCloud'
 import DimensionCompareTab from '@/components/analyze/textmine/DimensionCompareTab'
@@ -1160,7 +1161,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [restoredFromSession, setRestoredFromSession] = useState(false)
 
   // Entity catalog — fetched once on mount (hoisted here so it survives subTab switches).
-  const [entityCatalogRows, setEntityCatalogRows]         = useState<import('@/components/analyze/EntitiesCard').EntityRow[]>([])
+  const [entityCatalogRows, setEntityCatalogRows]         = useState<EntityRow[]>([])
   const [entityCatalogTotal, setEntityCatalogTotal]       = useState<number | null>(null)
   const [entityCatalogScopeType, setEntityCatalogScopeType] = useState<'dataset' | 'collection' | null>(null)
   const [entityCatalogLoading, setEntityCatalogLoading]   = useState(true)

@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Critical-category check: do OUR classifier and the VENDOR agree on the
 // food-safety and pests alerts? These are the highest-stakes tags (a missed
 // food-poisoning review is the worst failure mode), so we compare them head to

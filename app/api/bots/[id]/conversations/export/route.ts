@@ -4,7 +4,8 @@
 //   ?shape=pairs          — one row per Q&A pair (Question → Answer), the
 //                           "list of every question/answer" export.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 import { loadExportTurns, turnsSheet, pairsSheet } from '@/lib/agentExport'

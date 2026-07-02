@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Ruth's Chris pilot — pull concrete example reviews for the client deck,
 // bucketed by how our Tier-1 classifier compares to the vendor's labels.
 //

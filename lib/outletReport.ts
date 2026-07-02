@@ -197,7 +197,7 @@ async function pageAll(table: string, cols: string, datasetId: string): Promise<
   const out: any[] = []
   const size = 1000
   let from = 0
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const { data, error } = await sb.from(table).select(cols).eq('dataset_id', datasetId).range(from, from + size - 1)
     if (error) throw error

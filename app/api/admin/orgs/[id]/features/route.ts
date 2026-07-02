@@ -8,7 +8,8 @@
 //                            in one round-trip.
 //   PUT { feature, enabled, quota_per_month } — upsert the org-level row.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'

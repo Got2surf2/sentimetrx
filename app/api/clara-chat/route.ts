@@ -2,7 +2,8 @@
 // Public endpoint — AI chatbot for answering questions about Craniometrix.
 // Uses Claude with a comprehensive knowledge base about the company.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

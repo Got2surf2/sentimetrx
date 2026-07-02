@@ -7,6 +7,7 @@ import { redirect, notFound } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import DatasetShell from './DatasetShell'
+import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,7 +73,7 @@ export default async function DatasetLayout(props: Props) {
   }
 
   const studyName = (dataset as any).studies?.name ?? null
-  const schemaFields = (stateRow?.schema_config?.fields || []) as import('@/lib/analyzeTypes').SchemaFieldConfig[]
+  const schemaFields = (stateRow?.schema_config?.fields || []) as SchemaFieldConfig[]
   const primaryDateField = (stateRow?.schema_config?.primaryDateField || undefined) as string | undefined
 
   // Outlet count for the multi-location report tab (only meaningful for review

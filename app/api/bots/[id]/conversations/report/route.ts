@@ -2,7 +2,8 @@
 // POST — on-demand AI analysis of recent conversations
 // Analyzes: common questions, patterns, drop-off points, theme consistency
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

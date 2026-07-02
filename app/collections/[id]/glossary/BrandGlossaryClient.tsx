@@ -14,6 +14,7 @@ import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { hasAuthoritativeSource, type Provenance } from '@/lib/correction/provenance'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface Entity {
   id: string
@@ -35,7 +36,7 @@ interface Props {
   isAdmin: boolean
   userEmail: string
   fullName?: string
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
 }
 
 const CATEGORY_STYLES: Record<string, { bg: string; text: string }> = {

@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { sendInviteEmail } from '@/lib/email/sendInvite'
 import { serverError } from '@/lib/apiError'

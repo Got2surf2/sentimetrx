@@ -1,7 +1,8 @@
 // app/api/social/comments/[id]/dm/route.ts
 // POST — send a DM to the comment author via Messenger/IG Direct
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'

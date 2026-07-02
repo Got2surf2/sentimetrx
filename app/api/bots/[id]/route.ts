@@ -3,7 +3,8 @@
 // PATCH  — update bot config/content
 // DELETE — delete a bot
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { logBotChange, snapshotForDiff, diffSnapshots } from '@/lib/auditLog'

@@ -10,7 +10,8 @@
 // outputFileTracingIncludes in next.config.js (per-PDF-route, or prod 500s with
 // "bin does not exist").
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { existsSync } from 'fs'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'

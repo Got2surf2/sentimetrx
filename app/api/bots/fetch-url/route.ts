@@ -2,7 +2,8 @@
 // POST — fetch a URL and extract text content for bot training
 // Strips HTML, returns plain text. Used during bot creation.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
 import { serverError } from '@/lib/apiError'

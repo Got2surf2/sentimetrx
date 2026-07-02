@@ -1,7 +1,8 @@
 // app/api/admin/usage/route.ts
 // GET — aggregated usage stats for admin dashboard
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { estimateCost } from '@/lib/usageLog'
 import { requireAdmin } from '@/lib/auth/requireAdmin'

@@ -6,7 +6,8 @@
 //             null   → inherit from org (the row is deleted)
 //     quota_per_month: positive int, or null to inherit org quota.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'

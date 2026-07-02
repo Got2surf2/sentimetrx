@@ -2,7 +2,8 @@
 // PATCH  — update a single knowledge chunk (title, content)
 // DELETE — delete a single knowledge chunk
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 

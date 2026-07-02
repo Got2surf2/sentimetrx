@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface OrgRow { id: string; name: string; slug: string; plan: string; is_admin_org: boolean }
 
@@ -12,7 +13,7 @@ interface Props {
   orgName?: string
   userEmail: string
   fullName?: string
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
 }
 
 export default function BackupsClient({ orgs, logoUrl, orgName, userEmail, fullName, features }: Props) {

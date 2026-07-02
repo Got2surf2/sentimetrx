@@ -10,7 +10,8 @@
 // matched entity to every theme the row matches. Results are keyed by a stable
 // theme key (id → name → index) so callers can look up regardless of ordering.
 
-import { Theme, getRowText, buildKwRegex } from './themeUtils'
+import type { Theme} from './themeUtils';
+import { getRowText, buildKwRegex } from './themeUtils'
 import { expandEntityTerms } from './entityVariants'
 
 export interface ThemeEntity { slug: string; canonical: string; category: string; count: number }

@@ -2,7 +2,8 @@
 // POST — send a test email to the current user
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { serverError } from '@/lib/apiError'
 import { getEmailProvider, interpolateTemplate } from '@/lib/email/provider'
 import type { EmailProviderType } from '@/lib/types'

@@ -4,7 +4,8 @@
 // Two views: By Group (themes within each group) and By Theme (groups within each theme).
 
 import { useState, useMemo } from 'react'
-import { Theme, THEME_PALETTE, commentMatchesTheme } from '@/lib/themeUtils'
+import type { Theme} from '@/lib/themeUtils';
+import { THEME_PALETTE, commentMatchesTheme } from '@/lib/themeUtils'
 import { SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { sigTest } from '@/lib/statsUtils'
 

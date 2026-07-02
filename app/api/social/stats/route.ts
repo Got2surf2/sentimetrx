@@ -1,7 +1,8 @@
 // app/api/social/stats/route.ts
 // GET — dashboard stats: counts, sentiment breakdown, flag counts
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'

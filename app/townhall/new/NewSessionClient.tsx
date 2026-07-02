@@ -10,7 +10,7 @@ import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
-import ContentSafetyEditor from '@/components/agent/ContentSafetyEditor'
+import ContentSafetyEditor, { type ContentSafetyConfigValue } from '@/components/agent/ContentSafetyEditor'
 
 interface Props {
   logoUrl?: string
@@ -640,7 +640,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const updateDisplay = (partial: Partial<TownHallConfig['display']>) => {
     setConfig(c => ({ ...c, display: { ...c.display, ...partial } }))
   }
-  const updateSafety = (partial: import('@/components/agent/ContentSafetyEditor').ContentSafetyConfigValue) => {
+  const updateSafety = (partial: ContentSafetyConfigValue) => {
     setConfig(c => {
       const prev = c.content_safety || {}
       const cs = { profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...prev, ...partial }

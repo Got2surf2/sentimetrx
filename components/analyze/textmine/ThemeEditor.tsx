@@ -5,7 +5,8 @@
 // Matches Ana.html's ThemeEditor + industry picker UX.
 
 import { useState, useCallback } from 'react'
-import { Theme, THEME_PALETTE, sentColor, sentBg } from '@/lib/themeUtils'
+import type { Theme} from '@/lib/themeUtils';
+import { THEME_PALETTE, sentColor, sentBg } from '@/lib/themeUtils'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, type Industry } from '@/lib/industryDefaults'
 
 var T = {

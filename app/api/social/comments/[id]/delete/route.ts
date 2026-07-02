@@ -1,7 +1,8 @@
 // app/api/social/comments/[id]/delete/route.ts
 // POST — delete a comment on the platform
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'

@@ -2,7 +2,8 @@
 // POST — generate realistic demo comments for a candidate/org
 // DELETE — clear all demo comments
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 import { callAI } from '@/lib/ai'

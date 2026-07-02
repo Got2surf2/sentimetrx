@@ -4,7 +4,8 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
 
 export const dynamic = 'force-dynamic'

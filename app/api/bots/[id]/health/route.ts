@@ -2,7 +2,8 @@
 // GET — Tier-1 agent health (no AI). Powers the agent-card health strip and
 // the Agent Study report's "study status" act. Cheap counts only.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getAgentHealth } from '@/lib/agentStudy'

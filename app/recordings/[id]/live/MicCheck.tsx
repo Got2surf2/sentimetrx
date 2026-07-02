@@ -938,7 +938,7 @@ export default function MicCheck({
               {clipRecording ? '■ Stop test clip' : '● Record a test clip'}
             </button>
             {clipUrl && !clipRecording && (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
+               
               <audio src={clipMono && clipMonoUrl ? clipMonoUrl : clipUrl} controls className="h-8 max-w-[200px]" />
             )}
             {clipUrl && !clipRecording && channels === 2 && (

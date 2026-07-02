@@ -8,7 +8,8 @@
 // Service role + paired (id, org_id) check on the agent row per CLAUDE.md
 // multi-tenancy invariants. Same gate pattern as the questions route.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

@@ -3,7 +3,8 @@
 // branded PPTX (the per-store leave-behind). Org-scoped, per the deck-export
 // brand exception. Same predictor as the Action Plan tab + the brand deck.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeOutletPredictor } from '@/lib/outletReport'

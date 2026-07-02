@@ -1,7 +1,9 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
-import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
+import type { TimeBucket } from '@/lib/timeBucket';
+import { autoBucket, bucketKey } from '@/lib/timeBucket'
 import { bleepText } from '@/lib/contentGuard'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { getTownHallAsLegacy } from '@/lib/townHallAdapter'

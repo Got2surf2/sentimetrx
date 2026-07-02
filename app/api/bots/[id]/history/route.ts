@@ -1,7 +1,8 @@
 // app/api/bots/[id]/history/route.ts
 // GET — list bot_change_log entries for this bot, newest first.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 

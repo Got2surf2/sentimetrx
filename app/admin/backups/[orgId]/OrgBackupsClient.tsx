@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
 import LottieLoader from '@/components/ui/LottieLoader'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface Snapshot { key: string; last_modified: string; size_bytes: number }
 
@@ -32,7 +33,7 @@ interface Props {
   orgName?: string
   userEmail: string
   fullName?: string
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
 }
 
 function formatBytes(n: number): string {

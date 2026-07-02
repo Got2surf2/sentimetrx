@@ -13,7 +13,8 @@
 // Service role + paired (id, org_id) check on the collection per CLAUDE.md
 // multi-tenancy invariants — mirrors the bot entities routes.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { slugify } from '@/lib/entityFilter'

@@ -3,7 +3,8 @@
 //        default, narrowed to ?org=<id> when supplied (Phase E filter UI).
 // POST — create a new bot
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'

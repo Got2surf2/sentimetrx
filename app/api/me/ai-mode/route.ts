@@ -17,7 +17,8 @@
 // runtime guarantees; this endpoint exists so the UI can reflect
 // state and so per-user consent is recorded.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { resolveOrgAiConfig } from '@/lib/aiKey'
 import { recordUserEvent } from '@/lib/userEvents'

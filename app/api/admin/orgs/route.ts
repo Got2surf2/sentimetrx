@@ -5,7 +5,8 @@
 // ?active=true narrows to status='active' — same semantics as
 // /api/admin/clients?activeOnly=true uses for the transfer dropdown.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'

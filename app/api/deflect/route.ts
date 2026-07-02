@@ -1,7 +1,8 @@
 // app/api/deflect/route.ts
 // AI-powered question/off-topic detection and contextual deflection
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

@@ -7,7 +7,8 @@
 //          allowing an insert (prevents an admin-only resource being
 //          starred by a tenant user via id-guessing).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 

@@ -1,7 +1,8 @@
 // app/api/social/callback/route.ts
 // Meta OAuth callback — exchanges code for long-lived token, stores connection
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { verifyOauthState } from '@/lib/oauthState'
 

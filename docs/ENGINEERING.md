@@ -54,6 +54,13 @@ Last reviewed: 2026-05-15.
   `warn` in the flat config so they ride the ratchet rather than hard-
   fail on the god-components. (Next 16's `next build` doesn't run ESLint,
   so lint gates via CI only.)
+  **Touch-it-fix-it rule for `no-explicit-any` (2026-07-02):** the
+  ~2,900 `any` warnings are burned down opportunistically — when a
+  commit substantively edits a file, replace the `any`s in the parts
+  you touched (whole file if small) in the same commit, then lower the
+  `lint:ci` ceiling if the total dropped. No new `any` in new code.
+  The ceiling is the enforcement; this rule is the convention that
+  drives it downward.
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.

@@ -7,8 +7,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
-import {
-  Theme, THEME_PALETTE, commentMatchesTheme, highlightKeywords,
+import type {
+  Theme} from '@/lib/themeUtils';
+import { THEME_PALETTE, commentMatchesTheme, highlightKeywords,
   evenSample, sentColor, sentBg,
 } from '@/lib/themeUtils'
 
@@ -348,7 +349,7 @@ export default function CommentsPanel({
   theme, allThemes, selectedThemes, parsedData, activeField, activeFields,
   catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId, showAllMode,
 }: Props) {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   const activeThemes = useMemo(function() { return selectedThemes && selectedThemes.length > 0 ? selectedThemes : [theme] }, [selectedThemes, theme])
   const isMulti = activeThemes.length > 1 || showAllMode
   const themeIdx = allThemes.findIndex(function(t) { return t.id === activeThemes[0].id })

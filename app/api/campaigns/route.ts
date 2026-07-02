@@ -3,7 +3,8 @@
 // POST — create a new campaign
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { serverError } from '@/lib/apiError'
 

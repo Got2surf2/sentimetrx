@@ -9,6 +9,7 @@ import ShareModal from '@/components/ui/ShareModal'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface Study {
   id: string; guid: string; slug?: string; name: string; bot_name: string; bot_emoji: string
@@ -23,7 +24,7 @@ interface Props {
   logoUrl?: string; orgId?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]; statsMap: Record<string, StudyStats>
 }

@@ -9,7 +9,8 @@
 // system prompt, knowledge base, guardrails, or any other private config —
 // only the handful of fields the public chat UI already shows.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'

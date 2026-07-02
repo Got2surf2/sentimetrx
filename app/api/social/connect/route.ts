@@ -1,7 +1,8 @@
 // app/api/social/connect/route.ts
 // Initiates Meta OAuth flow — redirects user to Facebook login
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { signOauthState } from '@/lib/oauthState'
 

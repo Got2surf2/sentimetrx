@@ -3,7 +3,8 @@
 // DELETE — delete all turns for a session + associated persona
 // Admin-org members can read/delete across orgs (Phase E parity).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'

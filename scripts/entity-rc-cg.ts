@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // Brand-level entity extraction for Ruth's Chris + Capital Grille (the primary
 // Google-reviews dataset for each), so we have an entity-level competitive
 // compare alongside the taxonomy one. Haiku NER over a sample; idempotent

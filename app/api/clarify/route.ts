@@ -1,6 +1,7 @@
 // app/api/clarify/route.ts
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'

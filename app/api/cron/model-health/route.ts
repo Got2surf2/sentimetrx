@@ -8,7 +8,8 @@
 //
 // Also callable ad hoc by an admin with the cron secret to get the current report.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { checkConfiguredModels } from '@/lib/modelHealth'

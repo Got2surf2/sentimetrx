@@ -105,7 +105,7 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
       .catch(() => { /* keep cached */ })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   // True upstream freshness via per-lot GOAA timestamps.

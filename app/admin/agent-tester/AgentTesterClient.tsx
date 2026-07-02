@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface BotOption { id: string; name: string; slug: string; status: string }
 interface SessionOption { id: string; name: string; status: string }
@@ -44,7 +45,7 @@ interface Props {
   orgName?: string
   userEmail: string
   fullName?: string
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
 }
 
 const SAMPLES = [

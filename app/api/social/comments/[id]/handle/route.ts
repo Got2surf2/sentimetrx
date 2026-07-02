@@ -1,7 +1,8 @@
 // app/api/social/comments/[id]/handle/route.ts
 // POST — toggle is_handled on a comment (mark as reviewed/approved)
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'

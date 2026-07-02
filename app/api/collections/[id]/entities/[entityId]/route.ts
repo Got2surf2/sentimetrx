@@ -7,7 +7,8 @@
 // canonical/aliases flips source='manual' (highest authority) + stamps manual
 // provenance, mirroring the bot + dataset scope rules.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'

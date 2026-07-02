@@ -7,7 +7,8 @@
 // No GOOGLE_PLACES_API_KEY env var? lib/places.ts gracefully returns mock
 // data scoped to the provided context — the demo still works locally.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { fetchPlaceCards } from '@/lib/places'
 
 export const dynamic = 'force-dynamic'

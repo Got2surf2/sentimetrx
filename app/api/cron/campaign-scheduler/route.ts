@@ -6,7 +6,8 @@
 // { "crons": [{ "path": "/api/cron/campaign-scheduler", "schedule": "*/15 * * * *" }] }
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { getEmailProvider, interpolateTemplate, buildSurveyUrl } from '@/lib/email/provider'
 import type { EmailProviderType } from '@/lib/types'
 import { checkCronAuth } from '@/lib/cronAuth'

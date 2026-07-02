@@ -4,7 +4,7 @@ import { useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
-import type { CampaignStatus, CampaignStats } from '@/lib/types'
+import type { CampaignStatus, CampaignStats, ModuleFeatures } from '@/lib/types'
 
 interface CampaignRow {
   id: string; name: string; status: CampaignStatus; study_id: string
@@ -14,7 +14,7 @@ interface CampaignRow {
 }
 interface Props {
   logoUrl?: string; orgId?: string
-  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: import('@/lib/types').ModuleFeatures
+  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   campaigns: CampaignRow[]
   statsMap: Record<string, CampaignStats>

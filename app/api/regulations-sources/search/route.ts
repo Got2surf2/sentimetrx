@@ -1,5 +1,6 @@
 // POST — search regulations.gov dockets
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchDockets, listComments } from '@/lib/regulations'
 import { serverError } from '@/lib/apiError'

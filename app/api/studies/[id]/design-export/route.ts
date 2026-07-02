@@ -1,7 +1,8 @@
 // app/api/studies/[id]/design-export/route.ts
 // Server-side generation of study design summary PPTX
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { generateStudyDesignPptx } from '@/lib/export/studyDesignPptx'
 

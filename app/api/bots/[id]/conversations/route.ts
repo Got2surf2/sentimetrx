@@ -4,7 +4,8 @@
 // org can read across orgs (Phase E parity — they can see other-org bot
 // cards, so they need to see their conversations too).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { serverError } from '@/lib/apiError'

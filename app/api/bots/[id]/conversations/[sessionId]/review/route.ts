@@ -5,7 +5,8 @@
 //   { action: 'reset' }    → remove the decision (back to clean / live auto-flag)
 // Service-role write paired with bot.org_id per the multi-tenancy invariant.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'

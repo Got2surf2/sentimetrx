@@ -4,7 +4,8 @@
 // GET ?export=csv|xlsx                 → file download
 // Other params: format=standard|datanautix, labelMode=key|prompt, sections=...
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
 import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import { logError } from '@/lib/log'

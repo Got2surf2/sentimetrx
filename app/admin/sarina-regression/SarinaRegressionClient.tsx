@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { SARINA_TESTS, type SarinaTest, type Category } from './tests'
+import type { ModuleFeatures } from '@/lib/types'
 
 interface Props {
   botId: string
@@ -10,7 +11,7 @@ interface Props {
   orgName?: string
   userEmail: string
   fullName?: string
-  features?: import('@/lib/types').ModuleFeatures
+  features?: ModuleFeatures
 }
 
 type Status = 'pending' | 'running' | 'pass' | 'partial' | 'fail' | 'error'

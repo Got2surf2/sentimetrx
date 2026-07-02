@@ -14,7 +14,8 @@
 // $0.0003-0.0006 per turn. Usage is logged via the standard usage system
 // with resource_type 'bot' so cost-per-conversation rolls up correctly.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'

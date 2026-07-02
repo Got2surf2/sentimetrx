@@ -2,7 +2,8 @@
 // POST — translate study content to a target language using Claude
 
 import { createClient, getAuthUser, createServiceRoleClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

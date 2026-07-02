@@ -3,7 +3,8 @@
 // Mirror of intents-stats, but scoped to assistant turns (since focus tagging
 // happens on the bot reply, not the user message).
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 

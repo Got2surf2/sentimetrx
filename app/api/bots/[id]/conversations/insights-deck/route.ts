@@ -2,7 +2,8 @@
 // POST — generate a StoryTime-style PPTX from bot conversations
 // Slides: KPIs, common questions, audience profile, conversation patterns, quotes, recommendations
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'

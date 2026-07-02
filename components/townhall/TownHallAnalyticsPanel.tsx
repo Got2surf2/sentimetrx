@@ -5,7 +5,8 @@
 // Modeled after the TextMine theme cards UI (survey standard).
 
 import { useState, useEffect, useCallback } from 'react'
-import { TimeBucket, BUCKET_OPTIONS, formatBucketLabel } from '@/lib/timeBucket'
+import type { TimeBucket} from '@/lib/timeBucket';
+import { BUCKET_OPTIONS, formatBucketLabel } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 const sentColor: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }

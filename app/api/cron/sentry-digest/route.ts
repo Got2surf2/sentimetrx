@@ -8,7 +8,8 @@
 // Set SENTRY_ALERT_TO=email1@x.com,email2@x.com to receive alerts.
 // No SENTRY_ALERT_TO → cron still writes snapshots, just doesn't email.
 
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'

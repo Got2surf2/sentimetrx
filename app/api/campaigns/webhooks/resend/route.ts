@@ -11,7 +11,8 @@
 // Without this check anyone could mark any respondent as opened/bounced.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 
 export const dynamic = 'force-dynamic'
