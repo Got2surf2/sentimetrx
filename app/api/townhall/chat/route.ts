@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
           bot_message: result.reply,
           theme_id: null,
           source: 'agent_handler',
+          round_hold: !!result.roundHold,
           is_final: false,
           turn_number: turn_number + 1,
           ...(result._debug ? { _debug: result._debug } : {}),

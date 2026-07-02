@@ -674,6 +674,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // into the turn-storage block below so the assistant turn gets
   // tagged for cohort analysis.
   let pickedTopicId: string | null = null
+  let townHallRoundHold = false
   if (ctx.townHallContext) {
     try {
       // Load pulseiq_events row up front — used by both the standby fallback
@@ -777,6 +778,29 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           )
           if (debugMode) _debug.push('Town hall topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
         } else if (pick.reason === 'all_covered') {
+          // Convergence item 1 — round-based pacing (ports the legacy
+          // orchestrator's round-hold branch). The topic pool above only
+          // loads 'active'/'pending' topics, so in rounds mode "all covered"
+          // means "this round's topics are done". If later rounds are still
+          // sitting 'paused', hold the participant between rounds instead of
+          // closing out — the moderator advancing the round flips them
+          // active and pickNextTopic routes held participants into them.
+          // (The legacy turns-budget guard on this branch arrives with
+          // item 2, per-participant turn caps.)
+          if (cohortConfig?.pacing_mode === 'rounds') {
+            // source='seed' is the new-schema spelling of legacy 'guide'
+            // (pulseiq_topics CHECK allows seed/auto_detected/manual).
+            const { count: laterRounds, error: roundsErr } = await service
+              .from('pulseiq_topics')
+              .select('id', { count: 'exact', head: true })
+              .eq('town_hall_id', ctx.townHallContext.townHallId)
+              .eq('source', 'seed')
+              .eq('state', 'paused')
+              .not('round_number', 'is', null)
+            if (roundsErr) void logError('chatCore.handleChatTurn', roundsErr, { orgId: bot.org_id })
+            townHallRoundHold = (laterRounds || 0) > 0
+          }
+
           // Phase 5 commit 4 — standby instead of a generic answer when
           // every topic in the pool is either discussed by this participant
           // or at-target. Mirrors the legacy PulseIQ standby branch but
@@ -784,9 +808,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // so the AI still acknowledges the participant's last message in
           // the standby framing.
           const standbyMsg = (cohortConfig?.standby_message as string | undefined) ||
-            'All discussion topics for this town hall have been covered with this participant. Thank them warmly for their contributions, acknowledge what they last shared, and let them know you may circle back if new topics emerge from other participants.'
+            (townHallRoundHold
+              ? 'This round of discussion has wrapped up and the next round has not started yet. Thank the participant for what they shared, ask them to hold on briefly, and let them know you will be back with a few more questions when the next item is served.'
+              : 'All discussion topics for this town hall have been covered with this participant. Thank them warmly for their contributions, acknowledge what they last shared, and let them know you may circle back if new topics emerge from other participants.')
           systemParts.push('\n\n--- TOWN HALL STANDBY ---\n' + standbyMsg + '\nKeep the reply brief and gracious. Do NOT invent a new topic.')
-          if (debugMode) _debug.push('Town hall standby: all topics covered for participant — graceful close')
+          if (debugMode) _debug.push(townHallRoundHold
+            ? 'Town hall round hold: later paused rounds exist — holding participant between rounds'
+            : 'Town hall standby: all topics covered for participant — graceful close')
         } else if (debugMode) {
           _debug.push('Town hall topic: none picked (reason: ' + pick.reason + ')')
         }
@@ -1267,7 +1295,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (session_id && lastUserMsg?.content && replyLooksUncertain(scrubbed.reply)) {
       void logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'ai_uncertain' })
     }
-    return { reply: scrubbed.reply, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
+    return { reply: scrubbed.reply, roundHold: townHallRoundHold || undefined, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
   } catch (err: any) {
     return { reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + (err?.message || 'unknown')] : undefined, _signals: demoMode ? _signals : undefined }
   }
