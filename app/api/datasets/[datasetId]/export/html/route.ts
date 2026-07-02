@@ -885,55 +885,27 @@ export async function POST(req: Request, props: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch rows from flat table (fast) with fallback to batched table.
+  // Fetch rows from dataset_rows_flat (the sole source of truth). The legacy
+  // dataset_rows batch fallback was removed 2026-07-02.
   const allRows: Record<string,any>[] = []
   const MAX_ROWS = hasFilters ? 30_000 : 10_000
 
-  const { count: flatCount } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
-
-  if ((flatCount || 0) > 0) {
-    const FLAT_PAGE = 1000
-    let flatOffset = 0
-    while (allRows.length < MAX_ROWS) {
-      const { data: flatRows, error: flatErr } = await service
-        .from('dataset_rows_flat')
-        .select('data')
-        .eq('dataset_id', params.datasetId)
-        .order('row_index', { ascending: true })
-        .range(flatOffset, flatOffset + FLAT_PAGE - 1)
-      if (flatErr || !flatRows || flatRows.length === 0) break
-      for (const fr of flatRows) {
-        allRows.push((fr as any).data || fr)
-        if (allRows.length >= MAX_ROWS) break
-      }
-      if (flatRows.length < FLAT_PAGE) break
-      flatOffset += FLAT_PAGE
+  const FLAT_PAGE = 1000
+  let flatOffset = 0
+  while (allRows.length < MAX_ROWS) {
+    const { data: flatRows, error: flatErr } = await service
+      .from('dataset_rows_flat')
+      .select('data')
+      .eq('dataset_id', params.datasetId)
+      .order('row_index', { ascending: true })
+      .range(flatOffset, flatOffset + FLAT_PAGE - 1)
+    if (flatErr || !flatRows || flatRows.length === 0) break
+    for (const fr of flatRows) {
+      allRows.push((fr as any).data || fr)
+      if (allRows.length >= MAX_ROWS) break
     }
-  } else {
-    const PAGE = 200
-    let page = 0, hasMore = true
-    while (hasMore && allRows.length < MAX_ROWS) {
-      const from = page * PAGE
-      const { data: batchPage, error: bErr } = await service
-        .from('dataset_rows')
-        .select('rows')
-        .eq('dataset_id', params.datasetId)
-        .order('batch_index', { ascending: true })
-        .range(from, from + PAGE - 1)
-      if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
-      for (const b of batchPage) {
-        for (const r of ((b as any).rows || [])) {
-          allRows.push(r)
-          if (allRows.length >= MAX_ROWS) { hasMore = false; break }
-        }
-        if (!hasMore) break
-      }
-      if (batchPage.length < PAGE) hasMore = false
-      page++
-    }
+    if (flatRows.length < FLAT_PAGE) break
+    flatOffset += FLAT_PAGE
   }
 
   const rowKeyMap: Record<string,string> = {}

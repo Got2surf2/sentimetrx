@@ -34,6 +34,9 @@ jobs:
       - name: SQL migration tx-wrap guard
         run: npm run check:sql-tx
 
+      - name: No legacy dataset_rows reads
+        run: npm run check:no-legacy-rows
+
       - name: Unit + integration tests (with coverage gate)
         run: npm run test:coverage
 

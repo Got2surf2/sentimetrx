@@ -25,6 +25,11 @@ export interface OrgSnapshotMeta {
   taken_at: string
   table_row_counts: Record<string, number>
   truncated_tables: string[]
+  // Per-table fetch errors. A NON-EMPTY map means the snapshot is INCOMPLETE —
+  // some table failed to read and shipped 0 rows. The cron must treat this as a
+  // failure, not silently accept an empty backup (which is how a whole content
+  // table went un-backed-up unnoticed before 2026-07-02).
+  fetch_errors: Record<string, string>
 }
 
 export interface OrgSnapshot {
@@ -98,7 +103,10 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'collections', filter: { kind: 'org_id' }, cap: NO_CAP },
   { name: 'collection_members', filter: { kind: 'parent_via', via: 'collection_id', parent: 'collections' }, cap: NO_CAP },
   { name: 'dataset_state', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: NO_CAP },
-  { name: 'dataset_rows_flat', filter: { kind: 'org_id' }, cap: 50_000 },
+  // dataset_rows_flat has NO org_id column (it's keyed by dataset_id) — filtering
+  // it by org_id errored on every run and the snapshot silently shipped 0 rows.
+  // Scope via the org's datasets instead. (Fixed 2026-07-02.)
+  { name: 'dataset_rows_flat', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: 50_000 },
   { name: 'entity_catalog', filter: { kind: 'org_id' }, cap: NO_CAP },
   { name: 'entity_catalog_refresh', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
 
@@ -155,13 +163,17 @@ async function fetchParentIds(orgId: string, parent: 'bots' | 'users' | 'studies
   return (data || []).map((r: any) => r.id as string)
 }
 
-async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unknown[]; truncated: boolean }> {
+async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unknown[]; truncated: boolean; error?: string }> {
   if (spec.filter.kind === 'skip') return { rows: [], truncated: false }
   const service = createServiceRoleClient()
   const cap = spec.cap === undefined ? DEFAULT_CAP : spec.cap
 
   if (spec.filter.kind === 'id_eq_org') {
-    const { data } = await service.from(spec.name).select('*').eq('id', orgId)
+    const { data, error } = await service.from(spec.name).select('*').eq('id', orgId)
+    if (error) {
+      console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
+      return { rows: [], truncated: false, error: error.message }
+    }
     return { rows: data || [], truncated: false }
   }
 
@@ -171,7 +183,7 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
     const { data, error } = await q
     if (error) {
       console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-      return { rows: [], truncated: false }
+      return { rows: [], truncated: false, error: error.message }
     }
     const all = data || []
     const truncated = cap !== NO_CAP && all.length > cap
@@ -186,6 +198,7 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
   const CHUNK = 500
   const allRows: unknown[] = []
   let truncated = false
+  let fetchError: string | undefined
   for (let i = 0; i < parentIds.length; i += CHUNK) {
     const slice = parentIds.slice(i, i + CHUNK)
     let q = service.from(spec.name).select('*').in(spec.filter.via, slice)
@@ -193,6 +206,7 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
     const { data, error } = await q
     if (error) {
       console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
+      if (!fetchError) fetchError = error.message
       continue
     }
     for (const row of (data || [])) {
@@ -201,7 +215,7 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
     }
     if (truncated) break
   }
-  return { rows: allRows, truncated }
+  return { rows: allRows, truncated, error: fetchError }
 }
 
 export async function dumpOrgSnapshot(orgId: string): Promise<OrgSnapshot> {
@@ -215,15 +229,17 @@ export async function dumpOrgSnapshot(orgId: string): Promise<OrgSnapshot> {
     taken_at: new Date().toISOString(),
     table_row_counts: {},
     truncated_tables: [],
+    fetch_errors: {},
   }
   const tables: Record<string, unknown[]> = {}
 
   for (const spec of TABLE_SPECS) {
     if (spec.filter.kind === 'skip') continue
-    const { rows, truncated } = await fetchTable(orgId, spec)
+    const { rows, truncated, error } = await fetchTable(orgId, spec)
     tables[spec.name] = rows
     meta.table_row_counts[spec.name] = rows.length
     if (truncated) meta.truncated_tables.push(spec.name)
+    if (error) meta.fetch_errors[spec.name] = error
   }
 
   return { meta, tables }

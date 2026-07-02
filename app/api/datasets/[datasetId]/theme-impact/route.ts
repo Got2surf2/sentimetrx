@@ -74,8 +74,11 @@ export async function POST(req: Request, props: Props) {
 
   const service = createServiceRoleClient()
 
-  // Stream rows and build regression data
-  const BATCH_SIZE = 200
+  // Stream rows and build regression data. Reads dataset_rows_flat (the sole
+  // source of truth) — one record per row in the `data` JSONB column. (Ported
+  // from the removed legacy `dataset_rows` batch table 2026-07-02, which this
+  // route still read, silently returning empty analysis.)
+  const FLAT_PAGE = 1000
   const MAX_ROWS = 10_000
   let page = 0
   let hasMore = true
@@ -98,57 +101,56 @@ export async function POST(req: Request, props: Props) {
   const themeCounts: number[] = new Array(themes.length).fill(0)
 
   while (hasMore && yValues.length < MAX_ROWS) {
-    const from = page * BATCH_SIZE
-    const { data: batches } = await service
-      .from('dataset_rows')
-      .select('rows')
+    const from = page * FLAT_PAGE
+    const { data: flatRows, error: flatErr } = await service
+      .from('dataset_rows_flat')
+      .select('data')
       .eq('dataset_id', params.datasetId)
-      .order('batch_index', { ascending: true })
-      .range(from, from + BATCH_SIZE - 1)
+      .order('row_index', { ascending: true })
+      .range(from, from + FLAT_PAGE - 1)
 
-    if (!batches || batches.length === 0) { hasMore = false; break }
+    if (flatErr) return NextResponse.json({ error: 'Failed to read dataset rows' }, { status: 500 })
+    if (!flatRows || flatRows.length === 0) { hasMore = false; break }
 
-    for (const batch of batches) {
-      const batchRows = (batch as any).rows || []
-      if (!keyMapBuilt && batchRows.length > 0) {
-        for (const k of Object.keys(batchRows[0])) keyMap[normalize(k)] = k
+    for (const fr of flatRows) {
+      if (yValues.length >= MAX_ROWS) { hasMore = false; break }
+      const row = (fr as { data?: Record<string, unknown> }).data
+      if (!row) continue
+
+      if (!keyMapBuilt) {
+        for (const k of Object.keys(row)) keyMap[normalize(k)] = k
         keyMapBuilt = true
       }
 
-      for (const row of batchRows) {
-        if (yValues.length >= MAX_ROWS) { hasMore = false; break }
+      // Get target value
+      const targetKey = keyMap[normalize(targetField)] || targetField
+      const yRaw = row[targetKey]
+      const y = parseFloat(String(yRaw ?? ''))
+      if (isNaN(y)) continue
 
-        // Get target value
-        const targetKey = keyMap[normalize(targetField)] || targetField
-        const yRaw = row[targetKey]
-        const y = parseFloat(String(yRaw ?? ''))
-        if (isNaN(y)) continue
-
-        // Get text from all text fields
-        const texts: string[] = []
-        for (const tf of textFields) {
-          const tfKey = keyMap[normalize(tf)] || tf
-          const v = row[tfKey]
-          if (v != null && String(v).trim()) texts.push(String(v).trim())
-        }
-        const combinedText = texts.join(' ')
-        if (!combinedText) continue
-
-        // Binary theme indicators
-        const indicators: number[] = []
-        for (let ti = 0; ti < themeRegexes.length; ti++) {
-          const matched = themeRegexes[ti].regexes.length > 0 && themeRegexes[ti].regexes.some(re => re.test(combinedText.toLowerCase()))
-          indicators.push(matched ? 1 : 0)
-          if (matched) themeCounts[ti]++
-        }
-
-        yValues.push(y)
-        xMatrix.push(indicators)
+      // Get text from all text fields
+      const texts: string[] = []
+      for (const tf of textFields) {
+        const tfKey = keyMap[normalize(tf)] || tf
+        const v = row[tfKey]
+        if (v != null && String(v).trim()) texts.push(String(v).trim())
       }
-      if (!hasMore) break
+      const combinedText = texts.join(' ')
+      if (!combinedText) continue
+
+      // Binary theme indicators
+      const indicators: number[] = []
+      for (let ti = 0; ti < themeRegexes.length; ti++) {
+        const matched = themeRegexes[ti].regexes.length > 0 && themeRegexes[ti].regexes.some(re => re.test(combinedText.toLowerCase()))
+        indicators.push(matched ? 1 : 0)
+        if (matched) themeCounts[ti]++
+      }
+
+      yValues.push(y)
+      xMatrix.push(indicators)
     }
 
-    if (batches.length < BATCH_SIZE) hasMore = false
+    if (flatRows.length < FLAT_PAGE) hasMore = false
     page++
   }
 

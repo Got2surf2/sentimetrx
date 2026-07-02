@@ -402,7 +402,7 @@ export async function POST(req: Request, props: Params) {
   }
 
   // Fetch rows for comment sampling and theme matching.
-  // Fetch rows from flat table (fast) with fallback to batched table.
+  // Fetch rows from dataset_rows_flat (the sole source of truth).
   // For collections: union rows from member datasets.
   // Row cap honors the platform's no-sampling-under-50K rule (CLAUDE.md): load
   // EVERY row when the dataset is ≤50K, only sampling above that. The real value
@@ -461,31 +461,9 @@ export async function POST(req: Request, props: Params) {
       if (allRows.length >= MAX_ROWS) break
     }
     if (allRows.length >= MAX_ROWS && flatCount > allRows.length) rowsSampled = true
-  } else {
-    // Fallback: batched table
-    const PAGE = 200
-    let page = 0, hasMore = true
-    while (hasMore && allRows.length < MAX_ROWS) {
-      const from = page * PAGE
-      const { data: batchPage, error: bErr } = await service
-        .from('dataset_rows')
-        .select('rows')
-        .eq('dataset_id', params.datasetId)
-        .order('batch_index', { ascending: true })
-        .range(from, from + PAGE - 1)
-      if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
-      for (const b of batchPage) {
-        for (const r of ((b as any).rows || [])) {
-          allRows.push(r)
-          if (allRows.length >= MAX_ROWS) { hasMore = false; break }
-        }
-        if (!hasMore) break
-      }
-      if (batchPage.length < PAGE) hasMore = false
-      page++
-    }
-    if (allRows.length >= MAX_ROWS) rowsSampled = true
   }
+  // Legacy dataset_rows batch fallback removed 2026-07-02 — dataset_rows_flat is
+  // the sole source of truth; flatCount === 0 means the dataset has no rows.
   // Live flat-table count is authoritative whenever it exists — persisted
   // snapshots (analytics.totalRows, dataset.row_count) drift BOTH ways: stale-low
   // when members gain rows, stale-HIGH after a dedup cleanup (e.g. Ruth's Chris

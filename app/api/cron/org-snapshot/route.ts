@@ -33,13 +33,21 @@ export async function GET(req: NextRequest) {
   }
 
   const started = Date.now()
-  const results: Array<{ org_id: string; org_name: string | null; key?: string; size_bytes?: number; row_counts?: Record<string, number>; truncated?: string[]; error?: string; ms: number }> = []
+  const results: Array<{ org_id: string; org_name: string | null; key?: string; size_bytes?: number; row_counts?: Record<string, number>; truncated?: string[]; fetch_errors?: Record<string, string>; error?: string; ms: number }> = []
 
   for (const org of orgs || []) {
     const orgStart = Date.now()
     try {
       const snap = await dumpOrgSnapshot((org as any).id)
       const { key, size_bytes } = await uploadOrgSnapshot((org as any).id, snap)
+      const fetchErrors = snap.meta.fetch_errors
+      const hasFetchErrors = Object.keys(fetchErrors).length > 0
+      if (hasFetchErrors) {
+        // A table failed to read → the uploaded snapshot is INCOMPLETE. Surface
+        // it as an error so the run can't report a green backup that silently
+        // dropped a content table.
+        console.error('[org-snapshot] org ' + (org as any).id + ' INCOMPLETE — fetch errors:', JSON.stringify(fetchErrors))
+      }
       results.push({
         org_id: (org as any).id,
         org_name: (org as any).name,
@@ -47,6 +55,7 @@ export async function GET(req: NextRequest) {
         size_bytes,
         row_counts: snap.meta.table_row_counts,
         truncated: snap.meta.truncated_tables,
+        ...(hasFetchErrors ? { fetch_errors: fetchErrors, error: 'incomplete snapshot: ' + Object.keys(fetchErrors).join(', ') } : {}),
         ms: Date.now() - orgStart,
       })
     } catch (e: any) {
@@ -62,15 +71,18 @@ export async function GET(req: NextRequest) {
   }
 
   const successCount = results.filter(r => !r.error).length
+  const failedCount = results.length - successCount
   const totalBytes = results.reduce((s, r) => s + (r.size_bytes || 0), 0)
 
+  // Fail the run (non-2xx) if any org's backup failed or was incomplete, so the
+  // Vercel cron surfaces red instead of a silent "ok" over a bad backup.
   return NextResponse.json({
-    ok: true,
+    ok: failedCount === 0,
     orgs_total: results.length,
     orgs_succeeded: successCount,
-    orgs_failed: results.length - successCount,
+    orgs_failed: failedCount,
     total_bytes_uploaded: totalBytes,
     elapsed_ms: Date.now() - started,
     results,
-  })
+  }, { status: failedCount === 0 ? 200 : 500 })
 }

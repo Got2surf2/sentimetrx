@@ -8,7 +8,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
-import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
+import { recordAdminAction } from '@/lib/orgTransfer'
+import { deleteOrgScopedData } from '@/lib/orgDelete'
 
 export const dynamic = 'force-dynamic'
 
@@ -116,29 +117,42 @@ export async function DELETE(req: Request, props: Params) {
     return NextResponse.json({ error: 'confirm_name must match the org name exactly' }, { status: 400 })
   }
 
-  const { data: callerData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-
-  // Audit FIRST so we still have a record even if the cascade fails.
-  await recordAdminCrossOrgAction({
+  // Audit FIRST so we still have a record even if the delete fails.
+  await recordAdminAction({
     service,
     actionType:       'org.delete',
-    resourceType:     'dataset', // schema uses an enum; reuse a permitted value, real semantics in metadata
+    resourceType:     'org',
     resourceId:       (org as any).id,
     resourceName:     (org as any).name,
     targetOrgId:      (org as any).id,
-    actorOrgId:       (callerData as any)?.org_id ?? null,
     initiatedBy:      user.id,
     initiatedByEmail: user.email ?? null,
     metadata:         { action: 'org_hard_delete', org_name: (org as any).name },
   })
 
-  // The destructive step. FK CASCADE on org_id is expected to clean up
-  // children; if any FK is RESTRICT we'll get an error here. We surface
-  // the underlying DB error so the operator can investigate rather than
-  // pretending the delete succeeded.
+  // Explicitly erase all org-scoped data. Deleting the organizations row does
+  // NOT cascade to every table (many carry org_id with no cascading FK — see
+  // lib/orgDelete), so relying on cascade orphaned tenant content. Fail closed:
+  // if any table couldn't be cleared, DON'T delete the org row — leave it
+  // suspended and surface which tables blocked, so we never half-erase and
+  // report success. The sweep is idempotent, so the operator can re-run.
+  const sweep = await deleteOrgScopedData((org as any).id)
+  if (Object.keys(sweep.failed).length > 0) {
+    console.error('[org.delete] incomplete erasure for ' + (org as any).id + ':', JSON.stringify(sweep.failed))
+    return NextResponse.json({
+      error: 'Erasure incomplete — these tables could not be cleared: ' + Object.keys(sweep.failed).join(', ') + '. Org left suspended; investigate and retry.',
+      failed: sweep.failed,
+    }, { status: 500 })
+  }
+
+  // Finally the org row itself (cascades the few org_id-CASCADE tables, already
+  // emptied by the sweep above).
   const { error } = await service.from('organizations').delete().eq('id', params.id)
   if (error) return NextResponse.json({ error: 'Delete failed: ' + error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, deleted: { id: (org as any).id, name: (org as any).name } })
+  return NextResponse.json({
+    ok: true,
+    deleted: { id: (org as any).id, name: (org as any).name },
+    tables_cleared: sweep.deleted.length,
+  })
 }

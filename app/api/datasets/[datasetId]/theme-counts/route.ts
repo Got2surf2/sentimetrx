@@ -227,64 +227,11 @@ export async function POST(req: Request, props: Props) {
     return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })
   }
 
-  // Fallback: batch streaming (same as before but simplified)
-  const { expandLemma } = await import('@/lib/lemmas')
-
-  function buildKwRegex(kw: string): RegExp {
-    const forms = expandLemma(kw)
-    const seen: Record<string, boolean> = {}
-    const alts: string[] = []
-    for (let i = 0; i < forms.length; i++) {
-      const alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-      if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
-    }
-    const escOrig = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-    if (!seen[escOrig]) alts.push(escOrig)
-    return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
-  }
-
-  const themeRegexes = themes.map(t => ({
-    id: t.id,
-    regexes: (t.keywords || []).filter(Boolean).map(buildKwRegex),
-  }))
-
-  const BATCH_SIZE = 100
-  let page = 0, hasMore = true, totalNonEmpty = 0
-  const themeCounts: Record<string, number> = {}
-  for (const t of themes) themeCounts[t.id] = 0
-
-  while (hasMore) {
-    const { data: batches } = await service
-      .from('dataset_rows')
-      .select('rows')
-      .eq('dataset_id', params.datasetId)
-      .order('batch_index', { ascending: true })
-      .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
-
-    if (!batches || batches.length === 0) { hasMore = false; break }
-
-    for (const batch of batches) {
-      for (const row of ((batch as any).rows || [])) {
-        const text = fields.map(f => String(row[f] || '')).join(' ').toLowerCase().trim()
-        if (!text) continue
-        totalNonEmpty++
-        for (const t of themeRegexes) {
-          if (t.regexes.length > 0 && t.regexes.some(re => re.test(text))) {
-            themeCounts[t.id]++
-          }
-        }
-      }
-    }
-
-    if (batches.length < BATCH_SIZE) hasMore = false
-    page++
-  }
-
-  const counts = themes.map(t => ({
-    id: t.id,
-    count: themeCounts[t.id],
-    percentage: totalNonEmpty > 0 ? Math.round(themeCounts[t.id] / totalNonEmpty * 100) : 0,
-  }))
-
-  return NextResponse.json({ counts, totalNonEmpty })
+  // No flat rows for this dataset/collection → nothing to count. (The legacy
+  // dataset_rows batch-streaming fallback was removed 2026-07-02; dataset_rows_flat
+  // is the sole source of truth, so totalFlat === 0 means there is no data.)
+  return NextResponse.json({
+    counts: themes.map(t => ({ id: t.id, count: 0, percentage: 0 })),
+    totalNonEmpty: 0,
+  })
 }

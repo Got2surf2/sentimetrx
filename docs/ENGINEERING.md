@@ -763,3 +763,10 @@ are in `SECURITY.md`.
     `npm run check:sql-tx`. `CONCURRENTLY` cases still need a manual
     bypass: bump the cutoff in the script or delete the new file's
     BEGIN/COMMIT requirement deliberately.
+25. **Legacy `dataset_rows` read guard:** DONE 2026-07-02.
+    `scripts/check-no-legacy-dataset-rows.ts` (CI: `npm run
+    check:no-legacy-rows`) fails the build if any `app/` or `lib/`
+    code READS the removed legacy `dataset_rows` batch table — it still
+    physically exists with stale residue, so a read compiles and
+    silently returns wrong data (this left `theme-impact` broken for
+    weeks). `.delete()` calls are allowed (teardown purges residue).

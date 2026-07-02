@@ -378,12 +378,21 @@ cross-org access attempts."
 
 ## 7. Data retention & deletion (GDPR / CCPA posture)
 
-- **Right-to-be-forgotten:** when an org is deleted, we cascade
-  delete all of its `dataset_rows_flat`, survey responses, agent
-  conversations, AI outputs, and audit log rows tagged to that
-  org. Open `<TBD>` item 5 tracks (a) auditing the cascade FK
-  coverage with a `grep "references orgs" sql/` evidence row in
-  the next devlog and (b) adding a delete-path egress test.
+- **Right-to-be-forgotten:** when an org is hard-deleted, its data
+  is erased by an **explicit sweep**, not by relying on FK cascade.
+  Verified 2026-07-02 that ~30 tables carrying `org_id` have NO
+  cascading `org_id` FK (users, conversations, townhall_sessions,
+  town_halls, logged_questions, collections, …), so a bare
+  `organizations` delete orphaned them. `lib/orgDelete.ts`
+  (`deleteOrgScopedData`) now deletes every `org_id` table (list
+  derived from `information_schema`) in a retry-to-fixpoint loop and
+  is **fail-closed**: if any table can't be cleared, the org row is
+  NOT deleted (no silent half-erasure). `app/api/admin/orgs/[id]`
+  DELETE runs the sweep before removing the org.
+  **Still open (`<TBD>` item 5):** the sweep does not yet purge
+  Supabase Storage objects (recording audio), S3 org snapshots, or
+  `auth.users` rows — those live outside Postgres and need their own
+  deletion path. A delete-path egress test is still to be added.
 - **User-level deletion within an org:** removing a user from an
   org does NOT delete the rows they created — those belong to the
   org. For a GDPR data-subject "erase me" request where the user

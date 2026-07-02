@@ -61,6 +61,7 @@ tests/
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug); persist path goes through the atomic merge RPC (sql/145)
 │   ├── secretbox.test.ts      # at-rest encryption for per-org BYOK AI keys (lib/secretbox) — round-trip, legacy-plaintext passthrough, no-key degradation, GCM tamper detection
+│   ├── orgDelete.test.ts      # tenant-erasure sweep (lib/orgDelete) — clears every org_id table, retry-to-fixpoint tolerates FK ordering, fail-closed when a table can't be cleared
 │   ├── sourceSummary.test.ts  # shared "what was presented" renderer (Town Hall Meeting Notes + Agent KB summary) — heading/overview/items, optional figures/refs/attribution, escaping, empty-state
 │   ├── taxonomyRollup.test.ts # restaurant taxonomy roll-up — aggregateTaxonomy axis/sub rates + sentiment + alerts; resolveDictionary core⊕overlay layering
 │   ├── insightAlerts.test.ts  # lens-agnostic "Heads-Up" alert engine (themes + dimensions + quant) — pain/bright/safety static + deteriorating/heating/improving trend + quant avg-drift/low-tail; adaptive min-mention floor, safety-always, cross-lens merge+dedupe+cap, dimensionsToSignals/themesToSignals adapters

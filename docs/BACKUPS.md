@@ -33,7 +33,7 @@ Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`. Grouped by how the org fil
 
 ### Row caps
 
-- `dataset_rows_flat` is capped at 50,000 rows per snapshot. Larger collections rely on Supabase's daily backup for the excess. The snapshot's `meta.truncated_tables` lists any table that hit its cap.
+- `dataset_rows_flat` is capped at 50,000 rows per snapshot. Larger collections rely on Supabase's daily backup for the excess. The snapshot's `meta.truncated_tables` lists any table that hit its cap. **(Fixed 2026-07-02: `dataset_rows_flat` is scoped via the org's `datasets` (`parent_via dataset_id`), NOT `org_id` — it has no `org_id` column, so the previous `org_id` filter errored and silently shipped 0 content rows for every org. See "Incomplete-snapshot detection" below.)**
 - Other large tables (`bot_conversation_turns`, `responses`, `townhall_turns`, etc.) cap at 100,000 rows.
 - Tables that are typically small (bots, studies, knowledge chunks, organizations row) have no cap.
 
@@ -147,6 +147,8 @@ At present scale (~30 orgs, ~10 MB compressed each):
 
 ## TBDs
 
-- **No alerting yet**: the cron's failure modes go into Vercel logs but don't page anyone. Wire to Sentry / Slack when we have a real on-call.
+- **Incomplete-snapshot detection (2026-07-02):** `fetchTable` records any per-table read error into `meta.fetch_errors`, and the nightly cron (`/api/cron/org-snapshot`) now returns **HTTP 500** (not a silent `ok`) if any org's snapshot has fetch errors or failed to upload. A table that fails to read can no longer pass as a green backup shipping 0 rows.
+- **No paging/alerting yet**: the cron's failure now surfaces as a red (500) run in Vercel, but nothing pages anyone. Wire to Sentry / Slack when we have a real on-call.
+- **Restore drills:** none run yet — do NOT claim quarterly drills in buyer docs until one is logged here (CAIQ BC-03/04 must read "first drill scheduled" until then).
 - **No automated restore tests**: there is no nightly "spin up a scratch project, restore yesterday's snapshot, assert row counts" test. This is what would prove the backups are actually restorable. Add when budget allows.
 - **`auth.users` mirror**: consider also snapshotting Supabase Auth users (their JSON shape) so an accidental user delete can be partially recovered. Today, only `public.users` is captured.
