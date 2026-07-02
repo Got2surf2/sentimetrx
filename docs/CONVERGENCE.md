@@ -209,6 +209,34 @@ The convergence is greenfield for PulseIQ — no live customers there. Sarina is
 
 Total engineering window (Phases 2–5): ~2 weeks of focused work, starting 2026-05-21.
 
+### 4.1 FREEZE on the legacy orchestrator (2026-07-02)
+
+**Reality vs. plan:** Phases 4–5 stalled. The unified `lib/chatCore.handleChatTurn`
+path exists and the legacy route (`app/api/townhall/chat/route.ts`, ~1075 lines)
+imports it — but only behind the dark `TOWNHALL_VIA_AGENT_HANDLER` flag
+(`isTownHallViaAgentHandlerEnabled`), which is off in prod. So the legacy
+orchestrator is still the live PulseIQ path, and it has kept **gaining** features
+the unified path doesn't have (most recently round-based tasting mode, June 2026,
+built only in the legacy route). Every legacy-only feature widens the parity gap
+the migration must eventually close — the opposite of convergence.
+
+**Freeze policy (enforced going forward):**
+- **No NEW features on the legacy orchestrator.** A new PulseIQ capability must
+  either land in `lib/chatCore` (so both agents and town halls get it) or be
+  explicitly deferred — do not add it to `townhall/chat/route.ts`.
+- **Round-based pacing must be ported to `chatCore` before the next PulseIQ
+  feature.** It is the current example of the anti-pattern (reads
+  `config.pacing_mode` in the legacy route only).
+- Bug fixes and security patches to the legacy path are fine; net-new behavior is
+  not. When in doubt, port the primitive to `chatCore` first.
+- Migration-flag state (`DUAL_WRITE_PHASE3` / `READ_PHASE3` /
+  `TOWNHALL_VIA_AGENT_HANDLER`) lives in Vercel env, not the DB — see the
+  observed correctness coupling in `lib/phase3Read.ts` before flipping any of them.
+
+Finishing Phases 4–6 (route absorption + cohort layer + the Vindman/NOWOCATS
+acceptance test) remains a distinct project; this freeze just stops the gap from
+widening in the meantime.
+
 ## 5. What stays the same vs. what changes
 
 **Stays the same:**

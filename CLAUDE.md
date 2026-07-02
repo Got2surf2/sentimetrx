@@ -53,6 +53,8 @@ This is independent of the Push policy above: working on `main` means *committin
 
 Internal table/code names (`bots`, `townhall_*`, `recordings`) stay as-is. Refer to pages by their UI nav label, not the URL slug — e.g. `/analyze/[id]/settings` is the **Schema** tab, and `/recordings/*` is the **Town Hall** product.
 
+**PulseIQ chat engine is FROZEN on the legacy path (2026-07-02).** `app/api/townhall/chat/route.ts` is the ~1075-line legacy orchestrator; the unified engine is `lib/chatCore.handleChatTurn` (live only behind the dark `TOWNHALL_VIA_AGENT_HANDLER` flag). Do **not** add new PulseIQ features to the legacy route — land them in `chatCore` (so agents + town halls share them) or defer. Bug/security fixes there are fine. Full rationale: `docs/CONVERGENCE.md` §4.1.
+
 ## Multi-tenancy invariants
 
 These have been the source of every CRITICAL security finding to date:

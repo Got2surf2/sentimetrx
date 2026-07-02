@@ -1,3 +1,10 @@
+// ⚠️ FROZEN (2026-07-02) — LEGACY PulseIQ chat orchestrator (~1075 lines).
+// The unified engine is lib/chatCore.handleChatTurn (imported below, but live
+// only behind the dark TOWNHALL_VIA_AGENT_HANDLER flag). Per docs/CONVERGENCE.md
+// §4.1: do NOT add new features here — land new PulseIQ capabilities in chatCore
+// so agents + town halls share them, or defer. Round-based pacing (the last
+// legacy-only feature) must be ported to chatCore before the next one. Bug/
+// security fixes are fine; net-new behavior is not.
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
