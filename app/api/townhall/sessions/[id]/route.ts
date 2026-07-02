@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
-// Phase 5 commit 6: also accepts pulseiq_events rows so the dashboard surface
+// Phase 5 commit 6: also accepts pulseiq_sessions rows so the dashboard surface
 // can render new-substrate town halls. Mutations (PATCH/DELETE) on the
 // new substrate are not wired through this route yet — only GET.
 async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
@@ -33,14 +33,14 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
     if (!isAdmin && (session as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
     return { ok: true, isAdmin, userOrgId, substrate: 'legacy' }
   }
-  // Phase 3 substrate fallback — also accept pulseiq_events by id or slug.
+  // Phase 3 substrate fallback — also accept pulseiq_sessions by id or slug.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
-    const { data } = await db.from('pulseiq_events').select('org_id').eq('id', sessionId).maybeSingle()
+    const { data } = await db.from('pulseiq_sessions').select('org_id').eq('id', sessionId).maybeSingle()
     if (data) hall = data
   }
   if (!hall) {
-    const { data } = await db.from('pulseiq_events').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
+    const { data } = await db.from('pulseiq_sessions').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
     if (data) hall = data
   }
   if (!hall) return { ok: false, status: 404, error: 'Session not found' }
@@ -48,9 +48,9 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
   return { ok: true, isAdmin, userOrgId, substrate: 'phase3' }
 }
 
-// ── Phase-3 status maps (legacy ↔ pulseiq_events) ─────────────────────────────
+// ── Phase-3 status maps (legacy ↔ pulseiq_sessions) ─────────────────────────────
 // PATCH body sends legacy status strings ('setup','active','paused','ended');
-// pulseiq_events accepts 'draft'|'live'|'paused'|'closed'.
+// pulseiq_sessions accepts 'draft'|'live'|'paused'|'closed'.
 const LEGACY_TO_PHASE3_STATUS: Record<string, string> = {
   setup:  'draft',
   active: 'live',
@@ -87,8 +87,8 @@ async function handlePhase3Patch(
   body: Record<string, unknown>,
   _userId: string,
 ): Promise<NextResponse> {
-  // Pull pulseiq_events + org for every downstream write.
-  const { data: hall } = await db.from('pulseiq_events').select('*').eq('id', hallId).maybeSingle()
+  // Pull pulseiq_sessions + org for every downstream write.
+  const { data: hall } = await db.from('pulseiq_sessions').select('*').eq('id', hallId).maybeSingle()
   if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
   const orgId = (hall as any).org_id as string
 
@@ -101,7 +101,7 @@ async function handlePhase3Patch(
     if (pids.length === 0) return NextResponse.json({ error: 'No participant IDs provided' }, { status: 400 })
 
     const { data: convRows } = await db
-      .from('pulseiq_event_conversations')
+      .from('pulseiq_session_conversations')
       .select('conversation_id, conversations!inner(id, participant_id, org_id)')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
@@ -111,7 +111,7 @@ async function handlePhase3Patch(
     const convIds = targets.map((c: any) => c.id)
 
     if (convIds.length > 0) {
-      // CASCADE on conversations.id deletes both the pulseiq_event_conversations
+      // CASCADE on conversations.id deletes both the pulseiq_session_conversations
       // link AND the conversation_turns rows.
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
@@ -119,10 +119,10 @@ async function handlePhase3Patch(
   }
 
   // ── restart ─────────────────────────────────────────────────────
-  // Wipe all linked conversations + reset pulseiq_events to draft.
+  // Wipe all linked conversations + reset pulseiq_sessions to draft.
   if (body.restart) {
     const { data: convRows } = await db
-      .from('pulseiq_event_conversations')
+      .from('pulseiq_session_conversations')
       .select('conversation_id')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
@@ -133,7 +133,7 @@ async function handlePhase3Patch(
     // Drop auto-detected topics; keep seeded.
     await db.from('pulseiq_topics').delete().eq('town_hall_id', hallId).eq('source', 'auto_detected')
     const { data, error } = await db
-      .from('pulseiq_events')
+      .from('pulseiq_sessions')
       .update({ status: 'draft', started_at: null, ended_at: null })
       .eq('id', hallId)
       .select('id, status, started_at, ended_at')
@@ -201,7 +201,7 @@ async function handlePhase3Patch(
   }
 
   const { data: updated, error } = await db
-    .from('pulseiq_events')
+    .from('pulseiq_sessions')
     .update(updates)
     .eq('id', hallId)
     .select('id, status, started_at, ended_at, discussion_guide, cohort_config')
@@ -1044,15 +1044,15 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // Phase-3 substrate: cascade through pulseiq_event_conversations →
+  // Phase-3 substrate: cascade through pulseiq_session_conversations →
   // conversations → conversation_turns (FK cascade) + pulseiq_topics
-  // (FK cascade on pulseiq_events delete), then drop the pulseiq_events row.
+  // (FK cascade on pulseiq_sessions delete), then drop the pulseiq_sessions row.
   if (gate.substrate === 'phase3') {
-    const { data: hall } = await db.from('pulseiq_events').select('id, org_id').eq('id', params.id).maybeSingle()
+    const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id').eq('id', params.id).maybeSingle()
     if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
     const orgId = (hall as any).org_id as string
     const { data: convRows } = await db
-      .from('pulseiq_event_conversations')
+      .from('pulseiq_session_conversations')
       .select('conversation_id')
       .eq('town_hall_id', params.id)
       .eq('org_id', orgId)
@@ -1060,7 +1060,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     if (convIds.length > 0) {
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
-    const { error } = await db.from('pulseiq_events').delete().eq('id', params.id).eq('org_id', orgId)
+    const { error } = await db.from('pulseiq_sessions').delete().eq('id', params.id).eq('org_id', orgId)
     if (error) return serverError(error, 'townhall.session.delete', { orgId })
     return NextResponse.json({ deleted: true })
   }

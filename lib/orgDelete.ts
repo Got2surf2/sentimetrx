@@ -8,7 +8,7 @@ import 'server-only'
 // everything. Verified against the live schema (2026-07-02): some tables FK
 // org_id ON DELETE CASCADE (agents, datasets, recordings, saved_views…), but
 // ~30 tables carrying `org_id` do NOT — users, conversations, townhall_sessions,
-// pulseiq_events, logged_questions, collections, and more — and would silently
+// pulseiq_sessions, logged_questions, collections, and more — and would silently
 // orphan constituent transcripts / demographics / conversations on deletion.
 //
 // Approach: explicitly delete EVERY table that has an org_id column, filtered by
@@ -40,8 +40,8 @@ export const ORG_SCOPED_TABLES: readonly string[] = [
   'recording_transcripts', 'recordings', 'reddit_sources', 'reo_gold_review', 'responses',
   'review_downloads', 'review_sources', 'saved_views', 'shared_links', 'social_alert_rules',
   'social_alerts_sent', 'social_comments', 'social_connections', 'social_dm_log',
-  'social_moderation_log', 'studies', 'pulseiq_event_conversations', 'pulseiq_topics',
-  'pulseiq_events', 'townhall_sessions', 'usage_logs', 'user_events', 'user_logins', 'users',
+  'social_moderation_log', 'studies', 'pulseiq_session_conversations', 'pulseiq_topics',
+  'pulseiq_sessions', 'townhall_sessions', 'usage_logs', 'user_events', 'user_logins', 'users',
 ]
 
 export interface OrgDeleteResult {

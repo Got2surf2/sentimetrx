@@ -42,7 +42,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
     const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('id', identifier).single()
     session = data
   }
-  // Phase-3 substrate fallback — pulseiq_events. Project cohort_config into
+  // Phase-3 substrate fallback — pulseiq_sessions. Project cohort_config into
   // the legacy `session.config` shape so the rest of the handler is
   // substrate-agnostic. See docs/CONVERGENCE.md § 4 Phase 6 / docs/TOWNHALL.md.
   if (!session) {
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('id', identifier).single()
     session = data
   }
-  // Phase-3 substrate fallback — pulseiq_events. Project + mark substrate so
+  // Phase-3 substrate fallback — pulseiq_sessions. Project + mark substrate so
   // the opening-turn insert can be skipped (chatCore creates the
   // conversation + first turn pair on the participant's first message).
   if (!session) {

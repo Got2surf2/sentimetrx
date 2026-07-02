@@ -4,7 +4,7 @@
 // chat route (config.engine.theme_detection_every_n_responses, default 20).
 //
 // Phase 5 commit 1 (2026-05-21): the cron now scans BOTH the legacy
-// townhall_sessions table AND the new pulseiq_events table. The two paths
+// townhall_sessions table AND the new pulseiq_sessions table. The two paths
 // coexist during the convergence transition (docs/CONVERGENCE.md § 4
 // row 5). Once every town hall lives on the new substrate, the legacy
 // block + lib/townhallThemeDetection.ts can be dropped.
@@ -53,11 +53,11 @@ export async function GET(req: Request) {
     }
   }
 
-  // ── New path: pulseiq_events on the unified substrate ──────────────────
+  // ── New path: pulseiq_sessions on the unified substrate ──────────────────
   // Default theme_detection_mode='auto' when cohort_config doesn't
   // specify — town halls are cohort-driven by design.
   const { data: townHalls } = await supabase
-    .from('pulseiq_events')
+    .from('pulseiq_sessions')
     .select('id, cohort_config, last_theme_detection_at')
     .eq('status', 'live')
 

@@ -42,7 +42,7 @@ function classifySentiment(pos: number, neg: number): string {
 }
 
 // Phase-3 live screen handler — pulls aggregate stats from
-// pulseiq_events + pulseiq_topics + pulseiq_event_conversations + conversations
+// pulseiq_sessions + pulseiq_topics + pulseiq_session_conversations + conversations
 // + conversation_turns. Returns the same JSON shape the legacy handler
 // returns so /pi/[sessionId]/live/page.tsx renders without conditional UI.
 //
@@ -67,7 +67,7 @@ async function phase3Live(identifier: string): Promise<NextResponse> {
 
   // Conversations linked to the town hall
   const { data: linkRows } = await db
-    .from('pulseiq_event_conversations')
+    .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', hall.id)
     .eq('org_id', hall.org_id)
@@ -166,7 +166,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   const params = await props.params;
   const sid = encodeURIComponent(params.sessionId)
 
-  // Phase-3 substrate fast path: if the identifier matches a pulseiq_events
+  // Phase-3 substrate fast path: if the identifier matches a pulseiq_sessions
   // row (slug OR uuid), serve from the new substrate. Tried BEFORE the
   // legacy PostgREST lookup because a phase-3 slug isn't a valid uuid
   // and the legacy lookup would just 404 anyway.

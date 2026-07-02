@@ -13,7 +13,7 @@
 // dropped at the end of Phase 5.
 
 /**
- * TOWNHALL_VIA_AGENT_HANDLER — when true AND a pulseiq_events row resolves
+ * TOWNHALL_VIA_AGENT_HANDLER — when true AND a pulseiq_sessions row resolves
  * for the request's session_id (uuid or slug), /api/townhall/chat
  * bypasses the legacy 995-line PulseIQ orchestrator and delegates to
  * lib/chatCore.handleChatTurn. PulseIQ-specific features (theme
@@ -21,7 +21,7 @@
  * are NOT carried into the new path in Phase 4 commit 2 — they get
  * rebuilt on the unified substrate in Phase 5.
  *
- * Defaults OFF. With zero pulseiq_events rows in the system, the flag is
+ * Defaults OFF. With zero pulseiq_sessions rows in the system, the flag is
  * a no-op on the way in: the new path never matches and the route
  * falls through to legacy.
  */

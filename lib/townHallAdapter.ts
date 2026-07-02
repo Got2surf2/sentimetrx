@@ -4,7 +4,7 @@
 // surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]`
 // detail) were originally written against the legacy townhall_sessions
 // + townhall_themes + townhall_turns schema. Phase 5 introduced the new
-// substrate (pulseiq_events + pulseiq_topics + pulseiq_event_conversations
+// substrate (pulseiq_sessions + pulseiq_topics + pulseiq_session_conversations
 // over conversations + conversation_turns) but didn't rewire the read
 // path.
 //
@@ -12,7 +12,7 @@
 // schema, this module projects new-substrate rows into the SAME JSON
 // shape the existing SessionDetailClient (and list page) already
 // consume. Surfaces that pre-date the convergence keep their existing
-// view; new pulseiq_events slugs appear alongside them without any UI
+// view; new pulseiq_sessions slugs appear alongside them without any UI
 // change.
 //
 // Mutations (theme PATCH/POST, session PATCH, etc.) are NOT routed
@@ -77,7 +77,7 @@ function projectTopicAsTheme(t: any, sessionId: string): any {
   }
 }
 
-// Projects a pulseiq_events row into a legacy-shaped townhall_sessions row
+// Projects a pulseiq_sessions row into a legacy-shaped townhall_sessions row
 // (no themes, no turns — just the parent fields). Used by both list +
 // detail surfaces.
 function projectTownHallAsSession(h: any): any {
@@ -128,7 +128,7 @@ function projectTownHallAsSession(h: any): any {
   }
 }
 
-// Compute basic participant/turn stats from pulseiq_event_conversations →
+// Compute basic participant/turn stats from pulseiq_session_conversations →
 // conversations → conversation_turns for a single town hall.
 //
 // Phase-3 fix 2026-05-26: also return per-conversation turn count, first
@@ -152,7 +152,7 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   perTopic: Record<string, { responses: number; mentions: number }>
 }> {
   const { data: linkRows, error: linkErr } = await db
-    .from('pulseiq_event_conversations')
+    .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
@@ -229,11 +229,11 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
 // ── PUBLIC ────────────────────────────────────────────────────────────────
 
 /**
- * Resolves a slug or uuid to a pulseiq_events row and returns the full
+ * Resolves a slug or uuid to a pulseiq_sessions row and returns the full
  * facilitator-dashboard JSON payload in the same shape as the legacy
  * `/api/townhall/sessions/[id]` GET (session + themes + stats +
  * participants). Returns null if the identifier doesn't match a
- * pulseiq_events row — the caller should fall back to the legacy path.
+ * pulseiq_sessions row — the caller should fall back to the legacy path.
  *
  * Analytics-mode (the ?analytics=true branch) returns an empty-analytics
  * shell. Real analytics rebuild is a follow-on commit.
@@ -246,12 +246,12 @@ export async function getTownHallAsLegacy(
   // First try id, then slug. Slug is the more common public lookup.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data, error: idErr } = await db.from('pulseiq_events').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('pulseiq_sessions').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.getTownHallAsLegacy', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data, error: slugErr } = await db.from('pulseiq_events').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('pulseiq_sessions').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
     if (slugErr) void logError('townHallAdapter.getTownHallAsLegacy', slugErr)
     if (data) hall = data
   }
@@ -348,7 +348,7 @@ export async function getTownHallAsLegacy(
 }
 
 /**
- * Resolves a slug or uuid against `pulseiq_events` and returns the parent
+ * Resolves a slug or uuid against `pulseiq_sessions` and returns the parent
  * row directly (no theme/stat enrichment). Used by participant-facing
  * routes (`/api/townhall/join`, `/api/townhall/live`) that only need
  * session-level fields. Returns null if no match.
@@ -359,12 +359,12 @@ export async function resolveTownHall(
 ): Promise<any | null> {
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data, error: idErr } = await db.from('pulseiq_events').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('pulseiq_sessions').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.resolveTownHall', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data, error: slugErr } = await db.from('pulseiq_events').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('pulseiq_sessions').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
     if (slugErr) void logError('townHallAdapter.resolveTownHall', slugErr)
     if (data) hall = data
   }
@@ -372,7 +372,7 @@ export async function resolveTownHall(
 }
 
 /**
- * Projects a `pulseiq_events` row into the same `session` shape `getTownHallAsLegacy`
+ * Projects a `pulseiq_sessions` row into the same `session` shape `getTownHallAsLegacy`
  * returns — exposed so participant routes (`/api/townhall/join`) can reuse
  * the projection without re-fetching topics / stats. Static; never hits the DB.
  */
@@ -381,7 +381,7 @@ export function projectHallAsSession(hall: any): any {
 }
 
 /**
- * Lists every pulseiq_events row in scope and returns each in the legacy
+ * Lists every pulseiq_sessions row in scope and returns each in the legacy
  * townhall_sessions list shape used by /api/townhall/sessions. Caller
  * concatenates with the legacy list and sorts by created_at desc.
  *
@@ -393,7 +393,7 @@ export async function listTownHallsAsLegacy(
   scopeOrgId: string | null,
 ): Promise<any[]> {
   let q = db
-    .from('pulseiq_events')
+    .from('pulseiq_sessions')
     .select('id, org_id, name, slug, status, cohort_config, discussion_guide, response_target, started_at, ended_at, created_at, updated_at, created_by')
     .order('created_at', { ascending: false })
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)

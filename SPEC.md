@@ -300,13 +300,13 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 
 **Limits**: 4,490 reviews per location (DataForSEO max). Per-org cost ceiling enforced via `review_downloads`.
 
-### 5. PulseIQ (internal: `townhall` legacy + `pulseiq_events` phase-3 substrate)
+### 5. PulseIQ (internal: `townhall` legacy + `pulseiq_sessions` phase-3 substrate)
 
 **Routes**: `/townhall/*` (admin), `/pi/[sessionId]` (public participant), `/api/townhall/*`
 
 AI-moderated live group discussions. Participants join via link/QR and chat with a named AI agent. Facilitator pre-loads a discussion guide of topics. (User-facing name is **PulseIQ**; tables and routes remain `townhall_*` internally.)
 
-> **Convergence Phase 5 complete (2026-05-22)**: PulseIQ now runs on a **unified conversational substrate** shared with Agents (`conversations` + `conversation_turns`), plus PulseIQ-specific tables (`pulseiq_events`, `pulseiq_event_conversations`, `pulseiq_topics`) for the cohort layer. The chat handler is the same `lib/chatCore.handleChatTurn` that powers `/api/bots/[id]/chat`. The legacy `townhall_sessions/_themes/_turns` tables remain in service for pre-convergence sessions and will be dropped in Tier 5 cleanup after a prod verification window. Routing decisions are substrate-aware via `lib/townHallAdapter.ts` (read adapter projects new-substrate rows into the same JSON shape the facilitator dashboard consumes). NOWOCATS (early June launch) is the first town hall on the new substrate; Vindman follows post-launch using the same Sir O'Gate bot. Each event = one `pulseiq_events` row; cross-event analysis combines per-event datasets in Analytics. See `docs/CONVERGENCE.md` for the architectural decision + sequencing plan and `docs/TOWNHALL.md` Facilitator Console block for the per-route substrate awareness.
+> **Convergence Phase 5 complete (2026-05-22)**: PulseIQ now runs on a **unified conversational substrate** shared with Agents (`conversations` + `conversation_turns`), plus PulseIQ-specific tables (`pulseiq_sessions`, `pulseiq_session_conversations`, `pulseiq_topics`) for the cohort layer. The chat handler is the same `lib/chatCore.handleChatTurn` that powers `/api/bots/[id]/chat`. The legacy `townhall_sessions/_themes/_turns` tables remain in service for pre-convergence sessions and will be dropped in Tier 5 cleanup after a prod verification window. Routing decisions are substrate-aware via `lib/townHallAdapter.ts` (read adapter projects new-substrate rows into the same JSON shape the facilitator dashboard consumes). NOWOCATS (early June launch) is the first town hall on the new substrate; Vindman follows post-launch using the same Sir O'Gate bot. Each event = one `pulseiq_sessions` row; cross-event analysis combines per-event datasets in Analytics. See `docs/CONVERGENCE.md` for the architectural decision + sequencing plan and `docs/TOWNHALL.md` Facilitator Console block for the per-route substrate awareness.
 
 **Chat Engine** (`/api/townhall/chat`):
 - Opening question flow → AI matches response to best topic → follows thread → transitions

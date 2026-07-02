@@ -50,7 +50,7 @@ interface MirrorArgs {
   language?: string | null
   rows: MirroredTurn[]
   /** When set, the helper also auto-links the conversation to the town
-   *  hall via pulseiq_event_conversations (idempotent insert). Phase 5
+   *  hall via pulseiq_session_conversations (idempotent insert). Phase 5
    *  commit 3 — PulseIQ delegation through handleChatTurn. */
   townHallId?: string | null
   /** When set, populates conversations.participant_id on upsert. PulseIQ
@@ -102,7 +102,7 @@ export async function mirrorTurns(
     // conversation_id) makes this a no-op after first call per session).
     if (args.townHallId) {
       const { error: linkErr } = await service
-        .from('pulseiq_event_conversations')
+        .from('pulseiq_session_conversations')
         .upsert(
           {
             town_hall_id: args.townHallId,
@@ -112,7 +112,7 @@ export async function mirrorTurns(
           { onConflict: 'town_hall_id,conversation_id' },
         )
       if (linkErr) {
-        console.error({ at: 'phase3-dual-write', msg: 'pulseiq_event_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
+        console.error({ at: 'phase3-dual-write', msg: 'pulseiq_session_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
       }
     }
 

@@ -677,11 +677,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   let townHallRoundHold = false
   if (ctx.townHallContext) {
     try {
-      // Load pulseiq_events row up front — used by both the standby fallback
+      // Load pulseiq_sessions row up front — used by both the standby fallback
       // (cohort_config.standby_message) and the response-count theme-
       // detection trigger (cohort_config.theme_detection_every_n_responses).
       const { data: townHallRow, error: townHallRowErr } = await service
-        .from('pulseiq_events')
+        .from('pulseiq_sessions')
         .select('cohort_config')
         .eq('id', ctx.townHallContext.townHallId)
         .maybeSingle()
@@ -696,10 +696,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (topicsErr) void logError('chatCore.handleChatTurn', topicsErr, { orgId: bot.org_id })
 
       if (topics && topics.length > 0) {
-        // Cohort-wide response counts: join pulseiq_event_conversations →
+        // Cohort-wide response counts: join pulseiq_session_conversations →
         // conversations → conversation_turns and tally by topic_id.
         const { data: linkedConvs, error: linkedConvsErr } = await service
-          .from('pulseiq_event_conversations')
+          .from('pulseiq_session_conversations')
           .select('conversation_id')
           .eq('town_hall_id', ctx.townHallContext.townHallId)
         if (linkedConvsErr) void logError('chatCore.handleChatTurn', linkedConvsErr, { orgId: bot.org_id })

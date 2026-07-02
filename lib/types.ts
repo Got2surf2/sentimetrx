@@ -982,7 +982,7 @@ export interface TownHallConfig {
   // Optional underlying agent this session is built on. UI-only on the
   // legacy substrate (townhall_sessions has no bot_id column) — used by
   // the create/edit screens to enable the "Import focuses from agent"
-  // helper. Phase-3 pulseiq_events carry the canonical link in its own
+  // helper. Phase-3 pulseiq_sessions carry the canonical link in its own
   // bot_id column.
   bot_id_link?: string
   // Snapshot of the last `/api/townhall/grade-description` result, keyed

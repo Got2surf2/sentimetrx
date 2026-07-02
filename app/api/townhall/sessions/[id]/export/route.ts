@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, props: Params) {
   const format = req.nextUrl.searchParams.get('format') || 'csv'
 
   // Fetch session — try legacy townhall_sessions first, then fall back
-  // to the phase-3 pulseiq_events table (projected into legacy shape so the
+  // to the phase-3 pulseiq_sessions table (projected into legacy shape so the
   // downstream code stays substrate-agnostic). Pure phase-3 sessions
   // like NOWOCATS have no townhall_sessions row at all, so without this
   // fallback the magnifying-glass conversation modal silently 404s.
@@ -48,11 +48,11 @@ export async function GET(req: NextRequest, props: Params) {
     const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
     let hall: any = null
     if (isUUID) {
-      const { data } = await db.from('pulseiq_events').select('*').eq('id', params.id).maybeSingle()
+      const { data } = await db.from('pulseiq_sessions').select('*').eq('id', params.id).maybeSingle()
       if (data) hall = data
     }
     if (!hall) {
-      const { data } = await db.from('pulseiq_events').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
+      const { data } = await db.from('pulseiq_sessions').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
       if (data) hall = data
     }
     if (hall) {
@@ -180,7 +180,7 @@ export async function GET(req: NextRequest, props: Params) {
     }
 
     // ── Phase-3 augmentation ────────────────────────────────────────
-    // If THIS session is a pulseiq_events (phase-3) slug/id, append its
+    // If THIS session is a pulseiq_sessions (phase-3) slug/id, append its
     // conversations alongside legacy data. The chat handler emits to
     // both substrates when both flags are on; this keeps the export
     // unified regardless of which path the data came from.
@@ -195,18 +195,18 @@ export async function GET(req: NextRequest, props: Params) {
       const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
       let hall: any = null
       if (isUUID) {
-        const { data } = await db.from('pulseiq_events').select('*').eq('id', params.id).maybeSingle()
+        const { data } = await db.from('pulseiq_sessions').select('*').eq('id', params.id).maybeSingle()
         if (data) hall = data
       }
       if (!hall) {
-        const { data } = await db.from('pulseiq_events').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
+        const { data } = await db.from('pulseiq_sessions').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
         if (data) hall = data
       }
 
       if (hall) {
         // Pull conversations linked to this town hall
         const { data: linkRows } = await db
-          .from('pulseiq_event_conversations')
+          .from('pulseiq_session_conversations')
           .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id, bot_id)')
           .eq('town_hall_id', hall.id)
           .eq('org_id', hall.org_id)

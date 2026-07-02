@@ -181,7 +181,7 @@ export async function POST(_req: Request, props: Params) {
 
   // Gap #6 (2026-05-22): town-hall attribution per row. Look up which
   // town hall (if any) each session_id belongs to via the conversations →
-  // pulseiq_event_conversations → pulseiq_events chain. Empty string for 1:1
+  // pulseiq_session_conversations → pulseiq_sessions chain. Empty string for 1:1
   // widget conversations (not linked to any town hall). Allows Ana to
   // filter the bot dataset by town hall slug/name for cross-event
   // analysis (e.g. all Vindman events vs widget visitors).
@@ -190,12 +190,12 @@ export async function POST(_req: Request, props: Params) {
   if (affectedSessionIds.length > 0) {
     const { data: convLinks } = await service
       .from('conversations')
-      .select('session_id, pulseiq_event_conversations!inner(pulseiq_events!inner(slug, name))')
+      .select('session_id, pulseiq_session_conversations!inner(pulseiq_sessions!inner(slug, name))')
       .eq('bot_id', botId)
       .in('session_id', affectedSessionIds)
     for (const c of (convLinks || []) as any[]) {
-      const thc = Array.isArray(c.pulseiq_event_conversations) ? c.pulseiq_event_conversations[0] : c.pulseiq_event_conversations
-      const th = thc && (Array.isArray(thc.pulseiq_events) ? thc.pulseiq_events[0] : thc.pulseiq_events)
+      const thc = Array.isArray(c.pulseiq_session_conversations) ? c.pulseiq_session_conversations[0] : c.pulseiq_session_conversations
+      const th = thc && (Array.isArray(thc.pulseiq_sessions) ? thc.pulseiq_sessions[0] : thc.pulseiq_sessions)
       if (th?.slug) townHallBySession[c.session_id] = { slug: th.slug, name: th.name || th.slug }
     }
   }

@@ -31,10 +31,10 @@ async function main() {
   console.log('')
   console.log('--- getTownHallAsLegacy(sarina-cohort) ---')
   const detail = await getTownHallAsLegacy(db, 'sarina-cohort')
-  if (!detail) { console.log('NULL — no pulseiq_events row resolved'); return }
+  if (!detail) { console.log('NULL — no pulseiq_sessions row resolved'); return }
   console.log('session.id     :', detail.session.id)
   console.log('session.slug   :', detail.session.slug)
-  console.log('session.status :', detail.session.status, '(mapped from pulseiq_events.status)')
+  console.log('session.status :', detail.session.status, '(mapped from pulseiq_sessions.status)')
   console.log('session.name   :', detail.session.name)
   console.log('themes count   :', detail.themes.length)
   for (const t of detail.themes) {

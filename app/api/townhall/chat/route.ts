@@ -68,24 +68,24 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceRoleClient()
 
   // ── Phase 4 commit 2: PulseIQ-via-agent-handler path ────────────────
-  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a pulseiq_events row resolves
+  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a pulseiq_sessions row resolves
   // for this session_id (uuid or slug), bypass the legacy 995-line
   // PulseIQ orchestrator below and delegate to lib/chatCore.handleChatTurn.
   // PulseIQ-specific features (theme assignment, response counter,
   // language switch, auto-end, standby) are NOT carried into this path
   // — they get rebuilt on the unified substrate in Phase 5. With zero
-  // pulseiq_events rows in the system today, this branch is dark on the
+  // pulseiq_sessions rows in the system today, this branch is dark on the
   // way in; it activates only after Phase 6 creates the first row.
   if (isTownHallViaAgentHandlerEnabled()) {
     const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
     const EV_COLS = 'id, slug, org_id, bot_id, name, status, cohort_config, started_at'
     let townHall: any = null
     if (isUUID4) {
-      const { data } = await supabase.from('pulseiq_events').select(EV_COLS).eq('id', session_id).single()
+      const { data } = await supabase.from('pulseiq_sessions').select(EV_COLS).eq('id', session_id).single()
       townHall = data
     }
     if (!townHall) {
-      const { data } = await supabase.from('pulseiq_events').select(EV_COLS).eq('slug', session_id.toLowerCase()).single()
+      const { data } = await supabase.from('pulseiq_sessions').select(EV_COLS).eq('slug', session_id.toLowerCase()).single()
       townHall = data
     }
     if (townHall) {
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
             // Event-wide latest participant activity, via the event's linked
             // conversations (mirrors the legacy session-wide check).
             const { data: linked } = await supabase
-              .from('pulseiq_event_conversations')
+              .from('pulseiq_session_conversations')
               .select('conversation_id')
               .eq('town_hall_id', townHall.id)
             const convIds = (linked || []).map(r => r.conversation_id)
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
             }
           }
           if (shouldEnd) {
-            const { error: endErr } = await supabase.from('pulseiq_events')
+            const { error: endErr } = await supabase.from('pulseiq_sessions')
               .update({ status: 'closed', ended_at: new Date().toISOString() })
               .eq('id', townHall.id)
             if (endErr) void logError('townhall.chat.autoEnd', endErr, { orgId: townHall.org_id })
@@ -201,9 +201,9 @@ export async function POST(req: NextRequest) {
         })
       }
     }
-    // Flag is on but no pulseiq_events row matched (or agent inactive) — fall
+    // Flag is on but no pulseiq_sessions row matched (or agent inactive) — fall
     // through to legacy. This is the expected state until Phase 6 creates
-    // the first pulseiq_events row pointing at Sarina.
+    // the first pulseiq_sessions row pointing at Sarina.
   }
 
   // Fetch session (by UUID or slug)
