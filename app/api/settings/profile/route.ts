@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 // GET /api/settings/profile
 export async function GET(_req: NextRequest) {
@@ -43,7 +44,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   var { error } = await supabase.from('users').update(updates).eq('id', user.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.profile.update')
   return NextResponse.json({ ok: true })
 }
 
@@ -60,6 +61,6 @@ export async function POST(req: NextRequest) {
     // renders inputs and calls updateUser — it can't establish the session.
     redirectTo: (process.env.NEXT_PUBLIC_SITE_URL || 'https://sentimetrx.ai') + '/auth/callback?next=/auth/reset-password',
   })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.profile.resetPassword')
   return NextResponse.json({ ok: true, message: 'Password reset email sent' })
 }

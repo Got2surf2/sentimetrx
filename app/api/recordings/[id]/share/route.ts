@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
@@ -74,7 +75,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .update(patch)
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: `share update failed: ${updErr.message}` }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.share', { orgId: rec.org_id })
 
   return NextResponse.json({
     ok: true,

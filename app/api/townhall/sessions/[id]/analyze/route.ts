@@ -18,6 +18,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildTownHallSchema } from '@/lib/datasetUtils'
 import { THEME_PALETTE } from '@/lib/themeUtils'
 import { resolveTownHall } from '@/lib/townHallAdapter'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -226,7 +227,7 @@ async function runPhase3Analyze(
       .select('id')
       .single()
     if (createErr || !newDs) {
-      return NextResponse.json({ error: 'Failed to create dataset', detail: createErr?.message }, { status: 500 })
+      return serverError(createErr, 'townhall.analyze.createDataset', { orgId })
     }
     datasetId = newDs.id
     created = true
@@ -254,7 +255,7 @@ async function runPhase3Analyze(
   const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
   const flatRows = rows.map((r, i) => ({ dataset_id: datasetId, row_index: startIndex + i, data: r }))
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
-  if (flatErr) return NextResponse.json({ error: 'Failed to insert rows', detail: flatErr.message }, { status: 500 })
+  if (flatErr) return serverError(flatErr, 'townhall.analyze.insertRows', { orgId })
 
   const newTotal = (existing?.row_count || 0) + rows.length
   await service
@@ -338,7 +339,7 @@ async function runLegacyAnalyze(
       .select('id')
       .single()
     if (createErr || !newDs) {
-      return NextResponse.json({ error: 'Failed to create dataset', detail: createErr?.message }, { status: 500 })
+      return serverError(createErr, 'townhall.analyze.createDataset', { orgId: session.org_id })
     }
     datasetId = newDs.id
     created = true
@@ -375,7 +376,7 @@ async function runLegacyAnalyze(
   if (lastSynced) turnsQuery = turnsQuery.gt('created_at', lastSynced)
 
   const { data: turns, error: turnsErr } = await turnsQuery
-  if (turnsErr) return NextResponse.json({ error: 'Failed to fetch turns', detail: turnsErr.message }, { status: 500 })
+  if (turnsErr) return serverError(turnsErr, 'townhall.analyze.fetchTurns', { orgId: session.org_id })
 
   if (!turns || turns.length === 0) {
     return NextResponse.json({ dataset_id: datasetId, synced: 0, total: existing?.row_count || 0, created })
@@ -429,7 +430,7 @@ async function upsertDatasetAndInsertRowsLegacy(
   const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
   const flatRows = rows.map((r, i) => ({ dataset_id: datasetId, row_index: startIndex + i, data: r }))
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
-  if (flatErr) return NextResponse.json({ error: 'Failed to insert rows', detail: flatErr.message }, { status: 500 })
+  if (flatErr) return serverError(flatErr, 'townhall.analyze.insertRows', { orgId: ctx.orgId })
 
   const newTotal = (existing?.row_count || 0) + rows.length
   await service

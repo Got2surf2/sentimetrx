@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,7 +121,7 @@ export async function GET(req: Request, props: Params) {
   }
 
   const { data: tax, count, error } = await q.limit(limit)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.taxonomyRows', { orgId: orgId ?? undefined })
 
   const rowIds = (tax ?? []).map(t => t.row_id)
   const byId: Record<number, Record<string, unknown>> = {}

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +37,7 @@ export async function GET() {
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.list', { orgId })
 
   const enriched = (datasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+  if (dsErr) return serverError(dsErr, 'datasets.create', { orgId })
 
   // Insert initial state record
   const { data: state, error: stErr } = await service
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 })
+  if (stErr) return serverError(stErr, 'datasets.createState', { orgId })
 
   const { ip, userAgent } = eventContextFromRequest(req)
   await recordUserEvent({

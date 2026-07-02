@@ -17,6 +17,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -40,8 +41,7 @@ export async function GET(req: NextRequest) {
     .limit(MAX_BRANDS_PER_RUN)
 
   if (error) {
-    console.error({ at: 'cron/entity-discovery', msg: "query error", err: error })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'cron.entityDiscovery.listBrands')
   }
 
   if (!brands?.length) {

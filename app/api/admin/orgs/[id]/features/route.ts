@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -104,7 +105,7 @@ export async function PUT(req: NextRequest, props: Params) {
       enabled_by:      actor?.id ?? null,
     }, { onConflict: 'org_id,feature' })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.orgs.features.upsert', { orgId: params.id })
   return NextResponse.json({ ok: true, feature, enabled: body.enabled, quota_per_month: quota })
 }
 

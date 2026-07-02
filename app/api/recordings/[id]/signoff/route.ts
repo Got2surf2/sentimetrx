@@ -5,6 +5,7 @@
 // Org-scoped with a platform-admin bypass (matching the other recordings routes).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import type { Signoff } from '@/lib/recordings/types'
@@ -47,7 +48,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // DRAFT watermark / pending-review banner). It's the ONLY path that does so —
   // so a final report always carries a captured reviewer + timestamp.
   const { error } = await service.from('recordings').update({ signoff, draft: false }).eq('id', recording_id).eq('org_id', rec.org_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'recordings.signoff.approve', { orgId: rec.org_id })
   return NextResponse.json({ ok: true, signoff })
 }
 
@@ -66,6 +67,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   // Revoking approval returns the report to draft (unreviewed) — the watermark /
   // banner come back until someone signs off again.
   const { error } = await service.from('recordings').update({ signoff: null, draft: true }).eq('id', recording_id).eq('org_id', rec.org_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'recordings.signoff.revoke', { orgId: rec.org_id })
   return NextResponse.json({ ok: true })
 }

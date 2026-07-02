@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     source: 'guide',
     skipped: false,
   })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.resume.insertTurn')
 
   return NextResponse.json({
     holding: false,

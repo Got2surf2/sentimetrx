@@ -8,6 +8,7 @@ import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 import { recomputeParentCollections } from '@/lib/collectionRecompute'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -97,7 +98,7 @@ export async function POST(req: Request, props: Params) {
       .eq('study_id', dataset.study_id)
       .order('id', { ascending: true })
 
-    if (respErr) return NextResponse.json({ error: 'Failed to query responses', detail: respErr.message }, { status: 500 })
+    if (respErr) return serverError(respErr, 'datasets.sync.responses', { orgId: userData?.org_id })
 
     // Filter to only new responses
     const newResponses = (responses || []).filter(r => !existingIds.has(String(r.id)))
@@ -160,7 +161,6 @@ export async function POST(req: Request, props: Params) {
 
     return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })
   } catch (err: any) {
-    console.error({ at: 'sync', msg: "unhandled error", err: err })
-    return NextResponse.json({ error: 'Internal sync error', detail: err?.message || String(err) }, { status: 500 })
+    return serverError(err, 'datasets.sync')
   }
 }

@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,6 @@ export async function GET() {
     .eq('org_id', auth.orgId)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.connections.list', { orgId: auth.orgId })
   return NextResponse.json({ connections: data || [] })
 }

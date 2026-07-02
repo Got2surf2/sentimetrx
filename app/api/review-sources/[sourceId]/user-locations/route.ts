@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,11 +43,11 @@ export async function GET(_req: Request, props: Params) {
       .select('id, user_id, location_id, review_source_locations(name, city, state), users(email, full_name)')
       .eq('review_source_id', params.sourceId)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'reviewSources.userLocations.list', { orgId: userData.org_id })
 
     return NextResponse.json({ assignments: assignments || [] })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.userLocations.list')
   }
 }
 
@@ -104,11 +105,11 @@ export async function POST(req: Request, props: Params) {
       .from('user_locations')
       .upsert(rows, { onConflict: 'user_id,location_id' })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'reviewSources.userLocations.assign', { orgId: userData.org_id })
 
     return NextResponse.json({ ok: true, assigned: location_ids.length }, { status: 201 })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.userLocations.assign')
   }
 }
 
@@ -146,10 +147,10 @@ export async function DELETE(req: Request, props: Params) {
     }
 
     const { error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'reviewSources.userLocations.remove', { orgId: userData.org_id })
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.userLocations.remove')
   }
 }

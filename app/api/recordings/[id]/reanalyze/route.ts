@@ -8,6 +8,7 @@
 // Auth + same-tenant + status='complete'.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { reanalyzeRecording, type ReanalyzeScope } from '@/lib/recordings/reanalyze'
 import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
@@ -93,6 +94,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (message.includes('transcript not found') || message.startsWith('topic-scoped transcript window is empty') || message.startsWith('recording must be status=')) {
       return NextResponse.json({ error: message }, { status: 409 })
     }
-    return NextResponse.json({ error: message }, { status: 500 })
+    return serverError(err, 'recordings.reanalyze', { orgId: org_id })
   }
 }

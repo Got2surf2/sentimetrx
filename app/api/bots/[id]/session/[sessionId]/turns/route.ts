@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest, props: Params) {
   // so a draft / paused agent can't be queried by URL guess.
   const { data: agent, error: agentErr } = await service
     .from('agents')
-    .select('id, status')
+    .select('id, status, org_id')
     .eq('id', params.id)
     .single()
   if (agentErr || !agent) {
@@ -68,7 +69,10 @@ export async function GET(req: NextRequest, props: Params) {
     .limit(200)
 
   if (turnsErr) {
-    return NextResponse.json({ error: turnsErr.message }, { status: 500, headers: cors })
+    // serverError() can't carry the CORS headers this embed route needs,
+    // so log + generic body inline.
+    await logError('bots.session.turns', turnsErr, { orgId: agent.org_id })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: cors })
   }
 
   return NextResponse.json({ turns: turns || [] }, { headers: cors })

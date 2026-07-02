@@ -10,6 +10,7 @@
 // caller's org for non-admins (404 cross-org). Only from a settled state.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { start } from 'workflow/api'
 import { retranscribeSpanWorkflow } from '@/workflows/recordings'
@@ -71,7 +72,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .update({ status: 'transcribing', error_message: null })
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.transcribeSpan', { orgId: rec.org_id })
 
   const run = await start(retranscribeSpanWorkflow, [recording_id, rec.org_id, start_sec, end_sec, vendor])
   return NextResponse.json({ ok: true, status: 'transcribing', run_id: run.runId })

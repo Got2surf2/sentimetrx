@@ -7,6 +7,7 @@
 // The copy starts at 'awaiting_media' so the user just adds new audio.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 
@@ -50,7 +51,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   const { data: rec, error: iErr } = await service.from('recordings').insert(insert).select('id').single()
-  if (iErr || !rec) return NextResponse.json({ error: iErr?.message ?? 'duplicate failed' }, { status: 500 })
+  if (iErr || !rec) return serverError(iErr, 'recordings.duplicate', { orgId: s.org_id as string })
 
   return NextResponse.json({ ok: true, id: rec.id as string })
 }

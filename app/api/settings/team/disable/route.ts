@@ -6,6 +6,7 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 const FAR_FUTURE = '2099-12-31T23:59:59Z'
 
@@ -39,7 +40,7 @@ export async function PATCH(req: NextRequest) {
   // the app reads. Then update auth.users to enforce at the auth layer.
   const { error: dbErr } = await service.from('users')
     .update({ disabled }).eq('id', user_id)
-  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+  if (dbErr) return serverError(dbErr, 'settings.team.disable', { orgId: actor.org_id })
 
   // Ban / unban via Supabase admin. ban_duration accepts a duration string
   // ("none" to clear, or e.g. "8760h" for a year). We use the far-future

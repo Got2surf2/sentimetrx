@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { generateEmbedding } from '@/lib/embeddings'
 import { logBotChange } from '@/lib/auditLog'
 import { materializeExternalExchange } from '@/lib/externalExchange'
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest, props: Params) {
       const { error } = await service.from('agent_knowledge_chunks')
         .update({ title, content, metadata, ...embeddingPatch })
         .eq('id', chunkId).eq('bot_id', params.id)
-      if (error) return NextResponse.json({ error: 'Failed to update knowledge: ' + error.message }, { status: 500 })
+      if (error) return serverError(error, 'bots.questions.answer.updateChunk', { orgId: bot.org_id })
     } else if (replaceChunkId) {
       // Reviewer chose to merge into the flagged near-duplicate: overwrite it and
       // re-point it at this question (so future corrections update this chunk).
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest, props: Params) {
       const { error } = await service.from('agent_knowledge_chunks')
         .update({ title, content, metadata, ...embeddingPatch })
         .eq('id', chunkId).eq('bot_id', params.id)
-      if (error) return NextResponse.json({ error: 'Failed to merge knowledge: ' + error.message }, { status: 500 })
+      if (error) return serverError(error, 'bots.questions.answer.mergeChunk', { orgId: bot.org_id })
     } else {
       // Near-duplicate guard: if a near-identical chunk already exists, don't add
       // — hand the match back so the reviewer can Replace it / Add anyway / Cancel.
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest, props: Params) {
         .insert({ bot_id: params.id, title, content, metadata, ...embeddingPatch })
         .select('id')
         .single()
-      if (error || !inserted) return NextResponse.json({ error: 'Failed to add knowledge: ' + (error?.message || '') }, { status: 500 })
+      if (error || !inserted) return serverError(error, 'bots.questions.answer.addChunk', { orgId: bot.org_id })
       chunkId = inserted.id
       created = true
     }
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest, props: Params) {
     .eq('org_id', bot.org_id)
     .select('id, session_id, conversation_id, turn_id, user_message, language, classification, status, resolved_by, resolved_at, notes, suggested_kb_addition, answer_text, source, external_contact, batch_label, created_at')
     .single()
-  if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 })
+  if (qErr) return serverError(qErr, 'bots.questions.answer.markAnswered', { orgId: bot.org_id })
 
   if (writeKb) {
     void logBotChange({

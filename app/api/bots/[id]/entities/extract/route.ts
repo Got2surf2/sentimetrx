@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { extractBotEntities } from '@/lib/botEntityExtraction'
 import { invalidateEntityCache } from '@/lib/entityMentionDetector'
 
@@ -48,6 +49,6 @@ export async function POST(_req: NextRequest, props: Params) {
       brand_pushed: result.brandPushed,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Extraction failed' }, { status: 500 })
+    return serverError(e, 'bots.entities.extract', { orgId: (bot as any).org_id })
   }
 }

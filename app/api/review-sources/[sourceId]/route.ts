@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,7 @@ export async function GET(_req: Request, props: Params) {
 
     return NextResponse.json({ source, locations: locations || [], datasetRowCount })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.detail')
   }
 }
 
@@ -105,11 +106,11 @@ export async function PATCH(req: Request, props: Params) {
       .from('review_sources')
       .update(updates)
       .eq('id', params.sourceId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'reviewSources.update', { orgId: auth.orgId })
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.update')
   }
 }
 
@@ -143,6 +144,6 @@ export async function DELETE(_req: Request, props: Params) {
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.delete')
   }
 }

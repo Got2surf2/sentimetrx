@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { randomUUID } from 'crypto'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,15 +58,13 @@ export async function POST(req: Request, props: Params) {
     upsert:      false,
   })
   if (uploadErr) {
-    console.error({ at: 'share', msg: "upload error", err: uploadErr })
-    return NextResponse.json({ error: 'Upload failed: ' + uploadErr.message }, { status: 502 })
+    return serverError(uploadErr, 'datasets.exportShare.upload', { orgId: orgId ?? undefined })
   }
 
   const { data: signed, error: signErr } = await service.storage.from(BUCKET)
     .createSignedUrl(path, EXPIRY_SECONDS)
   if (signErr || !signed?.signedUrl) {
-    console.error({ at: 'share', msg: "presign error", err: signErr })
-    return NextResponse.json({ error: 'Could not generate share link: ' + (signErr?.message || 'unknown') }, { status: 502 })
+    return serverError(signErr, 'datasets.exportShare.sign', { orgId: orgId ?? undefined })
   }
 
   const expiresAt = new Date(Date.now() + EXPIRY_SECONDS * 1000).toISOString()

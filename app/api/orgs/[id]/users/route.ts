@@ -1,5 +1,6 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -27,6 +28,6 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('org_id', params.id)
     .order('full_name', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'orgs.users.list', { orgId: params.id })
   return NextResponse.json(data)
 }

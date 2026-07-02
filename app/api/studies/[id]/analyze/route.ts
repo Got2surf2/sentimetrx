@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildStudySchema, formatResponsesAsRows } from '@/lib/datasetUtils'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -70,7 +71,7 @@ export async function POST(_req: Request, props: Params) {
       .single()
 
     if (createErr || !newDs) {
-      return NextResponse.json({ error: 'Failed to create dataset', detail: createErr?.message }, { status: 500 })
+      return serverError(createErr, 'studies.analyze.createDataset', { orgId: study.org_id })
     }
 
     datasetId = newDs.id
@@ -98,7 +99,7 @@ export async function POST(_req: Request, props: Params) {
   }
 
   const { data: responses, error: respErr } = await respQuery
-  if (respErr) return NextResponse.json({ error: 'Failed to fetch responses', detail: respErr.message }, { status: 500 })
+  if (respErr) return serverError(respErr, 'studies.analyze.fetchResponses', { orgId: study.org_id })
 
   if (!responses || responses.length === 0) {
     return NextResponse.json({ dataset_id: datasetId, synced: 0, total: existing?.[0]?.row_count || 0, created })
@@ -122,7 +123,7 @@ export async function POST(_req: Request, props: Params) {
     return { dataset_id: datasetId, row_index: startIndex + i, data: r }
   })
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
-  if (flatErr) return NextResponse.json({ error: 'Failed to insert rows', detail: flatErr.message }, { status: 500 })
+  if (flatErr) return serverError(flatErr, 'studies.analyze.insertRows', { orgId: study.org_id })
 
   const newTotal = (existing?.[0]?.row_count || 0) + rows.length
 

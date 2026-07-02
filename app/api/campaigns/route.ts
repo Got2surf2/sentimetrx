@@ -5,6 +5,7 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   if (studyId) query = query.eq('study_id', studyId)
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.list')
 
   const campaigns = (data || []).map((c: any) => ({
     ...c,
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.create', { orgId: userData.org_id })
 
   const { ip, userAgent } = eventContextFromRequest(req)
   await recordUserEvent({

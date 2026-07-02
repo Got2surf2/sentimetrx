@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { isCallerSuperadmin } from '@/lib/auth/superadmin'
 
 export const dynamic = 'force-dynamic'
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('org_id', bot.org_id)
     .order('created_at', { ascending: false })
     .limit(10000)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.questions.exportCsv', { orgId: bot.org_id })
 
   const header = ['created_at', 'classification', 'status', 'language', 'session_id', 'user_message', 'notes', 'suggested_kb_addition', 'resolved_at']
   const lines = [header.join(',')]

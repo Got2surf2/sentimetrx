@@ -9,6 +9,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { emptyThemeModel } from '@/lib/datasetUtils'
 import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
     .select('id, name, row_count, source, org_id')
     .in('id', memberIds)
 
-  if (memErr) return NextResponse.json({ error: memErr.message }, { status: 500 })
+  if (memErr) return serverError(memErr, 'collections.create.fetchMembers', { orgId: callerOrgId })
   if (!memberDatasets || memberDatasets.length !== memberIds.length) {
     return NextResponse.json({ error: 'One or more datasets not found' }, { status: 400 })
   }
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
     .select('id')
     .single()
 
-  if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+  if (dsErr) return serverError(dsErr, 'collections.create.dataset', { orgId: collectionOrgId })
 
   // 2. Create dataset_state with merged schema
   const { error: stErr } = await service
@@ -131,7 +132,7 @@ export async function POST(req: Request) {
     .select('id')
     .single()
 
-  if (colErr) return NextResponse.json({ error: colErr.message }, { status: 500 })
+  if (colErr) return serverError(colErr, 'collections.create.collection', { orgId: collectionOrgId })
 
   // 4. Create member records
   const memberRows = members.map(function(m, idx) {
@@ -147,7 +148,7 @@ export async function POST(req: Request) {
     .from('collection_members')
     .insert(memberRows)
 
-  if (memInsErr) return NextResponse.json({ error: memInsErr.message }, { status: 500 })
+  if (memInsErr) return serverError(memInsErr, 'collections.create.members', { orgId: collectionOrgId })
 
   return NextResponse.json({ id: dataset.id, collection_id: collection.id, purpose }, { status: 201 })
 }

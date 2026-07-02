@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { draftAnswerFromKB } from '@/lib/agentDraft'
 
 export const dynamic = 'force-dynamic'
@@ -93,7 +94,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .eq('org_id', bot.org_id)
     .select('id, session_id, conversation_id, turn_id, user_message, language, classification, status, resolved_by, resolved_at, notes, suggested_kb_addition, draft_response, batch_id, created_at')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.questions.update', { orgId: bot.org_id })
 
   return NextResponse.json({ question: updated })
 }

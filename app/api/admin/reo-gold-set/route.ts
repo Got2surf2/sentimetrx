@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { isValidDomainAspect, REO_SENTIMENTS, REO_SEVERITIES, type ReoObservation } from '@/lib/reoVocabulary'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export async function GET() {
     .select('id, ext_review_id, rating, review_text, proposed, gold, reviewer_note, status, reviewed_at')
     .eq('org_id', orgId)
     .order('ext_review_id', { ascending: true })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.reoGoldSet.list', { orgId })
 
   const reviews = data || []
   const counts = reviews.reduce((a: Record<string, number>, r: any) => {
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     })
     .eq('id', body.id)
     .eq('org_id', orgId)   // id + org_id pairing (cross-tenant guard)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.reoGoldSet.update', { orgId })
 
   return NextResponse.json({ ok: true, status })
 }

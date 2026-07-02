@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -91,7 +92,6 @@ export async function POST(_req: Request, props: Params) {
       errored: errored,
     })
   } catch (err: any) {
-    console.error({ at: 'reddit-sources/sync', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Finalize failed' }, { status: 500 })
+    return serverError(err, 'redditSources.sync', { orgId })
   }
 }

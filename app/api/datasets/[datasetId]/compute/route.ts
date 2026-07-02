@@ -15,6 +15,7 @@ import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 import { mergeDatasetAnalytics } from '@/lib/datasetAnalytics'
 import { recomputeCollectionAnalytics } from '@/lib/collectionRecompute'
 import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,8 +108,7 @@ export async function POST(_req: Request, props: Params) {
       if (!res) return NextResponse.json({ error: 'Collection has no members or schema' }, { status: 400 })
       return NextResponse.json({ ok: true, totalRows: res.analytics.totalRows, computedAt: res.analytics.computedAt, fields: Object.keys(res.analytics.fieldSummaries).length })
     } catch (err) {
-      console.error({ at: 'compute/collection', msg: "error", err: err })
-      return NextResponse.json({ error: String(err) }, { status: 500 })
+      return serverError(err, 'datasets.compute.collection', { orgId: orgId ?? undefined })
     }
   }
 
@@ -116,8 +116,7 @@ export async function POST(_req: Request, props: Params) {
   try {
     analytics = await computeAnalyticsSQL(service, params.datasetId, schema)
   } catch (err) {
-    console.error({ at: 'compute', msg: "error", err: err })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return serverError(err, 'datasets.compute', { orgId: orgId ?? undefined })
   }
 
   // Write analytics back to dataset_state. Merge the computed keys (totalRows /
@@ -133,7 +132,7 @@ export async function POST(_req: Request, props: Params) {
     .eq('dataset_id', params.datasetId)
 
   if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    return serverError(updateErr, 'datasets.compute.saveState', { orgId: orgId ?? undefined })
   }
 
   // Phase 6: if this is a branded dataset and its rows have just landed,

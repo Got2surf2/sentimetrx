@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -25,8 +26,7 @@ export async function GET(req: NextRequest) {
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
-    console.error({ at: 'social-token-refresh', msg: "query error", err: error })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'cron.socialTokenRefresh.listExpiring')
   }
 
   if (!expiring?.length) {

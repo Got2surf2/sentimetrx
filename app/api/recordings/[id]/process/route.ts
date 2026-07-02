@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { processRecordingWorkflow } from '@/workflows/recordings'
 
@@ -72,7 +73,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .select('id, upload_status')
     .eq('recording_id', recording_id)
     .eq('org_id', org_id)
-  if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 })
+  if (fErr) return serverError(fErr, 'recordings.process.files', { orgId: org_id })
   if (!files || files.length === 0) {
     return NextResponse.json({ error: 'no source files attached' }, { status: 400 })
   }
@@ -93,7 +94,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .update({ status: 'queued', error_message: null, ...(stereoCapture ? { capture_stereo: true } : {}), ...(channelLabels ? { channel_labels: channelLabels } : {}) })
     .eq('id', recording_id)
     .eq('org_id', org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.process', { orgId: org_id })
 
   const run = await start(processRecordingWorkflow, [recording_id, org_id])
 

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchGoogle } from '@/lib/dataforseo'
+import { serverError } from '@/lib/apiError'
 import { safeFetch } from '@/lib/safeFetch'
 
 export const dynamic = 'force-dynamic'
@@ -99,6 +100,6 @@ export async function POST(req: NextRequest) {
       source_count: pageContents.length,
     })
   } catch (err: any) {
-    return NextResponse.json({ error: 'Research failed: ' + (err.message || 'unknown error') }, { status: 500 })
+    return serverError(err, 'bots.research')
   }
 }

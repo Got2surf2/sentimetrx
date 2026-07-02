@@ -9,6 +9,7 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { dumpOrgSnapshot } from '@/lib/orgSnapshot'
 import { uploadOrgSnapshot, listOrgSnapshots } from '@/lib/backupS3'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -23,7 +24,7 @@ export async function GET(_req: NextRequest, props: Params) {
     const items = await listOrgSnapshots(params.orgId, 100)
     return NextResponse.json({ snapshots: items })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'List failed' }, { status: 500 })
+    return serverError(e, 'admin.orgSnapshots.list', { orgId: params.orgId })
   }
 }
 
@@ -49,6 +50,6 @@ export async function POST(_req: NextRequest, props: Params) {
       truncated: snap.meta.truncated_tables,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Snapshot failed' }, { status: 500 })
+    return serverError(e, 'admin.orgSnapshots.create', { orgId: params.orgId })
   }
 }

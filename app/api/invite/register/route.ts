@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createBareClient } from '@supabase/supabase-js'
+import { serverError } from '@/lib/apiError'
 
 export async function POST(req: NextRequest) {
   const service = createServiceRoleClient()
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       email_confirm: true,
     })
     if (authError || !authData.user) {
-      return NextResponse.json({ error: authError?.message || 'Failed to create user' }, { status: 500 })
+      return serverError(authError, 'invite.register.createUser', { orgId: invite.org_id })
     }
     authUserId = authData.user.id
   }
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
     if (!existingAuthId) {
       try { await service.auth.admin.deleteUser(authUserId) } catch {}
     }
-    return NextResponse.json({ error: userError.message }, { status: 500 })
+    return serverError(userError, 'invite.register.insertUser', { orgId: invite.org_id })
   }
 
   await service

@@ -6,6 +6,7 @@
 // mid-pipeline). Body: { instructions?: string }.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { regenerateExtraction } from '@/lib/recordings/regenerate'
 
@@ -77,6 +78,6 @@ export async function POST(
     if (message.startsWith('recording must be status=')) {
       return NextResponse.json({ error: message }, { status: 409 })
     }
-    return NextResponse.json({ error: message }, { status: 500 })
+    return serverError(err, 'recordings.extractions.regenerate', { orgId: org_id })
   }
 }

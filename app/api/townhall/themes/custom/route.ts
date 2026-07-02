@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 // POST /api/townhall/themes/custom — facilitator pushes a custom question
 export async function POST(req: NextRequest) {
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       })
       .select('*')
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'townhall.themes.custom', { orgId: (hall as any).org_id })
     return NextResponse.json(data, { status: 201 })
   }
 
@@ -79,6 +80,6 @@ export async function POST(req: NextRequest) {
     .select('*')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.themes.custom', { orgId: (session as any).org_id })
   return NextResponse.json(data, { status: 201 })
 }

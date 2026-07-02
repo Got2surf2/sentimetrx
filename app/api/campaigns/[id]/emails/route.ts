@@ -4,6 +4,7 @@
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ export async function GET(_req: NextRequest, props: Params) {
     .eq('campaign_id', params.id)
     .order('sequence', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.emails.list')
   return NextResponse.json(data || [])
 }
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest, props: Params) {
     .select('id, sequence')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.emails.create')
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -90,6 +91,6 @@ export async function PATCH(req: NextRequest, props: Params) {
     .eq('id', email_id)
     .eq('campaign_id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.emails.update')
   return NextResponse.json({ ok: true })
 }

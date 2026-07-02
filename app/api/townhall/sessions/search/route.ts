@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
     .order('created_at', { ascending: true })
     .limit(2000)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.sessions.search', { orgId })
 
   // Group by session, keep first hit's snippet
   const bySession = new Map<string, { hits: number; firstTurn: any }>()

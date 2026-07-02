@@ -2,6 +2,7 @@
 // Returns the current user's org features (including primaryIndustries)
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export async function GET(request: Request) {
   try {
@@ -37,7 +38,6 @@ export async function GET(request: Request) {
 
     return Response.json({ features: org.features || {} })
   } catch (error: any) {
-    console.error('GET /api/org/settings:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'org.settings.get')
   }
 }

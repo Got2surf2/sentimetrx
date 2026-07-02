@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +66,6 @@ export async function GET(_req: Request, props: Params) {
 
     return NextResponse.json({ locations: locationNames })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'datasets.userLocationFilter')
   }
 }

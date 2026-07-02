@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { syncReviewSource } from '@/lib/reviewSync'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +47,6 @@ export async function POST(_req: Request, props: Params) {
 
     return NextResponse.json(result)
   } catch (err: any) {
-    console.error({ at: 'review-sources/sync', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Sync failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.sync')
   }
 }

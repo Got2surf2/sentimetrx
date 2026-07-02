@@ -4,6 +4,7 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (status) query = query.eq('status', status)
 
   const { data, error, count } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.respondents.list', { orgId: campaign.org_id })
 
   return NextResponse.json({ respondents: data || [], total: count || 0 })
 }
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest, props: Params) {
       .insert(newRows)
       .select('id')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'campaigns.respondents.upload', { orgId: campaign.org_id })
     insertedCount = inserted?.length || newRows.length
   }
 
@@ -196,7 +197,7 @@ export async function DELETE(req: NextRequest, props: Params) {
     .in('status', ['pending'])
     .select('id')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.respondents.delete', { orgId: campaign.org_id })
 
   return NextResponse.json({ deleted: deleted?.length || 0 })
 }

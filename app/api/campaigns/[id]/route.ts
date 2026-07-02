@@ -5,6 +5,7 @@
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,7 +60,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .update(updates)
     .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.update')
   return NextResponse.json({ ok: true })
 }
 
@@ -74,6 +75,6 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .delete()
     .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'campaigns.delete')
   return NextResponse.json({ ok: true })
 }

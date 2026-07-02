@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -130,7 +131,6 @@ export async function POST(req: Request, props: Params) {
       rows_inserted: rows.length,
     })
   } catch (err: any) {
-    console.error({ at: 'reddit/download-thread', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Download failed' }, { status: 500 })
+    return serverError(err, 'redditSources.downloadThread', { orgId })
   }
 }

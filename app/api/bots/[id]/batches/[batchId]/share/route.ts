@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,7 +43,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string; ba
   const { error } = await service.from('question_batches')
     .update({ share_token: token, share_enabled: enabled, share_expires_at: expires_at })
     .eq('id', batchId).eq('org_id', batch.org_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.batches.share', { orgId: batch.org_id })
 
   return NextResponse.json({ enabled, token: enabled ? token : null, path: enabled ? `/review/${token}` : null, expires_at })
 }

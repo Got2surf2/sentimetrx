@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { slugify } from '@/lib/entityFilter'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
 import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (!includeHidden) query = query.eq('hidden', false)
 
   const { data: rows, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.entities.list', { orgId: (bot as any).org_id })
 
   // Latest refresh metadata for the "Last extracted" header strip.
   const { data: lastRefresh } = await service
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest, props: Params) {
       .update({ canonical, aliases: merged, category, source: 'manual', provenance, hidden: false, last_seen_at: new Date().toISOString() })
       .eq('id', (existing as { id: string }).id).eq('scope_type', 'bot').eq('scope_id', params.id)
       .select(ENTITY_FIELDS).single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'bots.entities.create', { orgId: (bot as { org_id: string }).org_id })
     // Phase 3: a manually-curated entity rolls up into the brand collection.
     await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as { org_id: string }).org_id })
     return NextResponse.json({ entity: updated, merged: true })
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest, props: Params) {
     .from('entity_catalog')
     .insert({ scope_type: 'bot', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', provenance: { manual: { count: 1, refs: [] } }, hidden: false, sample_count: 0 })
     .select(ENTITY_FIELDS).single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.entities.create', { orgId: (bot as { org_id: string }).org_id })
   await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as { org_id: string }).org_id })
   return NextResponse.json({ entity: created })
 }

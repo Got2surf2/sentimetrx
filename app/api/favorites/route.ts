@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +50,7 @@ export async function GET() {
     .select('resource_type, resource_id, created_at')
     .eq('user_id', caller.user.id)
     .order('created_at', { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'favorites.list')
 
   // Bucket by type, then look up each resource in a single query per type.
   const byType: Record<ResourceType, string[]> = {
@@ -142,13 +143,13 @@ export async function POST(req: NextRequest) {
       .eq('user_id', caller.user.id)
       .eq('resource_type', resource_type)
       .eq('resource_id', resource_id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'favorites.remove')
     return NextResponse.json({ favorited: false })
   } else {
     const { error } = await service
       .from('user_favorites')
       .insert({ user_id: caller.user.id, resource_type, resource_id })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'favorites.add')
     return NextResponse.json({ favorited: true })
   }
 }

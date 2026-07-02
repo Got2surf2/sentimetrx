@@ -18,6 +18,7 @@
 // text (for analytics), so its _start_sec metadata can lag a span edit — ok.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import type { QaPairPayload, ActionItemPayload } from '@/lib/recordings/types'
 
@@ -152,7 +153,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string; e
     .eq('org_id', org_id)
     .select('id, unit_type, payload, topic, start_sec, end_sec, source_file, confidence, flagged_for_review, flag_reason, sort_order, recording_id, org_id, created_at')
     .single()
-  if (updErr || !updated) return NextResponse.json({ error: updErr?.message ?? 'update failed' }, { status: 500 })
+  if (updErr || !updated) return serverError(updErr, 'recordings.extractions.edit', { orgId: org_id })
 
   return NextResponse.json({ extraction: updated })
 }

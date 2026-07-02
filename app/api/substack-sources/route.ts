@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildSubstackSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
       .select('id')
       .single()
 
-    if (dsErr || !dataset) return NextResponse.json({ error: dsErr?.message || 'Failed to create dataset' }, { status: 500 })
+    if (dsErr || !dataset) return serverError(dsErr, 'substackSources.create.dataset', { orgId })
 
     // Create dataset_state with Substack schema
     var schema = buildSubstackSchema()
@@ -71,7 +72,6 @@ export async function POST(req: Request) {
       status: 'created',
     }, { status: 201 })
   } catch (err: any) {
-    console.error({ at: 'substack-sources', msg: "create error", err: err })
-    return NextResponse.json({ error: err?.message || 'Failed to create substack source' }, { status: 500 })
+    return serverError(err, 'substackSources.create', { orgId })
   }
 }

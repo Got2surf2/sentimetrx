@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { analyzeRecordingWorkflow } from '@/workflows/recordings'
 import { sanitizeEntityMap } from '@/lib/recordings/entities'
@@ -97,7 +98,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .update(setupPatch)
       .eq('id', recording_id)
       .eq('org_id', org_id)
-    if (updErr) return NextResponse.json({ error: `setup update failed: ${updErr.message}` }, { status: 500 })
+    if (updErr) return serverError(updErr, 'recordings.analyze.setup', { orgId: org_id })
   }
 
   // Snapshot the config this analysis runs against (after the gate edits above),

@@ -14,6 +14,7 @@ import { getSourceLabel } from '@/lib/anaContext'
 import { loadAnaSample } from '@/lib/anaReportContext'
 import { pdfDoc } from '@/lib/pdf'
 import { htmlToPdfBuffer, brandedPdfChrome } from '@/lib/htmlToPdf'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -79,7 +80,7 @@ ${sample.dataContext}`
     })
     bodyHtml = (res.text || '').trim()
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Could not generate the report.' }, { status: 500 })
+    return serverError(e, 'datasets.adHocReport', { orgId })
   }
   if (!bodyHtml) return NextResponse.json({ error: 'The model returned an empty report.' }, { status: 502 })
 

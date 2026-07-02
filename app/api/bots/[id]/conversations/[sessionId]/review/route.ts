@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     bot_id: botId, org_id: bot.org_id, session_id: sessionId,
     status, reasons, reviewed_by: userId, reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }, { onConflict: 'bot_id,session_id' })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.conversations.review', { orgId: bot.org_id })
   return NextResponse.json({ ok: true, status })
 }

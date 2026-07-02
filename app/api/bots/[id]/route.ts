@@ -133,7 +133,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     // logged questions, reviews, change log, impressions, study cache) in one
     // transaction — sql/127. Repairs already-split agents too (idempotent).
     const { error: xferErr } = await service.rpc('transfer_agent_org', { p_agent_id: params.id, p_to_org: body.org_id })
-    if (xferErr) return NextResponse.json({ error: 'transfer failed: ' + xferErr.message }, { status: 500 })
+    if (xferErr) return serverError(xferErr, 'bots.transfer', { orgId: auth.orgId })
     const user = await getAuthUser(supabase)
     await recordOrgTransfer({
       service, resourceType: 'bot', resourceId: params.id,

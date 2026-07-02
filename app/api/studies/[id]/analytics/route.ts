@@ -1,5 +1,6 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest, props: Params) {
 
   const result = await query
 
-  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  if (result.error) return serverError(result.error, 'studies.analytics')
 
   const rows = result.data || []
 

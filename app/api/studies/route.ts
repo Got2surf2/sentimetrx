@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateStudyGuid } from '@/lib/guid'
 import { SLUG_REGEX } from '@/lib/constants'
 import type { StudyConfig } from '@/lib/types'
+import { serverError } from '@/lib/apiError'
 
 // GET /api/studies — list studies for the current user's client
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
     `)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.list')
   return NextResponse.json(data)
 }
 
@@ -82,6 +83,6 @@ export async function POST(req: NextRequest) {
     .select('id, guid, slug')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.create', { orgId: userData?.org_id })
   return NextResponse.json(data, { status: 201 })
 }

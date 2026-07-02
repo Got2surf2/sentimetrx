@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       .select('id')
       .single()
 
-    if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+    if (dsErr) return serverError(dsErr, 'redditSources.create.dataset', { orgId })
 
     // 2. Create dataset_state
     await service.from('dataset_state').insert({
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       .select('id')
       .single()
 
-    if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 })
+    if (srcErr) return serverError(srcErr, 'redditSources.create.source', { orgId })
 
     // 4. Insert all selected threads
     const threadRows = threads.map(function(t: any) {
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
       .from('reddit_source_threads')
       .insert(threadRows)
 
-    if (thrErr) return NextResponse.json({ error: thrErr.message }, { status: 500 })
+    if (thrErr) return serverError(thrErr, 'redditSources.create.threads', { orgId })
 
     return NextResponse.json({
       source_id:  source.id,
@@ -114,7 +115,6 @@ export async function POST(req: Request) {
       status:     'created',
     }, { status: 201 })
   } catch (err: any) {
-    console.error({ at: 'reddit-sources', msg: "create error", err: err })
-    return NextResponse.json({ error: err?.message || 'Failed to create reddit source' }, { status: 500 })
+    return serverError(err, 'redditSources.create')
   }
 }

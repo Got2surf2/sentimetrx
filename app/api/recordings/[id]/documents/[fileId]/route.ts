@@ -6,6 +6,7 @@
 // guard pairs (id, recording_id, org_id).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 
@@ -45,7 +46,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string;
     .delete()
     .eq('id', fileId)
     .eq('org_id', file.org_id as string)
-  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+  if (delErr) return serverError(delErr, 'recordings.documents.delete', { orgId: file.org_id as string })
 
   return NextResponse.json({ ok: true, deleted: fileId })
 }

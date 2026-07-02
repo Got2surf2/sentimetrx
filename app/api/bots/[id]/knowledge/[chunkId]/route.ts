@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,7 +61,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .update(updates)
     .eq('id', params.chunkId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.knowledge.chunk.update')
   return NextResponse.json({ success: true })
 }
 
@@ -81,6 +82,6 @@ export async function DELETE(req: NextRequest, props: Params) {
     .eq('id', params.chunkId)
     .eq('bot_id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.knowledge.chunk.delete')
   return NextResponse.json({ deleted: true })
 }

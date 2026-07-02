@@ -8,6 +8,7 @@
 // client throttles calls by transcript growth.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 
@@ -78,7 +79,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       usage: { org_id, resource_type: 'recording', resource_id: recording_id, event_type: 'recording_live_summary' },
     })
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'summary failed' }, { status: 502 })
+    return serverError(e, 'recordings.liveSummary', { orgId: org_id })
   }
 
   const parsed = parseJsonObject(resp.text)

@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchSubredditPosts } from '@/lib/reddit'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -55,6 +56,6 @@ export async function POST(req: Request) {
     }
     var msg = err?.message || 'Failed to load subreddit'
     if (msg.includes('non-JSON')) return NextResponse.json({ error: 'Reddit is temporarily unavailable. Please wait a moment and try again.' }, { status: 429 })
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return serverError(err, 'redditSources.search')
   }
 }

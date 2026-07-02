@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { tagComment } from '@/lib/socialTagging'
@@ -152,7 +153,7 @@ Output ONLY the JSON array, nothing else.`,
 
   // Insert comments and log moderation actions for each flagged one
   const { data: inserted, error } = await service.from('social_comments').insert(rows).select('id, comment_id, flags, is_hidden, is_deleted')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.demo.insert', { orgId: auth.orgId })
 
   // Create moderation log entries for auto-actioned comments
   const modLogs: Array<{ org_id: string; comment_id: string; action: string; reply_text: string | null; performed_by: string | null }> = []

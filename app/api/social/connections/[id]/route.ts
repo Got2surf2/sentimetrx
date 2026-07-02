@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,6 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     .eq('id', params.id)
     .eq('org_id', auth.orgId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.connections.delete', { orgId: auth.orgId })
   return NextResponse.json({ ok: true })
 }

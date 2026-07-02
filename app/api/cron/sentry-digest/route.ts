@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 import { fetchUnresolvedIssues, type SentryIssue } from '@/lib/sentry'
 import { getEmailProvider } from '@/lib/email/provider'
 
@@ -117,8 +118,7 @@ export async function GET(req: NextRequest) {
     error:            digest.ok ? null : (digest.reason || 'unknown'),
   })
   if (error) {
-    console.error({ at: 'cron/sentry-digest', msg: "insert error", err: error })
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+    return serverError(error, 'cron.sentryDigest.insert')
   }
 
   // Diff new vs still-unresolved by issue id.

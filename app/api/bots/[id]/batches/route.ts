@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest, props: Params) {
       .from('question_batches')
       .insert({ org_id: bot.org_id, bot_id: params.id, label, source_kind: 'curated', created_by: userId })
       .select('id').single()
-    if (error || !b) return NextResponse.json({ error: error?.message || 'Could not create batch' }, { status: 500 })
+    if (error || !b) return serverError(error, 'bots.batches.createEmpty', { orgId: bot.org_id })
     return NextResponse.json({ batchId: b.id, imported: 0 })
   }
 
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest, props: Params) {
     .from('question_batches')
     .insert({ org_id: bot.org_id, bot_id: params.id, label, source_kind: sourceKind, created_by: userId })
     .select('id').single()
-  if (batchErr || !batch) return NextResponse.json({ error: batchErr?.message || 'Could not create batch' }, { status: 500 })
+  if (batchErr || !batch) return serverError(batchErr, 'bots.batches.create', { orgId: bot.org_id })
 
   const inserts = rows.map((r, i) => ({
     org_id: bot.org_id,
@@ -182,7 +183,7 @@ export async function POST(req: NextRequest, props: Params) {
   }))
 
   const { error: insErr } = await service.from('logged_questions').insert(inserts)
-  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+  if (insErr) return serverError(insErr, 'bots.batches.insertQuestions', { orgId: bot.org_id })
 
   void logBotChange({
     botId: params.id, orgId: bot.org_id, actorId: userId, actorEmail: null,

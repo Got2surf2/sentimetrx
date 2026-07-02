@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ text: result.text })
   } catch (e: unknown) {
-    return NextResponse.json({ error: 'Failed to call AI: ' + (e instanceof Error ? e.message : String(e)) }, { status: 500 })
+    return serverError(e, 'datasets.insights')
   }
 }

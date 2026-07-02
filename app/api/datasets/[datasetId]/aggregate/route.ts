@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 type Params = { params: Promise<{ datasetId: string }> }
 
@@ -36,7 +37,7 @@ export async function POST(req: Request, props: Params) {
     var { data, error } = await service.rpc('crosstab_counts', {
       p_dataset_id: params.datasetId, p_row_field: rowField, p_col_field: colField, p_limit: limit || 50,
     })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.crosstab', { orgId: auth.orgId })
     // Reshape into grid
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
@@ -55,7 +56,7 @@ export async function POST(req: Request, props: Params) {
     var { data, error } = await service.rpc('group_numeric_stats', {
       p_dataset_id: params.datasetId, p_group_field: groupField, p_value_field: valueField,
     })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.groupStats', { orgId: auth.orgId })
     var groups: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number }> = {}
     ;(data || []).forEach(function(r: any) {
       groups[r.group_val] = { n: Number(r.n), mean: Number(r.avg_val), median: Number(r.median_val), min: Number(r.min_val), max: Number(r.max_val), stddev: Number(r.stddev_val) }
@@ -70,7 +71,7 @@ export async function POST(req: Request, props: Params) {
     var { data, error } = await service.rpc('date_series_stats', {
       p_dataset_id: params.datasetId, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day',
     })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.dateSeries', { orgId: auth.orgId })
     return NextResponse.json({
       series: (data || []).map(function(r: any) { return { date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
     })
@@ -83,7 +84,7 @@ export async function POST(req: Request, props: Params) {
     var { data, error } = await service.rpc('count_field_values', {
       p_dataset_id: params.datasetId, p_field_key: field, p_limit: limit || 200,
     })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.fieldCounts', { orgId: auth.orgId })
     var counts: Record<string, number> = {}
     ;(data || []).forEach(function(r: any) { counts[r.value] = Number(r.count) })
     return NextResponse.json({ counts: counts })
@@ -96,7 +97,7 @@ export async function POST(req: Request, props: Params) {
     var { data, error } = await service.rpc('numeric_field_stats', {
       p_dataset_id: params.datasetId, p_field_key: field,
     })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.numericStats', { orgId: auth.orgId })
     var r = (data || [])[0]
     if (!r) return NextResponse.json({ error: 'No data' }, { status: 404 })
     return NextResponse.json({ n: Number(r.n), min: Number(r.min_val), max: Number(r.max_val), avg: Number(r.avg_val), median: Number(r.median_val), stddev: Number(r.stddev_val) })
@@ -120,7 +121,7 @@ export async function POST(req: Request, props: Params) {
     var { axis } = body
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     var { data, error } = await service.rpc('taxonomy_sub_counts', { p_dataset_id: params.datasetId, p_axis: axis, p_row_ids: taxRowIds })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.taxCounts', { orgId: auth.orgId })
     var counts: Record<string, number> = {}
     ;(data || []).forEach(function(r: any) { counts[r.value] = Number(r.count) })
     return NextResponse.json({ counts: counts })
@@ -131,7 +132,7 @@ export async function POST(req: Request, props: Params) {
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!valueField) return NextResponse.json({ error: 'valueField required' }, { status: 400 })
     var { data, error } = await service.rpc('taxonomy_group_stats', { p_dataset_id: params.datasetId, p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.taxGroupStats', { orgId: auth.orgId })
     var taxGroups: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }> = {}
     ;(data || []).forEach(function(r: any) {
       taxGroups[r.group_val] = { n: Number(r.n), mean: Number(r.avg_val), median: Number(r.median_val), min: Number(r.min_val), max: Number(r.max_val), stddev: Number(r.stddev_val), q1: r.q1_val != null ? Number(r.q1_val) : null, q3: r.q3_val != null ? Number(r.q3_val) : null }
@@ -144,7 +145,7 @@ export async function POST(req: Request, props: Params) {
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!dateField) return NextResponse.json({ error: 'dateField required' }, { status: 400 })
     var { data, error } = await service.rpc('taxonomy_date_series', { p_dataset_id: params.datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.taxDateSeries', { orgId: auth.orgId })
     return NextResponse.json({
       series: (data || []).map(function(r: any) { return { sub: r.sub_val, date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
     })
@@ -157,7 +158,7 @@ export async function POST(req: Request, props: Params) {
     if (!TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
     var { data, error } = await service.rpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'datasets.aggregate.taxCrosstab', { orgId: auth.orgId })
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
     ;(data || []).forEach(function(r: any) {
@@ -178,7 +179,7 @@ export async function POST(req: Request, props: Params) {
     var { field: axField, axisIsRow: axIsRow } = body
     if (!axField) return NextResponse.json({ error: 'field required' }, { status: 400 })
     var axResp = await service.rpc('taxonomy_axis_crosstab', { p_dataset_id: params.datasetId, p_field: axField, p_row_ids: taxRowIds })
-    if (axResp.error) return NextResponse.json({ error: axResp.error.message }, { status: 500 })
+    if (axResp.error) return serverError(axResp.error, 'datasets.aggregate.taxAxisCrosstab', { orgId: auth.orgId })
     var axGrid: Record<string, Record<string, number>> = {}
     var axColSet = new Set<string>()
     ;(axResp.data || []).forEach(function(r: any) {

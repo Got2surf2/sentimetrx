@@ -3,6 +3,7 @@
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { getEmailProvider, interpolateTemplate } from '@/lib/email/provider'
 import type { EmailProviderType } from '@/lib/types'
 
@@ -62,6 +63,6 @@ export async function POST(req: NextRequest, props: Params) {
     await provider.send({ to: user.email!, subject, html })
     return NextResponse.json({ ok: true, sent_to: user.email })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to send test email' }, { status: 500 })
+    return serverError(err, 'campaigns.test_send', { orgId: campaign.org_id })
   }
 }

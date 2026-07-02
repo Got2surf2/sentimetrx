@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 // POST /api/townhall/themes/:id/approve (or dismiss, pause, resume, close)
 // Action is passed in the body: { action: 'approve' | 'dismiss' | 'pause' | 'resume' | 'close', response_target?, question? }
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .eq('org_id', (topic as any).org_id)
       .select('*')
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'townhall.themes.action', { orgId: (topic as any).org_id })
     return NextResponse.json(data)
   }
 
@@ -105,6 +106,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .select('*')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.themes.action', { orgId: themeOrg })
   return NextResponse.json(data)
 }

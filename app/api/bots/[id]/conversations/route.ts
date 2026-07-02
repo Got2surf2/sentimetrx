@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { serverError } from '@/lib/apiError'
 import { autoFlagReasons, resolveReviewStatus, duplicateFingerprintSet, type TurnLike } from '@/lib/conversationReview'
 
 export const dynamic = 'force-dynamic'
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest, props: Params) {
       .eq('conversations.bot_id', params.id)
       .order('created_at', { ascending: false })
       .limit(1000)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'bots.conversations.list', { orgId: bot.org_id })
     turns = (data || []).map((r: any) => ({
       session_id: r.conversations?.session_id,
       turn_number: r.turn_number,
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest, props: Params) {
       .eq('bot_id', params.id)
       .order('created_at', { ascending: false })
       .limit(1000)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'bots.conversations.list', { orgId: bot.org_id })
     turns = data || []
   }
 

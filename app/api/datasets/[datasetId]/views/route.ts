@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { gateDataset } from './gate'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export async function GET(_req: Request, props: Params) {
     .eq('dataset_id', params.datasetId)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.views.list')
   return NextResponse.json({ views: data || [] })
 }
 
@@ -67,6 +68,6 @@ export async function POST(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
   const { data, error } = await service.from('saved_views').insert(row).select('*').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.views.create', { orgId: gate.datasetOrgId })
   return NextResponse.json(data, { status: 201 })
 }

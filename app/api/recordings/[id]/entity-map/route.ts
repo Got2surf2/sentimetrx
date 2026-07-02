@@ -11,6 +11,7 @@
 // caller's org for non-admins (404 cross-org).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -72,7 +73,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .update({ entity_map })
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.entityMap', { orgId: rec.org_id })
 
   return NextResponse.json({ ok: true, count: entities.length })
 }

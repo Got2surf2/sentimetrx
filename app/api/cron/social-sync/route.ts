@@ -10,6 +10,7 @@ import { moderateTexts } from '@/lib/moderation'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -120,8 +121,7 @@ export async function GET(req: NextRequest) {
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
-    console.error({ at: 'social-sync', msg: "query error", err: error })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'cron.socialSync.connections')
   }
 
   if (!connections?.length) {

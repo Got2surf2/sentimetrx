@@ -3,6 +3,7 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -53,6 +54,6 @@ export async function POST(_req: NextRequest, props: Params) {
     .select('id')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.sessions.duplicate', { orgId: source.org_id })
   return NextResponse.json(data, { status: 201 })
 }

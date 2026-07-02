@@ -19,6 +19,7 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { getOrgAiKeyStatus, invalidateOrgAiKey } from '@/lib/aiKey'
 import { encryptSecret } from '@/lib/secretbox'
 import { recordAdminAction } from '@/lib/orgTransfer'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,7 +77,7 @@ export async function PUT(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
   const { error } = await service.from('organizations').update(updates).eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.orgs.aiKey.put', { orgId: params.id })
 
   // Audit: an admin changed a customer org's AI-key config (credential-sensitive).
   await recordAdminAction({
@@ -104,7 +105,7 @@ export async function DELETE(_req: Request, props: Params) {
     ai_api_key_set_at:  null,
     ai_api_key_set_by:  null,
   }).eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.orgs.aiKey.delete', { orgId: params.id })
   await recordAdminAction({
     service, actionType: 'org.ai_key_delete', resourceType: 'org', resourceId: params.id,
     targetOrgId: params.id, initiatedBy: user.id, initiatedByEmail: user.email || null,

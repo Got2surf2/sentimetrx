@@ -22,6 +22,7 @@ import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
 import { computeInsightAlerts, dimensionsToSignals, themesToSignals, type AlertKind } from '@/lib/insightAlerts'
 import { buildQuantSignals } from '@/lib/quantSignals'
 import { buildThemeSignals } from '@/lib/themeSignals'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -1427,7 +1428,6 @@ export async function POST(req: Request, props: Params) {
       },
     })
   } catch (buildErr: any) {
-    console.error({ at: 'export/pptx', msg: "Build error", err: buildErr })
-    return NextResponse.json({ error: 'PPTX build failed: ' + (buildErr?.message || String(buildErr)) }, { status: 500 })
+    return serverError(buildErr, 'datasets.exportPptx', { orgId: orgId ?? undefined })
   }
 }

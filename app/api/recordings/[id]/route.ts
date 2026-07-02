@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
@@ -244,7 +245,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   // 3) The recording row — cascades recording_files / _transcripts / _extractions.
   const { error: delErr } = await service.from('recordings').delete().eq('id', recording_id).eq('org_id', org_id)
-  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+  if (delErr) return serverError(delErr, 'recordings.delete', { orgId: org_id })
 
   return NextResponse.json({ ok: true, deleted: recording_id })
 }
@@ -281,7 +282,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
 
     const result = await transferRecordingOrg(service, recording_id, rec.org_id as string, toOrg)
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 })
+    if (!result.ok) return serverError(result.error, 'recordings.transfer', { orgId: rec.org_id as string })
 
     await recordOrgTransfer({
       service, resourceType: 'recording', resourceId: recording_id,
@@ -403,7 +404,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .update(patch)
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.update', { orgId: rec.org_id as string })
 
   // Keep the derived dataset's name in sync with the recording so they don't
   // drift — the dataset name is what shows in /analyze + collection membership.

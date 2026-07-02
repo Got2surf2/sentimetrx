@@ -20,6 +20,7 @@
 // Same-tenant guard: the recording is loaded with id paired to org_id.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 
@@ -178,7 +179,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const { error: upErr } = await service.storage
       .from(BUCKET)
       .upload(storage_path, buffer, { contentType: mime_type, upsert: true })
-    if (upErr) return NextResponse.json({ error: `upload failed: ${upErr.message}` }, { status: 500 })
+    if (upErr) return serverError(upErr, 'recordings.documents.upload', { orgId: recOrg })
   } else {
     // json mode — confirm the browser's direct upload actually landed.
     const dir = storage_path.slice(0, storage_path.lastIndexOf('/'))
@@ -218,7 +219,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .single()
   if (insErr || !inserted) {
     if (buffer) await service.storage.from(BUCKET).remove([storage_path]).catch(() => {})
-    return NextResponse.json({ error: `recording_files insert failed: ${insErr?.message ?? 'unknown'}` }, { status: 500 })
+    return serverError(insErr, 'recordings.documents.insert', { orgId: recOrg })
   }
 
   // A freshly-attached deck means the next analysis should vision-read it.

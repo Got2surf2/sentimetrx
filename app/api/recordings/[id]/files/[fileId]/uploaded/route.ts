@@ -10,6 +10,7 @@
 // pipeline would fail downstream in extract.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -58,7 +59,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string; f
     limit: 100,
   })
   if (lErr) {
-    return NextResponse.json({ error: `storage list failed: ${lErr.message}` }, { status: 500 })
+    return serverError(lErr, 'recordings.files.uploaded.list', { orgId: org_id })
   }
   const match = (listing ?? []).find(o => o.name === basename)
   if (!match) {
@@ -74,7 +75,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string; f
     .eq('id', fileId)
     .eq('recording_id', recording_id)
     .eq('org_id', org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.files.uploaded', { orgId: org_id })
 
   return NextResponse.json({ ok: true, upload_status: 'uploaded' })
 }

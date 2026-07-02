@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 // POST /api/townhall/sessions/[id]/round — round-based pacing: advance the room
 // to round N. Completes any still-active earlier-round guide themes (so the
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .eq('source', 'guide')
     .eq('round_number', round)
     .select('id')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.sessions.round', { orgId: (session as any).org_id })
 
   return NextResponse.json({ success: true, round, activated: (activated || []).length })
 }

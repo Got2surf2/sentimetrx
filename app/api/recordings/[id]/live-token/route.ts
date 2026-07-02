@@ -8,6 +8,7 @@
 // CSRF + same-origin are enforced by proxy.ts.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { grantDeepgramToken } from '@/lib/asr/deepgram'
 
@@ -57,7 +58,6 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     const grant = await grantDeepgramToken(60)
     return NextResponse.json({ ok: true, ...grant })
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'failed to mint live token'
-    return NextResponse.json({ error: message }, { status: 502 })
+    return serverError(e, 'recordings.liveToken', { orgId: org_id })
   }
 }

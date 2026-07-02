@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,7 @@ export async function PUT(req: Request, props: Params) {
     })
     .eq('dataset_id', params.datasetId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.state.put', { orgId })
   return NextResponse.json({ ok: true })
 }
 
@@ -108,6 +109,6 @@ export async function PATCH(req: Request, props: Params) {
     .update(patch)
     .eq('dataset_id', params.datasetId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.state.patch', { orgId })
   return NextResponse.json({ ok: true })
 }

@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { buildStudySchema } from '@/lib/datasetUtils'
 import { type Industry } from '@/lib/industryDefaults'
 import { INDUSTRY_THEMES } from '@/lib/industryThemes'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,7 +155,7 @@ export async function POST(_req: Request, props: Params) {
     .update(themeUpdate)
     .eq('dataset_id', params.datasetId)
 
-  if (stateErr) return NextResponse.json({ error: stateErr.message }, { status: 500 })
+  if (stateErr) return serverError(stateErr, 'datasets.autoSetup', { orgId: userOrgId ?? undefined })
 
   return NextResponse.json({ ok: true, needsReview: false, fieldCount: schema.fields.length })
 }

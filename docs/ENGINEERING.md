@@ -194,12 +194,11 @@ its corresponding entry.
 
 ## 4. Logging & observability
 
-- **Structured payloads, even without a logger.** No `lib/log.ts`
-  module exists today (SECURITY.md Open `<TBD>` item 12). The
-  *target* state is that prod handlers call `console.warn` /
-  `console.error` with a **single object argument** — never an
-  interpolated string — so the Vercel log viewer can parse and
-  grep on fields:
+- **Structured payloads.** `lib/log.ts` is the logger (landed
+  2026-07-02 — see below). Where a raw `console.warn` /
+  `console.error` is still justified, use a **single object
+  argument** — never an interpolated string — so the Vercel log
+  viewer can parse and grep on fields:
 
   ```ts
   console.warn({
@@ -209,11 +208,11 @@ its corresponding entry.
   });
   ```
 
-  Today's reality: nearly every prod handler still uses the
-  `console.error('[trim] error:', err)` interpolated-string form
-  (>95 occurrences in `app/api/**` at last audit). Migrating those
-  is Open `<TBD>` item 20. `console.log` is OK in tests and
-  scripts, never in prod handlers.
+  Catch-sites and Supabase-error branches in `app/api/**` now route
+  through `serverError`/`logError` (2026-07-02 sweep); remaining
+  interpolated-string `console.error`s are non-response diagnostics —
+  migrate opportunistically (Open `<TBD>` item 20). `console.log` is
+  OK in tests and scripts, never in prod handlers.
 - **Log levels:**
   - `error` — caught exception, request 5xx, integration timeout
   - `warn` — recoverable degradation, retry succeeded
@@ -241,10 +240,15 @@ its corresponding entry.
   `return serverError(err, 'where.tag', {extra})` at every
   Supabase-error branch and catch-site instead: it `captureException`s
   the real error (with a `where` tag) + `console.error`s it, and
-  returns a generic `{ error: 'Internal server error' }`. Adopted in
-  the `bots/*` + `ana/render-deck` routes; **~90 other routes still
-  return raw `error.message`** (grep `error\.message.*status: 500`) —
-  migrate opportunistically when touching a route.
+  returns a generic `{ error: 'Internal server error' }`. **Adopted
+  across all of `app/api/**` (2026-07-02 sweep, ~250 conversions)** —
+  no route ships a raw caught-exception/driver message in a 5xx body
+  anymore. Known intentional exceptions: BYO-API-key routes that
+  forward upstream Anthropic auth/quota errors (insights,
+  expand-keywords, merge-themes, mine-themes), the SSRF-guard copy in
+  `bots/fetch-url`, cron diagnostic bodies (`org-snapshot`), and the
+  admin erasure-incomplete table list. New routes must use
+  `serverError` from day one.
 - **`lib/log.ts` — structured logger (2026-07-02, Open `<TBD>` item 12).**
   `logError(where, err, {orgId, ...})` emits one structured console line
   AND captures to Sentry tagged with `where` / `request_id` / `org_id`,
@@ -255,10 +259,12 @@ its corresponding entry.
   async handler is transparent), so every `serverError` call site gets
   the request/org tags for free. Use `logError` at the `if (error)`
   branches that currently swallow a Supabase error and return a
-  plausible-but-wrong 200 (agent-card counts, study-stats refresh,
-  dataset-teardown deletes are wired; ~500 `{data}`-only reads across
-  the codebase still discard `error` — capture at least the aggregate/
-  stats reads when you touch them).
+  plausible-but-wrong 200. **All of `lib/` is captured (2026-07-02
+  sweep)** — every `{data}`-only Supabase read in `lib/**` now
+  destructures `error` and fire-and-forgets `logError`, with zero
+  control-flow change. Route-level `{data}`-only reads in `app/api/**`
+  (~600) remain opportunistic — capture when touching a route; new
+  code must not discard `error` silently.
 - **Request IDs (DONE, corrects an earlier stale note):** `proxy.ts`
   stamps `x-request-id` on **every** inbound request (generating one if
   the client didn't send it) and echoes it on the response;

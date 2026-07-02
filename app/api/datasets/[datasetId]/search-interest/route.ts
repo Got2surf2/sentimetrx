@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { getSearchVolumes, classifySearchInterest } from '@/lib/dataforseo'
 import type { SearchInterestTier, SearchTrend } from '@/lib/themeUtils'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,6 @@ export async function POST(request: Request, props: Props) {
     }
     return NextResponse.json({ interests, trends })
   } catch (err: any) {
-    console.error({ at: 'search-interest', msg: "DataForSEO error", err: err?.message })
-    return NextResponse.json({ error: 'Failed to fetch search volume', detail: err?.message }, { status: 502 })
+    return serverError(err, 'datasets.searchInterest')
   }
 }

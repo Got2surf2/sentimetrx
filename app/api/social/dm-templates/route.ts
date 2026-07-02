@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 // All queries use service role client — social tables have no RLS user policies
 
@@ -30,7 +31,7 @@ export async function GET() {
     .eq('rule_type', 'dm_template')
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.dmTemplates.list', { orgId: auth.orgId })
   return NextResponse.json({ templates: data || [] })
 }
 
@@ -54,6 +55,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.dmTemplates.create', { orgId: auth.orgId })
   return NextResponse.json(data, { status: 201 })
 }

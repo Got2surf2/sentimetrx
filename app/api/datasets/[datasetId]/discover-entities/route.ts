@@ -9,6 +9,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -57,6 +58,6 @@ export async function POST(req: Request, props: Params) {
 
     return NextResponse.json(result)
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Discovery failed' }, { status: 500 })
+    return serverError(err, 'datasets.discoverEntities', { orgId })
   }
 }

@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -69,6 +70,6 @@ export async function PATCH(req: NextRequest, props: Params) {
     .select('id, name, plan, is_admin_org, limits')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.clients.update')
   return NextResponse.json(data)
 }

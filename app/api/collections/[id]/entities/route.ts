@@ -18,6 +18,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { slugify } from '@/lib/entityFilter'
 import { type Provenance } from '@/lib/correction/provenance'
+import { serverError } from '@/lib/apiError'
 
 const ENTITY_FIELDS = 'id, canonical, slug, category, aliases, sample_count, source, hidden, provenance, first_seen_at, last_seen_at'
 
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest, props: Params) {
     .order('sample_count', { ascending: false })
   if (!includeHidden) query = query.eq('hidden', false)
   const { data: entities, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'collections.entities.list', { orgId: gate.col.org_id })
 
   const { count: hiddenCount } = await service
     .from('entity_catalog')
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest, props: Params) {
       .update({ canonical, aliases: merged, category, source: 'manual', provenance, hidden: false, last_seen_at: new Date().toISOString() })
       .eq('id', (existing as { id: string }).id).eq('scope_type', 'collection').eq('scope_id', params.id)
       .select(ENTITY_FIELDS).single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'collections.entities.merge', { orgId: gate.col.org_id })
     return NextResponse.json({ entity: updated, merged: true })
   }
 
@@ -107,6 +108,6 @@ export async function POST(req: NextRequest, props: Params) {
     .from('entity_catalog')
     .insert({ scope_type: 'collection', scope_id: params.id, canonical, slug, category, aliases, source: 'manual', provenance: { manual: { count: 1, refs: [] } }, hidden: false, sample_count: 0 })
     .select(ENTITY_FIELDS).single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'collections.entities.create', { orgId: gate.col.org_id })
   return NextResponse.json({ entity: created })
 }

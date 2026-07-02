@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchDockets, listComments } from '@/lib/regulations'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -47,7 +48,6 @@ export async function POST(req: NextRequest) {
       totalElements: result.totalElements,
     })
   } catch (err: any) {
-    console.error({ at: 'regulations-sources/search', err: err })
-    return NextResponse.json({ error: err.message || 'Search failed' }, { status: 500 })
+    return serverError(err, 'regulationsSources.search')
   }
 }

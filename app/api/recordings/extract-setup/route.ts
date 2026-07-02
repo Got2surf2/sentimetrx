@@ -20,6 +20,7 @@
 // to PDF first (future).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ proposal, source: source || fileName })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'extraction failed' }, { status: 500 })
+    return serverError(err, 'recordings.extractSetup', { orgId: ctx.orgId })
   } finally {
     // Best-effort temp cleanup — never persist the setup-extract workspace.
     if (cleanup.length) await service.storage.from(BUCKET).remove(cleanup).catch(() => {})

@@ -5,6 +5,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -36,7 +37,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .from('users')
     .update({ org_id, features: {} })
     .eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.users.transfer', { orgId: org_id })
 
   return NextResponse.json({ success: true, user_id: params.id, new_org_id: org_id, new_org_name: targetOrg.name })
 }

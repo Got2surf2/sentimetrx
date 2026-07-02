@@ -7,6 +7,7 @@
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,6 @@ export async function GET() {
     .eq('org_id', orgId)
     .order('full_name', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'org.users.list', { orgId })
   return NextResponse.json(data)
 }

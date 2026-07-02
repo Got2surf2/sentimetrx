@@ -1,5 +1,6 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export async function GET() {
   const supabase = await createClient()
@@ -20,6 +21,6 @@ export async function GET() {
     .select('id, name, slug, plan')
     .order('name', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'orgs.list')
   return NextResponse.json(data)
 }

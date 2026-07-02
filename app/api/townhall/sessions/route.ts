@@ -4,6 +4,7 @@ import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { listTownHallsAsLegacy } from '@/lib/townHallAdapter'
+import { serverError } from '@/lib/apiError'
 
 // GET /api/townhall/sessions — list sessions.
 // Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
 
   const { data, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.sessions.list', { orgId: scopeOrgId ?? undefined })
 
   // Get participant + response counts per session. Aggregated in Postgres so it
   // can't silently undercount: the previous approach fetched every turn via
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
     .select('id, slug')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.sessions.create', { orgId: userData?.org_id })
 
   const { ip, userAgent } = eventContextFromRequest(req)
   await recordUserEvent({

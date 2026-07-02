@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { logError } from '@/lib/log'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,7 +110,7 @@ export async function PATCH(req: Request, props: Params) {
       await service.rpc('archive_dataset', { p_dataset_id: params.datasetId, p_user_id: user.id })
       return NextResponse.json({ ok: true })
     } catch (archErr: any) {
-      return NextResponse.json({ error: 'Archive failed: ' + (archErr.message || archErr) }, { status: 500 })
+      return serverError(archErr, 'datasets.archive', { orgId })
     }
   }
   if (updates.status === 'active') {
@@ -120,7 +121,7 @@ export async function PATCH(req: Request, props: Params) {
         await service.rpc('restore_dataset', { p_dataset_id: params.datasetId })
         return NextResponse.json({ ok: true })
       } catch (restErr: any) {
-        return NextResponse.json({ error: 'Restore failed: ' + (restErr.message || restErr) }, { status: 500 })
+        return serverError(restErr, 'datasets.restore', { orgId })
       }
     }
   }
@@ -130,7 +131,7 @@ export async function PATCH(req: Request, props: Params) {
     .update(updates)
     .eq('id', params.datasetId)
 
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'datasets.update', { orgId })
 
   if (isTransfer) {
     await recordOrgTransfer({
@@ -207,7 +208,7 @@ export async function DELETE(_req: Request, props: Params) {
     .delete()
     .eq('id', params.datasetId)
 
-  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+  if (delErr) return serverError(delErr, 'datasets.delete', { orgId })
 
   // Auto-delete empty collections: if removing this member left a collection with 0 members, delete it
   if (memberships && memberships.length > 0) {

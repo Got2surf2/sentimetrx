@@ -11,6 +11,7 @@
 // projects in draft / awaiting_media accept an attach (media isn't yet present).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 
@@ -95,7 +96,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .insert(fileRows)
     .select('id, original_filename, storage_path, sort_order')
   if (fErr || !insertedFiles) {
-    return NextResponse.json({ error: `recording_files insert failed: ${fErr?.message ?? 'unknown'}` }, { status: 500 })
+    return serverError(fErr, 'recordings.files.attach', { orgId: org_id })
   }
 
   // Flip into the upload state + record the media byte total. If a deck was
@@ -110,7 +111,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     })
     .eq('id', recording_id)
     .eq('org_id', org_id)
-  if (uErr) return NextResponse.json({ error: `status update failed: ${uErr.message}` }, { status: 500 })
+  if (uErr) return serverError(uErr, 'recordings.files.status', { orgId: org_id })
 
   const tusEndpoint = `${requireSupabaseUrl()}/storage/v1/upload/resumable`
 

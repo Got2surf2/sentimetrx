@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { logBotChange } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     org_id: userOrgId,
     created_by: user.id,
   }).select('id, name, slug').single()
-  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+  if (insErr) return serverError(insErr, 'bots.import', { orgId: userOrgId })
 
   // Insert chunks (without embeddings — the bot edit page or a rescan run
   // can backfill them; trying to embed inline would block on OpenAI for

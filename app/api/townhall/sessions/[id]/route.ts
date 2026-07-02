@@ -6,6 +6,7 @@ import { bleepText } from '@/lib/contentGuard'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
 import { checkActivationReadiness } from '@/lib/townhallActivationGate'
+import { serverError } from '@/lib/apiError'
 
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
@@ -135,7 +136,7 @@ async function handlePhase3Patch(
       .eq('id', hallId)
       .select('id, status, started_at, ended_at')
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'townhall.session.restart', { orgId })
     return NextResponse.json({ ...data, status: 'setup' })  // legacy-shape status on the way out
   }
 
@@ -203,7 +204,7 @@ async function handlePhase3Patch(
     .eq('id', hallId)
     .select('id, status, started_at, ended_at, discussion_guide, cohort_config')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.session.update', { orgId })
 
   // ── seed-on-activate: copy discussion_guide topics into town_hall_topics
   // the first time we go live (skip if any seed topics already exist).
@@ -794,7 +795,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .eq('id', params.id)
       .select('id, status, started_at, ended_at')
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'townhall.session.restart', { orgId: gate.userOrgId ?? undefined })
     return NextResponse.json(data)
   }
 
@@ -831,7 +832,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     const check = await checkTransferTarget(svc, fromOrgId, toOrgId)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     const { error: txErr } = await db.from('townhall_sessions').update({ org_id: toOrgId }).eq('id', params.id)
-    if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
+    if (txErr) return serverError(txErr, 'townhall.session.transfer', { orgId: fromOrgId })
     await recordOrgTransfer({
       service: svc, resourceType: 'townhall_session', resourceId: params.id,
       resourceName, fromOrgId, toOrgId,
@@ -885,7 +886,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select('id, status, started_at, ended_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.session.update', { orgId: gate.userOrgId ?? undefined })
 
   // When starting a session, seed the discussion guide topics into townhall_themes (once)
   if (updates.status === 'active') {
@@ -1058,7 +1059,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
     const { error } = await db.from('town_halls').delete().eq('id', params.id).eq('org_id', orgId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'townhall.session.delete', { orgId })
     return NextResponse.json({ deleted: true })
   }
 
@@ -1068,6 +1069,6 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   await db.from('townhall_participant_responses').delete().eq('session_id', params.id)
   const { error } = await db.from('townhall_sessions').delete().eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'townhall.session.delete', { orgId: gate.userOrgId ?? undefined })
   return NextResponse.json({ deleted: true })
 }

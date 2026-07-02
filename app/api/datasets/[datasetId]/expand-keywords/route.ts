@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { serverError } from '@/lib/apiError'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -90,6 +91,6 @@ Return a flat JSON array: ["term1", "term2", ...]`
 
     return NextResponse.json({ keywords: deduped })
   } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 })
+    return serverError(e, 'datasets.expandKeywords')
   }
 }

@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
   query = query.limit(10000)
 
   const { data: comments, error: fetchErr } = await query
-  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+  if (fetchErr) return serverError(fetchErr, 'social.exportDataset.fetch', { orgId: auth.orgId })
 
   if (!comments?.length && isSync) {
     return NextResponse.json({ ok: true, synced: 0, total: existing.row_count, datasetId: existing.id, message: 'Already up to date' })
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single()
 
-    if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+    if (dsErr) return serverError(dsErr, 'social.exportDataset.createDataset', { orgId: auth.orgId })
     datasetId = dataset.id
     created = true
 

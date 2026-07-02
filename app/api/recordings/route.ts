@@ -13,6 +13,7 @@
 // /api/recordings/[id]/process (§ 4.2) once all files are done.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import type {
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
     .select('id')
     .single()
   if (rErr || !rec) {
-    return NextResponse.json({ error: `recordings insert failed: ${rErr?.message ?? 'unknown'}` }, { status: 500 })
+    return serverError(rErr, 'recordings.create', { orgId: org_id })
   }
 
   const recording_id = rec.id as string
@@ -162,7 +163,7 @@ export async function POST(req: Request) {
   if (fErr || !insertedFiles) {
     // Best-effort: roll back the recording row so the user isn't left with a phantom.
     await service.from('recordings').delete().eq('id', recording_id).eq('org_id', org_id)
-    return NextResponse.json({ error: `recording_files insert failed: ${fErr?.message ?? 'unknown'}` }, { status: 500 })
+    return serverError(fErr, 'recordings.create.files', { orgId: org_id })
   }
 
   // Supabase Storage TUS endpoint — same for all files. The client uses
@@ -316,7 +317,7 @@ export async function GET(req: Request) {
   if (statusFilter) q = q.eq('status', statusFilter)
 
   const { data, error, count } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'recordings.list', { orgId: ctx.orgId })
 
   return NextResponse.json({
     recordings: data ?? [],

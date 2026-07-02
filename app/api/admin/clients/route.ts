@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 // GET /api/admin/clients - list all organizations with user and study counts
 // Supports ?activeOnly=true to restrict to status='active' orgs (used by
@@ -100,6 +101,6 @@ export async function POST(req: NextRequest) {
     .select('id, name, slug')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.clients.create')
   return NextResponse.json(data, { status: 201 })
 }

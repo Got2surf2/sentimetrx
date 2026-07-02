@@ -13,6 +13,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -74,7 +75,7 @@ export async function POST(_req: Request, props: Params) {
       .single()
 
     if (createErr || !newDs) {
-      return NextResponse.json({ error: 'Failed to create dataset', detail: createErr?.message }, { status: 500 })
+      return serverError(createErr, 'bots.analyze.createDataset', { orgId: bot.org_id })
     }
 
     datasetId = newDs.id
@@ -125,7 +126,7 @@ export async function POST(_req: Request, props: Params) {
     if (error) turnsErr = error
     turns = data
   }
-  if (turnsErr) return NextResponse.json({ error: 'Failed to fetch turns', detail: turnsErr.message }, { status: 500 })
+  if (turnsErr) return serverError(turnsErr, 'bots.analyze.fetchTurns', { orgId: bot.org_id })
 
   if (!turns || turns.length === 0) {
     return NextResponse.json({ dataset_id: datasetId, synced: 0, total: existing?.row_count || 0, created })
@@ -253,7 +254,7 @@ export async function POST(_req: Request, props: Params) {
     return { dataset_id: datasetId, row_index: startIndex + i, data: r }
   })
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
-  if (flatErr) return NextResponse.json({ error: 'Failed to insert rows', detail: flatErr.message }, { status: 500 })
+  if (flatErr) return serverError(flatErr, 'bots.analyze.insertRows', { orgId: bot.org_id })
 
   const newTotal = (existing?.row_count || 0) + rows.length
 

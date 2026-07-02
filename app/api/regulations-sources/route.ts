@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildRegulationsSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
     description: JSON.stringify(downloadMeta),
     brand_tag: (brand_tag && brand_tag.trim()) || null,
   }).select('id').single()
-  if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+  if (dsErr) return serverError(dsErr, 'regulationsSources.create', { orgId: userData.org_id })
 
   // Create dataset_state with schema
   const schema = buildRegulationsSchema()

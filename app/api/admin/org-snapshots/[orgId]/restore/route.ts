@@ -21,6 +21,7 @@ import { downloadOrgSnapshot } from '@/lib/backupS3'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { recordAdminAction } from '@/lib/orgTransfer'
 import type { OrgSnapshot } from '@/lib/orgSnapshot'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest, props: Params) {
   try {
     snapshot = await downloadOrgSnapshot(key) as OrgSnapshot
   } catch (e: any) {
-    return NextResponse.json({ error: 'Snapshot download failed: ' + (e?.message || String(e)) }, { status: 500 })
+    return serverError(e, 'admin.orgSnapshots.restore.download', { orgId: params.orgId })
   }
 
   if (!snapshot?.meta || snapshot.meta.snapshot_version !== 1) {

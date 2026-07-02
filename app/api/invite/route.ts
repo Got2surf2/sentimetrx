@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { sendInviteEmail } from '@/lib/email/sendInvite'
+import { serverError } from '@/lib/apiError'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
     .select('id, token, email, role, org_id, expires_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'invite.create', { orgId: org_id })
 
   const sendResult = await sendInviteEmail(service, data, user.id)
 

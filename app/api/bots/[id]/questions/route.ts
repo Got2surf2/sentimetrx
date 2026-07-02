@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -34,7 +35,7 @@ export async function GET(_req: NextRequest, props: Params) {
     .eq('org_id', bot.org_id)
     .order('created_at', { ascending: false })
     .limit(1000)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.questions.list', { orgId: bot.org_id })
 
   // Attach the agent's actual reply to each question — the assistant turn that
   // immediately followed the logged user turn — so the reviewer sees what the

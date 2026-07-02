@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ export async function PUT(req: NextRequest, props: Params) {
       .delete()
       .eq('user_id', params.id)
       .eq('feature', feature)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'admin.users.features.delete')
     return NextResponse.json({ ok: true, feature, enabled: null, quota_per_month: null })
   }
 
@@ -59,7 +60,7 @@ export async function PUT(req: NextRequest, props: Params) {
       quota_per_month: quota,
     }, { onConflict: 'user_id,feature' })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.users.features.upsert')
   return NextResponse.json({ ok: true, feature, enabled: body.enabled, quota_per_month: quota })
 }
 

@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { draftAnswerFromKB } from '@/lib/agentDraft'
 import { materializeExternalExchange } from '@/lib/externalExchange'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -70,7 +71,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const { error: upErr } = await service.from('logged_questions')
       .update({ status: 'answered', answer_text: answer, suggested_kb_addition: answer, resolved_at: new Date().toISOString() })
       .eq('id', questionId).eq('batch_id', batch.id)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return serverError(upErr, 'review.accept', { orgId: batch.org_id })
 
     if (question.source === 'external' && question.session_id) {
       try {

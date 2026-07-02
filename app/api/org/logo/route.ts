@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     .from('org-logos')
     .upload(path, buffer, { contentType: file.type, upsert: true })
 
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 })
+  if (uploadError) return serverError(uploadError, 'org.logo.upload', { orgId: org_id })
 
   const { data: urlData } = service.storage.from('org-logos').getPublicUrl(path)
   const logo_url = urlData.publicUrl + '?t=' + Date.now()
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
     .update({ logo_url })
     .eq('id', org_id)
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (updateError) return serverError(updateError, 'org.logo.update', { orgId: org_id })
   return NextResponse.json({ logo_url })
 }
 
@@ -95,6 +96,6 @@ export async function DELETE(req: NextRequest) {
   await service.storage.from('org-logos').remove([`${org_id}/logo.png`, `${org_id}/logo.jpg`, `${org_id}/logo.webp`])
 
   const { error } = await service.from('organizations').update({ logo_url: null }).eq('id', org_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'org.logo.delete', { orgId: org_id })
   return NextResponse.json({ success: true })
 }

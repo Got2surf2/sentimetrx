@@ -3,6 +3,7 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest, props: Params) {
     .single()
 
   if (cloneError || !clone) {
-    return NextResponse.json({ error: cloneError?.message || 'Failed to clone' }, { status: 500 })
+    return serverError(cloneError, 'campaigns.clone', { orgId: original.org_id })
   }
 
   // Clone email templates

@@ -10,6 +10,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { recordAdminAction } from '@/lib/orgTransfer'
 import { deleteOrgScopedData, deleteOrgStorage, purgeOrgAuthUsers } from '@/lib/orgDelete'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,7 @@ export async function PATCH(req: Request, props: Params) {
     .update({ features: merged })
     .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.orgs.updateFeatures', { orgId: params.id })
   return NextResponse.json({ ok: true, features: merged })
 }
 
@@ -163,7 +164,7 @@ export async function DELETE(req: Request, props: Params) {
   // Finally the org row itself (cascades the few org_id-CASCADE tables, already
   // emptied by the sweep above).
   const { error } = await service.from('organizations').delete().eq('id', params.id)
-  if (error) return NextResponse.json({ error: 'Delete failed: ' + error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.orgs.delete', { orgId: params.id })
 
   return NextResponse.json({
     ok: true,

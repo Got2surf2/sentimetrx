@@ -9,6 +9,7 @@ import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxEx
 import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import { logError } from '@/lib/log'
 import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (isExport)  query = query.range(0, 49999)
 
   const { data, error, count } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.responses.list', { orgId: study.org_id })
 
   if (!isExport) {
     const [allRes, completeRes] = await Promise.all([
@@ -311,7 +312,7 @@ export async function DELETE(req: NextRequest, props: Params) {
     .eq('study_id', params.id)
     .in('id', ids)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.responses.delete', { orgId: study.org_id })
 
   // A failure here leaves study response stats stale with no signal — the exact
   // "my report is wrong" scenario. Best-effort but no longer silent.

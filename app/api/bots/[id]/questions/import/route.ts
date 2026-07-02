@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { logBotChange } from '@/lib/auditLog'
 
 export const dynamic = 'force-dynamic'
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest, props: Params) {
   if (rows.length === 0) return NextResponse.json({ error: 'No valid questions found — each row needs a question.' }, { status: 400 })
 
   const { data: inserted, error } = await service.from('logged_questions').insert(rows).select('id')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.questions.import', { orgId: bot.org_id })
 
   void logBotChange({
     botId: params.id, orgId: bot.org_id, actorId: userId, actorEmail: null,

@@ -23,6 +23,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
     }
     html = await res.text()
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: `fetch threw: ${err?.message}` }, { status: 502 })
+    return serverError(err, 'cron.templeEvents.fetch')
   }
 
   // Strip scripts/styles/tags, normalise whitespace, cap at 60k chars so we
@@ -95,11 +96,7 @@ export async function GET(req: NextRequest) {
     events = JSON.parse(text.slice(start, end + 1))
     if (!Array.isArray(events)) throw new Error('parsed JSON was not an array')
   } catch (err: any) {
-    return NextResponse.json({
-      ok: false,
-      error: `JSON parse failed: ${err?.message}`,
-      raw_response: result.text.slice(0, 500),
-    }, { status: 502 })
+    return serverError(err, 'cron.templeEvents.parse', { raw_response: result.text.slice(0, 500) })
   }
 
   if (events.length === 0) {
@@ -158,7 +155,7 @@ export async function GET(req: NextRequest) {
 
   const { error: insertErr } = await service.from('agent_knowledge_chunks').insert(rows)
   if (insertErr) {
-    return NextResponse.json({ ok: false, error: `chunk insert failed: ${insertErr.message}` }, { status: 500 })
+    return serverError(insertErr, 'cron.templeEvents.insert')
   }
 
   return NextResponse.json({

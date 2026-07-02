@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getEntitiesWithCounts, resolveEntityScope, slugify } from '@/lib/entityFilter'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -222,7 +223,7 @@ export async function POST(req: Request, props: Params) {
       .from('entity_catalog')
       .upsert(chunk, { onConflict: 'scope_type,scope_id,slug' })
     if (error) {
-      return NextResponse.json({ error: `entity_catalog upsert failed: ${error.message}` }, { status: 500 })
+      return serverError(error, 'datasets.entities.upsert', { orgId })
     }
   }
 

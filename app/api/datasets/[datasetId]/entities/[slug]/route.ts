@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { resolveEntityScope } from '@/lib/entityFilter'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,7 +89,7 @@ export async function PATCH(req: Request, props: Params) {
     .eq('slug', params.slug)
     .select('slug, canonical, category, aliases, hidden, source')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.entities.update')
   if (!data) return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
 
   return NextResponse.json({ entity: data })
@@ -121,7 +122,7 @@ export async function DELETE(req: Request, props: Params) {
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
     .eq('slug', params.slug)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.entities.delete')
 
   return NextResponse.json({ deleted: true })
 }

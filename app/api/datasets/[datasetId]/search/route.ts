@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
+import { serverError } from '@/lib/apiError'
 
 // Number of candidates to pull from full-text per target before AI re-ranking.
 // Larger pools give better recall but cost more tokens / latency.
@@ -146,7 +147,7 @@ export async function GET(req: NextRequest, props: Params) {
         .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
         .order('row_index', { ascending: true })
         .range(0, perTargetCap - 1)
-      if (fb.error) return NextResponse.json({ error: fb.error.message }, { status: 500 })
+      if (fb.error) return serverError(fb.error, 'datasets.search', { orgId })
       matched = (fb.data || []).map(function(r: any) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
     }
 

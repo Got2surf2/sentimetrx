@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 // GET /api/settings/team — list all users in the caller's org
 export async function GET(_req: NextRequest) {
@@ -16,7 +17,7 @@ export async function GET(_req: NextRequest) {
     .eq('org_id', actor.org_id)
     .order('created_at', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.team.list', { orgId: actor.org_id })
   return NextResponse.json({ members: members || [] })
 }
 
@@ -44,7 +45,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { error } = await supabase.from('users').update({ role }).eq('id', user_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.team.updateRole', { orgId: actor.org_id })
   return NextResponse.json({ success: true })
 }
 
@@ -70,6 +71,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { error } = await supabase.from('users').update({ org_id: null }).eq('id', user_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.team.remove', { orgId: actor.org_id })
   return NextResponse.json({ success: true })
 }

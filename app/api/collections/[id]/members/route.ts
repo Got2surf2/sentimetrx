@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,7 +49,7 @@ export async function POST(req: Request, props: Props) {
     .from('datasets')
     .select('id, name, row_count, source, org_id')
     .in('id', newIds)
-  if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+  if (dsErr) return serverError(dsErr, 'collections.members.fetchDatasets', { orgId })
   if (!newDatasets || newDatasets.length !== newIds.length) {
     return NextResponse.json({ error: 'One or more datasets not found' }, { status: 400 })
   }
@@ -82,7 +83,7 @@ export async function POST(req: Request, props: Props) {
     sort_order: nextSort + i,
   }))
   const { error: insErr } = await service.from('collection_members').insert(memberRows)
-  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+  if (insErr) return serverError(insErr, 'collections.members.add', { orgId })
 
   // Recompute over the FULL member set (existing + added).
   const allMemberIds = [...existingIds, ...toAdd]

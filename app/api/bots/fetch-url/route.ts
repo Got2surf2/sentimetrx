@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -59,6 +60,6 @@ export async function POST(req: NextRequest) {
     if (err instanceof SafeFetchError) {
       return NextResponse.json({ error: err.message }, { status: err.status })
     }
-    return NextResponse.json({ error: 'Failed to fetch URL: ' + (err.message || 'timeout') }, { status: 502 })
+    return serverError(err, 'bots.fetchUrl')
   }
 }

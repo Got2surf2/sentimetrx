@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -48,7 +49,7 @@ export async function POST(req: Request, props: Params) {
       .lt('data->>' + date_field, before_date)
 
     if (queryErr) {
-      return NextResponse.json({ error: 'Query failed: ' + queryErr.message }, { status: 500 })
+      return serverError(queryErr, 'datasets.trim.query', { orgId })
     }
 
     const deleteCount = rowsToDelete?.length || 0
@@ -109,7 +110,6 @@ export async function POST(req: Request, props: Params) {
       remaining: totalRemaining || (dataset.row_count - deleteCount),
     })
   } catch (err: any) {
-    console.error({ at: 'trim', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Trim failed' }, { status: 500 })
+    return serverError(err, 'datasets.trim')
   }
 }

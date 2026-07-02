@@ -7,6 +7,7 @@
 // client recording's versions.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
@@ -39,7 +40,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('recording_id', recording_id)
     .eq('org_id', rec.org_id)
     .order('version_number', { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'recordings.versions.list', { orgId: rec.org_id })
 
   // Attach editor display names.
   const ids = Array.from(new Set((rows ?? []).map(r => r.created_by).filter(Boolean))) as string[]
@@ -85,6 +86,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     })
     return NextResponse.json({ ok: true, version_number, created })
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'save failed' }, { status: 500 })
+    return serverError(e, 'recordings.versions.save', { orgId: rec.org_id })
   }
 }

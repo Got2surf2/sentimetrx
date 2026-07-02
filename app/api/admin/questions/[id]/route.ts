@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const { error } = await supabase.from('organizations')
     .update({ features: { ...features, custom_questions: updated } })
     .eq('id', orgId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.questions.update', { orgId })
 
   return NextResponse.json({ ok: true })
 }
@@ -81,7 +82,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   const { error } = await supabase.from('organizations')
     .update({ features: { ...features, custom_questions: updated } })
     .eq('id', orgId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.questions.delete', { orgId })
 
   return NextResponse.json({ ok: true })
 }

@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
@@ -37,11 +38,11 @@ export async function GET() {
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'reviewSources.list', { orgId })
 
     return NextResponse.json({ sources: sources || [] })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed to list sources' }, { status: 500 })
+    return serverError(err, 'reviewSources.list')
   }
 }
 
@@ -99,7 +100,7 @@ export async function POST(req: Request) {
       .select('id')
       .single()
 
-    if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+    if (dsErr) return serverError(dsErr, 'reviewSources.create.dataset', { orgId })
 
     // 2. Create dataset_state
     await service.from('dataset_state').insert({
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
       .select('id')
       .single()
 
-    if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 })
+    if (srcErr) return serverError(srcErr, 'reviewSources.create.source', { orgId })
 
     // 4. Insert all locations — dedupe by place_id first. Location discovery can
     // return the same physical place twice (e.g. a legacy + current Google listing
@@ -156,7 +157,7 @@ export async function POST(req: Request) {
       .from('review_source_locations')
       .insert(locationRows)
 
-    if (locErr) return NextResponse.json({ error: locErr.message }, { status: 500 })
+    if (locErr) return serverError(locErr, 'reviewSources.create.locations', { orgId })
 
     // 5. Mark source as active with immediate sync — cron or UI polling will pick it up
     await service.from('review_sources').update({
@@ -171,7 +172,6 @@ export async function POST(req: Request) {
       status:     'active',
     }, { status: 201 })
   } catch (err: any) {
-    console.error({ at: 'review-sources', msg: "create error", err: err })
-    return NextResponse.json({ error: err?.message || 'Failed to create review source' }, { status: 500 })
+    return serverError(err, 'reviewSources.create')
   }
 }

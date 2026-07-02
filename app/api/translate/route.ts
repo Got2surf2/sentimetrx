@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -267,7 +268,6 @@ Return ONLY valid JSON, no markdown, no explanation.`
     return NextResponse.json({ translation })
 
   } catch (err: any) {
-    console.error('Translation error:', err)
-    return NextResponse.json({ error: err.message || 'Translation failed' }, { status: 500 })
+    return serverError(err, 'translate', { orgId: studyOrgId })
   }
 }

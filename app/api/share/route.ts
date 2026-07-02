@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
       .insert({ type: 'conversation', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: meta })
       .select('token, expires_at')
       .single()
-    if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })
+    if (convErr) return serverError(convErr, 'share.create.conversation', { orgId: gate.targetOrgId })
     const baseUrl2 = baseUrl
     {
       const { ip, userAgent } = eventContextFromRequest(req)
@@ -146,7 +147,7 @@ export async function POST(req: NextRequest) {
       .insert({ type: 'agent_study', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: { html: String(body.html) } })
       .select('token, expires_at')
       .single()
-    if (asErr) return NextResponse.json({ error: asErr.message }, { status: 500 })
+    if (asErr) return serverError(asErr, 'share.create.agentStudy', { orgId: gate.targetOrgId })
     {
       const { ip, userAgent } = eventContextFromRequest(req)
       await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'agent_study', target_id }, ip, userAgent })
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
       .insert({ type: 'analytics', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: body.metadata })
       .select('token, expires_at')
       .single()
-    if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
+    if (aErr) return serverError(aErr, 'share.create.analytics', { orgId: gate.targetOrgId })
     const baseUrl2 = baseUrl
     {
       const { ip, userAgent } = eventContextFromRequest(req)
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
     .select('token, expires_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'share.create', { orgId: gate.targetOrgId })
 
   const shareUrl = `${baseUrl}/shared/${data.token}`
 
@@ -432,8 +433,7 @@ export async function DELETE(req: NextRequest) {
     .eq('token', token)
 
   if (error) {
-    console.error({ at: 'share', msg: "delete error", err: error.message })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'share.revoke')
   }
 
   return NextResponse.json({ deleted: true })

@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { gateDataset, NOT_AVAILABLE } from '../gate'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,7 @@ export async function PATCH(req: Request, props: Params) {
     .update(patch)
     .eq('id', params.viewId)
     .eq('org_id', gate.datasetOrgId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.views.update', { orgId: gate.datasetOrgId })
   return NextResponse.json({ ok: true })
 }
 
@@ -104,6 +105,6 @@ export async function DELETE(_req: Request, props: Params) {
     .delete()
     .eq('id', params.viewId)
     .eq('org_id', gate.datasetOrgId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.views.delete', { orgId: gate.datasetOrgId })
   return NextResponse.json({ ok: true })
 }

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.from('organizations')
     .update({ features: { ...features, custom_questions: updated } })
     .eq('id', orgId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'admin.questions.create', { orgId })
 
   return NextResponse.json({ id: newId, ...entry })
 }

@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { resolveEntityScope } from '@/lib/entityFilter'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ export async function POST(_req: Request, props: Params) {
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
     .eq('source', 'discovered')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'datasets.entities.resetDiscovered', { orgId })
 
   await service.from('entity_catalog_refresh').insert({
     scope_type:           scope.scopeType,

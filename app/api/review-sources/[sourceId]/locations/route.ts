@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,6 @@ export async function PATCH(req: Request, props: Params) {
 
     return NextResponse.json({ error: 'No action specified' }, { status: 400 })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.locations.update')
   }
 }

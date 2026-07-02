@@ -1,6 +1,7 @@
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { ModuleFeatures } from '@/lib/types'
+import { serverError } from '@/lib/apiError'
 
 const MODULE_KEYS: (keyof ModuleFeatures)[] = [
   'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'townhall', 'campaigns', 'bots',
@@ -58,6 +59,6 @@ export async function PATCH(req: NextRequest) {
     .update({ features: sanitized })
     .eq('id', user_id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'settings.team.features', { orgId: actor.org_id })
   return NextResponse.json({ success: true, features: sanitized })
 }

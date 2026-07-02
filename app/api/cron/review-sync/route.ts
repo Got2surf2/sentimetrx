@@ -9,6 +9,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { syncReviewSource } from '@/lib/reviewSync'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -35,8 +36,7 @@ export async function GET(req: NextRequest) {
     .limit(5) // Process up to 5 per run to stay within timeout
 
   if (error) {
-    console.error({ at: 'cron/review-sync', msg: "query error", err: error })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'cron.reviewSync.listDue')
   }
 
   if (!dueSources?.length) {

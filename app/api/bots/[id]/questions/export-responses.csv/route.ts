@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (answeredOnly) q = q.eq('status', 'answered')
 
   const { data: rows, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.questions.exportResponses', { orgId: bot.org_id })
 
   const originOf = (source: string | null, cls: string | null): string => {
     if (source === 'external') return 'Comment log'

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest, props: Params) {
       .select('id, turn_number, role, content, content_en, language, created_at, content_flags, source, sentiment, sentiment_score')
       .eq('conversation_id', (conv as { id: string }).id)
       .order('turn_number', { ascending: true })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError(error, 'bots.conversations.session.get')
     return NextResponse.json({ turns: turns || [] })
   }
 
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('session_id', params.sessionId)
     .order('turn_number', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.conversations.session.get')
 
   return NextResponse.json({ turns: turns || [] })
 }
@@ -88,7 +89,7 @@ export async function DELETE(req: NextRequest, props: Params) {
     .eq('bot_id', params.id)
     .eq('session_id', params.sessionId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.conversations.session.delete')
 
   await gate.service
     .from('agent_session_personas')

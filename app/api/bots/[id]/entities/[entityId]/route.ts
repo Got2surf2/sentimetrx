@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { serverError } from '@/lib/apiError'
 import { invalidateEntityCache } from '@/lib/entityMentionDetector'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
 import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'
@@ -80,7 +81,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .eq('scope_id', params.id)
     .select('id, canonical, slug, category, aliases, sample_count, source, hidden, first_seen_at, last_seen_at')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.entities.update', { orgId: (bot as any).org_id })
 
   // Visibility change or term change → catalog needs a fresh load on the next turn.
   invalidateEntityCache(params.id)
@@ -127,7 +128,7 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .eq('id', params.entityId)
     .eq('scope_type', 'bot')
     .eq('scope_id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'bots.entities.delete', { orgId: (bot as any).org_id })
 
   invalidateEntityCache(params.id)
   return NextResponse.json({ ok: true })

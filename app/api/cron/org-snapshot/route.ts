@@ -14,6 +14,7 @@ import { checkCronAuth } from '@/lib/cronAuth'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { dumpOrgSnapshot } from '@/lib/orgSnapshot'
 import { uploadOrgSnapshot } from '@/lib/backupS3'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes — enough for ~30 orgs at present scale
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: true })
 
   if (error) {
-    return NextResponse.json({ error: 'Failed to list orgs: ' + error.message }, { status: 500 })
+    return serverError(error, 'cron.orgSnapshot.listOrgs')
   }
 
   const started = Date.now()

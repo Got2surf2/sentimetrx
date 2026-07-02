@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -44,7 +45,7 @@ export async function GET(req: Request, props: Params) {
     .range(offset, offset + pageSize - 1)
 
   const { data: rows, error: rowsErr, count: totalRows } = await rowsQuery
-  if (rowsErr) return NextResponse.json({ error: rowsErr.message }, { status: 500 })
+  if (rowsErr) return serverError(rowsErr, 'admin.taxonomyPilot.rows', { orgId: dataset.org_id })
 
   const rowIds = (rows ?? []).map((r: any) => r.id)
   let taxonomy: any[] = []
@@ -55,7 +56,7 @@ export async function GET(req: Request, props: Params) {
       .eq('dataset_id', params.datasetId)
       .eq('org_id', dataset.org_id)
       .in('row_id', rowIds)
-    if (taxErr) return NextResponse.json({ error: taxErr.message }, { status: 500 })
+    if (taxErr) return serverError(taxErr, 'admin.taxonomyPilot.taxonomy', { orgId: dataset.org_id })
     taxonomy = tax ?? []
   }
   const taxByRow = new Map<number, any>()

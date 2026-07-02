@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { mergeProvenance, type Provenance } from '@/lib/correction/provenance'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +72,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .eq('id', params.entityId).eq('scope_type', 'collection').eq('scope_id', params.id)
     .select('id, canonical, slug, category, aliases, sample_count, source, hidden, provenance, first_seen_at, last_seen_at')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'collections.entities.update', { orgId: gate.col.org_id })
 
   return NextResponse.json({ entity: updated })
 }
@@ -102,6 +103,6 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .from('entity_catalog')
     .delete()
     .eq('id', params.entityId).eq('scope_type', 'collection').eq('scope_id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'collections.entities.delete', { orgId: gate.col.org_id })
   return NextResponse.json({ ok: true })
 }

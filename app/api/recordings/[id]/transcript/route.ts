@@ -16,6 +16,7 @@
 // admin org) for GET. Service-role reads pair id with org_id (404 cross-org).
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import type { TranscriptSegment } from '@/lib/recordings/types'
 
@@ -151,7 +152,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .update({ segments, word_count })
     .eq('id', tr.id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.transcript.edit', { orgId: rec.org_id })
 
   return NextResponse.json({ ok: true, segments, word_count })
 }

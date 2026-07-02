@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 import { searchLocations, searchTripadvisorLocations } from '@/lib/dataforseo'
 import { scoreBrandMatch } from '@/lib/brandMatch'
 
@@ -54,7 +55,6 @@ export async function POST(req: Request) {
       locations,
     })
   } catch (err: any) {
-    console.error({ at: 'review-sources/search', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Search failed' }, { status: 500 })
+    return serverError(err, 'reviewSources.search')
   }
 }

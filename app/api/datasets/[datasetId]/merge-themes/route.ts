@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -113,7 +114,6 @@ export async function POST(request: Request, props: Props) {
 
     return NextResponse.json(parsed)
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Unknown error'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return serverError(e, 'datasets.mergeThemes', { orgId: (dataset as any).org_id })
   }
 }

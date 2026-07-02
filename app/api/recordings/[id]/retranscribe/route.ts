@@ -10,6 +10,7 @@
 // (complete / transcribed / failed) — not mid-pipeline.
 
 import { NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { start } from 'workflow/api'
 import { retranscribeRecordingWorkflow } from '@/workflows/recordings'
@@ -67,7 +68,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .update({ asr_strategy: strategy, status: 'transcribing', error_message: null })
     .eq('id', recording_id)
     .eq('org_id', rec.org_id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  if (updErr) return serverError(updErr, 'recordings.retranscribe', { orgId: rec.org_id })
 
   const run = await start(retranscribeRecordingWorkflow, [recording_id, rec.org_id])
   return NextResponse.json({ ok: true, status: 'transcribing', strategy, run_id: run.runId })

@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { serverError } from '@/lib/apiError'
 
 interface Ctx { params: Promise<{ id: string }> }
 
@@ -40,7 +41,7 @@ export async function DELETE(_req: NextRequest, props: Ctx) {
   }
 
   const { error } = await service.from('invites').delete().eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'invite.revoke', { orgId: invite.org_id })
 
   return NextResponse.json({ success: true })
 }

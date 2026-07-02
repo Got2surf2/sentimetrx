@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { ROWS_PER_BATCH } from '@/lib/constants'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
@@ -146,7 +147,7 @@ export async function GET(req: Request, props: Params) {
         .eq('dataset_id', params.datasetId)
         .order('row_index', { ascending: true })
         .range(offset, offset + FLAT_PAGE - 1)
-      if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+      if (flatErr) return serverError(flatErr, 'datasets.rows.bulk', { orgId: auth.orgId })
       if (!flatRows || flatRows.length === 0) break
       for (let i = 0; i < flatRows.length; i++) {
         const r = projectRow((flatRows[i] as any).data, fieldSet)
@@ -175,7 +176,7 @@ export async function GET(req: Request, props: Params) {
     .eq('dataset_id', params.datasetId)
     .order('row_index', { ascending: true })
     .range(skip, skip + pageSize - 1)
-  if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+  if (flatErr) return serverError(flatErr, 'datasets.rows.page', { orgId: auth.orgId })
   const collected = (flatRows || []).map(function(r) { return projectRow(r.data, fieldSet) })
   return NextResponse.json({ rows: collected, page, pageSize, totalRows, totalPages, field: field || undefined })
 }
@@ -279,7 +280,7 @@ export async function POST(req: Request, props: Params) {
     return { dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
   })
   const insertResult = await service.from('dataset_rows_flat').insert(flatRows)
-  if (insertResult.error) return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
+  if (insertResult.error) return serverError(insertResult.error, 'datasets.rows.insert', { orgId: auth.orgId })
 
   const { count } = await service
     .from('dataset_rows_flat')

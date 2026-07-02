@@ -14,6 +14,7 @@ import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
 import { getSourceLabel } from '@/lib/anaContext'
 import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -417,7 +418,7 @@ async function streamAnthropicResponse(
   if (!anthropicRes.ok) {
     let errMsg = 'AI API error: ' + anthropicRes.status
     try { const d = await anthropicRes.json(); errMsg = d?.error?.message || errMsg } catch {}
-    return NextResponse.json({ error: errMsg }, { status: 500 })
+    return serverError(errMsg, 'askAna.upstream', { orgId })
   }
 
   // Transform Anthropic SSE stream into a clean text stream for the client

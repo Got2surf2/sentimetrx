@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -80,6 +81,6 @@ Return ONLY valid JSON:
     })) : []
     return NextResponse.json({ categories })
   } catch (e: any) {
-    return NextResponse.json({ error: 'AI error: ' + (e.message || 'unknown') }, { status: 500 })
+    return serverError(e, 'townhall.suggestSensitive')
   }
 }

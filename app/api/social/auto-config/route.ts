@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -51,6 +52,6 @@ export async function PATCH(req: NextRequest) {
     .update({ features: newFeatures })
     .eq('id', auth.orgId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'social.autoConfig.update', { orgId: auth.orgId })
   return NextResponse.json({ config: merged })
 }

@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchPostComments, commentToRow as substackCommentToRow } from '@/lib/substack'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -73,7 +74,6 @@ export async function POST(req: Request) {
       rows_inserted: rows.length,
     })
   } catch (err: any) {
-    console.error({ at: 'substack/download-comments', msg: "error", err: err })
-    return NextResponse.json({ error: err?.message || 'Download failed' }, { status: 500 })
+    return serverError(err, 'substackSources.downloadComments', { orgId })
   }
 }

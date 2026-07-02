@@ -5,6 +5,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,8 +24,7 @@ export async function GET(req: NextRequest) {
   const deleted = data?.length || 0
 
   if (error) {
-    console.error({ at: 'cleanup-shared-links', msg: "error", err: error.message })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return serverError(error, 'cron.cleanupSharedLinks.delete')
   }
 
   return NextResponse.json({ deleted })

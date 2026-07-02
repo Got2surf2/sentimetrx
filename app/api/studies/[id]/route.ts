@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { SLUG_REGEX } from '@/lib/constants'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
+import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -118,7 +119,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .select('id, guid, slug, status, visibility, org_id')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.update')
 
   if (isTransfer) {
     const svc = createServiceRoleClient()
@@ -166,6 +167,6 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .delete()
     .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, 'studies.delete')
   return NextResponse.json({ success: true, deleted: study.name })
 }
