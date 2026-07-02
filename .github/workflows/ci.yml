@@ -36,3 +36,56 @@ jobs:
 
       - name: Unit + integration tests (with coverage gate)
         run: npm run test:coverage
+
+  isolation:
+    name: multi-tenant isolation (RLS + egress)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Real Supabase creds — the isolation suites hit a live Postgres to prove
+      # RLS actually filters cross-org. Pre-launch these hold the prod project's
+      # values (suites namespace + clean up their own `_rlstest_*` data); once a
+      # dedicated test project exists, repoint these secrets there (one place).
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The suites use `describe.skip` when creds are missing/placeholder and
+      # vitest still exits 0 — so without this guard a green check would mean
+      # "isolation was never tested," the exact gap this job closes. Fail loud
+      # instead: this job stays RED until the SUPABASE_TEST_* secrets are set.
+      - name: Preflight — require real Supabase creds (else the suites silently skip)
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::Isolation suites need SUPABASE_TEST_URL / SUPABASE_TEST_ANON_KEY / SUPABASE_TEST_SERVICE_ROLE_KEY repo secrets. Without them the RLS/egress tests self-skip and this check would pass without testing tenant isolation."
+            exit 1
+          fi
+          if [ "$NEXT_PUBLIC_SUPABASE_URL" = "http://localhost:54321" ] || [ "$SUPABASE_SERVICE_ROLE_KEY" = "test-service-role-key" ]; then
+            echo "::error::Placeholder Supabase creds detected — isolation suites would skip. Set real SUPABASE_TEST_* secrets."
+            exit 1
+          fi
+
+      - name: RLS isolation (every public table has a filtering policy)
+        run: npm run test:rls
+
+      - name: Cross-org egress (org B cannot read org A)
+        run: npm run test:egress
+
+      - name: Auth-flow round-trips
+        run: npm run test:auth-flows
+
+      - name: Campaign route egress
+        run: npm run test:campaign-egress
+
+      - name: Dataset route egress
+        run: npm run test:dataset-egress

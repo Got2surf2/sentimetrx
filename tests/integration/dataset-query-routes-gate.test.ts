@@ -12,6 +12,9 @@
 //   - theme-counts        POST   <-- FIXED 2026-06-08 (was a cross-org leak)
 //   - theme-impact        POST   <-- FIXED 2026-06-08 (was missing the gate)
 //   - signal-stats-batch  POST   <-- FIXED 2026-06-08 (ids now org-filtered)
+//   - signal-stats        GET    <-- FIXED 2026-07-02 (single-dataset variant
+//                                    of the batch route; authed but never org-
+//                                    checked before the service-role read)
 //
 // theme-counts / theme-impact / signal-stats-batch authenticated the caller
 // but never checked their org before the service-role read. Now each resolves
@@ -65,6 +68,7 @@ import * as share from '@/app/api/datasets/[datasetId]/export/html/share/route'
 import * as themeCounts from '@/app/api/datasets/[datasetId]/theme-counts/route'
 import * as themeImpact from '@/app/api/datasets/[datasetId]/theme-impact/route'
 import * as signalBatch from '@/app/api/datasets/signal-stats-batch/route'
+import * as signalStats from '@/app/api/datasets/[datasetId]/signal-stats/route'
 
 const props = { params: Promise.resolve({ datasetId: 'd_1' }) } as any
 const req = (method = 'POST', body: any = {}) =>
@@ -206,5 +210,29 @@ describe('datasets/signal-stats-batch — POST (cross-org fix)', () => {
     const r = await signalBatch.POST(req('POST', { ids: ['d1', 'd2'] }))
     const body = await r.json()
     expect(Object.keys(body.stats)).toEqual(['d1'])
+  })
+})
+
+// ── signal-stats — GET (REGRESSION: single-dataset variant lacked the gate) ─
+describe('datasets/[datasetId]/signal-stats — GET (cross-org fix)', () => {
+  it('401 unauthenticated', async () => {
+    expect((await signalStats.GET(req('GET'), props)).status).toBe(401)
+  })
+  it('401 when caller has no org', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.callerCtx = caller(null)
+    expect((await signalStats.GET(req('GET'), props)).status).toBe(401)
+  })
+  it('404 when the dataset belongs to another org (non-admin)', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.callerCtx = caller('orgA')
+    ctx.results['datasets'] = { data: { org_id: 'orgB' }, error: null }
+    expect((await signalStats.GET(req('GET'), props)).status).toBe(404)
+  })
+  it('owning-org caller is allowed past the gate', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.callerCtx = caller('orgA')
+    ctx.results['datasets'] = { data: { org_id: 'orgA' }, error: null }
+    expect((await signalStats.GET(req('GET'), props)).status).not.toBe(404)
   })
 })

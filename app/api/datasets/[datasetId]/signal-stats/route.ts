@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeSignalStats } from '@/lib/signalStats'
 
 interface Props { params: Promise<{ datasetId: string }> }
@@ -18,7 +19,22 @@ export async function GET(_req: Request, props: Props) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Cross-org gate: computeSignalStats reads this dataset's rows with the
+  // service-role client (RLS-bypassing), so confirm the caller's org owns the
+  // dataset before any read — without this any authed user could pull another
+  // tenant's signal stats by id (admin-org bypass preserved). Mirrors the gate
+  // on theme-counts + signal-stats-batch, which handle the same data.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const service = createServiceRoleClient()
+  {
+    const { data: dsOrg } = await service.from('datasets').select('org_id').eq('id', params.datasetId).single()
+    if (!dsOrg) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    if (!isAdmin && (dsOrg as { org_id?: string }).org_id !== orgId) {
+      return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+    }
+  }
+
   const stats = await computeSignalStats(service, params.datasetId)
 
   // Date range covered by the dataset, from its stored download window

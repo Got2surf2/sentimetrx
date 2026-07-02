@@ -96,7 +96,7 @@ On a **collection** dataset, TextMine's "merge" mode ("import component topics")
 
 The TextMine strip ("N comments · M signals · theme-fit X% · K themes · ★ R avg rating · 📅 date range") and the
 `/analyze` listing cards are powered by `computeSignalStats`. **Terminology (2026-06-28):** the text unit is called **"comments"** everywhere user-facing (strip label, theme cards "N comments", theme-fit tooltip "% of comments", listing card). The internal field/property stays `records` (= the exact non-empty analyzed-text count); only the displayed noun changed. ("comments" was chosen over "records"/"verbatims" — see the comments-terminology note; the count is still the max non-empty count across analyzed text fields, `signalStats.records`.) The **date range** and **avg rating**
-are added in the `signal-stats` route (not the cached compute). The date range comes from
+are added in the `signal-stats` route (not the cached compute). **Tenancy (2026-07-02):** `computeSignalStats` runs on the RLS-bypassing service-role client, so the route resolves `datasets.org_id` and 404s on a cross-org caller (admin-org bypass) **before** any read — matching the gate on `theme-counts`/`signal-stats-batch`. It previously authenticated the caller but skipped this org check, a cross-tenant read leak fixed here. The date range comes from
 `datasets.description.start_date/end_date`; the **avg rating** detects the dataset's rating field from
 `schema_config` (numeric with `sqt` rating/nps/likert or `scoreField` — the same rule TextMine uses) and
 averages it over **ALL rated rows** (every review with a rating, including rating-only reviews with no

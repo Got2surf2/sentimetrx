@@ -28,6 +28,15 @@ Last reviewed: 2026-05-15.
   ratcheting coverage floor (`coverage.thresholds` in
   `vitest.config.ts`) — a drop below the floor fails CI. The floor is
   raised as tests are added; see `docs/TESTING.md`.
+- **Multi-tenant isolation runs in CI (2026-07-02).** A separate
+  `isolation` job runs the env-gated RLS/egress/auth-flow suites
+  (`test:rls`, `test:egress`, `test:auth-flows`, `test:campaign-egress`,
+  `test:dataset-egress`) against real Supabase creds (`SUPABASE_TEST_*`
+  repo secrets). These suites `describe.skip` when creds are absent and
+  vitest still exits 0, so the job has a **fail-loud preflight**: it
+  hard-fails if the secrets are missing/placeholder, so a green check
+  means isolation was actually tested, not silently skipped. Owner
+  follow-up: populate the secrets and make the job a required check.
 - **`npm run lint` — toolchain migration pending (Next 16).** Next 16
   **removed the `next lint` command**, so the `"lint": "next lint"`
   script is stale and the eslint 8→9 + flat-config migration
