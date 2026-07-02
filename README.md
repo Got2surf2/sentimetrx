@@ -11,6 +11,14 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+> **Note on the `xlsx` dependency:** it is sourced from the SheetJS CDN
+> (`cdn.sheetjs.com`), not the npm registry — the registry package is
+> frozen at an older version. If `npm install` fails with a 403/network
+> error on that tarball, it's a CDN-side issue: retry, or download the
+> tarball once and `npm install` from a local file. Long-term
+> replacement (e.g. `exceljs`) is tracked in the weekly governance
+> audit findings.
+
 ## Tests
 
 ```bash

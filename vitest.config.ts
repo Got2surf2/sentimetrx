@@ -26,10 +26,10 @@ export default defineConfig({
       // churn doesn't redden CI, but no regression is allowed. Bump these up
       // as each batch of tests lands (governance Tests-score progression plan).
       thresholds: {
-        statements: 15,
-        branches: 10,
-        functions: 17,
-        lines: 15,
+        statements: 20,
+        branches: 15,
+        functions: 20,
+        lines: 20,
       },
     },
   },
