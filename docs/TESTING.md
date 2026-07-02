@@ -469,7 +469,7 @@ weight) by the test-files-to-source-files ratio (~0.044 in W21).
   (bad slug, status-gate, participant-id mint), `live/[sessionId]` GET
   (active-only), `themes/[id]` POST + `themes/custom` POST (input
   shape, content-filter). Covers both legacy `townhall_*` substrate
-  and phase-3 `town_halls` (via `lib/townHallAdapter.ts`).
+  and phase-3 `pulseiq_events` (via `lib/townHallAdapter.ts`).
 
 Each surfaces 8–15 cases / file, adds a test file (lifts the
 file-count ratio), and exercises real route logic (closes the audit's

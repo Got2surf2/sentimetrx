@@ -5,8 +5,8 @@
 // Returns { dataset_id, synced, total, created }
 //
 // Substrate-aware (2026-05-22): if the session id (or slug) resolves to
-// a phase-3 `town_halls` row, sources turns from town_hall_conversations
-// → conversations → conversation_turns and topics from town_hall_topics.
+// a phase-3 `pulseiq_events` row, sources turns from pulseiq_event_conversations
+// → conversations → conversation_turns and topics from pulseiq_topics.
 // Same row shape so the dataset Ana receives is identical regardless of
 // substrate — datasets can be combined across legacy + phase-3 sessions
 // without any client-side branching. See docs/CONVERGENCE.md § 10
@@ -77,7 +77,7 @@ async function syncThemeModel(
   }).eq('dataset_id', datasetId)
 }
 
-// Phase-3 analyze path: town_halls → town_hall_conversations →
+// Phase-3 analyze path: pulseiq_events → pulseiq_event_conversations →
 // conversations → conversation_turns. Pairs each user turn with the
 // preceding assistant turn within the same conversation (mirrors the
 // bot-level analyze pairing logic).
@@ -90,7 +90,7 @@ async function runPhase3Analyze(
 
   // 1. Pull all conversations linked to this town hall.
   const { data: linkRows } = await service
-    .from('town_hall_conversations')
+    .from('pulseiq_event_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', hall.id)
     .eq('org_id', orgId)
@@ -104,7 +104,7 @@ async function runPhase3Analyze(
 
   // 2. Pull topics — for theme model + label resolution on rows.
   const { data: topics } = await service
-    .from('town_hall_topics')
+    .from('pulseiq_topics')
     .select('id, label, description, keywords, source, state')
     .eq('town_hall_id', hall.id)
     .eq('org_id', orgId)
@@ -290,7 +290,7 @@ export async function POST(_req: Request, props: Params) {
     return await runLegacyAnalyze(service, session as any, user.id, isAdmin, orgId)
   }
 
-  // Phase-3 fallback — town_halls by uuid or slug.
+  // Phase-3 fallback — pulseiq_events by uuid or slug.
   const hall = await resolveTownHall(service, sessionId)
   if (!hall) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
   if (!isAdmin && (hall as any).org_id !== orgId) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })

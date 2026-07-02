@@ -25,7 +25,7 @@ vi.mock('@/lib/supabase/server', () => {
     const row =
       table === 'datasets'
         ? { id: 'ds_1', name: 'X', source: 'reddit', row_count: 1, org_id: ctx.rowOrg, studies: null }
-        : table === 'townhall_sessions' || table === 'town_halls'
+        : table === 'townhall_sessions' || table === 'pulseiq_events'
           ? { id: 's_1', name: 'X', status: 'complete', config: {}, started_at: null, ended_at: null, org_id: ctx.rowOrg }
           : table === 'recordings'
             ? { id: 'rec_1', name: 'X', meeting_date: null, location: null, status: ctx.recStatus, analysis_summary: null, org_id: ctx.rowOrg, created_by: ctx.recOwner, share_token: null, share_enabled: false }

@@ -84,7 +84,7 @@ Minimal form, one screen. Four fields:
 └─────────────────────────────────────────────────┘
 ```
 
-On submit: creates a `town_halls` row in `status = 'draft'`, copies the agent's topics into `town_hall_topics` as `source = 'seed'`, redirects to the editor at `/town-halls/[id]`.
+On submit: creates a `pulseiq_events` row in `status = 'draft'`, copies the agent's topics into `pulseiq_topics` as `source = 'seed'`, redirects to the editor at `/town-halls/[id]`.
 
 If the user has no agents: replace the picker with a "Create your first agent" CTA that deep-links to the agent creator and returns here after.
 
@@ -306,7 +306,7 @@ Good:
 
 ## 7. Distribution + participant entry
 
-Public URL pattern: `/th/[slug]` — kept for backward compatibility, but in the new model the slug resolves a `town_halls` row, not a `townhall_sessions` row.
+Public URL pattern: `/th/[slug]` — kept for backward compatibility, but in the new model the slug resolves a `pulseiq_events` row, not a `townhall_sessions` row.
 
 **Participant identification:** open question (§ 11) but the architectural seam is `conversations.participant_id`. Three modes:
 

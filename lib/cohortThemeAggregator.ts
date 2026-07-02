@@ -4,9 +4,9 @@
 // row 5). Replaces lib/townhallThemeDetection.ts as the live theme-
 // detection engine — but operates on the unified substrate:
 //
-//   reads:  town_halls, town_hall_conversations, conversations,
-//           conversation_turns, town_hall_topics
-//   writes: town_hall_topics, town_halls.last_theme_detection_at
+//   reads:  pulseiq_events, pulseiq_event_conversations, conversations,
+//           conversation_turns, pulseiq_topics
+//   writes: pulseiq_topics, pulseiq_events.last_theme_detection_at
 //
 // The legacy detector is preserved for any sessions still on the old
 // schema; both run side-by-side from the cron during transition.
@@ -17,17 +17,17 @@
 //
 // Differences vs the legacy version:
 //   - Reads conversation_turns.content_en (with content fallback) joined
-//     through town_hall_conversations → conversations. PulseIQ's
+//     through pulseiq_event_conversations → conversations. PulseIQ's
 //     `skipped` boolean has no equivalent on conversation_turns; all
 //     user turns are candidates.
-//   - Writes town_hall_topics with state='pending' (per the CHECK
+//   - Writes pulseiq_topics with state='pending' (per the CHECK
 //     constraint allowing 'active'|'pending'|'completed'|'rejected').
 //     Legacy used 'detected' on townhall_themes which had a different
 //     CHECK constraint.
-//   - Sentiment is not stored on town_hall_topics (the new schema
+//   - Sentiment is not stored on pulseiq_topics (the new schema
 //     dropped per-topic sentiment in favor of per-turn sentiment on
 //     conversation_turns.sentiment). Mention count is preserved.
-//   - Cohort config + industry context come from town_halls.cohort_config
+//   - Cohort config + industry context come from pulseiq_events.cohort_config
 //     and the linked agent row, not townhall_sessions.config.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
@@ -52,7 +52,7 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
 
   // 1. Load town hall + linked agent (for org_id, industry/context)
   const { data: townHall, error: townHallErr } = await supabase
-    .from('town_halls')
+    .from('pulseiq_events')
     .select('id, org_id, bot_id, name, cohort_config, discussion_guide')
     .eq('id', townHallId)
     .single()
@@ -71,7 +71,7 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   // Two-step query (no nested joins through the join table in
   // supabase-js without RPC): first conversation ids, then turns.
   const { data: linkedConvs, error: linkedConvsErr } = await supabase
-    .from('town_hall_conversations')
+    .from('pulseiq_event_conversations')
     .select('conversation_id')
     .eq('town_hall_id', townHallId)
   if (linkedConvsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', linkedConvsErr, { orgId: townHall.org_id })
@@ -95,7 +95,7 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
 
   // 3. Existing topics for dedup + gap context
   const { data: existingTopics, error: existingTopicsErr } = await supabase
-    .from('town_hall_topics')
+    .from('pulseiq_topics')
     .select('id, label, keywords, state, mention_count')
     .eq('town_hall_id', townHallId)
   if (existingTopicsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', existingTopicsErr, { orgId: townHall.org_id })
@@ -187,11 +187,11 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
         totalNeg += score.neg
       }
     }
-    // Sentiment isn't a column on town_hall_topics but compute it anyway
+    // Sentiment isn't a column on pulseiq_topics but compute it anyway
     // for the cron's return diagnostic — caller can ignore.
     void classifySentiment(totalPos, totalNeg)
 
-    const { error: insertErr } = await supabase.from('town_hall_topics').insert({
+    const { error: insertErr } = await supabase.from('pulseiq_topics').insert({
       org_id: townHall.org_id,
       town_hall_id: townHallId,
       label: name,
@@ -212,14 +212,14 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
       existingKeywords.push({ label: name, keywords, mention_count: mentionCount })
       existingLabels.push(name.toLowerCase())
     } else {
-      console.error({ at: 'cohortThemeAggregator', msg: 'insert town_hall_topics failed', err: insertErr.message })
+      console.error({ at: 'cohortThemeAggregator', msg: 'insert pulseiq_topics failed', err: insertErr.message })
       skipped++
     }
   }
 
   // 8. Update town hall detection timestamp
   await supabase
-    .from('town_halls')
+    .from('pulseiq_events')
     .update({ last_theme_detection_at: new Date().toISOString() })
     .eq('id', townHallId)
 

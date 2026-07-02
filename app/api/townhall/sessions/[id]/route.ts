@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
-// Phase 5 commit 6: also accepts town_halls rows so the dashboard surface
+// Phase 5 commit 6: also accepts pulseiq_events rows so the dashboard surface
 // can render new-substrate town halls. Mutations (PATCH/DELETE) on the
 // new substrate are not wired through this route yet — only GET.
 async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
@@ -33,14 +33,14 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
     if (!isAdmin && (session as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
     return { ok: true, isAdmin, userOrgId, substrate: 'legacy' }
   }
-  // Phase 3 substrate fallback — also accept town_halls by id or slug.
+  // Phase 3 substrate fallback — also accept pulseiq_events by id or slug.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
-    const { data } = await db.from('town_halls').select('org_id').eq('id', sessionId).maybeSingle()
+    const { data } = await db.from('pulseiq_events').select('org_id').eq('id', sessionId).maybeSingle()
     if (data) hall = data
   }
   if (!hall) {
-    const { data } = await db.from('town_halls').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
+    const { data } = await db.from('pulseiq_events').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
     if (data) hall = data
   }
   if (!hall) return { ok: false, status: 404, error: 'Session not found' }
@@ -48,9 +48,9 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
   return { ok: true, isAdmin, userOrgId, substrate: 'phase3' }
 }
 
-// ── Phase-3 status maps (legacy ↔ town_halls) ─────────────────────────────
+// ── Phase-3 status maps (legacy ↔ pulseiq_events) ─────────────────────────────
 // PATCH body sends legacy status strings ('setup','active','paused','ended');
-// town_halls accepts 'draft'|'live'|'paused'|'closed'.
+// pulseiq_events accepts 'draft'|'live'|'paused'|'closed'.
 const LEGACY_TO_PHASE3_STATUS: Record<string, string> = {
   setup:  'draft',
   active: 'live',
@@ -58,7 +58,7 @@ const LEGACY_TO_PHASE3_STATUS: Record<string, string> = {
   ended:  'closed',
 }
 
-// Translates a legacy `discussion_guide` topic into the `town_hall_topics`
+// Translates a legacy `discussion_guide` topic into the `pulseiq_topics`
 // insert shape. Used by both the status=active seed and the discussion_guide
 // sync block below. NOWOCATS doesn't use `target_mode`/`target_pct` — pass
 // through if present.
@@ -87,8 +87,8 @@ async function handlePhase3Patch(
   body: Record<string, unknown>,
   _userId: string,
 ): Promise<NextResponse> {
-  // Pull town_halls + org for every downstream write.
-  const { data: hall } = await db.from('town_halls').select('*').eq('id', hallId).maybeSingle()
+  // Pull pulseiq_events + org for every downstream write.
+  const { data: hall } = await db.from('pulseiq_events').select('*').eq('id', hallId).maybeSingle()
   if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
   const orgId = (hall as any).org_id as string
 
@@ -101,7 +101,7 @@ async function handlePhase3Patch(
     if (pids.length === 0) return NextResponse.json({ error: 'No participant IDs provided' }, { status: 400 })
 
     const { data: convRows } = await db
-      .from('town_hall_conversations')
+      .from('pulseiq_event_conversations')
       .select('conversation_id, conversations!inner(id, participant_id, org_id)')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
@@ -111,7 +111,7 @@ async function handlePhase3Patch(
     const convIds = targets.map((c: any) => c.id)
 
     if (convIds.length > 0) {
-      // CASCADE on conversations.id deletes both the town_hall_conversations
+      // CASCADE on conversations.id deletes both the pulseiq_event_conversations
       // link AND the conversation_turns rows.
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
@@ -119,10 +119,10 @@ async function handlePhase3Patch(
   }
 
   // ── restart ─────────────────────────────────────────────────────
-  // Wipe all linked conversations + reset town_halls to draft.
+  // Wipe all linked conversations + reset pulseiq_events to draft.
   if (body.restart) {
     const { data: convRows } = await db
-      .from('town_hall_conversations')
+      .from('pulseiq_event_conversations')
       .select('conversation_id')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
@@ -131,9 +131,9 @@ async function handlePhase3Patch(
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
     // Drop auto-detected topics; keep seeded.
-    await db.from('town_hall_topics').delete().eq('town_hall_id', hallId).eq('source', 'auto_detected')
+    await db.from('pulseiq_topics').delete().eq('town_hall_id', hallId).eq('source', 'auto_detected')
     const { data, error } = await db
-      .from('town_halls')
+      .from('pulseiq_events')
       .update({ status: 'draft', started_at: null, ended_at: null })
       .eq('id', hallId)
       .select('id, status, started_at, ended_at')
@@ -144,7 +144,7 @@ async function handlePhase3Patch(
 
   // ── reanalyze ──────────────────────────────────────────────────
   if (body.reanalyze) {
-    await db.from('town_hall_topics').delete().eq('town_hall_id', hallId).eq('source', 'auto_detected')
+    await db.from('pulseiq_topics').delete().eq('town_hall_id', hallId).eq('source', 'auto_detected')
     const { detectThemesForTownHall } = await import('@/lib/cohortThemeAggregator')
     const result = await detectThemesForTownHall(hallId)
     return NextResponse.json({ reanalyzed: true, ...result })
@@ -201,18 +201,18 @@ async function handlePhase3Patch(
   }
 
   const { data: updated, error } = await db
-    .from('town_halls')
+    .from('pulseiq_events')
     .update(updates)
     .eq('id', hallId)
     .select('id, status, started_at, ended_at, discussion_guide, cohort_config')
     .single()
   if (error) return serverError(error, 'townhall.session.update', { orgId })
 
-  // ── seed-on-activate: copy discussion_guide topics into town_hall_topics
+  // ── seed-on-activate: copy discussion_guide topics into pulseiq_topics
   // the first time we go live (skip if any seed topics already exist).
   if (nextStatusLegacy === 'active') {
     const { count: existingSeed } = await db
-      .from('town_hall_topics')
+      .from('pulseiq_topics')
       .select('id', { count: 'exact', head: true })
       .eq('town_hall_id', hallId)
       .eq('source', 'seed')
@@ -226,19 +226,19 @@ async function handlePhase3Patch(
         town_hall_id: hallId,
         org_id: orgId,
       }))
-      if (rows.length > 0) await db.from('town_hall_topics').insert(rows)
+      if (rows.length > 0) await db.from('pulseiq_topics').insert(rows)
     }
   }
 
   // ── discussion_guide sync (active/paused): add new topics, pause
   // disabled ones, re-activate re-enabled ones, update fields, dismiss
-  // orphans. Mirrors the legacy logic with town_hall_topics.
+  // orphans. Mirrors the legacy logic with pulseiq_topics.
   if (updates.discussion_guide && !nextStatusLegacy) {
     const currentStatus = (updated as any).status
     if (currentStatus === 'live' || currentStatus === 'paused') {
       const guide = updates.discussion_guide as any[]
       const { data: existingTopics } = await db
-        .from('town_hall_topics')
+        .from('pulseiq_topics')
         .select('id, label, state, source')
         .eq('town_hall_id', hallId)
         .eq('org_id', orgId)
@@ -255,7 +255,7 @@ async function handlePhase3Patch(
           town_hall_id: hallId,
           org_id: orgId,
         }))
-        await db.from('town_hall_topics').insert(rows)
+        await db.from('pulseiq_topics').insert(rows)
       }
 
       const disabledLabels = guide.filter((t: any) => t.enabled === false && t.label?.trim()).map((t: any) => t.label.toLowerCase().trim())
@@ -265,10 +265,10 @@ async function handlePhase3Patch(
         if ((t as any).source !== 'seed') continue
         const lab = (t as any).label.toLowerCase()
         if ((t as any).state === 'active' && disabledLabels.includes(lab)) {
-          await db.from('town_hall_topics').update({ state: 'paused' }).eq('id', (t as any).id)
+          await db.from('pulseiq_topics').update({ state: 'paused' }).eq('id', (t as any).id)
         }
         if ((t as any).state === 'paused' && enabledLabels.includes(lab)) {
-          await db.from('town_hall_topics').update({ state: 'active' }).eq('id', (t as any).id)
+          await db.from('pulseiq_topics').update({ state: 'active' }).eq('id', (t as any).id)
         }
       }
 
@@ -276,7 +276,7 @@ async function handlePhase3Patch(
       for (const t of (existingTopics || []).filter((t: any) => t.source === 'seed')) {
         const guideTopic = guide.find((g: any) => g.label?.toLowerCase().trim() === (t as any).label.toLowerCase())
         if (guideTopic) {
-          await db.from('town_hall_topics').update({
+          await db.from('pulseiq_topics').update({
             label: guideTopic.label,
             description: guideTopic.description || null,
             question: guideTopic.opening_question || '',
@@ -290,7 +290,7 @@ async function handlePhase3Patch(
       // Orphans → dismissed.
       const guideLabelsLower = guide.map((g: any) => g.label?.toLowerCase().trim()).filter(Boolean)
       for (const t of (existingTopics || []).filter((t: any) => t.source === 'seed' && !guideLabelsLower.includes((t as any).label.toLowerCase()))) {
-        await db.from('town_hall_topics').update({ state: 'dismissed' }).eq('id', (t as any).id)
+        await db.from('pulseiq_topics').update({ state: 'dismissed' }).eq('id', (t as any).id)
       }
     }
   }
@@ -1044,15 +1044,15 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // Phase-3 substrate: cascade through town_hall_conversations →
-  // conversations → conversation_turns (FK cascade) + town_hall_topics
-  // (FK cascade on town_halls delete), then drop the town_halls row.
+  // Phase-3 substrate: cascade through pulseiq_event_conversations →
+  // conversations → conversation_turns (FK cascade) + pulseiq_topics
+  // (FK cascade on pulseiq_events delete), then drop the pulseiq_events row.
   if (gate.substrate === 'phase3') {
-    const { data: hall } = await db.from('town_halls').select('id, org_id').eq('id', params.id).maybeSingle()
+    const { data: hall } = await db.from('pulseiq_events').select('id, org_id').eq('id', params.id).maybeSingle()
     if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
     const orgId = (hall as any).org_id as string
     const { data: convRows } = await db
-      .from('town_hall_conversations')
+      .from('pulseiq_event_conversations')
       .select('conversation_id')
       .eq('town_hall_id', params.id)
       .eq('org_id', orgId)
@@ -1060,7 +1060,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     if (convIds.length > 0) {
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
-    const { error } = await db.from('town_halls').delete().eq('id', params.id).eq('org_id', orgId)
+    const { error } = await db.from('pulseiq_events').delete().eq('id', params.id).eq('org_id', orgId)
     if (error) return serverError(error, 'townhall.session.delete', { orgId })
     return NextResponse.json({ deleted: true })
   }

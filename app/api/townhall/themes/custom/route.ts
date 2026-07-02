@@ -29,16 +29,16 @@ export async function POST(req: NextRequest) {
 
   const db = createServiceRoleClient()
 
-  // Phase-3 substrate first: if session_id matches a town_halls row, the
-  // custom theme is a town_hall_topics insert. Map 'custom' source →
+  // Phase-3 substrate first: if session_id matches a pulseiq_events row, the
+  // custom theme is a pulseiq_topics insert. Map 'custom' source →
   // 'manual' (the value town_hall_topics_source_check accepts).
-  const { data: hall } = await db.from('town_halls').select('id, org_id').eq('id', session_id).maybeSingle()
+  const { data: hall } = await db.from('pulseiq_events').select('id, org_id').eq('id', session_id).maybeSingle()
   if (hall) {
     if (!isAdmin && (hall as any).org_id !== callerOrg) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     const { data, error } = await db
-      .from('town_hall_topics')
+      .from('pulseiq_topics')
       .insert({
         town_hall_id: (hall as any).id,
         org_id:       (hall as any).org_id,

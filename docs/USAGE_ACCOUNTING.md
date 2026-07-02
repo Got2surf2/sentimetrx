@@ -507,7 +507,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/bots/[id]/conversations/insights-deck` | bot | `insights_deck` | standard |
 | `/api/cron/bot-conversation-review` | bot | `review` | fast |
 | `/api/townhall/chat` (legacy path — `townhall_sessions`) | townhall | `chat` (single ctx for the request) | fast |
-| `/api/townhall/chat` (phase-3 delegation path, active when `TOWNHALL_VIA_AGENT_HANDLER=true` and `session_id` resolves to a `town_halls` row — delegates to `lib/chatCore.handleChatTurn`) | **bot** | `chat`, `summary`, `deflect`, `intent`, `focus_classify` | fast | <!-- Note attribution shift: phase-3 town hall conversations log usage under resource_type='bot' + resource_id=agent.id (chatCore is bot-centric). When NOWOCATS launches and the flag flips on, attribute town-hall AI cost via the underlying agent rather than the town hall slug. See docs/CONVERGENCE.md § 4 Phase 4 + § 10 (Phase 4 commit 2). -->
+| `/api/townhall/chat` (phase-3 delegation path, active when `TOWNHALL_VIA_AGENT_HANDLER=true` and `session_id` resolves to a `pulseiq_events` row — delegates to `lib/chatCore.handleChatTurn`) | **bot** | `chat`, `summary`, `deflect`, `intent`, `focus_classify` | fast | <!-- Note attribution shift: phase-3 town hall conversations log usage under resource_type='bot' + resource_id=agent.id (chatCore is bot-centric). When NOWOCATS launches and the flag flips on, attribute town-hall AI cost via the underlying agent rather than the town hall slug. See docs/CONVERGENCE.md § 4 Phase 4 + § 10 (Phase 4 commit 2). -->
 | `/api/townhall/join/[sessionId]` | townhall | `translate` | fast |
 | `/api/townhall/expand-terms` | townhall | `expand_terms` | fast |
 | `/api/townhall/grade-description` | townhall | `grade_description` | fast |
@@ -516,7 +516,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/townhall/suggest-sensitive` | townhall | `suggest_sensitive` | fast |
 | `/api/townhall/simulate` | townhall | `simulate` | fast |
 | `lib/townhallThemeDetection.ts` (invoked from `/api/townhall/chat` and `/api/cron/townhall-theme-detection`) | townhall | `theme_detect` | fast |
-| `lib/cohortThemeAggregator.ts` (Phase 5 commit 1 — invoked from `/api/cron/townhall-theme-detection` for `town_halls` rows on the new substrate) | townhall | `theme_detect` | standard |
+| `lib/cohortThemeAggregator.ts` (Phase 5 commit 1 — invoked from `/api/cron/townhall-theme-detection` for `pulseiq_events` rows on the new substrate) | townhall | `theme_detect` | standard |
 | `/api/datasets/[datasetId]/mine-themes` | dataset | `mine_themes` | standard |
 | `/api/datasets/[datasetId]/expand-keywords` | dataset | `expand_keywords` | fast |
 | `/api/datasets/[datasetId]/merge-themes` | dataset | `merge_themes` | fast |
@@ -560,7 +560,7 @@ From `vercel.json`:
 | `/api/cron/cleanup-shared-links` | `0 3 * * *` | no |
 | `/api/cron/review-sync` | `0 */6 * * *` | no |
 | `/api/cron/entity-discovery` | `0 5 * * 0` (Sun 05:00 UTC) | **yes** — `entity_discovery` events on `dataset` (via `lib/entityDiscovery.ts`) |
-| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` via BOTH `lib/townhallThemeDetection.ts` (legacy `townhall_sessions` scan) AND `lib/cohortThemeAggregator.ts` (new `town_halls` scan, Phase 5 commit 1) |
+| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` via BOTH `lib/townhallThemeDetection.ts` (legacy `townhall_sessions` scan) AND `lib/cohortThemeAggregator.ts` (new `pulseiq_events` scan, Phase 5 commit 1) |
 | `/api/cron/bot-conversation-review` | `0 */4 * * *` | **yes** — `review` events on `bot` |
 | `/api/cron/social-sync` | `*/15 * * * *` | **yes** — `auto_reply` events on `social` (only when org has auto-reply enabled) |
 | `/api/cron/social-token-refresh` | `0 6 * * *` | no |

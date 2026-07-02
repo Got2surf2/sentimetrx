@@ -37,7 +37,7 @@ export interface MirroredTurn {
   sentiment?: string | null
   sentiment_score?: number | null
   content_en?: string | null
-  /** When set, tags the conversation_turns row with the town_hall_topics
+  /** When set, tags the conversation_turns row with the pulseiq_topics
    *  the turn was assigned to. Used by Phase 5 commit 3 PulseIQ delegation
    *  so cohort-wide response_count can be computed per topic. */
   topic_id?: string | null
@@ -50,7 +50,7 @@ interface MirrorArgs {
   language?: string | null
   rows: MirroredTurn[]
   /** When set, the helper also auto-links the conversation to the town
-   *  hall via town_hall_conversations (idempotent insert). Phase 5
+   *  hall via pulseiq_event_conversations (idempotent insert). Phase 5
    *  commit 3 — PulseIQ delegation through handleChatTurn. */
   townHallId?: string | null
   /** When set, populates conversations.participant_id on upsert. PulseIQ
@@ -102,7 +102,7 @@ export async function mirrorTurns(
     // conversation_id) makes this a no-op after first call per session).
     if (args.townHallId) {
       const { error: linkErr } = await service
-        .from('town_hall_conversations')
+        .from('pulseiq_event_conversations')
         .upsert(
           {
             town_hall_id: args.townHallId,
@@ -112,7 +112,7 @@ export async function mirrorTurns(
           { onConflict: 'town_hall_id,conversation_id' },
         )
       if (linkErr) {
-        console.error({ at: 'phase3-dual-write', msg: 'town_hall_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
+        console.error({ at: 'phase3-dual-write', msg: 'pulseiq_event_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
       }
     }
 

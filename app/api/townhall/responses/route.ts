@@ -3,7 +3,7 @@
 //
 // Substrate-aware (Gap #5b, 2026-05-22): `session_id` from the client
 // can resolve to EITHER a legacy `townhall_sessions.id` OR a phase-3
-// `town_halls.id` (because /api/townhall/join returns the underlying
+// `pulseiq_events.id` (because /api/townhall/join returns the underlying
 // row id and phase-3 town halls now flow through that same route).
 //
 // Validation paths:
@@ -11,11 +11,11 @@
 //     for this session_id + participant_id pair.
 //   - Phase-3 → participant_id must match a `conversations.participant_id`
 //     where the conversation is linked to the town hall via
-//     `town_hall_conversations`.
+//     `pulseiq_event_conversations`.
 //
 // Storage path (per sql/083 migration):
 //   - Legacy row: session_id = townhall_sessions.id, town_hall_id = null
-//   - Phase-3 row: session_id = null, town_hall_id = town_halls.id
+//   - Phase-3 row: session_id = null, town_hall_id = pulseiq_events.id
 //   - CHECK constraint enforces at-least-one. Partial unique indexes
 //     enforce one-row-per-participant-per-session in both worlds.
 
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     substrate = 'legacy'
   } else {
     const { data: hall } = await service
-      .from('town_halls')
+      .from('pulseiq_events')
       .select('id')
       .eq('id', session_id)
       .maybeSingle()
@@ -81,10 +81,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Participant not found in session' }, { status: 404 })
     }
   } else {
-    // Phase-3: walk town_hall_conversations → conversations and confirm
+    // Phase-3: walk pulseiq_event_conversations → conversations and confirm
     // the participant_id matches at least one linked conversation.
     const { data: links } = await service
-      .from('town_hall_conversations')
+      .from('pulseiq_event_conversations')
       .select('conversations!inner(participant_id)')
       .eq('town_hall_id', townHallId)
     const found = ((links || []) as any[]).some(r => {

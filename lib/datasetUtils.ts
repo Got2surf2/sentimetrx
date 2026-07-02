@@ -461,7 +461,7 @@ export function buildBotSchema(): SchemaConfig {
   // fields since per-turn topics aren't tagged for bot conversations.
   //
   // Gap #6 (2026-05-22): the three town_hall_* fields are populated for
-  // conversations linked to a town hall via town_hall_conversations. NULL /
+  // conversations linked to a town hall via pulseiq_event_conversations. NULL /
   // empty-string for 1:1 widget conversations. Lets Ana filter the bot
   // dataset by town hall slug, name, or 'unlinked' (1:1 widget) to slice
   // multi-event customers (e.g. all Vindman events vs widget visitors).

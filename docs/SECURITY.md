@@ -386,7 +386,7 @@ cross-org access attempts."
   is erased by an **explicit sweep**, not by relying on FK cascade.
   Verified 2026-07-02 that ~30 tables carrying `org_id` have NO
   cascading `org_id` FK (users, conversations, townhall_sessions,
-  town_halls, logged_questions, collections, …), so a bare
+  pulseiq_events, logged_questions, collections, …), so a bare
   `organizations` delete orphaned them. `lib/orgDelete.ts`
   (`deleteOrgScopedData`) now deletes every `org_id` table (list
   derived from `information_schema`) in a retry-to-fixpoint loop and

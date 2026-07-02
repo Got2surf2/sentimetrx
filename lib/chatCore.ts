@@ -676,11 +676,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   let pickedTopicId: string | null = null
   if (ctx.townHallContext) {
     try {
-      // Load town_halls row up front — used by both the standby fallback
+      // Load pulseiq_events row up front — used by both the standby fallback
       // (cohort_config.standby_message) and the response-count theme-
       // detection trigger (cohort_config.theme_detection_every_n_responses).
       const { data: townHallRow, error: townHallRowErr } = await service
-        .from('town_halls')
+        .from('pulseiq_events')
         .select('cohort_config')
         .eq('id', ctx.townHallContext.townHallId)
         .maybeSingle()
@@ -688,17 +688,17 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       const cohortConfig = (townHallRow?.cohort_config || {}) as any
 
       const { data: topics, error: topicsErr } = await service
-        .from('town_hall_topics')
+        .from('pulseiq_topics')
         .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
         .eq('town_hall_id', ctx.townHallContext.townHallId)
         .in('state', ['active', 'pending'])
       if (topicsErr) void logError('chatCore.handleChatTurn', topicsErr, { orgId: bot.org_id })
 
       if (topics && topics.length > 0) {
-        // Cohort-wide response counts: join town_hall_conversations →
+        // Cohort-wide response counts: join pulseiq_event_conversations →
         // conversations → conversation_turns and tally by topic_id.
         const { data: linkedConvs, error: linkedConvsErr } = await service
-          .from('town_hall_conversations')
+          .from('pulseiq_event_conversations')
           .select('conversation_id')
           .eq('town_hall_id', ctx.townHallContext.townHallId)
         if (linkedConvsErr) void logError('chatCore.handleChatTurn', linkedConvsErr, { orgId: bot.org_id })
@@ -807,7 +807,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           })
         }
       } else if (debugMode) {
-        _debug.push('Town hall topic: pool empty (no town_hall_topics rows)')
+        _debug.push('Town hall topic: pool empty (no pulseiq_topics rows)')
       }
     } catch (e: any) {
       console.error({ at: 'chat-core', msg: 'town hall topic injection failed', err: e?.message, townHallId: ctx.townHallContext.townHallId })

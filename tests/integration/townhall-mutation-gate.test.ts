@@ -62,14 +62,14 @@ describe('POST /api/townhall/themes/[id] — caller-org gate', () => {
   it('404 cross-org for a non-admin (new-substrate topic in another org)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['town_hall_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgB' }, error: null }
     expect((await approve()).status).toBe(404)
   })
 
   it('404 cross-org for a non-admin (legacy theme via parent session in another org)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['town_hall_topics'] = { data: null, error: null } // not the new substrate
+    ctx.results['pulseiq_topics'] = { data: null, error: null } // not the new substrate
     ctx.results['townhall_themes'] = { data: { id: 'x_1', townhall_sessions: { org_id: 'orgB' } }, error: null }
     expect((await approve()).status).toBe(404)
   })
@@ -77,14 +77,14 @@ describe('POST /api/townhall/themes/[id] — caller-org gate', () => {
   it('allows the owning org (non-admin, same org)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['town_hall_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgA' }, error: null }
+    ctx.results['pulseiq_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgA' }, error: null }
     expect((await approve()).status).toBe(200)
   })
 
   it('allows a platform admin to bypass the org check', async () => {
     ctx.authUser = { id: 'admin' }
     ctx.results['users'] = admin
-    ctx.results['town_hall_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_topics'] = { data: { id: 'x_1', town_hall_id: 'th1', org_id: 'orgB' }, error: null }
     expect((await approve()).status).toBe(200)
   })
 })

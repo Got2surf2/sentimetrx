@@ -4,7 +4,7 @@
 // surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]`
 // detail) were originally written against the legacy townhall_sessions
 // + townhall_themes + townhall_turns schema. Phase 5 introduced the new
-// substrate (town_halls + town_hall_topics + town_hall_conversations
+// substrate (pulseiq_events + pulseiq_topics + pulseiq_event_conversations
 // over conversations + conversation_turns) but didn't rewire the read
 // path.
 //
@@ -12,7 +12,7 @@
 // schema, this module projects new-substrate rows into the SAME JSON
 // shape the existing SessionDetailClient (and list page) already
 // consume. Surfaces that pre-date the convergence keep their existing
-// view; new town_halls slugs appear alongside them without any UI
+// view; new pulseiq_events slugs appear alongside them without any UI
 // change.
 //
 // Mutations (theme PATCH/POST, session PATCH, etc.) are NOT routed
@@ -50,7 +50,7 @@ function projectStatus(s: string): 'setup' | 'active' | 'paused' | 'ended' {
   return STATUS_MAP[s] || 'setup'
 }
 
-// Projects a town_hall_topics row into the legacy townhall_themes JSON
+// Projects a pulseiq_topics row into the legacy townhall_themes JSON
 // shape. Fields the dashboard doesn't render are still populated with
 // sensible defaults so downstream code doesn't NPE.
 function projectTopicAsTheme(t: any, sessionId: string): any {
@@ -77,7 +77,7 @@ function projectTopicAsTheme(t: any, sessionId: string): any {
   }
 }
 
-// Projects a town_halls row into a legacy-shaped townhall_sessions row
+// Projects a pulseiq_events row into a legacy-shaped townhall_sessions row
 // (no themes, no turns — just the parent fields). Used by both list +
 // detail surfaces.
 function projectTownHallAsSession(h: any): any {
@@ -128,14 +128,14 @@ function projectTownHallAsSession(h: any): any {
   }
 }
 
-// Compute basic participant/turn stats from town_hall_conversations →
+// Compute basic participant/turn stats from pulseiq_event_conversations →
 // conversations → conversation_turns for a single town hall.
 //
 // Phase-3 fix 2026-05-26: also return per-conversation turn count, first
 // and last activity timestamps, and per-topic response counts (computed
 // live the same way chatCore picks the next topic — by counting
 // conversation_turns.topic_id rather than reading the async-updated
-// town_hall_topics.response_count column). The persisted column lags
+// pulseiq_topics.response_count column). The persisted column lags
 // behind real activity by up to ~15 min (cron) and was showing 0 on the
 // Responses tab and theme cards even for fully populated sessions.
 async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: string): Promise<{
@@ -152,7 +152,7 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   perTopic: Record<string, { responses: number; mentions: number }>
 }> {
   const { data: linkRows, error: linkErr } = await db
-    .from('town_hall_conversations')
+    .from('pulseiq_event_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
@@ -229,11 +229,11 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
 // ── PUBLIC ────────────────────────────────────────────────────────────────
 
 /**
- * Resolves a slug or uuid to a town_halls row and returns the full
+ * Resolves a slug or uuid to a pulseiq_events row and returns the full
  * facilitator-dashboard JSON payload in the same shape as the legacy
  * `/api/townhall/sessions/[id]` GET (session + themes + stats +
  * participants). Returns null if the identifier doesn't match a
- * town_halls row — the caller should fall back to the legacy path.
+ * pulseiq_events row — the caller should fall back to the legacy path.
  *
  * Analytics-mode (the ?analytics=true branch) returns an empty-analytics
  * shell. Real analytics rebuild is a follow-on commit.
@@ -246,12 +246,12 @@ export async function getTownHallAsLegacy(
   // First try id, then slug. Slug is the more common public lookup.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data, error: idErr } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('pulseiq_events').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.getTownHallAsLegacy', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data, error: slugErr } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('pulseiq_events').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
     if (slugErr) void logError('townHallAdapter.getTownHallAsLegacy', slugErr)
     if (data) hall = data
   }
@@ -260,7 +260,7 @@ export async function getTownHallAsLegacy(
   const session = projectTownHallAsSession(hall)
 
   const { data: topics, error: topicsErr } = await db
-    .from('town_hall_topics')
+    .from('pulseiq_topics')
     .select('*')
     .eq('town_hall_id', hall.id)
     .eq('org_id', hall.org_id)
@@ -269,7 +269,7 @@ export async function getTownHallAsLegacy(
 
   const basics = await computeBasicStats(db, hall.id, hall.org_id)
 
-  // Overlay live counts onto the persisted town_hall_topics columns so
+  // Overlay live counts onto the persisted pulseiq_topics columns so
   // theme cards reflect current activity rather than the lagging
   // async-aggregator value:
   //   - response_count = distinct conversations on this topic
@@ -348,7 +348,7 @@ export async function getTownHallAsLegacy(
 }
 
 /**
- * Resolves a slug or uuid against `town_halls` and returns the parent
+ * Resolves a slug or uuid against `pulseiq_events` and returns the parent
  * row directly (no theme/stat enrichment). Used by participant-facing
  * routes (`/api/townhall/join`, `/api/townhall/live`) that only need
  * session-level fields. Returns null if no match.
@@ -359,12 +359,12 @@ export async function resolveTownHall(
 ): Promise<any | null> {
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data, error: idErr } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('pulseiq_events').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.resolveTownHall', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data, error: slugErr } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('pulseiq_events').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
     if (slugErr) void logError('townHallAdapter.resolveTownHall', slugErr)
     if (data) hall = data
   }
@@ -372,7 +372,7 @@ export async function resolveTownHall(
 }
 
 /**
- * Projects a `town_halls` row into the same `session` shape `getTownHallAsLegacy`
+ * Projects a `pulseiq_events` row into the same `session` shape `getTownHallAsLegacy`
  * returns — exposed so participant routes (`/api/townhall/join`) can reuse
  * the projection without re-fetching topics / stats. Static; never hits the DB.
  */
@@ -381,7 +381,7 @@ export function projectHallAsSession(hall: any): any {
 }
 
 /**
- * Lists every town_halls row in scope and returns each in the legacy
+ * Lists every pulseiq_events row in scope and returns each in the legacy
  * townhall_sessions list shape used by /api/townhall/sessions. Caller
  * concatenates with the legacy list and sorts by created_at desc.
  *
@@ -393,7 +393,7 @@ export async function listTownHallsAsLegacy(
   scopeOrgId: string | null,
 ): Promise<any[]> {
   let q = db
-    .from('town_halls')
+    .from('pulseiq_events')
     .select('id, org_id, name, slug, status, cohort_config, discussion_guide, response_target, started_at, ended_at, created_at, updated_at, created_by')
     .order('created_at', { ascending: false })
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)

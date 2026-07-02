@@ -67,23 +67,23 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceRoleClient()
 
   // ── Phase 4 commit 2: PulseIQ-via-agent-handler path ────────────────
-  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a town_halls row resolves
+  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a pulseiq_events row resolves
   // for this session_id (uuid or slug), bypass the legacy 995-line
   // PulseIQ orchestrator below and delegate to lib/chatCore.handleChatTurn.
   // PulseIQ-specific features (theme assignment, response counter,
   // language switch, auto-end, standby) are NOT carried into this path
   // — they get rebuilt on the unified substrate in Phase 5. With zero
-  // town_halls rows in the system today, this branch is dark on the
+  // pulseiq_events rows in the system today, this branch is dark on the
   // way in; it activates only after Phase 6 creates the first row.
   if (isTownHallViaAgentHandlerEnabled()) {
     const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
     let townHall: any = null
     if (isUUID4) {
-      const { data } = await supabase.from('town_halls').select('id, slug, org_id, bot_id, name, status').eq('id', session_id).single()
+      const { data } = await supabase.from('pulseiq_events').select('id, slug, org_id, bot_id, name, status').eq('id', session_id).single()
       townHall = data
     }
     if (!townHall) {
-      const { data } = await supabase.from('town_halls').select('id, slug, org_id, bot_id, name, status').eq('slug', session_id.toLowerCase()).single()
+      const { data } = await supabase.from('pulseiq_events').select('id, slug, org_id, bot_id, name, status').eq('slug', session_id.toLowerCase()).single()
       townHall = data
     }
     if (townHall) {
@@ -125,9 +125,9 @@ export async function POST(req: NextRequest) {
         })
       }
     }
-    // Flag is on but no town_halls row matched (or agent inactive) — fall
+    // Flag is on but no pulseiq_events row matched (or agent inactive) — fall
     // through to legacy. This is the expected state until Phase 6 creates
-    // the first town_halls row pointing at Sarina.
+    // the first pulseiq_events row pointing at Sarina.
   }
 
   // Fetch session (by UUID or slug)

@@ -95,9 +95,9 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
   // Phase 3 substrate — town hall family. Currently empty in prod; populated
   // once Phase 4 absorbs the PulseIQ route into the unified chat handler.
-  { name: 'town_halls', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'town_hall_conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'town_hall_topics', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'pulseiq_events', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'pulseiq_event_conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'pulseiq_topics', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
 
   // Datasets + entities + Ana
   { name: 'datasets', filter: { kind: 'org_id' }, cap: NO_CAP },

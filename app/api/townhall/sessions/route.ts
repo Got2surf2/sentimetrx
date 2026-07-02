@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
     org_name: isAdmin ? (orgNameMap[(s as any).org_id] || null) : null,
   }))
 
-  // Phase 5 commit 6: surface new-substrate town_halls rows alongside
+  // Phase 5 commit 6: surface new-substrate pulseiq_events rows alongside
   // legacy townhall_sessions. Same JSON shape — facilitator list UI
   // doesn't need to know which substrate a row came from.
   // docs/CONVERGENCE.md § 4 Phase 5 + docs/CONVERGENCE.md § 10 changelog.

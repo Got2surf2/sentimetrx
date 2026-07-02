@@ -12,7 +12,7 @@
 // passes them in. In the legacy PulseIQ orchestrator the pool is
 // townhall_themes (with `state='active'` and live response_count from
 // townhall_turns). In Phase 5 commit 3 the unified handleChatTurn will
-// pass town_hall_topics when townHallContext is present, or the
+// pass pulseiq_topics when townHallContext is present, or the
 // agent's seed focuses when it isn't.
 //
 // Selection rules (preserved from the legacy block):

@@ -79,7 +79,7 @@ describe('townhall/responses — POST', () => {
   })
   it('404 when the session does not exist (no blind cross-session write)', async () => {
     ctx.results['townhall_sessions'] = { data: null, error: null }
-    ctx.results['town_halls'] = { data: null, error: null }
+    ctx.results['pulseiq_events'] = { data: null, error: null }
     expect((await thResponses.POST(json({ session_id: 's1', participant_id: 'p1' }))).status).toBe(404)
   })
 })

@@ -294,17 +294,17 @@ describe('townhall/themes/custom — POST (cross-org write fix)', () => {
     expect((await customTheme.POST(req('POST', { session_id: 'h1', label: 'L', question: 'Q' }))).status).toBe(401)
   })
 
-  it('404 when the town_halls hall belongs to another org (non-admin)', async () => {
+  it('404 when the pulseiq_events hall belongs to another org (non-admin)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = withAdmin('orgA', false)
-    ctx.results['town_halls'] = { data: { id: 'h1', org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_events'] = { data: { id: 'h1', org_id: 'orgB' }, error: null }
     expect((await customTheme.POST(req('POST', { session_id: 'h1', label: 'L', question: 'Q' }))).status).toBe(404)
   })
 
   it('404 when the legacy session belongs to another org (non-admin)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = withAdmin('orgA', false)
-    ctx.results['town_halls'] = { data: null, error: null }
+    ctx.results['pulseiq_events'] = { data: null, error: null }
     ctx.results['townhall_sessions'] = { data: { org_id: 'orgB' }, error: null }
     expect((await customTheme.POST(req('POST', { session_id: 's1', label: 'L', question: 'Q' }))).status).toBe(404)
   })
@@ -312,18 +312,18 @@ describe('townhall/themes/custom — POST (cross-org write fix)', () => {
   it('owning-org caller may push a custom topic (new substrate)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = withAdmin('orgA', false)
-    ctx.results['town_halls'] = { data: { id: 'h1', org_id: 'orgA' }, error: null }
-    ctx.results['town_hall_topics'] = { data: { id: 't1' }, error: null }
+    ctx.results['pulseiq_events'] = { data: { id: 'h1', org_id: 'orgA' }, error: null }
+    ctx.results['pulseiq_topics'] = { data: { id: 't1' }, error: null }
     const r = await customTheme.POST(req('POST', { session_id: 'h1', label: 'L', question: 'Q' }))
     expect(r.status).toBe(201)
-    expect(ctx.insertCalls['town_hall_topics'][0].org_id).toBe('orgA')
+    expect(ctx.insertCalls['pulseiq_topics'][0].org_id).toBe('orgA')
   })
 
   it('platform admin may push into another org (bypass)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = withAdmin('orgA', true)
-    ctx.results['town_halls'] = { data: { id: 'h1', org_id: 'orgB' }, error: null }
-    ctx.results['town_hall_topics'] = { data: { id: 't1' }, error: null }
+    ctx.results['pulseiq_events'] = { data: { id: 'h1', org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_topics'] = { data: { id: 't1' }, error: null }
     expect((await customTheme.POST(req('POST', { session_id: 'h1', label: 'L', question: 'Q' }))).status).toBe(201)
   })
 })
