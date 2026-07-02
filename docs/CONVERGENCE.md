@@ -237,6 +237,46 @@ Finishing Phases 4–6 (route absorption + cohort layer + the Vindman/NOWOCATS
 acceptance test) remains a distinct project; this freeze just stops the gap from
 widening in the meantime.
 
+### 4.2 Unfreeze scoping (2026-07-02) — verified parity-gap list
+
+**State verified against prod:** legacy orchestrator is 100% of live PulseIQ
+traffic. Prod flags: `DUAL_WRITE_PHASE3=""`, `TOWNHALL_VIA_AGENT_HANDLER=""`
+(both OFF), `READ_PHASE3` unset — so prod writes NOTHING to the new schema and
+the Phase-3 Tier-5 verification clock has never started. Local dev has
+dual-write + handler ON (the 3 `town_halls` / 426 `town_hall_topics` prod rows
+are local-dev artifacts). Legacy prod data is tiny: 1 `townhall_sessions` row,
+511 `townhall_turns`. The "greenfield, no live customers" premise still holds.
+
+**Already rebuilt in `chatCore` (no port needed):** topic pool from
+`town_hall_topics`, cohort-wide response counts on the new schema, shared
+`pickNextTopic` (incl. smart-probe), all-covered standby, count-based +
+15-min-cron theme detection, turn mirroring with `sentiment`/`content_en`
+fields, deflection (shared router), guardrails/refusal handling, usage logging.
+
+**Legacy-only features (the port list), in dependency order:**
+
+| # | Feature | Size | Notes |
+|---|---|---|---|
+| 1 | Round-based pacing (`pacing_mode='rounds'`, paused-round hold, `round_hold` response flag) | S–M | Named must-port-first by the freeze; client reads `round_hold` |
+| 2 | Session lifecycle: auto-end (timed/inactivity), ended/paused replies, per-participant turn cap + wrap-up closing message | S–M | Belongs in the townhall shim, not chatCore proper |
+| 3 | Client protocol adapter: `/pi` client speaks `turn_number`/`theme_id`/`skipped`/`[done]`/`round_hold` + localized skip/done labels; the current Phase-4 shim returns `theme_id:null` and ignores `skipped` | M | Either fatten the shim or update `TownHallChat.tsx`; also decide **write-back**: unified path must keep writing `townhall_turns` during transition or all 37 legacy readers break |
+| 4 | Language switch (AI classifier ≥95%, bilingual confirm, re-send prior message translated) + translate-to-English for analysis | M | `mirrorTurns` already has the `content_en` field; legacy computes it |
+| 5 | Strike-based content guard escalation (`checkMessage` strikes → warning → shutdown) | S | chatCore has partial `checkMessage` usage; verify parity |
+| 6 | Opening-response → topic matching (`matchResponseToTopic`) | S–M | First-turn only |
+| 7 | The deterministic clarifier/disengagement engine: move-on regex, trajectory decline, curt/skip-overload signals, dynamic per-topic caps (2–4), dynamic word thresholds, AI tone check, global-checkout chill standby | L | **Biggest behavioral delta + a product decision**: port heuristics as code-enforced caps + system-prompt hints (hybrid), not line-for-line — chatCore is prompt-driven by design |
+
+**Not engine work (Phase 5/6 proper, deferrable):** 37 files read the legacy
+tables (console/dashboard, exports/PPTX, status, rounds admin, duplicate,
+search, themes CRUD, favorites, `/m` monitor). With write-back (#3) they keep
+working unchanged; rewire + legacy-table drop + Phase-3 Tier-5 cleanup is a
+second tranche.
+
+**Estimate:** Tranche 1 (engine cutover: items 1–7 + a PulseIQ regression set
+mirroring the Sarina harness + prod flag flip + one real test town hall) ≈
+**4–6 focused sessions**. Tranche 2 (reader rewiring, legacy drop, Tier 5) ≈
+**3–5 sessions**, schedulable anytime after. Acceptance test stays Phase 6:
+one town hall run end-to-end on the unified path with the dashboard live.
+
 ## 5. What stays the same vs. what changes
 
 **Stays the same:**
