@@ -1,6 +1,6 @@
 # Sentimetrx — CAIQ-Lite (Cloud Security Alliance)
 
-_Last reviewed: 2026-05-16_
+_Last reviewed: 2026-07-02_
 
 This is a self-assessment using the Cloud Security Alliance Consensus
 Assessments Initiative Questionnaire — Lite (CAIQ-Lite) format, mapped
@@ -31,7 +31,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 
 | # | Question | Answer | Notes |
 |---|---|---|---|
-| AIS-01 | Are applications designed and developed using secure coding standards? | **Yes** | TypeScript strict mode; ESLint (`next/core-web-vitals`); peer review on every PR |
+| AIS-01 | Are applications designed and developed using secure coding standards? | **Yes** | TypeScript strict mode; ESLint enforced in CI; documented multi-tenancy invariants (CLAUDE.md + `docs/SECURITY.md`); AI-assisted review + weekly governance audit (solo-operator today — see CCC-02) |
 | AIS-02 | Is input validation performed on untrusted input? | **Yes** | Server-side validation on all API routes; AI inputs additionally pass through `lib/guardrails.ts` |
 | AIS-03 | Are APIs authenticated? | **Yes** | Session-cookie + CSRF for first-party UI; opaque high-entropy IDs for embed widgets; service-role for internal jobs only |
 | AIS-04 | Do you separate production and non-production environments? | **Yes** | Vercel Production vs Preview; separate environment-variable scopes |
@@ -43,16 +43,16 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 |---|---|---|---|
 | BC-01 | Do you have a documented BC / DR plan? | **Yes** | Section 11 of `docs/SECURITY.md` |
 | BC-02 | What is the RPO? | **24 hours** | Supabase daily backups |
-| BC-03 | What is the RTO? | **2–4 hours** | Restore to scratch DB validated by quarterly drill |
-| BC-04 | Are DR drills performed and documented? | **Yes** | Quarterly restore drill logged in `docs/weekly-reports/` |
+| BC-03 | What is the RTO? | **2–4 hours (target)** | Restore path to a dedicated scratch project; schema-level restore exercised 2026-07-02 |
+| BC-04 | Are DR drills performed and documented? | **Roadmap** | Dedicated scratch project stood up 2026-07-02 and a schema-level restore exercised; first full data-restore drill (row counts + invariants confirmed) scheduled, quarterly cadence thereafter, logged in `docs/weekly-reports/` |
 | BC-05 | Is application rollback supported? | **Yes** | Instant via Vercel deployment history |
 
 ## CCC — Change Control & Configuration Management
 
 | # | Question | Answer | Notes |
 |---|---|---|---|
-| CCC-01 | Is there a documented change-management process? | **Yes** | Git-based: PR review, CI on every push, deploys to production from `main` |
-| CCC-02 | Are changes to production reviewed before deployment? | **Yes** | All `main` merges run through PR + CI; protected-branch settings prevent direct push |
+| CCC-01 | Is there a documented change-management process? | **Yes** | Git-based: CI (typecheck + tests) on every push; deploys to production from `main`; spec/devlog drift gates at commit time |
+| CCC-02 | Are changes to production reviewed before deployment? | **Compensating** | Solo-operator model today: commits land on `main` directly (no second human reviewer exists). Compensating controls: CI on every push, AI-assisted code review, weekly automated governance audit, and full commit-level traceability. Mandatory PR review begins with the first additional engineer |
 | CCC-03 | Are configuration changes logged? | **Yes** | Git history for code and Vercel deployment log for runtime configuration |
 | CCC-04 | Are database schema changes versioned? | **Yes** | Numbered `sql/NNN_*.sql` migration files in the repo |
 | CCC-05 | Are deployments traceable to source commits? | **Yes** | Vercel records the source commit for every deployment |
@@ -63,7 +63,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 |---|---|---|---|
 | CEK-01 | Is customer data encrypted at rest? | **Yes** | AES-256 at the database and object-storage layer |
 | CEK-02 | Is customer data encrypted in transit? | **Yes** | TLS 1.2+ (TLS 1.3 preferred) end to end |
-| CEK-03 | Who manages the encryption keys? | **Provider-managed** | Supabase / AWS KMS. Application-layer encryption of select fields (e.g., guest emails) uses tenant-scoped keys held in Vercel environment configuration |
+| CEK-03 | Who manages the encryption keys? | **Provider-managed** | Supabase / AWS KMS. Application-layer encryption is additionally applied to customer-supplied AI provider keys (AES-256-GCM envelope, key held in Vercel environment configuration) |
 | CEK-04 | Is there a documented key-rotation policy? | **Yes** | Section 4 of `docs/SECURITY.md`: 90 days for high-sensitivity keys, 180 days for vendor API keys, immediate on suspected compromise |
 | CEK-05 | Are TLS certificates managed automatically? | **Yes** | Vercel-managed Let's Encrypt + ACME |
 
@@ -118,7 +118,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 | IAM-04 | Is MFA available for customer-facing accounts? | **Roadmap** | Supabase Auth supports it; enforcement policy ratification pending; available on request |
 | IAM-05 | Is MFA enforced for personnel with production access? | **Roadmap** | Supabase, Vercel, GitHub, AWS — MFA enforced at the account level on the provider side today; formal Sentimetrx policy ratification pending |
 | IAM-06 | Is SSO supported for customer-facing accounts? | **Roadmap** | Not yet implemented. Auth today is Supabase email magic-link (+ password for invite acceptance); no SSO/SAML/SCIM flow is wired in the app. Supabase Auth supports the underlying providers; SSO is on the roadmap, not available on request today |
-| IAM-07 | Are privileged actions logged? | **Yes** | `admin_action_log` table; append-only; 2-year retention |
+| IAM-07 | Are privileged actions logged? | **Yes (core actions)** | `admin_action_log` table (org lifecycle changes, AI-key changes, snapshot restores, cross-org transfers); append-only; 2-year retention; coverage expansion on the hardening track |
 | IAM-08 | Are sessions invalidated on logout / timeout? | **Yes** | Supabase-managed session lifetimes; `HttpOnly` + `Secure` + `SameSite=Lax` cookies |
 
 ## IVS — Infrastructure & Virtualization Security
@@ -145,7 +145,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 | LOG-01 | Are security-relevant events logged? | **Yes** | `admin_action_log` for application actions; Supabase Postgres logs as database fallback |
 | LOG-02 | Are logs retained per policy? | **Yes** | 2 years for `admin_action_log`; Supabase log retention per Supabase plan |
 | LOG-03 | Are logs protected from tampering? | **Yes** | `admin_action_log` is append-only at the RLS-policy level — only the service role can insert; no policy permits update or delete from the auth client |
-| LOG-04 | Is application-error monitoring in place? | **Yes** | Sentry. PII-scrubbing handler for Sentry payloads is on the hardening roadmap; today, the application-layer rule is that PII is not passed to `console.*` or to `throw` messages |
+| LOG-04 | Is application-error monitoring in place? | **Yes** | Sentry, with a PII-scrubbing handler (`lib/sentryScrub.ts`, unit-tested) wired into the client, server, and edge configs; the application-layer rule remains that PII is not passed to `console.*` or to `throw` messages |
 
 ## SEF — Security Incident Management, E-Discovery, Forensics
 
@@ -183,7 +183,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 |---|---|---|
 | A&A | 3 | 1 |
 | AIS | 5 | 0 |
-| BC | 5 | 0 |
+| BC | 4 | 1 |
 | CCC | 5 | 0 |
 | CEK | 5 | 0 |
 | DCS | 2 | 1 |
@@ -198,14 +198,14 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 | STA | 3 | 1 |
 | TVM | 4 | 0 |
 
-**Total: 68 implemented, 9 roadmap / partial.**
+**Total: 67 implemented, 10 roadmap / partial.**
 
 The roadmap items are: third-party SOC 2 audit, multi-region
 replication, formal subprocessor DPAs, MFA enforcement policy
 ratification, automated dependency scanning, public `security@`
-address, automated Sentry PII scrubbing, and Zero Data Retention with
-Anthropic (default API retention is 30 days for trust & safety, then
-deletion; ZDR is an enterprise contractual upgrade in progress).
+address, the first full DR restore drill, and Zero Data Retention
+with Anthropic (default API retention is 30 days for trust & safety,
+then deletion; ZDR is an enterprise contractual upgrade in progress).
 
 All roadmap items are tracked in the internal Open Items log in
 `docs/SECURITY.md` and are gated on first paying customer or earlier

@@ -1,6 +1,6 @@
 # Sentimetrx — Security Overview (Buyer-Facing)
 
-_Last reviewed: 2026-05-16_
+_Last reviewed: 2026-07-02_
 
 This is a sanitized, buyer-facing summary of how Sentimetrx protects
 customer data. The full internal policy lives in `docs/SECURITY.md` and
@@ -136,11 +136,14 @@ these.
 
 ## 7. Audit logging
 
-- An append-only `admin_action_log` table records administrative
-  actions: privileged route access, org membership changes,
-  exports, and bulk deletes. Writes occur only via the service-role
-  identity; the database has no `INSERT/UPDATE/DELETE` policy for
-  the auth client.
+- An append-only `admin_action_log` table records core
+  administrative actions: organization lifecycle changes
+  (status, delete), AI provider-key changes, backup-snapshot
+  restores, and cross-org resource transfers. Writes occur only via
+  the service-role identity; the database has no
+  `INSERT/UPDATE/DELETE` policy for the auth client. Coverage
+  expansion (customer-initiated exports, membership changes) is on
+  the hardening track.
 - Each row includes actor, organization, action, resource, timestamp,
   and selected metadata.
 - **Retention: 2 years**, aligning with SOC 2 CC4 evidence retention
@@ -158,9 +161,11 @@ these.
   unless the org also requests their deletion. For data-subject
   erasure requests, identifying fields are redacted in place and
   row content is preserved as anonymized organization property.
-- **Soft-delete tombstones** (90 days) apply to derived/aggregate
-  rows and to per-row user-erasure requests on dataset content;
-  hard-delete applies on full-org deletion.
+- **Soft-delete tombstones** (90 days) are the ratified policy
+  default for derived/aggregate rows and per-row user-erasure
+  requests on dataset content; hard-delete applies on full-org
+  deletion. (Erasure requests are handled as an operator procedure
+  today; a self-serve mechanism is on the hardening track.)
 - **Backups** are retained 7 days during pilot and will be extended
   to 30 days at first paying customer.
 
@@ -191,10 +196,14 @@ shared with affected customers' named security contacts.
 
 ## 11. Business continuity
 
-- **RPO:** 24 h (Supabase daily backups).
-- **RTO:** 2–4 h to restore from backup.
-- **Disaster-recovery drill cadence:** quarterly restore to a scratch
-  database; row counts and key invariants confirmed; result logged.
+- **RPO:** 24 h (Supabase daily backups, plus an independent nightly
+  per-org snapshot to S3).
+- **RTO:** 2–4 h target to restore from backup.
+- **Disaster-recovery drills:** a dedicated scratch project exists
+  for restore exercises; a schema-level restore to it was exercised
+  2026-07-02. The first full data-restore drill (row counts and key
+  invariants confirmed, result logged) is scheduled on a quarterly
+  cadence going forward — no full drill has been completed yet.
 - **Application rollback** is instant via Vercel deployment history.
 
 ## 12. Compliance posture

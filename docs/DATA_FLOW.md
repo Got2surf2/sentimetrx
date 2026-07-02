@@ -18,8 +18,8 @@ is transmitted outside the United States.
 flowchart LR
     %% Actors
     subgraph CustomerSide["Customer side (browser / device)"]
-        Admin["Customer admin<br/>(SSO or magic-link)"]
-        Analyst["Customer analyst<br/>(SSO or magic-link)"]
+        Admin["Customer admin<br/>(email magic-link)"]
+        Analyst["Customer analyst<br/>(email magic-link)"]
         Guest["Guest / employee<br/>(public widget)"]
     end
 
@@ -73,7 +73,7 @@ flowchart LR
 
 | Actor | How they reach the platform | Auth |
 |---|---|---|
-| **Customer admin** | Browser → `/admin/*` | Email + magic-link, optional SSO; CSRF on mutating routes |
+| **Customer admin** | Browser → `/admin/*` | Email magic-link (SSO is roadmap — see CAIQ IAM-06); CSRF on mutating routes |
 | **Customer analyst** | Browser → `/analyze/*` | Same as admin, scoped to their org only |
 | **Guest / employee** | Browser → `/s/[guid]`, `/b/[guid]`, `/pi/[guid]` | Opaque 122-bit identifier bound to the owning org. No cookie auth |
 | **Internal operator (Datanautix)** | Browser → `/admin/*` | `requireAdmin` gate (admin-org membership + role) |
@@ -99,7 +99,7 @@ flowchart LR
 | **Azure OpenAI** | Text prompts (when the `azure-openai` provider is selected) | AI inference | Not used for training by default (Azure OpenAI terms). |
 | **Resend** | Recipient email + transactional email body | Survey invitations & system email — only if customer enables outbound | Standard Resend retention |
 | **DataForSEO** | Brand / location names + public review queries | Fetch of publicly available reviews | No customer PII sent |
-| **Sentry** | Stack traces, request metadata | Error monitoring | PII fields scrubbed at boundary _(scrubbing handler in progress for the pilot window)_ |
+| **Sentry** | Stack traces, request metadata | Error monitoring | PII fields scrubbed at boundary by `lib/sentryScrub.ts` (wired into client, server, and edge configs; unit-tested) |
 | **AWS S3** | Generated exports (PPTX decks, HTML shares) + nightly org-data backups | Export object storage & disaster-recovery backups | Encrypted at rest |
 
 ## 5. AI inference flow (detail)
@@ -136,10 +136,12 @@ The AI flow is the most-asked-about path. Step-by-step:
 | Supabase Storage (uploaded media, PDFs) | AES-256 | AWS-managed (Supabase-operated) |
 | AWS S3 (exports + backups) | AES-256 (SSE-S3; SSE-KMS if `BACKUP_S3_KMS_KEY_ID` set) | AWS-managed |
 
-Application-layer encryption is applied to specific fields where
-customer policy requires it (e.g., guest emails captured by
-Sentimetrx-sent surveys are stored encrypted with a tenant-scoped key
-held in Vercel environment configuration).
+Application-layer encryption is additionally applied to
+customer-supplied AI provider keys (AES-256-GCM envelope via
+`lib/secretbox.ts`; the envelope key is held in Vercel environment
+configuration). Other fields rely on the provider-managed
+at-rest encryption above; field-level encryption of guest contact
+data is on the hardening track.
 
 ## 7. Data-in-transit encryption
 
@@ -157,19 +159,22 @@ traverses non-TLS channels.
 4. **AI enrichment** — single-org prompts to Anthropic; outputs
    stored back into the org's tables.
 5. **Export** — customer-initiated exports (CSV, PPTX decks)
-   delivered via signed URL or in-app download. All exports logged
-   in `admin_action_log`.
+   delivered via signed URL or in-app download. Operator-initiated
+   snapshot restores and cross-org transfers are logged in
+   `admin_action_log`; per-export audit logging is on the
+   hardening track.
 6. **Retention** — per the contract; default 2 years for audit log,
    indefinite for live tenant data until org deletion request.
-7. **Deletion** — full-org delete cascades through tenant-scoped
-   tables; row-level erasure honors data-subject requests with
-   tombstone + redaction.
+7. **Deletion** — full-org delete sweeps all org-tagged tables
+   (fail-closed), Storage objects, and auth identities; row-level
+   erasure honors data-subject requests with tombstone + redaction
+   per the ratified policy (operator procedure today).
 
 ## 9. What never leaves the platform's primary boundary
 
 - **Customer passwords / password hashes.** Never read by Sentimetrx
   application code; stored only inside Supabase Auth.
-- **Guest emails captured by Sentimetrx-sent surveys.** Stored
-  encrypted; never included in AI prompts.
+- **Guest emails captured by Sentimetrx-sent surveys.** Never
+  included in AI prompts.
 - **Cross-org data in a single prompt.** Single-org-per-prompt is
   the load-bearing AI invariant.
