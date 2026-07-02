@@ -12,6 +12,7 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { logFlatCost } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 import { resolveAsrVendor } from '@/lib/asr/router'
 import { transcribeWhisper, type WhisperResult } from '@/lib/asr/whisper'
 import { transcribeDeepgram, type DeepgramResult } from '@/lib/asr/deepgram'
@@ -84,12 +85,13 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
 
   // Record the resolved vendor + accumulate transcription cost on the recording.
   // Stage-serialized by the queue, so read-modify-write is safe here.
-  const { data: rRow } = await service
+  const { data: rRow, error: rRowErr } = await service
     .from('recordings')
     .select('cost_cents')
     .eq('id', recording.id)
     .eq('org_id', recording.org_id)
     .single()
+  if (rRowErr) void logError('transcribe.transcribeRecording', rRowErr, { orgId: recording.org_id })
   const currentCost = (rRow?.cost_cents as number | undefined) ?? 0
 
   const { error: updErr } = await service

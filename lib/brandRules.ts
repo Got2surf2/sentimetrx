@@ -16,6 +16,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildMergedCollectionSchema } from './collectionSchema'
 import { discoverEntities } from './entityDiscovery'
+import { logError } from './log'
 
 /** Rebuild the merged schema for one brand-collection's virtual dataset from
  *  its current members. Idempotent. A brand with no members gets a schema
@@ -25,19 +26,21 @@ export async function rebuildBrandSchema(
   service: SupabaseClient,
   brandCollectionId: string,
 ): Promise<void> {
-  const { data: col } = await service
+  const { data: col, error: colErr } = await service
     .from('collections')
     .select('dataset_id, kind')
     .eq('id', brandCollectionId)
     .single()
+  if (colErr) void logError('brandRules.rebuildBrandSchema', colErr)
   if (!col || (col as any).kind !== 'brand') return
 
   const virtualDatasetId = (col as any).dataset_id as string
 
-  const { data: members } = await service
+  const { data: members, error: membersErr } = await service
     .from('collection_members')
     .select('dataset_id')
     .eq('collection_id', brandCollectionId)
+  if (membersErr) void logError('brandRules.rebuildBrandSchema', membersErr)
   const memberIds = (members || []).map((m: any) => m.dataset_id as string)
 
   const mergedSchema = await buildMergedCollectionSchema(service, memberIds)
@@ -56,11 +59,12 @@ export async function applyBrandRulesOnJoin(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<void> {
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets')
     .select('brand_collection_id')
     .eq('id', datasetId)
     .single()
+  if (dsErr) void logError('brandRules.applyBrandRulesOnJoin', dsErr)
   const brandCollectionId = (ds as any)?.brand_collection_id as string | null
   if (!brandCollectionId) return
 
@@ -83,21 +87,23 @@ export async function discoverBrandEntitiesIfNeeded(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<void> {
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets')
     .select('brand_collection_id')
     .eq('id', datasetId)
     .single()
+  if (dsErr) void logError('brandRules.discoverBrandEntitiesIfNeeded', dsErr)
   const brandCollectionId = (ds as any)?.brand_collection_id as string | null
   if (!brandCollectionId) return
 
-  const { data: priorRuns } = await service
+  const { data: priorRuns, error: priorRunsErr } = await service
     .from('entity_catalog_refresh')
     .select('id')
     .eq('scope_type', 'collection')
     .eq('scope_id', brandCollectionId)
     .contains('datasets_sampled', [datasetId])
     .limit(1)
+  if (priorRunsErr) void logError('brandRules.discoverBrandEntitiesIfNeeded', priorRunsErr)
   if (priorRuns && priorRuns.length > 0) return
 
   await discoverEntities({

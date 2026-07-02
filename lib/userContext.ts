@@ -15,6 +15,7 @@
 import type { ModuleFeatures } from './types'
 import { effectiveFeatures } from './resolveOrg'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from './log'
 
 export interface UserContext {
   userId:        string
@@ -50,11 +51,12 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data: userRow } = await supabase
+  const { data: userRow, error: userRowErr } = await supabase
     .from('users')
     .select('id, email, full_name, org_id, features, disabled')
     .eq('id', user.id)
     .single()
+  if (userRowErr) void logError('userContext.getUserContext', userRowErr)
   if (!userRow || !userRow.org_id) return null
   // If the user has been disabled, treat them as signed out at the app layer.
   // Their auth.users.banned_until prevents *new* logins; this catches the
@@ -64,11 +66,12 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
     return null
   }
 
-  const { data: orgRow } = await supabase
+  const { data: orgRow, error: orgRowErr } = await supabase
     .from('organizations')
     .select('id, name, logo_url, is_admin_org, features')
     .eq('id', userRow.org_id)
     .single()
+  if (orgRowErr) void logError('userContext.getUserContext', orgRowErr, { orgId: userRow.org_id })
   if (!orgRow) return null
 
   // Admin orgs get every feature implicitly.

@@ -9,6 +9,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RecordingConfigSnapshot, Analyst, MeetingObjectives, ConfidentialityClass, SessionType } from './types'
+import { logError } from '@/lib/log'
 
 // The recording columns that make up a config snapshot.
 export const CONFIG_SELECT =
@@ -65,13 +66,14 @@ export async function snapshotConfigVersion(
 
   const snapshot = buildSnapshot(rec as unknown as Record<string, unknown>)
 
-  const { data: latest } = await service
+  const { data: latest, error: latestErr } = await service
     .from('recording_config_versions')
     .select('version_number, snapshot')
     .eq('recording_id', recordingId)
     .order('version_number', { ascending: false })
     .limit(1)
     .maybeSingle()
+  if (latestErr) void logError('configVersion.snapshotConfigVersion', latestErr, { orgId })
 
   if (latest && canonical(latest.snapshot) === canonical(snapshot)) {
     return { version_number: latest.version_number as number, created: false }
@@ -114,13 +116,14 @@ export async function isAnalysisConfigDrifted(
   analyzedVersion: number | null,
 ): Promise<boolean> {
   if (analyzedVersion == null) return false
-  const { data: ver } = await service
+  const { data: ver, error: verErr } = await service
     .from('recording_config_versions')
     .select('snapshot')
     .eq('recording_id', recordingId)
     .eq('org_id', orgId)
     .eq('version_number', analyzedVersion)
     .maybeSingle()
+  if (verErr) void logError('configVersion.isAnalysisConfigDrifted', verErr, { orgId })
   if (!ver?.snapshot) return false
   const current = buildSnapshot(currentRec)
   const analyzed = ver.snapshot as RecordingConfigSnapshot

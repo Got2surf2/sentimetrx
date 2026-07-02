@@ -20,6 +20,7 @@ import { transcribeWhisper } from '@/lib/asr/whisper'
 import { transcribeDeepgram } from '@/lib/asr/deepgram'
 import { bootSandbox, runOrThrow, freshReadUrl, freshUploadUrl, shellQuote, BUCKET } from '@/lib/recordings/extract'
 import { logFlatCost } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 import type { TranscriptSegment, RespanEntry } from '@/lib/recordings/types'
 
 export type SpanVendor = 'whisper' | 'deepgram'
@@ -33,12 +34,13 @@ export async function transcribeSpan(
 ): Promise<{ added: number; removed: number }> {
   const service = createServiceRoleClient()
 
-  const { data: rec } = await service
+  const { data: rec, error: recErr } = await service
     .from('recordings')
     .select('id, language, cost_cents, respan_log')
     .eq('id', recording_id)
     .eq('org_id', org_id)
     .single()
+  if (recErr) void logError('transcribeSpan.transcribeSpan', recErr, { orgId: org_id })
   if (!rec) throw new Error('recording not found')
   const language = (rec as { language?: string }).language || 'en'
 
@@ -85,12 +87,13 @@ export async function transcribeSpan(
 
   // 4. Merge: drop existing segments overlapping the span, add the new ones,
   //    re-sort by start, recompute word_count.
-  const { data: tr } = await service
+  const { data: tr, error: trErr } = await service
     .from('recording_transcripts')
     .select('id, segments')
     .eq('recording_id', recording_id)
     .eq('org_id', org_id)
     .single()
+  if (trErr) void logError('transcribeSpan.transcribeSpan', trErr, { orgId: org_id })
   if (!tr) throw new Error('transcript not found')
   const existing = ((tr as { segments?: TranscriptSegment[] }).segments ?? []) as TranscriptSegment[]
   const kept = existing.filter(s => !(s.start < end && s.end > start))

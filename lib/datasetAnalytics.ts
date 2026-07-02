@@ -10,6 +10,7 @@
 // before, so nothing breaks until sql/145 is applied.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 type AnalyticsRow = { analytics: Record<string, unknown> | null }
 
@@ -21,7 +22,8 @@ export async function mergeDatasetAnalytics(
 ): Promise<void> {
   const { error } = await service.rpc('merge_dataset_analytics', { p_dataset_id: datasetId, p_patch: patch })
   if (!error) return
-  const { data } = await service.from('dataset_state').select('analytics').eq('dataset_id', datasetId).single()
+  const { data, error: readErr } = await service.from('dataset_state').select('analytics').eq('dataset_id', datasetId).single()
+  if (readErr) void logError('datasetAnalytics.mergeDatasetAnalytics', readErr)
   const cur = (data as AnalyticsRow | null)?.analytics || {}
   await service.from('dataset_state').update({ analytics: { ...cur, ...patch } }).eq('dataset_id', datasetId)
 }
@@ -34,7 +36,8 @@ export async function deleteDatasetAnalyticsKey(
 ): Promise<void> {
   const { error } = await service.rpc('delete_dataset_analytics_key', { p_dataset_id: datasetId, p_key: key })
   if (!error) return
-  const { data } = await service.from('dataset_state').select('analytics').eq('dataset_id', datasetId).single()
+  const { data, error: readErr } = await service.from('dataset_state').select('analytics').eq('dataset_id', datasetId).single()
+  if (readErr) void logError('datasetAnalytics.deleteDatasetAnalyticsKey', readErr)
   const cur = (data as AnalyticsRow | null)?.analytics
   if (!cur || !(key in cur)) return
   const next = { ...cur }

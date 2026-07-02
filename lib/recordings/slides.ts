@@ -14,6 +14,7 @@ import { renderPdfToPng } from '@/lib/vision/renderDoc'
 import { visionReadPages } from '@/lib/vision/readDocument'
 import { buildSlideVisionSystem } from '@/lib/recordings/prompts/presentation'
 import type { PresentationOutline, SlideOutline } from '@/lib/recordings/types'
+import { logError } from '@/lib/log'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
@@ -25,13 +26,14 @@ export interface IngestSlidesInput {
 export async function ingestSlides(input: IngestSlidesInput): Promise<PresentationOutline | null> {
   const service = createServiceRoleClient()
 
-  const { data: slideFile } = await service
+  const { data: slideFile, error: slideFileErr } = await service
     .from('recording_files')
     .select('id, original_filename, storage_path, mime_type')
     .eq('recording_id', input.recording_id)
     .eq('org_id', input.org_id)
     .eq('file_role', 'slides')
     .maybeSingle()
+  if (slideFileErr) void logError('slides.ingestSlides', slideFileErr, { orgId: input.org_id })
   if (!slideFile) return null
 
   // v1 supports PDF only.

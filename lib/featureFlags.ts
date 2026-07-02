@@ -15,6 +15,7 @@
 
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export type FeatureName = 'recording'  // expand as features come online
 
@@ -82,12 +83,13 @@ async function countFeatureUsageThisMonth(feature: FeatureName, orgId: string): 
   if (feature === 'recording') {
     // A "consumed unit" = a recording that's reached or passed the analyze stage.
     // Uploading / cancelled / failed-before-analyze don't count.
-    const { count } = await service
+    const { count, error: countErr } = await service
       .from('recordings')
       .select('id', { count: 'exact', head: true })
       .eq('org_id', orgId)
       .gte('created_at', startOfMonth.toISOString())
       .in('status', ['analyzing', 'rendering', 'complete'])
+    if (countErr) void logError('featureFlags.countFeatureUsageThisMonth', countErr, { orgId })
     return count ?? 0
   }
   return 0

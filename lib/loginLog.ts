@@ -11,6 +11,7 @@
 
 import { createServiceRoleClient } from './supabase/server'
 import { recordUserEvent } from './userEvents'
+import { logError } from './log'
 
 export type LoginMethod = 'password' | 'magic' | 'sso' | 'invite'
 
@@ -22,11 +23,12 @@ export async function logLogin(opts: {
 }): Promise<void> {
   try {
     const service = createServiceRoleClient()
-    const { data: u } = await service
+    const { data: u, error: uErr } = await service
       .from('users')
       .select('org_id')
       .eq('id', opts.userId)
       .single()
+    if (uErr) void logError('loginLog.logLogin', uErr)
     const orgId = (u as { org_id?: string | null } | null)?.org_id || null
     await service.from('user_logins').insert({
       user_id:    opts.userId,

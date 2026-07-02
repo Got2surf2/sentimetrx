@@ -34,6 +34,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 function keywordOverlap(existing: string[], candidate: string[]): number {
   if (!existing.length || !candidate.length) return 0
@@ -50,38 +51,42 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   const supabase = createServiceRoleClient()
 
   // 1. Load town hall + linked agent (for org_id, industry/context)
-  const { data: townHall } = await supabase
+  const { data: townHall, error: townHallErr } = await supabase
     .from('town_halls')
     .select('id, org_id, bot_id, name, cohort_config, discussion_guide')
     .eq('id', townHallId)
     .single()
+  if (townHallErr) void logError('cohortThemeAggregator.detectThemesForTownHall', townHallErr)
   if (!townHall) return { inserted: 0, skipped: 0, error: 'Town hall not found' }
 
-  const { data: agent } = await supabase
+  const { data: agent, error: agentErr } = await supabase
     .from('agents')
     .select('id, industry, config, system_prompt, subject, name')
     .eq('id', townHall.bot_id)
     .single()
+  if (agentErr) void logError('cohortThemeAggregator.detectThemesForTownHall', agentErr, { orgId: townHall.org_id })
   // agent can be null only if the FK is broken; treat as soft-fail rather than abort.
 
   // 2. Fetch all user turns across the town hall's conversations.
   // Two-step query (no nested joins through the join table in
   // supabase-js without RPC): first conversation ids, then turns.
-  const { data: linkedConvs } = await supabase
+  const { data: linkedConvs, error: linkedConvsErr } = await supabase
     .from('town_hall_conversations')
     .select('conversation_id')
     .eq('town_hall_id', townHallId)
+  if (linkedConvsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', linkedConvsErr, { orgId: townHall.org_id })
   const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
   if (conversationIds.length === 0) {
     return { inserted: 0, skipped: 0, error: 'No conversations linked to this town hall yet' }
   }
 
-  const { data: turns } = await supabase
+  const { data: turns, error: turnsErr } = await supabase
     .from('conversation_turns')
     .select('content, content_en, conversation_id, created_at')
     .in('conversation_id', conversationIds)
     .eq('role', 'user')
     .order('created_at', { ascending: true })
+  if (turnsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', turnsErr, { orgId: townHall.org_id })
 
   const allTexts = (turns || [])
     .map(t => (t.content_en || t.content || '').trim())
@@ -89,10 +94,11 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   if (allTexts.length < 10) return { inserted: 0, skipped: 0, error: 'Not enough responses yet (need 10+)' }
 
   // 3. Existing topics for dedup + gap context
-  const { data: existingTopics } = await supabase
+  const { data: existingTopics, error: existingTopicsErr } = await supabase
     .from('town_hall_topics')
     .select('id, label, keywords, state, mention_count')
     .eq('town_hall_id', townHallId)
+  if (existingTopicsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', existingTopicsErr, { orgId: townHall.org_id })
 
   const existingKeywords = (existingTopics || []).map(t => ({
     label: t.label,

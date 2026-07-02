@@ -13,6 +13,7 @@
 // `assistant` (answerer), never the asker.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export async function materializeExternalExchange(
   service: SupabaseClient,
@@ -20,9 +21,10 @@ export async function materializeExternalExchange(
 ): Promise<void> {
   const { botId, orgId, sessionId, questionId, question, answer } = args
 
-  const { data: existing } = await service
+  const { data: existing, error: existingErr } = await service
     .from('conversations').select('id')
     .eq('bot_id', botId).eq('session_id', sessionId).maybeSingle()
+  if (existingErr) void logError('externalExchange.materializeExternalExchange', existingErr, { orgId })
 
   if (existing) {
     await service.from('conversation_turns')

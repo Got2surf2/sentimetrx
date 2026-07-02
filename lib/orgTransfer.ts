@@ -10,6 +10,7 @@
 // who moved what, when, between which orgs.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export type TransferableResource = 'bot' | 'study' | 'dataset' | 'townhall_session' | 'recording'
 
@@ -53,6 +54,7 @@ export async function checkTransferTarget(
     .select('id, name, status')
     .eq('id', toOrgId)
     .single()
+  if (error) void logError('orgTransfer.checkTransferTarget', error, { orgId: toOrgId })
   if (error) {
     const fallback = await service.from('organizations').select('id, name').eq('id', toOrgId).single()
     if (fallback.error || !fallback.data) return { ok: false, error: 'Target org not found', status: 404 }
@@ -65,7 +67,8 @@ export async function checkTransferTarget(
 
   let fromOrg: { id: string; name: string } | undefined
   if (fromOrgId) {
-    const { data } = await service.from('organizations').select('id, name').eq('id', fromOrgId).single()
+    const { data, error: fromOrgErr } = await service.from('organizations').select('id, name').eq('id', fromOrgId).single()
+    if (fromOrgErr) void logError('orgTransfer.checkTransferTarget', fromOrgErr, { orgId: fromOrgId })
     if (data) fromOrg = { id: (data as any).id, name: (data as any).name }
   }
 
@@ -115,8 +118,9 @@ export async function recordAdminAction(ctx: {
   try {
     let targetOrgName: string | null = null
     if (ctx.targetOrgId) {
-      const { data: orgRow } = await ctx.service
+      const { data: orgRow, error: orgRowErr } = await ctx.service
         .from('organizations').select('name').eq('id', ctx.targetOrgId).single()
+      if (orgRowErr) void logError('orgTransfer.recordAdminAction', orgRowErr, { orgId: ctx.targetOrgId })
       targetOrgName = (orgRow as { name?: string } | null)?.name || null
     }
     const { error } = await ctx.service.from('admin_action_log').insert({
@@ -141,8 +145,9 @@ export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promis
   if (!ctx.targetOrgId || ctx.targetOrgId === ctx.actorOrgId) return
   try {
     let targetOrgName: string | null = null
-    const { data: orgRow } = await ctx.service
+    const { data: orgRow, error: orgRowErr } = await ctx.service
       .from('organizations').select('name').eq('id', ctx.targetOrgId).single()
+    if (orgRowErr) void logError('orgTransfer.recordAdminCrossOrgAction', orgRowErr, { orgId: ctx.targetOrgId })
     targetOrgName = (orgRow as any)?.name || null
 
     const { error } = await ctx.service.from('admin_action_log').insert({
@@ -170,10 +175,12 @@ export async function recordOrgTransfer(ctx: TransferContext): Promise<void> {
   try {
     let toOrgName: string | null = null
     let fromOrgName: string | null = null
-    const { data: toOrg } = await ctx.service.from('organizations').select('name').eq('id', ctx.toOrgId).single()
+    const { data: toOrg, error: toOrgErr } = await ctx.service.from('organizations').select('name').eq('id', ctx.toOrgId).single()
+    if (toOrgErr) void logError('orgTransfer.recordOrgTransfer', toOrgErr, { orgId: ctx.toOrgId })
     toOrgName = (toOrg as any)?.name || null
     if (ctx.fromOrgId) {
-      const { data: fromOrg } = await ctx.service.from('organizations').select('name').eq('id', ctx.fromOrgId).single()
+      const { data: fromOrg, error: fromOrgErr } = await ctx.service.from('organizations').select('name').eq('id', ctx.fromOrgId).single()
+      if (fromOrgErr) void logError('orgTransfer.recordOrgTransfer', fromOrgErr, { orgId: ctx.fromOrgId })
       fromOrgName = (fromOrg as any)?.name || null
     }
 

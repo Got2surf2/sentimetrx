@@ -17,6 +17,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
+import { logError } from '@/lib/log'
 
 // ── slugify — JS mirror of sql/060 public.slugify() ────────────────────────
 // Must stay byte-for-byte equivalent: it's the join key between catalog
@@ -55,11 +56,12 @@ export async function resolveEntityScope(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<EntityScope> {
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets')
     .select('id, source, org_id, brand_collection_id')
     .eq('id', datasetId)
     .single()
+  if (dsErr) void logError('entityFilter.resolveEntityScope', dsErr)
 
   if (!ds) {
     return { found: false, scopeType: 'dataset', scopeId: datasetId, memberDatasetIds: [], orgId: null }
@@ -68,11 +70,13 @@ export async function resolveEntityScope(
 
   // Collection virtual dataset → collection scope across its members.
   if ((ds as any).source === 'collection') {
-    const { data: col } = await service
+    const { data: col, error: colErr } = await service
       .from('collections').select('id').eq('dataset_id', datasetId).single()
+    if (colErr) void logError('entityFilter.resolveEntityScope', colErr, { orgId: orgId ?? undefined })
     if (col) {
-      const { data: members } = await service
+      const { data: members, error: membersErr } = await service
         .from('collection_members').select('dataset_id').eq('collection_id', (col as any).id)
+      if (membersErr) void logError('entityFilter.resolveEntityScope', membersErr, { orgId: orgId ?? undefined })
       const memberIds = (members || []).map((m: any) => m.dataset_id as string)
       return {
         found: true, scopeType: 'collection', scopeId: (col as any).id as string,
@@ -87,8 +91,9 @@ export async function resolveEntityScope(
   // Branded dataset → shared brand-collection catalog across the brand's datasets.
   const brandColId = (ds as any).brand_collection_id as string | null
   if (brandColId) {
-    const { data: siblings } = await service
+    const { data: siblings, error: siblingsErr } = await service
       .from('datasets').select('id').eq('brand_collection_id', brandColId)
+    if (siblingsErr) void logError('entityFilter.resolveEntityScope', siblingsErr, { orgId: orgId ?? undefined })
     const memberIds = (siblings || []).map((s: any) => s.id as string)
     return {
       found: true, scopeType: 'collection', scopeId: brandColId,
@@ -127,10 +132,11 @@ async function resolveScopeTextFields(
   datasetIds: string[],
 ): Promise<Record<string, string[]>> {
   if (datasetIds.length === 0) return {}
-  const { data } = await service
+  const { data, error: stateErr } = await service
     .from('dataset_state')
     .select('dataset_id, schema_config')
     .in('dataset_id', datasetIds)
+  if (stateErr) void logError('entityFilter.resolveScopeTextFields', stateErr)
   const out: Record<string, string[]> = {}
   for (const row of (data || []) as Array<{ dataset_id: string; schema_config: unknown }>) {
     const fields = eligibleEntityFields(row.schema_config)
@@ -285,20 +291,22 @@ export async function getEntitiesWithCounts(opts: {
   if (!includeHidden && scope.scopeType === 'collection') {
     catalogQuery = catalogQuery.neq('category', 'person')
   }
-  const { data: catalog } = await catalogQuery
+  const { data: catalog, error: catalogErr } = await catalogQuery
+  if (catalogErr) void logError('entityFilter.getEntitiesWithCounts', catalogErr)
 
   const entries = (catalog || []) as Array<{
     slug: string; canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean
   }>
 
   // Latest refresh audit row — drives the "last refreshed" UI.
-  const { data: refreshRows } = await service
+  const { data: refreshRows, error: refreshErr } = await service
     .from('entity_catalog_refresh')
     .select('triggered_at, triggered_by, entities_after')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
     .order('triggered_at', { ascending: false })
     .limit(1)
+  if (refreshErr) void logError('entityFilter.getEntitiesWithCounts', refreshErr)
   const last_refresh = (refreshRows && (refreshRows[0] as any)) || null
 
   if (entries.length === 0) {
@@ -323,12 +331,13 @@ export async function getEntitiesWithCounts(opts: {
     if (Object.keys(textFields).length === 0) {
       textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
     }
-    const { data: counts } = await service.rpc('count_entity_terms', {
+    const { data: counts, error: countsErr } = await service.rpc('count_entity_terms', {
       p_dataset_ids: scope.memberDatasetIds,
       p_terms:       terms,
       p_theme_query: themeQuery,
       p_text_fields: textFields,
     })
+    if (countsErr) void logError('entityFilter.getEntitiesWithCounts', countsErr)
     for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
       countByTerm.set(c.term, Number(c.row_count) || 0)
     }
@@ -393,13 +402,14 @@ export async function getRowsByEntity(opts: {
   const scope = await resolveEntityScope(service, datasetId)
   if (!scope.found) return { rows: [], entity: null, total: null, notFound: true }
 
-  const { data: entityRow } = await service
+  const { data: entityRow, error: entityRowErr } = await service
     .from('entity_catalog')
     .select('slug, canonical, category, aliases')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
     .eq('slug', entitySlug)
     .single()
+  if (entityRowErr) void logError('entityFilter.getRowsByEntity', entityRowErr)
   if (!entityRow) return { rows: [], entity: null, total: 0 }
 
   const entity = {
@@ -411,13 +421,14 @@ export async function getRowsByEntity(opts: {
   if (!query) return { rows: [], entity, total: 0 }
 
   const textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
-  const { data: rpcRows } = await service.rpc('get_rows_by_entity', {
+  const { data: rpcRows, error: rpcRowsErr } = await service.rpc('get_rows_by_entity', {
     p_dataset_ids: scope.memberDatasetIds,
     p_query:       query,
     p_text_fields: textFields,
     p_limit:       limit,
     p_offset:      offset,
   })
+  if (rpcRowsErr) void logError('entityFilter.getRowsByEntity', rpcRowsErr)
 
   const matched = (rpcRows || []) as Array<{
     id: number; dataset_id: string; row_index: number

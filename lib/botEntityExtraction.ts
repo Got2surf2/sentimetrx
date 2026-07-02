@@ -16,6 +16,7 @@
 
 import 'server-only'
 import { callAI } from './ai'
+import { logError } from './log'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from './entityFilter'
 import { rollupAgentEntitiesToBrand } from './correction/rollup'
@@ -222,18 +223,20 @@ export async function extractBotEntities(
   const startedAt = Date.now()
 
   // Snapshot the "before" count so the audit row reflects net new entities.
-  const { count: entitiesBefore } = await service
+  const { count: entitiesBefore, error: entitiesBeforeErr } = await service
     .from('entity_catalog')
     .select('id', { count: 'exact', head: true })
     .eq('scope_type', 'bot')
     .eq('scope_id', opts.botId)
+  if (entitiesBeforeErr) void logError('botEntityExtraction.extractBotEntities', entitiesBeforeErr, { orgId: opts.orgId })
 
   // Pull every chunk for this bot. Service role bypasses RLS; the caller's
   // org gate is the protection.
-  const { data: chunkRows } = await service
+  const { data: chunkRows, error: chunkRowsErr } = await service
     .from('bot_knowledge_chunks')
     .select('title, content, metadata')
     .eq('bot_id', opts.botId)
+  if (chunkRowsErr) void logError('botEntityExtraction.extractBotEntities', chunkRowsErr, { orgId: opts.orgId })
 
   const chunks = (chunkRows || [])
     .filter(c => typeof c.content === 'string' && c.content.trim().length > 0)
@@ -269,11 +272,12 @@ export async function extractBotEntities(
 
   // Pull existing rows for this bot to determine which slugs are net new vs
   // an alias/count refresh. One round-trip rather than per-row reads.
-  const { data: existingRows } = await service
+  const { data: existingRows, error: existingRowsErr } = await service
     .from('entity_catalog')
     .select('id, slug, sample_count, aliases, source, hidden, provenance')
     .eq('scope_type', 'bot')
     .eq('scope_id', opts.botId)
+  if (existingRowsErr) void logError('botEntityExtraction.extractBotEntities', existingRowsErr, { orgId: opts.orgId })
   const existingBySlug = new Map<string, { id: string; sample_count: number; aliases: string[]; source: string; hidden: boolean; provenance: Provenance }>(
     (existingRows || []).map(r => [r.slug as string, {
       id: r.id as string,

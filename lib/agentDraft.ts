@@ -9,6 +9,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 export async function draftAnswerFromKB(
   service: SupabaseClient,
@@ -19,7 +20,8 @@ export async function draftAnswerFromKB(
 ): Promise<string> {
   let kb = ''
   try {
-    const { data: chunks } = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: questionText, p_limit: 4 })
+    const { data: chunks, error: chunksErr } = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: questionText, p_limit: 4 })
+    if (chunksErr) void logError('agentDraft.draftAnswerFromKB', chunksErr, { orgId: bot.org_id })
     kb = ((chunks || []) as { title: string; content: string }[]).map(c => `- ${c.title}: ${c.content}`).join('\n').slice(0, 4000)
   } catch { /* RPC absent / no chunks → system prompt alone */ }
 

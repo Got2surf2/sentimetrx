@@ -17,6 +17,7 @@
 // bot_conversation_turns is dropped.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 /**
  * Row shape used by /api/bots/[id]/chat for bot_conversation_turns inserts.
@@ -164,12 +165,13 @@ export async function mirrorFocusFlagsUpdate(
   if (!isEnabled()) return
 
   try {
-    const { data: convRow } = await service
+    const { data: convRow, error: convRowErr } = await service
       .from('conversations')
       .select('id')
       .eq('bot_id', args.botId)
       .eq('session_id', args.sessionId)
       .maybeSingle()
+    if (convRowErr) void logError('phase3DualWrite.mirrorFocusFlagsUpdate', convRowErr)
 
     if (!convRow) return // dual-write upsert hasn't landed yet; nothing to update
 

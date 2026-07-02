@@ -8,6 +8,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
 import { deriveTrendWindows } from './trendWindows'
+import { logError } from './log'
 
 export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 export type Axis = typeof AXES[number]
@@ -130,8 +131,9 @@ const PAGE = 1000
  */
 async function detectRatingField(service: SupabaseClient, datasetId: string): Promise<{ field: string; aliases: Record<string, string> | null }> {
   try {
-    const { data: stateRow } = await service
+    const { data: stateRow, error: stateRowErr } = await service
       .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle()
+    if (stateRowErr) void logError('taxonomyRollup.detectRatingField', stateRowErr)
     const fields = (stateRow as { schema_config?: { fields?: Array<{ field: string; type?: string; sqt?: string; scoreField?: boolean; valueAliases?: Record<string, string> }> } } | null)?.schema_config?.fields || []
     const rf = fields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField))
     if (!rf) return { field: 'rating', aliases: null }
@@ -224,9 +226,10 @@ export async function computeTaxonomyRollup(opts: {
   // avgRating stay dimension-scoped (text-classified). Same all-rows RPCs the
   // metric strip uses; leave the classified-rows fallback if the RPC returns 0.
   try {
-    const { data: ns } = aliases
+    const { data: ns, error: nsErr } = aliases
       ? await service.rpc('field_aliased_avg', { p_dataset_id: datasetId, p_field: ratingField, p_present_field: '', p_aliases: aliases })
       : await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: ratingField })
+    if (nsErr) void logError('taxonomyRollup.computeTaxonomyRollup', nsErr, { orgId })
     const row = Array.isArray(ns) ? ns[0] : null
     if (row && Number(row.n) > 0 && row.avg_val != null) {
       rollup.overallAvgRating = Math.round(Number(row.avg_val) * 100) / 100

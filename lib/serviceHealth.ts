@@ -17,6 +17,7 @@ import 'server-only'
 // state, not org-scoped data.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export type ServiceKey =
   | 'dataforseo' | 'deepgram' | 'twilio'
@@ -209,7 +210,8 @@ export async function getServiceHealthRows(): Promise<ServiceHealthRow[]> {
   let stored: Record<string, any> = {}
   try {
     const svc = createServiceRoleClient()
-    const { data } = await svc.from('service_health').select('*')
+    const { data, error: healthErr } = await svc.from('service_health').select('*')
+    if (healthErr) void logError('serviceHealth.getServiceHealthRows', healthErr)
     stored = Object.fromEntries((data ?? []).map((r: any) => [r.service, r]))
   } catch { /* fall through to defaults */ }
 

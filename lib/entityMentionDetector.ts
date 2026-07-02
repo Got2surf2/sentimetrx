@@ -16,6 +16,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { expandEntityTerms } from './entityVariants'
+import { logError } from './log'
 
 interface CatalogEntry {
   slug: string
@@ -63,12 +64,13 @@ async function loadCatalog(
   service: SupabaseClient,
   botId: string,
 ): Promise<CacheEntry> {
-  const { data: rows } = await service
+  const { data: rows, error: rowsErr } = await service
     .from('entity_catalog')
     .select('slug, canonical, aliases, hidden')
     .eq('scope_type', 'bot')
     .eq('scope_id', botId)
     .eq('hidden', false)
+  if (rowsErr) void logError('entityMentionDetector.loadCatalog', rowsErr)
 
   const entries: CatalogEntry[] = []
   for (const r of rows || []) {

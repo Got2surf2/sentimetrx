@@ -22,6 +22,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/entityFilter'
 import { chooseCanonical, mergeProvenance, type SourceKind, type Provenance } from '@/lib/correction/provenance'
+import { logError } from '@/lib/log'
 
 const MAX_ALIASES = 50
 
@@ -133,9 +134,10 @@ export async function rollupAgentEntitiesToBrand(
     let brandTag = (opts.brandTag ?? '').trim()
     let createdBy = opts.createdBy ?? null
     if (!opts.brandTag || createdBy === undefined) {
-      const { data: agent } = await service
+      const { data: agent, error: agentErr } = await service
         .from('agents').select('brand_tag, created_by, org_id')
         .eq('id', opts.agentId).eq('org_id', opts.orgId).maybeSingle()
+      if (agentErr) void logError('rollup.rollupAgentEntitiesToBrand', agentErr, { orgId: opts.orgId })
       if (!agent) return null
       if (!opts.brandTag) brandTag = String((agent as any).brand_tag ?? '').trim()
       createdBy = (agent as any).created_by ?? null
@@ -147,21 +149,24 @@ export async function rollupAgentEntitiesToBrand(
     // same brand land in ONE collection.
     const { data: collectionId, error: rpcErr } = await service
       .rpc('find_or_create_brand_collection', { p_org_id: opts.orgId, p_brand_tag: brandTag, p_created_by: createdBy })
+    if (rpcErr) void logError('rollup.rollupAgentEntitiesToBrand', rpcErr, { orgId: opts.orgId })
     if (rpcErr || !collectionId) return null
 
     // The agent's VISIBLE curated entities (hidden ones are deliberately not
     // promoted — the admin said "don't surface this").
-    const { data: botRows } = await service
+    const { data: botRows, error: botRowsErr } = await service
       .from('entity_catalog')
       .select('canonical, slug, category, aliases, sample_count, source, hidden, provenance')
       .eq('scope_type', 'bot').eq('scope_id', opts.agentId).eq('hidden', false)
+    if (botRowsErr) void logError('rollup.rollupAgentEntitiesToBrand', botRowsErr, { orgId: opts.orgId })
     const bot = (botRows ?? []) as CatalogEntity[]
     if (bot.length === 0) return { collectionId: collectionId as string, pushed: 0 }
 
-    const { data: brandRows } = await service
+    const { data: brandRows, error: brandRowsErr } = await service
       .from('entity_catalog')
       .select('canonical, slug, category, aliases, sample_count, source, hidden, provenance')
       .eq('scope_type', 'collection').eq('scope_id', collectionId as string)
+    if (brandRowsErr) void logError('rollup.rollupAgentEntitiesToBrand', brandRowsErr, { orgId: opts.orgId })
     const brand = (brandRows ?? []) as CatalogEntity[]
 
     const nowIso = new Date().toISOString()

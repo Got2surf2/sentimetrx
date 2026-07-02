@@ -9,6 +9,7 @@
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { formatRowsForContext } from '@/lib/anaContext'
+import { logError } from '@/lib/log'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -100,12 +101,15 @@ export async function fetchDatasetRows(
 // ── Resolve a collection's members (empty for a single dataset) ───────────
 export async function resolveCollectionMembers(service: Service, dataset: { id: string; source: string }): Promise<CollectionMember[]> {
   if (dataset.source !== 'collection') return []
-  const { data: col } = await service.from('collections').select('id').eq('dataset_id', dataset.id).single()
+  const { data: col, error: colErr } = await service.from('collections').select('id').eq('dataset_id', dataset.id).single()
+  if (colErr) void logError('anaReportContext.resolveCollectionMembers', colErr)
   if (!col) return []
-  const { data: mems } = await service.from('collection_members').select('dataset_id, label, sort_order').eq('collection_id', (col as { id: string }).id).order('sort_order', { ascending: true })
+  const { data: mems, error: memsErr } = await service.from('collection_members').select('dataset_id, label, sort_order').eq('collection_id', (col as { id: string }).id).order('sort_order', { ascending: true })
+  if (memsErr) void logError('anaReportContext.resolveCollectionMembers', memsErr)
   if (!mems || mems.length === 0) return []
   const memIds = mems.map(function(m) { return (m as { dataset_id: string }).dataset_id })
-  const { data: memDs } = await service.from('datasets').select('id, name, row_count').in('id', memIds)
+  const { data: memDs, error: memDsErr } = await service.from('datasets').select('id, name, row_count').in('id', memIds)
+  if (memDsErr) void logError('anaReportContext.resolveCollectionMembers', memDsErr)
   const dsMap: Record<string, { name: string; row_count: number }> = {}
   if (memDs) (memDs as { id: string; name: string; row_count: number }[]).forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0 } })
   return (mems as { dataset_id: string; label: string | null }[]).map(function(m) {

@@ -16,17 +16,21 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildEntityQuery, buildThemeQuery } from '@/lib/entityFilter'
 import { AXES, type Axis } from '@/lib/taxonomyVocabulary'
+import { logError } from '@/lib/log'
 
 /** Collection → member dataset ids; any other dataset → itself. */
 async function resolveCommentDatasetIds(service: SupabaseClient, datasetId: string): Promise<string[]> {
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets').select('source').eq('id', datasetId).single()
+  if (dsErr) void logError('commentFilter.resolveCommentDatasetIds', dsErr)
   if ((ds as { source?: string } | null)?.source !== 'collection') return [datasetId]
-  const { data: col } = await service
+  const { data: col, error: colErr } = await service
     .from('collections').select('id').eq('dataset_id', datasetId).single()
+  if (colErr) void logError('commentFilter.resolveCommentDatasetIds', colErr)
   if (!col) return [datasetId]
-  const { data: members } = await service
+  const { data: members, error: membersErr } = await service
     .from('collection_members').select('dataset_id').eq('collection_id', (col as { id: string }).id)
+  if (membersErr) void logError('commentFilter.resolveCommentDatasetIds', membersErr)
   const ids = ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
   return ids.length > 0 ? ids : [datasetId]
 }

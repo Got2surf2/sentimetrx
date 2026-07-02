@@ -26,6 +26,7 @@ import crypto from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 import {
   loadTurns, groupSessions, partitionByReview, buildExchanges, text, runConcurrent,
   type Exchange,
@@ -222,11 +223,12 @@ function defaultTitle(botName: string): string {
 // ── Main: getAgentReadout (compute-if-stale, cached) ──────────────────────────
 export async function getAgentReadout(botId: string, opts: { force?: boolean } = {}): Promise<AgentReadout | null> {
   const service = createServiceRoleClient()
-  const { data: botData } = await service
+  const { data: botData, error: botDataErr } = await service
     .from('agents')
     .select('id, name, org_id, focuses, config')
     .eq('id', botId)
     .single()
+  if (botDataErr) void logError('agentReadout.getAgentReadout', botDataErr)
   if (!botData) return null
   const bot: BotRow = {
     id: botData.id, name: botData.name, org_id: botData.org_id,
@@ -251,7 +253,8 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   const cacheKey = cacheKeyFor(totalPairs, bot, title)
 
   if (!opts.force) {
-    const { data: cached } = await service.from('agent_readout_cache').select('cache_key, analysis').eq('bot_id', botId).single()
+    const { data: cached, error: cachedErr } = await service.from('agent_readout_cache').select('cache_key, analysis').eq('bot_id', botId).single()
+    if (cachedErr && cachedErr.code !== 'PGRST116') void logError('agentReadout.getAgentReadout', cachedErr, { orgId: bot.org_id })
     if (cached && cached.cache_key === cacheKey && cached.analysis) return cached.analysis as AgentReadout
   }
 

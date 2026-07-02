@@ -1,5 +1,6 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 import { lexiconScore } from '@/lib/themeUtils'
 import { buildPredictor, type OutletPredictor, type PredReview, type PredExample } from '@/lib/outletPredictor'
 
@@ -295,10 +296,12 @@ type Scan = {
 // report and the cross-outlet leaderboard read from (one scan, two views).
 async function scanDataset(datasetId: string): Promise<Scan> {
   const sb = createServiceRoleClient()
-  const { data: ds } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
+  const { data: ds, error: dsErr } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
+  if (dsErr) void logError('outletReport.scanDataset', dsErr)
   const brand: string = ds?.name || 'Brand'
   const brandTokens = new Set<string>(brand.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2))
-  const { data: stateRow } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
+  const { data: stateRow, error: stateErr } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
+  if (stateErr) void logError('outletReport.scanDataset', stateErr)
   // Theme labels live in `name` ("Food Quality & Taste"); older payloads used
   // `label`. Reading the wrong field collapses every theme to "Theme".
   const themeModel: { id?: string; name?: string; label?: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []

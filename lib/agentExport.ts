@@ -8,6 +8,7 @@
 
 import type { Sheet } from '@/lib/xlsxExport'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { logError } from '@/lib/log'
 import {
   autoFlagReasons,
   resolveReviewStatus,
@@ -34,12 +35,13 @@ export interface ExportTurn {
 // cap matches the prior route behavior.
 export async function loadExportTurns(service: any, botId: string): Promise<ExportTurn[]> {
   if (isPhase3ReadSafe()) {
-    const { data } = await service
+    const { data, error: p3TurnsErr } = await service
       .from('conversation_turns')
       .select('turn_number, role, content, content_en, language, created_at, source, content_flags, conversations!inner(session_id, bot_id)')
       .eq('conversations.bot_id', botId)
       .order('turn_number', { ascending: true })
       .limit(5000)
+    if (p3TurnsErr) void logError('agentExport.loadExportTurns', p3TurnsErr)
     return (data || []).map((r: any) => ({
       session_id: r.conversations?.session_id,
       turn_number: r.turn_number,
@@ -52,13 +54,14 @@ export async function loadExportTurns(service: any, botId: string): Promise<Expo
       content_flags: r.content_flags,
     }))
   }
-  const { data } = await service
+  const { data, error: legacyTurnsErr } = await service
     .from('bot_conversation_turns')
     .select('session_id, turn_number, role, content, content_en, language, created_at, source, content_flags')
     .eq('bot_id', botId)
     .order('session_id')
     .order('turn_number', { ascending: true })
     .limit(5000)
+  if (legacyTurnsErr) void logError('agentExport.loadExportTurns', legacyTurnsErr)
   return (data || []) as ExportTurn[]
 }
 
@@ -95,7 +98,8 @@ export async function pairsSheet(service: any, botId: string, turns: ExportTurn[
 
   let human = new Map<string, 'approved' | 'excluded'>()
   try {
-    const { data } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', botId)
+    const { data, error: reviewsErr } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', botId)
+    if (reviewsErr) void logError('agentExport.pairsSheet', reviewsErr)
     for (const r of (data || [])) human.set(r.session_id, r.status)
   } catch { /* table absent → treat all as clean */ }
   const dup = duplicateFingerprintSet(new Map<string, TurnLike[]>(bySession))

@@ -15,6 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/entityFilter'
 import type { GlossaryEntry } from '@/lib/correction/normalize'
 import { hasAuthoritativeSource, type Provenance } from '@/lib/correction/provenance'
+import { logError } from '@/lib/log'
 
 interface CatalogRow { canonical: string; category: string | null; aliases: string[] | null; source?: string | null; provenance?: Provenance | null }
 
@@ -47,10 +48,11 @@ function unionInto(map: Map<string, GlossaryEntry>, entries: GlossaryEntry[]) {
 }
 
 async function readScope(service: SupabaseClient, scopeType: 'collection' | 'bot' | 'dataset', scopeId: string): Promise<GlossaryEntry[]> {
-  const { data } = await service
+  const { data, error: scopeErr } = await service
     .from('entity_catalog')
     .select('canonical, category, aliases, source, provenance')
     .eq('scope_type', scopeType).eq('scope_id', scopeId).eq('hidden', false)
+  if (scopeErr) void logError('glossary.readScope', scopeErr)
   return ((data ?? []) as CatalogRow[]).map(rowToEntry)
 }
 
@@ -70,10 +72,11 @@ export async function resolveBrandGlossary(
     if (!collectionId && (opts.brandTag ?? '').trim()) {
       const slug = slugify(opts.brandTag!)
       if (slug) {
-        const { data: col } = await service
+        const { data: col, error: colErr } = await service
           .from('collections').select('id')
           .eq('org_id', opts.orgId).eq('kind', 'brand').eq('slug', slug)
           .maybeSingle()
+        if (colErr) void logError('glossary.resolveBrandGlossary', colErr, { orgId: opts.orgId })
         collectionId = (col as any)?.id ?? null
       }
     }
@@ -81,7 +84,8 @@ export async function resolveBrandGlossary(
 
     if (opts.agentId) {
       // Verify the agent is in the caller's org before reading its catalog.
-      const { data: bot } = await service.from('agents').select('id, org_id').eq('id', opts.agentId).maybeSingle()
+      const { data: bot, error: botErr } = await service.from('agents').select('id, org_id').eq('id', opts.agentId).maybeSingle()
+      if (botErr) void logError('glossary.resolveBrandGlossary', botErr, { orgId: opts.orgId })
       if (bot && (bot as any).org_id === opts.orgId) unionInto(bySlug, await readScope(service, 'bot', opts.agentId))
     }
 

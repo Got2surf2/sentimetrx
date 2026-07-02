@@ -17,6 +17,7 @@ import { buildQaRegeneratePrompt, VALID_TYPOLOGIES } from '@/lib/recordings/prom
 import { polishQaPairs } from '@/lib/recordings/analyze'
 import { glossaryFromEntities } from '@/lib/recordings/entities'
 import { computeCoverage } from '@/lib/recordings/coverage'
+import { logError } from '@/lib/log'
 import type {
   CoverageReport,
   NewExtraction,
@@ -205,11 +206,12 @@ export async function regenerateExtraction(input: RegenerateInput): Promise<Rege
   let coverage_report: CoverageReport | null = null
   if (topicChanged) {
     // Pull the full extractions list to recompute coverage.
-    const { data: allEx } = await service
+    const { data: allEx, error: allExErr } = await service
       .from('recording_extractions')
       .select('topic, confidence, start_sec, end_sec, flagged_for_review, payload, unit_type, sort_order, source_file, flag_reason')
       .eq('recording_id', input.recording_id)
       .eq('org_id', input.org_id)
+    if (allExErr) void logError('regenerate.regenerateExtraction', allExErr, { orgId: input.org_id })
     const newExtractions: NewExtraction[] = ((allEx ?? []) as unknown as RecordingExtractionRow[]).map(e => ({
       unit_type: e.unit_type,
       topic: e.topic,

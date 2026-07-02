@@ -12,6 +12,7 @@
 import { createHash } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
+import { logError } from '@/lib/log'
 
 export interface SignalStats {
   records: number
@@ -75,23 +76,26 @@ async function resolveDatasetIds(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<string[]> {
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets')
     .select('id, source')
     .eq('id', datasetId)
     .single()
+  if (dsErr) void logError('signalStats.resolveDatasetIds', dsErr)
   if (!ds) return []
   if ((ds as { source?: string }).source !== 'collection') return [datasetId]
-  const { data: coll } = await service
+  const { data: coll, error: collErr } = await service
     .from('collections')
     .select('id')
     .eq('dataset_id', datasetId)
     .single()
+  if (collErr) void logError('signalStats.resolveDatasetIds', collErr)
   if (!coll) return []
-  const { data: members } = await service
+  const { data: members, error: membersErr } = await service
     .from('collection_members')
     .select('dataset_id')
     .eq('collection_id', (coll as { id: string }).id)
+  if (membersErr) void logError('signalStats.resolveDatasetIds', membersErr)
   return ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
 }
 
@@ -109,10 +113,11 @@ async function totalRowCount(
   datasetIds: string[],
 ): Promise<number> {
   if (!datasetIds.length) return 0
-  const { count } = await service
+  const { count, error: countErr } = await service
     .from('dataset_rows_flat')
     .select('id', { count: 'exact', head: true })
     .in('dataset_id', datasetIds)
+  if (countErr) void logError('signalStats.totalRowCount', countErr)
   return count || 0
 }
 
@@ -125,11 +130,12 @@ export async function computeSignalStatsRaw(
   datasetId: string,
 ): Promise<SignalStats> {
   // Load theme model
-  const { data: stateRow } = await service
+  const { data: stateRow, error: stateRowErr } = await service
     .from('dataset_state')
     .select('theme_model')
     .eq('dataset_id', datasetId)
     .single()
+  if (stateRowErr) void logError('signalStats.computeSignalStatsRaw', stateRowErr)
   const themeModel = (stateRow as { theme_model: ThemeModel | null } | null)?.theme_model || null
 
   const themes = (themeModel?.themes || []).filter(
@@ -237,11 +243,12 @@ export async function computeSignalStats(
   datasetId: string,
 ): Promise<SignalStats> {
   // Read current theme model + cached stats together
-  const { data: stateRow } = await service
+  const { data: stateRow, error: stateRowErr } = await service
     .from('dataset_state')
     .select('theme_model, analytics')
     .eq('dataset_id', datasetId)
     .single()
+  if (stateRowErr) void logError('signalStats.computeSignalStats', stateRowErr)
   if (!stateRow) {
     // No state row at all — fall back to raw compute (will return empties).
     return computeSignalStatsRaw(service, datasetId)

@@ -18,6 +18,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
+import { logError } from '@/lib/log'
 import { resolveEntityScope, slugify, eligibleEntityFields } from '@/lib/entityFilter'
 import { datasetSourceToKind, authorityOf, mergeProvenance, type SourceKind, type Provenance } from '@/lib/correction/provenance'
 
@@ -105,21 +106,24 @@ async function sampleRowTexts(
   const texts: string[] = []
 
   for (const dsId of datasetIds) {
-    const { data: ds } = await service
+    const { data: ds, error: dsErr } = await service
       .from('datasets').select('row_count').eq('id', dsId).single()
+    if (dsErr) void logError('entityDiscovery.sampleRowTexts', dsErr)
     const rowCount = ((ds as any)?.row_count as number) || 0
     if (rowCount === 0) continue
 
     // Only this dataset's selected open-ended fields feed NER.
-    const { data: stateRow } = await service
+    const { data: stateRow, error: stateErr } = await service
       .from('dataset_state').select('schema_config').eq('dataset_id', dsId).single()
+    if (stateErr) void logError('entityDiscovery.sampleRowTexts', stateErr)
     const allowedKeys = new Set(eligibleEntityFields((stateRow as any)?.schema_config))
     if (allowedKeys.size === 0) continue
 
     let rows: Array<{ data: unknown }> | null = null
     if (rowCount <= perDataset) {
-      const { data } = await service
+      const { data, error: rowsErr } = await service
         .from('dataset_rows_flat').select('data').eq('dataset_id', dsId).limit(perDataset)
+      if (rowsErr) void logError('entityDiscovery.sampleRowTexts', rowsErr)
       rows = data as any
     } else {
       const idxSet = new Set<number>()
@@ -128,9 +132,10 @@ async function sampleRowTexts(
         idxSet.add(Math.floor(Math.random() * rowCount))
         guard += 1
       }
-      const { data } = await service
+      const { data, error: sampleRowsErr } = await service
         .from('dataset_rows_flat').select('data').eq('dataset_id', dsId)
         .in('row_index', Array.from(idxSet))
+      if (sampleRowsErr) void logError('entityDiscovery.sampleRowTexts', sampleRowsErr)
       rows = data as any
     }
     for (const r of rows || []) {
@@ -152,16 +157,18 @@ async function gatherDiscoveryContext(
 ): Promise<DiscoveryContext> {
   if (datasetIds.length === 0) return { brandNames: [], structuredValues: [] }
 
-  const { data: dsRows } = await service
+  const { data: dsRows, error: dsRowsErr } = await service
     .from('datasets').select('brand_tag').in('id', datasetIds)
+  if (dsRowsErr) void logError('entityDiscovery.gatherDiscoveryContext', dsRowsErr)
   const brandNames = Array.from(new Set(
     ((dsRows || []) as Array<{ brand_tag: string | null }>)
       .map(d => (d.brand_tag || '').trim())
       .filter(Boolean),
   ))
 
-  const { data: stateRows } = await service
+  const { data: stateRows, error: stateRowsErr } = await service
     .from('dataset_state').select('schema_config').in('dataset_id', datasetIds)
+  if (stateRowsErr) void logError('entityDiscovery.gatherDiscoveryContext', stateRowsErr)
   const valueSet = new Set<string>()
   for (const row of (stateRows || []) as Array<{ schema_config: unknown }>) {
     const fields = (row.schema_config as SchemaConfig | null)?.fields
@@ -463,13 +470,14 @@ export async function discoverEntities(opts: {
   let excludeCategories = (opts.excludeCategories || []).slice()
   if (opts.autoExcludeFromCurated && excludeCategories.length === 0) {
     const threshold = Math.max(1, opts.autoExcludeThreshold ?? 10)
-    const { data: curatedCounts } = await service
+    const { data: curatedCounts, error: curatedErr } = await service
       .from('entity_catalog')
       .select('category')
       .eq('scope_type', scope.scopeType)
       .eq('scope_id', scope.scopeId)
       .eq('source', 'manual')
       .eq('hidden', false)
+    if (curatedErr) void logError('entityDiscovery.discoverEntities', curatedErr, { orgId: scope.orgId ?? undefined })
     const perCategory: Record<string, number> = {}
     for (const row of (curatedCounts || []) as Array<{ category: string }>) {
       perCategory[row.category] = (perCategory[row.category] || 0) + 1
@@ -487,11 +495,12 @@ export async function discoverEntities(opts: {
   // Existing catalog — for before/new counts and alias/sample-count merge.
   // Includes source + hidden so the upsert pass can skip manual rows entirely
   // and leave hidden rows alone (no count bump, no un-hide).
-  const { data: existing } = await service
+  const { data: existing, error: existingErr } = await service
     .from('entity_catalog')
     .select('slug, canonical, category, aliases, sample_count, source, hidden, provenance')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
+  if (existingErr) void logError('entityDiscovery.discoverEntities', existingErr, { orgId: scope.orgId ?? undefined })
   const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean; provenance: Provenance }>()
   for (const e of (existing || []) as any[]) {
     existingBySlug.set(e.slug, {
@@ -508,7 +517,8 @@ export async function discoverEntities(opts: {
   // kind among the datasets sampled, so review/survey/ASR discovery is recorded
   // as corroborating and can't claim authority over a brand canonical (only an
   // upload/regulations dataset discovers at the authoritative 'document' tier).
-  const { data: sampledDs } = await service.from('datasets').select('source').in('id', sampleFrom)
+  const { data: sampledDs, error: sampledDsErr } = await service.from('datasets').select('source').in('id', sampleFrom)
+  if (sampledDsErr) void logError('entityDiscovery.discoverEntities', sampledDsErr, { orgId: scope.orgId ?? undefined })
   const discoveryKind: SourceKind = ((sampledDs ?? []) as Array<{ source: string | null }>)
     .map(d => datasetSourceToKind(d.source))
     .reduce<SourceKind>((lo, k) => (authorityOf(k) < authorityOf(lo) ? k : lo), 'document')

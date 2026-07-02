@@ -6,6 +6,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 // Check keyword overlap ratio between two keyword sets
 function keywordOverlap(existing: string[], candidate: string[]): number {
@@ -24,30 +25,33 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
   // AI provider is resolved automatically from env vars by callAI()
 
   // 1. Fetch session config + org_id (needed for usage-log attribution).
-  const { data: session } = await supabase
+  const { data: session, error: sessionErr } = await supabase
     .from('townhall_sessions')
     .select('id, org_id, config')
     .eq('id', sessionId)
     .single()
+  if (sessionErr) void logError('townhallThemeDetection.detectThemesForSession', sessionErr)
   if (!session) return { inserted: 0, skipped: 0, error: 'Session not found' }
 
   // 2. Fetch all English responses (non-skipped, non-null)
-  const { data: turns } = await supabase
+  const { data: turns, error: turnsErr } = await supabase
     .from('townhall_turns')
     .select('user_message_en, user_message, theme_id')
     .eq('session_id', sessionId)
     .eq('skipped', false)
     .not('user_message_en', 'is', null)
     .order('created_at', { ascending: true })
+  if (turnsErr) void logError('townhallThemeDetection.detectThemesForSession', turnsErr, { orgId: session.org_id })
 
   const allTexts = (turns || []).map(t => (t.user_message_en || t.user_message || '').trim()).filter(t => t.length >= 20)
   if (allTexts.length < 10) return { inserted: 0, skipped: 0, error: 'Not enough responses yet (need 10+)' }
 
   // 3. Fetch existing themes with keywords + mention counts for deduplication & gap analysis
-  const { data: existingThemes } = await supabase
+  const { data: existingThemes, error: existingThemesErr } = await supabase
     .from('townhall_themes')
     .select('id, label, keywords, state, mention_count')
     .eq('session_id', sessionId)
+  if (existingThemesErr) void logError('townhallThemeDetection.detectThemesForSession', existingThemesErr, { orgId: session.org_id })
 
   const existingKeywords = (existingThemes || []).map(t => ({
     label: t.label,

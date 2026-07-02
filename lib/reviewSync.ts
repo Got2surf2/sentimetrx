@@ -9,6 +9,7 @@ import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } fro
 import { computeAnalyticsSQL } from './analyticsCompute'
 import { getReviewBudget, logReviewDownload } from './reviewLimits'
 import { classifyPendingRows } from './taxonomyClassify'
+import { logError } from '@/lib/log'
 
 export interface SyncResult {
   synced: number
@@ -85,6 +86,7 @@ export async function syncReviewSource(
 
   const { data: source, error: srcErr } = await service
     .from('review_sources').select('*').eq('id', sourceId).single()
+  if (srcErr) void logError('reviewSync.syncReviewSource', srcErr)
   if (srcErr || !source) throw new Error('Review source not found: ' + (srcErr?.message || sourceId))
   if (!source.dataset_id) throw new Error('Review source has no linked dataset')
 
@@ -104,8 +106,9 @@ export async function syncReviewSource(
   const allNewRows: Record<string, unknown>[] = []
 
   // Load date range from dataset description (if set)
-  const { data: dsData } = await service
+  const { data: dsData, error: dsDataErr } = await service
     .from('datasets').select('description').eq('id', source.dataset_id).single()
+  if (dsDataErr) void logError('reviewSync.syncReviewSource', dsDataErr, { orgId: source.org_id })
   let dateStart: string | null = null
   let dateEnd: string | null = null
   try {
@@ -115,13 +118,14 @@ export async function syncReviewSource(
   } catch {}
 
   // ── Phase 1: Check pending tasks ──────────────────────────────────────
-  const { data: pendingLocs } = await service
+  const { data: pendingLocs, error: pendingLocsErr } = await service
     .from('review_source_locations')
     .select('*')
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .like('error_message', TASK_PREFIX + '%')
     .limit(PHASE1_BATCH_SIZE)
+  if (pendingLocsErr) void logError('reviewSync.syncReviewSource', pendingLocsErr, { orgId: source.org_id })
 
   if (pendingLocs && pendingLocs.length > 0) {
     result.pending_locations = pendingLocs.map(function(l) { return l.name })
@@ -179,7 +183,7 @@ export async function syncReviewSource(
   }
 
   // ── Phase 2: Submit new tasks for unsynced locations ──────────────────
-  const { data: unsyncedLocs } = await service
+  const { data: unsyncedLocs, error: unsyncedLocsErr } = await service
     .from('review_source_locations')
     .select('*')
     .eq('review_source_id', sourceId)
@@ -187,6 +191,7 @@ export async function syncReviewSource(
     .is('last_synced_at', null)
     .is('error_message', null)
     .limit(BATCH_SIZE)
+  if (unsyncedLocsErr) void logError('reviewSync.syncReviewSource', unsyncedLocsErr, { orgId: source.org_id })
 
   if (!drainOnly && unsyncedLocs && unsyncedLocs.length > 0) {
     for (const loc of unsyncedLocs) {
@@ -239,7 +244,7 @@ export async function syncReviewSource(
   // reviews are inserted.
   const refreshCutoff = new Date(Date.now() - REFRESH_STALE_MS).toISOString()
   if (!drainOnly && Date.now() - startTime < TIME_BUDGET_MS) {
-    const { data: staleLocs } = await service
+    const { data: staleLocs, error: staleLocsErr } = await service
       .from('review_source_locations')
       .select('*')
       .eq('review_source_id', sourceId)
@@ -249,6 +254,7 @@ export async function syncReviewSource(
       .is('error_message', null)
       .order('last_synced_at', { ascending: true })
       .limit(BATCH_SIZE)
+    if (staleLocsErr) void logError('reviewSync.syncReviewSource', staleLocsErr, { orgId: source.org_id })
 
     if (staleLocs && staleLocs.length > 0) {
       for (const loc of staleLocs) {
@@ -299,28 +305,31 @@ export async function syncReviewSource(
     })
   }
 
-  const { data: ds } = await service
+  const { data: ds, error: dsErr } = await service
     .from('datasets').select('row_count').eq('id', source.dataset_id).single()
+  if (dsErr) void logError('reviewSync.syncReviewSource', dsErr, { orgId: source.org_id })
   result.total = ds?.row_count || 0
 
   // Remaining = pending tasks (in progress) + unsynced without errors +
   // already-synced-but-stale locations that Phase 3 will pick up next call.
   // Including the stale count keeps the UI's auto-poll loop running until
   // every selected location has been refreshed in the current cycle.
-  const { count: pendingCount } = await service
+  const { count: pendingCount, error: pendingCountErr } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .like('error_message', TASK_PREFIX + '%')
-  const { count: unsyncedCount } = await service
+  if (pendingCountErr) void logError('reviewSync.syncReviewSource', pendingCountErr, { orgId: source.org_id })
+  const { count: unsyncedCount, error: unsyncedCountErr } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .is('last_synced_at', null)
     .is('error_message', null)
-  const { count: staleCount } = await service
+  if (unsyncedCountErr) void logError('reviewSync.syncReviewSource', unsyncedCountErr, { orgId: source.org_id })
+  const { count: staleCount, error: staleCountErr } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
     .eq('review_source_id', sourceId)
@@ -328,6 +337,7 @@ export async function syncReviewSource(
     .not('last_synced_at', 'is', null)
     .lt('last_synced_at', refreshCutoff)
     .is('error_message', null)
+  if (staleCountErr) void logError('reviewSync.syncReviewSource', staleCountErr, { orgId: source.org_id })
   result.locations_remaining = (pendingCount || 0) + (unsyncedCount || 0) + (staleCount || 0)
 
   await updateSourceTimestamps(service, source, (pendingCount || 0) > 0)
@@ -344,10 +354,11 @@ export async function syncReviewSource(
       // Gate on the legacy table — the historical "opted-in / classified before"
       // record (existing datasets predate the per-field table). classifyPendingRows
       // dual-writes, so this also backfills the new per-field table over time.
-      const { count: taxCount } = await service
+      const { count: taxCount, error: taxCountErr } = await service
         .from('dataset_row_taxonomy')
         .select('row_id', { count: 'exact', head: true })
         .eq('dataset_id', source.dataset_id)
+      if (taxCountErr) void logError('reviewSync.syncReviewSource', taxCountErr, { orgId: source.org_id })
       if (taxCount && taxCount > 0) {
         const { classified } = await classifyPendingRows({
           service, datasetId: source.dataset_id, orgId: source.org_id,
@@ -522,9 +533,10 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
   const existing = new Set<string>()
   for (let i = 0; i < allKeys.length; i += DEDUP_PROBE_CHUNK) {
     const probe = allKeys.slice(i, i + DEDUP_PROBE_CHUNK)
-    const { data: present } = await service
+    const { data: present, error: presentErr } = await service
       .from('dataset_rows_flat').select('dedup_key')
       .eq('dataset_id', datasetId).in('dedup_key', probe)
+    if (presentErr) void logError('reviewSync.insertReviewRows', presentErr)
     if (present) for (const row of present) { if (row.dedup_key) existing.add(row.dedup_key as string) }
   }
 
@@ -533,9 +545,10 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
 
   // 5. Insert the new rows with a fresh contiguous row_index range.
   if (toInsert.length > 0) {
-    const { data: maxRowResp } = await service
+    const { data: maxRowResp, error: maxRowErr } = await service
       .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
       .order('row_index', { ascending: false }).limit(1)
+    if (maxRowErr) void logError('reviewSync.insertReviewRows', maxRowErr)
     let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
 
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
@@ -554,9 +567,10 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
 
   // 6. Reconcile row_count to the ACTUAL count(*) — the old running counter
   // (currentTotal += chunk.length) drifted both ways across syncs.
-  const { count } = await service
+  const { count, error: countErr } = await service
     .from('dataset_rows_flat').select('*', { count: 'exact', head: true })
     .eq('dataset_id', datasetId)
+  if (countErr) void logError('reviewSync.insertReviewRows', countErr)
 
   await service.from('datasets').update({
     row_count: count ?? 0, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
@@ -564,8 +578,9 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
 }
 
 async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: string, sampleRows: Record<string, unknown>[]): Promise<void> {
-  const { data: stateRow } = await service
+  const { data: stateRow, error: stateRowErr } = await service
     .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).single()
+  if (stateRowErr) void logError('reviewSync.ensureSchemaAndRecompute', stateRowErr)
   let schema = stateRow?.schema_config
   if (!schema?.fields?.length) {
     schema = buildGoogleReviewsSchema()

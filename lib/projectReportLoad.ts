@@ -9,6 +9,7 @@
 
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 import { getAgentStudy } from '@/lib/agentStudy'
 import { buildProjectReportModel, type ProjectReportModel } from '@/lib/projectReport'
 import { renderProjectReportHtml } from '@/lib/projectReportHtml'
@@ -46,20 +47,22 @@ function proceedingsToSummary(p: ProceedingsSummary | null): SourceSummary | nul
 
 // ── Town hall (recording) member ─────────────────────────────────────────────
 async function loadRecordingInput(svc: Svc, datasetId: string, label: string, rowCount: number): Promise<ProjectInputModel | null> {
-  const { data: rec } = await svc
+  const { data: rec, error: recErr } = await svc
     .from('recordings')
     .select('id, name, meeting_date, setup_inputs, proceedings_summary, analysis_summary')
     .eq('dataset_id', datasetId)
     .single()
+  if (recErr) void logError('projectReportLoad.loadRecordingInput', recErr)
   if (!rec) return null
 
   const panel: PanelMember[] = (rec.setup_inputs as any)?.panel ?? []
-  const { data: exs } = await svc
+  const { data: exs, error: exsErr } = await svc
     .from('recording_extractions')
     .select('unit_type, topic, payload')
     .eq('recording_id', rec.id)
     .eq('unit_type', 'qa_pair')
     .order('sort_order', { ascending: true })
+  if (exsErr) void logError('projectReportLoad.loadRecordingInput', exsErr)
 
   const source: ProjectSource = {
     id: datasetId, kind: 'town_hall',
@@ -160,14 +163,17 @@ function ratingSentiment(avg: number | null): string {
 async function loadDimensionsForInput(svc: Svc, datasetId: string): Promise<ProjectInputTheme[]> {
   // Primary classified field resolves only when per-field taxonomy exists; null
   // → no Dimensions for this input, skip the 14 axis calls entirely.
-  const { data: primaryField } = await svc.rpc('taxonomy_primary_field', { p_dataset_id: datasetId })
+  const { data: primaryField, error: primaryFieldErr } = await svc.rpc('taxonomy_primary_field', { p_dataset_id: datasetId })
+  if (primaryFieldErr) void logError('projectReportLoad.loadDimensionsForInput', primaryFieldErr)
   if (!primaryField) return []
 
   const perAxis = await Promise.all(AXES.map(async axis => {
-    const [{ data: counts }, { data: stats }] = await Promise.all([
+    const [{ data: counts, error: countsErr }, { data: stats, error: statsErr }] = await Promise.all([
       svc.rpc('taxonomy_sub_counts', { p_dataset_id: datasetId, p_axis: axis }),
       svc.rpc('taxonomy_group_stats', { p_dataset_id: datasetId, p_axis: axis, p_value_field: 'rating' }),
     ])
+    if (countsErr) void logError('projectReportLoad.loadDimensionsForInput', countsErr)
+    if (statsErr) void logError('projectReportLoad.loadDimensionsForInput', statsErr)
     const ratingBySub = new Map<string, number>()
     for (const r of (stats || []) as { group_val: string; avg_val: number | null }[]) {
       if (r.avg_val != null) ratingBySub.set(String(r.group_val), Number(r.avg_val))
@@ -208,8 +214,9 @@ async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise
   const out: MemberRow[] = []
   let from = 0
   for (;;) {
-    const { data } = await svc.from('dataset_rows_flat').select('data')
+    const { data, error: pageErr } = await svc.from('dataset_rows_flat').select('data')
       .eq('dataset_id', datasetId).order('row_index', { ascending: true }).range(from, from + 999)
+    if (pageErr) void logError('projectReportLoad.readMemberRows', pageErr)
     if (!data || data.length === 0) break
     for (const r of data) {
       const d = (r.data || {}) as Record<string, any>
@@ -257,7 +264,8 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 async function deriveSharedThemes(svc: Svc, memberIds: string[]): Promise<Theme[]> {
   const raw: { name: string; keywords: string[] }[] = []
   for (const id of memberIds) {
-    const { data } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', id).single()
+    const { data, error: stateErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', id).single()
+    if (stateErr && stateErr.code !== 'PGRST116') void logError('projectReportLoad.deriveSharedThemes', stateErr)
     for (const t of (((data?.theme_model as any)?.themes ?? []) as any[])) {
       const name = String(t.name || t.label || '').trim()
       const keywords = Array.isArray(t.keywords) ? t.keywords.map(String) : []
@@ -349,7 +357,8 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
       if (mr.length) monthlyRatings = mr
     }
   } else {
-    const { data: stateRow } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
+    const { data: stateRow, error: stateRowErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
+    if (stateRowErr && stateRowErr.code !== 'PGRST116') void logError('projectReportLoad.loadGenericInput', stateRowErr)
     const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
     themes = rawThemes.map(t => ({
       label: String(t.name || t.label || 'Theme'),
@@ -359,7 +368,8 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
       samples: Array.isArray(t.keywords) ? t.keywords.slice(0, 4).map(String) : [],
     }))
     // A small sample of verbatim rows for representative quotes.
-    const { data: rows } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
+    const { data: rows, error: rowsErr } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
+    if (rowsErr) void logError('projectReportLoad.loadGenericInput', rowsErr)
     commentary = (rows || []).map(r => {
       const d = (r.data || {}) as Record<string, any>
       const text = rowText(d)
@@ -395,7 +405,8 @@ async function loadInputForDataset(svc: Svc, d: DatasetRow, label: string, share
 // ad-hoc grouping (e.g. a competitive set not yet saved as a collection).
 export async function loadInputsForDatasets(datasetIds: string[]): Promise<ProjectInputModel[]> {
   const svc = createServiceRoleClient()
-  const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', datasetIds)
+  const { data: dsRows, error: dsRowsErr } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', datasetIds)
+  if (dsRowsErr) void logError('projectReportLoad.loadInputsForDatasets', dsRowsErr)
   const dsMap = new Map((dsRows || []).map(d => [d.id, d]))
   const out: ProjectInputModel[] = []
   for (const id of datasetIds) {
@@ -410,25 +421,30 @@ export async function loadInputsForDatasets(datasetIds: string[]): Promise<Proje
 // ── Collection → inputs ──────────────────────────────────────────────────────
 export async function loadProjectInputs(collectionDatasetId: string): Promise<{ name: string; inputs: ProjectInputModel[] } | null> {
   const svc = createServiceRoleClient()
-  const { data: collectionDs } = await svc.from('datasets').select('id, name').eq('id', collectionDatasetId).single()
+  const { data: collectionDs, error: collectionDsErr } = await svc.from('datasets').select('id, name').eq('id', collectionDatasetId).single()
+  if (collectionDsErr) void logError('projectReportLoad.loadProjectInputs', collectionDsErr)
   if (!collectionDs) return null
-  const { data: col } = await svc.from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
+  const { data: col, error: colErr } = await svc.from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
+  if (colErr) void logError('projectReportLoad.loadProjectInputs', colErr)
   if (!col) return null
 
-  const { data: members } = await svc
+  const { data: members, error: membersErr } = await svc
     .from('collection_members').select('dataset_id, label, sort_order')
     .eq('collection_id', col.id).order('sort_order', { ascending: true })
+  if (membersErr) void logError('projectReportLoad.loadProjectInputs', membersErr)
   if (!members?.length) return { name: collectionDs.name, inputs: [] }
 
   const ids = members.map(m => m.dataset_id)
-  const { data: dsRows } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', ids)
+  const { data: dsRows, error: dsRowsErr } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', ids)
+  if (dsRowsErr) void logError('projectReportLoad.loadProjectInputs', dsRowsErr)
   const dsMap = new Map((dsRows || []).map(d => [d.id, d]))
 
   // The collection's OWN unified theme set (mined across all members). When it
   // exists, score every member against it so the comparison matrix aligns by
   // exact label — no flaky per-report AI merge of each member's differently-
   // named themes. Only meaningful when members are review/CSAT (generic loader).
-  const { data: colState } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', collectionDatasetId).single()
+  const { data: colState, error: colStateErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', collectionDatasetId).single()
+  if (colStateErr && colStateErr.code !== 'PGRST116') void logError('projectReportLoad.loadProjectInputs', colStateErr)
   const sharedThemesRaw = ((colState?.theme_model as any)?.themes ?? []) as any[]
   let sharedThemes: Theme[] | undefined = sharedThemesRaw.length
     ? sharedThemesRaw.filter(t => t && (t.keywords?.length)) as Theme[]
@@ -486,7 +502,8 @@ export async function buildProjectModelForCollection(
   primaryId?: string,   // competitive only — the dataset_id of the focus competitor
 ): Promise<ProjectBuilt> {
   const svc = createServiceRoleClient()
-  const { data: ds } = await svc.from('datasets').select('id, source, org_id').eq('id', collectionDatasetId).single()
+  const { data: ds, error: dsErr } = await svc.from('datasets').select('id, source, org_id').eq('id', collectionDatasetId).single()
+  if (dsErr) void logError('projectReportLoad.buildProjectModelForCollection', dsErr, { orgId: caller.orgId })
   if (!ds) return { ok: false, status: 404, error: 'Not found' }
   if (ds.source !== 'collection') return { ok: false, status: 400, error: 'Not a collection' }
   if (!caller.isAdmin && ds.org_id !== caller.orgId) return { ok: false, status: 404, error: 'Not found' }

@@ -12,6 +12,7 @@ import 'server-only'
 // Window: calendar month, UTC.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export interface ReviewBudget {
   /** Monthly record cap, or null when the org is uncapped. */
@@ -34,20 +35,22 @@ export async function getReviewBudget(
   service: SupabaseClient,
   orgId: string,
 ): Promise<ReviewBudget> {
-  const { data: org } = await service
+  const { data: org, error: orgErr } = await service
     .from('organizations')
     .select('limits')
     .eq('id', orgId)
     .single()
+  if (orgErr) void logError('reviewLimits.getReviewBudget', orgErr, { orgId })
 
   const rawCap = (org as any)?.limits?.review_records_monthly
   const cap = typeof rawCap === 'number' && rawCap > 0 ? Math.floor(rawCap) : null
 
-  const { data: rows } = await service
+  const { data: rows, error: rowsErr } = await service
     .from('review_downloads')
     .select('records')
     .eq('org_id', orgId)
     .gte('created_at', monthStartIso())
+  if (rowsErr) void logError('reviewLimits.getReviewBudget', rowsErr, { orgId })
 
   const used = (rows || []).reduce((sum, r: any) => sum + (r.records || 0), 0)
 

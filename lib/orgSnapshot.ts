@@ -17,6 +17,7 @@
 // Pure side-effect-free: returns the JSON. Upload is a separate layer.
 
 import { createServiceRoleClient } from './supabase/server'
+import { logError } from './log'
 
 export interface OrgSnapshotMeta {
   snapshot_version: 1
@@ -220,7 +221,8 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
 
 export async function dumpOrgSnapshot(orgId: string): Promise<OrgSnapshot> {
   const service = createServiceRoleClient()
-  const { data: org } = await service.from('organizations').select('id, name').eq('id', orgId).single()
+  const { data: org, error: orgErr } = await service.from('organizations').select('id, name').eq('id', orgId).single()
+  if (orgErr) void logError('orgSnapshot.dumpOrgSnapshot', orgErr, { orgId })
 
   const meta: OrgSnapshotMeta = {
     snapshot_version: 1,

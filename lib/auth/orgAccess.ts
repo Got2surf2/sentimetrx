@@ -16,6 +16,7 @@
 
 import 'server-only'
 import type { createClient as createBrowserClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 type AuthCookiedClient = Awaited<ReturnType<typeof createBrowserClient>>
 
@@ -29,11 +30,12 @@ export async function getCallerOrgContext(supabase: AuthCookiedClient): Promise<
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { userId: null, orgId: null, isAdmin: false }
 
-  const { data: userData } = await supabase
+  const { data: userData, error: userDataErr } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
+  if (userDataErr) void logError('orgAccess.getCallerOrgContext', userDataErr)
 
   const orgRel = (userData as any)?.organizations
   const isAdmin = Array.isArray(orgRel)

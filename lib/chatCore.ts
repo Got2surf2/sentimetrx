@@ -27,6 +27,7 @@ import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
 import { detectEntityMentions } from '@/lib/entityMentionDetector'
+import { logError } from '@/lib/log'
 
 export interface TownHallContext {
   townHallId: string
@@ -83,20 +84,22 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     // inserts on every message.
     let existingTurns: { content_flags: unknown; source: string | null; turn_number: number }[] = []
     if (isPhase3ReadSafe()) {
-      const { data } = await service
+      const { data, error: turnsErr } = await service
         .from('conversation_turns')
         .select('content_flags, source, turn_number, conversations!inner(session_id, bot_id)')
         .eq('conversations.bot_id', bot.id)
         .eq('conversations.session_id', session_id)
         .order('turn_number', { ascending: true })
+      if (turnsErr) void logError('chatCore.handleChatTurn', turnsErr, { orgId: bot.org_id })
       existingTurns = (data || []) as any
     } else {
-      const { data } = await service
+      const { data, error: legacyTurnsErr } = await service
         .from('bot_conversation_turns')
         .select('content_flags, source, turn_number')
         .eq('bot_id', bot.id)
         .eq('session_id', session_id)
         .order('turn_number', { ascending: true })
+      if (legacyTurnsErr) void logError('chatCore.handleChatTurn', legacyTurnsErr, { orgId: bot.org_id })
       existingTurns = (data || []) as any
     }
     const silenceAlreadyFired = (existingTurns || []).some(function(t: any) { return t.source === 'silence_probe' })
@@ -393,12 +396,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   if (session_id && askProfileEnabled) {
     // Check if persona already exists for this session
-    var { data: existingPersona } = await service
+    var { data: existingPersona, error: existingPersonaErr } = await service
       .from('agent_session_personas')
       .select('persona')
       .eq('bot_id', bot.id)
       .eq('session_id', session_id)
       .single()
+    if (existingPersonaErr && existingPersonaErr.code !== 'PGRST116') void logError('chatCore.handleChatTurn', existingPersonaErr, { orgId: bot.org_id })
 
     if (existingPersona?.persona) {
       // Persona exists — inject into system prompt
@@ -442,12 +446,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   var demographicEnabled = (bot as any).demographic_inference === true
 
   if (session_id && demographicEnabled && userTurnCount >= 3) {
-    var { data: existingPersonaRow } = await service
+    var { data: existingPersonaRow, error: existingPersonaRowErr } = await service
       .from('agent_session_personas')
       .select('demographics')
       .eq('bot_id', bot.id)
       .eq('session_id', session_id)
       .single()
+    if (existingPersonaRowErr && existingPersonaRowErr.code !== 'PGRST116') void logError('chatCore.handleChatTurn', existingPersonaRowErr, { orgId: bot.org_id })
 
     var existingDemographics = (existingPersonaRow?.demographics || {}) as Demographics
 
@@ -674,37 +679,41 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // Load town_halls row up front — used by both the standby fallback
       // (cohort_config.standby_message) and the response-count theme-
       // detection trigger (cohort_config.theme_detection_every_n_responses).
-      const { data: townHallRow } = await service
+      const { data: townHallRow, error: townHallRowErr } = await service
         .from('town_halls')
         .select('cohort_config')
         .eq('id', ctx.townHallContext.townHallId)
         .maybeSingle()
+      if (townHallRowErr) void logError('chatCore.handleChatTurn', townHallRowErr, { orgId: bot.org_id })
       const cohortConfig = (townHallRow?.cohort_config || {}) as any
 
-      const { data: topics } = await service
+      const { data: topics, error: topicsErr } = await service
         .from('town_hall_topics')
         .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
         .eq('town_hall_id', ctx.townHallContext.townHallId)
         .in('state', ['active', 'pending'])
+      if (topicsErr) void logError('chatCore.handleChatTurn', topicsErr, { orgId: bot.org_id })
 
       if (topics && topics.length > 0) {
         // Cohort-wide response counts: join town_hall_conversations →
         // conversations → conversation_turns and tally by topic_id.
-        const { data: linkedConvs } = await service
+        const { data: linkedConvs, error: linkedConvsErr } = await service
           .from('town_hall_conversations')
           .select('conversation_id')
           .eq('town_hall_id', ctx.townHallContext.townHallId)
+        if (linkedConvsErr) void logError('chatCore.handleChatTurn', linkedConvsErr, { orgId: bot.org_id })
         const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
 
         const responseCount: Record<string, number> = {}
         const participantDiscussed = new Set<string>()
 
         if (conversationIds.length > 0) {
-          const { data: allTopicTurns } = await service
+          const { data: allTopicTurns, error: allTopicTurnsErr } = await service
             .from('conversation_turns')
             .select('topic_id, conversation_id, role')
             .in('conversation_id', conversationIds)
             .not('topic_id', 'is', null)
+          if (allTopicTurnsErr) void logError('chatCore.handleChatTurn', allTopicTurnsErr, { orgId: bot.org_id })
           for (const t of (allTopicTurns || [])) {
             const tid = (t as any).topic_id as string
             if (t.role === 'assistant') {
@@ -714,18 +723,20 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
           // Participant-specific: which topics has THIS session touched?
           // session_id from PulseIQ delegation = townHallId + ':' + participantId.
-          const { data: thisConv } = await service
+          const { data: thisConv, error: thisConvErr } = await service
             .from('conversations')
             .select('id')
             .eq('bot_id', bot.id)
             .eq('session_id', session_id)
             .maybeSingle()
+          if (thisConvErr) void logError('chatCore.handleChatTurn', thisConvErr, { orgId: bot.org_id })
           if (thisConv) {
-            const { data: thisTurns } = await service
+            const { data: thisTurns, error: thisTurnsErr } = await service
               .from('conversation_turns')
               .select('topic_id')
               .eq('conversation_id', (thisConv as any).id)
               .not('topic_id', 'is', null)
+            if (thisTurnsErr) void logError('chatCore.handleChatTurn', thisTurnsErr, { orgId: bot.org_id })
             for (const t of (thisTurns || [])) {
               const tid = (t as any).topic_id as string
               if (tid) participantDiscussed.add(tid)
@@ -938,12 +949,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     !!session_id
   if (statefulFocus) {
     try {
-      const { data: priorTurns } = await service
+      const { data: priorTurns, error: priorTurnsErr } = await service
         .from('bot_conversation_turns')
         .select('content_flags')
         .eq('bot_id', bot.id)
         .eq('session_id', session_id)
         .eq('role', 'user')
+      if (priorTurnsErr) void logError('chatCore.handleChatTurn', priorTurnsErr, { orgId: bot.org_id })
       const capturedSlugs = new Set<string>()
       for (const t of priorTurns || []) {
         const flags = ((t as any).content_flags || []) as unknown[]
@@ -1022,22 +1034,24 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // the legacy table.
         let existingTurns: { turn_number: number }[] = []
         if (isPhase3ReadSafe()) {
-          const { data } = await service
+          const { data, error: maxTurnErr } = await service
             .from('conversation_turns')
             .select('turn_number, conversations!inner(session_id, bot_id)')
             .eq('conversations.bot_id', bot.id)
             .eq('conversations.session_id', session_id)
             .order('turn_number', { ascending: false })
             .limit(1)
+          if (maxTurnErr) void logError('chatCore.handleChatTurn', maxTurnErr, { orgId: bot.org_id })
           existingTurns = (data || []) as any
         } else {
-          const { data } = await service
+          const { data, error: legacyMaxTurnErr } = await service
             .from('bot_conversation_turns')
             .select('turn_number')
             .eq('bot_id', bot.id)
             .eq('session_id', session_id)
             .order('turn_number', { ascending: false })
             .limit(1)
+          if (legacyMaxTurnErr) void logError('chatCore.handleChatTurn', legacyMaxTurnErr, { orgId: bot.org_id })
           existingTurns = (data || []) as any
         }
 
@@ -1141,12 +1155,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           if (widgetName && widgetName !== '_skip') {
             ;(async function persistWidgetName() {
               try {
-                const { data: existing } = await service
+                const { data: existing, error: existingErr } = await service
                   .from('agent_session_personas')
                   .select('name')
                   .eq('bot_id', bot.id)
                   .eq('session_id', session_id)
                   .maybeSingle()
+                if (existingErr) void logError('chatCore.persistWidgetName', existingErr, { orgId: bot.org_id })
                 if (existing && (existing as any).name) return  // already captured; idempotent skip
                 await service.from('agent_session_personas')
                   .upsert({ bot_id: bot.id, session_id, name: widgetName, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
@@ -1166,12 +1181,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
           ;(async function captureName() {
             try {
-              const { data: existing } = await service
+              const { data: existing, error: existingErr } = await service
                 .from('agent_session_personas')
                 .select('name')
                 .eq('bot_id', bot.id)
                 .eq('session_id', session_id)
                 .maybeSingle()
+              if (existingErr) void logError('chatCore.captureName', existingErr, { orgId: bot.org_id })
               if (existing && (existing as any).name) return // already captured; no AI call
               const r = await extractName(userMsgs, bot.org_id)
               if (!r.name) return

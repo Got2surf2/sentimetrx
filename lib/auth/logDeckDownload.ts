@@ -4,6 +4,7 @@
 // must never block a download.
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export async function logDeckDownload(deckName: string, variant?: string): Promise<void> {
   try {
@@ -13,7 +14,8 @@ export async function logDeckDownload(deckName: string, variant?: string): Promi
     let orgId: string | null = null
     if (user) {
       userId = user.id
-      const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+      const { data, error: userRowErr } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+      if (userRowErr) void logError('logDeckDownload.logDeckDownload', userRowErr)
       orgId = (data as any)?.org_id ?? null
     }
 

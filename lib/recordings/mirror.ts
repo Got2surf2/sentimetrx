@@ -11,6 +11,7 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildRecordingSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { logError } from '@/lib/log'
 import type {
   NewExtraction,
   RecordingExtractionRow,
@@ -73,12 +74,13 @@ export async function mirrorExtractionsToDataset(input: MirrorInput): Promise<Mi
   }
 
   // 3. Find next row_index for the dataset (in case mirror is called twice).
-  const { data: maxRow } = await service
+  const { data: maxRow, error: maxRowErr } = await service
     .from('dataset_rows_flat')
     .select('row_index')
     .eq('dataset_id', datasetId)
     .order('row_index', { ascending: false })
     .limit(1)
+  if (maxRowErr) void logError('mirror.mirrorExtractionsToDataset', maxRowErr, { orgId: input.org_id })
   const startIndex = maxRow && maxRow.length > 0 ? maxRow[0].row_index + 1 : 0
 
   // 4. Map each extraction to a dataset_rows_flat row per spec § 2.6.
@@ -114,12 +116,13 @@ async function ensureRecordingDataset(
   input: MirrorInput,
 ): Promise<string> {
   // Already linked? Reuse it.
-  const { data: existingRec } = await service
+  const { data: existingRec, error: existingRecErr } = await service
     .from('recordings')
     .select('dataset_id')
     .eq('id', input.recording_id)
     .eq('org_id', input.org_id)
     .single()
+  if (existingRecErr) void logError('mirror.ensureRecordingDataset', existingRecErr, { orgId: input.org_id })
 
   if (existingRec?.dataset_id) return existingRec.dataset_id as string
 

@@ -23,6 +23,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { analyzeRecording } from '@/lib/recordings/analyze'
 import { mirrorExtractionsToDataset } from '@/lib/recordings/mirror'
 import { computeCoverage } from '@/lib/recordings/coverage'
+import { logError } from '@/lib/log'
 import type {
   CoverageReport,
   RecordingExtractionRow,
@@ -85,20 +86,22 @@ export async function reanalyzeRecording(input: ReanalyzeInput): Promise<Reanaly
   let toDeleteIds: string[] = []
   let scopedTranscript: TranscriptSegment[] = allSegments
   if (input.scope === 'all') {
-    const { data: existingIds } = await service
+    const { data: existingIds, error: existingIdsErr } = await service
       .from('recording_extractions')
       .select('id')
       .eq('recording_id', input.recording_id)
       .eq('org_id', input.org_id)
+    if (existingIdsErr) void logError('reanalyze.reanalyzeRecording', existingIdsErr, { orgId: input.org_id })
     toDeleteIds = ((existingIds ?? []) as Array<{ id: string }>).map(r => r.id)
   } else {
     // scope='topic'
-    const { data: topicRows } = await service
+    const { data: topicRows, error: topicRowsErr } = await service
       .from('recording_extractions')
       .select('id, start_sec, end_sec')
       .eq('recording_id', input.recording_id)
       .eq('org_id', input.org_id)
       .eq('topic', input.topic as string)
+    if (topicRowsErr) void logError('reanalyze.reanalyzeRecording', topicRowsErr, { orgId: input.org_id })
     const rows = (topicRows ?? []) as Array<{ id: string; start_sec: number | null; end_sec: number | null }>
     if (rows.length === 0) {
       throw new Error(`no existing pairs found with topic="${input.topic}"`)
@@ -140,11 +143,12 @@ export async function reanalyzeRecording(input: ReanalyzeInput): Promise<Reanaly
   })
 
   // 5. Recompute coverage from the full extraction set.
-  const { data: allEx } = await service
+  const { data: allEx, error: allExErr } = await service
     .from('recording_extractions')
     .select('topic, confidence, start_sec, end_sec, flagged_for_review, payload, unit_type, sort_order, source_file, flag_reason')
     .eq('recording_id', input.recording_id)
     .eq('org_id', input.org_id)
+  if (allExErr) void logError('reanalyze.reanalyzeRecording', allExErr, { orgId: input.org_id })
   const allExRows = (allEx ?? []) as unknown as RecordingExtractionRow[]
   const coverage = computeCoverage({
     setup_inputs: recording.setup_inputs,

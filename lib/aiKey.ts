@@ -13,6 +13,7 @@ import 'server-only'
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { decryptSecret } from '@/lib/secretbox'
+import { logError } from '@/lib/log'
 
 export type AiMode = 'off' | 'platform' | 'byo'
 export type AiProvider = 'anthropic' | 'openai'
@@ -44,11 +45,12 @@ export async function resolveOrgAiConfig(orgId: string): Promise<OrgAiConfig> {
 
   try {
     const service = createServiceRoleClient()
-    const { data } = await service
+    const { data, error: cfgErr } = await service
       .from('organizations')
       .select('ai_key_mode, ai_provider, ai_api_key')
       .eq('id', orgId)
       .single()
+    if (cfgErr) void logError('aiKey.resolveOrgAiConfig', cfgErr, { orgId })
     const row = data as any
     const mode: AiMode = (row?.ai_key_mode as AiMode) || 'platform'
     const provider: AiProvider = (row?.ai_provider as AiProvider) || 'anthropic'
@@ -87,11 +89,12 @@ export interface OrgAiKeyStatus {
 export async function getOrgAiKeyStatus(orgId: string): Promise<OrgAiKeyStatus | null> {
   if (!orgId) return null
   const service = createServiceRoleClient()
-  const { data } = await service
+  const { data, error: statusErr } = await service
     .from('organizations')
     .select('ai_key_mode, ai_provider, ai_api_key, ai_api_key_set_at, ai_api_key_set_by')
     .eq('id', orgId)
     .single()
+  if (statusErr) void logError('aiKey.getOrgAiKeyStatus', statusErr, { orgId })
   if (!data) return null
   const row = data as any
   return {

@@ -35,6 +35,7 @@
 //   closed → ended
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
@@ -150,12 +151,13 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   // topic for 3 turns contributes 3 mentions but 1 response).
   perTopic: Record<string, { responses: number; mentions: number }>
 }> {
-  const { data: linkRows } = await db
+  const { data: linkRows, error: linkErr } = await db
     .from('town_hall_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
     .limit(2000)
+  if (linkErr) void logError('townHallAdapter.computeBasicStats', linkErr, { orgId })
 
   const conversations = ((linkRows || []) as any[])
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
@@ -171,13 +173,14 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   // One query: user-role turns with conversation + topic + timestamp. Lets
   // us derive total turns, per-participant turns, and per-topic counts
   // without three separate aggregations.
-  const { data: turnRows } = await db
+  const { data: turnRows, error: turnsErr } = await db
     .from('conversation_turns')
     .select('conversation_id, topic_id, created_at')
     .in('conversation_id', convIds)
     .eq('role', 'user')
     .eq('org_id', orgId)
     .order('created_at', { ascending: true })
+  if (turnsErr) void logError('townHallAdapter.computeBasicStats', turnsErr, { orgId })
 
   const perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number; topicSet: Set<string> }> = {}
   for (const c of conversations) perConv[c.id] = { turns: 0, firstAt: null, lastAt: null, topicCount: 0, topicSet: new Set<string>() }
@@ -243,23 +246,26 @@ export async function getTownHallAsLegacy(
   // First try id, then slug. Slug is the more common public lookup.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    if (idErr) void logError('townHallAdapter.getTownHallAsLegacy', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    if (slugErr) void logError('townHallAdapter.getTownHallAsLegacy', slugErr)
     if (data) hall = data
   }
   if (!hall) return null
 
   const session = projectTownHallAsSession(hall)
 
-  const { data: topics } = await db
+  const { data: topics, error: topicsErr } = await db
     .from('town_hall_topics')
     .select('*')
     .eq('town_hall_id', hall.id)
     .eq('org_id', hall.org_id)
     .order('sort_order', { ascending: true })
+  if (topicsErr) void logError('townHallAdapter.getTownHallAsLegacy', topicsErr, { orgId: hall.org_id })
 
   const basics = await computeBasicStats(db, hall.id, hall.org_id)
 
@@ -353,11 +359,13 @@ export async function resolveTownHall(
 ): Promise<any | null> {
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
-    const { data } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    const { data, error: idErr } = await db.from('town_halls').select('*').eq('id', slugOrId).maybeSingle()
+    if (idErr) void logError('townHallAdapter.resolveTownHall', idErr)
     if (data) hall = data
   }
   if (!hall) {
-    const { data } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    const { data, error: slugErr } = await db.from('town_halls').select('*').eq('slug', slugOrId.toLowerCase()).maybeSingle()
+    if (slugErr) void logError('townHallAdapter.resolveTownHall', slugErr)
     if (data) hall = data
   }
   return hall
@@ -391,6 +399,7 @@ export async function listTownHallsAsLegacy(
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
 
   const { data: halls, error } = await q
+  if (error) void logError('townHallAdapter.listTownHallsAsLegacy', error, { orgId: scopeOrgId ?? undefined })
   if (error || !halls || halls.length === 0) return []
 
   // Pull participants + turns counts per town hall in a small fan-out.

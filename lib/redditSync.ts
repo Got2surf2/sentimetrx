@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
 import { buildRedditSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
+import { logError } from './log'
 
 export interface RedditSyncResult {
   total_comments: number
@@ -55,7 +56,7 @@ export async function syncRedditSource(
   }).eq('id', sourceId)
 
   // Load threads that need downloading
-  const { data: threads } = await service
+  const { data: threads, error: threadsErr } = await service
     .from('reddit_source_threads')
     .select('*')
     .eq('reddit_source_id', sourceId)
@@ -63,6 +64,7 @@ export async function syncRedditSource(
     .is('error_message', null)
     .eq('total_pulled', 0)
     .order('score', { ascending: false })
+  if (threadsErr) void logError('redditSync.syncRedditSource', threadsErr)
 
   if (!threads?.length) {
     await service.from('reddit_sources').update({
@@ -159,12 +161,14 @@ export async function syncRedditSource(
 
 async function insertRedditRows(service: SupabaseClient, datasetId: string, rows: Record<string, unknown>[]): Promise<void> {
   const syncTimestamp = new Date().toISOString()
-  const { data: maxRowResp } = await service
+  const { data: maxRowResp, error: maxRowErr } = await service
     .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
     .order('row_index', { ascending: false }).limit(1)
+  if (maxRowErr) void logError('redditSync.insertRedditRows', maxRowErr)
   let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
-  const { data: dsData } = await service
+  const { data: dsData, error: dsDataErr } = await service
     .from('datasets').select('row_count').eq('id', datasetId).single()
+  if (dsDataErr) void logError('redditSync.insertRedditRows', dsDataErr)
   let currentTotal = dsData?.row_count || 0
 
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
@@ -183,8 +187,9 @@ async function insertRedditRows(service: SupabaseClient, datasetId: string, rows
 }
 
 async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: string, sampleRows: Record<string, unknown>[]): Promise<void> {
-  const { data: stateRow } = await service
+  const { data: stateRow, error: stateRowErr } = await service
     .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).single()
+  if (stateRowErr) void logError('redditSync.ensureSchemaAndRecompute', stateRowErr)
   let schema = stateRow?.schema_config
   if (!schema?.fields?.length) {
     schema = buildRedditSchema()

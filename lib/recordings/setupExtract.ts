@@ -14,6 +14,7 @@ import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { renderPdfToPng } from '@/lib/vision/renderDoc'
 import { callAI } from '@/lib/ai'
+import { logError } from '@/lib/log'
 
 const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
 const SONNET_MODEL = 'claude-sonnet-4-6'
@@ -53,7 +54,8 @@ export async function extractSetupFromPdf(pdfStoragePath: string, outPrefix: str
 
   const signed = await Promise.all(
     capped.map(async p => {
-      const { data } = await service.storage.from(BUCKET).createSignedUrl(p, 600)
+      const { data, error: signErr } = await service.storage.from(BUCKET).createSignedUrl(p, 600)
+      if (signErr) void logError('setupExtract.extractSetupFromPdf', signErr, orgId ? { orgId } : undefined)
       return data?.signedUrl ?? null
     }),
   )
