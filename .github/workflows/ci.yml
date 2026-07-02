@@ -37,6 +37,14 @@ jobs:
       - name: No legacy dataset_rows reads
         run: npm run check:no-legacy-rows
 
+      - name: Lint (warn-only ratchet)
+        # eslint 9 flat config. 0 errors today; ~3870 warnings over the existing
+        # backlog. --max-warnings 3900 = a small headroom ceiling so this is
+        # green today and FAILS only if new code pushes the warning count up.
+        # Ratchet the number DOWN in eslint.config.mjs's script as warnings are
+        # burned off (same pattern as the coverage floor). See ENGINEERING §1.
+        run: npm run lint:ci
+
       - name: Unit + integration tests (with coverage gate)
         run: npm run test:coverage
 

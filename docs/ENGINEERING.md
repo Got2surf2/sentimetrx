@@ -37,19 +37,23 @@ Last reviewed: 2026-05-15.
   hard-fails if the secrets are missing/placeholder, so a green check
   means isolation was actually tested, not silently skipped. Owner
   follow-up: populate the secrets and make the job a required check.
-- **`npm run lint` — toolchain migration pending (Next 16).** Next 16
-  **removed the `next lint` command**, so the `"lint": "next lint"`
-  script is stale and the eslint 8→9 + flat-config migration
-  (`eslint-config-next`@16 peer-requires eslint ≥9) is deferred — Open
-  `<TBD>` item 10, expanded. Lint is **not in CI** (CI = typecheck +
-  `npm test`) and no git hook runs it, so nothing is gated meanwhile.
-  Also note Next 16's `next build` **no longer runs ESLint**, so the
-  2026-05-12 failure mode (374 pre-existing violations breaking deploys
-  when `no-floating-promises` / `no-misused-promises` were briefly
-  `error`) can no longer occur via build. Prior config was
-  `next/core-web-vitals` + `@typescript-eslint` with those rules at
-  `warn`; the flat-config migration should re-establish them, then fix
-  the 374 violations and promote back to `error`.
+- **Lint is live in CI (2026-07-02, Open `<TBD>` item 10 CLOSED).**
+  Migrated to **eslint 9 flat config** (`eslint.config.mjs`, replacing
+  `.eslintrc.json`): `eslint-config-next@16`'s native flat config +
+  `typescript-eslint@8` with type-aware parsing (`projectService`), same
+  rules as before at `warn` (`no-floating-promises`, `no-misused-
+  promises`, `no-explicit-any`, `consistent-type-imports`). `next lint`
+  is gone; `npm run lint` = `eslint .`. **CI runs `npm run lint:ci`
+  (`eslint . --max-warnings 3900`)** — a **warn-only ratchet**: 0 errors
+  today, ~3870 warnings over the existing backlog, and the ceiling fails
+  CI only if new code pushes the count UP. Burn the number down (edit the
+  `lint:ci` ceiling in `package.json` as warnings are fixed), same as the
+  coverage floor; once a rule's warnings hit 0, promote it to `error`.
+  Note: `eslint-plugin-react-hooks@6` (bundled with next 16) ships new
+  ERROR-level rules (`set-state-in-effect`, `purity`, …) — demoted to
+  `warn` in the flat config so they ride the ratchet rather than hard-
+  fail on the god-components. (Next 16's `next build` doesn't run ESLint,
+  so lint gates via CI only.)
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.
