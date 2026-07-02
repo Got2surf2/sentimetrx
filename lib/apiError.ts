@@ -13,21 +13,20 @@ import 'server-only'
 //
 // Use at every catch-site and Supabase-error branch instead of
 // `NextResponse.json({ error: err.message }, { status: 500 })`.
+//
+// Now async: it routes through lib/log so the Sentry event carries the
+// request-id + org tags. Call sites `return serverError(...)` inside async
+// route handlers, so returning the promise is transparent — no call-site
+// change needed. Pass `{ orgId }` in `fields` to tag the tenant.
 
 import { NextResponse } from 'next/server'
-import * as Sentry from '@sentry/nextjs'
+import { logError, type LogFields } from '@/lib/log'
 
-export function serverError(
+export async function serverError(
   err: unknown,
   where?: string,
-  extra?: Record<string, unknown>,
-): NextResponse {
-  try {
-    Sentry.captureException(err, {
-      tags: where ? { where } : undefined,
-      extra,
-    })
-  } catch { /* never let telemetry break the response */ }
-  console.error({ at: where || 'api', err: err instanceof Error ? err.message : String(err) })
+  fields?: LogFields,
+): Promise<NextResponse> {
+  await logError(where || 'api', err, fields || {})
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
 }

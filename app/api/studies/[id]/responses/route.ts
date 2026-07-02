@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
 import { resolveBrandGlossary } from '@/lib/correction/glossary'
+import { logError } from '@/lib/log'
 import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
 
 interface Params { params: Promise<{ id: string }> }
@@ -312,7 +313,12 @@ export async function DELETE(req: NextRequest, props: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  try { await serviceSupabase.rpc('refresh_study_response_stats') } catch {}
+  // A failure here leaves study response stats stale with no signal — the exact
+  // "my report is wrong" scenario. Best-effort but no longer silent.
+  try {
+    const { error: statErr } = await serviceSupabase.rpc('refresh_study_response_stats')
+    if (statErr) void logError('studies.responses.refresh_stats', statErr, { orgId: study?.org_id })
+  } catch (e) { void logError('studies.responses.refresh_stats', e, { orgId: study?.org_id }) }
 
   return NextResponse.json({ deleted: count ?? ids.length })
 }

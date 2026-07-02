@@ -213,3 +213,10 @@ tsc clean; 1130 tests (usageLog suite green). No migrations.
 - **3b — RATES refreshed (`lib/usageRates.ts`).** Verified Anthropic pricing against the claude-api reference. Prior "May 2025" table had **Haiku under-priced** ($0.80→$1.00) and **Opus at $15/$75** (old Opus-3-era) when current Opus 4.x is **$5/$25** — so recording-analysis cost (hardcoded Opus) had been logged **~3× too high**; since cost is derived from stored tokens at display time, the fix corrects historical rows too. Added Opus 4.8 + Fable 5; changed the `estimateCost` unknown-model fallback from Haiku (cheapest) to Sonnet (standard) so new models aren't silently under-priced.
 
 tsc clean; 1130 tests. USAGE_ACCOUNTING synced. No migrations.
+
+## 2026-07-02 — Observability foundation + silent-failure captures (high-list #1/#2)
+
+- **`lib/log.ts` structured logger.** `logError(where, err, {orgId, …})` emits a structured console line + captures to Sentry tagged with `where` / `request_id` / `org_id`, so a tenant's `x-request-id` (already stamped on every request by proxy.ts — the earlier "proxy only does CSRF" note was wrong) joins to both logs and the Sentry event. Best-effort, never throws, safe un-awaited. `serverError` (lib/apiError) now routes through it and is `async` — transparent to `return serverError(...)` call sites — so every serverError site gets request/org tags for free. Closes the observability half of Open TBD #12/#21. 6 unit tests.
+- **Silent-failure reads — worst sites.** The audit found ~500 Supabase calls that discard `error` and proceed with `||[]`, returning HTTP 200 with wrong numbers and no trace (exactly how theme-impact/signal-stats hid). Wired `logError` into the highest-value swallows: agent-card counts (`bots.list.*` — a failure would paint every card 0), study-stats refresh (`studies.responses.refresh_stats` — the "my report is wrong" case), and dataset-teardown `dataset_rows_flat` deletes (orphan risk in the sole-source table). Documented in ENGINEERING §4 as the standard; remaining ~500 `{data}`-only reads are an opportunistic migration.
+
+tsc clean; 1135 tests (+ log.test ×6). ENGINEERING + TESTING synced. No migrations.

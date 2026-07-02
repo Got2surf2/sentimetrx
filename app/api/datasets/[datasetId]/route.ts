@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -185,8 +186,13 @@ export async function DELETE(_req: Request, props: Params) {
     await service.from('review_sources').delete().eq('dataset_id', params.datasetId)
   }
 
-  // Explicitly delete child records first (belt-and-suspenders with CASCADE)
-  try { await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId) } catch {}
+  // Explicitly delete child records first (belt-and-suspenders with CASCADE).
+  // CASCADE on datasets covers a failure here, but a silent failure in the
+  // sole-source rows table is worth a breadcrumb.
+  try {
+    const { error: frErr } = await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId)
+    if (frErr) void logError('datasets.delete.rows_flat', frErr, { orgId })
+  } catch (e) { void logError('datasets.delete.rows_flat', e, { orgId }) }
   await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
   await service.from('dataset_state').delete().eq('dataset_id', params.datasetId)
 
@@ -215,7 +221,10 @@ export async function DELETE(_req: Request, props: Params) {
         // Collection is empty — delete the collection dataset (cascades to collection record)
         const colDatasetId = (m.collections as any)?.dataset_id
         if (colDatasetId) {
-          try { await service.from('dataset_rows_flat').delete().eq('dataset_id', colDatasetId) } catch {}
+          try {
+            const { error: cfrErr } = await service.from('dataset_rows_flat').delete().eq('dataset_id', colDatasetId)
+            if (cfrErr) void logError('datasets.delete.collection_rows_flat', cfrErr, { orgId })
+          } catch (e) { void logError('datasets.delete.collection_rows_flat', e, { orgId }) }
           await service.from('dataset_rows').delete().eq('dataset_id', colDatasetId)
           await service.from('dataset_state').delete().eq('dataset_id', colDatasetId)
           await service.from('datasets').delete().eq('id', colDatasetId)

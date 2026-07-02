@@ -227,15 +227,27 @@ its corresponding entry.
   returns a generic `{ error: 'Internal server error' }`. Adopted in
   the `bots/*` + `ana/render-deck` routes; **~90 other routes still
   return raw `error.message`** (grep `error\.message.*status: 500`) —
-  migrate opportunistically when touching a route. This is the
-  concrete first step on Open `<TBD>` item 12 (structured logger).
-- **Request IDs:** *target* state — generated in `proxy.ts`
-  (or upstream), added to every response header (`x-request-id`),
-  included in every log payload's `request_id` field for that
-  request. Today `proxy.ts` only enforces CSRF; no request
-  ID is generated or propagated. Vercel adds its own `x-vercel-id`
-  header upstream, which is the de facto correlation key until
-  Open `<TBD>` item 21 lands.
+  migrate opportunistically when touching a route.
+- **`lib/log.ts` — structured logger (2026-07-02, Open `<TBD>` item 12).**
+  `logError(where, err, {orgId, ...})` emits one structured console line
+  AND captures to Sentry tagged with `where` / `request_id` / `org_id`,
+  so a tenant's `x-request-id` joins to both the logs and the Sentry
+  event. Best-effort, never throws; safe to call un-awaited
+  (`void logError(...)`) at fire-and-forget sites. **`serverError` now
+  routes through it** (it's `async` — `return serverError(...)` inside an
+  async handler is transparent), so every `serverError` call site gets
+  the request/org tags for free. Use `logError` at the `if (error)`
+  branches that currently swallow a Supabase error and return a
+  plausible-but-wrong 200 (agent-card counts, study-stats refresh,
+  dataset-teardown deletes are wired; ~500 `{data}`-only reads across
+  the codebase still discard `error` — capture at least the aggregate/
+  stats reads when you touch them).
+- **Request IDs (DONE, corrects an earlier stale note):** `proxy.ts`
+  stamps `x-request-id` on **every** inbound request (generating one if
+  the client didn't send it) and echoes it on the response;
+  `lib/requestContext.getRequestId()` reads it and `lib/log` injects it
+  into logs + Sentry tags. (The prior "proxy.ts only enforces CSRF"
+  claim was wrong.) Open `<TBD>` item 21 is closed.
 - **CSRF bypass allowlist (`proxy.ts`):** grew by one public,
   no-cookie route on 2026-06-03 — the agent widget-open beacon
   `/api/bots/[id]/impression` (pattern-matched, wildcard CORS,

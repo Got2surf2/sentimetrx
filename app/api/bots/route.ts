@@ -9,6 +9,7 @@ import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { logBotChange } from '@/lib/auditLog'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,7 +54,10 @@ export async function GET(req: NextRequest) {
   const sessionCounts: Record<string, number> = {}
 
   if (botIds.length > 0) {
-    const { data: rows } = await service.rpc('bot_session_counts_for_ids', { p_bot_ids: botIds })
+    // A failure here would silently paint every agent card with 0 conversations
+    // (a plausible-but-wrong 200) — capture it instead of degrading blind.
+    const { data: rows, error: cntErr } = await service.rpc('bot_session_counts_for_ids', { p_bot_ids: botIds })
+    if (cntErr) void logError('bots.list.session_counts', cntErr, { orgId: ctx.orgId ?? undefined })
     for (const row of (rows || [])) {
       sessionCounts[row.bot_id] = Number(row.session_count) || 0
     }
@@ -64,7 +68,8 @@ export async function GET(req: NextRequest) {
   // small; tally in JS rather than an RPC.
   const openQ: Record<string, number> = {}
   if (botIds.length > 0) {
-    const { data: oq } = await service.from('logged_questions').select('bot_id').in('bot_id', botIds).eq('status', 'open')
+    const { data: oq, error: oqErr } = await service.from('logged_questions').select('bot_id').in('bot_id', botIds).eq('status', 'open')
+    if (oqErr) void logError('bots.list.open_questions', oqErr, { orgId: ctx.orgId ?? undefined })
     for (const r of (oq || [])) openQ[r.bot_id] = (openQ[r.bot_id] || 0) + 1
   }
 
@@ -73,7 +78,8 @@ export async function GET(req: NextRequest) {
   if (ctx.isAdmin) {
     const orgIds = Array.from(new Set((data || []).map((b: any) => b.org_id).filter(Boolean)))
     if (orgIds.length > 0) {
-      const { data: orgs } = await service.from('organizations').select('id, name').in('id', orgIds)
+      const { data: orgs, error: orgErr } = await service.from('organizations').select('id, name').in('id', orgIds)
+      if (orgErr) void logError('bots.list.org_names', orgErr, { orgId: ctx.orgId ?? undefined })
       ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
     }
   }
