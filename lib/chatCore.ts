@@ -14,6 +14,7 @@ import { callAI } from '@/lib/ai'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { evaluateDeflection } from '@/lib/deflectionRouter'
+import { SUBTLE_DISENGAGE } from '@/lib/engagementSignals'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
@@ -713,6 +714,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // tagged for cohort analysis.
   let pickedTopicId: string | null = null
   let townHallRoundHold = false
+  // Item 7: facilitation policy — stamps the assistant turn's source
+  // ('clarifier' | 'standby') in both stores so clarifier budgets are
+  // countable on later turns.
+  let pulseiqAssistantSource: string | null = null
   if (ctx.townHallContext) {
     try {
       // Load pulseiq_sessions row up front — used by both the standby fallback
@@ -745,6 +750,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
         const responseCount: Record<string, number> = {}
         const participantDiscussed = new Set<string>()
+        let myTurns: any[] = []
 
         if (conversationIds.length > 0) {
           const { data: allTopicTurns, error: allTopicTurnsErr } = await service
@@ -772,14 +778,15 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           if (thisConv) {
             const { data: thisTurns, error: thisTurnsErr } = await service
               .from('conversation_turns')
-              .select('topic_id')
+              .select('topic_id, role, content, source, turn_number')
               .eq('conversation_id', (thisConv as any).id)
-              .not('topic_id', 'is', null)
+              .order('turn_number', { ascending: true })
             if (thisTurnsErr) void logError('chatCore.handleChatTurn', thisTurnsErr, { orgId: bot.org_id })
             for (const t of (thisTurns || [])) {
               const tid = (t as any).topic_id as string
               if (tid) participantDiscussed.add(tid)
             }
+            myTurns = (thisTurns || []) as any[]
           }
         }
 
@@ -797,6 +804,129 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }))
           .sort((a, b) => a.response_count - b.response_count)
 
+        // ── Facilitation policy (convergence item 7 — ports the legacy
+        // clarifier/disengagement engine rule-for-rule). Counting rules are
+        // enforced HERE in code and bind the model; the tone-reading the
+        // legacy engine delegated to a second AI call is expressed as
+        // system-prompt guidance to the main engine instead. Constants are
+        // per-session tunable via cohort_config.pacing with the legacy
+        // values as defaults.
+        const isOpeningResponse = (Array.isArray(body?.messages) ? body.messages : [])
+          .filter((m: any) => m?.role === 'assistant').length === 0
+        const pacing = (cohortConfig?.pacing || {}) as any
+        const knob = (v: unknown, dflt: number) => (v == null || Number.isNaN(Number(v))) ? dflt : Number(v)
+        const MAX_CLAR_BASE = knob(pacing.max_clarifiers_per_topic, 2)
+        const MIN_TOPIC_TURNS = knob(pacing.min_topic_turns, 2)
+        const MAX_TOPIC_TURNS = knob(pacing.max_topic_turns, 4)
+        const CLARIFY_WORD_BASE = knob(pacing.clarify_word_threshold, 12)
+        const SEED_BUDGET_RATIO = knob(pacing.seed_budget_ratio, 0.6)
+        const participantBudget = Number(cohortConfig?.max_turns_per_participant) || 20
+
+        // Attribute each of the participant's answers to the topic asked by
+        // the nearest preceding assistant turn (the mirror tags pairs with
+        // the NEXT picked topic, so preceding-assistant attribution is the
+        // faithful reconstruction of "what were they answering").
+        let runningTopic: string | null = null
+        const userAnswers: { topic: string | null; words: number; skipped: boolean }[] = []
+        let clarifiersOnCurrent = 0
+        let assistantOnCurrent = 0
+        for (const t of myTurns) {
+          if (t.role === 'assistant') { if (t.topic_id) runningTopic = t.topic_id as string }
+          else if (t.role === 'user') {
+            const wasSkip = typeof t.content === 'string' && t.content.startsWith('[Skipped')
+            userAnswers.push({ topic: runningTopic, words: wasSkip ? 0 : String(t.content || '').trim().split(/\s+/).filter(Boolean).length, skipped: wasSkip })
+          }
+        }
+        const currentTopicId = runningTopic
+        for (const t of myTurns) {
+          if (t.role === 'assistant' && t.topic_id === currentTopicId && currentTopicId) {
+            assistantOnCurrent++
+            if (t.source === 'clarifier') clarifiersOnCurrent++
+          }
+        }
+        const onCurrent = currentTopicId ? userAnswers.filter(u => u.topic === currentTopicId) : []
+        const recentOnTopic = onCurrent.filter(u => !u.skipped).slice(-3)
+        const recentWordCounts = recentOnTopic.map(u => u.words)
+        const skipsOnCurrent = onCurrent.filter(u => u.skipped).length
+
+        // Signals from the current message
+        const msgText = String(lastUserMsg?.content || '').trim()
+        const isSkipNow = msgText.startsWith('[Skipped')
+        const wordCount = isSkipNow ? 0 : msgText.split(/\s+/).filter(Boolean).length
+        const MOVE_ON_SIGNALS = /^(stop|enough|next|move on|done|that'?s it|that'?s all|nothing else|no more|i'?m done|let'?s move on|skip|pass|next topic|next question)\s*[.!?]*$/i
+        const moveOnSignal = !!msgText && MOVE_ON_SIGNALS.test(msgText)
+        const trajectoryDisengaging = recentWordCounts.length >= 2 &&
+          recentWordCounts.every((wc, i) => i === 0 || wc <= recentWordCounts[i - 1]) &&
+          wordCount > 0 && wordCount < (recentWordCounts[recentWordCounts.length - 1] || 999)
+        const CURT_RESPONSE = wordCount > 0 && wordCount <= 3 && !isOpeningResponse
+        const skipOverload = isSkipNow && skipsOnCurrent >= 1
+        const subtleDisengage = !!msgText && SUBTLE_DISENGAGE.test(msgText)
+
+        // Legacy stored the current answer BEFORE computing signals, so
+        // every rolling window includes the message being handled.
+        const answersWithCurrent = msgText
+          ? [...userAnswers, { topic: currentTopicId, words: wordCount, skipped: isSkipNow }]
+          : userAnswers
+        const onCurrentWithCurrent = currentTopicId ? answersWithCurrent.filter(u => u.topic === currentTopicId && !u.skipped).slice(-3) : []
+
+        // Frustration-aware clarifier cap + dynamic per-topic cap (2–4)
+        const maxClarifiers = (trajectoryDisengaging || CURT_RESPONSE) ? Math.min(1, MAX_CLAR_BASE) : MAX_CLAR_BASE
+        let dynamicTopicCap = MIN_TOPIC_TURNS
+        const substantiveOnTopic = onCurrentWithCurrent.some(u => u.words >= 8)
+        const avgWordsOnTopic = onCurrentWithCurrent.length > 0 ? onCurrentWithCurrent.reduce((s, u) => s + u.words, 0) / onCurrentWithCurrent.length : 0
+        if (substantiveOnTopic && !trajectoryDisengaging && !CURT_RESPONSE) dynamicTopicCap = Math.min(MIN_TOPIC_TURNS + 1, MAX_TOPIC_TURNS)
+        if (avgWordsOnTopic >= 10 && !trajectoryDisengaging && !CURT_RESPONSE && onCurrentWithCurrent.length >= 2) dynamicTopicCap = MAX_TOPIC_TURNS
+        const topicCapHit = assistantOnCurrent >= dynamicTopicCap
+
+        // Dynamic word threshold (budget- and coverage-aware)
+        const facilitationTurnsUsed = myTurns.filter(t => t.role === 'assistant').length
+        const topicsRemaining = pickerTopics.filter(t => !participantDiscussed.has(t.id) && (t.response_count || 0) < (t.response_target ?? Number.MAX_SAFE_INTEGER)).length
+        let clarifyThreshold = CLARIFY_WORD_BASE
+        if (topicsRemaining > 3 && facilitationTurnsUsed < participantBudget * 0.3) clarifyThreshold = Math.min(CLARIFY_WORD_BASE, 8)
+        else if (topicsRemaining <= 1) clarifyThreshold = Math.min(CLARIFY_WORD_BASE, 10)
+
+        // Clarifier decision (all signals combined, legacy rule-for-rule)
+        const nonSkipAnswers = answersWithCurrent.filter(u => !u.skipped)
+        const lastTwoCurt = nonSkipAnswers.length >= 2 && nonSkipAnswers.slice(-2).every(u => u.words <= 3)
+        let shouldClarify = !isOpeningResponse && !isSkipNow && !!msgText && !!currentTopicId &&
+          !moveOnSignal &&
+          !trajectoryDisengaging &&
+          !topicCapHit &&
+          wordCount < clarifyThreshold &&
+          clarifiersOnCurrent < maxClarifiers
+        if (shouldClarify && lastTwoCurt && CURT_RESPONSE) shouldClarify = false
+        // Legacy ran an AI tone check on subtle-disengage phrasing with a
+        // "be conservative — when in doubt, move on" instruction and moved
+        // on when the call failed. The conservative branch is now the rule.
+        if (shouldClarify && subtleDisengage) shouldClarify = false
+
+        // Global checkout: participant is done with the whole conversation
+        const recentAllCurt = nonSkipAnswers.length >= 3 && nonSkipAnswers.slice(-3).every(u => u.words <= 3)
+        const recentSkips = answersWithCurrent.slice(-3).filter(u => u.skipped).length >= 2
+        const globalCheckout = recentAllCurt || recentSkips || (trajectoryDisengaging && CURT_RESPONSE)
+
+        if (debugMode) _debug.push('PulseIQ pacing: turn ' + facilitationTurnsUsed + '/' + participantBudget + ' | topic-cap ' + assistantOnCurrent + '/' + dynamicTopicCap + ' | clarifiers ' + clarifiersOnCurrent + '/' + maxClarifiers + ' | threshold ' + clarifyThreshold + 'w | words ' + wordCount + (moveOnSignal ? ' | MOVE-ON' : '') + (trajectoryDisengaging ? ' | TRAJECTORY↓' : '') + (CURT_RESPONSE ? ' | CURT' : '') + (skipOverload ? ' | SKIP-OVERLOAD' : '') + (globalCheckout ? ' | CHECKOUT' : ''))
+
+        if (globalCheckout && facilitationTurnsUsed >= 3 && !isOpeningResponse) {
+          // Chill standby — stop pushing topics at a checked-out participant.
+          const chillMsg = (cohortConfig?.chill_message as string | undefined) ||
+            'The participant has disengaged (very short answers or repeated skips). Thank them warmly for what they shared, tell them you\'ll be here if anything else comes to mind and may circle back as new questions come up from the group. Do NOT ask another question.'
+          systemParts.push('\n\n--- PULSEIQ STANDBY ---\n' + chillMsg + '\nKeep it brief and gracious.')
+          pulseiqAssistantSource = 'standby'
+          if (debugMode) _debug.push('PulseIQ decision: global checkout — chill standby')
+        } else if (shouldClarify) {
+          // Stay on the current topic and dig deeper — binding decision.
+          pickedTopicId = currentTopicId
+          pulseiqAssistantSource = 'clarifier'
+          const curTopic = pickerTopics.find(t => t.id === currentTopicId)
+          systemParts.push(
+            '\n\n--- PULSEIQ CLARIFIER ---\nThe participant gave a brief answer (' + wordCount + ' words) on the topic "' + (curTopic?.label || 'the current topic') + '". Ask exactly ONE warm, natural follow-up that digs deeper into what they just said' +
+            (toneNudge ? ', acknowledging their frustration first' : '') +
+            '. Do NOT change topics. Do NOT stack questions.'
+          )
+          if (debugMode) _debug.push('PulseIQ decision: clarifier on "' + (curTopic?.label || currentTopicId) + '" (' + (clarifiersOnCurrent + 1) + '/' + maxClarifiers + ')')
+        } else {
+
         // ── Opening-response topic match (convergence item 6 — ports
         // legacy matchResponseToTopic). On the participant's FIRST message
         // (no assistant turns yet), semantically classify their response
@@ -807,8 +937,6 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // No match (or AI failure) falls through to pickNextTopic, whose
         // keyword smart-probe is the legacy fallback anyway.
         let openingTopic: NextTopic | null = null
-        const isOpeningResponse = (Array.isArray(body?.messages) ? body.messages : [])
-          .filter((m: any) => m?.role === 'assistant').length === 0
         if (isOpeningResponse && lastUserMsg?.content && pickerTopics.length > 0) {
           try {
             const topicList = pickerTopics.map((t, i) => (i + 1) + '. "' + t.label + '" — ' + (t.description || t.question || '')).join('\n')
@@ -826,12 +954,30 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           if (debugMode) _debug.push('PulseIQ opening match: ' + (openingTopic ? '"' + openingTopic.label + '"' : 'none — falling through to picker'))
         }
 
+        // Seed-budget preference (legacy): once ~60% of the participant's
+        // budget went to seed topics, prefer organic (detected) topics.
+        const seedIds = new Set(pickerTopics.filter(t => t.source === 'seed').map(t => t.id))
+        const seedTurnsUsed = myTurns.filter(t => t.role === 'assistant' && t.topic_id && seedIds.has(t.topic_id as string)).length
+        const preferOrganic = seedTurnsUsed >= Math.ceil(participantBudget * SEED_BUDGET_RATIO) &&
+          pickerTopics.some(t => !seedIds.has(t.id) && !participantDiscussed.has(t.id))
+
         const pick = openingTopic
           ? { topic: openingTopic, reason: 'opening_match' as string, matchedKeyword: undefined as string | undefined }
           : pickNextTopic(pickerTopics, {
               discussedTopicIds: participantDiscussed,
               currentMessage: lastUserMsg?.content,
+              preferOrganic,
+              currentTopicId: currentTopicId || undefined,
             })
+
+        // Tone guidance for the transition (the judgment layer — replaces
+        // the legacy bolt-on AI tone check with instructions to the main
+        // engine, which reads the full conversation anyway).
+        if (moveOnSignal || skipOverload || trajectoryDisengaging || subtleDisengage) {
+          systemParts.push('\nNOTE: The participant has signaled they are done with the previous topic' +
+            (trajectoryDisengaging ? ' (their answers have been getting shorter)' : '') +
+            '. Acknowledge briefly WITHOUT pressing for more on it, then move forward.')
+        }
 
         if (pick.topic) {
           pickedTopicId = pick.topic.id
@@ -896,6 +1042,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         } else if (debugMode) {
           _debug.push('PulseIQ topic: none picked (reason: ' + pick.reason + ')')
         }
+        } // end facilitation decision (checkout / clarifier / topic selection)
 
         // Phase 5 commit 4 — response-count-based theme-detection trigger.
         // Sum cohort-wide response_count across all topics; when the next
@@ -1221,7 +1368,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           userTurn.sentiment_score = sentResult.score
         }
         turnsToInsert.push(userTurn)
-        var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' }
+        var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: pulseiqAssistantSource || 'normal' }
         turnsToInsert.push(assistantTurn)
 
         const { data: insertedRows, error: insertErr } = await service
