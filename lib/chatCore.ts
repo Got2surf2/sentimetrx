@@ -2,7 +2,7 @@
 // Pure chat handling for a custom agent. Extracted from
 // app/api/bots/[id]/chat/route.ts during Phase 4 commit 1 of the
 // agents/PulseIQ convergence so the same handler can serve both the
-// agent widget (`/b/[guid]`) and the PulseIQ town hall widget
+// agent widget (`/b/[guid]`) and the PulseIQ session widget
 // (`/pi/[guid]`) once Phase 4 commit 2 wires PulseIQ in.
 //
 // Phase 4 commit 1 is a pure code move. Behavior is preserved. The
@@ -276,7 +276,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // ── Smart deflection: redirect off-topic / sensitive topics ────────
   // Pre-check helpers (QUESTION_SIGNALS, sensitive-topic match, decision rule)
-  // live in lib/deflectionRouter.ts and are shared with the town hall route.
+  // live in lib/deflectionRouter.ts and are shared with the PulseIQ route.
   // FEEDBACK_SIGNALS stays local — PulseIQ uses a domain-specific superset.
   const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|important|critical|essential|ridiculous|absurd|outrageous|unfair|fair|wrong|right|better|worse|enough|lack|missing)\b/i
 
@@ -704,8 +704,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     _debug.push('RAG: no knowledge base configured')
   }
 
-  // ── Town hall topic injection (Phase 5 commit 3) ──────────────────
-  // When this conversation belongs to a town hall, fetch the cohort's
+  // ── PulseIQ topic injection (Phase 5 commit 3) ────────────────────
+  // When this conversation belongs to a PulseIQ session, fetch the cohort's
   // topic pool, compute live response_count + per-participant
   // discussedTopicIds, pick the next topic via lib/pickNextTopic, and
   // inject a TOPIC FOCUS instruction. The chosen topic_id is carried
@@ -823,7 +823,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             const idx = m ? (Number(JSON.parse(m[0])?.topic_number) || 0) - 1 : -1
             if (idx >= 0 && idx < pickerTopics.length) openingTopic = pickerTopics[idx]
           } catch { /* classification is best-effort; fall through to picker */ }
-          if (debugMode) _debug.push('Town hall opening match: ' + (openingTopic ? '"' + openingTopic.label + '"' : 'none — falling through to picker'))
+          if (debugMode) _debug.push('PulseIQ opening match: ' + (openingTopic ? '"' + openingTopic.label + '"' : 'none — falling through to picker'))
         }
 
         const pick = openingTopic
@@ -841,15 +841,15 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             : ''
           systemParts.push(
             pick.reason === 'opening_match'
-              ? '\n\n--- TOWN HALL TOPIC FOCUS ---\nThe participant\'s opening message already speaks to the topic "' + pick.topic.label + '". Ask a warm, natural follow-up that digs deeper into what they just said, guided by this topic\'s focus: "' + (pick.topic.question || pick.topic.label) + '"' +
+              ? '\n\n--- PULSEIQ TOPIC FOCUS ---\nThe participant\'s opening message already speaks to the topic "' + pick.topic.label + '". Ask a warm, natural follow-up that digs deeper into what they just said, guided by this topic\'s focus: "' + (pick.topic.question || pick.topic.label) + '"' +
                 anglesNote +
                 '\nDo not re-ask the topic question from scratch — build on their words. One question only.'
-              : '\n\n--- TOWN HALL TOPIC FOCUS ---\nYou are facilitating a cohort discussion about "' + pick.topic.label + '". ' +
+              : '\n\n--- PULSEIQ TOPIC FOCUS ---\nYou are facilitating a group discussion about "' + pick.topic.label + '". ' +
                 'Ask this question (rephrase naturally to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
                 anglesNote +
                 '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
           )
-          if (debugMode) _debug.push('Town hall topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
+          if (debugMode) _debug.push('PulseIQ topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
         } else if (pick.reason === 'all_covered') {
           // Convergence item 1 — round-based pacing (ports the legacy
           // orchestrator's round-hold branch). The topic pool above only
@@ -888,13 +888,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           const standbyMsg = (cohortConfig?.standby_message as string | undefined) ||
             (townHallRoundHold
               ? 'This round of discussion has wrapped up and the next round has not started yet. Thank the participant for what they shared, ask them to hold on briefly, and let them know you will be back with a few more questions when the next item is served.'
-              : 'All discussion topics for this town hall have been covered with this participant. Thank them warmly for their contributions, acknowledge what they last shared, and let them know you may circle back if new topics emerge from other participants.')
-          systemParts.push('\n\n--- TOWN HALL STANDBY ---\n' + standbyMsg + '\nKeep the reply brief and gracious. Do NOT invent a new topic.')
+              : 'All discussion topics for this session have been covered with this participant. Thank them warmly for their contributions, acknowledge what they last shared, and let them know you may circle back if new topics emerge from other participants.')
+          systemParts.push('\n\n--- PULSEIQ STANDBY ---\n' + standbyMsg + '\nKeep the reply brief and gracious. Do NOT invent a new topic.')
           if (debugMode) _debug.push(townHallRoundHold
-            ? 'Town hall round hold: later paused rounds exist — holding participant between rounds'
-            : 'Town hall standby: all topics covered for participant — graceful close')
+            ? 'PulseIQ round hold: later paused rounds exist — holding participant between rounds'
+            : 'PulseIQ standby: all topics covered for participant — graceful close')
         } else if (debugMode) {
-          _debug.push('Town hall topic: none picked (reason: ' + pick.reason + ')')
+          _debug.push('PulseIQ topic: none picked (reason: ' + pick.reason + ')')
         }
 
         // Phase 5 commit 4 — response-count-based theme-detection trigger.
@@ -907,16 +907,16 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const totalResponses = Object.values(responseCount).reduce((a: number, b: number) => a + b, 0)
         const threshold = Number(cohortConfig?.theme_detection_every_n_responses) || 20
         if (totalResponses > 0 && (totalResponses + 1) % threshold === 0) {
-          if (debugMode) _debug.push('Town hall trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
+          if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
           detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
-            console.error({ at: 'chat-core', msg: 'town hall theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
+            console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
           })
         }
       } else if (debugMode) {
-        _debug.push('Town hall topic: pool empty (no pulseiq_topics rows)')
+        _debug.push('PulseIQ topic: pool empty (no pulseiq_topics rows)')
       }
     } catch (e: any) {
-      console.error({ at: 'chat-core', msg: 'town hall topic injection failed', err: e?.message, townHallId: ctx.townHallContext.townHallId })
+      console.error({ at: 'chat-core', msg: 'pulseiq topic injection failed', err: e?.message, townHallId: ctx.townHallContext.townHallId })
     }
   }
 
