@@ -16,7 +16,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { serverError } from '@/lib/apiError'
+import { fetchAllRows } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -57,14 +57,16 @@ export async function GET(req: Request) {
   const hallIds = Object.keys(sessionMap)
 
   // Map conversations → owning town hall so hits can group by session.
-  const { data: linkRows } = await service
+  // Paged — PostgREST caps a single select at 1000 rows regardless of .limit().
+  const linkRows = await fetchAllRows<{ conversation_id: string; town_hall_id: string }>((from, to) => service
     .from('pulseiq_session_conversations')
     .select('conversation_id, town_hall_id')
     .in('town_hall_id', hallIds)
     .eq('org_id', orgId)
-    .limit(5000)
+    .order('conversation_id', { ascending: true })
+    .range(from, to), 10000)
   const convToHall: Record<string, string> = {}
-  for (const r of (linkRows || []) as { conversation_id: string; town_hall_id: string }[]) convToHall[r.conversation_id] = r.town_hall_id
+  for (const r of linkRows) convToHall[r.conversation_id] = r.town_hall_id
   const convIds = Object.keys(convToHall)
   if (convIds.length === 0) return NextResponse.json({ results: [], query: q })
 
@@ -78,17 +80,16 @@ export async function GET(req: Request) {
   const like = '"%' + orQuoted + '%"'
 
   // Pull matching turns. We OR across content and content_en (covers user
-  // and bot messages — role distinguishes them in the new schema).
-  const { data: turns, error } = await service
+  // and bot messages — role distinguishes them in the new schema). Paged up
+  // to a 2000-hit result bound (a single select truncates at 1000).
+  const turns = await fetchAllRows<{ id: string; conversation_id: string; role: string; content: string | null; content_en: string | null; created_at: string }>((from, to) => service
     .from('conversation_turns')
     .select('id, conversation_id, role, content, content_en, created_at')
     .in('conversation_id', convIds)
     .eq('org_id', orgId)
     .or('content.ilike.' + like + ',content_en.ilike.' + like)
     .order('created_at', { ascending: true })
-    .limit(2000)
-
-  if (error) return serverError(error, 'townhall.sessions.search', { orgId })
+    .range(from, to), 2000)
 
   type TurnHit = { id: string; conversation_id: string; role: string; content: string | null; content_en: string | null; created_at: string }
 
@@ -97,7 +98,7 @@ export async function GET(req: Request) {
 
   // Group by session, keep first hit's snippet
   const bySession = new Map<string, { hits: number; firstTurn: TurnHit }>()
-  for (const t of (turns || []) as TurnHit[]) {
+  for (const t of turns as TurnHit[]) {
     if (isMarker(t)) continue
     const hallId = convToHall[t.conversation_id]
     if (!hallId) continue

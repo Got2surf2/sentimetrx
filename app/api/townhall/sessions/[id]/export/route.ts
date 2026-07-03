@@ -8,7 +8,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
-import { projectHallAsSession, resolveTownHall, fetchTopicsAsThemes, fetchTurnsAsLegacy } from '@/lib/townHallAdapter'
+import { projectHallAsSession, resolveTownHall, fetchTopicsAsThemes, fetchTurnsAsLegacy, fetchAllRows } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,14 +117,16 @@ export async function GET(req: NextRequest, props: Params) {
 
     const phase3PersonaByParticipant: Record<string, { name: string | null; persona: any }> = {}
     {
-        // Pull conversations linked to this town hall
-        const { data: linkRows } = await db
+        // Pull conversations linked to this town hall (paged — PostgREST
+        // caps a single select at 1000 rows regardless of .limit())
+        const linkRows = await fetchAllRows<any>((from, to) => db
           .from('pulseiq_session_conversations')
           .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id, bot_id)')
           .eq('town_hall_id', hall.id)
           .eq('org_id', hall.org_id)
-          .limit(5000)
-        const convs = ((linkRows || []) as any[])
+          .order('conversation_id', { ascending: true })
+          .range(from, to), 5000)
+        const convs = linkRows
           .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
           .filter(Boolean)
 
@@ -133,17 +135,19 @@ export async function GET(req: NextRequest, props: Params) {
           const convById: Record<string, any> = {}
           for (const c of convs) convById[c.id] = c
 
-          // All turns across linked conversations
-          const { data: cts } = await db
+          // All turns across linked conversations (paged — the unbounded
+          // select was silently capped at 1000 rows)
+          const cts = await fetchAllRows<any>((from, to) => db
             .from('conversation_turns')
             .select('id, conversation_id, turn_number, role, content, content_en, language, source, content_flags, sentiment, sentiment_score, topic_id, skipped, created_at')
             .in('conversation_id', convIds)
             .eq('org_id', hall.org_id)
             .order('conversation_id', { ascending: true })
             .order('turn_number', { ascending: true })
+            .range(from, to), 50000)
 
           // Topic label lookup
-          const topicIds = Array.from(new Set(((cts || []) as any[]).map(c => c.topic_id).filter(Boolean)))
+          const topicIds = Array.from(new Set(cts.map(c => c.topic_id).filter(Boolean)))
           const topicLabel: Record<string, string> = {}
           if (topicIds.length > 0) {
             const { data: thts } = await db.from('pulseiq_topics').select('id, label').in('id', topicIds)
@@ -166,7 +170,7 @@ export async function GET(req: NextRequest, props: Params) {
           // immediately-preceding assistant turn in the same
           // conversation (same algorithm as bot-level analyze).
           const byConv: Record<string, any[]> = {}
-          for (const r of (cts || []) as any[]) {
+          for (const r of cts) {
             if (!byConv[r.conversation_id]) byConv[r.conversation_id] = []
             byConv[r.conversation_id].push(r)
           }

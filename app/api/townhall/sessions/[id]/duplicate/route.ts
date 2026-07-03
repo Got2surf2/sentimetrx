@@ -60,6 +60,8 @@ export async function POST(_req: NextRequest, props: Params) {
     .eq('id', source.bot_id)
     .eq('org_id', source.org_id)
     .maybeSingle()
+  // status 'paused' + pulseiq_dedicated marker — same contract as creation:
+  // never publicly chattable, safe for session DELETE to remove.
   const { data: agentRow, error: agentErr } = await db
     .from('agents')
     .insert({
@@ -67,7 +69,8 @@ export async function POST(_req: NextRequest, props: Params) {
       created_by: user.id,
       name: srcAgent?.name || source.name,
       slug: slug + '-agent',
-      status: 'active',
+      status: 'paused',
+      config: { pulseiq_dedicated: true },
       personality: srcAgent?.personality || 'Warm, curious facilitator. Keeps questions short and conversational, one at a time. Never lectures.',
       system_prompt: srcAgent?.system_prompt || 'You facilitate a live group feedback session. Draw out specific, honest feedback. Keep replies brief.',
       sensitive_topics: srcAgent?.sensitive_topics || [],

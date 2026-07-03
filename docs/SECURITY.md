@@ -400,7 +400,7 @@ cross-org access attempts."
   DELETE runs the sweep before removing the org. **Non-Postgres data
   (2026-07-02):** the route also purges Supabase **Storage** objects
   under the org prefix (`org-logos` + the `recordings` media bucket, via
-  `deleteOrgStorage`) and the org's **`auth.users`** rows (via
+  `deleteOrgStorage`; listing paginated 2026-07-03 — a single Storage `list()` caps at 1000 entries and would have silently half-erased large orgs) and the org's **`auth.users`** rows (via
   `purgeOrgAuthUsers`, ids collected before the sweep clears
   `public.users`). Both are best-effort — the DB data is already erased,
   so a partial failure surfaces as `warnings` in the response for manual

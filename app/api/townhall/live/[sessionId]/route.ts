@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { trendingTerms } from '@/lib/trendingWords'
-import { resolveTownHall, projectHallAsSession } from '@/lib/townHallAdapter'
+import { resolveTownHall, projectHallAsSession, fetchAllRows } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -58,14 +58,16 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
     .eq('org_id', hall.org_id)
     .order('sort_order', { ascending: true })
 
-  // Conversations linked to the town hall
-  const { data: linkRows } = await db
+  // Conversations linked to the town hall (paged — PostgREST caps a single
+  // select at 1000 rows regardless of .limit())
+  const linkRows = await fetchAllRows<{ conversations: ConvRow | ConvRow[] }>((from, to) => db
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', hall.id)
     .eq('org_id', hall.org_id)
-    .limit(2000)
-  const conversations = ((linkRows || []) as { conversations: ConvRow | ConvRow[] }[])
+    .order('conversation_id', { ascending: true })
+    .range(from, to), 5000)
+  const conversations = linkRows
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
     .filter(Boolean)
   const convIds = conversations.map(c => c.id)
@@ -74,14 +76,14 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   // User turns for response count + sentiment + keyword analytics
   let userTurns: UserTurn[] = []
   if (convIds.length > 0) {
-    const { data } = await db
+    userTurns = await fetchAllRows<UserTurn>((from, to) => db
       .from('conversation_turns')
       .select('content, content_en, sentiment, topic_id, created_at')
       .in('conversation_id', convIds)
       .eq('role', 'user')
       .eq('org_id', hall.org_id)
-      .limit(5000)
-    userTurns = (data || []) as UserTurn[]
+      .order('created_at', { ascending: true })
+      .range(from, to), 20000)
   }
 
   const skipped = userTurns.filter(t => SKIP_MARKER.test(String(t.content || ''))).length

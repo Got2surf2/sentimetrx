@@ -1048,7 +1048,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   // conversations → conversation_turns (FK cascade) + pulseiq_topics
   // (FK cascade on pulseiq_sessions delete), then drop the pulseiq_sessions row.
   if (gate.substrate === 'phase3') {
-    const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id').eq('id', params.id).maybeSingle()
+    const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id, bot_id').eq('id', params.id).maybeSingle()
     if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
     const orgId = (hall as any).org_id as string
     const { data: convRows } = await db
@@ -1062,6 +1062,17 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     }
     const { error } = await db.from('pulseiq_sessions').delete().eq('id', params.id).eq('org_id', orgId)
     if (error) return serverError(error, 'townhall.session.delete', { orgId })
+    // Remove the session's DEDICATED agent (created by sessions POST /
+    // duplicate) so it doesn't survive as an orphan holding the
+    // '<slug>-agent' slug. Marker-gated: a session pointed at a real
+    // linked agent (e.g. Sarina) must never have that agent deleted.
+    const botId = (hall as any).bot_id as string | null
+    if (botId) {
+      const { data: agent } = await db.from('agents').select('id, config').eq('id', botId).eq('org_id', orgId).maybeSingle()
+      if ((agent as any)?.config?.pulseiq_dedicated) {
+        await db.from('agents').delete().eq('id', botId).eq('org_id', orgId)
+      }
+    }
     return NextResponse.json({ deleted: true })
   }
 

@@ -134,11 +134,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     }
     const { error: insErr } = await db.from('bot_conversation_turns').insert(turnRow)
     if (insErr) return serverError(insErr, 'townhall.resume.insertUnifiedTurn', { orgId: hall.org_id })
-    void mirrorTurns(db as any, {
-      botId: hall.bot_id, orgId: hall.org_id, sessionId: unifiedSessionId,
-      language: body.language || 'en', rows: [{ ...turnRow, topic_id: pick.topic.id }] as any,
-      townHallId: hall.id, participantId: participant_id,
-    }).then(function() {})
+    // Awaited: the facilitation policy reads topic-tagged turns from the
+    // mirror on the participant's next message — a fire-and-forget write
+    // here could lose the served topic from budgets/coverage.
+    try {
+      await mirrorTurns(db as any, {
+        botId: hall.bot_id, orgId: hall.org_id, sessionId: unifiedSessionId,
+        language: body.language || 'en', rows: [{ ...turnRow, topic_id: pick.topic.id }] as any,
+        townHallId: hall.id, participantId: participant_id,
+      })
+    } catch (e) { void logError('townhall.resume.mirror', e, { orgId: hall.org_id }) }
 
     return NextResponse.json({
       holding: false,

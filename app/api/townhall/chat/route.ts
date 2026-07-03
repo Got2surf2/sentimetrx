@@ -89,8 +89,13 @@ export async function POST(req: NextRequest) {
       townHall = data
     }
     if (townHall) {
+      // Resolve the backing agent by id WITHOUT a status gate: the SESSION
+      // status (draft/live/paused/closed, handled below) governs the
+      // participant experience. Dedicated agents are created 'paused' so
+      // they're invisible to the public /b path, and pausing/archiving the
+      // agent in the Agents UI must not 404 a live room.
       const { data: agent } = await supabase.from('agents').select('*').eq('id', townHall.bot_id).single()
-      if (agent && agent.status === 'active') {
+      if (agent) {
         const cohortConfig = (townHall.cohort_config || {}) as any
         const unifiedSessionId = townHall.id + ':' + participant_id
 
@@ -157,13 +162,20 @@ export async function POST(req: NextRequest) {
         // requests.
         const { data: priorTurns } = await supabase
           .from('bot_conversation_turns')
-          .select('role, content, turn_number')
+          .select('role, content, turn_number, source')
           .eq('bot_id', agent.id)
           .eq('session_id', unifiedSessionId)
           .order('turn_number', { ascending: true })
         const messages: { role: 'user' | 'assistant'; content: string }[] = []
         let assistantTurnsUsed = 0
         for (const t of (priorTurns || [])) {
+          // Language-switch exchanges are stored for the transcript but are
+          // NOT conversational turns: excluding them here keeps them out of
+          // the participant turn cap AND out of chatCore's opening-response
+          // detection (a Spanish-first participant's first real answer must
+          // still register as the opening message). The replayed translation
+          // duplicates the prior bot message anyway, so no context is lost.
+          if ((t as any).source === 'language_switch') continue
           if (t.role === 'assistant' || t.role === 'user') {
             messages.push({ role: t.role as 'assistant' | 'user', content: t.content })
             if (t.role === 'assistant') assistantTurnsUsed++
@@ -229,9 +241,12 @@ export async function POST(req: NextRequest) {
             // Store the exchange in the synchronous store (+ mirror) so the
             // conversation review shows the switch, mirroring legacy markers.
             const lastNum = (priorTurns || []).reduce((m, t) => Math.max(m, t.turn_number || 0), 0)
+            // source 'language_switch' keeps these rows out of the turn cap
+            // and opening-response counting on subsequent requests (they are
+            // transcript markers, not conversational turns).
             const switchRows = [
-              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 1, role: 'user', content: '[Language switch: ' + targetLang + '] ' + message, language: language || 'en', source: 'normal' },
-              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 2, role: 'assistant', content: switchBotMsg, language: targetLang, source: 'normal' },
+              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 1, role: 'user', content: '[Language switch: ' + targetLang + '] ' + message, language: language || 'en', source: 'language_switch' },
+              { bot_id: agent.id, session_id: unifiedSessionId, turn_number: lastNum + 2, role: 'assistant', content: switchBotMsg, language: targetLang, source: 'language_switch' },
             ]
             const { error: swErr } = await supabase.from('bot_conversation_turns').insert(switchRows)
             if (swErr) void logError('townhall.chat.langSwitch', swErr, { orgId: townHall.org_id })

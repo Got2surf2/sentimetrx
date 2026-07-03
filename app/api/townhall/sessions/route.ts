@@ -29,10 +29,28 @@ export async function GET(req: NextRequest) {
   const orgFilter = validateOrgFilter(req.nextUrl.searchParams.get('org'))
   const scopeOrgId = isAdmin ? orgFilter : userOrgId
 
-  // Tranche 2 (docs/CONVERGENCE.md § 4.2): the legacy townhall_sessions leg
-  // is retired — the list serves pulseiq_sessions rows only, projected into
-  // the same JSON shape the facilitator list UI already consumes.
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): the list serves pulseiq_sessions
+  // rows projected into the JSON shape the facilitator list UI consumes.
   const sessions = await listTownHallsAsLegacy(db, scopeOrgId)
+  if (sessions === null) {
+    return serverError(new Error('pulseiq_sessions list query failed'), 'townhall.sessions.list', { orgId: scopeOrgId ?? undefined })
+  }
+
+  // REMOVE WITH THE LEGACY DROP COMMIT: pre-existing legacy townhall_sessions
+  // rows stay visible (read-only) until the owner-approved data discard
+  // actually executes — dropping this leg early made them look deleted.
+  {
+    let q = db
+      .from('townhall_sessions')
+      .select('id, org_id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
+      .order('created_at', { ascending: false })
+    if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
+    const { data: legacyRows } = await q
+    for (const s of (legacyRows || []) as any[]) {
+      sessions.push({ ...s, participants: 0, turns: 0, org_name: null, __legacy: true })
+    }
+    sessions.sort((a, b) => ((b.created_at || '') > (a.created_at || '') ? 1 : -1))
+  }
 
   // Resolve org names for admin per-card display.
   if (sessions.length > 0 && isAdmin) {
@@ -99,6 +117,14 @@ export async function POST(req: NextRequest) {
 
   // Dedicated agent for the session (the substrate's core idea: a session
   // wraps an agent). Built from the wizard's persona-shaped fields.
+  //
+  // status 'paused' + config.pulseiq_dedicated are deliberate: the public
+  // agent widget (/b/[slug]) only serves status='active', so a paused
+  // dedicated agent is never publicly chattable outside the session's own
+  // lifecycle gates — the PulseIQ chat path resolves it by bot_id and
+  // ignores agent status (the SESSION status governs). The marker lets
+  // session DELETE distinguish a dedicated agent (safe to remove) from a
+  // real linked agent like Sarina (never removed).
   const cfg = config as any
   const eventDesc = cfg?.context?.event_description || ''
   const agentInsert: Record<string, unknown> = {
@@ -106,13 +132,28 @@ export async function POST(req: NextRequest) {
     created_by: user.id,
     name: (cfg?.bot_name || name) + '',
     slug: slug + '-agent',
-    status: 'active',
+    status: 'paused',
+    config: { pulseiq_dedicated: true },
     personality: 'Warm, curious facilitator' + (cfg?.context?.tone ? ' — tone: ' + cfg.context.tone : '') + '. Keeps questions short and conversational, one at a time. Never lectures.',
     system_prompt: 'You facilitate a live group feedback session' + (eventDesc ? ' about: ' + eventDesc : '') + '. Draw out specific, honest feedback. Keep replies brief.',
     sensitive_topics: cfg?.context?.sensitive_topics || [],
   }
-  const { data: agentRow, error: agentErr } = await db.from('agents').insert(agentInsert).select('id').single()
-  if (agentErr) return serverError(agentErr, 'townhall.sessions.create.agent', { orgId })
+  // agents.slug is globally UNIQUE and survives session deletion history —
+  // on collision, retry once with a random suffix (the slug is internal:
+  // dedicated agents are never served publicly).
+  let agentRow: { id: string } | null = null
+  {
+    const { data, error: agentErr } = await db.from('agents').insert(agentInsert).select('id').single()
+    if (data) agentRow = data
+    else if (agentErr && /duplicate key|unique constraint/i.test(agentErr.message || '')) {
+      agentInsert.slug = slug + '-agent-' + Math.random().toString(36).slice(2, 7)
+      const { data: retry, error: retryErr } = await db.from('agents').insert(agentInsert).select('id').single()
+      if (retryErr) return serverError(retryErr, 'townhall.sessions.create.agent', { orgId })
+      agentRow = retry
+    } else {
+      return serverError(agentErr, 'townhall.sessions.create.agent', { orgId })
+    }
+  }
 
   // cohort_config = the wizard config with the keys the unified engine
   // reads lifted to top level (legacy nested them under engine.*). The

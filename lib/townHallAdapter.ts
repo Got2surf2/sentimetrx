@@ -39,6 +39,29 @@ import { logError } from '@/lib/log'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
+/**
+ * PostgREST caps any single select at the project max-rows setting (1000
+ * here — see sql/146's comment). A `.limit(5000)` or `.range(0, 49999)` is
+ * a CEILING, not a fetch size: the response silently truncates at 1000.
+ * This helper pages through in 1000-row chunks up to `cap` total rows.
+ * The caller rebuilds the query per page (PostgREST builders are single-use).
+ */
+export async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<unknown>,
+  cap = 50000,
+): Promise<T[]> {
+  const PAGE = 1000
+  const out: T[] = []
+  for (let from = 0; from < cap; from += PAGE) {
+    const { data, error } = (await build(from, Math.min(from + PAGE, cap) - 1)) as { data: T[] | null; error: unknown }
+    if (error) { void logError('townHallAdapter.fetchAllRows', error); break }
+    if (!data || data.length === 0) break
+    out.push(...data)
+    if (data.length < PAGE) break
+  }
+  return out
+}
+
 const STATUS_MAP: Record<string, 'setup' | 'active' | 'paused' | 'ended'> = {
   draft:  'setup',
   live:   'active',
@@ -151,15 +174,15 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   // topic for 3 turns contributes 3 mentions but 1 response).
   perTopic: Record<string, { responses: number; mentions: number }>
 }> {
-  const { data: linkRows, error: linkErr } = await db
+  const linkRows = await fetchAllRows<any>((from, to) => db
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
-    .limit(2000)
-  if (linkErr) void logError('townHallAdapter.computeBasicStats', linkErr, { orgId })
+    .order('conversation_id', { ascending: true })
+    .range(from, to), 5000)
 
-  const conversations = ((linkRows || []) as any[])
+  const conversations = linkRows
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
     .filter(Boolean)
     .map(c => ({ id: c.id as string, session_id: c.session_id as string, participant_id: c.participant_id ?? null }))
@@ -170,17 +193,18 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
 
   const convIds = conversations.map(c => c.id)
 
-  // One query: user-role turns with conversation + topic + timestamp. Lets
-  // us derive total turns, per-participant turns, and per-topic counts
-  // without three separate aggregations.
-  const { data: turnRows, error: turnsErr } = await db
+  // One query shape: user-role turns with conversation + topic + timestamp.
+  // Lets us derive total turns, per-participant turns, and per-topic counts
+  // without three separate aggregations. Paged — the unbounded select was
+  // silently capped at 1000 rows by PostgREST.
+  const turnRows = await fetchAllRows<any>((from, to) => db
     .from('conversation_turns')
     .select('conversation_id, topic_id, created_at')
     .in('conversation_id', convIds)
     .eq('role', 'user')
     .eq('org_id', orgId)
     .order('created_at', { ascending: true })
-  if (turnsErr) void logError('townHallAdapter.computeBasicStats', turnsErr, { orgId })
+    .range(from, to), 50000)
 
   const perConv: Record<string, { turns: number; firstAt: string | null; lastAt: string | null; topicCount: number; topicSet: Set<string> }> = {}
   for (const c of conversations) perConv[c.id] = { turns: 0, firstAt: null, lastAt: null, topicCount: 0, topicSet: new Set<string>() }
@@ -191,7 +215,7 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   const perTopicConvs: Record<string, Set<string>> = {}
   const perTopicMentions: Record<string, number> = {}
 
-  for (const t of (turnRows || []) as any[]) {
+  for (const t of turnRows) {
     const cid = t.conversation_id as string
     const entry = perConv[cid]
     if (!entry) continue
@@ -434,31 +458,30 @@ export async function fetchTurnsAsLegacy(
   townHallId: string,
   orgId: string,
 ): Promise<LegacyShapedTurn[]> {
-  const { data: linkRows, error: linkErr } = await db
+  type LinkConv = { id: string; session_id: string; participant_id: string | null; org_id: string }
+  const linkRows = await fetchAllRows<{ conversations: LinkConv | LinkConv[] }>((from, to) => db
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
-    .limit(5000)
-  if (linkErr) void logError('townHallAdapter.fetchTurnsAsLegacy', linkErr, { orgId })
-  type LinkConv = { id: string; session_id: string; participant_id: string | null; org_id: string }
-  const convs = ((linkRows || []) as { conversations: LinkConv | LinkConv[] }[])
+    .order('conversation_id', { ascending: true })
+    .range(from, to), 5000)
+  const convs = linkRows
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
     .filter(Boolean)
   if (convs.length === 0) return []
   const partByConv: Record<string, string> = {}
   for (const c of convs) partByConv[c.id] = c.participant_id || c.session_id
 
-  const { data: cts, error: turnsErr } = await db
+  const cts = await fetchAllRows((from, to) => db
     .from('conversation_turns')
     .select('id, conversation_id, turn_number, role, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
     .in('conversation_id', Object.keys(partByConv))
     .eq('org_id', orgId)
     .order('conversation_id', { ascending: true })
     .order('turn_number', { ascending: true })
-    .range(0, 49999)
-  if (turnsErr) void logError('townHallAdapter.fetchTurnsAsLegacy', turnsErr, { orgId })
-  if (!cts || cts.length === 0) return []
+    .range(from, to), 50000)
+  if (cts.length === 0) return []
 
   type MirrorTurn = {
     id: string; conversation_id: string; turn_number: number; role: string
@@ -535,8 +558,10 @@ export async function fetchTurnsAsLegacy(
 
 /**
  * Lists every pulseiq_sessions row in scope and returns each in the legacy
- * townhall_sessions list shape used by /api/townhall/sessions. Caller
- * concatenates with the legacy list and sorts by created_at desc.
+ * townhall_sessions list shape used by /api/townhall/sessions.
+ *
+ * Returns null on a query ERROR (so the route can 500 instead of rendering
+ * a false "no sessions" empty state); [] means a genuine empty list.
  *
  * Admin callers may pass scopeOrgId=null to fetch across all orgs;
  * non-admin callers must pass their own orgId.
@@ -544,7 +569,7 @@ export async function fetchTurnsAsLegacy(
 export async function listTownHallsAsLegacy(
   db: ServiceClient,
   scopeOrgId: string | null,
-): Promise<any[]> {
+): Promise<any[] | null> {
   let q = db
     .from('pulseiq_sessions')
     .select('id, org_id, name, slug, status, cohort_config, discussion_guide, response_target, started_at, ended_at, created_at, updated_at, created_by')
@@ -552,8 +577,11 @@ export async function listTownHallsAsLegacy(
   if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
 
   const { data: halls, error } = await q
-  if (error) void logError('townHallAdapter.listTownHallsAsLegacy', error, { orgId: scopeOrgId ?? undefined })
-  if (error || !halls || halls.length === 0) return []
+  if (error) {
+    void logError('townHallAdapter.listTownHallsAsLegacy', error, { orgId: scopeOrgId ?? undefined })
+    return null
+  }
+  if (!halls || halls.length === 0) return []
 
   // Pull participants + turns counts per town hall in a small fan-out.
   // Number of town halls is small (1 today, low double digits realistic)

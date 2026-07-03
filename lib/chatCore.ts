@@ -148,7 +148,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
       return { reply: null, skipped: 'insert_failed' }
     }
-    void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+    if (ctx.townHallContext) {
+      try {
+        await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+      } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
+    } else {
+      void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: null, participantId: null }).then(function() {})
+    }
     return { reply: probeText, _silence: true }
   }
 
@@ -228,6 +234,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as any, maxLength: 1200 })
     if (check.nudge) toneNudge = true
     if (!check.safe) {
+      // Over-length input is NOT a conduct violation: no [filtered] audit
+      // trail (the participant's text must not be recorded as moderated
+      // away), no scold — just ask them to trim. Their message isn't
+      // stored, so nothing is lost from the transcript except length.
+      if (check.category === 'too_long') {
+        return { reply: "That's a lot to take in at once — could you share the key points in a shorter message?", ended: false }
+      }
       const warning = check.warning || "Let's keep things respectful. How can I help you?"
       // Audit trail (legacy parity): persist the violation as a filtered
       // turn + the warning, so conversation review shows the moderation.
@@ -244,7 +257,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           ]
           const { error: guardErr } = await service.from('bot_conversation_turns').insert(guardRows)
           if (guardErr) void logError('chatCore.guardStore', guardErr, { orgId: bot.org_id })
-          else void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+          else if (ctx.townHallContext) {
+            // Awaited in town-hall mode: the warning turn counts toward the
+            // participant budget the policy reads from the mirror.
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+          } else {
+            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: null, participantId: null }).then(function() {})
+          }
         } catch { /* audit-trail storage is best-effort */ }
       }
       // `shutdown` = the strike-escalation ended the session (3rd severe
@@ -330,7 +349,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber + 1, role: 'assistant', content: deflectText, language: botLang || 'en', source: 'deflect' },
             ]
             void service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
-            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+            if (ctx.townHallContext) {
+              try {
+                await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+              } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
+            } else {
+              void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: null, participantId: null }).then(function() {})
+            }
           }
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
@@ -1385,7 +1410,18 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const turnsForMirror = pickedTopicId
           ? (turnsToInsert as any[]).map(r => ({ ...r, topic_id: pickedTopicId }))
           : (turnsToInsert as any[])
-        void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext?.townHallId ?? null, participantId: ctx.townHallContext?.participantId ?? null }).then(function() {})
+        // In town-hall mode the mirror is AWAITED: the facilitation policy
+        // reads the NEXT request's budgets (clarifier caps, topic caps,
+        // seed budget) from conversation_turns, so a lagging or failed
+        // fire-and-forget write would silently loosen the caps. 1:1 agent
+        // mode keeps the async fast path (nothing reads the mirror inline).
+        if (ctx.townHallContext) {
+          try {
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+          } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
+        } else {
+          void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: null, participantId: null }).then(function() {})
+        }
 
         // Focus classify happens after the insert lands — best-effort
         // tag of the just-saved assistant turn. Slow AI call must not

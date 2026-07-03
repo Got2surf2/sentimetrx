@@ -94,14 +94,23 @@ const ORG_PREFIXED_BUCKETS = ['org-logos', process.env.RECORDINGS_BUCKET || 'rec
 
 // Recursively collect every object path under `prefix` in a bucket. Supabase's
 // list() returns one directory level; folder entries have `id === null`.
+// Paginated: a single list() call returns at most `limit` entries, so a
+// directory with >1000 objects would otherwise be silently half-erased —
+// fatal for a right-to-delete sweep that reports success.
 async function listAllObjectPaths(service: ReturnType<typeof createServiceRoleClient>, bucket: string, prefix: string): Promise<string[]> {
   const out: string[] = []
-  const { data, error } = await service.storage.from(bucket).list(prefix, { limit: 1000 })
-  if (error || !data) return out
-  for (const entry of data as { name: string; id: string | null }[]) {
-    const full = prefix ? `${prefix}/${entry.name}` : entry.name
-    if (entry.id === null) out.push(...await listAllObjectPaths(service, bucket, full))
-    else out.push(full)
+  const PAGE = 1000
+  let offset = 0
+  for (;;) {
+    const { data, error } = await service.storage.from(bucket).list(prefix, { limit: PAGE, offset })
+    if (error || !data) break
+    for (const entry of data as { name: string; id: string | null }[]) {
+      const full = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.id === null) out.push(...await listAllObjectPaths(service, bucket, full))
+      else out.push(full)
+    }
+    if (data.length < PAGE) break
+    offset += PAGE
   }
   return out
 }

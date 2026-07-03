@@ -290,7 +290,25 @@ dropped), admin usage name-lookups, admin org counts, agent-tester. Verified
 live 5/5 (`scripts/_verify_tranche2.ts`) + lifecycle/item-3 regressions green.
 `lib/orgSnapshot`/`lib/orgDelete` intentionally keep their `townhall_*`
 entries until the tables actually drop (they enumerate physical tables; legacy
-rows are the rollback path). Unit 3 (2026-07-03) — exports + analyze: export CSV/XLSX/themes/json and
+rows are the rollback path). Unit 3.5 (2026-07-03) — pre-push review fixes (10 verified findings
+from the 38-commit workflow review): PostgREST 1000-row silent-cap class
+swept via `fetchAllRows` pager (adapter turns/stats + live/search/share/
+export-json/analyze readers + orgDelete storage listing); dedicated-agent
+lifecycle contract — created status='paused' + `config.pulseiq_dedicated`
+(never publicly chattable at /b; the chat shim resolves by bot_id and NO
+LONGER gates on agent.status — session status governs; session DELETE
+removes the dedicated agent, marker-gated so linked real agents like
+Sarina are never touched; agents-slug collision retries with a random
+suffix); language-switch rows stored source='language_switch' and
+excluded from the turn cap + opening-response counting; guard 'too_long'
+no longer records a [filtered] violation (polite trim ask instead);
+list GET regained a read-only legacy leg until the drop commit + 500s on
+query error (listTownHallsAsLegacy returns null on error); PulseIQ-mode
+mirror writes are now AWAITED (facilitation budgets read the mirror —
+fire-and-forget could silently loosen caps; 1:1 agents keep the async
+path). All 6 live suites re-run green (33/33).
+
+Unit 3 (2026-07-03) — exports + analyze: export CSV/XLSX/themes/json and
 export/pptx now resolve `pulseiq_sessions` only, consuming two new adapter
 projections (`fetchTurnsAsLegacy` — conversation_turns paired into the
 legacy townhall_turns row shape with marker-aware skip semantics;

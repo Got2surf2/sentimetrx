@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { serverError } from '@/lib/apiError'
-import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
+import { getTownHallAsLegacy, fetchAllRows } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -368,23 +368,25 @@ export async function GET(req: NextRequest) {
 
     // Aggregate word stats from user turn text (no individual data leaves
     // this handler). Bracketed markers ([Skipped …] etc.) are not answers.
-    const { data: linkRows } = await service
+    const linkRows = await fetchAllRows<{ conversation_id: string }>((from, to) => service
       .from('pulseiq_session_conversations')
       .select('conversation_id')
       .eq('town_hall_id', session.id)
       .eq('org_id', session.org_id)
-      .limit(2000)
-    const convIds = ((linkRows || []) as { conversation_id: string }[]).map(r => r.conversation_id)
+      .order('conversation_id', { ascending: true })
+      .range(from, to), 5000)
+    const convIds = linkRows.map(r => r.conversation_id)
     let texts: string[] = []
     if (convIds.length > 0) {
-      const { data: turns } = await service
+      const turns = await fetchAllRows<{ content: string | null; content_en: string | null }>((from, to) => service
         .from('conversation_turns')
         .select('content, content_en')
         .in('conversation_id', convIds)
         .eq('role', 'user')
         .eq('org_id', session.org_id)
-        .limit(5000)
-      texts = ((turns || []) as { content: string | null; content_en: string | null }[])
+        .order('created_at', { ascending: true })
+        .range(from, to), 20000)
+      texts = turns
         .map(t => String(t.content_en || t.content || '').trim())
         .filter(t => t && !/^\[(Skipped|filtered|Language switch)/i.test(t))
     }

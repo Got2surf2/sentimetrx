@@ -17,7 +17,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildTownHallSchema } from '@/lib/datasetUtils'
 import { THEME_PALETTE } from '@/lib/themeUtils'
-import { resolveTownHall } from '@/lib/townHallAdapter'
+import { resolveTownHall, fetchAllRows } from '@/lib/townHallAdapter'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
@@ -88,14 +88,16 @@ async function runPhase3Analyze(
 ): Promise<NextResponse> {
   const orgId = hall.org_id as string
 
-  // 1. Pull all conversations linked to this town hall.
-  const { data: linkRows } = await service
+  // 1. Pull all conversations linked to this town hall (paged — PostgREST
+  // caps a single select at 1000 rows regardless of .limit()).
+  const linkRows = await fetchAllRows<any>((from, to) => service
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', hall.id)
     .eq('org_id', orgId)
-    .limit(5000)
-  const conversations = ((linkRows || []) as any[])
+    .order('conversation_id', { ascending: true })
+    .range(from, to), 5000)
+  const conversations = linkRows
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
     .filter(Boolean)
   const convIds = conversations.map((c: any) => c.id)
@@ -124,18 +126,20 @@ async function runPhase3Analyze(
   let userTurns: any[] = []
   let assistantTurns: any[] = []
   if (convIds.length > 0) {
-    // All user turns (cutoff-filtered).
-    let userQ = service
-      .from('conversation_turns')
-      .select('id, conversation_id, turn_number, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
-      .in('conversation_id', convIds)
-      .eq('role', 'user')
-      .eq('org_id', orgId)
-      .order('conversation_id', { ascending: true })
-      .order('turn_number', { ascending: true })
-    if (lastSynced) userQ = userQ.gt('created_at', lastSynced)
-    const { data: u } = await userQ
-    userTurns = u || []
+    // All user turns (cutoff-filtered; paged — the unbounded select was
+    // silently capped at 1000 rows by PostgREST).
+    userTurns = await fetchAllRows<any>((from, to) => {
+      let userQ = service
+        .from('conversation_turns')
+        .select('id, conversation_id, turn_number, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
+        .in('conversation_id', convIds)
+        .eq('role', 'user')
+        .eq('org_id', orgId)
+        .order('conversation_id', { ascending: true })
+        .order('turn_number', { ascending: true })
+      if (lastSynced) userQ = userQ.gt('created_at', lastSynced)
+      return userQ.range(from, to)
+    }, 50000)
 
     // Pair-prior assistants: every conversation that has a new user turn
     // needs the preceding assistant turn for `bot_message`. Pull the FULL
@@ -143,7 +147,7 @@ async function runPhase3Analyze(
     // not corpus size) so cross-cutoff pairing works.
     const affectedConvIds = Array.from(new Set(userTurns.map(t => t.conversation_id)))
     if (affectedConvIds.length > 0) {
-      const { data: a } = await service
+      assistantTurns = await fetchAllRows<any>((from, to) => service
         .from('conversation_turns')
         .select('conversation_id, turn_number, content, content_en')
         .in('conversation_id', affectedConvIds)
@@ -151,7 +155,7 @@ async function runPhase3Analyze(
         .eq('org_id', orgId)
         .order('conversation_id', { ascending: true })
         .order('turn_number', { ascending: true })
-      assistantTurns = a || []
+        .range(from, to), 50000)
     }
   }
 

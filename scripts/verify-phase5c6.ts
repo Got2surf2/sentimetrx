@@ -22,7 +22,7 @@ const db = createClient(
 
 async function main() {
   console.log('--- listTownHallsAsLegacy(null) ---')
-  const list = await listTownHallsAsLegacy(db, null)
+  const list = (await listTownHallsAsLegacy(db, null)) || []
   console.log('count:', list.length)
   for (const r of list) {
     console.log('  ', r.slug, r.status, 'participants=' + r.participants, 'turns=' + r.turns)
