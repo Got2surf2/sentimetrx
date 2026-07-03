@@ -1038,8 +1038,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                 anglesNote +
                 '\nDo not re-ask the topic question from scratch — build on their words. One question only.'
               : '\n\n--- PULSEIQ TOPIC FOCUS ---\nTransition the conversation to the topic "' + pick.topic.label + '".' +
-                '\nFirst, in ONE short warm sentence, acknowledge what the participant just shared — their previous answer matters and must never feel dismissed. NEVER say things like "we\'re actually focused on X today" or imply their last point was off-topic.' +
-                '\nThen bridge naturally into this question (rephrase to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
+                '\nCRITICAL TONE RULE: their previous answer was given because YOU asked — it can never be treated as a digression. First, in ONE short warm sentence, genuinely engage with what they just said (reflect its substance, not a generic "thanks for sharing"). NEVER use dismissive transition framing: no "we\'re actually focused on X today", no "before we go deeper on that...", no "to get back on track", nothing that implies their answer was off-topic or less important.' +
+                '\nThen bridge naturally — ideally connect their last point to the new topic when a genuine link exists — into this question (rephrase to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
                 anglesNote +
                 '\nOne question only. Stay on this topic unless the participant clearly moves on.'
           )

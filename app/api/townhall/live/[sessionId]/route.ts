@@ -16,6 +16,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { trendingTerms } from '@/lib/trendingWords'
 import { resolveTownHall, projectHallAsSession, fetchAllRows } from '@/lib/townHallAdapter'
+import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -32,6 +34,47 @@ function classifySentiment(pos: number, neg: number): string {
 // are stored as user turns on the unified path — they are not answers.
 const SKIP_MARKER = /^\[Skipped/i
 const NON_ANSWER_MARKER = /^\[(Skipped|filtered|Language switch)/i
+
+// "Trending Now" is a SEMANTIC judgment, not a word count (owner feedback
+// 2026-07-03: frequency surfaced typos and topic words — "just words, not
+// things of potential interest"). A small fast AI pass extracts up to 5
+// short phrases of NEW, specific interest from the recent window, excluding
+// the session's planned topics. Cached 60s per session so the 10s-polled
+// public endpoint costs one AI call per minute per session; the word-count
+// heuristic is the fallback when the AI call fails or the window is thin.
+const TRENDING_TTL_MS = 60_000
+const trendingCache = new Map<string, { at: number; terms: { word: string; recentCount: number; baselineCount: number; ratio: number }[] }>()
+
+async function aiEmergingInterests(
+  recentItems: { text: string; source: string }[],
+  topicLabels: string[],
+  orgId: string,
+  townHallId: string,
+): Promise<{ word: string; recentCount: number; baselineCount: number; ratio: number }[] | null> {
+  try {
+    const responses = recentItems.slice(-40).map((r, i) => (i + 1) + '. ' + r.text.slice(0, 300)).join('\n')
+    const res = await callAI({
+      tier: 'fast', maxTokens: 200, timeoutMs: 3500,
+      system: 'You spot EMERGING points of interest in live participant feedback for a session moderator.\n' +
+        'The session already plans to cover these topics (do NOT list them or their obvious keywords): ' + (topicLabels.join(', ') || '(none)') + '\n' +
+        'From the recent responses, extract up to 5 SHORT phrases (2-4 words each, lowercase) that capture NEW, specific, concrete things participants are raising — places, problems, suggestions, recurring concerns. Skip generic words, pleasantries, typos, and anything already covered by the planned topics.\n' +
+        'Return ONLY a JSON array of strings, e.g. ["speeding on brooks lane","no bike lanes"]. Return [] if nothing genuinely stands out.',
+      messages: [{ role: 'user', content: 'Recent responses:\n' + responses }],
+    })
+    logUsage({ org_id: orgId, resource_type: 'townhall', resource_id: townHallId, event_type: 'trending_extract' }, res.usage)
+    const cleaned = (res.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+    const m = cleaned.match(/\[[\s\S]*\]/)
+    if (!m) return null
+    const phrases = (JSON.parse(m[0]) as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0).slice(0, 5)
+    return phrases.map(pRaw => {
+      const p = pRaw.trim().toLowerCase()
+      const hits = recentItems.filter(r => r.text.toLowerCase().includes(p)).length
+      return { word: p, recentCount: Math.max(hits, 1), baselineCount: 0, ratio: 1 }
+    })
+  } catch {
+    return null
+  }
+}
 
 interface TopicRow {
   id: string; label: string; description: string | null; state: string; source: string
@@ -199,10 +242,25 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
     for (const kw of (t.keywords || [])) for (const w of String(kw).toLowerCase().split(/[^a-z0-9]+/)) if (w.length >= 3) themedWords.add(w)
   }
   const distinctRecentConvs = new Set(recentItems.map(i => i.source)).size
-  const trending = trendingTerms(recentItems, baselineTexts, {
-    n: 8, minRecentCount: 2, exclude: themedWords,
-    minSources: distinctRecentConvs > 1 ? 2 : 1,
-  })
+  let trending: { word: string; recentCount: number; baselineCount: number; ratio: number }[]
+  const cached = trendingCache.get(hall.id)
+  if (cached && Date.now() - cached.at < TRENDING_TTL_MS) {
+    trending = cached.terms
+  } else {
+    let aiTerms: typeof trending | null = null
+    if (recentItems.length >= 2) {
+      aiTerms = await aiEmergingInterests(
+        recentItems,
+        ((topics || []) as TopicRow[]).map(t => t.label),
+        hall.org_id, hall.id,
+      )
+    }
+    trending = aiTerms ?? trendingTerms(recentItems, baselineTexts, {
+      n: 8, minRecentCount: 2, exclude: themedWords,
+      minSources: distinctRecentConvs > 1 ? 2 : 1,
+    })
+    trendingCache.set(hall.id, { at: Date.now(), terms: trending })
+  }
 
   return NextResponse.json({
     session: {

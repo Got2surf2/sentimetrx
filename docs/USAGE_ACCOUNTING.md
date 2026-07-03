@@ -594,3 +594,6 @@ AI-emitting crons need authoritative `org_id` set on every log row so usage is a
 10. (Optional) Add per-org usage panel to `/admin/clients/[id]`.
 11. (Optional) Add budget-alert cron.
 12. (Optional) Wire `lib/embeddings.ts` and `lib/contentGuard.ts` (moderation API) through usage logging if those costs ever stop being negligible.
+
+
+> **`trending_extract` (2026-07-03):** the PulseIQ live screen's Trending Now strip runs a fast AI extraction of emerging-interest phrases, cached 60s per session — logged as `event_type='trending_extract'`, `resource_type='townhall'`.
