@@ -149,7 +149,7 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `webhook_events` | Inbound webhook receipt log (idempotency). |
 | `rate_limit_buckets` | Token-bucket state for `lib/rateLimit.ts`; transient. |
 | `sentry_snapshots` | Captured error-context snapshots. |
-| `schema_migrations` | Applied-migration ledger (sql/147): filename, sha256, applied_at/by. *(In repo; appears in the snapshot once sql/147 is applied to prod.)* |
+| `schema_migrations` | Applied-migration ledger (sql/147): filename, sha256, applied_at/by. *(Applied to prod 2026-07-03; ledger backfilled with all 147 prior migrations.)* |
 
 ## Views & functions
 

@@ -3434,6 +3434,22 @@ CREATE TABLE IF NOT EXISTS "public"."saved_views" (
 ALTER TABLE "public"."saved_views" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."schema_migrations" (
+    "filename" "text" NOT NULL,
+    "sha256" "text" NOT NULL,
+    "applied_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "applied_by" "text",
+    "note" "text"
+);
+
+
+ALTER TABLE "public"."schema_migrations" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."schema_migrations" IS 'Applied-migration ledger. One row per sql/ file that has run against this database. Written by scripts/apply-migration.ts.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."sentry_snapshots" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "captured_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -4330,6 +4346,11 @@ ALTER TABLE ONLY "public"."review_sources"
 
 ALTER TABLE ONLY "public"."saved_views"
     ADD CONSTRAINT "saved_views_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."schema_migrations"
+    ADD CONSTRAINT "schema_migrations_pkey" PRIMARY KEY ("filename");
 
 
 
@@ -6651,6 +6672,13 @@ CREATE POLICY "schedules_update" ON "public"."campaign_schedules" FOR UPDATE USI
 
 
 
+ALTER TABLE "public"."schema_migrations" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "schema_migrations_admin_read" ON "public"."schema_migrations" FOR SELECT TO "authenticated" USING ("public"."is_platform_admin"());
+
+
+
 CREATE POLICY "send_log_select" ON "public"."campaign_send_log" FOR SELECT USING (("campaign_id" IN ( SELECT "campaigns"."id"
    FROM "public"."campaigns"
   WHERE (("campaigns"."org_id" = "public"."current_org_id"()) OR "public"."is_platform_admin"()))));
@@ -7584,6 +7612,12 @@ GRANT ALL ON TABLE "public"."review_sources" TO "service_role";
 GRANT ALL ON TABLE "public"."saved_views" TO "anon";
 GRANT ALL ON TABLE "public"."saved_views" TO "authenticated";
 GRANT ALL ON TABLE "public"."saved_views" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."schema_migrations" TO "anon";
+GRANT ALL ON TABLE "public"."schema_migrations" TO "authenticated";
+GRANT ALL ON TABLE "public"."schema_migrations" TO "service_role";
 
 
 

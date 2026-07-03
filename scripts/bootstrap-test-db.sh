@@ -18,6 +18,11 @@
 #     bash scripts/bootstrap-test-db.sh
 #
 # This is schema-only — NO data is copied, so no tenant data leaves prod.
+#
+# NOTE: FRESH databases only — the dump is not idempotent against an existing
+# schema (CREATE SEQUENCE collides). For incremental parity after a single
+# prod migration, apply the migration file directly instead:
+#   psql "$TEST_DB_URL" -v ON_ERROR_STOP=1 -f sql/NNN_name.sql
 set -euo pipefail
 
 if [ -z "${TEST_DB_URL:-}" ]; then
