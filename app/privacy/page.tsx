@@ -27,7 +27,7 @@ export default function PrivacyPage() {
       <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: 28 }}>Effective {EFFECTIVE_DATE}</p>
 
       <p style={p}>
-        Sentimetrx is a feedback and analysis platform operated by <strong>Datanautix LLC</strong> (&ldquo;Datanautix&rdquo;,
+        Sentimetrx is a feedback and analysis platform operated by <strong>Kaizen Consulting Inc.</strong>, doing business as Datanautix (&ldquo;Datanautix&rdquo;,
         &ldquo;we&rdquo;, &ldquo;us&rdquo;). This notice explains what information is handled when you interact with a survey,
         an AI conversation agent, or a live PulseIQ session powered by Sentimetrx, and when you use the Sentimetrx
         application as a customer.
@@ -96,7 +96,7 @@ export default function PrivacyPage() {
       </p>
 
       <div style={{ marginTop: 48, paddingTop: 16, borderTop: '1px solid #e5e7eb', fontSize: '0.75rem', color: '#9ca3af' }}>
-        Sentimetrx is a product of Datanautix LLC · <a href="https://www.datanautix.com" style={{ color: '#9ca3af' }}>datanautix.com</a>
+        Sentimetrx is a product of Kaizen Consulting Inc. dba Datanautix · <a href="https://www.datanautix.com" style={{ color: '#9ca3af' }}>datanautix.com</a>
       </div>
     </main>
   )

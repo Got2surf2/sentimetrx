@@ -14,7 +14,7 @@ hardening track and is tracked in our internal Open Items log.
 
 - **Product:** Sentimetrx — guest-feedback analytics for multi-brand
   hospitality operators.
-- **Operator:** Datanautix LLC, United States.
+- **Operator:** Kaizen Consulting Inc. dba Datanautix, United States.
 - **Stage:** Pilot deployments with named-account customers. SOC 2
   Type I is on a 2026 H2 path, gated on first paying customer.
 - **Primary contact:** the Datanautix principal listed in the executed
