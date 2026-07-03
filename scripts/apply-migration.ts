@@ -43,6 +43,18 @@ function main() {
     `ON CONFLICT (filename) DO UPDATE SET sha256 = EXCLUDED.sha256, applied_at = now(), applied_by = EXCLUDED.applied_by;`
   sh(['db', 'query', '--linked', insert])
 
+  // Refresh the committed schema snapshot (docs/db/schema.sql) so the repo
+  // always carries an exact, replayable copy of the current prod schema —
+  // the disaster-recovery blueprint. Best-effort: a dump failure must not
+  // mask a successful migration.
+  console.log('==> Refreshing docs/db/schema.sql snapshot')
+  try {
+    sh(['db', 'dump', '--linked', '--schema', 'public', '-f', 'docs/db/schema.sql'])
+    console.log('    snapshot refreshed — commit docs/db/schema.sql with this migration')
+  } catch {
+    console.warn('    WARNING: schema snapshot refresh failed — run `npm run schema:snapshot` manually')
+  }
+
   console.log(`✅ ${name} applied and recorded.`)
 }
 

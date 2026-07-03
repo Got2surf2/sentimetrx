@@ -9,6 +9,7 @@
 // catch-all glob here.
 
 export type SpecKey =
+  | 'docs/DATABASE.md'
   | 'docs/SECURITY.md'
   | 'docs/ENGINEERING.md'
   | 'docs/TESTING.md'
@@ -28,6 +29,13 @@ export type SpecKey =
 export const TOP_LEVEL_SPECS = ['SPEC.md', 'FEATURES.md'] as const
 
 export const SPEC_MAP: Record<SpecKey, string[]> = {
+  // Data dictionary — any migration can add/remove/repurpose a table. The
+  // generated snapshot (docs/db/schema.sql) is refreshed by `npm run migrate`;
+  // this mapping nags the human-readable half.
+  'docs/DATABASE.md': [
+    'sql/*.sql',
+  ],
+
   'docs/SECURITY.md': [
     'proxy.ts',
     'lib/auth/**',

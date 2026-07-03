@@ -38,9 +38,9 @@ This is independent of the Push policy above: working on `main` means *committin
 - `app/` — Next.js routes (UI + API). Public widgets: `/s/[guid]` (surveys), `/b/[guid]` (agents), `/pi/[guid]` (PulseIQ; `/th` is reserved for the Town Hall product). Admin under `/admin/*`.
 - `lib/` — shared logic. Auth helpers in `lib/auth/`, org resolution in `lib/resolveOrg.ts`, rate limiting in `lib/rateLimit.ts`, AI guardrails in `lib/guardrails.ts`, AI client in `lib/ai.ts`.
 - `components/ui/LottieLoader.tsx` — the only loader. Don't write CSS spinners.
-- `sql/` — numbered migrations. Apply to prod with `supabase db query --linked --file sql/NNN_name.sql` (CLI is already linked).
+- `sql/` — numbered migrations. Apply to prod with `npm run migrate sql/NNN_name.sql` (records the `schema_migrations` ledger AND refreshes the committed schema snapshot `docs/db/schema.sql` — commit the refreshed snapshot with the migration). The CLI is already linked.
 - `tests/` — `unit/`, `integration/`, `e2e/`, `loadtest/`. Strategy in `docs/TESTING.md`.
-- `docs/` — specs (per-module). Top-level: `SPEC.md`, `FEATURES.md`.
+- `docs/` — specs (per-module). Top-level: `SPEC.md`, `FEATURES.md`, `docs/ARCHITECTURE.md` (design decisions), `docs/DATABASE.md` + `docs/db/schema.sql` (data dictionary + generated schema snapshot).
 - `proxy.ts` — CSRF protection on cookie-authed mutating routes; webhooks/cron/embeds are explicitly bypassed. (Next 16 renamed the `middleware` convention to `proxy`; runtime is nodejs.)
 
 ## Product naming (user-facing only)

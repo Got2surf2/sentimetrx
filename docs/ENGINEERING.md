@@ -146,10 +146,14 @@ service-role import.
 
 SQL migrations live in `sql/` numbered `NNNN_name.sql`. Apply with
 **`npm run migrate sql/NNNN_name.sql`** (`scripts/apply-migration.ts`) —
-it runs the file against the linked project **and records it in the
+it runs the file against the linked project, **records it in the
 `schema_migrations` ledger** (sql/147) so "applied to prod but not
-committed" (or vice-versa) is detectable. The bare
-`supabase db query --linked --file …` still works but skips the ledger —
+committed" (or vice-versa) is detectable, **and refreshes the committed
+schema snapshot `docs/db/schema.sql`** (2026-07-03 — the repo's
+recreate-from-nothing artifact; commit the refreshed snapshot with the
+migration; `npm run schema:snapshot` regenerates on demand, and
+`docs/DATABASE.md` is the human data dictionary over it). The bare
+`supabase db query --linked --file …` still works but skips both —
 prefer `npm run migrate`.
 
 - **Applied-state ledger (`schema_migrations`, added 2026-07-02).**

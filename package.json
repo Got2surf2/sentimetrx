@@ -27,6 +27,7 @@
     "check:no-legacy-rows": "tsx scripts/check-no-legacy-dataset-rows.ts",
     "migrate": "tsx scripts/apply-migration.ts",
     "migrate:status": "tsx scripts/migrations-status.ts",
+    "schema:snapshot": "supabase db dump --linked --schema public -f docs/db/schema.sql",
     "check:spec-staged": "tsx scripts/check-spec-drift-staged.ts",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
     "lint:ci": "eslint . --max-warnings 3145"
