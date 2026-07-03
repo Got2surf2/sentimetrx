@@ -381,6 +381,159 @@ export function projectHallAsSession(hall: any): any {
 }
 
 /**
+ * Projects pulseiq_topics rows for a town hall into the legacy
+ * townhall_themes JSON shape (source seed→guide / manual→custom, state
+ * rejected→dismissed / pending→detected). Exposed for reader surfaces
+ * (exports, PPTX) that consume theme rows directly.
+ */
+export async function fetchTopicsAsThemes(
+  db: ServiceClient,
+  townHallId: string,
+  orgId: string,
+): Promise<any[]> {
+  const { data: topics, error } = await db
+    .from('pulseiq_topics')
+    .select('*')
+    .eq('town_hall_id', townHallId)
+    .eq('org_id', orgId)
+    .order('sort_order', { ascending: true })
+  if (error) void logError('townHallAdapter.fetchTopicsAsThemes', error, { orgId })
+  return (topics || []).map((t: { round_number?: number | null }) => ({ ...projectTopicAsTheme(t, townHallId), round_number: t.round_number ?? null }))
+}
+
+// Legacy-shaped turn row (one row per user exchange, as townhall_turns
+// stored it). Trailing unanswered assistant questions emit a row with
+// user_message null so exports show the open question, matching legacy.
+export interface LegacyShapedTurn {
+  participant_id: string
+  turn_number: number
+  bot_message: string | null
+  user_message: string | null
+  user_message_en: string | null
+  language: string | null
+  theme_id: string | null
+  theme_label: string | null
+  source: string | null
+  skipped: boolean
+  sentiment: string | null
+  sentiment_score: number | null
+  created_at: string
+}
+
+/**
+ * Fetches conversation_turns for every conversation linked to a town hall
+ * and projects them into the legacy townhall_turns row shape: each user
+ * turn pairs with the most recent preceding assistant turn in the same
+ * conversation. Skip markers (`[Skipped …]`) become skipped=true with a
+ * null user_message; `[filtered]` keeps the marker text with skipped=true
+ * (both match the legacy transcript conventions the export sheets and
+ * PPTX aggregations already understand).
+ */
+export async function fetchTurnsAsLegacy(
+  db: ServiceClient,
+  townHallId: string,
+  orgId: string,
+): Promise<LegacyShapedTurn[]> {
+  const { data: linkRows, error: linkErr } = await db
+    .from('pulseiq_session_conversations')
+    .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
+    .eq('town_hall_id', townHallId)
+    .eq('org_id', orgId)
+    .limit(5000)
+  if (linkErr) void logError('townHallAdapter.fetchTurnsAsLegacy', linkErr, { orgId })
+  type LinkConv = { id: string; session_id: string; participant_id: string | null; org_id: string }
+  const convs = ((linkRows || []) as { conversations: LinkConv | LinkConv[] }[])
+    .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
+    .filter(Boolean)
+  if (convs.length === 0) return []
+  const partByConv: Record<string, string> = {}
+  for (const c of convs) partByConv[c.id] = c.participant_id || c.session_id
+
+  const { data: cts, error: turnsErr } = await db
+    .from('conversation_turns')
+    .select('id, conversation_id, turn_number, role, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
+    .in('conversation_id', Object.keys(partByConv))
+    .eq('org_id', orgId)
+    .order('conversation_id', { ascending: true })
+    .order('turn_number', { ascending: true })
+    .range(0, 49999)
+  if (turnsErr) void logError('townHallAdapter.fetchTurnsAsLegacy', turnsErr, { orgId })
+  if (!cts || cts.length === 0) return []
+
+  type MirrorTurn = {
+    id: string; conversation_id: string; turn_number: number; role: string
+    content: string | null; content_en: string | null; language: string | null
+    source: string | null; sentiment: string | null; sentiment_score: number | null
+    topic_id: string | null; created_at: string
+  }
+  const mirrorTurns = cts as MirrorTurn[]
+
+  const topicIds = Array.from(new Set(mirrorTurns.map(t => t.topic_id).filter(Boolean))) as string[]
+  const topicLabel: Record<string, string> = {}
+  if (topicIds.length > 0) {
+    const { data: topics } = await db.from('pulseiq_topics').select('id, label').in('id', topicIds).eq('org_id', orgId)
+    for (const t of (topics || []) as { id: string; label: string }[]) topicLabel[t.id] = t.label
+  }
+
+  const byConv: Record<string, MirrorTurn[]> = {}
+  for (const r of mirrorTurns) {
+    if (!byConv[r.conversation_id]) byConv[r.conversation_id] = []
+    byConv[r.conversation_id].push(r)
+  }
+
+  const out: LegacyShapedTurn[] = []
+  for (const convId of Object.keys(byConv)) {
+    const pid = partByConv[convId]
+    let pendingAssistant: MirrorTurn | null = null
+    for (const ct of byConv[convId]) {
+      if (ct.role === 'assistant') {
+        pendingAssistant = ct
+        continue
+      }
+      const content = String(ct.content || '')
+      const isSkip = /^\[Skipped/i.test(content)
+      const isFiltered = /^\[filtered\]/i.test(content)
+      out.push({
+        participant_id: pid,
+        turn_number: ct.turn_number,
+        bot_message: pendingAssistant?.content ?? null,
+        user_message: isSkip ? null : content,
+        user_message_en: isSkip ? null : (ct.content_en ?? null),
+        language: ct.language ?? null,
+        theme_id: ct.topic_id ?? null,
+        theme_label: ct.topic_id ? (topicLabel[ct.topic_id] || null) : null,
+        source: ct.source ?? null,
+        skipped: isSkip || isFiltered,
+        sentiment: ct.sentiment ?? null,
+        sentiment_score: typeof ct.sentiment_score === 'number' ? ct.sentiment_score : null,
+        created_at: ct.created_at,
+      })
+      pendingAssistant = null
+    }
+    // Trailing open question (bot asked, nobody answered yet).
+    if (pendingAssistant) {
+      out.push({
+        participant_id: pid,
+        turn_number: pendingAssistant.turn_number,
+        bot_message: pendingAssistant.content ?? null,
+        user_message: null,
+        user_message_en: null,
+        language: pendingAssistant.language ?? null,
+        theme_id: pendingAssistant.topic_id ?? null,
+        theme_label: pendingAssistant.topic_id ? (topicLabel[pendingAssistant.topic_id] || null) : null,
+        source: pendingAssistant.source ?? null,
+        skipped: false,
+        sentiment: null,
+        sentiment_score: null,
+        created_at: pendingAssistant.created_at,
+      })
+    }
+  }
+  out.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+  return out
+}
+
+/**
  * Lists every pulseiq_sessions row in scope and returns each in the legacy
  * townhall_sessions list shape used by /api/townhall/sessions. Caller
  * concatenates with the legacy list and sorts by created_at desc.

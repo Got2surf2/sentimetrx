@@ -57,7 +57,11 @@ vi.mock('@/lib/recordings/reportEmail', () => ({}))
 vi.mock('@/lib/recordings/setupExtract', () => ({ extractSetupFromPdf: async () => ({}) }))
 vi.mock('@/lib/email/provider', () => ({}))
 vi.mock('@/lib/ai', () => ({}))
-vi.mock('@/lib/townHallAdapter', () => ({}))
+vi.mock('@/lib/townHallAdapter', () => ({
+  // analyze (tranche 2) resolves pulseiq_sessions via the adapter — serve the
+  // same ctx.results fixture the raw-table mocks use.
+  resolveTownHall: async () => ctx.results['pulseiq_sessions']?.data ?? null,
+}))
 vi.mock('@/lib/townhallActivationGate', () => ({}))
 vi.mock('@/lib/recordings/configVersion', () => ({}))
 vi.mock('@/lib/orgTransfer', () => ({ recordAdminCrossOrgAction: async () => {} }))
@@ -140,14 +144,15 @@ describe('JS org-check routes — cross-org row → 404', () => {
   })
 })
 
-// townhall/sessions/[id]/analyze — gate on the legacy session's org.
+// townhall/sessions/[id]/analyze — gate on the town hall's org (tranche 2:
+// pulseiq_sessions only).
 describe('townhall/sessions/[id]/analyze — POST', () => {
   it('401 unauthenticated', async () => {
     expect((await thAnalyze.POST(req('POST'), thP)).status).toBe(401)
   })
   it('404 when the session belongs to another org (non-admin)', async () => {
     authAs('orgA')
-    ctx.results['townhall_sessions'] = { data: { id: 's_1', org_id: 'orgB', config: {}, discussion_guide: [] }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { id: 's_1', org_id: 'orgB', cohort_config: {}, discussion_guide: [] }, error: null }
     expect((await thAnalyze.POST(req('POST'), thP)).status).toBe(404)
   })
 })

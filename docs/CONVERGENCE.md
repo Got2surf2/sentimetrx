@@ -290,10 +290,15 @@ dropped), admin usage name-lookups, admin org counts, agent-tester. Verified
 live 5/5 (`scripts/_verify_tranche2.ts`) + lifecycle/item-3 regressions green.
 `lib/orgSnapshot`/`lib/orgDelete` intentionally keep their `townhall_*`
 entries until the tables actually drop (they enumerate physical tables; legacy
-rows are the rollback path). Still legacy-reading: sessions/[id] detail
-(analytics pipeline), analyze, export + export/pptx, join/resume/responses/
-chat engine shims (drop with the orchestrator), `/api/townhall/status` is a
-deletion candidate (no in-repo consumer).
+rows are the rollback path). Unit 3 (2026-07-03) — exports + analyze: export CSV/XLSX/themes/json and
+export/pptx now resolve `pulseiq_sessions` only, consuming two new adapter
+projections (`fetchTurnsAsLegacy` — conversation_turns paired into the
+legacy townhall_turns row shape with marker-aware skip semantics;
+`fetchTopicsAsThemes`); analyze dropped its legacy leg (`runLegacyAnalyze`
+deleted, phase-3 path is the only path). Live-verified 7/7. Still
+legacy-reading: sessions/[id] detail (analytics pipeline), join/resume/
+responses/chat engine shims (drop with the orchestrator),
+`/api/townhall/status` is a deletion candidate (no in-repo consumer).
 
 **Estimate:** Tranche 1 (engine cutover: items 0–7 + a PulseIQ regression set
 mirroring the Sarina harness + prod flag flip + one real test town hall) ≈

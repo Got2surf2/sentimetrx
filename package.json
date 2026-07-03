@@ -29,7 +29,7 @@
     "migrate:status": "tsx scripts/migrations-status.ts",
     "check:spec-staged": "tsx scripts/check-spec-drift-staged.ts",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "lint:ci": "eslint . --max-warnings 3160"
+    "lint:ci": "eslint . --max-warnings 3145"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",

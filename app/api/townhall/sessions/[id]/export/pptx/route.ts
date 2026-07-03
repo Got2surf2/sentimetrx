@@ -7,6 +7,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
+import { resolveTownHall, projectHallAsSession, fetchTopicsAsThemes, fetchTurnsAsLegacy } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -66,41 +67,28 @@ export async function POST(req: NextRequest, props: Params) {
 
   const db = createServiceRoleClient()
 
-  // Fetch session
-  const { data: session } = await db
-    .from('townhall_sessions')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): pulseiq_sessions only (uuid or
+  // slug) — session, themes and turns all projected into the legacy shapes
+  // the slide builders below already consume.
+  const hall = await resolveTownHall(db, params.id)
+  if (!hall) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  if (!isAdmin && hall.org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  const session = projectHallAsSession(hall)
 
-  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  if (!isAdmin && (session as any).org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  // Fetch themes (legacy-projected pulseiq_topics)
+  const themes = await fetchTopicsAsThemes(db, hall.id, hall.org_id)
 
-  // Fetch themes
-  const { data: themes } = await db
-    .from('townhall_themes')
-    .select('*')
-    .eq('session_id', params.id)
-    .order('sort_order', { ascending: true })
-
-  // Fetch turns
-  const { data: turns } = await db
-    .from('townhall_turns')
-    .select('participant_id, user_message, user_message_en, theme_id, source, skipped, created_at')
-    .eq('session_id', params.id)
-    .order('created_at', { ascending: true })
-    .range(0, 49999)
-
-  const allTurns = turns || []
+  // Fetch turns, projected into the legacy townhall_turns row shape
+  const allTurns = await fetchTurnsAsLegacy(db, hall.id, hall.org_id)
   const responded = allTurns.filter(t => !t.skipped && (t.user_message_en || t.user_message))
   const responseTexts = responded.map(t => (t.user_message_en || t.user_message || '').trim()).filter(Boolean)
   const participants = new Set(allTurns.map(t => t.participant_id))
 
-  // Fetch post-session responses
+  // Fetch post-session responses (phase-3 storage column)
   const { data: postResponses } = await db
     .from('townhall_participant_responses')
     .select('participant_id, psychographics, demographics')
-    .eq('session_id', params.id)
+    .eq('town_hall_id', hall.id)
 
   // Build theme analytics
   const themeIdTexts: Record<string, string[]> = {}

@@ -8,7 +8,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
-import { projectHallAsSession } from '@/lib/townHallAdapter'
+import { projectHallAsSession, resolveTownHall, fetchTopicsAsThemes, fetchTurnsAsLegacy } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,59 +28,27 @@ export async function GET(req: NextRequest, props: Params) {
   const db = createServiceRoleClient()
   const format = req.nextUrl.searchParams.get('format') || 'csv'
 
-  // Fetch session — try legacy townhall_sessions first, then fall back
-  // to the phase-3 pulseiq_sessions table (projected into legacy shape so the
-  // downstream code stays substrate-agnostic). Pure phase-3 sessions
-  // like NOWOCATS have no townhall_sessions row at all, so without this
-  // fallback the magnifying-glass conversation modal silently 404s.
-  let session: { name: string; status: string; config: any; started_at: string | null; ended_at: string | null } | null = null
-  let sessionOrgId: string | null = null
-  {
-    const { data } = await db
-      .from('townhall_sessions')
-      .select('name, status, config, started_at, ended_at, org_id')
-      .eq('id', params.id)
-      .maybeSingle()
-    if (data) { session = data as any; sessionOrgId = (data as any).org_id ?? null }
-  }
-  let purePhase3 = false
-  if (!session) {
-    const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
-    let hall: any = null
-    if (isUUID) {
-      const { data } = await db.from('pulseiq_sessions').select('*').eq('id', params.id).maybeSingle()
-      if (data) hall = data
-    }
-    if (!hall) {
-      const { data } = await db.from('pulseiq_sessions').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
-      if (data) hall = data
-    }
-    if (hall) {
-      const projected = projectHallAsSession(hall)
-      session = {
-        name: projected.name,
-        status: projected.status,
-        config: projected.config,
-        started_at: projected.started_at,
-        ended_at: projected.ended_at,
-      }
-      sessionOrgId = hall.org_id ?? null
-      purePhase3 = true
-    }
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): pulseiq_sessions only (uuid or
+  // slug) — the legacy townhall_sessions leg is retired. Sessions, themes
+  // and turns are projected into the legacy shapes the sheet builders and
+  // json consumers already understand.
+  const hall = await resolveTownHall(db, params.id)
+  if (!hall) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  if (!isAdmin && hall.org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  const projected = projectHallAsSession(hall)
+  const session: { name: string; status: string; config: any; started_at: string | null; ended_at: string | null } = {
+    name: projected.name,
+    status: projected.status,
+    config: projected.config,
+    started_at: projected.started_at,
+    ended_at: projected.ended_at,
   }
 
-  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  if (!isAdmin && sessionOrgId !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-
-  // Fetch themes
-  const { data: themes } = await db
-    .from('townhall_themes')
-    .select('id, label, source, state, sentiment, keywords, round_number')
-    .eq('session_id', params.id)
-    .order('sort_order', { ascending: true })
+  // Fetch themes (legacy-projected pulseiq_topics)
+  const themes = await fetchTopicsAsThemes(db, hall.id, hall.org_id)
 
   const themeMap: Record<string, string> = {}
-  for (const t of themes || []) themeMap[t.id] = t.label
+  for (const t of themes) themeMap[t.id] = t.label
 
   // Round-based pacing: per-theme round + the round's tasting-item name, so
   // exports can group/label by item. Inert (no extra columns) in open mode.
@@ -88,26 +56,16 @@ export async function GET(req: NextRequest, props: Params) {
   const roundItems: Record<number, string> = {}
   for (const r of (session.config?.rounds || [])) if (r?.number != null) roundItems[r.number] = r.item_name || ''
   const themeRound: Record<string, number | null> = {}
-  for (const t of themes || []) themeRound[t.id] = (t as any).round_number ?? null
+  for (const t of themes) themeRound[t.id] = t.round_number ?? null
 
-  // Fetch all turns
-  const { data: turnsData } = await db
-    .from('townhall_turns')
-    .select('participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, theme_label, source, skipped, created_at')
-    .eq('session_id', params.id)
-    .order('created_at', { ascending: true })
-    .range(0, 49999)
-  // Phase-3 sessions don't populate townhall_turns. Coerce null → [] so
-  // the downstream pairing/grouping code (which used to be guarded by
-  // the empty-turns early return) stays well-typed without a sea of
-  // ?. checks.
-  const turns = turnsData || []
+  // Fetch all turns, projected into the legacy townhall_turns row shape.
+  const turns = await fetchTurnsAsLegacy(db, hall.id, hall.org_id)
 
-  // Fetch participant post-session responses
+  // Fetch participant post-session responses (phase-3 storage column)
   const { data: postResponses } = await db
     .from('townhall_participant_responses')
     .select('participant_id, psychographics, demographics, submitted_at')
-    .eq('session_id', params.id)
+    .eq('town_hall_id', hall.id)
 
   const demoMap: Record<string, Record<string, unknown>> = {}
   const psychoMap: Record<string, Record<string, unknown>> = {}
@@ -128,10 +86,7 @@ export async function GET(req: NextRequest, props: Params) {
   const demoKeyArr = Array.from(allDemoKeys).sort()
   const psychoKeyArr = Array.from(allPsychoKeys).sort()
 
-  // Skip the empty-turns short-circuit for phase-3 sessions — they don't
-  // populate townhall_turns at all; their data lives in conversation_turns
-  // and is pulled in the json branch below.
-  if ((!turns || turns.length === 0) && !purePhase3) {
+  if (turns.length === 0 && format !== 'json') {
     return new NextResponse('No responses to export\n', { status: 200, headers: { 'Content-Type': 'text/csv' } })
   }
 
@@ -154,56 +109,14 @@ export async function GET(req: NextRequest, props: Params) {
   }
 
   if (format === 'json') {
-    // Group turns into conversation threads by participant
+    // Built from conversation_turns below (flags + sentiment + personas).
+    // The legacy-turns seeding loop is gone (tranche 2) — `turns` is now
+    // itself a projection of conversation_turns, so seeding from it would
+    // double-count every exchange.
     const participants: Record<string, any[]> = {}
-    for (const t of turns) {
-      if (!participants[t.participant_id]) participants[t.participant_id] = []
-      participants[t.participant_id].push({
-        turn: t.turn_number,
-        bot: t.bot_message,
-        user: t.user_message,
-        user_en: t.user_message_en,
-        language: t.language,
-        topic: t.theme_label || themeMap[t.theme_id] || null,
-        ...(roundsMode ? { round: t.theme_id ? themeRound[t.theme_id] ?? null : null } : {}),
-        source: t.source,
-        skipped: t.skipped,
-        time: t.created_at,
-        // bot_flags + user_flags are populated by the phase-3 branch below
-        // and stay null for legacy substrate sessions (which don't store
-        // content_flags per turn).
-        bot_flags: null,
-        user_flags: null,
-        user_sentiment: null,
-        user_sentiment_score: null,
-      })
-    }
-
-    // ── Phase-3 augmentation ────────────────────────────────────────
-    // If THIS session is a pulseiq_sessions (phase-3) slug/id, append its
-    // conversations alongside legacy data. The chat handler emits to
-    // both substrates when both flags are on; this keeps the export
-    // unified regardless of which path the data came from.
-    // Note: the gate above uses townhall_sessions only, so a pure
-    // phase-3 session (no legacy row) returns "No responses" at line 74.
-    // That's a separate bug for pure phase-3 town halls — handled here.
 
     const phase3PersonaByParticipant: Record<string, { name: string | null; persona: any }> = {}
     {
-      // Look up phase-3 town hall (slug-or-uuid). Reuses the adapter's
-      // resolver semantics inline to avoid a wider refactor.
-      const isUUID = /^[0-9a-f-]{36}$/i.test(params.id)
-      let hall: any = null
-      if (isUUID) {
-        const { data } = await db.from('pulseiq_sessions').select('*').eq('id', params.id).maybeSingle()
-        if (data) hall = data
-      }
-      if (!hall) {
-        const { data } = await db.from('pulseiq_sessions').select('*').eq('slug', params.id.toLowerCase()).maybeSingle()
-        if (data) hall = data
-      }
-
-      if (hall) {
         // Pull conversations linked to this town hall
         const { data: linkRows } = await db
           .from('pulseiq_session_conversations')
@@ -299,7 +212,6 @@ export async function GET(req: NextRequest, props: Params) {
             if (p) phase3PersonaByParticipant[pid] = { name: (p as any).name || null, persona: (p as any).persona || null }
           }
         }
-      }
     }
 
     const conversations = Object.entries(participants).map(([pid, pTurns]) => {
