@@ -24,10 +24,19 @@ const SQL_DIR = join(__dirname, '..', 'sql')
 
 function shJson(args: string[]): unknown {
   const out = execFileSync('supabase', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  // The CLI prints a leading warning banner before the JSON array; grab from the
-  // first '['.
-  const start = out.indexOf('[')
-  return start >= 0 ? JSON.parse(out.slice(start)) : []
+  // CLI output shapes seen in the wild:
+  //   - bare JSON array of rows (older CLI)
+  //   - { "warning": "...untrusted data...", "rows": [...] } (newer CLI wraps
+  //     query results with an untrusted-data boundary)
+  // Either way there may be a leading warning banner — parse from the first
+  // '{' or '[', then unwrap .rows when present.
+  const start = Math.min(...['[', '{'].map(c => out.indexOf(c)).filter(i => i >= 0))
+  if (!Number.isFinite(start)) return []
+  const parsed = JSON.parse(out.slice(start)) as unknown
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray((parsed as { rows?: unknown[] }).rows)) {
+    return (parsed as { rows: unknown[] }).rows
+  }
+  return parsed
 }
 
 function localFiles(): { name: string; sha: string }[] {
