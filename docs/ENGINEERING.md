@@ -2,7 +2,9 @@
 
 How we write, review, ship, and operate code. Linked from `CLAUDE.md` —
 this doc is the **policy**; CLAUDE.md is the playbook for the AI
-assistant.
+assistant. Sibling policy docs: `docs/SECURITY.md` (security truth) and
+`docs/COMPLIANCE.md` (trigger-mapped compliance checklist, added
+2026-07-03 — privacy notice, DPAs, SSO, GDPR/DSR, residency).
 
 Items marked `<TBD: …>` are decisions awaiting human approval. Track
 each decision in `docs/weekly-reports/YYYY-WXX-devlog.md`.

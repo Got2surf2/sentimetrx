@@ -524,6 +524,7 @@ export default function TownHallChat({ sessionId }: Props) {
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
               <span style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
               <span style={{ color: brandColor, fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>DATANAUTIX</span>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.04em', textDecoration: 'underline', marginTop: 2 }}>privacy</a>
             </div>
           </div>
         )

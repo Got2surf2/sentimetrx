@@ -214,6 +214,8 @@ Public presenter display (no auth, aggregate data only):
 
 ## Participant Chat (`app/pi/[sessionId]/`)
 
+> The chat header's DATANAUTIX wordmark stack carries a tiny `privacy` link → `/privacy` (public privacy notice, 2026-07-03).
+
 ### Chat Phases (state machine in `TownHallChat.tsx`)
 
 The participant client tracks 9 phase states: `pre-psycho`, `pre-demo`, `pre-submitting`, `chat`, `transition`, `psycho`, `demo`, `submitting`, `done`.

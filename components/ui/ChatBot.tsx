@@ -618,11 +618,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               Wordmark color picks Hermes orange on dark headers, Sarina
               blue on light ones, by sampling the first hex color in the
               header gradient string and computing perceived luminance. */}
-          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
-            style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1, fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
-            <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.45)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>powered by</span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em', color: pickWordmarkColor(config.headerGradient), marginTop: 2 }}>DATANAUTIX</span>
-          </a>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1, fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+            <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+              style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1 }}>
+              <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.45)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>powered by</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em', color: pickWordmarkColor(config.headerGradient), marginTop: 2 }}>DATANAUTIX</span>
+            </a>
+            <a href="/privacy" target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.45)', textDecoration: 'underline', letterSpacing: '0.04em', marginTop: 3 }}>privacy</a>
+          </div>
         </div>
       </header>
 

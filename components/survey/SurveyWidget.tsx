@@ -148,7 +148,7 @@ function SurveySession({
           </div>
         </div>
         <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span> · <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'underline' }}>Privacy</a></span>
         </div>
       </div>
     )
@@ -196,6 +196,7 @@ function SurveySession({
               <span style={{ color: brandColor, fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                 {(liveConfig.brandingLabel || 'SENTIMETRX').slice(0, 15)}
               </span>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.04em', textDecoration: 'underline', marginTop: 2 }}>privacy</a>
             </div>
           )
         })()}
@@ -421,7 +422,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
           </div>
         </div>
         <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span> · <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'underline' }}>Privacy</a></span>
         </div>
       </div>
     )

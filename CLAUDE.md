@@ -113,5 +113,6 @@ If you bypass either, justify why in the commit message. A buyer's DD review (or
 
 - `docs/SECURITY.md` — threat model, multi-tenancy invariants, secrets, PII classification, audit logging, incident response, compliance posture. **Read before touching auth, multi-tenancy code, AI prompts, or anything that handles user data.**
 - `docs/ENGINEERING.md` — code quality bar, branch/review policy, migration safety, observability, perf budgets, a11y, feature flags, idempotency, deprecation path.
+- `docs/COMPLIANCE.md` — trigger-mapped compliance checklist (privacy notice, DPAs, SSO, GDPR/DSR, residency). Obligations activate on business events (first paying / first EU / first enterprise-gov customer, first DSR); update it when any of those items move. The public privacy notice is `app/privacy/page.tsx` — keep it truthful to SECURITY.md §7/§8 in the same commit.
 
 When a change touches an area either doc describes, update the doc in the same commit. Open `<TBD: ...>` items in each doc track decisions awaiting human approval.

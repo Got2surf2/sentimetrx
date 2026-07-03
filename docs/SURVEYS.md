@@ -146,6 +146,7 @@ Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kios
 - `primaryColor`, `headerGradient`, `backgroundColor`, `accentColor`, `botAvatarGradient`
 - `brandingLabel` — "SENTIMETRX" (default), max 15 chars
 - `showBranding` — Toggle footer branding
+- The header wordmark stack and the "Powered by sentimetrx.ai" footers (thank-you / closed screens) carry a tiny `Privacy` link → `/privacy` (public privacy notice, 2026-07-03). The kiosk attract screen omits it (the whole screen is a tap-to-begin button).
 
 ### Multi-Language
 - `languages[]` — Supported language codes

@@ -382,6 +382,11 @@ cross-org access attempts."
 
 ## 7. Data retention & deletion (GDPR / CCPA posture)
 
+> Trigger-mapped tracking of every compliance obligation (this section's
+> open items included) lives in `docs/COMPLIANCE.md`. The public-facing
+> privacy notice is `/privacy` (`app/privacy/page.tsx`, added 2026-07-03) —
+> linked from every respondent widget; keep it in sync with § 7/§ 8.
+
 - **Right-to-be-forgotten:** when an org is hard-deleted, its data
   is erased by an **explicit sweep**, not by relying on FK cascade.
   Verified 2026-07-02 that ~30 tables carrying `org_id` have NO
