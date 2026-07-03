@@ -7,7 +7,7 @@
 import PptxGenJS from 'pptxgenjs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { buildMcoListeningDeck } from '../lib/pptx/mcoListeningDeck'
+import { buildMcoListeningDeck } from '../../lib/pptx/mcoListeningDeck'
 
 async function main() {
   const pptx = new PptxGenJS()

@@ -56,6 +56,10 @@ Last reviewed: 2026-05-15.
   `warn` in the flat config so they ride the ratchet rather than hard-
   fail on the god-components. (Next 16's `next build` doesn't run ESLint,
   so lint gates via CI only.)
+  Lint-ignored by design (2026-07-03): `scripts/_*` (active one-off
+  scratch scripts, untracked convention) and `scripts/oneoff/**` (the
+  committed one-off provenance archive — see its README; not operating
+  code, so it doesn't gate the promoted-to-error rules).
   **Touch-it-fix-it rule for `no-explicit-any` (2026-07-02):** the
   ~2,900 `any` warnings are burned down opportunistically — when a
   commit substantively edits a file, replace the `any`s in the parts

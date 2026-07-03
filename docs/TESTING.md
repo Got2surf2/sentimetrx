@@ -422,11 +422,11 @@ backs three runner surfaces:
   — captured a baseline against live Sarina at the start of Phase 2;
   each extraction commit re-runs against the same bot and compares
   pass/partial/fail counts to baseline before merging.
-- `scripts/_generate_sarina_regression_doc.ts` — one-off generator that
+- `scripts/oneoff/_generate_sarina_regression_doc.ts` — one-off generator that
   writes a Word doc to `~/Downloads/` comparing Arjun's original log
   with the latest run side-by-side. Uses the `docx` npm package; output
   matches the Calibri 11pt look of Arjun's NOWOCATS handoff doc.
-- `scripts/_test_sarina_anchor_regression.ts` — focused regression test
+- `scripts/oneoff/_test_sarina_anchor_regression.ts` — focused regression test
   for the anchor-re-ask incident (`bs_mpdjyxz9_lfem0e`, 2026-05-20).
   Walks Sarina through a 13-turn feedback-path conversation that
   crosses the 12-message compression threshold. Verifies neither

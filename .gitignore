@@ -43,3 +43,11 @@ data/chuys-candidates*.jsonl
 
 # Personal, per-project Claude Code settings (never commit)
 .claude/settings.local.json
+
+# Active one-off scratch scripts (underscore convention) — deliberately
+# untracked while in use; move to scripts/oneoff/ (committed) when shipped.
+# The scripts/_verify_*.ts PulseIQ regression harness lives here on purpose
+# (docs/CONVERGENCE.md § 4.2).
+scripts/_*.ts
+scripts/_*.mjs
+scripts/_*.sql

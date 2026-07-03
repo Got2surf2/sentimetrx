@@ -21,9 +21,9 @@ const env = readFileSync(path.join(process.cwd(), '.env.local'), 'utf-8')
 for (const l of env.split('\n')) { const m = l.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.+?)\s*$/); if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g,'').replace(/\\n$/,'') }
 
 import { createClient } from '@supabase/supabase-js'
-import { analyzeRecording } from '../lib/recordings/analyze'
-import { buildRecordingDeck } from '../lib/pptx/recordingDeck'
-import type { RecordingExtractionRow } from '../lib/recordings/types'
+import { analyzeRecording } from '../../lib/recordings/analyze'
+import { buildRecordingDeck } from '../../lib/pptx/recordingDeck'
+import type { RecordingExtractionRow } from '../../lib/recordings/types'
 
 const RECORDING_ID = process.env.RECORDING_ID || '27aace41-15e1-4a3e-8cd1-44e1014ce458' // NOWOCATS Meeting 2
 const CACHE = path.join(os.tmpdir(), `recdeck-${RECORDING_ID}.json`)

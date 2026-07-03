@@ -393,7 +393,7 @@ Opt-in per agent via the **"Show follow-up pills" checkbox** in the agent editor
 - **Widget side (`ChatBot.tsx`):** `extractChips()` parses the trailer off each reply, **strips it from the visible text** (so `[[chips:…]]` can never leak), and stores up to 4 options on the message. The pills render under the **newest** assistant turn only, reuse the opener-suggestion styling/`accentColor`, and a click calls `sendMessage(option)` — identical to the static `config.suggestions` chips. Hydration also strips the trailer from persisted turns. `BotClient` resolves the flag from boolean `true` or string `'true'`.
 - **Fallback:** flag off → no instruction injected, no pills (every other agent unaffected). Flag on but no trailer emitted → question shows as plain text (model follows the instruction reliably but not 100%).
 
-First enabled on the **Mason** agent (`scripts/_mason_create_agent.ts`).
+First enabled on the **Mason** agent (`scripts/oneoff/_mason_create_agent.ts`).
 
 ### Per-agent embed allowlist (`config.allowedOrigins`)
 

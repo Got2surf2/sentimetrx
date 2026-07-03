@@ -14,7 +14,7 @@ for (const line of envText.split('\n')) {
 }
 
 import { createClient } from '@supabase/supabase-js'
-import { extractBotEntities } from '../lib/botEntityExtraction'
+import { extractBotEntities } from '../../lib/botEntityExtraction'
 
 const SARINA_BOT_ID = '5c468b90-13fc-46a2-8855-312dc0a1e428'
 const ORG_ID = 'b72e9ee6-0466-459a-8440-988a8bd6d3c5'

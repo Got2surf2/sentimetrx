@@ -4,7 +4,7 @@
 //
 // Run: node_modules/.bin/tsx scripts/_run_sarina_regression.ts
 
-import { SARINA_TESTS, type SarinaTest } from '../app/admin/sarina-regression/tests'
+import { SARINA_TESTS, type SarinaTest } from '../../app/admin/sarina-regression/tests'
 
 const BOT_ID = '5c468b90-13fc-46a2-8855-312dc0a1e428'
 const BASE = 'https://www.sentimetrx.ai'

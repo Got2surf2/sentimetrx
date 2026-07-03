@@ -1,7 +1,7 @@
 // Throwaway QC harness — renders the Project Insight deck to ~/Downloads.
 // Run: node --conditions=react-server --import tsx scripts/_project_insight_qc.ts
 import PptxGenJS from 'pptxgenjs'
-import { buildProjectInsightDeck } from '../lib/pptx/projectInsightDeck'
+import { buildProjectInsightDeck } from '../../lib/pptx/projectInsightDeck'
 import { homedir } from 'os'
 import { join } from 'path'
 

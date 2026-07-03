@@ -12,7 +12,8 @@ export default [
     ignores: [
       '.next/**', 'node_modules/**', 'coverage/**', 'out/**', 'dist/**',
       'sql/**', 'public/**', '*.config.*', 'next-env.d.ts',
-      'scripts/_*.ts', // one-off client/deck scratch scripts
+      'scripts/_*.ts', // active one-off scratch scripts (untracked convention)
+      'scripts/oneoff/**', // committed one-off archive — provenance, not operating code
     ],
   },
   ...next,
