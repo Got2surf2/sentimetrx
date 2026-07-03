@@ -1042,3 +1042,6 @@ open-ended / date / id / ignore).
 | `components/analyze/ShareAnalyticsModal.tsx` | Share analytics link creator |
 | `app/api/share/analytics/route.ts` | Filtered vs benchmark analytics API |
 | `app/api/datasets/[datasetId]/` | All dataset API routes (note: param is `[datasetId]`, not `[id]`) |
+
+
+> **trendingTerms API (2026-07-03):** `lib/trendingWords.trendingTerms` now optionally accepts `{ text, source }[]` for the recent window plus `opts.exclude` (suppressed terms) and `opts.minSources` (require N distinct sources per term). Plain `string[]` callers (dataset analytics trending words) are unchanged — the new filters only engage when the caller opts in (the PulseIQ live screen does).

@@ -950,6 +950,28 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             '. Do NOT change topics. Do NOT stack questions.'
           )
           if (debugMode) _debug.push('PulseIQ decision: clarifier on "' + (curTopic?.label || currentTopicId) + '" (' + (clarifiersOnCurrent + 1) + '/' + maxClarifiers + ')')
+        } else if (
+          // Continue the thread on a SUBSTANTIVE answer (owner-found 2026-07-03):
+          // a good answer must not eject the participant from the topic. The
+          // per-topic cap (2–4 assistant turns by substance) previously only
+          // gated clarifiers, so one rich reply marked the topic "discussed"
+          // and the picker rotated — the conversation felt bipolar ("asked,
+          // answered, jumped"). Under the cap, with no move-on signals, stay
+          // on the topic and build on what they said. Rotation happens when
+          // the cap is reached or the participant signals done.
+          !isOpeningResponse && !isSkipNow && !!msgText && !!currentTopicId &&
+          !moveOnSignal && !trajectoryDisengaging && !subtleDisengage && !skipOverload &&
+          !topicCapHit
+        ) {
+          pickedTopicId = currentTopicId
+          const curTopic = pickerTopics.find(t => t.id === currentTopicId)
+          const angles = (curTopic?.follow_up_angles || []).filter(Boolean)
+          systemParts.push(
+            '\n\n--- PULSEIQ TOPIC FOCUS ---\nThe participant just gave a substantive answer on the topic "' + (curTopic?.label || 'the current topic') + '". Stay with it: briefly reflect what they shared, then ask exactly ONE natural follow-up that builds on their words.' +
+            (angles.length > 0 ? '\nUseful angles if they fit: ' + angles.join(' | ') : '') +
+            '\nDo NOT change topics. Do NOT stack questions.'
+          )
+          if (debugMode) _debug.push('PulseIQ decision: continue on "' + (curTopic?.label || currentTopicId) + '" (' + assistantOnCurrent + '/' + dynamicTopicCap + ' turns used)')
         } else {
 
         // ── Opening-response topic match (convergence item 6 — ports
@@ -1015,10 +1037,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               ? '\n\n--- PULSEIQ TOPIC FOCUS ---\nThe participant\'s opening message already speaks to the topic "' + pick.topic.label + '". Ask a warm, natural follow-up that digs deeper into what they just said, guided by this topic\'s focus: "' + (pick.topic.question || pick.topic.label) + '"' +
                 anglesNote +
                 '\nDo not re-ask the topic question from scratch — build on their words. One question only.'
-              : '\n\n--- PULSEIQ TOPIC FOCUS ---\nYou are facilitating a group discussion about "' + pick.topic.label + '". ' +
-                'Ask this question (rephrase naturally to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
+              : '\n\n--- PULSEIQ TOPIC FOCUS ---\nTransition the conversation to the topic "' + pick.topic.label + '".' +
+                '\nFirst, in ONE short warm sentence, acknowledge what the participant just shared — their previous answer matters and must never feel dismissed. NEVER say things like "we\'re actually focused on X today" or imply their last point was off-topic.' +
+                '\nThen bridge naturally into this question (rephrase to fit the flow): "' + (pick.topic.question || pick.topic.label) + '"' +
                 anglesNote +
-                '\nKeep the question conversational. Do not dump multiple questions. Stay on this topic unless the participant clearly moves on.'
+                '\nOne question only. Stay on this topic unless the participant clearly moves on.'
           )
           if (debugMode) _debug.push('PulseIQ topic: "' + pick.topic.label + '" (reason: ' + pick.reason + (pick.matchedKeyword ? ', keyword: ' + pick.matchedKeyword : '') + ')')
         } else if (pick.reason === 'all_covered') {

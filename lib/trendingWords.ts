@@ -95,18 +95,37 @@ export interface TrendingTerm {
  * caller decides what "recent" means (last 5 minutes, last 7 days, etc).
  */
 export function trendingTerms(
-  recentTexts: string[],
+  recentTexts: string[] | { text: string; source: string }[],
   baselineTexts: string[],
-  opts: { n?: number; minRecentCount?: number; includeBigrams?: boolean } = {},
+  opts: {
+    n?: number; minRecentCount?: number; includeBigrams?: boolean
+    /** Terms to suppress (lowercase) — e.g. words already covered by the
+     *  session's topic labels/keywords; a themed word isn't "trending". */
+    exclude?: Set<string>
+    /** Require a term to appear in at least this many distinct sources
+     *  (e.g. conversations). One participant's typos ("teh", "adn") must
+     *  not trend — a real trend comes from more than one voice. Only
+     *  enforced when recentTexts items carry a source. */
+    minSources?: number
+  } = {},
 ): TrendingTerm[] {
-  const { n = 10, minRecentCount = 2, includeBigrams = true } = opts
+  const { n = 10, minRecentCount = 2, includeBigrams = true, exclude, minSources = 1 } = opts
 
   const recentCounts = new Map<string, number>()
-  for (const text of recentTexts) {
+  const termSources = new Map<string, Set<string>>()
+  for (const item of recentTexts as (string | { text: string; source: string })[]) {
+    const text = typeof item === 'string' ? item : item?.text
+    const source = typeof item === 'string' ? null : item?.source
     if (!text) continue
     const toks = tokenize(text)
-    for (const t of toks) recentCounts.set(t, (recentCounts.get(t) || 0) + 1)
-    if (includeBigrams) for (const bg of bigrams(toks)) recentCounts.set(bg, (recentCounts.get(bg) || 0) + 1)
+    const all = includeBigrams ? [...toks, ...bigrams(toks)] : toks
+    for (const t of all) {
+      recentCounts.set(t, (recentCounts.get(t) || 0) + 1)
+      if (source) {
+        if (!termSources.has(t)) termSources.set(t, new Set())
+        termSources.get(t)!.add(source)
+      }
+    }
   }
 
   const baselineCounts = new Map<string, number>()
@@ -123,6 +142,11 @@ export function trendingTerms(
   const out: TrendingTerm[] = []
   for (const [word, recentCount] of Array.from(recentCounts.entries())) {
     if (recentCount < minRecentCount) continue
+    if (exclude && exclude.has(word)) continue
+    if (minSources > 1) {
+      const s = termSources.get(word)
+      if (s && s.size < minSources) continue
+    }
     const baselineCount = baselineCounts.get(word) || 0
     // Smoothed rate ratio — adds 1 to baseline count and recentSize to baseline
     // size so a never-before-seen term ranks high without dividing by zero,

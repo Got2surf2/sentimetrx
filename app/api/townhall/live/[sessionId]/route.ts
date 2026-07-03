@@ -39,7 +39,7 @@ interface TopicRow {
   keywords: string[] | null; example_quote: string | null; sort_order: number | null
 }
 interface ConvRow { id: string; session_id: string; participant_id: string | null; org_id: string }
-interface UserTurn { content: string | null; content_en: string | null; sentiment: string | null; topic_id: string | null; created_at: string }
+interface UserTurn { conversation_id: string; content: string | null; content_en: string | null; sentiment: string | null; topic_id: string | null; created_at: string }
 
 export async function GET(_req: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
   const params = await props.params;
@@ -78,7 +78,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   if (convIds.length > 0) {
     userTurns = await fetchAllRows<UserTurn>((from, to) => db
       .from('conversation_turns')
-      .select('content, content_en, sentiment, topic_id, created_at')
+      .select('conversation_id, content, content_en, sentiment, topic_id, created_at')
       .in('conversation_id', convIds)
       .eq('role', 'user')
       .eq('org_id', hall.org_id)
@@ -179,16 +179,30 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   // ── Trending Now: recent (last 5 min) vs whole session ─────────────
   // Surfaces emerging concerns on the live screen as the session unfolds.
   const fiveMinAgo = Date.now() - 5 * 60 * 1000
-  const recentTexts: string[] = []
+  const recentItems: { text: string; source: string }[] = []
   const baselineTexts: string[] = []
   for (const t of answered) {
     const text = answerText(t)
     if (!text) continue
     const ts = new Date(t.created_at).getTime()
-    if (ts >= fiveMinAgo) recentTexts.push(text)
+    if (ts >= fiveMinAgo) recentItems.push({ text, source: t.conversation_id })
     else baselineTexts.push(text)
   }
-  const trending = trendingTerms(recentTexts, baselineTexts, { n: 8, minRecentCount: 2 })
+  // Suppress words the session is already themed on (topic labels +
+  // keywords) — a seeded theme isn't "trending" — and require each term to
+  // come from ≥2 distinct conversations so one participant's typos can't
+  // trend. Cross-participant requirement only kicks in once the room has
+  // more than one voice.
+  const themedWords = new Set<string>()
+  for (const t of (topics || []) as TopicRow[]) {
+    for (const w of String(t.label || '').toLowerCase().split(/[^a-z0-9]+/)) if (w.length >= 3) themedWords.add(w)
+    for (const kw of (t.keywords || [])) for (const w of String(kw).toLowerCase().split(/[^a-z0-9]+/)) if (w.length >= 3) themedWords.add(w)
+  }
+  const distinctRecentConvs = new Set(recentItems.map(i => i.source)).size
+  const trending = trendingTerms(recentItems, baselineTexts, {
+    n: 8, minRecentCount: 2, exclude: themedWords,
+    minSources: distinctRecentConvs > 1 ? 2 : 1,
+  })
 
   return NextResponse.json({
     session: {
