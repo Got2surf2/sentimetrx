@@ -1078,7 +1078,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // sessions. Matches the legacy PulseIQ trigger semantics.
         const totalResponses = Object.values(responseCount).reduce((a: number, b: number) => a + b, 0)
         const threshold = Number(cohortConfig?.theme_detection_every_n_responses) || 20
-        if (totalResponses > 0 && (totalResponses + 1) % threshold === 0) {
+        // Honor Organic Topic Discovery mode (top-level lifted by sessions
+        // POST; nested engine.* fallback for console-edited configs).
+        // Count-trigger fires only in 'auto' — matching the legacy gate.
+        const detectionMode = cohortConfig?.theme_detection_mode
+          ?? cohortConfig?.engine?.theme_detection_mode ?? 'auto'
+        if (detectionMode === 'auto' && totalResponses > 0 && (totalResponses + 1) % threshold === 0) {
           if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
           detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
             console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })

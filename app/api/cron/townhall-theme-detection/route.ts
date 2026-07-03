@@ -34,8 +34,10 @@ export async function GET(req: Request) {
     .eq('status', 'live')
 
   for (const th of (townHalls || [])) {
-    const cohortConfig = (th.cohort_config || {}) as { theme_detection_mode?: string }
-    const mode = cohortConfig?.theme_detection_mode || 'auto'
+    const cohortConfig = (th.cohort_config || {}) as { theme_detection_mode?: string; engine?: { theme_detection_mode?: string } }
+    // Top-level lifted by sessions POST; nested engine.* fallback for
+    // console-edited configs.
+    const mode = cohortConfig?.theme_detection_mode || cohortConfig?.engine?.theme_detection_mode || 'auto'
     if (mode !== 'auto') continue
 
     const lastRun = th.last_theme_detection_at ? new Date(th.last_theme_detection_at).getTime() : 0

@@ -165,6 +165,10 @@ export async function POST(req: NextRequest) {
     ...(engine.standby_message ? { standby_message: engine.standby_message } : {}),
     ...(engine.chill_message ? { chill_message: engine.chill_message } : {}),
     ...(engine.theme_detection_every_n_responses ? { theme_detection_every_n_responses: engine.theme_detection_every_n_responses } : {}),
+    // Lifted so the cron + chatCore count-trigger (which read the top level)
+    // honor the wizard's Organic Topic Discovery setting — without this,
+    // "Off" was ignored and detection defaulted to automatic.
+    ...(engine.theme_detection_mode ? { theme_detection_mode: engine.theme_detection_mode } : {}),
   }
 
   const { data, error } = await db

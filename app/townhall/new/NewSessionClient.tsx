@@ -1228,17 +1228,48 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-1">Organic Topic Discovery</h3>
+                <p className="text-xs text-gray-400 mb-3">AI scans participant responses to find organic topics that emerge from the conversation.</p>
+                <div className="flex gap-2">
+                  {([
+                    { value: 'off' as const, label: 'Off' },
+                    { value: 'manual' as const, label: 'On Demand' },
+                    { value: 'auto' as const, label: 'Automatic' },
+                  ]).map(m => (
+                    <button key={m.value} type="button" onClick={() => updateEngine({ theme_detection_mode: m.value })}
+                      className={'px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ' + (config.engine.theme_detection_mode === m.value ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {config.engine.theme_detection_mode === 'auto' && (
+                  <div className="mt-3">
+                    <Label>Detect every N responses</Label>
+                    <input type="number" min={5} max={200} value={config.engine.theme_detection_every_n_responses}
+                      onChange={e => updateEngine({ theme_detection_every_n_responses: parseInt(e.target.value) || 20 })}
+                      className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-4">Session End</h3>
                 <div className="space-y-3">
                   <div>
                     <Label>End mode</Label>
-                    <select value={config.session_end.mode}
-                      onChange={e => updateEnd({ mode: e.target.value as 'manual' | 'timed' | 'inactivity' })}
-                      className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200">
-                      <option value="manual">Manual — facilitator ends it</option>
-                      <option value="timed">Timed — auto-end after duration</option>
-                      <option value="inactivity">Inactivity — auto-end after quiet period</option>
-                    </select>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 'manual' as const, label: 'Manual', sub: 'facilitator ends it' },
+                        { value: 'timed' as const, label: 'Timed', sub: 'auto-end after duration' },
+                        { value: 'inactivity' as const, label: 'Inactivity', sub: 'auto-end after quiet period' },
+                      ]).map(m => (
+                        <button key={m.value} type="button" onClick={() => updateEnd({ mode: m.value })}
+                          title={m.sub}
+                          className={'px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ' + (config.session_end.mode === m.value ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {config.session_end.mode === 'timed' && (
                     <div>
@@ -1362,6 +1393,25 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       </button>
                     )
                   })}
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">Post-Session Copy</h3>
+                <p className="text-xs text-gray-400 mb-3">Shown when the conversation ends and the optional questions begin. Written in English; auto-translated for participants.</p>
+                <div className="space-y-3">
+                  <div>
+                    <Label>Intro line</Label>
+                    <Input value={config.messages?.post_session_intro || ''}
+                      onChange={v => setConfig(c => ({ ...c, messages: { ...c.messages, post_session_intro: v } }))}
+                      placeholder="Almost done — a few quick optional questions..." />
+                  </div>
+                  <div>
+                    <Label>Demographics lead-in</Label>
+                    <Input value={config.messages?.post_session_demo || ''}
+                      onChange={v => setConfig(c => ({ ...c, messages: { ...c.messages, post_session_demo: v } }))}
+                      placeholder="A couple of optional questions about you." />
+                  </div>
                 </div>
               </div>
 

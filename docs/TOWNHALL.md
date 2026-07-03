@@ -217,6 +217,8 @@ Public presenter display (no auth, aggregate data only):
 
 > The chat header's DATANAUTIX wordmark stack carries a tiny `privacy` link → `/privacy` (public privacy notice, 2026-07-03).
 
+> **Creator Conversation/Post-Session step parity (2026-07-03, owner-found):** the new-session wizard was missing the **Organic Topic Discovery** control (Off / On Demand / Automatic pills + detect-every-N, `engine.theme_detection_mode`) and the **post-session copy** inputs (`messages.post_session_intro` / `post_session_demo`) that the session-detail editor has; both added. Session-end mode is a pill group (was a dropdown). Deeper fix behind it: the unified engine IGNORED the mode — sessions POST now lifts `theme_detection_mode` to cohort_config top level, and BOTH the chatCore count-trigger and the 15-min cron gate on mode==='auto' (nested `engine.*` fallback for console-edited configs). Previously "Off" still ran automatic detection.
+
 ### Chat Phases (state machine in `TownHallChat.tsx`)
 
 The participant client tracks 9 phase states: `pre-psycho`, `pre-demo`, `pre-submitting`, `chat`, `transition`, `psycho`, `demo`, `submitting`, `done`.
