@@ -6,7 +6,8 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "bash scripts/dev.sh test",
+    "dev:prod": "bash scripts/dev.sh prod",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",

@@ -54,6 +54,20 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        {/* Dev-only database-target banner (scripts/dev.sh). PRODUCTION mode
+            gets a loud red strip so nobody mutates client data by habit;
+            test mode gets a slim green chip. Never renders in real builds
+            (NODE_ENV guard) — prod deploys have no NEXT_PUBLIC_DB_TARGET. */}
+        {process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DB_TARGET === 'prod' && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#DC2626', color: 'white', textAlign: 'center', fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', padding: '3px 0', textTransform: 'uppercase' }}>
+            ⚠ Production database — read-only habits apply
+          </div>
+        )}
+        {process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DB_TARGET === 'test' && (
+          <div style={{ position: 'fixed', bottom: 8, left: 8, zIndex: 99999, background: '#059669', color: 'white', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 6, opacity: 0.85, pointerEvents: 'none' }}>
+            TEST DB
+          </div>
+        )}
         <SessionGuard>{children}</SessionGuard>
         {/* No global footer here. Adding one broke pages that lock the
             layout to height: 100vh (the analyze tabs do this so the
