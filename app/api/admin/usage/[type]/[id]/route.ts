@@ -98,7 +98,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ type: str
     if (bot?.name) resourceName = bot.name
     if (bot?.slug) resourceHref = '/bots/' + params.id
   } else if (params.type === 'townhall') {
-    var { data: th } = await service.from('townhall_sessions').select('name').eq('id', params.id).maybeSingle()
+    var { data: th } = await service.from('pulseiq_sessions').select('name').eq('id', params.id).maybeSingle()
     if (th?.name) resourceName = th.name
   } else if (params.type === 'study') {
     var { data: st } = await service.from('studies').select('name, id').eq('id', params.id).maybeSingle()

@@ -77,7 +77,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
 
   const isArchived = (s: Session) => !!s.config?.archived
 
-  // Conversation-content search runs on the server (ILIKE over townhall_turns).
+  // Conversation-content search runs on the server (ILIKE over conversation_turns).
   // Debounced to keep typing responsive.
   useEffect(() => {
     const q = searchQuery.trim()

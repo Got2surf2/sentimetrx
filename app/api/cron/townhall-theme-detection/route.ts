@@ -3,15 +3,13 @@
 // auto-detection sessions. Primary trigger is response-count-based, in the
 // chat route (config.engine.theme_detection_every_n_responses, default 20).
 //
-// Phase 5 commit 1 (2026-05-21): the cron now scans BOTH the legacy
-// townhall_sessions table AND the new pulseiq_sessions table. The two paths
-// coexist during the convergence transition (docs/CONVERGENCE.md § 4
-// row 5). Once every town hall lives on the new substrate, the legacy
-// block + lib/townhallThemeDetection.ts can be dropped.
+// Tranche 2 (docs/CONVERGENCE.md § 4.2): the legacy townhall_sessions scan
+// is retired — the cron serves the unified substrate only.
+// lib/townhallThemeDetection.ts survives until the frozen legacy
+// orchestrator is deleted (it still calls detectThemesForSession).
 
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { detectThemesForSession } from '@/lib/townhallThemeDetection'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { checkCronAuth } from '@/lib/cronAuth'
 
@@ -27,33 +25,7 @@ export async function GET(req: Request) {
   let scanned = 0
   let totalDetected = 0
 
-  // ── Legacy path: townhall_sessions ─────────────────────────────────
-  const { data: sessions } = await supabase
-    .from('townhall_sessions')
-    .select('id, config, last_theme_detection_at')
-    .eq('status', 'active')
-
-  for (const s of (sessions || [])) {
-    const config = s.config as any
-    const mode = config?.engine?.theme_detection_mode
-    if (mode !== 'auto') continue
-
-    // Cron is a safety net — primary trigger is response-count-based in the chat route.
-    // Only run if at least 10 minutes since last detection to avoid duplicate runs.
-    const lastRun = s.last_theme_detection_at ? new Date(s.last_theme_detection_at).getTime() : 0
-    const elapsed = (Date.now() - lastRun) / 60000
-    if (elapsed < 10) continue
-
-    scanned++
-    try {
-      const result = await detectThemesForSession(s.id)
-      totalDetected += result.inserted
-    } catch (e) {
-      console.error({ at: 'cron/townhall-theme-detection', msg: 'legacy detect error', sessionId: s.id, err: e })
-    }
-  }
-
-  // ── New path: pulseiq_sessions on the unified substrate ──────────────────
+  // ── pulseiq_sessions on the unified substrate ──────────────────
   // Default theme_detection_mode='auto' when cohort_config doesn't
   // specify — town halls are cohort-driven by design.
   const { data: townHalls } = await supabase
@@ -62,7 +34,7 @@ export async function GET(req: Request) {
     .eq('status', 'live')
 
   for (const th of (townHalls || [])) {
-    const cohortConfig = (th.cohort_config || {}) as any
+    const cohortConfig = (th.cohort_config || {}) as { theme_detection_mode?: string }
     const mode = cohortConfig?.theme_detection_mode || 'auto'
     if (mode !== 'auto') continue
 

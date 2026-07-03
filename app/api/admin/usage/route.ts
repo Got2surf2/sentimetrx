@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
     for (var b of bots || []) botNames[b.id] = b.name
   }
   if (sessionIds.length > 0) {
-    var { data: sessions } = await service.from('townhall_sessions').select('id, name').in('id', sessionIds)
+    var { data: sessions } = await service.from('pulseiq_sessions').select('id, name').in('id', sessionIds)
     for (var s of sessions || []) sessionNames[s.id] = s.name
   }
   if (studyIds.length > 0) {

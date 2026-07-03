@@ -9,8 +9,9 @@ import { serverError } from '@/lib/apiError'
 // activates round N's themes from their initial 'paused' seed. Re-posting the
 // same N just re-asserts that state.
 //
-// Org-gated inline (mirrors /api/townhall/themes/custom): legacy townhall_themes
-// has no org_id of its own, so we scope through the parent townhall_sessions row.
+// Tranche 2 (docs/CONVERGENCE.md § 4.2): operates on pulseiq_sessions +
+// pulseiq_topics. Vocabulary note: legacy source='guide' = new source='seed'
+// (CHECK-enforced on pulseiq_topics).
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params
   const supabase = await createClient()
@@ -33,33 +34,36 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const db = createServiceRoleClient()
   const { data: session } = await db
-    .from('townhall_sessions').select('org_id').eq('id', params.id).maybeSingle()
+    .from('pulseiq_sessions').select('org_id').eq('id', params.id).maybeSingle()
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && (session as any).org_id !== callerOrg) {
+  const sessionOrgId = (session as { org_id: string }).org_id
+  if (!isAdmin && sessionOrgId !== callerOrg) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const nowIso = new Date().toISOString()
 
-  // Complete any still-active earlier-round guide themes. pickNextTopic only
-  // serves 'active' themes, so completing the prior round is what holds
+  // Complete any still-active earlier-round seed topics. The topic picker only
+  // serves 'active' topics, so completing the prior round is what holds
   // participants until they're routed into round N.
-  await db.from('townhall_themes')
+  await db.from('pulseiq_topics')
     .update({ state: 'completed', completed_at: nowIso })
-    .eq('session_id', params.id)
-    .eq('source', 'guide')
+    .eq('town_hall_id', params.id)
+    .eq('org_id', sessionOrgId)
+    .eq('source', 'seed')
     .eq('state', 'active')
     .not('round_number', 'is', null)
     .lt('round_number', round)
 
-  // Activate this round's themes (from their 'paused' seed).
-  const { data: activated, error } = await db.from('townhall_themes')
+  // Activate this round's topics (from their 'paused' seed).
+  const { data: activated, error } = await db.from('pulseiq_topics')
     .update({ state: 'active', completed_at: null })
-    .eq('session_id', params.id)
-    .eq('source', 'guide')
+    .eq('town_hall_id', params.id)
+    .eq('org_id', sessionOrgId)
+    .eq('source', 'seed')
     .eq('round_number', round)
     .select('id')
-  if (error) return serverError(error, 'townhall.sessions.round', { orgId: (session as any).org_id })
+  if (error) return serverError(error, 'townhall.sessions.round', { orgId: sessionOrgId })
 
   return NextResponse.json({ success: true, round, activated: (activated || []).length })
 }

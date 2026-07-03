@@ -29,58 +29,29 @@ export async function POST(req: NextRequest) {
 
   const db = createServiceRoleClient()
 
-  // Phase-3 substrate first: if session_id matches a pulseiq_sessions row, the
-  // custom theme is a pulseiq_topics insert. Map 'custom' source →
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): pulseiq_topics insert only — the
+  // legacy townhall_themes fallback is retired. Map 'custom' source →
   // 'manual' (the value town_hall_topics_source_check accepts).
   const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id').eq('id', session_id).maybeSingle()
-  if (hall) {
-    if (!isAdmin && (hall as any).org_id !== callerOrg) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-    const { data, error } = await db
-      .from('pulseiq_topics')
-      .insert({
-        town_hall_id: (hall as any).id,
-        org_id:       (hall as any).org_id,
-        label,
-        description: null,
-        question,
-        state: 'active',
-        source: 'manual',
-        response_target: response_target || 30,
-        approved_at: new Date().toISOString(),
-      })
-      .select('*')
-      .single()
-    if (error) return serverError(error, 'townhall.themes.custom', { orgId: (hall as any).org_id })
-    return NextResponse.json(data, { status: 201 })
-  }
-
-  // Legacy townhall_themes has no org_id of its own — it scopes through its
-  // parent townhall_sessions row. Gate the caller's org via that session
-  // before inserting (404 on a missing or cross-org session).
-  const { data: session } = await db
-    .from('townhall_sessions').select('org_id').eq('id', session_id).maybeSingle()
-  if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && (session as any).org_id !== callerOrg) {
+  if (!hall) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (hall as any).org_id !== callerOrg) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-
   const { data, error } = await db
-    .from('townhall_themes')
+    .from('pulseiq_topics')
     .insert({
-      session_id,
+      town_hall_id: (hall as any).id,
+      org_id:       (hall as any).org_id,
       label,
       description: null,
       question,
       state: 'active',
-      source: 'custom',
+      source: 'manual',
       response_target: response_target || 30,
       approved_at: new Date().toISOString(),
     })
     .select('*')
     .single()
-
-  if (error) return serverError(error, 'townhall.themes.custom', { orgId: (session as any).org_id })
+  if (error) return serverError(error, 'townhall.themes.custom', { orgId: (hall as any).org_id })
   return NextResponse.json(data, { status: 201 })
 }

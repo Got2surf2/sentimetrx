@@ -67,8 +67,8 @@ export default async function MobilePage() {
     scopeFilter(service.from('studies').select('id, name, response_count, created_at').order('created_at', { ascending: false }).limit(5)),
     scopeFilter(service.from('campaigns').select('id', { count: 'exact', head: true })),
     scopeFilter(service.from('campaigns').select('id, name, status, created_at').order('created_at', { ascending: false }).limit(5)),
-    scopeFilter(service.from('townhall_sessions').select('id', { count: 'exact', head: true })),
-    scopeFilter(service.from('townhall_sessions').select('id, name, status, started_at, created_at').order('created_at', { ascending: false }).limit(5)),
+    scopeFilter(service.from('pulseiq_sessions').select('id', { count: 'exact', head: true })),
+    scopeFilter(service.from('pulseiq_sessions').select('id, name, status, started_at, created_at').order('created_at', { ascending: false }).limit(5)),
     service.from('user_favorites').select('resource_type, resource_id, created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50),
   ])
 
@@ -86,7 +86,7 @@ export default async function MobilePage() {
       study:            { table: 'studies',           href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
       dataset:          { table: 'datasets',          href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
       campaign:         { table: 'campaigns',         href: (id) => '/campaigns/' + id,               subtitle: (r) => r.status || 'draft' },
-      townhall_session: { table: 'townhall_sessions', href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
+      townhall_session: { table: 'pulseiq_sessions',  href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
     }
     const rowMaps: Record<string, Map<string, any>> = {}
     await Promise.all(Object.entries(favsByType).map(async function([type, ids]) {

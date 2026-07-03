@@ -321,7 +321,7 @@ Same params accepted by `/api/admin/usage/[type]/[id]`.
    - **By model**: `model → { calls, input, output, cost }`.
    - **By day**: `created_at.slice(0, 10) → { date, calls, cost }`, sorted chronologically.
    - **By org**: `org_id → { calls, input, output, cost }`, sorted by cost descending. Names enriched via `organizations.name`. Rows with no `org_id` bucket into `(no org)`.
-   - **Top resources**: keyed `${resource_type}:${resource_id}`, **full list** sorted by cost (the prior 20-row cap was removed 2026-05-23 — UI paginates with a "Show 20 more" button and a CSV export). Names enriched via lookups: bots → `agents.name`, townhalls → `townhall_sessions.name`, studies → `studies.name`, datasets → `datasets.name`. Falls back to `resource_id.slice(0, 8)`.
+   - **Top resources**: keyed `${resource_type}:${resource_id}`, **full list** sorted by cost (the prior 20-row cap was removed 2026-05-23 — UI paginates with a "Show 20 more" button and a CSV export). Names enriched via lookups: bots → `agents.name`, townhalls → `pulseiq_sessions.name` (tranche 2, 2026-07-03 — usage rows referencing discarded legacy session ids fall back to the id prefix), studies → `studies.name`, datasets → `datasets.name`. Falls back to `resource_id.slice(0, 8)`.
 4. Costs are computed via `estimateCost()` row-by-row, summed, then rounded to 4 decimals (`Math.round(n * 1e4) / 1e4`).
 
 **Response shape:**
@@ -560,7 +560,7 @@ From `vercel.json`:
 | `/api/cron/cleanup-shared-links` | `0 3 * * *` | no |
 | `/api/cron/review-sync` | `0 */6 * * *` | no |
 | `/api/cron/entity-discovery` | `0 5 * * 0` (Sun 05:00 UTC) | **yes** — `entity_discovery` events on `dataset` (via `lib/entityDiscovery.ts`) |
-| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` via BOTH `lib/townhallThemeDetection.ts` (legacy `townhall_sessions` scan) AND `lib/cohortThemeAggregator.ts` (new `pulseiq_sessions` scan, Phase 5 commit 1) |
+| `/api/cron/townhall-theme-detection` | `*/15 * * * *` | **yes** — `theme_detect` events on `townhall` via `lib/cohortThemeAggregator.ts` (`pulseiq_sessions` scan; the legacy `townhall_sessions` scan was retired in tranche 2, 2026-07-03) |
 | `/api/cron/bot-conversation-review` | `0 */4 * * *` | **yes** — `review` events on `bot` |
 | `/api/cron/social-sync` | `*/15 * * * *` | **yes** — `auto_reply` events on `social` (only when org has auto-reply enabled) |
 | `/api/cron/social-token-refresh` | `0 6 * * *` | no |

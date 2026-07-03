@@ -66,47 +66,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const db = createServiceRoleClient()
 
-  // Phase-3 substrate first: if the id matches a pulseiq_topics row,
-  // mutate there. Otherwise fall through to the legacy townhall_themes
-  // update. sql/082 extended pulseiq_topics.state CHECK to accept the
-  // full legacy vocab so the same `updates` object writes to both.
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): pulseiq_topics only — the legacy
+  // townhall_themes fallback is retired. sql/082 extended the state CHECK to
+  // the full legacy vocab, so the same `updates` object still applies.
   const { data: topic } = await db.from('pulseiq_topics').select('id, town_hall_id, org_id').eq('id', params.id).maybeSingle()
-  if (topic) {
-    if (!isAdmin && (topic as any).org_id !== callerOrg) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-    const { data, error } = await db
-      .from('pulseiq_topics')
-      .update(updates)
-      .eq('id', params.id)
-      .eq('org_id', (topic as any).org_id)
-      .select('*')
-      .single()
-    if (error) return serverError(error, 'townhall.themes.action', { orgId: (topic as any).org_id })
-    return NextResponse.json(data)
-  }
-
-  // Legacy townhall_themes has no org_id of its own — it scopes through its
-  // parent session. Gate the caller's org via that join before mutating.
-  const { data: theme } = await db
-    .from('townhall_themes')
-    .select('id, townhall_sessions(org_id)')
-    .eq('id', params.id)
-    .maybeSingle()
-  if (!theme) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const themeRel = (theme as any).townhall_sessions
-  const themeOrg = Array.isArray(themeRel) ? themeRel[0]?.org_id : themeRel?.org_id
-  if (!isAdmin && themeOrg !== callerOrg) {
+  if (!topic) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (topic as any).org_id !== callerOrg) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-
   const { data, error } = await db
-    .from('townhall_themes')
+    .from('pulseiq_topics')
     .update(updates)
     .eq('id', params.id)
+    .eq('org_id', (topic as any).org_id)
     .select('*')
     .single()
-
-  if (error) return serverError(error, 'townhall.themes.action', { orgId: themeOrg })
+  if (error) return serverError(error, 'townhall.themes.action', { orgId: (topic as any).org_id })
   return NextResponse.json(data)
 }

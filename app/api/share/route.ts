@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { serverError } from '@/lib/apiError'
+import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,7 @@ async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleCl
     return (data as any)?.org_id ?? null
   }
   if (type === 'townhall') {
-    const { data } = await service.from('townhall_sessions').select('org_id').eq('id', targetId).single()
+    const { data } = await service.from('pulseiq_sessions').select('org_id').eq('id', targetId).single()
     return (data as any)?.org_id ?? null
   }
   if (type === 'analytics') {
@@ -357,31 +358,53 @@ export async function GET(req: NextRequest) {
   }
 
   if (link.type === 'townhall') {
-    const { data: session } = await service.from('townhall_sessions').select('id, name, status, config, started_at, ended_at').eq('id', link.target_id).single()
-    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-    const cfg = session.config as any
+    // Tranche 2 (docs/CONVERGENCE.md § 4.2): serves from the new substrate via
+    // the adapter's legacy-shaped projection (session + themes with live
+    // counts + participant stats), plus one turn-text pass for avg words.
+    const payload = await getTownHallAsLegacy(service, link.target_id)
+    if (!payload) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    const { session, themes, stats } = payload
+    const cfg = session.config as { bot_emoji?: string }
 
-    // Fetch themes (non-dismissed)
-    const { data: themes } = await service.from('townhall_themes').select('id, label, description, source, state, keywords, sentiment, response_count, response_target, mention_count, example_quote').eq('session_id', link.target_id).neq('state', 'dismissed').order('response_count', { ascending: false })
+    // Aggregate word stats from user turn text (no individual data leaves
+    // this handler). Bracketed markers ([Skipped …] etc.) are not answers.
+    const { data: linkRows } = await service
+      .from('pulseiq_session_conversations')
+      .select('conversation_id')
+      .eq('town_hall_id', session.id)
+      .eq('org_id', session.org_id)
+      .limit(2000)
+    const convIds = ((linkRows || []) as { conversation_id: string }[]).map(r => r.conversation_id)
+    let texts: string[] = []
+    if (convIds.length > 0) {
+      const { data: turns } = await service
+        .from('conversation_turns')
+        .select('content, content_en')
+        .in('conversation_id', convIds)
+        .eq('role', 'user')
+        .eq('org_id', session.org_id)
+        .limit(5000)
+      texts = ((turns || []) as { content: string | null; content_en: string | null }[])
+        .map(t => String(t.content_en || t.content || '').trim())
+        .filter(t => t && !/^\[(Skipped|filtered|Language switch)/i.test(t))
+    }
+    const totalResponses = texts.length
+    const avgWords = totalResponses > 0 ? Math.round(texts.reduce((s, t) => s + t.split(/\s+/).length, 0) / totalResponses) : 0
 
-    // Fetch turn stats (aggregated only — no individual data)
-    const { data: turns } = await service.from('townhall_turns').select('participant_id, skipped, user_message').eq('session_id', link.target_id)
-    const allTurns = turns || []
-    const participants = new Set(allTurns.map((t: any) => t.participant_id))
-    const answered = allTurns.filter((t: any) => !t.skipped && t.user_message)
-    const totalResponses = answered.length
-    const avgWords = totalResponses > 0 ? Math.round(answered.reduce((s: number, t: any) => s + (t.user_message?.split(/\s+/).length || 0), 0) / totalResponses) : 0
+    const visibleThemes = (themes || [])
+      .filter((t: any) => t.state !== 'dismissed')
+      .sort((a: any, b: any) => (b.response_count || 0) - (a.response_count || 0))
 
     return NextResponse.json({
       type: 'townhall',
       session: { name: session.name, bot_emoji: cfg?.bot_emoji || '', status: session.status, started_at: session.started_at, ended_at: session.ended_at },
-      themes: (themes || []).map((t: any) => ({
+      themes: visibleThemes.map((t: any) => ({
         label: t.label, source: t.source, state: t.state, keywords: t.keywords || [],
         sentiment: t.sentiment || 'neutral', response_count: t.response_count || 0,
         percentage: totalResponses > 0 ? Math.round((t.mention_count || t.response_count || 0) / totalResponses * 100) : 0,
         example_quote: t.example_quote || '',
       })),
-      stats: { participants: participants.size, responses: totalResponses, avg_words: avgWords },
+      stats: { participants: stats.joined, responses: totalResponses, avg_words: avgWords },
       expires_at: link.expires_at,
     })
   }

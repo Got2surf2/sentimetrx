@@ -1,5 +1,12 @@
 // app/api/townhall/sessions/[id]/duplicate/route.ts
-// POST — duplicate a Town Hall session (copies config + discussion guide into new setup session)
+// POST — duplicate a PulseIQ session (copies config + discussion guide into a
+// new draft session).
+//
+// Tranche 2 (docs/CONVERGENCE.md § 4.2): duplicates on the new substrate —
+// copies the source's dedicated agent row and inserts a pulseiq_sessions
+// draft, mirroring the two-insert shape of POST /api/townhall/sessions.
+// Topics are NOT copied: seeding happens on activate (console PATCH), same
+// as the legacy setup→active flow.
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import type { NextRequest} from 'next/server';
@@ -19,42 +26,76 @@ export async function POST(_req: NextRequest, props: Params) {
   // client would otherwise let any logged-in user duplicate any org's session.
   const { data: userData } = await supabase
     .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const callerOrg = (userData as any)?.org_id as string | null
+  const caller = userData as { org_id: string | null; organizations: { is_admin_org?: boolean } | { is_admin_org?: boolean }[] | null } | null
+  const orgRel = caller?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const callerOrg = caller?.org_id ?? null
 
   const db = createServiceRoleClient()
 
   // Fetch the source session
   const { data: source } = await db
-    .from('townhall_sessions')
-    .select('name, config, discussion_guide, org_id')
+    .from('pulseiq_sessions')
+    .select('name, cohort_config, discussion_guide, org_id, bot_id')
     .eq('id', params.id)
-    .single()
+    .maybeSingle()
 
   if (!source) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  if (!isAdmin && (source as any).org_id !== callerOrg) {
+  if (!isAdmin && source.org_id !== callerOrg) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
   // Strip archived flag if present
-  const config = { ...source.config }
-  delete config.archived
+  const cohortConfig = { ...(source.cohort_config as Record<string, unknown> | null || {}) }
+  delete cohortConfig.archived
 
-  // Create duplicate
-  const { data, error } = await db
-    .from('townhall_sessions')
+  // Fresh slug for the copy (slug is required + unique on pulseiq_sessions).
+  const base = String(source.name || 'pulseiq').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pulseiq'
+  const slug = base + '-copy-' + Math.random().toString(36).slice(2, 7)
+
+  // Copy the source's dedicated agent (persona fields travel with the session).
+  const { data: srcAgent } = await db
+    .from('agents')
+    .select('name, personality, system_prompt, sensitive_topics')
+    .eq('id', source.bot_id)
+    .eq('org_id', source.org_id)
+    .maybeSingle()
+  const { data: agentRow, error: agentErr } = await db
+    .from('agents')
     .insert({
       org_id: source.org_id,
       created_by: user.id,
+      name: srcAgent?.name || source.name,
+      slug: slug + '-agent',
+      status: 'active',
+      personality: srcAgent?.personality || 'Warm, curious facilitator. Keeps questions short and conversational, one at a time. Never lectures.',
+      system_prompt: srcAgent?.system_prompt || 'You facilitate a live group feedback session. Draw out specific, honest feedback. Keep replies brief.',
+      sensitive_topics: srcAgent?.sensitive_topics || [],
+    })
+    .select('id')
+    .single()
+  if (agentErr) return serverError(agentErr, 'townhall.sessions.duplicate.agent', { orgId: source.org_id })
+
+  // Create duplicate (draft = legacy 'setup')
+  const { data, error } = await db
+    .from('pulseiq_sessions')
+    .insert({
+      org_id: source.org_id,
+      bot_id: agentRow!.id,
+      created_by: user.id,
       name: source.name + ' (Copy)',
-      config,
+      slug,
+      status: 'draft',
+      cohort_config: cohortConfig,
       discussion_guide: source.discussion_guide,
-      status: 'setup',
     })
     .select('id')
     .single()
 
-  if (error) return serverError(error, 'townhall.sessions.duplicate', { orgId: source.org_id })
+  if (error) {
+    // Don't strand the just-created agent if the session insert failed.
+    await db.from('agents').delete().eq('id', agentRow!.id).eq('org_id', source.org_id)
+    return serverError(error, 'townhall.sessions.duplicate', { orgId: source.org_id })
+  }
   return NextResponse.json(data, { status: 201 })
 }

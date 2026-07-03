@@ -1,13 +1,18 @@
 // app/api/townhall/sessions/search/route.ts
 // GET /api/townhall/sessions/search?q=<text>
 //
-// Searches across non-skipped townhall_turns content (user_message,
-// user_message_en, bot_message) for the query and returns matching
-// sessions with a hit count + a short snippet from the first match.
+// Searches conversation content across the org's PulseIQ sessions
+// (content + content_en on conversation_turns, both roles) and returns
+// matching sessions with a hit count + a short snippet from the first match.
+//
+// Tranche 2 (docs/CONVERGENCE.md § 4.2): reads the new substrate —
+// pulseiq_sessions → pulseiq_session_conversations → conversation_turns.
+// Bracketed transcript markers ([Skipped …], [filtered], [Language switch …])
+// are excluded from results the same way legacy excluded skipped=true turns.
 //
 // Uses ILIKE — fine for the current data volumes (turns are small per
 // session and total session count is moderate). If this scales we can
-// move to a tsv index on townhall_turns later.
+// move to a tsv index on conversation_turns later.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
@@ -41,15 +46,27 @@ export async function GET(req: Request) {
   const service = createServiceRoleClient()
 
   // Limit to this org's sessions
-  const { data: orgSessions } = await service
-    .from('townhall_sessions')
+  const { data: orgHalls } = await service
+    .from('pulseiq_sessions')
     .select('id, name')
     .eq('org_id', orgId)
-  if (!orgSessions?.length) return NextResponse.json({ results: [], query: q })
+  if (!orgHalls?.length) return NextResponse.json({ results: [], query: q })
 
   const sessionMap: Record<string, string> = {}
-  for (const s of orgSessions as any[]) sessionMap[s.id] = s.name
-  const sessionIds = Object.keys(sessionMap)
+  for (const s of orgHalls as { id: string; name: string }[]) sessionMap[s.id] = s.name
+  const hallIds = Object.keys(sessionMap)
+
+  // Map conversations → owning town hall so hits can group by session.
+  const { data: linkRows } = await service
+    .from('pulseiq_session_conversations')
+    .select('conversation_id, town_hall_id')
+    .in('town_hall_id', hallIds)
+    .eq('org_id', orgId)
+    .limit(5000)
+  const convToHall: Record<string, string> = {}
+  for (const r of (linkRows || []) as { conversation_id: string; town_hall_id: string }[]) convToHall[r.conversation_id] = r.town_hall_id
+  const convIds = Object.keys(convToHall)
+  if (convIds.length === 0) return NextResponse.json({ results: [], query: q })
 
   // Two layers of escaping:
   //  1. SQL ILIKE pattern metas (\, %, _) — so the user can't use them as wildcards.
@@ -60,23 +77,32 @@ export async function GET(req: Request) {
   const orQuoted = sqlEscaped.replace(/[\\"]/g, '\\$&')
   const like = '"%' + orQuoted + '%"'
 
-  // Pull matching turns. We OR across user_message, user_message_en, bot_message.
+  // Pull matching turns. We OR across content and content_en (covers user
+  // and bot messages — role distinguishes them in the new schema).
   const { data: turns, error } = await service
-    .from('townhall_turns')
-    .select('id, session_id, turn_number, bot_message, user_message, user_message_en, created_at')
-    .in('session_id', sessionIds)
-    .eq('skipped', false)
-    .or('user_message.ilike.' + like + ',user_message_en.ilike.' + like + ',bot_message.ilike.' + like)
+    .from('conversation_turns')
+    .select('id, conversation_id, role, content, content_en, created_at')
+    .in('conversation_id', convIds)
+    .eq('org_id', orgId)
+    .or('content.ilike.' + like + ',content_en.ilike.' + like)
     .order('created_at', { ascending: true })
     .limit(2000)
 
   if (error) return serverError(error, 'townhall.sessions.search', { orgId })
 
+  type TurnHit = { id: string; conversation_id: string; role: string; content: string | null; content_en: string | null; created_at: string }
+
+  // Exclude bracketed transcript markers (skip/filter/language-switch rows).
+  const isMarker = (t: TurnHit) => /^\[(Skipped|filtered|Language switch)/i.test(String(t.content || ''))
+
   // Group by session, keep first hit's snippet
-  const bySession = new Map<string, { hits: number; firstTurn: any }>()
-  for (const t of (turns || []) as any[]) {
-    const cur = bySession.get(t.session_id)
-    if (!cur) bySession.set(t.session_id, { hits: 1, firstTurn: t })
+  const bySession = new Map<string, { hits: number; firstTurn: TurnHit }>()
+  for (const t of (turns || []) as TurnHit[]) {
+    if (isMarker(t)) continue
+    const hallId = convToHall[t.conversation_id]
+    if (!hallId) continue
+    const cur = bySession.get(hallId)
+    if (!cur) bySession.set(hallId, { hits: 1, firstTurn: t })
     else cur.hits++
   }
 
@@ -92,9 +118,9 @@ export async function GET(req: Request) {
 
   const results: MatchHit[] = Array.from(bySession.entries()).map(([sid, v]) => {
     const t = v.firstTurn
-    const matchText = ((t.user_message_en && t.user_message_en.toLowerCase().includes(lower)) ? t.user_message_en
-      : (t.user_message && t.user_message.toLowerCase().includes(lower)) ? t.user_message
-      : t.bot_message)
+    const matchText = ((t.content_en && t.content_en.toLowerCase().includes(lower)) ? t.content_en
+      : (t.content && t.content.toLowerCase().includes(lower)) ? t.content
+      : t.content_en || t.content)
     return {
       session_id: sid,
       session_name: sessionMap[sid],

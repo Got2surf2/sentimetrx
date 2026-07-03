@@ -23,7 +23,11 @@ const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: str
   study:            { table: 'studies',           ts: 'created_at', href: (id) => '/studies/' + id + '/edit' },
   dataset:          { table: 'datasets',          ts: 'created_at', href: (id) => '/analyze/' + id },
   campaign:         { table: 'campaigns',         ts: 'created_at', href: (id) => '/campaigns/' + id },
-  townhall_session: { table: 'townhall_sessions', ts: 'created_at', href: (id) => '/townhall/' + id },
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): PulseIQ favorites resolve against
+  // the new substrate. Favorites saved against legacy townhall_sessions ids
+  // no longer resolve and silently drop from the list (legacy data is
+  // discarded at the end of tranche 2).
+  townhall_session: { table: 'pulseiq_sessions',  ts: 'created_at', href: (id) => '/townhall/' + id },
   recording:        { table: 'recordings',        ts: 'created_at', href: (id) => '/recordings/' + id + '/report' },
 }
 

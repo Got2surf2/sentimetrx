@@ -51,21 +51,25 @@ export async function POST(req: Request) {
   if (targetId) {
     const service = createServiceRoleClient()
     if (targetType === 'session') {
+      // Tranche 2 (docs/CONVERGENCE.md § 4.2): PulseIQ targets resolve on the
+      // new substrate. Topic state filter covers both vocabularies ('pending'
+      // is the new-schema 'detected').
       const { data: sess } = await service
-        .from('townhall_sessions')
-        .select('id, name, status, config')
+        .from('pulseiq_sessions')
+        .select('id, name, status, cohort_config')
         .eq('id', targetId)
         .eq('org_id', orgId)
         .single()
       if (!sess) return NextResponse.json({ error: 'Session not found in your org' }, { status: 404 })
       const { data: themes } = await service
-        .from('townhall_themes')
+        .from('pulseiq_topics')
         .select('id, label, description, question, follow_up_angles, state, source')
-        .eq('session_id', targetId)
-        .in('state', ['active', 'detected', 'completed'])
+        .eq('town_hall_id', targetId)
+        .eq('org_id', orgId)
+        .in('state', ['active', 'detected', 'pending', 'completed'])
       agent = { kind: 'session', ...sess, themes: themes || [] }
       intentSource = themes || []
-      const cs = (sess.config as any)?.content_safety
+      const cs = (sess.cohort_config as { content_safety?: Record<string, unknown> } | null)?.content_safety
       if (cs && typeof cs === 'object') safetyConfig = { ...CONTENT_SAFETY_DEFAULTS, ...cs }
     } else {
       const { data } = await service
@@ -183,7 +187,7 @@ export async function GET() {
   const service = createServiceRoleClient()
   const [{ data: bots }, { data: sessions }] = await Promise.all([
     service.from('agents').select('id, name, slug, status').eq('org_id', orgId).order('name', { ascending: true }),
-    service.from('townhall_sessions').select('id, name, status').eq('org_id', orgId).order('name', { ascending: true }),
+    service.from('pulseiq_sessions').select('id, name, status').eq('org_id', orgId).order('name', { ascending: true }),
   ])
   return NextResponse.json({ bots: bots || [], sessions: sessions || [] })
 }

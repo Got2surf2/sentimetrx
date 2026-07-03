@@ -68,7 +68,7 @@ export async function GET(_req: Request, props: Params) {
   // "this will erase …" preview. Lean on `count: 'exact', head: true` so
   // no row payload comes back.
   const tables = [
-    'users', 'studies', 'datasets', 'bots', 'campaigns', 'townhall_sessions',
+    'users', 'studies', 'datasets', 'bots', 'campaigns', 'pulseiq_sessions',
     'collections', 'review_sources', 'reddit_sources', 'social_connections',
     'invites', 'org_transfers',
   ]

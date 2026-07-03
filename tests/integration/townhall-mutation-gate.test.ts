@@ -66,11 +66,10 @@ describe('POST /api/townhall/themes/[id] — caller-org gate', () => {
     expect((await approve()).status).toBe(404)
   })
 
-  it('404 cross-org for a non-admin (legacy theme via parent session in another org)', async () => {
+  it('404 when the topic does not exist (legacy townhall_themes fallback retired in tranche 2)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['pulseiq_topics'] = { data: null, error: null } // not the new substrate
-    ctx.results['townhall_themes'] = { data: { id: 'x_1', townhall_sessions: { org_id: 'orgB' } }, error: null }
+    ctx.results['pulseiq_topics'] = { data: null, error: null }
     expect((await approve()).status).toBe(404)
   })
 
@@ -99,21 +98,23 @@ describe('POST /api/townhall/sessions/[id]/duplicate — caller-org gate', () =>
   it('404 cross-org for a non-admin', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['townhall_sessions'] = { data: { name: 'S', config: {}, discussion_guide: null, org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { name: 'S', cohort_config: {}, discussion_guide: null, org_id: 'orgB', bot_id: 'a0' }, error: null }
     expect((await dup()).status).toBe(404)
   })
 
   it('duplicates for the owning org (201)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['townhall_sessions'] = { data: { name: 'S', config: {}, discussion_guide: null, org_id: 'orgA' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { name: 'S', cohort_config: {}, discussion_guide: null, org_id: 'orgA', bot_id: 'a0' }, error: null }
+    ctx.results['agents'] = { data: { id: 'a1' }, error: null }
     expect((await dup()).status).toBe(201)
   })
 
   it('allows a platform admin to bypass the org check (201)', async () => {
     ctx.authUser = { id: 'admin' }
     ctx.results['users'] = admin
-    ctx.results['townhall_sessions'] = { data: { name: 'S', config: {}, discussion_guide: null, org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { name: 'S', cohort_config: {}, discussion_guide: null, org_id: 'orgB', bot_id: 'a0' }, error: null }
+    ctx.results['agents'] = { data: { id: 'a1' }, error: null }
     expect((await dup()).status).toBe(201)
   })
 })
@@ -142,21 +143,21 @@ describe('POST /api/townhall/sessions/[id]/round — caller-org gate', () => {
   it('404 cross-org for a non-admin', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['townhall_sessions'] = { data: { org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { org_id: 'orgB' }, error: null }
     expect((await start()).status).toBe(404)
   })
 
   it('advances for the owning org (200)', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = nonAdmin('orgA')
-    ctx.results['townhall_sessions'] = { data: { org_id: 'orgA' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { org_id: 'orgA' }, error: null }
     expect((await start()).status).toBe(200)
   })
 
   it('allows a platform admin to bypass the org check (200)', async () => {
     ctx.authUser = { id: 'admin' }
     ctx.results['users'] = admin
-    ctx.results['townhall_sessions'] = { data: { org_id: 'orgB' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { org_id: 'orgB' }, error: null }
     expect((await start()).status).toBe(200)
   })
 })

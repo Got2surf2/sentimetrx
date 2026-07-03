@@ -29,83 +29,23 @@ export async function GET(req: NextRequest) {
   const orgFilter = validateOrgFilter(req.nextUrl.searchParams.get('org'))
   const scopeOrgId = isAdmin ? orgFilter : userOrgId
 
-  let q = db
-    .from('townhall_sessions')
-    .select('id, org_id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
-    .order('created_at', { ascending: false })
-  if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
-
-  const { data, error } = await q
-  if (error) return serverError(error, 'townhall.sessions.list', { orgId: scopeOrgId ?? undefined })
-
-  // Get participant + response counts per session. Aggregated in Postgres so it
-  // can't silently undercount: the previous approach fetched every turn via
-  // .in(...) (capped at 1000 rows) and tallied in JS, so an org with >1000 turns
-  // across its listed sessions got wrong numbers. RPC mirrors sql/038.
-  const sessionIds = (data || []).map(s => s.id)
-  let stats: Record<string, { participants: number; responses: number }> = {}
-  if (sessionIds.length > 0) {
-    const { data: countRows, error: countErr } = await db
-      .rpc('townhall_session_counts_for_ids', { p_session_ids: sessionIds })
-    if (!countErr && countRows) {
-      for (const r of countRows as { session_id: string; participants: number; responses: number }[]) {
-        stats[r.session_id] = { participants: Number(r.participants), responses: Number(r.responses) }
-      }
-    } else {
-      // Fallback if the RPC isn't present yet (pre-sql/146): the old JS tally.
-      // Still 1000-row-capped, but no worse than before — remove once applied.
-      const { data: turnData } = await db
-        .from('townhall_turns')
-        .select('session_id, participant_id, skipped, user_message')
-        .in('session_id', sessionIds)
-      for (const sid of sessionIds) {
-        const sessionTurns = (turnData || []).filter(t => t.session_id === sid)
-        stats[sid] = {
-          participants: new Set(sessionTurns.map(t => t.participant_id)).size,
-          responses: sessionTurns.filter(t => !t.skipped && t.user_message).length,
-        }
-      }
-    }
-  }
+  // Tranche 2 (docs/CONVERGENCE.md § 4.2): the legacy townhall_sessions leg
+  // is retired — the list serves pulseiq_sessions rows only, projected into
+  // the same JSON shape the facilitator list UI already consumes.
+  const sessions = await listTownHallsAsLegacy(db, scopeOrgId)
 
   // Resolve org names for admin per-card display.
-  let orgNameMap: Record<string, string> = {}
-  if (isAdmin) {
-    const orgIds = Array.from(new Set((data || []).map((s: any) => s.org_id).filter(Boolean)))
+  if (sessions.length > 0 && isAdmin) {
+    const orgNameMap: Record<string, string> = {}
+    const orgIds = Array.from(new Set(sessions.map(s => s.org_id).filter(Boolean)))
     if (orgIds.length > 0) {
       const { data: orgs } = await db.from('organizations').select('id, name').in('id', orgIds)
-      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+      ;((orgs || []) as { id: string; name: string }[]).forEach(o => { orgNameMap[o.id] = o.name })
     }
+    for (const row of sessions) row.org_name = orgNameMap[row.org_id] || null
   }
 
-  const enriched = (data || []).map(s => ({
-    ...s,
-    participants: stats[s.id]?.participants || 0,
-    turns: stats[s.id]?.responses || 0,
-    org_name: isAdmin ? (orgNameMap[(s as any).org_id] || null) : null,
-  }))
-
-  // Phase 5 commit 6: surface new-substrate pulseiq_sessions rows alongside
-  // legacy townhall_sessions. Same JSON shape — facilitator list UI
-  // doesn't need to know which substrate a row came from.
-  // docs/CONVERGENCE.md § 4 Phase 5 + docs/CONVERGENCE.md § 10 changelog.
-  const newSubstrate = await listTownHallsAsLegacy(db, scopeOrgId)
-  if (newSubstrate.length > 0 && isAdmin) {
-    // Admin view shows org name per row — fetch any orgs we haven't already.
-    const newOrgIds = Array.from(new Set(newSubstrate.map(s => s.org_id).filter(Boolean)))
-    const missing = newOrgIds.filter(id => !orgNameMap[id])
-    if (missing.length > 0) {
-      const { data: moreOrgs } = await db.from('organizations').select('id, name').in('id', missing)
-      ;(moreOrgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
-    }
-    for (const row of newSubstrate) row.org_name = orgNameMap[row.org_id] || null
-  }
-
-  const merged = [...enriched, ...newSubstrate].sort((a, b) =>
-    (b.created_at || '') > (a.created_at || '') ? 1 : -1
-  )
-
-  return NextResponse.json(merged)
+  return NextResponse.json(sessions)
 }
 
 // POST /api/townhall/sessions — create a new session

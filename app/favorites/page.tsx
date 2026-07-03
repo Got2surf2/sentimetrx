@@ -50,7 +50,7 @@ export default async function FavoritesPage() {
     study:            { table: 'studies',           tsField: 'created_at', href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
     dataset:          { table: 'datasets',          tsField: 'created_at', href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
     campaign:         { table: 'campaigns',         tsField: 'created_at', href: (id) => '/campaigns/' + id,               subtitle: (r) => r.status || 'draft' },
-    townhall_session: { table: 'townhall_sessions', tsField: 'created_at', href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
+    townhall_session: { table: 'pulseiq_sessions',  tsField: 'created_at', href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
   }
 
   const byType: Record<string, string[]> = {}

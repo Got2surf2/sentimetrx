@@ -277,6 +277,24 @@ views, the 1,085-line frozen orchestrator, and `townHallAdapter`'s dual-reads.
 The legacy data (1 session / 511 turns) is discarded at that final step —
 owner-approved, and it stays untouched until then as the rollback path.
 
+**Tranche-2 progress:** unit 1 (2026-07-03) — creation births on the new
+substrate; `TOWNHALL_VIA_AGENT_HANDLER` retired; PulseIQ mirror unconditional.
+Unit 2 (2026-07-03) — reader ports: sessions list GET (legacy leg dropped),
+status, live (full analytics parity: keyword matching, top keywords, trending,
+lexicon sentiment fallback, skip counting via `[Skipped …]` markers), round
+advance, themes moderation + custom (legacy fallbacks retired), search
+(conversation_turns ILIKE), duplicate (two-insert agent+session copy),
+favorites (route + page), share (townhall create-gate + public view via
+`getTownHallAsLegacy`), `/m` monitor, theme-detection cron (legacy scan
+dropped), admin usage name-lookups, admin org counts, agent-tester. Verified
+live 5/5 (`scripts/_verify_tranche2.ts`) + lifecycle/item-3 regressions green.
+`lib/orgSnapshot`/`lib/orgDelete` intentionally keep their `townhall_*`
+entries until the tables actually drop (they enumerate physical tables; legacy
+rows are the rollback path). Still legacy-reading: sessions/[id] detail
+(analytics pipeline), analyze, export + export/pptx, join/resume/responses/
+chat engine shims (drop with the orchestrator), `/api/townhall/status` is a
+deletion candidate (no in-repo consumer).
+
 **Estimate:** Tranche 1 (engine cutover: items 0–7 + a PulseIQ regression set
 mirroring the Sarina harness + prod flag flip + one real test town hall) ≈
 **4–6 focused sessions** (item 0 is small and comes first). Tranche 2 (reader
