@@ -22,21 +22,13 @@ import { downloadOrgSnapshot } from '@/lib/backupS3'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { recordAdminAction } from '@/lib/orgTransfer'
 import type { OrgSnapshot } from '@/lib/orgSnapshot'
+import { restoreOrgSnapshot } from '@/lib/orgRestore'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 interface Params { params: Promise<{ orgId: string }> }
-
-interface TableReport {
-  table: string
-  attempted: number
-  upserted: number
-  deleted: number
-  errors: number
-  first_error?: string
-}
 
 export async function POST(req: NextRequest, props: Params) {
   const params = await props.params;
@@ -68,71 +60,16 @@ export async function POST(req: NextRequest, props: Params) {
   }
 
   const service = createServiceRoleClient()
-  const reports: TableReport[] = []
 
-  // Tables that have a synthetic / hash primary key we know about. For
-  // anything else, default to 'id'. The upsert call uses the table's
-  // existing primary key to resolve conflicts.
-  for (const tableName of Object.keys(snapshot.tables)) {
-    if (tableAllow && !tableAllow.includes(tableName)) continue
-    const rows = (snapshot.tables as any)[tableName] as any[]
-    if (!Array.isArray(rows) || rows.length === 0) continue
-    if (rows.some(r => !r || typeof r !== 'object' || !('id' in r))) {
-      reports.push({ table: tableName, attempted: rows.length, upserted: 0, deleted: 0, errors: rows.length, first_error: 'Rows missing id column — skipped (table has composite PK)' })
-      continue
-    }
-
-    const report: TableReport = { table: tableName, attempted: rows.length, upserted: 0, deleted: 0, errors: 0 }
-
-    // Upsert in chunks of 500 to stay under PostgREST limits.
-    const CHUNK = 500
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const slice = rows.slice(i, i + CHUNK)
-      const { error, data } = await service.from(tableName).upsert(slice, { onConflict: 'id' }).select('id')
-      if (error) {
-        report.errors += slice.length
-        if (!report.first_error) report.first_error = error.message
-      } else {
-        report.upserted += (data?.length || slice.length)
-      }
-    }
-
-    // Replace mode: delete rows currently present in the org that are NOT
-    // in the snapshot. Only acts on tables that we KNOW are org-scoped via
-    // `org_id` (skipping parent-via tables here to avoid scope ambiguity).
-    if (mode === 'replace') {
-      const snapshotIds = new Set(rows.map(r => r.id))
-      // Best-effort: read current rows where org_id matches, diff IDs.
-      // If the table doesn't have org_id, we don't try.
-      const { data: current } = await service.from(tableName).select('id, org_id').eq('org_id', params.orgId)
-      if (current) {
-        const toDelete = current.filter((r: any) => !snapshotIds.has(r.id)).map((r: any) => r.id)
-        if (toDelete.length > 0) {
-          for (let i = 0; i < toDelete.length; i += CHUNK) {
-            const slice = toDelete.slice(i, i + CHUNK)
-            const { error } = await service.from(tableName).delete().in('id', slice)
-            if (error) {
-              if (!report.first_error) report.first_error = 'delete: ' + error.message
-              report.errors += slice.length
-            } else {
-              report.deleted += slice.length
-            }
-          }
-        }
-      }
-    }
-
-    reports.push(report)
-  }
+  // Shared restore core (lib/orgRestore) — same implementation the
+  // cross-environment clone script uses; this route targets the SAME
+  // environment's database.
+  const { reports, totals } = await restoreOrgSnapshot(service as any, snapshot, { mode, tables: tableAllow })
 
   // Audit: restoring a snapshot overwrites (merge) or replaces a tenant's live
   // data — the most destructive admin op there is. Always traced.
   const supabase = await createClient()
   const actor = await getAuthUser(supabase)
-  const totals = reports.reduce(
-    (acc, r) => ({ upserted: acc.upserted + r.upserted, deleted: acc.deleted + r.deleted, errors: acc.errors + r.errors }),
-    { upserted: 0, deleted: 0, errors: 0 },
-  )
   await recordAdminAction({
     service, actionType: 'org.snapshot_restore', resourceType: 'org', resourceId: params.orgId,
     targetOrgId: params.orgId, initiatedBy: actor?.id || null, initiatedByEmail: actor?.email || null,

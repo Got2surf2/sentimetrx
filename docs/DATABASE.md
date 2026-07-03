@@ -93,7 +93,7 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `dataset_rows` / `archived_dataset_rows(_flat)` | (legacy) v1 batched row storage + archives; removed from all read paths May 2026. |
 | `collections` | Grouping of datasets (`kind='brand'` = Brand Profile); cached merged schema/themes. |
 | `collection_members` | Link table: datasets in a collection. |
-| `entity_catalog` / `entity_catalog_refresh` | Canonical entity registry per org (people/places/brands + spelling variants) and refresh bookkeeping. |
+| `entity_catalog` / `entity_catalog_refresh` | Canonical entity registry (polymorphic `scope_type`/`scope_id` — dataset/collection/bot; NO org_id) and refresh bookkeeping. Regenerable via entity discovery; excluded from org snapshots (2026-07-03). |
 | `dataset_row_taxonomy` / `dataset_row_field_taxonomy` | Per-row / per-field taxonomy classifications (RC pilot + productized Domain›Aspect). |
 | `reo_gold_review` | REO taxonomy gold-set: owner-graded extraction drafts for calibration. |
 | `saved_views` | Saved filter/view definitions on a dataset. |

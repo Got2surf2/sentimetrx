@@ -51,6 +51,7 @@ export interface OrgSnapshot {
 type TableFilter =
   | { kind: 'org_id' }
   | { kind: 'id_eq_org' }
+  | { kind: 'col_eq_org'; col: string }
   | { kind: 'parent_via'; via: string; parent: 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections' }
   | { kind: 'skip'; reason: string }
 
@@ -58,6 +59,12 @@ interface TableSpec {
   name: string
   filter: TableFilter
   cap?: number // null = no cap; positive = max rows captured
+  // Pagination sort key for parent_via tables. Default 'id'. Set to a
+  // column with a composite index alongside the FK (e.g. row_index on
+  // dataset_rows_flat's (dataset_id, row_index) index) — those tables
+  // page PER PARENT so the sort is index-served and can't hit the
+  // statement timeout that sorting 50K heavy JSONB rows does.
+  pageOrder?: string
 }
 
 const DEFAULT_CAP = 100_000
@@ -107,9 +114,12 @@ const TABLE_SPECS: TableSpec[] = [
   // dataset_rows_flat has NO org_id column (it's keyed by dataset_id) — filtering
   // it by org_id errored on every run and the snapshot silently shipped 0 rows.
   // Scope via the org's datasets instead. (Fixed 2026-07-02.)
-  { name: 'dataset_rows_flat', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: 50_000 },
-  { name: 'entity_catalog', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'entity_catalog_refresh', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'dataset_rows_flat', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: 50_000, pageOrder: 'row_index' },
+  // entity_catalog has NO org_id (polymorphic scope_type/scope_id) — the old
+  // org_id spec errored on every nightly run (caught 2026-07-03). It is fully
+  // regenerable via entity discovery, so it is skipped, not snapshotted.
+  { name: 'entity_catalog', filter: { kind: 'skip', reason: 'polymorphic scope, regenerable via entity discovery' } },
+  { name: 'entity_catalog_refresh', filter: { kind: 'skip', reason: 'refresh bookkeeping, regenerable' } },
 
   // Campaigns
   { name: 'campaigns', filter: { kind: 'org_id' }, cap: NO_CAP },
@@ -140,8 +150,8 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'shared_links', filter: { kind: 'org_id' }, cap: NO_CAP },
   { name: 'deck_download_log', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
   { name: 'ai_consent_audit', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'webhook_events', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'org_transfers', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'webhook_events', filter: { kind: 'skip', reason: 'global webhook receipts, no org linkage (old org_id spec errored nightly)' } },
+  { name: 'org_transfers', filter: { kind: 'col_eq_org', col: 'to_org_id' }, cap: NO_CAP },
 
   // Explicitly skipped
   { name: 'admin_action_log', filter: { kind: 'skip', reason: 'global admin actions, not org-scoped' } },
@@ -178,17 +188,34 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
     return { rows: data || [], truncated: false }
   }
 
-  if (spec.filter.kind === 'org_id') {
-    let q = service.from(spec.name).select('*').eq('org_id', orgId)
-    if (cap !== NO_CAP) q = q.limit(cap + 1)
-    const { data, error } = await q
-    if (error) {
-      console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-      return { rows: [], truncated: false, error: error.message }
+  // PAGED (2026-07-03): PostgREST truncates any single select at the
+  // project max-rows (1000) — a .limit(100000) was a ceiling, not a fetch
+  // size, so nightly backups were silently capturing at most 1000 rows per
+  // table. Page in 1000-row chunks up to the cap.
+  const PAGE = 1000
+  if (spec.filter.kind === 'org_id' || spec.filter.kind === 'col_eq_org') {
+    const orgCol = spec.filter.kind === 'col_eq_org' ? spec.filter.col : 'org_id'
+    const all: unknown[] = []
+    let truncated = false
+    let fetchErr: string | undefined
+    const hardCap = cap === NO_CAP ? Number.MAX_SAFE_INTEGER : cap
+    for (let from = 0; all.length < hardCap; from += PAGE) {
+      const { data, error } = await service.from(spec.name).select('*').eq(orgCol, orgId)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) {
+        console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
+        if (!fetchErr) fetchErr = error.message
+        break
+      }
+      const page = data || []
+      for (const row of page) {
+        if (all.length >= hardCap) { truncated = true; break }
+        all.push(row)
+      }
+      if (truncated || page.length < PAGE) break
     }
-    const all = data || []
-    const truncated = cap !== NO_CAP && all.length > cap
-    return { rows: truncated ? all.slice(0, cap) : all, truncated }
+    return { rows: all, truncated, error: fetchErr }
   }
 
   // parent_via — fetch parent IDs in the org, then filter the table by that FK.
@@ -200,21 +227,51 @@ async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unkno
   const allRows: unknown[] = []
   let truncated = false
   let fetchError: string | undefined
-  for (let i = 0; i < parentIds.length; i += CHUNK) {
+  const hardCap = cap === NO_CAP ? Number.MAX_SAFE_INTEGER : cap
+  if (spec.pageOrder) {
+    // Per-parent, index-served pagination (eq on the FK + order on the
+    // composite index column). Sorting across parents timed out on heavy
+    // JSONB tables — 47K dataset_rows_flat rows hit the statement timeout.
+    for (const pid of parentIds) {
+      if (truncated) break
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await service.from(spec.name).select('*').eq(spec.filter.via, pid)
+          .order(spec.pageOrder, { ascending: true })
+          .range(from, from + PAGE - 1)
+        if (error) {
+          console.error('[orgSnapshot] ' + spec.name + ' page fetch failed:', error.message)
+          if (!fetchError) fetchError = error.message
+          break
+        }
+        const page = data || []
+        for (const row of page) {
+          if (allRows.length >= hardCap) { truncated = true; break }
+          allRows.push(row)
+        }
+        if (truncated || page.length < PAGE) break
+      }
+    }
+    return { rows: allRows, truncated, error: fetchError }
+  }
+  for (let i = 0; i < parentIds.length && !truncated; i += CHUNK) {
     const slice = parentIds.slice(i, i + CHUNK)
-    let q = service.from(spec.name).select('*').in(spec.filter.via, slice)
-    if (cap !== NO_CAP) q = q.limit(cap + 1 - allRows.length)
-    const { data, error } = await q
-    if (error) {
-      console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
-      if (!fetchError) fetchError = error.message
-      continue
+    // Page within each parent chunk (same 1000-row PostgREST truncation).
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await service.from(spec.name).select('*').in(spec.filter.via, slice)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) {
+        console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
+        if (!fetchError) fetchError = error.message
+        break
+      }
+      const page = data || []
+      for (const row of page) {
+        if (allRows.length >= hardCap) { truncated = true; break }
+        allRows.push(row)
+      }
+      if (truncated || page.length < PAGE) break
     }
-    for (const row of (data || [])) {
-      if (cap !== NO_CAP && allRows.length >= cap) { truncated = true; break }
-      allRows.push(row)
-    }
-    if (truncated) break
   }
   return { rows: allRows, truncated, error: fetchError }
 }
