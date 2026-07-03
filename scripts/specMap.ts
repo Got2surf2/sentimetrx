@@ -10,6 +10,7 @@
 
 export type SpecKey =
   | 'docs/DATABASE.md'
+  | 'docs/db/schema.sql'
   | 'docs/SECURITY.md'
   | 'docs/ENGINEERING.md'
   | 'docs/TESTING.md'
@@ -33,6 +34,13 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
   // generated snapshot (docs/db/schema.sql) is refreshed by `npm run migrate`;
   // this mapping nags the human-readable half.
   'docs/DATABASE.md': [
+    'sql/*.sql',
+  ],
+
+  // Generated schema snapshot — `npm run migrate` refreshes it on apply;
+  // this mapping blocks committing a migration WITHOUT the refreshed
+  // snapshot (the refresh only helps if it's committed).
+  'docs/db/schema.sql': [
     'sql/*.sql',
   ],
 
