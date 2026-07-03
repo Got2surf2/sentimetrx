@@ -16,18 +16,28 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+export type DownloadFormat = 'csv' | 'xlsx' | 'pptx'
+const FORMAT_LABELS: Record<DownloadFormat, string> = {
+  csv: 'CSV',
+  xlsx: 'Excel (.xlsx)',
+  pptx: 'PowerPoint deck (.pptx)',
+}
+
 interface Props {
   /** Build a download URL for the chosen format. The browser navigates to it. */
-  hrefFor?: (format: 'csv' | 'xlsx') => string
+  hrefFor?: (format: DownloadFormat) => string
   /** Or take over the action — useful when you need POST or signed URLs. */
-  onChoose?: (format: 'csv' | 'xlsx') => void | Promise<void>
+  onChoose?: (format: DownloadFormat) => void | Promise<void>
   label?: string
   disabled?: boolean
+  /** Which formats to offer. Defaults to CSV + Excel (the pre-2026-07-03
+   *  behavior); callers with a deck route add 'pptx'. */
+  formats?: DownloadFormat[]
   /** Tailwind class applied to the trigger button. Defaults match HERMES button styling. */
   className?: string
 }
 
-export default function DownloadButton({ hrefFor, onChoose, label = 'Download', disabled, className }: Props) {
+export default function DownloadButton({ hrefFor, onChoose, label = 'Download', disabled, formats = ['csv', 'xlsx'], className }: Props) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -40,7 +50,7 @@ export default function DownloadButton({ hrefFor, onChoose, label = 'Download', 
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const choose = (fmt: 'csv' | 'xlsx') => {
+  const choose = (fmt: DownloadFormat) => {
     setOpen(false)
     if (onChoose) { void onChoose(fmt); return }
     if (hrefFor) { window.location.href = hrefFor(fmt) }
@@ -53,15 +63,13 @@ export default function DownloadButton({ hrefFor, onChoose, label = 'Download', 
         {label} <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>▼</span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden min-w-[140px]">
-          <button onClick={() => choose('csv')}
-            className="w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700">
-            CSV
-          </button>
-          <button onClick={() => choose('xlsx')}
-            className="w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700 border-t border-gray-100">
-            Excel (.xlsx)
-          </button>
+        <div className="absolute right-0 mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden min-w-[170px]">
+          {formats.map((fmt, i) => (
+            <button key={fmt} onClick={() => choose(fmt)}
+              className={'w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700' + (i > 0 ? ' border-t border-gray-100' : '')}>
+              {FORMAT_LABELS[fmt]}
+            </button>
+          ))}
         </div>
       )}
     </div>

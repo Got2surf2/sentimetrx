@@ -375,3 +375,7 @@ WHY: owner ended a test session and the participant window never showed the clos
 ## 2026-07-04 — Export turn semantics: exchanges, not raw message indexes (owner question)
 
 WHY: owner's XLSX showed turn_number 0,2,4,…,16,17 — the pairing projection leaked the new store's per-message numbering (user messages land on even indexes). A "turn" in exports = one EXCHANGE (bot message + reply, one row). fetchTurnsAsLegacy + the export json branch now number exchanges 1,2,3,… per participant (trailing unanswered question = next number), and the exchange's `source` column now comes from the ASSISTANT side of the pair (clarifier/standby/deflect were invisible — every row said "normal" because the user side is always normal). Harness 8/8 + tests green.
+
+## 2026-07-04 — PPTX surfaced in the PulseIQ Export menu (owner-found)
+
+WHY: owner asked "where is the PPT?" — the session deck route existed (ported in tranche 2) but the shared DownloadButton hardcoded CSV/Excel, so the deck was only reachable via an odd link inside the conversation modal. DownloadButton now takes a formats prop (default unchanged for other consumers); the PulseIQ list offers CSV/Excel/PowerPoint deck, with PPTX going through the POST deck route in handleExport. tsc/tests/lint green.

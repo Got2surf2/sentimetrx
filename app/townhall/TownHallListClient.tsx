@@ -186,7 +186,11 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
 
   const handleExport = async (sessionId: string, name: string, format = 'csv') => {
     try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=' + format)
+      // PPTX is a separate deck-generation route (POST); csv/xlsx/themes
+      // stream from the tabular export route.
+      const res = format === 'pptx'
+        ? await fetch('/api/townhall/sessions/' + sessionId + '/export/pptx', { method: 'POST' })
+        : await fetch('/api/townhall/sessions/' + sessionId + '/export?format=' + format)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -425,6 +429,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         ) : (
                           <DownloadButton
                             label="Export"
+                            formats={['csv', 'xlsx', 'pptx']}
                             onChoose={fmt => handleExport(s.id, s.name, fmt)}
                             className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all text-center bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100"
                           />
