@@ -52,7 +52,7 @@ detail see `docs/DATA_FLOW.md`. For the buyer-facing summary see
 | # | Question | Answer | Notes |
 |---|---|---|---|
 | CCC-01 | Is there a documented change-management process? | **Yes** | Git-based: CI (typecheck + tests) on every push; deploys to production from `main`; spec/devlog drift gates at commit time |
-| CCC-02 | Are changes to production reviewed before deployment? | **Compensating** | Solo-operator model today: commits land on `main` directly (no second human reviewer exists). Compensating controls: CI on every push, AI-assisted code review, weekly automated governance audit, and full commit-level traceability. Mandatory PR review begins with the first additional engineer |
+| CCC-02 | Are changes to production reviewed before deployment? | **Compensating** | Solo-operator model today: commits land on `main` directly (no second human reviewer exists). Compensating controls: CI on every push, required status checks on `main` via branch protection (typecheck+tests, multi-tenant isolation; enabled 2026-07-03, admin bypass documented), force-push/deletion blocked, AI-assisted code review, weekly automated governance audit, and full commit-level traceability. Mandatory PR review begins with the first additional engineer |
 | CCC-03 | Are configuration changes logged? | **Yes** | Git history for code and Vercel deployment log for runtime configuration |
 | CCC-04 | Are database schema changes versioned? | **Yes** | Numbered `sql/NNN_*.sql` migration files in the repo |
 | CCC-05 | Are deployments traceable to source commits? | **Yes** | Vercel records the source commit for every deployment |

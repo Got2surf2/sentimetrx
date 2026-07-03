@@ -97,8 +97,14 @@ service-role import.
 
 ## 2. Branch & review policy
 
-- **`main` is protected.** Push directly only via owner override in
-  emergencies (log the override reason in the next devlog).
+- **`main` is protected — ENFORCED 2026-07-03.** GitHub branch
+  protection on `main`: required status checks `typecheck + tests` and
+  `multi-tenant isolation (RLS + egress)`, force-pushes and deletion
+  blocked for everyone. `enforce_admins` is OFF — the owner-authorized
+  direct push (the documented solo-operator flow) bypasses the check
+  requirement; CI still runs on every push and a red run is fixed
+  forward immediately. Flip `enforce_admins` on when the team grows or
+  an enterprise DD requires it (COMPLIANCE.md T3).
 - **All other changes** go via PR. Even single-line fixes.
 - **AI-agent sessions are an owner-directed exception** (see `CLAUDE.md`
   → "Branch policy"): Claude Code sessions commit **directly to local
