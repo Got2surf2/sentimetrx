@@ -105,6 +105,8 @@ export default function TownHallChat({ sessionId }: Props) {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const slowPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const endedHandledRef = useRef(false)
   const joiningRef = useRef(false)
 
   // Scroll to bottom — matches survey SurveyWidget.scrollBottom exactly:
@@ -148,10 +150,17 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.testing) setTesting(true)
       if (d.status === 'active') {
         setStatus('active')
+        // Downshift to a slow end-watch poll (15s) instead of stopping:
+        // an IDLE participant must still learn when the facilitator ends
+        // or pauses the session (owner dry-run 2026-07-03: the closing
+        // message was never delivered — polling stopped on activation and
+        // only a sent message would have surfaced the closed state).
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+        if (!slowPollRef.current) slowPollRef.current = setInterval(() => { void poll() }, 15000)
       } else if (d.status === 'ended') {
         setStatus('ended')
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+        if (slowPollRef.current) { clearInterval(slowPollRef.current); slowPollRef.current = null }
       } else if (d.status === 'paused') {
         setStatus('paused')
         // Keep polling — session may resume
@@ -164,7 +173,10 @@ export default function TownHallChat({ sessionId }: Props) {
   useEffect(() => {
     void poll()
     pollRef.current = setInterval(() => { void poll() }, 3000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      if (slowPollRef.current) clearInterval(slowPollRef.current)
+    }
   }, [poll])
 
   // Join
@@ -320,6 +332,19 @@ export default function TownHallChat({ sessionId }: Props) {
       setPhase('done')
     }
   }, [questionPosition, psychoBank, psychoCount, demoFields, botMessages])
+
+  // Facilitator ended the session while this participant was idle: the
+  // end-watch poll flips status to 'ended' — deliver the closing message
+  // as a bot bubble and move into the post-session questions, exactly as
+  // an is_final chat reply would (owner dry-run 2026-07-03: no closing
+  // message was delivered to idle participants).
+  useEffect(() => {
+    if (status === 'ended' && joined && phase === 'chat' && !endedHandledRef.current) {
+      endedHandledRef.current = true
+      setMessages(prev => [...prev, { who: 'bot', text: closingMsg || 'This session has ended. Thank you for participating!' }])
+      void startPostSession()
+    }
+  }, [status, joined, phase, closingMsg, startPostSession])
 
   // Round-based pacing: while held between rounds, poll for the next round.
   // The moderator advances the room; once the next item's themes are active,

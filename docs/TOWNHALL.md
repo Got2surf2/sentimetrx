@@ -218,6 +218,8 @@ Public presenter display (no auth, aggregate data only):
 
 > The chat header's DATANAUTIX wordmark stack carries a tiny `privacy` link → `/privacy` (public privacy notice, 2026-07-03).
 
+> **Idle-participant session end (owner dry-run, 2026-07-03):** the client used to STOP polling once the session went active, so a participant who wasn't mid-message never learned the facilitator ended the session — no closing message was delivered. Now: on activation the 3s status poll downshifts to a 15s end-watch poll; when it sees `ended` while the participant is in the chat phase, the closing message is appended as a bot bubble and the post-session questions start — identical to the `is_final` reply path. Worst-case delivery lag for an idle participant: ~15s.
+
 > **Creator Conversation/Post-Session step parity (2026-07-03, owner-found):** the new-session wizard was missing the **Organic Topic Discovery** control (Off / On Demand / Automatic pills + detect-every-N, `engine.theme_detection_mode`) and the **post-session copy** inputs (`messages.post_session_intro` / `post_session_demo`) that the session-detail editor has; both added. Session-end mode is a pill group (was a dropdown). Deeper fix behind it: the unified engine IGNORED the mode — sessions POST now lifts `theme_detection_mode` to cohort_config top level, and BOTH the chatCore count-trigger and the 15-min cron gate on mode==='auto' (nested `engine.*` fallback for console-edited configs). Previously "Off" still ran automatic detection.
 
 ### Chat Phases (state machine in `TownHallChat.tsx`)
