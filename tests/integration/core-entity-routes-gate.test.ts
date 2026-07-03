@@ -270,15 +270,21 @@ describe('townhall/sessions — POST', () => {
     expect((await sessions.POST(req('POST'))).status).toBe(401)
   })
 
-  it('creates the session in the caller org', async () => {
+  it('creates the session (new substrate: agent + pulseiq_sessions) in the caller org', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = { data: { org_id: 'orgA', client_id: null }, error: null }
-    ctx.results['townhall_sessions'] = { data: { id: 's1', slug: null }, error: null }
-    const body = { name: 'Q3 Town Hall', config: {}, discussion_guide: [] }
+    // Slug-conflict probes return empty on both substrates
+    ctx.results['townhall_sessions'] = { data: [], error: null }
+    ctx.results['agents'] = { data: { id: 'a1' }, error: null }
+    ctx.results['pulseiq_sessions'] = { data: { id: 's1', slug: 'q3-pulse' }, error: null }
+    const body = { name: 'Q3 Pulse', config: {}, discussion_guide: [] }
     const r = await sessions.POST(req('POST', body))
     expect(r.status).toBe(201)
-    expect(ctx.insertCalls['townhall_sessions'][0].org_id).toBe('orgA')
-    expect(ctx.insertCalls['townhall_sessions'][0].created_by).toBe('u1')
+    expect(ctx.insertCalls['agents'][0].org_id).toBe('orgA')
+    expect(ctx.insertCalls['pulseiq_sessions'][0].org_id).toBe('orgA')
+    expect(ctx.insertCalls['pulseiq_sessions'][0].created_by).toBe('u1')
+    expect(ctx.insertCalls['pulseiq_sessions'][0].bot_id).toBe('a1')
+    expect(ctx.insertCalls['pulseiq_sessions'][0].status).toBe('draft')
   })
 })
 

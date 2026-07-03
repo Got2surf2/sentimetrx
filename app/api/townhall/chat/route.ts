@@ -22,7 +22,6 @@ import {
   LANGUAGE_SWITCH_CLASSIFIER_PROMPT,
 } from '@/lib/languageSwitch'
 import { handleChatTurn } from '@/lib/chatCore'
-import { isTownHallViaAgentHandlerEnabled } from '@/lib/phase4Flags'
 import { logError } from '@/lib/log'
 import { mirrorTurns } from '@/lib/phase3DualWrite'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
@@ -68,16 +67,16 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceRoleClient()
 
-  // ── Phase 4 commit 2: PulseIQ-via-agent-handler path ────────────────
-  // When TOWNHALL_VIA_AGENT_HANDLER=true AND a pulseiq_sessions row resolves
-  // for this session_id (uuid or slug), bypass the legacy 995-line
-  // PulseIQ orchestrator below and delegate to lib/chatCore.handleChatTurn.
-  // PulseIQ-specific features (theme assignment, response counter,
-  // language switch, auto-end, standby) are NOT carried into this path
-  // — they get rebuilt on the unified substrate in Phase 5. With zero
-  // pulseiq_sessions rows in the system today, this branch is dark on the
-  // way in; it activates only after Phase 6 creates the first row.
-  if (isTownHallViaAgentHandlerEnabled()) {
+  // ── Unified PulseIQ path (tranche 2: UNCONDITIONAL) ─────────────────
+  // When a pulseiq_sessions row resolves for this session_id (uuid or
+  // slug), delegate to lib/chatCore.handleChatTurn — the unified engine
+  // with full parity (convergence items 0–7: rounds, lifecycle, protocol,
+  // language, guard, opening match, facilitation policy). New sessions
+  // are born on this substrate (sessions POST); the legacy orchestrator
+  // below serves only pre-existing legacy rows until tranche-2 deletion.
+  // The TOWNHALL_VIA_AGENT_HANDLER dark-launch flag is retired — an env
+  // mistake must not be able to strand new-substrate sessions.
+  {
     const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
     const EV_COLS = 'id, slug, org_id, bot_id, name, status, cohort_config, started_at'
     let townHall: any = null

@@ -72,7 +72,12 @@ export async function mirrorTurns(
   service: SupabaseClient,
   args: MirrorArgs,
 ): Promise<void> {
-  if (!isEnabled()) return
+  // PulseIQ conversations (townHallId set) mirror UNCONDITIONALLY — for
+  // new-substrate sessions the conversations/conversation_turns rows are
+  // the PRIMARY analytics store (cohort counts, theme detection, exports),
+  // not a dark-launch experiment. Agent-side dual-write stays flag-gated
+  // until the Phase-3 Tier-5 verification window completes.
+  if (!args.townHallId && !isEnabled()) return
   if (!args.rows || args.rows.length === 0) return
 
   try {
