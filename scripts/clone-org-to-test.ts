@@ -95,7 +95,40 @@ async function main() {
   //      minimal public.users stub inside the clone org.
   const test = createClient(testUrl, testKey, { auth: { persistSession: false } })
   const testDbUrl = envLocal('TEST_DB_URL')
-  const userRows = (snapshot.tables.users || []) as { id: string; email?: string | null }[]
+  let userRows = (snapshot.tables.users || []) as { id: string; email?: string | null }[]
+
+  // Identity remap: the same HUMAN can exist in both databases with
+  // different ids (e.g. the owner's real account vs the seeded dev admin —
+  // emails are unique, so the cloned users row would collide and every
+  // created_by chain would cascade into FK failures; this zeroed out an
+  // entire clone on 2026-07-03). For each cloned user whose email already
+  // exists on test under a different id: drop the cloned row and rewrite
+  // every user-reference in the snapshot to the test-side id.
+  const cloneEmails = userRows.map(u => u.email).filter(Boolean) as string[]
+  const idRemap = new Map<string, string>()
+  if (cloneEmails.length > 0) {
+    const { data: existing } = await test.from('users').select('id, email').in('email', cloneEmails)
+    for (const ex of (existing || []) as { id: string; email: string }[]) {
+      const cloned = userRows.find(u => u.email === ex.email)
+      if (cloned && cloned.id !== ex.id) idRemap.set(cloned.id, ex.id)
+    }
+  }
+  if (idRemap.size > 0) {
+    userRows = userRows.filter(u => !idRemap.has(u.id))
+    snapshot.tables.users = userRows as any
+    const USER_REF = /^(created_by|initiated_by|.*user_id)$/
+    for (const [tname, rows] of Object.entries(snapshot.tables)) {
+      if (!Array.isArray(rows)) continue
+      for (const row of rows as Record<string, unknown>[]) {
+        for (const [k, v] of Object.entries(row || {})) {
+          if (typeof v === 'string' && USER_REF.test(k) && idRemap.has(v)) row[k] = idRemap.get(v)
+        }
+      }
+      void tname
+    }
+    console.log('==> Remapped ' + idRemap.size + ' colliding user identit' + (idRemap.size === 1 ? 'y' : 'ies') + ' to existing test users (by email)')
+  }
+
   const knownUserIds = new Set(userRows.map(u => u?.id).filter(Boolean))
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const referencedUserIds = new Set<string>()
@@ -109,7 +142,7 @@ async function main() {
       }
     }
   }
-  const externalIds = [...referencedUserIds].filter(id => !knownUserIds.has(id))
+  const externalIds = [...referencedUserIds].filter(id => !knownUserIds.has(id) && !idRemap.has(id) && ![...idRemap.values()].includes(id))
   const allAuthStubs = [
     ...userRows.filter(u => u?.id).map(u => ({ id: u.id, email: String(u.email || u.id + '@clone.invalid') })),
     ...externalIds.map(id => ({ id, email: id.slice(0, 8) + '@clone.invalid' })),
@@ -126,12 +159,82 @@ async function main() {
     console.warn('⚠ TEST_DB_URL missing — cannot stub auth.users; user-linked tables will FK-fail.')
   }
 
-  // External creators also need a public.users row. That row needs the org
-  // + clients rows to exist first — restore those two tables ahead of the
-  // stubs, then the full restore below re-upserts them harmlessly.
+  // The org + any snapshot clients rows go first (parents for everything).
+  await restoreOrgSnapshot(test, snapshot, { mode: 'merge', tables: ['clients', 'organizations'] })
+
+  // Legacy `clients` stubs: the snapshot SKIPS the legacy clients table, but
+  // studies.client_id (and users.client_id) still FK it — without stubs an
+  // org whose studies carry client_id loses its ENTIRE content chain
+  // (studies → datasets → rows/collections/campaigns; zeroed a clone on
+  // 2026-07-03). Stub any referenced client id that doesn't exist on test.
+  const clientIds = new Set<string>()
+  for (const rows of Object.values(snapshot.tables) as Record<string, unknown>[][]) {
+    if (!Array.isArray(rows)) continue
+    for (const row of rows) {
+      const v = (row as Record<string, unknown>)?.client_id
+      if (typeof v === 'string' && UUID_RE.test(v)) clientIds.add(v)
+    }
+  }
+  if (clientIds.size > 0) {
+    const { data: haveClients } = await test.from('clients').select('id').in('id', [...clientIds])
+    const haveSet = new Set(((haveClients || []) as { id: string }[]).map(c => c.id))
+    for (const cid of [...clientIds].filter(c => !haveSet.has(c))) {
+      const { error } = await test.from('clients').upsert({ id: cid, name: '[CLONE stub] client', slug: 'clone-' + cid.slice(0, 8), plan: 'trial' }, { onConflict: 'id' })
+      if (error) console.warn('⚠ client stub ' + cid.slice(0, 8) + ': ' + error.message)
+    }
+  }
+
+  // External agent stubs: pulseiq_sessions.bot_id can reference an agent
+  // OUTSIDE the org (Sarina-cohort model / dev artifacts). Stub minimal
+  // paused agents for any bot_id not in the snapshot and not on test.
+  const snapshotAgentIds = new Set(((snapshot.tables.bots || []) as { id?: string }[]).map(b => b?.id).filter(Boolean) as string[])
+  const missingBotIds = new Set<string>()
+  for (const row of ((snapshot.tables.pulseiq_sessions || []) as { bot_id?: string | null }[])) {
+    const b = row?.bot_id
+    if (typeof b === 'string' && UUID_RE.test(b) && !snapshotAgentIds.has(b)) missingBotIds.add(b)
+  }
+  if (missingBotIds.size > 0) {
+    const { data: haveAgents } = await test.from('agents').select('id').in('id', [...missingBotIds])
+    const haveA = new Set(((haveAgents || []) as { id: string }[]).map(a => a.id))
+    for (const bid of [...missingBotIds].filter(b => !haveA.has(b))) {
+      const { error } = await test.from('agents').upsert({
+        id: bid, org_id: orgId, name: '[external agent stub]', slug: 'clone-agent-' + bid.slice(0, 8),
+        status: 'paused', config: { pulseiq_dedicated: true },
+        personality: 'stub', system_prompt: 'stub',
+      }, { onConflict: 'id' })
+      if (error) console.warn('⚠ agent stub ' + bid.slice(0, 8) + ': ' + error.message)
+    }
+  }
+
+  // External study stubs: datasets/campaigns can reference studies OUTSIDE
+  // the snapshot (org transfers leave datasets pointing at studies in the
+  // source org). Without stubs the whole dataset chain cascades away.
+  const snapshotStudyIds = new Set(((snapshot.tables.studies || []) as { id?: string }[]).map(r => r?.id).filter(Boolean) as string[])
+  const missingStudyIds = new Set<string>()
+  for (const t of ['datasets', 'campaigns']) {
+    for (const row of ((snapshot.tables[t] || []) as { study_id?: string | null }[])) {
+      const v = row?.study_id
+      if (typeof v === 'string' && UUID_RE.test(v) && !snapshotStudyIds.has(v)) missingStudyIds.add(v)
+    }
+  }
+  if (missingStudyIds.size > 0) {
+    const { data: haveStudies } = await test.from('studies').select('id').in('id', [...missingStudyIds])
+    const haveS = new Set(((haveStudies || []) as { id: string }[]).map(x => x.id))
+    const stubClient = [...clientIds][0] ?? null
+    for (const sid of [...missingStudyIds].filter(x => !haveS.has(x))) {
+      const { error } = await test.from('studies').upsert({
+        id: sid, org_id: orgId, client_id: stubClient,
+        guid: 'clone-' + sid.slice(0, 8), name: '[external study stub]', bot_name: 'stub',
+        config: {}, status: 'closed', visibility: 'private',
+      }, { onConflict: 'id' })
+      if (error) console.warn('⚠ study stub ' + sid.slice(0, 8) + ': ' + error.message)
+    }
+    console.log('==> Stubbed ' + missingStudyIds.size + ' external studies (org-transfer leftovers)')
+  }
+
+  // External creators also need a public.users row (org + clients exist now).
   if (externalIds.length > 0) {
-    await restoreOrgSnapshot(test, snapshot, { mode: 'merge', tables: ['clients', 'organizations'] })
-    const clientId = (snapshot.tables.clients?.[0] as { id?: string } | undefined)?.id ?? null
+    const clientId = (snapshot.tables.clients?.[0] as { id?: string } | undefined)?.id ?? [...clientIds][0] ?? null
     for (const id of externalIds) {
       const { error } = await test.from('users').upsert({
         id, org_id: orgId, client_id: clientId,
