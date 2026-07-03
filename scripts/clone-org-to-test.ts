@@ -27,6 +27,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
+import type { OrgSnapshot } from '@/lib/orgSnapshot'
 
 function envLocal(name: string): string | null {
   const strip = (v: string) => v.trim().replace(/^["']|["']$/g, '')
@@ -57,7 +58,6 @@ async function main() {
   // Lazy imports AFTER env checks — these pull in server-only modules.
   const { downloadOrgSnapshot, listOrgSnapshots } = await import('@/lib/backupS3')
   const { restoreOrgSnapshot } = await import('@/lib/orgRestore')
-  type OrgSnapshot = import('@/lib/orgSnapshot').OrgSnapshot
 
   // 1. Obtain the snapshot.
   let snapshot: OrgSnapshot

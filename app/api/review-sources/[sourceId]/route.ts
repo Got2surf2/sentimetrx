@@ -16,7 +16,7 @@ async function resolveOrg(supabase: any) {
   if (!user) return { error: 'Unauthorized', status: 401, user: null, orgId: null }
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features)')
+    .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
   const rawOrg  = userData?.organizations

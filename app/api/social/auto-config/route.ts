@@ -6,6 +6,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
+import { resolveOrg } from '@/lib/resolveOrg'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -13,9 +14,9 @@ export const fetchCache = 'force-no-store'
 async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
-  const { data } = await supabase.from('users').select('org_id, organizations(features)').eq('id', user.id).single()
-  const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations
-  return { userId: user.id, orgId: data?.org_id as string | null, features: (org as any)?.features || {} }
+  const { data } = await supabase.from('users').select('org_id, organizations(features, is_admin_org)').eq('id', user.id).single()
+  const org = resolveOrg(data?.organizations) as any
+  return { userId: user.id, orgId: data?.org_id as string | null, features: org?.features || {} }
 }
 
 const DEFAULT_CONFIG = {

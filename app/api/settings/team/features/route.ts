@@ -3,6 +3,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import type { ModuleFeatures } from '@/lib/types'
 import { serverError } from '@/lib/apiError'
+import { resolveOrg } from '@/lib/resolveOrg'
 
 const MODULE_KEYS: (keyof ModuleFeatures)[] = [
   'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'townhall', 'campaigns', 'bots',
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest) {
   // Verify caller is owner in the same org
   const { data: actor } = await supabase
     .from('users')
-    .select('org_id, role, organizations(features)')
+    .select('org_id, role, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
 
@@ -47,7 +48,7 @@ export async function PATCH(req: NextRequest) {
 
   // Sanitize: only allow module keys that the org has enabled
   const orgRaw = Array.isArray(actor.organizations) ? actor.organizations[0] : actor.organizations
-  const orgFeatures: ModuleFeatures = (orgRaw as any)?.features || {}
+  const orgFeatures: ModuleFeatures = (resolveOrg(orgRaw) as any)?.features || {}
   const sanitized: ModuleFeatures = {}
   for (const key of MODULE_KEYS) {
     if (orgFeatures[key] && features[key]) {

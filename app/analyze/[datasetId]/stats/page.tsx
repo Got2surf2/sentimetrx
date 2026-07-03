@@ -18,7 +18,7 @@ export default async function StatsPage(props: Props) {
 
   var { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features)')
+    .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
 

@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { serverError } from '@/lib/apiError'
+import { resolveOrg } from '@/lib/resolveOrg'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,12 +19,11 @@ export async function GET() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features)')
+    .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
   if (!orgData?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }
@@ -56,12 +56,11 @@ export async function POST(req: NextRequest) {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features)')
+    .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
   if (!orgData?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }

@@ -12,6 +12,7 @@ import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
+import { resolveOrg } from '@/lib/resolveOrg'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -118,7 +119,7 @@ export async function GET(req: NextRequest) {
   // Get all active connections with org settings
   const { data: connections, error } = await service
     .from('social_connections')
-    .select('id, org_id, platform, account_id, access_token, token_expires_at, organizations(features)')
+    .select('id, org_id, platform, account_id, access_token, token_expires_at, organizations(features, is_admin_org)')
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
@@ -170,7 +171,7 @@ export async function GET(req: NextRequest) {
       const moderationScores = await moderateTexts(newComments.map(c => c.text), conn.org_id)
 
       // Get org's moderation sensitivity
-      const orgData = Array.isArray((conn as any).organizations) ? (conn as any).organizations[0] : (conn as any).organizations
+      const orgData = resolveOrg((conn as any).organizations) as any
       const sensitivity = (orgData?.features?.social_auto_config?.moderation_sensitivity || 'moderate') as ModerationSensitivity
 
       // Process each comment through the shared tagging pipeline
