@@ -508,6 +508,10 @@ export async function fetchTurnsAsLegacy(
   for (const convId of Object.keys(byConv)) {
     const pid = partByConv[convId]
     let pendingAssistant: MirrorTurn | null = null
+    // Legacy semantics: turn_number counts EXCHANGES per participant
+    // (1, 2, 3, …) — not the raw per-message index of the new store
+    // (which is 0,2,4,… for user messages and confused export readers).
+    let exchangeNo = 0
     for (const ct of byConv[convId]) {
       if (ct.role === 'assistant') {
         pendingAssistant = ct
@@ -516,16 +520,20 @@ export async function fetchTurnsAsLegacy(
       const content = String(ct.content || '')
       const isSkip = /^\[Skipped/i.test(content)
       const isFiltered = /^\[filtered\]/i.test(content)
+      exchangeNo += 1
       out.push({
         participant_id: pid,
-        turn_number: ct.turn_number,
+        turn_number: exchangeNo,
         bot_message: pendingAssistant?.content ?? null,
         user_message: isSkip ? null : content,
         user_message_en: isSkip ? null : (ct.content_en ?? null),
         language: ct.language ?? null,
         theme_id: ct.topic_id ?? null,
         theme_label: ct.topic_id ? (topicLabel[ct.topic_id] || null) : null,
-        source: ct.source ?? null,
+        // The exchange's source describes how the BOT's side was served
+        // (clarifier / standby / deflect …) — take it from the assistant
+        // turn when present; the user side is almost always 'normal'.
+        source: pendingAssistant?.source ?? ct.source ?? null,
         skipped: isSkip || isFiltered,
         sentiment: ct.sentiment ?? null,
         sentiment_score: typeof ct.sentiment_score === 'number' ? ct.sentiment_score : null,
@@ -535,9 +543,10 @@ export async function fetchTurnsAsLegacy(
     }
     // Trailing open question (bot asked, nobody answered yet).
     if (pendingAssistant) {
+      exchangeNo += 1
       out.push({
         participant_id: pid,
-        turn_number: pendingAssistant.turn_number,
+        turn_number: exchangeNo,
         bot_message: pendingAssistant.content ?? null,
         user_message: null,
         user_message_en: null,

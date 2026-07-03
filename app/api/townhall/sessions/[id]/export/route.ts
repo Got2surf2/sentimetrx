@@ -182,20 +182,23 @@ export async function GET(req: NextRequest, props: Params) {
             if (!participants[pid]) participants[pid] = []
             const sortedTurns = byConv[convId].sort((a: any, b: any) => a.turn_number - b.turn_number)
             let pendingAssistant: any = null
+            let exchangeNo = 0
             for (const ct of sortedTurns) {
               if (ct.role === 'assistant') {
                 pendingAssistant = ct
                 continue
               }
-              // user turn — pair with most recent assistant
+              // user turn — pair with most recent assistant. `turn` counts
+              // exchanges (1,2,3,…), matching the legacy export semantics.
+              exchangeNo += 1
               participants[pid].push({
-                turn: ct.turn_number,
+                turn: exchangeNo,
                 bot: pendingAssistant?.content || '',
                 user: ct.content,
                 user_en: ct.content_en,
                 language: ct.language,
                 topic: ct.topic_id ? (topicLabel[ct.topic_id] || null) : null,
-                source: ct.source,
+                source: pendingAssistant?.source ?? ct.source,
                 skipped: !!ct.skipped,
                 time: ct.created_at,
                 bot_flags: Array.isArray(pendingAssistant?.content_flags) ? pendingAssistant.content_flags : null,

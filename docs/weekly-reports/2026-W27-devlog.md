@@ -371,3 +371,7 @@ WHY: owner's follow-up on the dry-run: (1) the dismissiveness was the core sin �
 ## 2026-07-04 — Closing message reaches idle participants (owner dry-run)
 
 WHY: owner ended a test session and the participant window never showed the closing message. Root cause: TownHallChat stopped polling entirely once status hit active — only a SENT message would surface the closed state (the chat shim replies with the closing on closed sessions, but idle participants never send one). Fix: activation downshifts the 3s poll to a 15s end-watch poll (200-participant room = ~13 req/min — negligible); on ended-while-chatting, the closing message lands as a bot bubble and the post-session question flow starts, mirroring the is_final path. Needs owner visual re-test (client-side behavior; server paths already harness-covered).
+
+## 2026-07-04 — Export turn semantics: exchanges, not raw message indexes (owner question)
+
+WHY: owner's XLSX showed turn_number 0,2,4,…,16,17 — the pairing projection leaked the new store's per-message numbering (user messages land on even indexes). A "turn" in exports = one EXCHANGE (bot message + reply, one row). fetchTurnsAsLegacy + the export json branch now number exchanges 1,2,3,… per participant (trailing unanswered question = next number), and the exchange's `source` column now comes from the ASSISTANT side of the pair (clarifier/standby/deflect were invisible — every row said "normal" because the user side is always normal). Harness 8/8 + tests green.
