@@ -16,7 +16,19 @@ Key is deterministic per (org, day). Re-running on the same day overwrites the k
 
 ### Tables captured
 
-Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`. Grouped by how the org filter is applied:
+Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`.
+
+> **Coverage audit (2026-07-03, owner-driven):** the snapshot inventory was
+> incomplete — MISSING entirely: the whole **recordings/Town Hall module**
+> (recordings, files, transcripts, extractions, config versions),
+> **saved_views**, **dataset_row(_field)_taxonomy** (also 100K-cap-truncated
+> at 128K prod rows — caps raised to 500K), **question_batches /
+> logged_questions**, **reo_gold_review**, **agent_impressions**,
+> **conversation_reviews**, **org/user_features**, **user_favorites**. All
+> added. Explicit non-DB posture: **Supabase Storage binaries (recording
+> media, logos) are NOT in org snapshots** — they rely on Supabase Storage
+> durability; an S3 bucket-sync is a future hardening item. Regenerable AI
+> caches (readout/study) and demo scratch are skipped with reasons. Grouped by how the org filter is applied:
 
 - **By `org_id` directly**: agents (formerly `bots`), studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, conversations, conversation_turns, pulseiq_sessions, pulseiq_session_conversations, pulseiq_topics, etc.
 - **Via a parent table** (e.g. `bot_id IN (SELECT id FROM agents WHERE org_id = $1)`): agent_knowledge_chunks, agent_conversation_reviews, bot_conversation_turns (transitional, drops at Tier 5), responses, campaign_emails, etc.

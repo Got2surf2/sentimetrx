@@ -145,6 +145,33 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'reddit_sources', filter: { kind: 'org_id' }, cap: NO_CAP },
   { name: 'reddit_source_threads', filter: { kind: 'parent_via', via: 'source_id', parent: 'reddit_sources' }, cap: DEFAULT_CAP },
 
+  // Town Hall / recordings module (2026-07-03 — owner audit: the ENTIRE
+  // module was missing from backups; media binaries live in Supabase
+  // Storage and are NOT in DB snapshots — see docs/BACKUPS.md posture)
+  { name: 'recordings', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'recording_files', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'recording_transcripts', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'recording_extractions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'recording_config_versions', filter: { kind: 'org_id' }, cap: NO_CAP },
+
+  // Feature flags + favorites (same audit)
+  { name: 'org_features', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'user_features', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, cap: NO_CAP },
+  { name: 'user_favorites', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, cap: NO_CAP },
+
+  // Dataset metadata (2026-07-03 — owner audit found these MISSING from
+  // backups entirely: themes live in dataset_state which was covered, but
+  // saved views, taxonomy classifications, client-review flow, gold sets,
+  // and review/impression records were not backed up at all)
+  { name: 'saved_views', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'dataset_row_taxonomy', filter: { kind: 'org_id' }, cap: 500_000 },
+  { name: 'dataset_row_field_taxonomy', filter: { kind: 'org_id' }, cap: 500_000 },
+  { name: 'question_batches', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'logged_questions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'reo_gold_review', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'agent_impressions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'conversation_reviews', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+
   // Misc
   { name: 'usage_logs', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
   { name: 'shared_links', filter: { kind: 'org_id' }, cap: NO_CAP },
@@ -162,6 +189,10 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'sentry_snapshots', filter: { kind: 'skip', reason: 'global error capture' } },
   { name: 'user_locations', filter: { kind: 'skip', reason: 'geo IP cache, regeneratable' } },
   { name: 'clients', filter: { kind: 'skip', reason: 'legacy table' } },
+  { name: 'agent_readout_cache', filter: { kind: 'skip', reason: 'AI readout cache, regenerable' } },
+  { name: 'agent_study_cache', filter: { kind: 'skip', reason: 'AI study-report cache, regenerable' } },
+  { name: 'schema_migrations', filter: { kind: 'skip', reason: 'migration ledger, infra not tenant data' } },
+  { name: 'mco_handoff_sessions', filter: { kind: 'skip', reason: 'demo scratch state' } },
 ]
 
 async function fetchParentIds(orgId: string, parent: 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections'): Promise<string[]> {
