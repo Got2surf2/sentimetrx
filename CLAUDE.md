@@ -8,7 +8,7 @@ Project-specific guidance for Claude Code working in this repo. Personal/global 
 
 ## Stack
 
-Next.js 16 App Router, TypeScript (strict), React 19, Supabase (Postgres + Auth + Storage with RLS), Anthropic Claude, Vercel (pushes to `main` auto-deploy to production), Resend, DataForSEO.
+Next.js 16 App Router, TypeScript (strict), React 19, Supabase (Postgres + Auth + Storage with RLS), Anthropic Claude, Vercel (pushes to `main` deploy to production **after CI passes** — deploy-behind-CI, ENGINEERING §12), Resend, DataForSEO.
 
 Node 22.x. Single repo on `main` — staging is retired.
 
@@ -17,7 +17,7 @@ Node 22.x. Single repo on `main` — staging is retired.
 **Default: commit-only.** Every commit stays **local** — whether on `main` or **any** other branch — until the user says **"push"** / "let's push" / similar verbatim.
 
 - **This covers EVERY branch, not just `main`.** Do NOT `git push` to a feature branch, a `claude/*` branch, a PR branch, or anything else without the explicit word. Every push to any branch triggers a **Vercel preview build** (which costs build resources), and pushes to `main` trigger a **production deploy**. The user wants zero builds they didn't ask for — so all pushing is gated, period. Open a PR / push a branch only when explicitly told to.
-- Pushes to `main` trigger **Vercel auto-deploy to production**. Each build costs **~$8–10** (grows with the codebase) and goes live to customers immediately. Treat every authorized push as a production release.
+- Pushes to `main` trigger a **production deploy once CI is green** (deploy-behind-CI — a red CI run deploys nothing). Each build costs **~$8–10** (grows with the codebase) and goes live to customers as soon as CI passes. Treat every authorized push as a production release.
 - Even when CI is clean, typecheck passes, and the work feels "done" — **do NOT push** without the explicit word. Assume no until told yes.
 - Do NOT ask "should I push?" at the end of every task — it's noise. Wait for the user to ask for a push.
 - **Only raise a push when the work genuinely cannot be verified without a production deploy.** Almost everything is testable locally — `npm run dev` runs against the **TEST project** by default (2026-07-03 dev-mode split; break/seed anything freely), and `npm run dev:prod` deliberately targets the prod DB with a red banner for read-only QC like exports/reports — plus `npm run typecheck`, `npm test`, and render/QC harnesses. The default is: verify locally, commit, and leave it local. If you find yourself wanting a push purely to *check* that something works, that's the signal to test it locally instead — at ~$8–10/build, a push is for **shipping** a verified change to users, never for verification. Surface "N commits ahead, not pushed" and let the user decide when to ship.

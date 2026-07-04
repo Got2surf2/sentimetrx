@@ -1,5 +1,10 @@
 {
   "buildCommand": "next build --webpack",
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/campaign-scheduler",

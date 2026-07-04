@@ -592,26 +592,40 @@ restart locally and a deploy to reach prod.
 
 ## 12. Release process
 
-Today: push to `main` → Vercel auto-deploys to production.
+Today: push to `main` → CI (typecheck, lint ratchet, unit +
+integration, RLS/egress isolation) → on all-green, the CI `deploy`
+job fires a Vercel deploy hook → production build + deploy
+(**deploy-behind-CI**, 2026-07-04).
 
 Constraints:
 
-- **Every push to `main` IS a release.** No "let me try this and
-  see" pushes — every commit ends up serving traffic.
+- **Every push to `main` IS a release** — but it no longer races
+  CI. `vercel.json` sets `git.deploymentEnabled: { main: false }`,
+  so pushes never auto-build; the ONLY production trigger is the
+  CI `deploy` job (fires the `VERCEL_DEPLOY_HOOK_MAIN` repo-secret
+  hook after every check passes). A red typecheck/test/isolation
+  run now means NO deploy, instead of a broken build going live
+  while CI ran.
 - **Pushing is gated on EVERY branch, not just `main`** (CLAUDE.md
   push policy). No `git push` to a feature / `claude/*` / PR branch
-  without explicit human say-so — each one triggered a Vercel build.
+  without explicit human say-so.
 - **Preview builds are disabled.** `scripts/vercel-ignore-build.sh`
   is wired as the project's **Ignored Build Step** (Settings → Git):
-  only Production deployments build; every Preview build is skipped
-  (exit 0). So branch/PR pushes no longer burn builds — the only way
-  to deploy is an authorized push to `main`. (Flip the script's
-  per-env logic if preview QA is ever wanted again.)
-  - **Docs-only production deploys also skip** (added 2026-06-16): a
-    merge to `main` whose `HEAD^..HEAD` range touches only `docs/`
-    (markdown specs + the weekly governance files) exits 0, so the
-    weekly devlog / spec-drift PRs don't each cost a production build.
-    Defaults to BUILD if `HEAD^` is unreachable (shallow clone).
+  every Preview build is skipped (exit 0); Production (which by
+  construction arrives via the CI hook) always builds. So branch/PR
+  pushes never burn builds. (Flip the script's per-env logic if
+  preview QA is ever wanted again.)
+- **Docs-only pushes still deploy nothing** — the CI deploy job
+  diffs the FULL push range (`github.event.before..HEAD`) against
+  `:(exclude)docs` and skips the hook when only `docs/` changed.
+  (This decision used to live in the ignore script as a
+  `HEAD^..HEAD` diff, which mis-classified a multi-commit push that
+  merely *ended* in a docs commit — the range fix is why it moved
+  to CI.) Defaults to DEPLOY when the range is unknowable
+  (force-push, first push).
+- **Manual fallback:** if the hook path is ever broken,
+  `vercel deploy --prod` from an authorized laptop deploys
+  independently of the git integration.
 - **Rollback:** `vercel rollback <previous-deployment-url>`.
   Instant. Use it instead of a hotfix when the issue is "previous
   version was fine, current is broken."
@@ -620,14 +634,15 @@ Constraints:
   code that reads/writes it.
 - **Manual gate for risky changes (post first paying customer):**
   introduce a `deploy: manual` label on risky PRs that holds the
-  Vercel auto-deploy until owner approves on the preview URL.
+  deploy until owner approves on the preview URL.
   Today the solo-team scale doesn't justify the friction.
   Open `<TBD>` item 19.
 
-**How we verify:** every push to `main` produces a Vercel
-deployment; rollback is one CLI command if the post-deploy smoke
-check fails. The "manual gate" check is on the honor system until
-item 19 lands.
+**How we verify:** every code push to `main` with green CI produces
+exactly one Vercel deployment (visible as the deploy-hook build in
+the Vercel dashboard); a red CI run produces none. Rollback is one
+CLI command if the post-deploy smoke check fails. The "manual gate"
+check is on the honor system until item 19 lands.
 
 ### Promoting configured entities test → prod
 

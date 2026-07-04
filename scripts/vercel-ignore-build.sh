@@ -7,26 +7,23 @@
 #   exit 1 → BUILD  (proceed with the deployment)
 #   exit 0 → SKIP   (ignore this commit; no build, no preview, no cost)
 #
-# Policy: ONLY Production deployments build. Every Preview build is skipped, so
-# pushes to feature branches / PRs (by any session) never burn a build. The only
-# way to deploy is an authorized push to the production branch (main) — which is
-# itself gated by the human-only push policy in CLAUDE.md.
+# Policy since deploy-behind-CI (2026-07-04):
+#   - Production builds are triggered ONLY by the CI deploy hook after every
+#     check is green (vercel.json git.deploymentEnabled disables push-triggered
+#     main builds). By the time a production build reaches this script, CI has
+#     already decided it is deploy-worthy — including the docs-only skip,
+#     evaluated over the FULL push range (the old HEAD^..HEAD diff here could
+#     mis-skip a multi-commit push that merely ENDED in a docs commit). So
+#     production always builds here.
+#   - Every Preview build is still skipped: pushes to feature branches / PRs
+#     (by any session) never burn a build. The only way to deploy remains an
+#     authorized push to main — gated by the human-only push policy in
+#     CLAUDE.md, and now by CI green.
 
 set -uo pipefail
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
-  # Even on production, skip when the commit range touches ONLY docs/ (markdown
-  # specs + the weekly governance files in docs/weekly-reports/) — a docs-only
-  # merge to main shouldn't trigger a ~$8-10 production deploy. git diff --quiet
-  # exits 0 when the pathspec has NO changes; ":(exclude)docs" = everything but
-  # docs/, so a clean exit means nothing outside docs/ changed. Default to BUILD
-  # if HEAD^ isn't reachable (shallow clone) — never skip a deploy we can't
-  # reason about.
-  if git rev-parse HEAD^ >/dev/null 2>&1 && git diff --quiet HEAD^ HEAD -- . ':(exclude)docs'; then
-    echo "production, but only docs/ changed → skip build"
-    exit 0
-  fi
-  echo "production deployment → build"
+  echo "production deployment (CI-gated deploy hook) → build"
   exit 1
 fi
 

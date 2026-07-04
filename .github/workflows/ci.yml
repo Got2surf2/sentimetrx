@@ -100,3 +100,54 @@ jobs:
 
       - name: Dataset route egress
         run: npm run test:dataset-egress
+
+  deploy:
+    name: production deploy (after green)
+    # Deploy-behind-CI (2026-07-04): pushes to main no longer auto-deploy —
+    # vercel.json sets git.deploymentEnabled main:false, and THIS job fires
+    # the Vercel deploy hook only when every check above is green, so a
+    # broken build can never race CI into production. Docs-only pushes skip
+    # the deploy, evaluated over the FULL push range (the retired
+    # ignored-build-step check diffed HEAD^..HEAD only, so a multi-commit
+    # push ending in a docs commit would have silently skipped deploying
+    # its code). Manual fallback if the hook path is ever broken:
+    # `vercel deploy --prod` from an authorized laptop.
+    needs: [test, isolation]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gate — skip docs-only pushes (full push range)
+        id: gate
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "push range unknown → deploy"
+            echo "deploy=yes" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" HEAD -- . ':(exclude)docs'; then
+            echo "docs-only push → no deploy needed"
+            echo "deploy=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "code changed → deploy"
+            echo "deploy=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Vercel production build
+        if: steps.gate.outputs.deploy == 'yes'
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_MAIN }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_MAIN secret is not set — create a main-branch deploy hook (Vercel → Settings → Git → Deploy Hooks) and add it: gh secret set VERCEL_DEPLOY_HOOK_MAIN"
+            exit 1
+          fi
+          curl -sf -X POST "$HOOK"
+          echo ""
+          echo "Deploy hook fired — Vercel is building the current HEAD of main."
