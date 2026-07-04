@@ -44,6 +44,26 @@ export async function GET(req: Request) {
     const elapsed = (Date.now() - lastRun) / 60000
     if (elapsed < 10) continue
 
+    // Idle guard: skip the paid AI run when no user turn has arrived since
+    // the last detection (last_theme_detection_at is only set after a
+    // successful run, so null means never-ran — don't skip those).
+    if (th.last_theme_detection_at) {
+      const { data: linkedConvs } = await supabase
+        .from('pulseiq_session_conversations')
+        .select('conversation_id')
+        .eq('town_hall_id', th.id)
+      const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
+      if (conversationIds.length === 0) continue
+      const { data: newTurns } = await supabase
+        .from('conversation_turns')
+        .select('id')
+        .in('conversation_id', conversationIds)
+        .eq('role', 'user')
+        .gt('created_at', th.last_theme_detection_at)
+        .limit(1)
+      if (!newTurns || newTurns.length === 0) continue
+    }
+
     scanned++
     try {
       const result = await detectThemesForTownHall(th.id)

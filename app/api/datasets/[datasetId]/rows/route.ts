@@ -254,7 +254,7 @@ export async function POST(req: Request, props: Params) {
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  const { data: dsCheck } = await supabase.from('datasets').select('org_id, row_count').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
@@ -286,11 +286,10 @@ export async function POST(req: Request, props: Params) {
   const insertResult = await service.from('dataset_rows_flat').insert(flatRows)
   if (insertResult.error) return serverError(insertResult.error, 'datasets.rows.insert', { orgId: auth.orgId })
 
-  const { count } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
-  const total = count || 0
+  // Running total — an exact count(*) over the whole dataset per appended batch
+  // is quadratic across a large upload. DELETE below still recounts exactly, so
+  // any drift self-heals on the next rollback.
+  const total = (dsCheck.row_count || 0) + rows.length
 
   await service
     .from('datasets')

@@ -602,10 +602,12 @@ export async function POST(req: Request, props: Params) {
   // respondents who mentioned this theme", with denominator = rows that have text in this field.
   function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
     if (!themeList.length || !allRows.length) return themeList
-    const nonEmpty = allRows.filter(function(row) {
-      return rowVal(row, fieldKey).trim().length > 0
-    })
-    const total = nonEmpty.length || 1
+    // Extract + lowercase each row's text once (not per theme)
+    const texts = allRows
+      .map(function(row) { return rowVal(row, fieldKey) })
+      .filter(function(t) { return t.trim().length > 0 })
+      .map(function(t) { return t.toLowerCase() })
+    const total = texts.length || 1
     // Pre-compile regexes once per theme (not per row)
     const themeRegexes = themeList.map(function(t: any) {
       return (t.keywords || []).map(function(kw: string) { return buildKwRegex(kw) })
@@ -613,8 +615,7 @@ export async function POST(req: Request, props: Params) {
     return themeList
       .map(function(t: any, ti: number) {
         const regexes = themeRegexes[ti]
-        const count = nonEmpty.filter(function(row) {
-          const text = rowVal(row, fieldKey).toLowerCase()
+        const count = texts.filter(function(text) {
           return regexes.some(function(re: RegExp) { return re.test(text) })
         }).length
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100), totalResponses: total })
@@ -1117,22 +1118,23 @@ export async function POST(req: Request, props: Params) {
     }
 
     // theme-detail quote picking (async; mirrors the old buildThemeSlides)
-    function matchesTheme(text: string, keywords: string[]): boolean {
-      if (!keywords?.length) return false
+    function matchesTheme(text: string, regexes: RegExp[]): boolean {
+      if (!regexes.length) return false
       const lower = text.toLowerCase()
-      return keywords.some(function(kw) {
-        const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(lower)
-      })
+      return regexes.some(function(re) { return re.test(lower) })
     }
     async function themeDetailQuotes(t: any): Promise<{ text: string }[]> {
       if (!allRows.length || !themeFields.length) return []
       const keys = themeFields.map(fk => rowKeyMap[normalize(fk)] || fk)
+      const kwRegexes = ((t.keywords || []) as string[]).map(function(kw) {
+        const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        return new RegExp('(?<![a-z])' + e + '\\w*', 'i')
+      })
       const matched: string[] = []
       for (const row of allRows) {
         const text = keys.map(k => String(row[k] || '')).join(' ').trim().replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ')
         if (text.length < 80) continue
-        if (matchesTheme(text, t.keywords || [])) matched.push(text)
+        if (matchesTheme(text, kwRegexes)) matched.push(text)
       }
       if (!matched.length) return []
       matched.sort((a, b) => b.length - a.length)

@@ -58,22 +58,35 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    // Get target respondents
-    let respondentQuery = service
-      .from('campaign_respondents')
-      .select('*')
-      .eq('campaign_id', campaign.id)
+    // Get target respondents — paged, since PostgREST caps a single
+    // request at 1000 rows (max-rows)
+    const respondentQuery = () => {
+      let q = service
+        .from('campaign_respondents')
+        .select('*')
+        .eq('campaign_id', campaign.id)
 
-    if (emailTemplate.send_to === 'non_responders') {
-      respondentQuery = respondentQuery.in('status', ['sent', 'opened', 'clicked'])
-    } else if (emailTemplate.send_to === 'incompletes') {
-      respondentQuery = respondentQuery.in('status', ['clicked'])
-    } else {
-      respondentQuery = respondentQuery.eq('status', 'pending')
+      if (emailTemplate.send_to === 'non_responders') {
+        q = q.in('status', ['sent', 'opened', 'clicked'])
+      } else if (emailTemplate.send_to === 'incompletes') {
+        q = q.in('status', ['clicked'])
+      } else {
+        q = q.eq('status', 'pending')
+      }
+      return q.order('id', { ascending: true })
     }
-
-    const { data: respondents } = await respondentQuery
-    if (!respondents || respondents.length === 0) {
+    type RespondentRow = NonNullable<Awaited<ReturnType<typeof respondentQuery>>['data']>[number]
+    const respondents: RespondentRow[] = []
+    let offset = 0
+    const PAGE = 1000
+    while (true) {
+      const { data: batch } = await respondentQuery().range(offset, offset + PAGE - 1)
+      if (!batch || batch.length === 0) break
+      respondents.push(...batch)
+      if (batch.length < PAGE) break
+      offset += PAGE
+    }
+    if (respondents.length === 0) {
       await service.from('campaign_schedules').update({ status: 'completed', executed_at: now.toISOString() }).eq('id', schedule.id)
       continue
     }

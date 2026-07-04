@@ -170,6 +170,44 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     const olderMessages = messages.slice(0, -8)
     const recentRaw = messages.slice(-8)
 
+    // Summary reuse — a fresh AI summary on EVERY turn past 12 messages is
+    // wasted spend/latency when the covered prefix barely changed. Stash the
+    // summary on the conversations row (metadata.chat_summary) — it round-
+    // trips across serverless invocations — and reuse it until 6 new
+    // messages accumulate past the covered prefix (verbatim window grows
+    // 8→14, then re-summarize). Missing conversations row (dual-write off /
+    // not yet mirrored) falls back to the fresh call.
+    let cachedSummary: { summary: string; upToCount: number } | null = null
+    let convRowId: string | null = null
+    let convMetadata: Record<string, unknown> = {}
+    if (session_id) {
+      const { data: convRow, error: convRowErr } = await service
+        .from('conversations')
+        .select('id, metadata')
+        .eq('bot_id', bot.id)
+        .eq('org_id', bot.org_id)
+        .eq('session_id', session_id)
+        .maybeSingle()
+      if (convRowErr) void logError('chatCore.summaryCache', convRowErr, { orgId: bot.org_id })
+      if (convRow) {
+        convRowId = convRow.id
+        convMetadata = (convRow.metadata || {}) as Record<string, unknown>
+        const cs = convMetadata.chat_summary as { summary?: unknown; upToCount?: unknown } | undefined
+        if (cs && typeof cs.summary === 'string' && typeof cs.upToCount === 'number' && cs.upToCount > 0) {
+          cachedSummary = { summary: cs.summary, upToCount: cs.upToCount }
+        }
+      }
+    }
+
+    const cacheGap = cachedSummary ? messages.length - cachedSummary.upToCount : -1
+    if (cachedSummary && cacheGap >= 8 && cacheGap <= 14) {
+      recentMessages = [
+        { role: 'user' as const, content: '[Earlier in this conversation: ' + cachedSummary.summary + ']' },
+        ...messages.slice(cachedSummary.upToCount),
+      ]
+      if (debugMode) _debug.push('Context: reused cached summary of first ' + cachedSummary.upToCount + ' messages (' + cacheGap + ' verbatim)')
+    } else {
+
     // Build a quick summary of older turns
     const olderSummary = olderMessages.map(function(m: any) {
       const prefix = m.role === 'user' ? 'User' : 'Bot'
@@ -202,16 +240,26 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       })
       logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'summary' }, summaryResult.usage)
 
+      const summaryText = summaryResult.text.trim()
       recentMessages = [
-        { role: 'user' as const, content: '[Earlier in this conversation: ' + summaryResult.text.trim() + ']' },
+        { role: 'user' as const, content: '[Earlier in this conversation: ' + summaryText + ']' },
         ...recentRaw,
       ]
+      if (convRowId) {
+        void service
+          .from('conversations')
+          .update({ metadata: { ...convMetadata, chat_summary: { summary: summaryText, upToCount: messages.length - 8 } } })
+          .eq('id', convRowId)
+          .eq('org_id', bot.org_id)
+          .then(function() {})
+      }
       if (debugMode) _debug.push('Context: compressed ' + olderMessages.length + ' older messages into summary')
     } catch {
       // If summary fails, just use the last 10 messages
       recentMessages = messages.slice(-10)
       if (debugMode) _debug.push('Context: summary failed, using last 10 messages')
     }
+    } // end cached-summary else
   } else {
     recentMessages = messages.slice(-12)
   }
@@ -606,6 +654,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     systemParts.push('\n\nFOLLOW-UP PILLS: When you END a reply by offering the person a choice between a few next steps (e.g. "Want to hear about the impact, the buildings, or how to get involved?"), append a trailer on its own final line in EXACTLY this format:\n[[chips: First option | Second option | Third option]]\nRules: 2–4 options, each 2–5 words, phrased in the visitor\'s voice as something they would tap, mirroring the choices you just named. Use it ONLY when there are discrete next-step options — never after an open-ended question (like asking their name) or when there is nothing concrete to choose. The widget renders the trailer as clickable buttons and hides the raw text, so never mention "chips" or the brackets in your prose.')
   }
 
+  // Anthropic prompt-cache boundary. Everything pushed above is stable per
+  // agent across turns (the date line changes daily; toneNudge/MCO blocks
+  // are occasional per-turn variances that just miss the cache that turn).
+  // Everything pushed below varies per turn (RAG chunks, PulseIQ topic
+  // focus, verbosity, persona), so it goes after the cache breakpoint.
+  const stableSystemPartCount = systemParts.length
+
 
   // RAG: semantic search with embeddings + full-text + trigram
   // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge
@@ -774,22 +829,36 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
 
         const responseCount: Record<string, number> = {}
+        let totalTopicResponses = 0
         const participantDiscussed = new Set<string>()
         let myTurns: any[] = []
 
         if (conversationIds.length > 0) {
-          const { data: allTopicTurns, error: allTopicTurnsErr } = await service
-            .from('conversation_turns')
-            .select('topic_id, conversation_id, role')
-            .in('conversation_id', conversationIds)
-            .not('topic_id', 'is', null)
-          if (allTopicTurnsErr) void logError('chatCore.handleChatTurn', allTopicTurnsErr, { orgId: bot.org_id })
-          for (const t of (allTopicTurns || [])) {
-            const tid = (t as any).topic_id as string
-            if (t.role === 'assistant') {
-              responseCount[tid] = (responseCount[tid] || 0) + 1
-            }
-          }
+          // Count-only queries (head:true) instead of fetching every topic-
+          // tagged turn row: the row fetch was silently capped at 1,000 by
+          // PostgREST max-rows, skewing topic balancing on large cohorts.
+          // One count per pool topic + one grand total (the total also
+          // covers topics no longer in the active/pending pool, preserving
+          // the theme-detection trigger cadence below).
+          const topicCounts = await Promise.all([
+            ...topics.map(t => service
+              .from('conversation_turns')
+              .select('id', { count: 'exact', head: true })
+              .in('conversation_id', conversationIds)
+              .eq('role', 'assistant')
+              .eq('topic_id', t.id)),
+            service
+              .from('conversation_turns')
+              .select('id', { count: 'exact', head: true })
+              .in('conversation_id', conversationIds)
+              .eq('role', 'assistant')
+              .not('topic_id', 'is', null),
+          ])
+          topicCounts.forEach((r, i) => {
+            if (r.error) { void logError('chatCore.handleChatTurn', r.error, { orgId: bot.org_id }); return }
+            if (i < topics.length) responseCount[topics[i].id] = r.count || 0
+            else totalTopicResponses = r.count || 0
+          })
 
           // Participant-specific: which topics has THIS session touched?
           // session_id from PulseIQ delegation = townHallId + ':' + participantId.
@@ -1099,7 +1168,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // is also driven by the 15-min cron (Phase 5 commit 1) but the
         // response-count trigger gives faster theme discovery for live
         // sessions. Matches the legacy PulseIQ trigger semantics.
-        const totalResponses = Object.values(responseCount).reduce((a: number, b: number) => a + b, 0)
+        const totalResponses = totalTopicResponses
         const threshold = Number(cohortConfig?.theme_detection_every_n_responses) || 20
         // Honor Organic Topic Discovery mode (top-level lifted by sessions
         // POST; nested engine.* fallback for console-edited configs).
@@ -1299,18 +1368,46 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     _debug.push('AI call: tier=fast, maxTokens=400, system prompt=' + Math.round(systemParts.join('\n').length / 1000) + 'K chars, ' + recentMessages.length + ' messages')
   }
 
+  // Translate-to-English for analysis (convergence item 4 — legacy PulseIQ
+  // parity, now for agents too): non-English user turns get a content_en
+  // translation so theme detection / TextMine read English, and the
+  // (English-lexicon) sentiment scorer scores the translation. Started HERE
+  // so it runs concurrently with the main reply call below instead of adding
+  // its latency serially before turn storage. Best-effort with a short cap;
+  // resolves null on failure (turn stored without translation).
+  const translationPromise: Promise<string | null> | null =
+    (session_id && lastUserMsg?.content && botLang && botLang !== 'en')
+      ? callAI({
+          tier: 'fast', maxTokens: 500, timeoutMs: 3000,
+          system: 'You are a translator. Translate the following text to English. Return ONLY the translation, nothing else.',
+          messages: [{ role: 'user', content: lastUserMsg.content }],
+        }).then(function(tr) {
+          logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'translate' }, tr.usage)
+          return (tr.text && tr.text.trim().length > 2) ? tr.text.trim() : null
+        }).catch(function() { return null })
+      : null
+
   try {
     // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
     // TUESDAY DEMO 2026-05-19: bumped main response tier to Sonnet 4.6 for the
     // Vindman demo. Auxiliary calls (summary/deflection/intent/persona) stay on
     // Haiku since they don't need it. Revert to 'fast' after the demo to save
     // ~3x on per-turn cost.
+    // System prompt goes as two blocks with cache_control on the stable
+    // prefix — repeated turns read the prefix from the Anthropic prompt
+    // cache instead of re-billing it (and cache reads don't count against
+    // ITPM). The '\n' prepended to the volatile block preserves the exact
+    // bytes the old single join('\n') produced.
+    const stableSystem = systemParts.slice(0, stableSystemPartCount).join('\n')
+    const volatileSystem = systemParts.slice(stableSystemPartCount).join('\n')
     const result = await callAI({
       tier: 'advanced',
       maxTokens: 400,
       timeoutMs: 30000,
       messages: recentMessages,
-      system: systemParts.join('\n'),
+      system: volatileSystem
+        ? [{ type: 'text' as const, text: stableSystem, cache: true }, { type: 'text' as const, text: '\n' + volatileSystem }]
+        : [{ type: 'text' as const, text: stableSystem, cache: true }],
     })
 
     // Log usage
@@ -1399,21 +1496,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         else if (insertedGreetingThisTurn) turnBase = 1  // T0=greeting; user → T1, reply → T2.
         var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
         if (auditFlags.length > 0) userTurn.content_flags = auditFlags
-        // Translate-to-English for analysis (convergence item 4 — legacy
-        // PulseIQ parity, now for agents too): non-English user turns get a
-        // content_en translation so theme detection / TextMine read English,
-        // and the (English-lexicon) sentiment scorer scores the translation.
-        // Best-effort with a short cap; on failure store without.
-        if (userContent && botLang && botLang !== 'en') {
-          try {
-            const tr = await callAI({
-              tier: 'fast', maxTokens: 500, timeoutMs: 3000,
-              system: 'You are a translator. Translate the following text to English. Return ONLY the translation, nothing else.',
-              messages: [{ role: 'user', content: userContent }],
-            })
-            logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'translate' }, tr.usage)
-            if (tr.text && tr.text.trim().length > 2) userTurn.content_en = tr.text.trim()
-          } catch { /* store without translation */ }
+        // content_en translation — the call was started before the main
+        // reply call above (translationPromise); by now it has usually
+        // already settled, so this await costs ~nothing.
+        if (translationPromise) {
+          const translated = await translationPromise
+          if (translated) userTurn.content_en = translated
         }
         if (userContent) {
           var sentResult = scoreSentimentFull((userTurn.content_en as string) || userContent)

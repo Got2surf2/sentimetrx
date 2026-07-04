@@ -129,7 +129,12 @@ function fkDb(opts: {
             eq(c: string, v: unknown) {
               const rows = tbl(table).filter(r => r[c] === v)
               if (o?.head) return Promise.resolve({ count: rows.length, error: null })
-              return Promise.resolve({ data: rows.map(r => ({ id: r.id, org_id: r.org_id })), error: null })
+              return {
+                order: (_oc: string, _oo?: unknown) => ({
+                  range: (from: number, to: number) =>
+                    Promise.resolve({ data: rows.slice(from, to + 1).map(r => ({ id: r.id, org_id: r.org_id })), error: null }),
+                }),
+              }
             },
           }
         },

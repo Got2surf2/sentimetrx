@@ -58,50 +58,65 @@ function mean(sum: number, n: number): number | null {
   return n > 0 ? +(sum / n).toFixed(1) : null
 }
 
-/** Pure aggregation over already-fetched taxonomy rows. */
-export function aggregateTaxonomy(rows: TaxonomyRow[], topSubs = 40): TaxonomyRollup {
-  const n = rows.length
-  const axisCount: Record<string, number> = {}
-  const subCount: Record<string, number> = {}
-  const subPos: Record<string, number> = {}
-  const subNeg: Record<string, number> = {}
-  const alertCount: Record<string, number> = {}
+// Streaming accumulator behind aggregateTaxonomy, so the paged rollup read can
+// fold each page in without buffering every classified row.
+interface TaxonomyAcc {
+  n: number
+  axisCount: Record<string, number>
+  subCount: Record<string, number>
+  subPos: Record<string, number>
+  subNeg: Record<string, number>
+  alertCount: Record<string, number>
   // avg-rating accumulators: [sum, count] of the rating field over matching rows
-  const axisRatS: Record<string, number> = {}, axisRatN: Record<string, number> = {}
-  const subRatS: Record<string, number> = {},  subRatN: Record<string, number> = {}
-  let overallRatS = 0, overallRatN = 0
-  let withSignal = 0, alertRows = 0
+  axisRatS: Record<string, number>; axisRatN: Record<string, number>
+  subRatS: Record<string, number>;  subRatN: Record<string, number>
+  overallRatS: number; overallRatN: number
+  withSignal: number; alertRows: number
+}
 
-  for (const r of rows) {
-    const rv = r.rating != null ? Number(r.rating) : NaN
-    const rating = Number.isFinite(rv) ? rv : null
-    if (rating != null) { overallRatS += rating; overallRatN++ }
-    let any = false
-    for (const ax of AXES) {
-      const arr = (r as unknown as Record<string, string[]>)['axis_' + ax]
-      if (arr && arr.length) {
-        any = true
-        axisCount[ax] = (axisCount[ax] || 0) + 1
-        if (rating != null) { axisRatS[ax] = (axisRatS[ax] || 0) + rating; axisRatN[ax] = (axisRatN[ax] || 0) + 1 }
-        for (const sub of arr) {
-          const k = ax + ':' + sub
-          subCount[k] = (subCount[k] || 0) + 1
-          if (rating != null) { subRatS[k] = (subRatS[k] || 0) + rating; subRatN[k] = (subRatN[k] || 0) + 1 }
-        }
+function newTaxonomyAcc(): TaxonomyAcc {
+  return {
+    n: 0, axisCount: {}, subCount: {}, subPos: {}, subNeg: {}, alertCount: {},
+    axisRatS: {}, axisRatN: {}, subRatS: {}, subRatN: {},
+    overallRatS: 0, overallRatN: 0, withSignal: 0, alertRows: 0,
+  }
+}
+
+function accumulateTaxonomyRow(acc: TaxonomyAcc, r: TaxonomyRow): void {
+  acc.n++
+  const rv = r.rating != null ? Number(r.rating) : NaN
+  const rating = Number.isFinite(rv) ? rv : null
+  if (rating != null) { acc.overallRatS += rating; acc.overallRatN++ }
+  let any = false
+  for (const ax of AXES) {
+    const arr = (r as unknown as Record<string, string[]>)['axis_' + ax]
+    if (arr && arr.length) {
+      any = true
+      acc.axisCount[ax] = (acc.axisCount[ax] || 0) + 1
+      if (rating != null) { acc.axisRatS[ax] = (acc.axisRatS[ax] || 0) + rating; acc.axisRatN[ax] = (acc.axisRatN[ax] || 0) + 1 }
+      for (const sub of arr) {
+        const k = ax + ':' + sub
+        acc.subCount[k] = (acc.subCount[k] || 0) + 1
+        if (rating != null) { acc.subRatS[k] = (acc.subRatS[k] || 0) + rating; acc.subRatN[k] = (acc.subRatN[k] || 0) + 1 }
       }
     }
-    if (any) withSignal++
-    if (r.alert_tags && r.alert_tags.length) {
-      alertRows++
-      for (const t of r.alert_tags) alertCount[t] = (alertCount[t] || 0) + 1
-    }
-    for (const a of r.assertions || []) {
-      const k = a.axis + ':' + a.sub
-      if (a.polarity === 'pos') subPos[k] = (subPos[k] || 0) + 1
-      else if (a.polarity === 'neg') subNeg[k] = (subNeg[k] || 0) + 1
-    }
   }
+  if (any) acc.withSignal++
+  if (r.alert_tags && r.alert_tags.length) {
+    acc.alertRows++
+    for (const t of r.alert_tags) acc.alertCount[t] = (acc.alertCount[t] || 0) + 1
+  }
+  for (const a of r.assertions || []) {
+    const k = a.axis + ':' + a.sub
+    if (a.polarity === 'pos') acc.subPos[k] = (acc.subPos[k] || 0) + 1
+    else if (a.polarity === 'neg') acc.subNeg[k] = (acc.subNeg[k] || 0) + 1
+  }
+}
 
+function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
+  const { n, axisCount, subCount, subPos, subNeg, alertCount,
+          axisRatS, axisRatN, subRatS, subRatN,
+          overallRatS, overallRatN, withSignal, alertRows } = acc
   const denom = Math.max(1, n)
   const axes = AXES.map(ax => ({
     axis: ax, label: AXIS_LABEL[ax],
@@ -125,6 +140,13 @@ export function aggregateTaxonomy(rows: TaxonomyRow[], topSubs = 40): TaxonomyRo
     .sort((a, b) => b.count - a.count)
 
   return { classifiedRows: n, withSignal, overallAvgRating: mean(overallRatS, overallRatN), axes, subs, alerts, alertRows }
+}
+
+/** Pure aggregation over already-fetched taxonomy rows. */
+export function aggregateTaxonomy(rows: TaxonomyRow[], topSubs = 40): TaxonomyRollup {
+  const acc = newTaxonomyAcc()
+  for (const r of rows) accumulateTaxonomyRow(acc, r)
+  return finalizeTaxonomy(acc, topSubs)
 }
 
 const PAGE = 1000
@@ -156,7 +178,10 @@ async function detectRatingField(service: SupabaseClient, datasetId: string): Pr
 }
 
 /** Map an embedded field block to the axis-array row shape aggregateTaxonomy
- *  consumes (kept stable so the pure aggregate + its unit tests don't move). */
+ *  consumes (kept stable so the pure aggregate + its unit tests don't move).
+ *  Assertions are cut down to the axis/sub/polarity the aggregate reads — the
+ *  block's evidence strings dominate its size and must not be retained when
+ *  rows are buffered for trend windows. */
 function blockToTaxonomyRow(block: TaxonomyFieldBlock | null): TaxonomyRow {
   return {
     axis_touchpoint: blockAxisSubs(block, 'touchpoint'),
@@ -167,7 +192,7 @@ function blockToTaxonomyRow(block: TaxonomyFieldBlock | null): TaxonomyRow {
     axis_context:    blockAxisSubs(block, 'context'),
     axis_outcome:    blockAxisSubs(block, 'outcome'),
     alert_tags:      block?.al ?? [],
-    assertions:      block?.as ?? [],
+    assertions:      (block?.as ?? []).map(a => ({ axis: a.axis, sub: a.sub, polarity: a.polarity })),
   }
 }
 
@@ -189,7 +214,11 @@ export async function computeTaxonomyRollup(opts: {
   // resolve via the alias map after the fetch.
   const { field: ratingField, aliases } = await detectRatingField(service, datasetId)
 
-  const all: TaxonomyRow[] = []
+  // Each page folds straight into the accumulator; rows are buffered (lean —
+  // no evidence strings) only when a trend date field needs the recent/prior
+  // window re-aggregation below.
+  const acc = newTaxonomyAcc()
+  const dated: TaxonomyRow[] = []
   let from = 0
   for (;;) {
     const { data, error } = await service.rpc('taxonomy_rows_for_field', {
@@ -209,14 +238,15 @@ export async function computeTaxonomyRollup(opts: {
       if (dateField) {
         const t = r.date_val != null ? Date.parse(String(r.date_val)) : NaN
         row.dateMs = isFinite(t) ? t : null
+        dated.push(row)
       }
-      all.push(row)
+      accumulateTaxonomyRow(acc, row)
     }
 
     from += page.length
     if (page.length < PAGE) break
   }
-  const rollup = aggregateTaxonomy(all, topSubs)
+  const rollup = finalizeTaxonomy(acc, topSubs)
 
   // Overall avg rating = ALL rated rows, not just the classified subset
   // aggregateTaxonomy sees (the "ratings = all reviews" principle — the
@@ -241,7 +271,7 @@ export async function computeTaxonomyRollup(opts: {
   let prior:  TaxonomyRollup | null = null
   let windowLabel: string | null = null
   if (dateField) {
-    const ms = all.map(r => r.dateMs).filter((x): x is number => x != null)
+    const ms = dated.map(r => r.dateMs).filter((x): x is number => x != null)
     if (ms.length >= 8) {
       let min = Infinity, max = -Infinity
       for (const t of ms) { if (t < min) min = t; if (t > max) max = t }
@@ -250,8 +280,8 @@ export async function computeTaxonomyRollup(opts: {
         if (win.recent && win.prior) {
           const inWin = (r: TaxonomyRow, w: { startMs: number; endMs: number }) =>
             r.dateMs != null && r.dateMs >= w.startMs && r.dateMs < w.endMs
-          recent = aggregateTaxonomy(all.filter(r => inWin(r, win.recent!)), topSubs)
-          prior  = aggregateTaxonomy(all.filter(r => inWin(r, win.prior!)), topSubs)
+          recent = aggregateTaxonomy(dated.filter(r => inWin(r, win.recent!)), topSubs)
+          prior  = aggregateTaxonomy(dated.filter(r => inWin(r, win.prior!)), topSubs)
           windowLabel = win.windowLabel
         }
       }

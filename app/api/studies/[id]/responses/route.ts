@@ -11,6 +11,8 @@ import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import { logError } from '@/lib/log'
 import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
 import { serverError } from '@/lib/apiError'
+import { checkRateLimit } from '@/lib/rateLimit'
+import { waitUntil } from '@vercel/functions'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -84,14 +86,22 @@ export async function GET(req: NextRequest, props: Params) {
   let allDemoKeys:   string[] = []
 
   if (isExport) {
-    const { data: allRows } = await service
-      .from('responses').select('payload').eq('study_id', params.id)
-
     const psychoSet = new Set<string>()
     const demoSet   = new Set<string>()
-    for (const r of allRows || []) {
-      Object.keys(r.payload?.psychographics || {}).forEach((k: string) => psychoSet.add(k))
-      Object.keys(r.payload?.demographics   || {}).forEach((k: string) => demoSet.add(k))
+    // PostgREST caps a single request at 1000 rows (max-rows) — page or lose keys.
+    const KEY_PAGE = 1000
+    let keyOffset = 0
+    while (true) {
+      const { data: allRows } = await service
+        .from('responses').select('payload').eq('study_id', params.id)
+        .order('id', { ascending: true })
+        .range(keyOffset, keyOffset + KEY_PAGE - 1)
+      for (const r of allRows || []) {
+        Object.keys(r.payload?.psychographics || {}).forEach((k: string) => psychoSet.add(k))
+        Object.keys(r.payload?.demographics   || {}).forEach((k: string) => demoSet.add(k))
+      }
+      if (!allRows || allRows.length < KEY_PAGE) break
+      keyOffset += KEY_PAGE
     }
     const configKeys = (cfg.psychographicBank || []).map((p: any) => p.key)
     allPsychoKeys = [
@@ -104,34 +114,34 @@ export async function GET(req: NextRequest, props: Params) {
   const statusF  = url.searchParams.get('status')
 
   // ── Build query ───────────────────────────────────────────────────────────
-  let query = service
-    .from('responses')
-    .select('*', { count: 'exact' })
-    .eq('study_id', params.id)
-    .order('completed_at', { ascending: false, nullsFirst: false })
+  const buildQuery = () => {
+    let query = service
+      .from('responses')
+      .select('*', { count: 'exact' })
+      .eq('study_id', params.id)
+      .order('completed_at', { ascending: false, nullsFirst: false })
 
-  if (statusF) {
-    if (statusF === 'complete') {
-      query = query.or('status.eq.complete,status.is.null')
-    } else {
-      query = query.eq('status', statusF)
+    if (statusF) {
+      if (statusF === 'complete') {
+        query = query.or('status.eq.complete,status.is.null')
+      } else {
+        query = query.eq('status', statusF)
+      }
     }
+
+    if (sentiment) query = query.eq('sentiment', sentiment)
+    if (minNps)    query = query.gte('nps_score', parseInt(minNps))
+    if (maxNps)    query = query.lte('nps_score', parseInt(maxNps))
+    // completed_at is now always set (partials carry their last-activity time),
+    // so date filters apply uniformly — no null-bypass clause needed.
+    if (from) query = query.gte('completed_at', from)
+    if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
+    return query
   }
 
-  if (sentiment) query = query.eq('sentiment', sentiment)
-  if (minNps)    query = query.gte('nps_score', parseInt(minNps))
-  if (maxNps)    query = query.lte('nps_score', parseInt(maxNps))
-  // completed_at is now always set (partials carry their last-activity time),
-  // so date filters apply uniformly — no null-bypass clause needed.
-  if (from) query = query.gte('completed_at', from)
-  if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
-  if (!isExport) query = query.range(offset, offset + limit - 1)
-  if (isExport)  query = query.range(0, 49999)
-
-  const { data, error, count } = await query
-  if (error) return serverError(error, 'studies.responses.list', { orgId: study.org_id })
-
   if (!isExport) {
+    const { data, error, count } = await buildQuery().range(offset, offset + limit - 1)
+    if (error) return serverError(error, 'studies.responses.list', { orgId: study.org_id })
     const [allRes, completeRes] = await Promise.all([
       service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', params.id),
       service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', params.id).or('status.eq.complete,status.is.null'),
@@ -139,7 +149,19 @@ export async function GET(req: NextRequest, props: Params) {
     return NextResponse.json({ data, count, limit, offset, totalAll: allRes.count || 0, totalComplete: completeRes.count || 0 })
   }
 
-  const rows = data || []
+  // Export: PostgREST caps a single request at 1000 rows (max-rows), so a
+  // single .range(0, 49999) silently truncates — page in 1000-row chunks up
+  // to the 50K export ceiling.
+  const PAGE = 1000
+  const EXPORT_CAP = 50000
+  type RespRow = NonNullable<Awaited<ReturnType<typeof buildQuery>>['data']>[number]
+  let rows: RespRow[] = []
+  for (let start = 0; start < EXPORT_CAP; start += PAGE) {
+    const { data: batch, error } = await buildQuery().range(start, start + PAGE - 1)
+    if (error) return serverError(error, 'studies.responses.list', { orgId: study.org_id })
+    rows = rows.concat(batch || [])
+    if (!batch || batch.length < PAGE) break
+  }
   if (rows.length === 0) {
     return new NextResponse('No data to export\n', { status: 200, headers: { 'Content-Type': 'text/csv' } })
   }
@@ -316,11 +338,19 @@ export async function DELETE(req: NextRequest, props: Params) {
   if (error) return serverError(error, 'studies.responses.delete', { orgId: study.org_id })
 
   // A failure here leaves study response stats stale with no signal — the exact
-  // "my report is wrong" scenario. Best-effort but no longer silent.
-  try {
-    const { error: statErr } = await serviceSupabase.rpc('refresh_study_response_stats')
-    if (statErr) void logError('studies.responses.refresh_stats', statErr, { orgId: study?.org_id })
-  } catch (e) { void logError('studies.responses.refresh_stats', e, { orgId: study?.org_id }) }
+  // "my report is wrong" scenario. Best-effort but no longer silent. The refresh
+  // scans every response platform-wide and concurrent refreshes serialize on a
+  // lock, so it runs off the response path and is debounced globally to one per
+  // 30s (shared key with /api/respond); when skipped, the next submit or delete
+  // after the window picks up the freshness.
+  const { limited: mvLimited } = await checkRateLimit('mv:study_response_stats', 1, 30000)
+  if (!mvLimited) {
+    const refresh = Promise.resolve(serviceSupabase.rpc('refresh_study_response_stats')).then(
+      ({ error: statErr }) => { if (statErr) void logError('studies.responses.refresh_stats', statErr, { orgId: study?.org_id }) },
+      (e) => { void logError('studies.responses.refresh_stats', e, { orgId: study?.org_id }) },
+    )
+    try { waitUntil(refresh) } catch { void refresh }
+  }
 
   return NextResponse.json({ deleted: count ?? ids.length })
 }

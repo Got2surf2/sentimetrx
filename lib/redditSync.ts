@@ -166,10 +166,6 @@ async function insertRedditRows(service: SupabaseClient, datasetId: string, rows
     .order('row_index', { ascending: false }).limit(1)
   if (maxRowErr) void logError('redditSync.insertRedditRows', maxRowErr)
   let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
-  const { data: dsData, error: dsDataErr } = await service
-    .from('datasets').select('row_count').eq('id', datasetId).single()
-  if (dsDataErr) void logError('redditSync.insertRedditRows', dsDataErr)
-  let currentTotal = dsData?.row_count || 0
 
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE)
@@ -177,12 +173,19 @@ async function insertRedditRows(service: SupabaseClient, datasetId: string, rows
       return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
     })
     await service.from('dataset_rows_flat').insert(flatRows)
-    currentTotal += chunk.length
     nextRowIndex += chunk.length
   }
 
+  // Reconcile row_count to the ACTUAL count(*) — a running counter
+  // (currentTotal += chunk.length) drifts across syncs (same fix as
+  // reviewSync.insertReviewRows).
+  const { count, error: countErr } = await service
+    .from('dataset_rows_flat').select('*', { count: 'exact', head: true })
+    .eq('dataset_id', datasetId)
+  if (countErr) void logError('redditSync.insertRedditRows', countErr)
+
   await service.from('datasets').update({
-    row_count: currentTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
+    row_count: count ?? 0, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
   }).eq('id', datasetId)
 }
 

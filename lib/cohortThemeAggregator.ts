@@ -31,6 +31,7 @@
 //     (industry: cohort_config.industry — legacy config.industry parity).
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/townHallAdapter'
 import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
@@ -72,15 +73,16 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
     return { inserted: 0, skipped: 0, error: 'No conversations linked to this town hall yet' }
   }
 
-  const { data: turns, error: turnsErr } = await supabase
+  const turns = await fetchAllRows<{ content: string | null; content_en: string | null; conversation_id: string; created_at: string }>((from, to) => supabase
     .from('conversation_turns')
     .select('content, content_en, conversation_id, created_at')
     .in('conversation_id', conversationIds)
     .eq('role', 'user')
     .order('created_at', { ascending: true })
-  if (turnsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', turnsErr, { orgId: townHall.org_id })
+    .order('id', { ascending: true })
+    .range(from, to))
 
-  const allTexts = (turns || [])
+  const allTexts = turns
     .map(t => (t.content_en || t.content || '').trim())
     .filter(t => t.length >= 20)
   if (allTexts.length < 10) return { inserted: 0, skipped: 0, error: 'Not enough responses yet (need 10+)' }

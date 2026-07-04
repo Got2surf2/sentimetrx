@@ -91,17 +91,27 @@ export async function POST(req: Request, props: Params) {
       offset += PAGE
     }
 
-    // Fetch all responses from the study
-    const { data: responses, error: respErr } = await service
+    // Fetch all responses from the study — paged, since PostgREST caps a
+    // single request at 1000 rows (max-rows)
+    const responsesQuery = () => service
       .from('responses')
       .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
       .eq('study_id', dataset.study_id)
       .order('id', { ascending: true })
-
-    if (respErr) return serverError(respErr, 'datasets.sync.responses', { orgId: userData?.org_id })
+    type RespRow = NonNullable<Awaited<ReturnType<typeof responsesQuery>>['data']>[number]
+    const responses: RespRow[] = []
+    offset = 0
+    while (true) {
+      const { data: respBatch, error: respErr } = await responsesQuery().range(offset, offset + PAGE - 1)
+      if (respErr) return serverError(respErr, 'datasets.sync.responses', { orgId: userData?.org_id })
+      if (!respBatch || respBatch.length === 0) break
+      responses.push(...respBatch)
+      if (respBatch.length < PAGE) break
+      offset += PAGE
+    }
 
     // Filter to only new responses
-    const newResponses = (responses || []).filter(r => !existingIds.has(String(r.id)))
+    const newResponses = responses.filter(r => !existingIds.has(String(r.id)))
 
     if (newResponses.length === 0) {
       return NextResponse.json({ synced: 0, total: existingIds.size, dataset_id: dataset.id })

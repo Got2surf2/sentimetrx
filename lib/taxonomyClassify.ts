@@ -61,7 +61,7 @@ export interface ClassifyResult {
   classified:  number
   skippedEmpty: number
   total:       number  // rows scanned this run
-  nextOffset:  number  // row offset to resume from (for chunked / resumable runs)
+  nextOffset:  number  // id cursor to resume from (exclusive; for chunked / resumable runs)
   reachedEnd:  boolean // true when the dataset's last row was scanned this run
 }
 
@@ -73,7 +73,7 @@ export async function classifyDatasetKeyword(opts: {
   textField?:  string
   textFields?: string[]  // classify the concatenation of several fields (e.g. a survey's MOST + LEAST verbatims). Takes precedence over textField.
   limit?:     number   // max rows to scan this run (relative to offset)
-  offset?:    number   // row offset to start from (default 0)
+  offset?:    number   // id cursor to resume from (exclusive; default 0 = start)
   onProgress?: (done: number) => void
 }): Promise<ClassifyResult> {
   const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
@@ -84,21 +84,22 @@ export async function classifyDatasetKeyword(opts: {
   // that react to the ANALYZE selection (single or multi-field).
   const storedField = taxonomyFieldKey(fields)
 
-  let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
+  let cursor = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
     const remaining = limit !== undefined ? limit - total : Infinity
     if (remaining <= 0) break
     const pageSize = Math.min(PAGE, remaining)
-    // `id` tiebreak matters: row_index has ties, and classify now UPDATEs the
-    // very table it's paging (the embed write moves tuples within a tie group),
-    // so an unstable order can repeat/skip rows across page windows mid-run.
+    // Keyset on id (not OFFSET): classify UPDATEs the very table it's paging
+    // (the embed write moves tuples), so an OFFSET window can repeat/skip rows
+    // mid-run — and each OFFSET page re-skips from row 0. id is immutable, so
+    // `id > cursor` pages are stable and O(page) each.
     const { data, error } = await service
       .from('dataset_rows_flat')
       .select('id, data')
       .eq('dataset_id', datasetId)
-      .order('row_index', { ascending: true })
+      .gt('id', cursor)
       .order('id', { ascending: true })
-      .range(from, from + pageSize - 1)
+      .limit(pageSize)
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) { reachedEnd = true; break }
 
@@ -118,7 +119,7 @@ export async function classifyDatasetKeyword(opts: {
       await embedVerdicts(service, datasetId, storedField, items.slice(i, i + 500))
     }
     classified += items.length
-    from += data.length
+    cursor = (data[data.length - 1] as { id: number }).id
     onProgress?.(classified)
 
     if (data.length < pageSize) { reachedEnd = true; break }
@@ -126,7 +127,7 @@ export async function classifyDatasetKeyword(opts: {
   // A completed pass over the dataset's last row means the embedded verdicts
   // are current end-to-end → refresh the stored rollup dashboards read.
   if (reachedEnd) await refreshRollup(service, datasetId, orgId, storedField, fields)
-  return { classified, skippedEmpty, total, nextOffset: from, reachedEnd }
+  return { classified, skippedEmpty, total, nextOffset: cursor, reachedEnd }
 }
 
 // Classify ONLY the rows that still lack an embedded verdict for the field key —

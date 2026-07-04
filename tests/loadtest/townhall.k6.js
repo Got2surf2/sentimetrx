@@ -22,12 +22,15 @@
 //   - Per-participant 20/min chat cap (each VU ~15/min, comfortable)
 //   - Per-IP 600/min backstop (all VUs share the k6 host IP — simulates venue
 //     wifi NAT; if you blow this, raise the backstop or rerun with fewer VUs)
-//   - Anthropic Tier 1: 50 RPM Sonnet, 30K input TPM (will throttle on Tier 1;
-//     run after Tier 2 is live to see real headroom)
+//   - Anthropic Tier 4 (account measured 2026-07-04): 10K RPM, 10M input TPM,
+//     2M output TPM — no longer the bottleneck; the per-IP backstop above is
+//     the binding limit at these VU counts
 //
-// IMPORTANT: Pointing TARGET at production hits real DB writes, real Anthropic
-// spend, and real rate limits. Use a clearly-named throwaway "Load Test"
-// session and ideally run outside business hours.
+// IMPORTANT: Run against the TEST project via `npm run dev` (dev-mode points
+// localhost:3000 at the Sentimetrx-Test Supabase project). Pointing TARGET at
+// production hits real DB writes, real Anthropic spend, and real rate limits.
+// Use a clearly-named throwaway "Load Test" session and ideally run outside
+// business hours.
 
 import http from 'k6/http'
 import { check, sleep } from 'k6'
@@ -83,7 +86,10 @@ function pickMessage() {
   return SAMPLE_MESSAGES[Math.floor(Math.random() * SAMPLE_MESSAGES.length)]
 }
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' }
+// Origin required: /api/townhall/* is not on proxy.ts's CSRF bypass list, so
+// mutating requests with no Origin/Sec-Fetch-Site/Referer are 403'd — k6
+// sends none of those by default.
+const JSON_HEADERS = { 'Content-Type': 'application/json', 'Origin': BASE }
 
 export default function () {
   // 1. Join — server generates participant_id
@@ -97,6 +103,9 @@ export default function () {
   }
   const join = joinRes.json()
   const pid = join.participant_id
+  // Join resolves slug → UUID; /api/townhall/responses accepts ONLY the
+  // UUID (chat happens to resolve slugs too — don't rely on it).
+  const sessionId = join.session_id || SESSION
   let turn = join.turn_number || 1
   let themeId = join.theme_id || null
   if (!pid) return
@@ -109,7 +118,7 @@ export default function () {
     const chatRes = http.post(
       BASE + '/api/townhall/chat',
       JSON.stringify({
-        session_id: SESSION,
+        session_id: sessionId,
         participant_id: pid,
         message: pickMessage(),
         turn_number: turn,
@@ -139,7 +148,7 @@ export default function () {
   http.post(
     BASE + '/api/townhall/responses',
     JSON.stringify({
-      session_id: SESSION,
+      session_id: sessionId,
       participant_id: pid,
       psychographics: { sample_q: 'option_a' },
       demographics: { age_range: '25-34' },

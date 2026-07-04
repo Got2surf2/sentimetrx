@@ -158,9 +158,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   // Per-theme keyword enrichment (match counts + top keywords), as legacy.
   const enrichedThemes = ((topics || []) as TopicRow[]).map(t => {
     const keywords: string[] = t.keywords || []
-    const regexes = keywords.slice(0, 15).map((kw: string) => {
-      try { return buildKwRegex(kw) } catch { return null }
-    }).filter(Boolean) as RegExp[]
+    const compiled = keywords.map((kw: string) => {
+      try { return { kw, re: buildKwRegex(kw) } } catch { return null }
+    })
+    const regexes = compiled.slice(0, 15).filter(Boolean).map(c => c!.re)
 
     let matchCount = 0
     const kwFreq: Record<string, number> = {}
@@ -169,8 +170,8 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
         const lower = text.toLowerCase()
         if (regexes.some(re => re.test(lower))) {
           matchCount++
-          for (const kw of keywords) {
-            try { if (buildKwRegex(kw).test(lower)) kwFreq[kw] = (kwFreq[kw] || 0) + 1 } catch {}
+          for (const c of compiled) {
+            if (c && c.re.test(lower)) kwFreq[c.kw] = (kwFreq[c.kw] || 0) + 1
           }
         }
       }

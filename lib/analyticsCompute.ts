@@ -284,6 +284,20 @@ export function computeAnalyticsFromRows(
 
 // -- SQL-based analytics (flat table) — handles 2M+ rows without JS memory --
 
+// Bounded promise pool — keeps at most `limit` aggregate queries in flight
+// (Supabase Micro pooler; unbounded Promise.all would exhaust connections).
+async function runPool<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results = new Array<T>(tasks.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const i = next++
+      results[i] = await tasks[i]()
+    }
+  }))
+  return results
+}
+
 export async function computeAnalyticsSQL(
   service: SupabaseClient,
   datasetId: string,
@@ -300,17 +314,14 @@ export async function computeAnalyticsSQL(
   var sampleRes = await service.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(20)
   var sampleRows = (sampleRes.data || []).map(function(r) { return r.data })
 
-  for (var fi = 0; fi < schema.fields.length; fi++) {
-    var f = schema.fields[fi]
+  async function summarizeField(f: SchemaFieldConfig): Promise<FieldSummary> {
     if (f.type === 'ignore') {
-      fieldSummaries[f.field] = { type: 'ignore', nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
-      continue
+      return { type: 'ignore', nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
     }
     if (f.type === 'id') {
       var idNonNull = 0
       sampleRows.forEach(function(r) { if (r[f.field] != null && String(r[f.field]).trim()) idNonNull++ })
-      fieldSummaries[f.field] = { type: 'id', nonNull: totalRows, uniqueCount: totalRows, sample: [] } as IgnoredSummary
-      continue
+      return { type: 'id', nonNull: totalRows, uniqueCount: totalRows, sample: [] } as IgnoredSummary
     }
 
     if (f.type === 'categorical') {
@@ -319,7 +330,7 @@ export async function computeAnalyticsSQL(
       var nonNull = 0
       ;(catRes.data || []).forEach(function(r: any) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
       var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1] })
-      fieldSummaries[f.field] = {
+      return {
         type: 'categorical', nonNull: nonNull,
         counts: Object.fromEntries(sorted),
         topN: sorted.slice(0, 20).map(function(e) { return e[0] }),
@@ -327,15 +338,13 @@ export async function computeAnalyticsSQL(
         uniqueCount: sorted.length,
         uniqueRatio: nonNull > 0 ? parseFloat((sorted.length / nonNull).toFixed(4)) : 0,
       } satisfies CategoricalSummary
-      continue
     }
 
     if (f.type === 'numeric') {
       var numRes = await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: f.field })
       var nr = (numRes.data || [])[0]
       if (!nr || !nr.n) {
-        fieldSummaries[f.field] = { type: 'numeric', nonNull: 0, min: 0, max: 0, avg: 0, median: 0, stddev: 0, p25: 0, p75: 0, histogram: [], uniqueCount: 0, isDiscrete: false } as NumericSummary
-        continue
+        return { type: 'numeric', nonNull: 0, min: 0, max: 0, avg: 0, median: 0, stddev: 0, p25: 0, p75: 0, histogram: [], uniqueCount: 0, isDiscrete: false } as NumericSummary
       }
       // Get value counts for discrete detection + histogram
       var vcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 50 })
@@ -365,7 +374,7 @@ export async function computeAnalyticsSQL(
           })
         }
       }
-      fieldSummaries[f.field] = {
+      return {
         type: 'numeric', nonNull: Number(nr.n),
         min: nMin, max: nMax,
         avg: parseFloat(Number(nr.avg_val).toFixed(4)),
@@ -377,7 +386,6 @@ export async function computeAnalyticsSQL(
         valueCounts: isDiscrete ? valCounts : undefined,
         uniqueCount: uniqueNumCount, isDiscrete: isDiscrete,
       } satisfies NumericSummary
-      continue
     }
 
     if (f.type === 'open-ended') {
@@ -395,13 +403,12 @@ export async function computeAnalyticsSQL(
       // Get accurate nonNull count from SQL
       var oeCountRes = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true })
         .eq('dataset_id', datasetId).not('data->>' + f.field, 'is', null)
-      fieldSummaries[f.field] = {
+      return {
         type: 'open-ended', nonNull: oeCountRes.count || oeNonNull,
         avgWordCount: oeNonNull > 0 ? parseFloat((totalWords / oeNonNull).toFixed(1)) : 0,
         avgCharLen: oeNonNull > 0 ? Math.round(totalChars / oeNonNull) : 0,
         maxCharLen: maxLen, sample: oeSample,
       } satisfies OpenEndedSummary
-      continue
     }
 
     if (f.type === 'date') {
@@ -415,13 +422,16 @@ export async function computeAnalyticsSQL(
         if (!dateMin || r.value < dateMin) dateMin = r.value
         if (!dateMax || r.value > dateMax) dateMax = r.value
       })
-      fieldSummaries[f.field] = { type: 'date', nonNull: dateNonNull, min: dateMin, max: dateMax, counts: dateCounts } satisfies DateSummary
-      continue
+      return { type: 'date', nonNull: dateNonNull, min: dateMin, max: dateMax, counts: dateCounts } satisfies DateSummary
     }
 
     // Fallback for any other type
-    fieldSummaries[f.field] = { type: f.type as any, nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
+    return { type: f.type as any, nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
   }
+
+  // Fields are independent — run their aggregate queries with bounded concurrency
+  var summaries = await runPool(schema.fields.map(function(f) { return function() { return summarizeField(f) } }), 5)
+  schema.fields.forEach(function(f, i) { fieldSummaries[f.field] = summaries[i] })
 
   return { totalRows: totalRows, computedAt: new Date().toISOString(), fieldSummaries: fieldSummaries }
 }

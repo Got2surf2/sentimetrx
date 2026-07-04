@@ -193,7 +193,12 @@ function targetDb(opts: { liveIds?: Record<string, string[]> } = {}) {
             },
             eq(_col: string, _v: unknown) {
               const ids = opts.liveIds?.[table] || []
-              return Promise.resolve({ data: ids.map(id => ({ id, org_id: ORG })), error: null })
+              return {
+                order: (_oc: string, _oo?: unknown) => ({
+                  range: (from: number, to: number) =>
+                    Promise.resolve({ data: ids.slice(from, to + 1).map(id => ({ id, org_id: ORG })), error: null }),
+                }),
+              }
             },
           }
         },

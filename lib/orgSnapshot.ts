@@ -212,12 +212,19 @@ const PAGE = 1000
 const PARENT_CHUNK = 500
 
 async function fetchParentIds(db: SupabaseClient, orgId: string, parent: SnapshotParent): Promise<{ ids: string[]; error?: string }> {
-  const { data, error } = await db.from(parent).select('id').eq('org_id', orgId)
-  if (error) {
-    console.error('[orgSnapshot] parent fetch failed for ' + parent + ':', error.message)
-    return { ids: [], error: error.message }
+  const ids: string[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.from(parent).select('id').eq('org_id', orgId)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) {
+      console.error('[orgSnapshot] parent fetch failed for ' + parent + ':', error.message)
+      return { ids: [], error: error.message }
+    }
+    const page = (data || []).map(r => (r as { id: string }).id)
+    ids.push(...page)
+    if (page.length < PAGE) return { ids }
   }
-  return { ids: (data || []).map(r => (r as { id: string }).id) }
 }
 
 // Yields a table's rows in ≤1000-row pages, UNCAPPED. PostgREST truncates

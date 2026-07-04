@@ -52,6 +52,9 @@ export async function GET(req: NextRequest) {
       // Fetch conversations since last review. READ_PHASE3 sources from
       // the new substrate; the cron is a pure reader (writes go to bots
       // and bot_conversation_reviews, never back to turns).
+      // 300 turns × ≤200 chars each comfortably fills the 8K-char
+      // transcript cap below — anything past that is discarded.
+      const TURN_LIMIT = 300
       let turns: { session_id: string; turn_number: number; role: string; content: string; created_at: string }[] | null = null
       if (isPhase3ReadSafe()) {
         const { data } = await service
@@ -60,7 +63,7 @@ export async function GET(req: NextRequest) {
           .eq('conversations.bot_id', bot.id)
           .gte('created_at', since)
           .order('turn_number', { ascending: true })
-          .limit(1000)
+          .limit(TURN_LIMIT)
         turns = (data || []).map((r: any) => ({
           session_id: r.conversations?.session_id || '',
           turn_number: r.turn_number,
@@ -76,7 +79,7 @@ export async function GET(req: NextRequest) {
           .gte('created_at', since)
           .order('session_id')
           .order('turn_number', { ascending: true })
-          .limit(1000)
+          .limit(TURN_LIMIT)
         turns = data
       }
 

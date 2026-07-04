@@ -25,8 +25,10 @@ const FLAT_PAGE = 1000
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
-async function readAllFlatRows(service: Service, datasetId: string, label?: string): Promise<Record<string, unknown>[]> {
-  const all: Record<string, unknown>[] = []
+// Stream the dataset's rows in FLAT_PAGE chunks — only one chunk is ever held
+// in memory. Returns the total row count scanned.
+async function forEachFlatChunk(service: Service, datasetId: string, onChunk: (rows: Record<string, unknown>[]) => void): Promise<number> {
+  let scanned = 0
   let offset = 0
   while (true) {
     const { data, error } = await service
@@ -36,14 +38,12 @@ async function readAllFlatRows(service: Service, datasetId: string, label?: stri
       .range(offset, offset + FLAT_PAGE - 1)
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) break
-    for (const r of data) {
-      if (label) all.push({ ...(r as any).data, _collection_label: label })
-      else all.push((r as any).data)
-    }
+    onChunk((data as Array<{ data: Record<string, unknown> }>).map(function(r) { return r.data }))
+    scanned += data.length
     if (data.length < FLAT_PAGE) break
     offset += FLAT_PAGE
   }
-  return all
+  return scanned
 }
 
 interface FieldDelta { field: string; before: number; after: number }
@@ -65,19 +65,19 @@ function diffValuesCounts(before: SchemaConfig, after: SchemaConfig): FieldDelta
   return grew
 }
 
-async function refreshOne(service: Service, datasetId: string, userId: string, rows: Record<string, unknown>[]): Promise<RefreshResult | null> {
+async function loadSchemaConfig(service: Service, datasetId: string): Promise<SchemaConfig | null> {
   const { data: stateRow } = await service
     .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).single()
   const schema = stateRow?.schema_config as SchemaConfig | null
-  if (!schema?.fields?.length) return { datasetId, rowsScanned: 0, fieldsGrown: [], skipped: 'no schema' }
-  if (rows.length === 0) return { datasetId, rowsScanned: 0, fieldsGrown: [], skipped: 'no rows' }
+  return schema?.fields?.length ? schema : null
+}
 
-  const merged = mergeSchemaStats(schema, rows) as SchemaConfig
-  const grew = diffValuesCounts(schema, merged)
+async function saveMergedSchema(service: Service, datasetId: string, userId: string, before: SchemaConfig, merged: SchemaConfig, rowsScanned: number): Promise<RefreshResult> {
+  const grew = diffValuesCounts(before, merged)
   await service.from('dataset_state')
     .update({ schema_config: merged, updated_at: new Date().toISOString(), updated_by: userId })
     .eq('dataset_id', datasetId)
-  return { datasetId, rowsScanned: rows.length, fieldsGrown: grew }
+  return { datasetId, rowsScanned, fieldsGrown: grew }
 }
 
 export async function POST(_req: Request, props: Params) {
@@ -95,11 +95,14 @@ export async function POST(_req: Request, props: Params) {
 
   // Non-collection — refresh against this dataset's own rows.
   if ((dataset as any).source !== 'collection') {
-    const rows = await readAllFlatRows(service, params.datasetId)
-    const out = await refreshOne(service, params.datasetId, user.id, rows)
-    if (!out) return NextResponse.json({ error: 'No schema to refresh' }, { status: 400 })
-    if (out.skipped === 'no schema') return NextResponse.json({ error: 'No schema to refresh' }, { status: 400 })
-    if (out.skipped === 'no rows')   return NextResponse.json({ error: 'No rows to scan' },  { status: 400 })
+    const schema = await loadSchemaConfig(service, params.datasetId)
+    if (!schema) return NextResponse.json({ error: 'No schema to refresh' }, { status: 400 })
+    let merged = schema
+    const rowsScanned = await forEachFlatChunk(service, params.datasetId, function(rows) {
+      merged = mergeSchemaStats(merged, rows) as SchemaConfig
+    })
+    if (rowsScanned === 0) return NextResponse.json({ error: 'No rows to scan' }, { status: 400 })
+    const out = await saveMergedSchema(service, params.datasetId, user.id, schema, merged, rowsScanned)
     return NextResponse.json({
       ok: true,
       rowsScanned: out.rowsScanned,
@@ -117,11 +120,14 @@ export async function POST(_req: Request, props: Params) {
     .eq('collection_id', col.id).order('sort_order', { ascending: true })
 
   const memberResults: Array<RefreshResult & { name?: string }> = []
-  const unionRows: Record<string, unknown>[] = []
+  const collectionSchema = await loadSchemaConfig(service, params.datasetId)
+  let collectionMerged = collectionSchema
+  let unionScanned = 0
 
   if (members && members.length > 0) {
-    // Pull each member's rows once, refresh that member, also accumulate the
-    // labeled union for the collection-level refresh.
+    // Stream each member's rows once per chunk: refresh that member, then
+    // label the same chunk in place and fold it into the collection-level
+    // merge — no union buffer, no duplicate copy.
     const memberMeta = await service
       .from('datasets').select('id, name')
       .in('id', members.map(m => m.dataset_id))
@@ -129,17 +135,35 @@ export async function POST(_req: Request, props: Params) {
     for (const r of memberMeta.data || []) nameById[r.id] = r.name as string
 
     for (const m of members) {
-      const ownRows = await readAllFlatRows(service, m.dataset_id)
-      const out = await refreshOne(service, m.dataset_id, user.id, ownRows)
-      if (out) memberResults.push({ ...out, name: nameById[m.dataset_id] || m.label || m.dataset_id })
-      // Accumulate labeled rows for the collection scan without re-fetching.
+      const memberSchema = await loadSchemaConfig(service, m.dataset_id)
+      let memberMerged = memberSchema
       const label = m.label || nameById[m.dataset_id] || ''
-      for (const row of ownRows) unionRows.push({ ...row, _collection_label: label })
+      const scanned = await forEachFlatChunk(service, m.dataset_id, function(rows) {
+        if (memberMerged) memberMerged = mergeSchemaStats(memberMerged, rows) as SchemaConfig
+        for (const row of rows) row['_collection_label'] = label
+        if (collectionMerged) collectionMerged = mergeSchemaStats(collectionMerged, rows) as SchemaConfig
+      })
+      unionScanned += scanned
+      const name = nameById[m.dataset_id] || m.label || m.dataset_id
+      if (!memberSchema || !memberMerged) {
+        memberResults.push({ datasetId: m.dataset_id, rowsScanned: 0, fieldsGrown: [], skipped: 'no schema', name })
+      } else if (scanned === 0) {
+        memberResults.push({ datasetId: m.dataset_id, rowsScanned: 0, fieldsGrown: [], skipped: 'no rows', name })
+      } else {
+        const out = await saveMergedSchema(service, m.dataset_id, user.id, memberSchema, memberMerged, scanned)
+        memberResults.push({ ...out, name })
+      }
     }
   }
 
-  const collectionOut = await refreshOne(service, params.datasetId, user.id, unionRows)
-  if (!collectionOut) return NextResponse.json({ error: 'No schema to refresh' }, { status: 400 })
+  let collectionOut: RefreshResult
+  if (!collectionSchema || !collectionMerged) {
+    collectionOut = { datasetId: params.datasetId, rowsScanned: 0, fieldsGrown: [], skipped: 'no schema' }
+  } else if (unionScanned === 0) {
+    collectionOut = { datasetId: params.datasetId, rowsScanned: 0, fieldsGrown: [], skipped: 'no rows' }
+  } else {
+    collectionOut = await saveMergedSchema(service, params.datasetId, user.id, collectionSchema, collectionMerged, unionScanned)
+  }
 
   return NextResponse.json({
     ok: true,

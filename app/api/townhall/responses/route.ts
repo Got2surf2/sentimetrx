@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   const { data: hall } = await service
     .from('pulseiq_sessions')
-    .select('id')
+    .select('id, bot_id')
     .eq('id', session_id)
     .maybeSingle()
   if (!hall) {
@@ -44,17 +44,19 @@ export async function POST(req: Request) {
   }
   const townHallId: string = (hall as any).id
 
-  // Walk pulseiq_session_conversations → conversations and confirm the
-  // participant_id matches at least one linked conversation.
-  const { data: links } = await service
-    .from('pulseiq_session_conversations')
-    .select('conversations!inner(participant_id)')
-    .eq('town_hall_id', townHallId)
-  const found = ((links || []) as any[]).some(r => {
-    const c = Array.isArray(r.conversations) ? r.conversations[0] : r.conversations
-    return c?.participant_id === participant_id
-  })
-  if (!found) {
+  // Validate the participant against the SYNCHRONOUS turn store (D5): the
+  // conversations/link mirror is async best-effort and can be missing for a
+  // participant who just chatted — under load the mirror writes time out and
+  // are never retried, which 404'd every fresh participant here (found by
+  // the 2026-07-04 k6 run). chatCore stores cohort turns under
+  // session_id = townHallId + ':' + participantId.
+  const { data: turns } = await service
+    .from('bot_conversation_turns')
+    .select('id')
+    .eq('bot_id', (hall as any).bot_id)
+    .eq('session_id', townHallId + ':' + participant_id)
+    .limit(1)
+  if (!turns || turns.length === 0) {
     return NextResponse.json({ error: 'Participant not found in town hall' }, { status: 404 })
   }
 

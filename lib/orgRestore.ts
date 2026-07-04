@@ -123,6 +123,7 @@ const DEFERRED_COLUMNS: Record<string, {
 }
 
 const CHUNK = 500
+const PAGE = 1000
 const FK_VIOLATION = '23503'
 const UNIQUE_VIOLATION = '23505'
 
@@ -291,18 +292,28 @@ async function restoreTableOnce(
   // in the snapshot. Only acts on tables org-scoped via `org_id`
   // (parent-via tables are skipped to avoid scope ambiguity).
   if (mode === 'replace' && !identity && !sawMissingId && seenIds) {
-    const { data: current } = await db.from(tableName).select('id, org_id').eq('org_id', source.orgId)
-    if (current) {
-      const toDelete = current.filter((r: { id: unknown }) => !seenIds.has(r.id)).map((r: { id: unknown }) => r.id)
-      for (let i = 0; i < toDelete.length; i += CHUNK) {
-        const slice = toDelete.slice(i, i + CHUNK)
-        const { error } = await db.from(tableName).delete().in('id', slice)
-        if (error) {
-          if (!report.first_error) report.first_error = 'delete: ' + error.message
-          report.errors += slice.length
-        } else {
-          report.deleted += slice.length
-        }
+    const current: { id: unknown }[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.from(tableName).select('id, org_id').eq('org_id', source.orgId)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) {
+        if (!report.first_error) report.first_error = 'delete scan: ' + error.message
+        break
+      }
+      const page = (data || []) as { id: unknown }[]
+      current.push(...page)
+      if (page.length < PAGE) break
+    }
+    const toDelete = current.filter(r => !seenIds.has(r.id)).map(r => r.id)
+    for (let i = 0; i < toDelete.length; i += CHUNK) {
+      const slice = toDelete.slice(i, i + CHUNK)
+      const { error } = await db.from(tableName).delete().in('id', slice)
+      if (error) {
+        if (!report.first_error) report.first_error = 'delete: ' + error.message
+        report.errors += slice.length
+      } else {
+        report.deleted += slice.length
       }
     }
   }

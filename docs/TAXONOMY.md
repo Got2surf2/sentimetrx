@@ -95,13 +95,19 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
   pages a dataset's rows, runs the keyword tier, and embeds field blocks via the
   `apply_taxonomy_verdicts` RPC in 500-row batches. Pages order by
-  `(row_index, id)` — the `id` tiebreak is load-bearing: classify now UPDATEs the
-  very table it's paging, so an unstable order can repeat/skip rows across page
-  windows mid-run (caught live on the test project: 10,651 classify events over
-  10,648 rows). **Strips NUL/C0/surrogate chars** from text — Postgres
-  jsonb rejects them and emoji-split evidence windows produce lone surrogates.
+  **keyset on `id`** (`id > cursor`, 2026-07-04 — replaced `(row_index, id)`
+  OFFSET paging, which was quadratic and could repeat/skip rows because
+  classify UPDATEs the very table it's paging; immutable-id keyset is immune,
+  and scan order is now id-order rather than row_index-order — per-row results
+  are idempotent so only visit order differs). **Strips NUL/C0/surrogate
+  chars** from text — Postgres jsonb rejects them and emoji-split evidence
+  windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
   UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
+  Since 2026-07-04 these are **opaque id cursors** (exclusive lower bound),
+  not row offsets — the wire shape is unchanged (`0` still means "start"),
+  and the UI derives progress from each chunk's `scanned` count, never from
+  the cursor value.
   Accepts either a single `textField` or `textFields[]` (concatenated with ` . ` so a
   phrase can't span a boundary) — e.g. a survey's MOST + LEAST verbatims classified
   together. When a run completes (`reachedEnd`, or a pending drain finishes), it

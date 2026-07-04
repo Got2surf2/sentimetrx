@@ -209,7 +209,9 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
           if (j.done) break
         }
       } else {
-        let cursor = 0
+        // cursor is an opaque id keyset cursor (NOT a row count) — progress
+        // comes from accumulating each chunk's scanned count.
+        let cursor = 0, scanned = 0
         for (;;) {
           const r = await fetch(`/api/datasets/${datasetId}/taxonomy`, {
             method: 'POST',
@@ -218,7 +220,8 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
           })
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
           const j = await r.json()
-          setProgress({ scanned: j.nextCursor, total: j.totalRows ?? null })
+          scanned += j.scanned ?? 0
+          setProgress({ scanned, total: j.totalRows ?? null })
           if (j.done || j.nextCursor <= cursor) break  // done, or no forward progress (safety)
           cursor = j.nextCursor
         }

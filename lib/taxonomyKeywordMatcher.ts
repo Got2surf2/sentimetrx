@@ -49,13 +49,22 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// Compiled once per phrase and reused across rows (a classify run scans every
+// dictionary phrase against every row); bounded by dictionary size. Cached
+// regexes are `g`-stateful — scanEntry resets lastIndex before each scan.
+const PHRASE_RX_CACHE = new Map<string, RegExp>()
+
 /** Build a case-insensitive global regex with word boundaries around the phrase. */
 function phraseRegex(phrase: string): RegExp {
+  const cached = PHRASE_RX_CACHE.get(phrase)
+  if (cached) return cached
   // \b doesn't work cleanly across non-word boundaries like ' or -, so we
   // approximate: require start-of-string OR non-word-char on both ends.
   // Use lookbehind/lookahead for non-consuming boundaries.
   const esc = escapeRegex(phrase)
-  return new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, 'gi')
+  const rx = new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, 'gi')
+  PHRASE_RX_CACHE.set(phrase, rx)
+  return rx
 }
 
 function flipPolarity(p: Polarity): Polarity {
@@ -94,6 +103,7 @@ function scanEntry(entry: KeywordEntry, text: string): ScratchHit[] {
   const hits: ScratchHit[] = []
   for (const p of entry.phrases) {
     const rx = phraseRegex(p.phrase)
+    rx.lastIndex = 0
     let m: RegExpExecArray | null
     while ((m = rx.exec(text)) !== null) {
       const matchedText = m[0]

@@ -31,38 +31,60 @@ export interface ExportTurn {
 
 // Substrate-aware turn load: phase-3 `conversation_turns` (joined to its
 // session) when read-safe, else the legacy `bot_conversation_turns`. Mirrors
-// lib/agentStudy.loadTurns but keeps the export column set + ordering. 5000-row
-// cap matches the prior route behavior.
+// lib/agentStudy.loadTurns but keeps the export column set + ordering. Paged
+// (PostgREST caps a single request at 1000 rows) — no cap, so large agents
+// export every turn. Secondary `id` order keeps the pages deterministic.
 export async function loadExportTurns(service: any, botId: string): Promise<ExportTurn[]> {
+  const PAGE = 1000
   if (isPhase3ReadSafe()) {
-    const { data, error: p3TurnsErr } = await service
-      .from('conversation_turns')
-      .select('turn_number, role, content, content_en, language, created_at, source, content_flags, conversations!inner(session_id, bot_id)')
-      .eq('conversations.bot_id', botId)
-      .order('turn_number', { ascending: true })
-      .limit(5000)
-    if (p3TurnsErr) void logError('agentExport.loadExportTurns', p3TurnsErr)
-    return (data || []).map((r: any) => ({
-      session_id: r.conversations?.session_id,
-      turn_number: r.turn_number,
-      role: r.role,
-      content: r.content,
-      content_en: r.content_en,
-      language: r.language,
-      created_at: r.created_at,
-      source: r.source,
-      content_flags: r.content_flags,
-    }))
+    const out: ExportTurn[] = []
+    let offset = 0
+    while (true) {
+      const { data, error: p3TurnsErr } = await service
+        .from('conversation_turns')
+        .select('turn_number, role, content, content_en, language, created_at, source, content_flags, conversations!inner(session_id, bot_id)')
+        .eq('conversations.bot_id', botId)
+        .order('turn_number', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + PAGE - 1)
+      if (p3TurnsErr) { void logError('agentExport.loadExportTurns', p3TurnsErr); break }
+      const batch = data || []
+      for (const r of batch as any[]) {
+        out.push({
+          session_id: r.conversations?.session_id,
+          turn_number: r.turn_number,
+          role: r.role,
+          content: r.content,
+          content_en: r.content_en,
+          language: r.language,
+          created_at: r.created_at,
+          source: r.source,
+          content_flags: r.content_flags,
+        })
+      }
+      if (batch.length < PAGE) break
+      offset += PAGE
+    }
+    return out
   }
-  const { data, error: legacyTurnsErr } = await service
-    .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, content_en, language, created_at, source, content_flags')
-    .eq('bot_id', botId)
-    .order('session_id')
-    .order('turn_number', { ascending: true })
-    .limit(5000)
-  if (legacyTurnsErr) void logError('agentExport.loadExportTurns', legacyTurnsErr)
-  return (data || []) as ExportTurn[]
+  const out: ExportTurn[] = []
+  let offset = 0
+  while (true) {
+    const { data, error: legacyTurnsErr } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, content_en, language, created_at, source, content_flags')
+      .eq('bot_id', botId)
+      .order('session_id')
+      .order('turn_number', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (legacyTurnsErr) { void logError('agentExport.loadExportTurns', legacyTurnsErr); break }
+    const batch = (data || []) as ExportTurn[]
+    out.push(...batch)
+    if (batch.length < PAGE) break
+    offset += PAGE
+  }
+  return out
 }
 
 const clean = (s: string | null) => (s || '').replace(/\s+/g, ' ').trim()

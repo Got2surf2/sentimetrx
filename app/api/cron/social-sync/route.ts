@@ -17,6 +17,8 @@ import { resolveOrg } from '@/lib/resolveOrg'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+const GRAPH_FETCH_CONCURRENCY = 4
+
 async function fetchFacebookComments(pageId: string, token: string, since?: string): Promise<any[]> {
   // Use /posts instead of /feed — /feed requires pages_read_engagement which needs App Review
   const sinceParam = since ? `&since=${Math.floor(new Date(since).getTime() / 1000)}` : ''
@@ -30,28 +32,31 @@ async function fetchFacebookComments(pageId: string, token: string, since?: stri
 
   const postsData = await postsRes.json()
   const comments: any[] = []
+  const posts = postsData.data || []
 
-  for (const post of (postsData.data || [])) {
-    // Fetch comments for each post separately
-    const commentsUrl = `https://graph.facebook.com/v19.0/${post.id}/comments?fields=id,message,from,created_time,is_hidden,parent{id}&limit=100&access_token=${token}`
-    const commentsRes = await fetch(commentsUrl)
-    if (!commentsRes.ok) continue
+  // Fetch comments for each post separately, with bounded concurrency
+  for (let i = 0; i < posts.length; i += GRAPH_FETCH_CONCURRENCY) {
+    await Promise.all(posts.slice(i, i + GRAPH_FETCH_CONCURRENCY).map(async (post: { id: string; message?: string }) => {
+      const commentsUrl = `https://graph.facebook.com/v19.0/${post.id}/comments?fields=id,message,from,created_time,is_hidden,parent{id}&limit=100&access_token=${token}`
+      const commentsRes = await fetch(commentsUrl)
+      if (!commentsRes.ok) return
 
-    const commentsData = await commentsRes.json()
-    for (const c of (commentsData.data || [])) {
-      comments.push({
-        post_id: post.id,
-        post_text: post.message || null,
-        comment_id: c.id,
-        parent_comment_id: c.parent?.id || null,
-        author_name: c.from?.name || null,
-        author_id: c.from?.id || null,
-        text: c.message,
-        is_hidden: c.is_hidden || false,
-        is_reply: !!c.parent?.id,
-        platform_created_at: c.created_time,
-      })
-    }
+      const commentsData = await commentsRes.json()
+      for (const c of (commentsData.data || [])) {
+        comments.push({
+          post_id: post.id,
+          post_text: post.message || null,
+          comment_id: c.id,
+          parent_comment_id: c.parent?.id || null,
+          author_name: c.from?.name || null,
+          author_id: c.from?.id || null,
+          text: c.message,
+          is_hidden: c.is_hidden || false,
+          is_reply: !!c.parent?.id,
+          platform_created_at: c.created_time,
+        })
+      }
+    }))
   }
 
   return comments
@@ -68,43 +73,46 @@ async function fetchInstagramComments(igAccountId: string, token: string, since?
 
   const mediaData = await mediaRes.json()
   const comments: any[] = []
+  const mediaItems = mediaData.data || []
 
-  for (const media of (mediaData.data || [])) {
-    const commentsUrl = `https://graph.facebook.com/v19.0/${media.id}/comments?fields=id,text,username,timestamp,replies{id,text,username,timestamp}&access_token=${token}`
-    const commentsRes = await fetch(commentsUrl)
-    if (!commentsRes.ok) continue
+  for (let i = 0; i < mediaItems.length; i += GRAPH_FETCH_CONCURRENCY) {
+    await Promise.all(mediaItems.slice(i, i + GRAPH_FETCH_CONCURRENCY).map(async (media: { id: string; caption?: string }) => {
+      const commentsUrl = `https://graph.facebook.com/v19.0/${media.id}/comments?fields=id,text,username,timestamp,replies{id,text,username,timestamp}&access_token=${token}`
+      const commentsRes = await fetch(commentsUrl)
+      if (!commentsRes.ok) return
 
-    const commentsData = await commentsRes.json()
-    for (const c of (commentsData.data || [])) {
-      comments.push({
-        post_id: media.id,
-        post_text: media.caption || null,
-        comment_id: c.id,
-        parent_comment_id: null,
-        author_name: c.username || null,
-        author_id: c.username || null,
-        text: c.text,
-        is_hidden: false,
-        is_reply: false,
-        platform_created_at: c.timestamp,
-      })
-
-      // Add replies
-      for (const r of (c.replies?.data || [])) {
+      const commentsData = await commentsRes.json()
+      for (const c of (commentsData.data || [])) {
         comments.push({
           post_id: media.id,
           post_text: media.caption || null,
-          comment_id: r.id,
-          parent_comment_id: c.id,
-          author_name: r.username || null,
-          author_id: r.username || null,
-          text: r.text,
+          comment_id: c.id,
+          parent_comment_id: null,
+          author_name: c.username || null,
+          author_id: c.username || null,
+          text: c.text,
           is_hidden: false,
-          is_reply: true,
-          platform_created_at: r.timestamp,
+          is_reply: false,
+          platform_created_at: c.timestamp,
         })
+
+        // Add replies
+        for (const r of (c.replies?.data || [])) {
+          comments.push({
+            post_id: media.id,
+            post_text: media.caption || null,
+            comment_id: r.id,
+            parent_comment_id: c.id,
+            author_name: r.username || null,
+            author_id: r.username || null,
+            text: r.text,
+            is_hidden: false,
+            is_reply: true,
+            platform_created_at: r.timestamp,
+          })
+        }
       }
-    }
+    }))
   }
 
   return comments

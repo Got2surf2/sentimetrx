@@ -8,6 +8,20 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
+// Bounded promise pool — keeps at most `limit` RPCs in flight at once
+// (Supabase Micro pooler; unbounded Promise.all would exhaust connections).
+async function runPool<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results = new Array<T>(tasks.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const i = next++
+      results[i] = await tasks[i]()
+    }
+  }))
+  return results
+}
+
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
@@ -94,8 +108,6 @@ export async function POST(req: Request, props: Props) {
     // SQL-based counting using the count_theme_matches function, summed
     // across the resolved dataset IDs (1 entry for regular datasets, N
     // for collections).
-    const counts: { id: string; count: number; percentage: number }[] = []
-
     // Get total non-empty rows (denominator), summed across members
     let totalNonEmpty = 0
     for (const f of fields) {
@@ -112,9 +124,9 @@ export async function POST(req: Request, props: Props) {
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
 
-    for (const t of themes) {
+    const counts = await runPool(themes.map(t => async () => {
       const kws = (t.keywords || []).filter(Boolean)
-      if (!kws.length) { counts.push({ id: t.id, count: 0, percentage: 0 }); continue }
+      if (!kws.length) return { id: t.id, count: 0, percentage: 0 }
 
       let c = 0
       for (const did of datasetIds) {
@@ -126,12 +138,12 @@ export async function POST(req: Request, props: Props) {
         c += Number(matchCount) || 0
       }
 
-      counts.push({
+      return {
         id: t.id,
         count: c,
         percentage: totalNonEmpty > 0 ? Math.round(c / totalNonEmpty * 100) : 0,
-      })
-    }
+      }
+    }), 5)
 
     // Optional: full co-occurrence matrix via compute_theme_cooccurrence_matrix.
     // One RPC per member dataset returns the full N×N matrix in a single
@@ -145,13 +157,15 @@ export async function POST(req: Request, props: Props) {
         .filter(t => (t.keywords || []).filter(Boolean).length > 0)
         .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean) }))
 
-      for (const did of datasetIds) {
+      const memberMatrices = await runPool(datasetIds.map(did => async () => {
         const { data } = await service.rpc('compute_theme_cooccurrence_matrix', {
           p_dataset_id: did,
           p_field_keys: fields,
           p_themes: themesPayload,
         })
-        const memberMatrix = (data as Record<string, Record<string, number>> | null) || {}
+        return (data as Record<string, Record<string, number>> | null) || {}
+      }), 5)
+      for (const memberMatrix of memberMatrices) {
         // Merge into the accumulator
         for (const [a, bs] of Object.entries(memberMatrix)) {
           if (!cooccurrenceMatrix[a]) cooccurrenceMatrix[a] = {}
@@ -167,10 +181,9 @@ export async function POST(req: Request, props: Props) {
     // whole collection.
     let topicalWords: Record<string, [string, number][]> | undefined
     if (topical) {
-      topicalWords = {}
-      for (const t of themes) {
+      const topicalEntries = await runPool(themes.map(t => async (): Promise<[string, [string, number][]]> => {
         const kws = (t.keywords || []).filter(Boolean)
-        if (!kws.length) { topicalWords[t.id] = []; continue }
+        if (!kws.length) return [t.id, []]
         // Merge per-member word counts
         const merged: Record<string, number> = {}
         for (const did of datasetIds) {
@@ -186,10 +199,11 @@ export async function POST(req: Request, props: Props) {
             merged[w] = (merged[w] || 0) + Number(c)
           }
         }
-        topicalWords[t.id] = Object.entries(merged)
+        return [t.id, Object.entries(merged)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-      }
+          .slice(0, 5)]
+      }), 5)
+      topicalWords = Object.fromEntries(topicalEntries)
     }
 
     // Optional: per-theme Dimensions breakdown. For each theme, the top
@@ -200,10 +214,9 @@ export async function POST(req: Request, props: Props) {
     // empty arrays, which the client suppresses).
     let themeDimensions: Record<string, { axis: string; sub: string; count: number }[]> | undefined
     if (dimensions) {
-      themeDimensions = {}
-      for (const t of themes) {
+      const dimensionEntries = await runPool(themes.map(t => async (): Promise<[string, { axis: string; sub: string; count: number }[]]> => {
         const kws = (t.keywords || []).filter(Boolean)
-        if (!kws.length) { themeDimensions[t.id] = []; continue }
+        if (!kws.length) return [t.id, []]
         const merged: Record<string, { axis: string; sub: string; count: number }> = {}
         for (const did of datasetIds) {
           const { data } = await service.rpc('theme_dimension_counts', {
@@ -218,10 +231,11 @@ export async function POST(req: Request, props: Props) {
             merged[k].count += Number(r.count) || 0
           }
         }
-        themeDimensions[t.id] = Object.values(merged)
+        return [t.id, Object.values(merged)
           .sort((a, b) => b.count - a.count)
-          .slice(0, 8)
-      }
+          .slice(0, 8)]
+      }), 5)
+      themeDimensions = Object.fromEntries(dimensionEntries)
     }
 
     return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })

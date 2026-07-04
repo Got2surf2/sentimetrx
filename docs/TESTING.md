@@ -373,34 +373,47 @@ suite reports the reason inline.
   header to satisfy the `proxy.ts` CSRF guard (the browser UI sends it automatically). Verified
   green 2026-06-22 against a live dataset.
 
-## Load testing (Town Hall)
+## Load testing
 
-PulseIQ (`/pi/[guid]`) is the highest-throughput public surface — a venue
-of N participants can fire chat messages, joins, and response submissions
-at full LLM rate. Two parallel load drivers live in `tests/loadtest/`:
+The k6 suite in `tests/loadtest/` covers the four load-bearing surfaces
+(extended 2026-07-04 for the capacity model — measured results and the
+re-run policy live in `docs/CAPACITY.md` §3/§7):
 
 - `townhall.k6.js` — k6 hits `/api/townhall/join`, `/api/townhall/chat`,
   and `/api/townhall/responses` as raw HTTP. Tunable via `VUS`,
   `ITERATIONS_PER_VU`, `RAMP_UP_S`. Exercises the per-participant 20/min
-  chat cap, the per-IP 600/min backstop, and Anthropic provider limits.
+  chat cap and the per-IP 600/min backstop. **Real Anthropic spend.**
+- `chat-turn.k6.js` — public agent chat: scrapes the agent UUID from
+  `/b/{BOT_SLUG}` then loops `POST /api/bots/{id}/chat` (full chatCore
+  turn). **Real Anthropic spend** — keep `VUS` modest.
+- `survey-submit.k6.js` — public survey ingestion: `GET /s/{SURVEY_GUID}`
+  + partial/final `POST /api/respond` per VU (upsert path, MV-refresh
+  debounce, 120/min/IP limit). No AI cost — can push high VUS.
+- `rows-fetch.k6.js` — authenticated TextMine bulk rows
+  (`all=true&sampleMax=50000`); measures payload size + latency. Needs a
+  `SUPABASE_AUTH` cookie (how-to in the header comment). No AI cost.
 - `townhall.spec.ts` — Playwright drives N real Chromium browsers against
   `/pi/[guid]`, mirroring the actual participant journey (visit, type,
   send via Enter). Catches UI-layer breakage that HTTP-only load can't.
 - `playwright.config.ts` — a load-specific Playwright config (separate
   from the e2e config) with no built-in webServer and tunable workers.
 
-Run:
+Run (always against the TEST project via `npm run dev` — never prod):
 
 ```bash
 SESSION_ID=<uuid-or-slug> TARGET=http://localhost:3000 npm run loadtest:k6
+BOT_SLUG=<slug>     TARGET=http://localhost:3000 k6 run tests/loadtest/chat-turn.k6.js
+SURVEY_GUID=<guid>  TARGET=http://localhost:3000 k6 run tests/loadtest/survey-submit.k6.js
+DATASET_ID=<uuid> SUPABASE_AUTH='<cookie>' TARGET=http://localhost:3000 \
+  k6 run tests/loadtest/rows-fetch.k6.js
 SESSION_ID=<uuid-or-slug> TARGET_BASE_URL=http://localhost:3000 BROWSERS=5 \
   npm run loadtest:browsers
 ```
 
-Neither runs in CI — they cost real Anthropic spend and real DB writes.
-Both refuse to start without `SESSION_ID`, which must be a Town Hall
-session you've already created via the UI and clearly named (e.g.
-"Load Test — DO NOT USE").
+None run in CI — the AI-path scripts cost real Anthropic spend and all
+write real DB rows. The town-hall drivers refuse to start without
+`SESSION_ID`, which must be a session you've created and clearly named
+(e.g. "Load Test — DO NOT USE").
 
 ## Bot regression scripts (Sarina)
 
