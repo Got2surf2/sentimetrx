@@ -210,29 +210,30 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
     if (cm.error) throw new Error('collection_members: ' + cm.error.message)
     ids.collectionMember = cm.data!.id
 
-    const ths = await admin.from('townhall_sessions').insert({
-      org_id: ids.orgA, name: PREFIX + 'th',
-      created_by: ids.userA,
-      config: { _marker: MARKER },
+    // PulseIQ substrate (the legacy townhall_* trio was dropped by sql/153).
+    const ths = await admin.from('pulseiq_sessions').insert({
+      org_id: ids.orgA, name: PREFIX + 'th', slug: PREFIX + 'th',
+      bot_id: ids.bot, created_by: ids.userA,
+      cohort_config: { _marker: MARKER },
     }).select('id').single()
-    if (ths.error) throw new Error('townhall_sessions: ' + ths.error.message)
+    if (ths.error) throw new Error('pulseiq_sessions: ' + ths.error.message)
     ids.townhallSession = ths.data!.id
 
-    const tht = await admin.from('townhall_themes').insert({
-      session_id: ids.townhallSession,
+    const tht = await admin.from('pulseiq_topics').insert({
+      org_id: ids.orgA, town_hall_id: ids.townhallSession,
       label: PREFIX + 'theme', question: 'q?',
       description: MARKER,
     }).select('id').single()
-    if (tht.error) throw new Error('townhall_themes: ' + tht.error.message)
+    if (tht.error) throw new Error('pulseiq_topics: ' + tht.error.message)
     ids.townhallTheme = tht.data!.id
 
-    const ttn = await admin.from('townhall_turns').insert({
-      session_id: ids.townhallSession,
-      participant_id: PREFIX + 'p', turn_number: 1,
-      bot_message: MARKER,
+    const tpr = await admin.from('townhall_participant_responses').insert({
+      town_hall_id: ids.townhallSession,
+      participant_id: PREFIX + 'p',
+      psychographics: { _marker: MARKER },
     }).select('id').single()
-    if (ttn.error) throw new Error('townhall_turns: ' + ttn.error.message)
-    ids.townhallTurn = ttn.data!.id
+    if (tpr.error) throw new Error('townhall_participant_responses: ' + tpr.error.message)
+    ids.townhallTurn = tpr.data!.id
 
     // ── Sign in as Org B's user; reuse this client across every assertion ──
     orgBClient = createClient(url!, anonKey!, { auth: { persistSession: false } })
@@ -268,7 +269,7 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
       const datasetIds: string[] = []
       const dsRes = await admin.from('datasets').select('id').in('org_id', orgIds)
       for (const r of dsRes.data || []) datasetIds.push(r.id)
-      const sessionRes = await admin.from('townhall_sessions').select('id').in('org_id', orgIds)
+      const sessionRes = await admin.from('pulseiq_sessions').select('id').in('org_id', orgIds)
       const sessionIds = (sessionRes.data || []).map(r => r.id)
       const collRes = await admin.from('collections').select('id').in('org_id', orgIds)
       const collIds = (collRes.data || []).map(r => r.id)
@@ -281,16 +282,18 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
       if (datasetIds.length) await tryDelete('dataset_state',     () => admin.from('dataset_state').delete().in('dataset_id', datasetIds))
       if (collIds.length)    await tryDelete('collection_members',() => admin.from('collection_members').delete().in('collection_id', collIds))
       if (campIds.length)    await tryDelete('campaign_respondents', () => admin.from('campaign_respondents').delete().in('campaign_id', campIds))
-      if (sessionIds.length) await tryDelete('townhall_themes',   () => admin.from('townhall_themes').delete().in('session_id', sessionIds))
-      if (sessionIds.length) await tryDelete('townhall_turns',    () => admin.from('townhall_turns').delete().in('session_id', sessionIds))
+      if (sessionIds.length) await tryDelete('pulseiq_topics', () => admin.from('pulseiq_topics').delete().in('town_hall_id', sessionIds))
+      if (sessionIds.length) await tryDelete('townhall_participant_responses', () => admin.from('townhall_participant_responses').delete().in('town_hall_id', sessionIds))
       if (studyIds.length)   await tryDelete('responses',         () => admin.from('responses').delete().in('study_id', studyIds))
 
       await tryDelete('datasets',          () => admin.from('datasets').delete().in('org_id', orgIds))
       await tryDelete('collections',       () => admin.from('collections').delete().in('org_id', orgIds))
       await tryDelete('campaigns',         () => admin.from('campaigns').delete().in('org_id', orgIds))
       await tryDelete('studies',           () => admin.from('studies').delete().in('org_id', orgIds))
+      // pulseiq_sessions.bot_id FK-references agents (no cascade) — sessions
+      // must go before bots.
+      await tryDelete('pulseiq_sessions', () => admin.from('pulseiq_sessions').delete().in('org_id', orgIds))
       await tryDelete('bots',              () => admin.from('bots').delete().in('org_id', orgIds))
-      await tryDelete('townhall_sessions', () => admin.from('townhall_sessions').delete().in('org_id', orgIds))
     }
 
     if (ids.userA)   await tryDelete('users.userA',         () => admin.from('users').delete().eq('id', ids.userA))
@@ -335,9 +338,9 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
     { table: 'bots',                   idKey: 'bot' },
     { table: 'collections',            idKey: 'collection' },
     { table: 'collection_members',     idKey: 'collectionMember' },
-    { table: 'townhall_sessions',      idKey: 'townhallSession' },
-    { table: 'townhall_themes',        idKey: 'townhallTheme' },
-    { table: 'townhall_turns',         idKey: 'townhallTurn' },
+    { table: 'pulseiq_sessions',       idKey: 'townhallSession' },
+    { table: 'pulseiq_topics',         idKey: 'townhallTheme' },
+    { table: 'townhall_participant_responses', idKey: 'townhallTurn' },
   ]
 
   for (const c of cases) {
