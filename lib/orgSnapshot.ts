@@ -176,8 +176,8 @@ export const TABLE_SPECS: TableSpec[] = [
   // saved views, taxonomy classifications, client-review flow, gold sets,
   // and review/impression records were not backed up at all)
   { name: 'saved_views', filter: { kind: 'org_id' } },
-  { name: 'dataset_row_taxonomy', filter: { kind: 'org_id' } },
-  { name: 'dataset_row_field_taxonomy', filter: { kind: 'org_id' } },
+  // dataset_row(_field)_taxonomy dropped 2026-07-04 (sql/152) — taxonomy
+  // verdicts ride inside dataset_rows_flat.data._tx and back up with the rows.
   { name: 'question_batches', filter: { kind: 'org_id' } },
   { name: 'logged_questions', filter: { kind: 'org_id' } },
   { name: 'reo_gold_review', filter: { kind: 'org_id' } },

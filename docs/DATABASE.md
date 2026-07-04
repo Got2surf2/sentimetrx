@@ -94,7 +94,6 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `collections` | Grouping of datasets (`kind='brand'` = Brand Profile); cached merged schema/themes. |
 | `collection_members` | Link table: datasets in a collection. |
 | `entity_catalog` / `entity_catalog_refresh` | Canonical entity registry (polymorphic `scope_type`/`scope_id` — dataset/collection/bot; NO org_id) and refresh bookkeeping. Regenerable via entity discovery; excluded from org snapshots (2026-07-03). |
-| `dataset_row_taxonomy` / `dataset_row_field_taxonomy` | (retiring) Sidecar taxonomy verdicts — superseded 2026-07-04 by the embedded `dataset_rows_flat.data._tx` block + rollups in `dataset_state.analytics.taxonomy` (sql/151); tables + RPC fallback legs drop via sql/152 after the prod backfill verifies. |
 | `reo_gold_review` | REO taxonomy gold-set: owner-graded extraction drafts for calibration. |
 | `saved_views` | Saved filter/view definitions on a dataset. |
 

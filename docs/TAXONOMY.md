@@ -82,15 +82,16 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
     `apply_taxonomy_verdicts` (batch writer), `taxonomy_rows_for_field` (paged
     verdict read incl. same-row rating/date), `taxonomy_drill_rows` (drill-down),
     and `taxonomy_counts` (admin pilot). All read `data._tx`; filter-awareness
-    (`p_row_ids`) is unchanged. **Transition**: each read RPC keeps a
-    sidecar-fallback leg (chosen per dataset) so sql/151 could be applied to prod
-    before the code deployed; the legs AND the sidecar tables
-    (`dataset_row_taxonomy` sql/088, `dataset_row_field_taxonomy` sql/114) die
-    together in sql/152 — **gated on the prod backfill
-    (`scripts/backfill-taxonomy-embed.ts`) verifying clean
-    (`scripts/_verify_taxembed.ts --mode parity --prod`)**. Until sql/152 applies,
-    `lib/orgSnapshot`/`lib/orgDelete` deliberately keep the sidecar entries as the
-    rollback path.
+    (`p_row_ids`) is unchanged. **Transition (completed 2026-07-04)**: each
+    sql/151 read RPC carried a sidecar-fallback leg (chosen per dataset) so the
+    migration could be applied to prod before the code deployed; after the prod
+    backfill (`scripts/backfill-taxonomy-embed.ts`, 155,010 verdicts) verified
+    clean (`scripts/_verify_taxembed.ts --mode parity --prod`, 102/102), sql/152
+    dropped the legs AND the sidecar tables (`dataset_row_taxonomy` sql/088,
+    `dataset_row_field_taxonomy` sql/114) and the snapshot/delete manifests
+    dropped their entries. Historical footnote: the prod sidecar carried 2,745
+    orphaned verdicts pointing at deleted rows — the lifecycle-drift class the
+    embed eliminates.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
   pages a dataset's rows, runs the keyword tier, and embeds field blocks via the
   `apply_taxonomy_verdicts` RPC in 500-row batches. Pages order by

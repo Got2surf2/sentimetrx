@@ -18,8 +18,8 @@ import { buildPredictor, type OutletPredictor, type PredReview, type PredExample
 // Both comparisons surface where the outlet EXCELS (beats peers) and NEEDS WORK.
 //
 // Outlets are keyed by Google place_id (several share the same name + city, so
-// the human name alone is ambiguous). Taxonomy assertions join to flat rows by
-// dataset_rows_flat.id === dataset_row_field_taxonomy.row_id.
+// the human name alone is ambiguous). Taxonomy assertions ride on each flat
+// row's embedded data._tx blocks (sql/151) — no join needed.
 
 const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
 

@@ -34,7 +34,7 @@ import { createServiceRoleClient } from './supabase/server'
 export const ORG_SCOPED_TABLES: readonly string[] = [
   'agent_change_log', 'agent_impressions', 'agent_readout_cache', 'agent_study_cache',
   'agents', 'ai_consent_audit', 'campaigns', 'collections', 'conversation_reviews',
-  'conversation_turns', 'conversations', 'dataset_row_field_taxonomy', 'dataset_row_taxonomy',
+  'conversation_turns', 'conversations',
   'datasets', 'deck_download_log', 'invites', 'logged_questions', 'org_features',
   'question_batches', 'recording_config_versions', 'recording_extractions', 'recording_files',
   'recording_transcripts', 'recordings', 'reddit_sources', 'reo_gold_review', 'responses',
