@@ -127,7 +127,8 @@ Create a dedicated IAM user (or role) for the Vercel runtime. Attach this policy
       "Action": [
         "s3:PutObject",
         "s3:GetObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:AbortMultipartUpload"
       ],
       "Resource": [
         "arn:aws:s3:::sentimetrx-backups",
@@ -140,7 +141,7 @@ Create a dedicated IAM user (or role) for the Vercel runtime. Attach this policy
 
 Notes:
 - Intentionally NO `s3:DeleteObject` — Vercel runtime can never delete. Cleanup happens via the lifecycle rule.
-- **v2 multipart uploads (2026-07-04):** large table parts upload via S3 multipart. Add `s3:AbortMultipartUpload` to the policy's Action list (so a failed upload can clean up after itself) and add a lifecycle rule `AbortIncompleteMultipartUpload after 7 days` as the backstop for orphaned parts. <TBD: owner applies both in the AWS console — until then a failed multipart upload leaves invisible billable parts.>
+- **v2 multipart uploads (2026-07-04):** large table parts upload via S3 multipart. `s3:AbortMultipartUpload` is in the policy (so a failed upload can clean up after itself) and the bucket has an `abort-incomplete-multipart` lifecycle rule (delete incomplete multipart uploads after 7 days) as the backstop for orphaned parts. Both applied in the AWS console 2026-07-04; the abort permission was verified live via a create+abort round trip with the runtime's own key (the lifecycle rule is owner-confirmed — the runtime key deliberately can't read lifecycle config).
 - If using SSE-KMS, also grant the IAM user `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey` on the specific key ARN.
 
 ### 4. Env vars (Vercel project → Environment Variables)
