@@ -46,7 +46,7 @@ const noFrameHeaders = [
 // iframed by anyone. Adding clickjacking protection costs nothing here.
 const AUTHED_PATH_PREFIXES = [
   'admin', 'analyze', 'auth', 'bots', 'campaigns', 'dashboard',
-  'invite', 'login', 'settings', 'social', 'studies', 'townhall',
+  'invite', 'login', 'pulseiq', 'settings', 'social', 'studies', 'townhall',
 ]
 
 /** @type {import('next').NextConfig} */
@@ -98,6 +98,15 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,
     NEXT_PUBLIC_BUILD_DATE: buildDate,
+  },
+  async redirects() {
+    return [
+      // The PulseIQ admin page moved from /townhall to /pulseiq (2026-07 —
+      // the user-facing product name is "PulseIQ"). Old bookmarks/links keep
+      // working. API routes stay at /api/townhall and are unaffected.
+      { source: '/townhall', destination: '/pulseiq', permanent: true },
+      { source: '/townhall/:path*', destination: '/pulseiq/:path*', permanent: true },
+    ]
   },
   async headers() {
     return [

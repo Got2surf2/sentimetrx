@@ -24,7 +24,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
   const features   = effectiveFeatures(orgData?.features, (userData as any)?.features)
   if (!features.surveys) {
     if (features.analyze)        redirect('/analyze')
-    else if (features.townhall)  redirect('/townhall')
+    else if (features.townhall)  redirect('/pulseiq')
     else if (features.campaigns) redirect('/campaigns')
     else if (features.bots)      redirect('/bots')
     else if (features.social)    redirect('/social')

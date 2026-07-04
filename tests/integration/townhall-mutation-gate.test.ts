@@ -177,8 +177,8 @@ describe('POST /api/townhall/resume/[sessionId] — guards', () => {
     expect(res.status).toBe(404)
   })
 
-  it('holds when the session is not active', async () => {
-    ctx.results['townhall_sessions'] = { data: { id: 'sess1', status: 'paused', config: {} }, error: null }
+  it('holds when the session is not live', async () => {
+    ctx.results['pulseiq_sessions'] = { data: { id: 'sess1', org_id: 'orgA', bot_id: 'bot1', slug: 'sess1', status: 'paused', cohort_config: {} }, error: null }
     const res = await resume.POST(post({ participant_id: 'p1' }), sidProps)
     expect(res.status).toBe(200)
     expect((await res.json()).holding).toBe(true)

@@ -73,8 +73,7 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `pulseiq_sessions` | A PulseIQ session = cohort layer over a dedicated agent: `bot_id`, slug, status (`draft/live/paused/closed`), `cohort_config` JSONB (pacing, rounds, safety, closing message…), `discussion_guide`. |
 | `pulseiq_topics` | Per-session topic pool: seed topics (`source='seed'`) + AI-discovered (`auto_detected`) + moderator-pushed (`manual`); state machine (`active/paused/pending/completed/…`), `round_number` for rounds pacing. |
 | `pulseiq_session_conversations` | Link table: which conversations belong to which PulseIQ session. |
-| `townhall_participant_responses` | Post-session demographics/psychographics. **Dual-substrate** (sql/083): `town_hall_id` for new rows, `session_id` for legacy — survives the legacy drop. |
-| `townhall_sessions` / `townhall_themes` / `townhall_turns` | (legacy) the pre-convergence PulseIQ substrate. Read by nothing new; deleted at the end of convergence tranche 2 (data discard owner-approved). |
+| `townhall_participant_responses` | Post-session demographics/psychographics, keyed `town_hall_id` → `pulseiq_sessions` (FK cascade). Survived the sql/153 legacy drop; its `session_id` column is vestigial (legacy-only rows were discarded with the drop). |
 
 ## Surveys
 
@@ -155,11 +154,11 @@ complete empty schema. Data restore comes from the nightly org snapshots
 Most views are **security-invoker compat views** created during renames so
 deployed code keeps working across a release: the `bots`-era five (`bots`,
 `bot_change_log`, `bot_conversation_reviews`, `bot_knowledge_chunks`,
-`bot_session_personas` → `agent*` tables) and the town-hall three
-(`town_halls`/`town_hall_topics`/`town_hall_conversations` → `pulseiq_*`,
-sql/148+150). They drop when their consumers are gone. The rest are
-aggregate helpers: `study_stats`, `user_activity_summary`,
-`user_login_summary`.
+`bot_session_personas` → `agent*` tables). They drop when their consumers
+are gone — the town-hall three (`town_halls`/`town_hall_topics`/
+`town_hall_conversations` → `pulseiq_*`, sql/148+150) dropped with the
+legacy substrate in sql/153 (2026-07-04). The rest are aggregate helpers:
+`study_stats`, `user_activity_summary`, `user_login_summary`.
 
 The 61 functions are mostly: atomic counter/merge RPCs (sql/144–146:
 townhall response counter, `dataset_state` analytics merge, session counts),

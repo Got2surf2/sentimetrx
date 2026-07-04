@@ -41,7 +41,7 @@ export const ORG_SCOPED_TABLES: readonly string[] = [
   'review_downloads', 'review_sources', 'saved_views', 'shared_links', 'social_alert_rules',
   'social_alerts_sent', 'social_comments', 'social_connections', 'social_dm_log',
   'social_moderation_log', 'studies', 'pulseiq_session_conversations', 'pulseiq_topics',
-  'pulseiq_sessions', 'townhall_sessions', 'usage_logs', 'user_events', 'user_logins', 'users',
+  'pulseiq_sessions', 'usage_logs', 'user_events', 'user_logins', 'users',
 ]
 
 export interface OrgDeleteResult {

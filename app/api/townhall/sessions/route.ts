@@ -36,22 +36,6 @@ export async function GET(req: NextRequest) {
     return serverError(new Error('pulseiq_sessions list query failed'), 'townhall.sessions.list', { orgId: scopeOrgId ?? undefined })
   }
 
-  // REMOVE WITH THE LEGACY DROP COMMIT: pre-existing legacy townhall_sessions
-  // rows stay visible (read-only) until the owner-approved data discard
-  // actually executes — dropping this leg early made them look deleted.
-  {
-    let q = db
-      .from('townhall_sessions')
-      .select('id, org_id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
-      .order('created_at', { ascending: false })
-    if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
-    const { data: legacyRows } = await q
-    for (const s of (legacyRows || []) as any[]) {
-      sessions.push({ ...s, participants: 0, turns: 0, org_name: null, __legacy: true })
-    }
-    sessions.sort((a, b) => ((b.created_at || '') > (a.created_at || '') ? 1 : -1))
-  }
-
   // Resolve org names for admin per-card display.
   if (sessions.length > 0 && isAdmin) {
     const orgNameMap: Record<string, string> = {}
@@ -88,10 +72,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields: name, config, discussion_guide' }, { status: 400 })
   }
 
-  // ── Tranche 2: new PulseIQ sessions are born on the NEW substrate ──
-  // (pulseiq_sessions + a dedicated agent). The legacy townhall_sessions
-  // path below this route is retired for creation; existing legacy rows
-  // keep working read-only via the adapter until tranche-2 deletion.
+  // Sessions are born on the unified substrate: pulseiq_sessions + a
+  // dedicated agent (the substrate's core idea — a session wraps an agent).
   const orgId = (userData?.org_id || userData?.client_id || '') as string
 
   // Slug is required on pulseiq_sessions — validate, or derive from name.
@@ -106,12 +88,8 @@ export async function POST(req: NextRequest) {
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pulseiq'
     slug = base + '-' + Math.random().toString(36).slice(2, 7)
   }
-  // Uniqueness across BOTH substrates (join/chat resolve either).
-  const [{ data: legacyConflict }, { data: newConflict }] = await Promise.all([
-    db.from('townhall_sessions').select('id').eq('slug', slug).limit(1),
-    db.from('pulseiq_sessions').select('id').eq('slug', slug).limit(1),
-  ])
-  if ((legacyConflict?.length || 0) > 0 || (newConflict?.length || 0) > 0) {
+  const { data: slugConflict } = await db.from('pulseiq_sessions').select('id').eq('slug', slug).limit(1)
+  if ((slugConflict?.length || 0) > 0) {
     return NextResponse.json({ error: 'This link is already taken' }, { status: 409 })
   }
 

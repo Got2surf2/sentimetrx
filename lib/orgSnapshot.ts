@@ -50,7 +50,7 @@ export interface OrgSnapshot {
 //   filter: 'skip'                -> not snapshotted (legacy / global / unrelated)
 //
 // Order matters for restore: parents before children with FK references.
-export type SnapshotParent = 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections'
+export type SnapshotParent = 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'pulseiq_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections'
 
 type TableFilter =
   | { kind: 'org_id' }
@@ -100,16 +100,14 @@ export const TABLE_SPECS: TableSpec[] = [
   { name: 'studies', filter: { kind: 'org_id' } },
   { name: 'responses', filter: { kind: 'parent_via', via: 'study_id', parent: 'studies' } },
 
-  // Town Hall
-  { name: 'townhall_sessions', filter: { kind: 'org_id' } },
-  { name: 'townhall_themes', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
-  { name: 'townhall_turns', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
-  { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
-  // Phase 3 substrate — town hall family. Currently empty in prod; populated
-  // once Phase 4 absorbs the PulseIQ route into the unified chat handler.
+  // PulseIQ (the legacy townhall_sessions/themes/turns trio was dropped by
+  // sql/153 at the end of convergence tranche 2, 2026-07-04). The surviving
+  // participant-responses table anchors via town_hall_id → pulseiq_sessions —
+  // its old townhall_sessions anchor silently missed every new-substrate row.
   { name: 'pulseiq_sessions', filter: { kind: 'org_id' } },
   { name: 'pulseiq_session_conversations', filter: { kind: 'org_id' } },
   { name: 'pulseiq_topics', filter: { kind: 'org_id' } },
+  { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'town_hall_id', parent: 'pulseiq_sessions' } },
 
   // Datasets + entities + Ana
   { name: 'datasets', filter: { kind: 'org_id' } },

@@ -299,11 +299,10 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
   ],
 
   'docs/TOWNHALL.md': [
-    'app/townhall/**',
+    'app/pulseiq/**',
     'app/api/townhall/**',
     'app/api/cron/townhall-theme-detection/**',
     'components/townhall/**',
-    'lib/townhallThemeDetection.ts',
     'lib/cohortThemeAggregator.ts',
     'lib/pickNextTopic.ts',
     'lib/townHallAdapter.ts',

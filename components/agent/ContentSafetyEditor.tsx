@@ -3,8 +3,8 @@
 // components/agent/ContentSafetyEditor.tsx
 //
 // Shared content-safety configuration UI used by:
-//   - app/townhall/new/NewSessionClient.tsx
-//   - app/townhall/[sessionId]/SessionDetailClient.tsx (toggle-only mode)
+//   - app/pulseiq/new/NewSessionClient.tsx
+//   - app/pulseiq/[sessionId]/SessionDetailClient.tsx (toggle-only mode)
 //   - app/bots/new/page.tsx
 //
 // Bots and town-hall sessions use the same shape under the hood

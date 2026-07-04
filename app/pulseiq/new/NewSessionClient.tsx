@@ -741,7 +741,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
         return
       }
       const { id } = await res.json()
-      router.push('/townhall/' + id)
+      router.push('/pulseiq/' + id)
     } catch {
       setError('Network error')
       setSaving(false)
@@ -774,7 +774,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <button onClick={() => router.push('/townhall')} className="text-sm text-gray-400 hover:text-gray-600">&larr;</button>
+                <button onClick={() => router.push('/pulseiq')} className="text-sm text-gray-400 hover:text-gray-600">&larr;</button>
                 <h1 className="text-lg font-bold text-gray-900">New PulseIQ Session</h1>
               </div>
             </div>

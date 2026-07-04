@@ -579,7 +579,7 @@ export default function TownhallSimulatorClient() {
               </button>
             )}
             {selected && (
-              <Link href={'/townhall/' + selectedId}
+              <Link href={'/pulseiq/' + selectedId}
                 className="px-4 py-2.5 text-sm font-medium text-orange-600 hover:text-orange-800" target="_blank">
                 View Admin Panel →
               </Link>

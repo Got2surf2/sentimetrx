@@ -86,7 +86,7 @@ export default async function MobilePage() {
       study:            { table: 'studies',           href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
       dataset:          { table: 'datasets',          href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
       campaign:         { table: 'campaigns',         href: (id) => '/campaigns/' + id,               subtitle: (r) => r.status || 'draft' },
-      townhall_session: { table: 'pulseiq_sessions',  href: (id) => '/townhall/' + id,                subtitle: (r) => r.status || 'draft' },
+      townhall_session: { table: 'pulseiq_sessions',  href: (id) => '/pulseiq/' + id,                subtitle: (r) => r.status || 'draft' },
     }
     const rowMaps: Record<string, Map<string, any>> = {}
     await Promise.all(Object.entries(favsByType).map(async function([type, ids]) {
@@ -195,14 +195,14 @@ export default async function MobilePage() {
     {
       key:    'townhall',
       label:  'PulseIQ',
-      href:   '/townhall',
+      href:   '/pulseiq',
       count:  townhallCount.count || 0,
       recent: (townhallRecent.data || []).map(function(t: any): RecentItem {
         return {
           id:       t.id,
           name:     t.name || 'Untitled',
           subtitle: t.status || 'draft',
-          href:     '/townhall/' + t.id,
+          href:     '/pulseiq/' + t.id,
           ts:       t.started_at || t.created_at,
         }
       }),

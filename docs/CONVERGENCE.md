@@ -209,7 +209,17 @@ The convergence is greenfield for PulseIQ — no live customers there. Sarina is
 
 Total engineering window (Phases 2–5): ~2 weeks of focused work, starting 2026-05-21.
 
-### 4.1 FREEZE on the legacy orchestrator (2026-07-02)
+### 4.1 FREEZE on the legacy orchestrator (2026-07-02) — RESOLVED 2026-07-04
+
+> **The frozen orchestrator no longer exists.** Tranche 2 completed 2026-07-04:
+> after the owner's Phase 6 acceptance session on prod, the legacy leg was
+> deleted from `app/api/townhall/chat/route.ts` (1,242 → ~370 lines; the file
+> now only resolves `pulseiq_sessions` and delegates to `lib/chatCore`), the
+> `townhall_sessions/themes/turns` tables + `town_hall*` compat views dropped
+> (sql/153), and the admin console URL renamed `/townhall` → `/pulseiq`
+> (permanent redirects). The freeze policy below is retained as history — new
+> PulseIQ capabilities land in `lib/chatCore`, which is now trivially true
+> because it is the only engine.
 
 **Reality vs. plan:** Phases 4–5 stalled. The unified `lib/chatCore.handleChatTurn`
 path exists and the legacy route (`app/api/townhall/chat/route.ts`, ~1075 lines)
@@ -331,6 +341,33 @@ blank panel). 9 unit tests + 10-check live verify on the test project's
 Test Planning Session + tranche-2 harness 8/8. Detail analytics is no
 longer a tranche-2 blocker — remaining tranche-2 work is the legacy DELETE
 after owner Phase-6 acceptance.
+
+Unit 5 (2026-07-04) — **THE LEGACY DELETE. Tranche 2 and the convergence
+are COMPLETE.** Owner Phase-6 acceptance passed on prod (real session:
+creation → activation gate → 2 participants → skip/done/idle → semantic
+trending → close → closing-to-idle → exports → detail analytics). Then:
+legacy orchestrator leg deleted from the chat route (1,242 → ~370 lines —
+unified dispatch + language-switch + helpers only; no-match → 404);
+join/resume/responses/sessions-list/sessions-detail shims lost their
+legacy legs (resume + detail + gate are adapter/pulseiq-only; responses
+writes survivor rows with `town_hall_id` only); `lib/townhallThemeDetection`
++ `themes/detect` route + dead `lib/phase4Flags` deleted. sql/153 drops the
+`town_hall*` compat views (148/150), the `townhall_sessions/themes/turns`
+tables, `increment_townhall_response_counter` + orphaned
+`townhall_session_counts_for_ids`, and executes the owner-approved data
+discard (incl. legacy-only participant-response rows).
+`townhall_participant_responses` SURVIVES, new-substrate-only, and its
+backup anchor moved `session_id→townhall_sessions` ⇒
+`town_hall_id→pulseiq_sessions` — the old anchor was silently missing
+every new-substrate row. Parity fix while there: per-participant delete
+now also removes the participant's response row (FK only cascades on
+session delete). Admin URL renamed `/townhall` → `/pulseiq` with permanent
+redirects (public `/pi/[guid]` and internal `/api/townhall/*` paths
+unchanged). Verified post-drop on TEST: tranche-2 harness 8/8, lifecycle
+5/5, item-3 5/5, 1,171 unit/integration tests, tsc clean; lint ceiling
+3111→3066 (the dead code carried its warnings). Prod apply of sql/153 is
+gated on this commit's deploy (the previously-deployed backup cron pages
+the legacy tables nightly).
 
 **Estimate:** Tranche 1 (engine cutover: items 0–7 + a PulseIQ regression set
 mirroring the Sarina harness + prod flag flip + one real test town hall) ≈

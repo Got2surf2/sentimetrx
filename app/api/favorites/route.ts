@@ -27,7 +27,7 @@ const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: str
   // the new substrate. Favorites saved against legacy townhall_sessions ids
   // no longer resolve and silently drop from the list (legacy data is
   // discarded at the end of tranche 2).
-  townhall_session: { table: 'pulseiq_sessions',  ts: 'created_at', href: (id) => '/townhall/' + id },
+  townhall_session: { table: 'pulseiq_sessions',  ts: 'created_at', href: (id) => '/pulseiq/' + id },
   recording:        { table: 'recordings',        ts: 'created_at', href: (id) => '/recordings/' + id + '/report' },
 }
 

@@ -63,12 +63,12 @@ describe('deleteOrgScopedData', () => {
 
   it('fails closed: a permanently-blocked table lands in `failed`', async () => {
     behavior = (table) =>
-      table === 'townhall_sessions'
+      table === 'pulseiq_sessions'
         ? { error: { message: 'RESTRICT: external reference' } }
         : { error: null }
     const r = await deleteOrgScopedData('org1')
-    expect(Object.keys(r.failed)).toEqual(['townhall_sessions'])
-    expect(r.failed.townhall_sessions).toContain('RESTRICT')
-    expect(r.deleted).not.toContain('townhall_sessions')
+    expect(Object.keys(r.failed)).toEqual(['pulseiq_sessions'])
+    expect(r.failed.pulseiq_sessions).toContain('RESTRICT')
+    expect(r.deleted).not.toContain('pulseiq_sessions')
   })
 })

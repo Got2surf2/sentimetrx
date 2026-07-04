@@ -2,9 +2,9 @@
 
 **Last reviewed:** 2026-05-15 (spec audit pass 2 of 14 — see `[[project-spec-audit-queue]]`)
 
-> User-facing name is **PulseIQ**. Internal table/code names (`townhall_*`, `app/townhall/*`, `app/api/townhall/*`) are kept as-is for backwards compatibility. See `[[feedback-product-naming]]`.
+> User-facing name is **PulseIQ**. Internal code names (`/api/townhall/*` routes, `components/townhall/*`, `townhall_participant_responses`) are kept as-is; the facilitator console URL renamed `/townhall` → `/pulseiq` (2026-07-04, permanent redirects; route dir `app/pulseiq/*`). The legacy `townhall_sessions/themes/turns` tables were dropped at the end of convergence tranche 2 (sql/153). See `[[feedback-product-naming]]`.
 
-> **Update (2026-06-03) — public participant URL moved `/th/[sessionId]` → `/pi/[sessionId]`** (route dir `app/th/` → `app/pi/`). The short `/th` ("town hall") prefix is **reserved for the new recordings-based Town Hall product**; PulseIQ participant/live links now use `/pi` ("PulseIQ"). No back-compat redirect — done while there were no live sessions. Internal `townhall_*` tables and the `/townhall` facilitator console + `/api/townhall/*` endpoints are unchanged.
+> **Update (2026-06-03) — public participant URL moved `/th/[sessionId]` → `/pi/[sessionId]`** (route dir `app/th/` → `app/pi/`). The short `/th` ("town hall") prefix is **reserved for the new recordings-based Town Hall product**; PulseIQ participant/live links now use `/pi` ("PulseIQ"). No back-compat redirect — done while there were no live sessions. The facilitator console later renamed `/townhall` → `/pulseiq` (2026-07-04); `/api/townhall/*` endpoint paths are unchanged.
 
 ## Overview
 
@@ -15,19 +15,19 @@ Live group feedback sessions with AI moderation. Participants chat anonymously w
 - **`open`** (default) — the existing free-flowing model: participants are assigned starting topics and the engine rotates them through the pool at their own pace.
 - **`rounds`** — moderator-gated tasting-kitchen variant. Each round is one item being served/tasted; topics carry a `round` number (`TownHallGuideTopic.round`) and round metadata lives in `config.rounds[]` (`TownHallRound`: `{number, item_name, item_photo?}`). On activation, round 1 topics seed `active` and later rounds seed `paused` (`round_number` — sql/140 legacy, sql/149 `pulseiq_topics`); the moderator advances the room one round at a time and participants hold between rounds. Solves the "speed-runner fills the whole survey before tasting everything" problem. Originally built on the legacy `townhall_sessions` substrate; tranche 2 (2026-07-03) moved the moderator round-advance onto `pulseiq_sessions`/`pulseiq_topics`.
   - **Phase 1 (model layer):** config/types + `round_number` column + round-gated seed-on-activate. Open-mode starts do not reference `round_number`, so sql/140 is only required once rounds mode is used.
-  - **Phase 2 (creator UI, current):** `app/townhall/new/NewSessionClient.tsx` — a **Conversation style** toggle (open vs round-based tasting) on the Basics step; in rounds mode the Topics step groups question cards under **rounds** (each = a tasting item with `item_name` + optional `item_photo`), with per-round "+ Add question" and "+ Add Round". Removing a round renumbers the rest contiguously. The flat `discussion_guide` is preserved (each topic carries `round`); round metadata persists in `config.rounds[]`. Each question card has a **"Move to round"** dropdown (when >1 round) for cross-round reassignment; AI "Generate from Description" in rounds mode **appends** to round 1 (preserves existing rounds) so generated questions can then be distributed via the move control.
+  - **Phase 2 (creator UI, current):** `app/pulseiq/new/NewSessionClient.tsx` — a **Conversation style** toggle (open vs round-based tasting) on the Basics step; in rounds mode the Topics step groups question cards under **rounds** (each = a tasting item with `item_name` + optional `item_photo`), with per-round "+ Add question" and "+ Add Round". Removing a round renumbers the rest contiguously. The flat `discussion_guide` is preserved (each topic carries `round`); round metadata persists in `config.rounds[]`. Each question card has a **"Move to round"** dropdown (when >1 round) for cross-round reassignment; AI "Generate from Description" in rounds mode **appends** to round 1 (preserves existing rounds) so generated questions can then be distributed via the move control.
   - **Phase 3 (moderator control + engine gate, current):**
     - **`POST /api/townhall/sessions/[id]/round`** body `{round: N}` — completes any still-active earlier-round seed topics (`round_number < N`, `source='seed'`) and activates round N's topics from their paused seed. Tranche 2 (2026-07-03): operates on `pulseiq_sessions` + `pulseiq_topics`. Org-gated inline via the session row's `org_id`. Cross-org gate covered by `tests/integration/townhall-mutation-gate.test.ts` (401/400/404/200 + admin bypass), per the multi-tenancy invariant.
     - **Round-aware standby gate** in `chat/route.ts`: when `pacing_mode==='rounds'` and all currently-active topics are covered, the engine now emits a round-hold standby **whenever later (paused) rounds remain — regardless of `theme_detection_mode`** (rounds mode runs with detection off). On the participant's next turn after the moderator advances, `pickNextTopic` routes them into the now-active round. Open mode keeps the original organic-only standby behavior.
     - **Unified-engine parity (convergence item 1, 2026-07-03):** the same round-hold gate now exists in `lib/chatCore`'s town-hall layer for the new substrate — `pulseiq_sessions.cohort_config.pacing_mode='rounds'` + later `paused` seed topics in `pulseiq_topics` (`round_number` via sql/149) → round-hold standby hint + `roundHold` on the result, returned as `round_hold` by the Phase-4 shim. Vocabulary mapping: legacy `source='guide'` = new-schema `source='seed'`. Live-verified on the test project (CONVERGENCE §4.2).
-    - **Console control** (`app/townhall/[sessionId]/SessionDetailClient.tsx`): a "Tasting Rounds" strip at the top of the Topics tab (active sessions only) showing each round's status (done/live/pending) + item name + response count, with a primary **"Start Round N — {item}"** button that advances the room.
+    - **Console control** (`app/pulseiq/[sessionId]/SessionDetailClient.tsx`): a "Tasting Rounds" strip at the top of the Topics tab (active sessions only) showing each round's status (done/live/pending) + item name + response count, with a primary **"Start Round N — {item}"** button that advances the room.
   - **Phase 4 (participant hold screen, current):** the chat response now carries a `round_hold` flag (set only on the round-hold standby; distinguishes it from the disengagement "chill" standby). When held, `pi/[id]/TownHallChat.tsx` renders a branded **hold card** ("Waiting for the next item…") in place of the input and polls **`POST /api/townhall/resume/[sessionId]`** every 4s. That endpoint is isolated from the main chat handler (no AI — just the shared `pickNextTopic` over the participant's undiscussed active topics): once the moderator advances and the next round's themes are active, it serves that round's question as a real bot turn and returns it (`{holding:false, bot_message, theme_id, turn_number}`); otherwise `{holding:true}`. The participant's next answer threads onto that turn normally. On the final round (no paused rounds left) the engine wraps up with the closing message. The resumed question carries a deterministic item-aware lead-in ("Now for {item} — {question}") when the round has an item name — no AI call, keeps the poll fast.
   - **Phase 5 (round-grouped exports, current):** `export/route.ts` + `export/pptx/route.ts` read `round_number` + `config.rounds[]`. **In rounds mode only** (open-mode exports are byte-identical): the Responses CSV/XLSX gains `round` + `item` columns; the Themes sheet gains `round`/`item` and is sorted by round; the JSON carries `round` per turn + `round`/`item` per theme; the **PPTX inserts a section-divider slide per round (item name + theme count) followed by that round's theme cards** — the per-item qualitative roll-up deliverable. *QC note:* the PPTX divider needs a visual pass against a real rounds session (deck-credibility rule).
   - **Pilot status: COMPLETE (P1–P5).** Round-based tasting mode is end-to-end: author rounds → moderator gates round-by-round → participants hold/auto-resume → per-item export.
 
 ---
 
-## Session Creation (`app/townhall/new/`)
+## Session Creation (`app/pulseiq/new/`)
 
 ### 6-Step Wizard (THCreatorNav)
 
@@ -48,7 +48,7 @@ Live group feedback sessions with AI moderation. Participants chat anonymously w
 - **Description Grading** — Real-time 1-5 quality score on event description
 
 ### Underlying agent (optional) — Step 0 picker + Step 1 import button
-The facilitator can optionally link the session to one of their existing agents via the **Underlying agent** dropdown on Basics. Stored in `config.bot_id_link` (legacy `townhall_sessions` has no `bot_id` column; phase-3 `pulseiq_sessions` carries the canonical link in its own column).
+The facilitator can optionally link the session to one of their existing agents via the **Underlying agent** dropdown on Basics. Stored in `config.bot_id_link`; `pulseiq_sessions` carries the canonical link in its own `bot_id` column.
 
 When linked, Step 1 shows an **Import focuses from agent** action that appends each enabled `BotFocus` as a starter `TownHallGuideTopic` (`focus.label → topic.label`, `focus.description → topic.description`; `opening_question` left blank for the facilitator to author — the topic-step validation still requires it). Skipped by default — the user has to opt in, so import is a conscious decision (memory: `project_nowocats_town_hall_launch`). If the placeholder topic is still empty, the import replaces it; otherwise it appends.
 
@@ -57,14 +57,14 @@ A session cannot transition from `setup → active` until **both** rules pass:
 1. `discussion_guide` has at least one enabled topic with a non-empty `label` and `opening_question`.
 2. `config.context.event_description` grades ≥ 3 ("Adequate") on the 1-5 grader. The grader snapshot is stored in `config.event_description_grade = { score, suggestion, graded_text, graded_at }` and re-used by the server gate **only when `graded_text` matches the current description verbatim** — editing the description invalidates the snapshot and forces a re-grade.
 
-Both PATCH paths in `/api/townhall/sessions/[id]` (legacy + `handlePhase3Patch`) call `checkActivationReadiness()` before flipping status to active/live, and return `400 { error, readiness: { ready, topics_ok, description_ok, description_score, missing[] } }` on failure. The facilitator console (`SessionDetailClient.tsx`) mirrors the gate client-side — the Start button is disabled and lists the missing reasons inline beneath it, and the server's `readiness.missing[]` is appended to the action-error toast if the user still tries to start.
+The PATCH path in `/api/townhall/sessions/[id]` (`handlePhase3Patch`) calls `checkActivationReadiness()` before flipping status to active/live, and return `400 { error, readiness: { ready, topics_ok, description_ok, description_score, missing[] } }` on failure. The facilitator console (`SessionDetailClient.tsx`) mirrors the gate client-side — the Start button is disabled and lists the missing reasons inline beneath it, and the server's `readiness.missing[]` is appended to the action-error toast if the user still tries to start.
 
 ### Session Types
 community, employee, customer, student, member, other — drives AI tone and peer references
 
 ---
 
-## Facilitator Console (`app/townhall/[sessionId]/`)
+## Facilitator Console (`app/pulseiq/[sessionId]/`)
 
 > **Phase 5 commit 6 (2026-05-22):** the facilitator dashboard surfaces (`/api/townhall/sessions` list + `/api/townhall/sessions/[id]` detail) accept new-substrate `pulseiq_sessions` rows. `lib/townHallAdapter.ts` projects `pulseiq_sessions` + `pulseiq_topics` + `pulseiq_session_conversations` + `conversations` + `conversation_turns` into the same JSON shape `SessionDetailClient` already consumes — the dashboard renders both substrates identically. Status maps `draft|live|paused|closed` → `setup|active|paused|ended`. **Full analytics parity since 2026-07-04:** the `?analytics=true` pipeline (keyword regex, sentiment, time-series, top keywords, example quotes, topic shifts, sentiment trends) was extracted verbatim into pure `lib/townhallAnalytics.computeSessionAnalytics`, which BOTH the legacy branch and the phase-3 adapter now call — the adapter feeds it `fetchTurnsAsLegacy` projections, so `TownHallAnalyticsPanel` renders identical analytics on either substrate. (The old phase-3 empty shell also had the wrong shape — top-level fields instead of the `analytics` object the panel reads — so new-substrate sessions showed a blank panel.) The legacy branch's turns fetch also gained `fetchAllRows` paging — it was PostgREST-capped at 1000 turns.
 >
@@ -473,8 +473,8 @@ The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api
 
 | File | Purpose |
 |------|---------|
-| `app/townhall/new/NewSessionClient.tsx` | Creator (6-step wizard) |
-| `app/townhall/[sessionId]/SessionDetailClient.tsx` | Facilitator console |
+| `app/pulseiq/new/NewSessionClient.tsx` | Creator (6-step wizard) |
+| `app/pulseiq/[sessionId]/SessionDetailClient.tsx` | Facilitator console |
 | `app/pi/[sessionId]/TownHallChat.tsx` | Participant chat UI |
 | `app/pi/[sessionId]/live/page.tsx` | Live presenter screen |
 | `app/api/townhall/chat/route.ts` | Chat engine (~1100 lines) |

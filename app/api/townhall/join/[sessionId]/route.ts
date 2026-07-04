@@ -31,21 +31,11 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
 
   // Resolve by slug first, then by UUID
   const identifier = params.sessionId
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 
+  // Resolve on the unified substrate; project cohort_config into the classic
+  // `session.config` shape so the rest of the handler is shape-agnostic.
   let session: any = null
-  if (!isUUID) {
-    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('slug', identifier.toLowerCase()).single()
-    session = data
-  }
-  if (!session) {
-    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('id', identifier).single()
-    session = data
-  }
-  // Phase-3 substrate fallback — pulseiq_sessions. Project cohort_config into
-  // the legacy `session.config` shape so the rest of the handler is
-  // substrate-agnostic. See docs/CONVERGENCE.md § 4 Phase 6 / docs/TOWNHALL.md.
-  if (!session) {
+  {
     const hall = await resolveTownHall(supabase as any, identifier)
     if (hall) session = projectHallAsSession(hall)
   }
@@ -90,29 +80,15 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
 
   // Resolve by slug or UUID
   const identifier = params.sessionId
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 
   let session: any = null
-  if (!isUUID) {
-    const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('slug', identifier.toLowerCase()).single()
-    session = data
-  }
-  if (!session) {
-    const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('id', identifier).single()
-    session = data
-  }
-  // Phase-3 substrate fallback — pulseiq_sessions. Project + mark substrate so
-  // the opening-turn insert can be skipped (chatCore creates the
-  // conversation + first turn pair on the participant's first message).
-  if (!session) {
+  {
     const hall = await resolveTownHall(supabase as any, identifier)
     if (hall) session = projectHallAsSession(hall)
   }
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
-  const isPhase3 = session.__substrate === 'phase3'
-
   if (session.status !== 'active') {
     return NextResponse.json({
       error: 'Session is not active',
@@ -195,25 +171,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     }
   }
 
-  // Phase-3 substrate: skip the legacy townhall_turns opening insert.
-  // chatCore (via /api/townhall/chat → handleChatTurn) creates the
-  // `conversations` row + first user/assistant turn pair on the
-  // participant's first message — pre-inserting an empty opener would
-  // poison the conversation_turns sequence.
-  if (!isPhase3) {
-    await supabase.from('townhall_turns').insert({
-      session_id: session.id,
-      participant_id: participantId,
-      turn_number: 1,
-      bot_message: openingEn,  // Store English version for analytics
-      user_message: null,
-      user_message_en: null,
-      language,
-      theme_id: null,
-      source: 'guide',
-      skipped: false,
-    })
-  }
+  // No opening-turn insert here: chatCore (via /api/townhall/chat →
+  // handleChatTurn) creates the conversations row + first user/assistant
+  // turn pair on the participant's first message — pre-inserting an empty
+  // opener would poison the conversation_turns sequence.
 
   return NextResponse.json({
     session_id: session.id,  // resolved UUID — client should use this for all subsequent calls

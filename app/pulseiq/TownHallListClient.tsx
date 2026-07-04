@@ -134,7 +134,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
       const res = await fetch('/api/townhall/sessions/' + sessionId + '/duplicate', { method: 'POST' })
       const data = await res.json()
       if (data.id) {
-        router.push('/townhall/' + data.id)
+        router.push('/pulseiq/' + data.id)
       }
     } catch {}
     setActionLoading(null)
@@ -231,7 +231,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
               <p className="text-sm text-gray-500 mt-1">AI-moderated focus groups at scale</p>
             </div>
             <Link
-              href="/townhall/new"
+              href="/pulseiq/new"
               className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
               style={{ background: HERMES }}>
               + New Session
@@ -284,7 +284,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
               <div className="text-4xl mb-3">{'\uD83C\uDFE4'}</div>
               <p className="text-gray-500 text-sm mb-4">No sessions yet. Create your first PulseIQ session to get started.</p>
               <Link
-                href="/townhall/new"
+                href="/pulseiq/new"
                 className="inline-block px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
                 style={{ background: HERMES }}>
                 Create Session
@@ -323,7 +323,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                     <div className="p-4 flex flex-col gap-3 flex-1">
                       {/* Title row — matches survey card */}
                       <div className="flex items-start justify-between gap-2">
-                        <Link href={'/townhall/' + s.id} target="_blank" className="min-w-0 flex-1">
+                        <Link href={'/pulseiq/' + s.id} target="_blank" className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-lg leading-none">{s.config?.bot_emoji || '\uD83C\uDFE4'}</span>
                             <h3 className="font-bold text-gray-800 text-sm truncate hover:text-orange-600 transition-colors">{s.name}</h3>
@@ -401,7 +401,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                       {/* Action pills — identical layout to survey cards */}
                       <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
                         {/* Row 1: Analytics, Responses, Export (orange — greyed when draft) */}
-                        <Link href={'/townhall/' + s.id + '?tab=analytics'} target="_blank"
+                        <Link href={'/pulseiq/' + s.id + '?tab=analytics'} target="_blank"
                           aria-disabled={isDraft}
                           tabIndex={isDraft ? -1 : undefined}
                           title={isDraft ? 'No data yet — start the session to view analytics' : undefined}
@@ -409,7 +409,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={draftDisabledStyle || { background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Analytics
                         </Link>
-                        <Link href={'/townhall/' + s.id + '?tab=responses'} target="_blank"
+                        <Link href={'/pulseiq/' + s.id + '?tab=responses'} target="_blank"
                           aria-disabled={isDraft}
                           tabIndex={isDraft ? -1 : undefined}
                           title={isDraft ? 'No responses yet — start the session to view conversations' : undefined}
@@ -459,7 +459,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         </button>
 
                         {/* Row 3: Manage, Duplicate, Share (gray/blue) */}
-                        <Link href={'/townhall/' + s.id} target="_blank"
+                        <Link href={'/pulseiq/' + s.id} target="_blank"
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                           Manage

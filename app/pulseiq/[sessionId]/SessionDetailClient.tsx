@@ -477,7 +477,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <Link href="/townhall" className="text-sm text-gray-400 hover:text-gray-600 mb-1 block">&larr; All sessions</Link>
+            <Link href="/pulseiq" className="text-sm text-gray-400 hover:text-gray-600 mb-1 block">&larr; All sessions</Link>
             <div className="flex items-center gap-2">
               <span className="text-xl">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
               <h1 className="text-xl font-bold text-gray-900">{session.name}</h1>

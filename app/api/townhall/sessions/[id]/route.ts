@@ -12,10 +12,7 @@ export const dynamic = 'force-dynamic'
 
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
-// Phase 5 commit 6: also accepts pulseiq_sessions rows so the dashboard surface
-// can render new-substrate town halls. Mutations (PATCH/DELETE) on the
-// new substrate are not wired through this route yet — only GET.
-async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null; substrate: 'legacy' | 'phase3' } | { ok: false; status: number; error: string }> {
+async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | { ok: false; status: number; error: string }> {
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -25,12 +22,6 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: session } = await db.from('townhall_sessions').select('org_id').eq('id', sessionId).maybeSingle()
-  if (session) {
-    if (!isAdmin && (session as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
-    return { ok: true, isAdmin, userOrgId, substrate: 'legacy' }
-  }
-  // Phase 3 substrate fallback — also accept pulseiq_sessions by id or slug.
   let hall: any = null
   if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
     const { data } = await db.from('pulseiq_sessions').select('org_id').eq('id', sessionId).maybeSingle()
@@ -42,7 +33,7 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
   }
   if (!hall) return { ok: false, status: 404, error: 'Session not found' }
   if (!isAdmin && (hall as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
-  return { ok: true, isAdmin, userOrgId, substrate: 'phase3' }
+  return { ok: true, isAdmin, userOrgId }
 }
 
 // ── Phase-3 status maps (legacy ↔ pulseiq_sessions) ─────────────────────────────
@@ -112,6 +103,9 @@ async function handlePhase3Patch(
       // link AND the conversation_turns rows.
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
+    // Their post-session demo/psycho answers go with them — the FK only
+    // cascades on SESSION delete, not per-participant removal.
+    await db.from('townhall_participant_responses').delete().eq('town_hall_id', hallId).in('participant_id', pids)
     return NextResponse.json({ deleted: pids.length, turns_deleted: null })
   }
 
@@ -315,133 +309,16 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // Phase 5 commit 6: new-substrate town halls return early via the
-  // adapter — since 2026-07-04 including FULL analytics (shared
-  // lib/townhallAnalytics pipeline over the conversation_turns
-  // projection), identical shape to the legacy branch below.
-  if (gate.substrate === 'phase3') {
-    const analyticsMode = _req.nextUrl.searchParams.get('analytics') === 'true'
-    const payload = await getTownHallAsLegacy(db, params.id, { analyticsMode, bucketParam: _req.nextUrl.searchParams.get('bucket') })
-    if (!payload) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-    return NextResponse.json(payload, {
-      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
-    })
-  }
-
-  const { data: session, error } = await db
-    .from('townhall_sessions')
-    .select('*')
-    .eq('id', params.id)
-    .single()
-
-  if (error || !session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-
-  // Fetch themes
-  const { data: themes } = await db
-    .from('townhall_themes')
-    .select('*')
-    .eq('session_id', params.id)
-    .order('sort_order', { ascending: true })
-
-  // Fetch turn stats
-  const { data: turns } = await db
-    .from('townhall_turns')
-    .select('participant_id, skipped, user_message, theme_id, source, created_at')
-    .eq('session_id', params.id)
-
-  const allTurns = turns || []
-  const participants = new Set(allTurns.map(t => t.participant_id))
-  const answered = allTurns.filter(t => !t.skipped && t.user_message)
-  const avgWords = answered.length > 0
-    ? Math.round(answered.reduce((sum, t) => sum + (t.user_message?.split(/\s+/).length || 0), 0) / answered.length)
-    : 0
-
-  // Post-session response count
-  const { count: responseCount } = await db
-    .from('townhall_participant_responses')
-    .select('id', { count: 'exact', head: true })
-    .eq('session_id', params.id)
-
-  const stats = {
-    joined: participants.size,
-    total_turns: allTurns.length,
-    answered: answered.length,
-    skipped: allTurns.filter(t => t.skipped).length,
-    skip_rate: allTurns.length > 0 ? Math.round((allTurns.filter(t => t.skipped).length / allTurns.length) * 100) : 0,
-    avg_words: avgWords,
-    avg_turns: participants.size > 0 ? +(allTurns.length / participants.size).toFixed(1) : 0,
-    survey_responses: responseCount || 0,
-  }
-
-  // Per-participant summary for the responses tab
-  const participantSummary = Array.from(participants).map(pid => {
-    const pTurns = allTurns.filter(t => t.participant_id === pid)
-    const pAnswered = pTurns.filter(t => !t.skipped && t.user_message)
-    const lastTurn = pTurns[pTurns.length - 1]
-    const topics = new Set(pTurns.filter(t => t.theme_id).map(t => t.theme_id))
-    const firstTurn = pTurns[0]
-    return {
-      participant_id: pid,
-      turns: pTurns.length,
-      answered: pAnswered.length,
-      skipped: pTurns.filter(t => t.skipped).length,
-      topics: topics.size,
-      last_source: lastTurn?.source || null,
-      is_complete: lastTurn?.source === 'done' || pTurns.some(t => t.skipped && t.user_message === '[done]'),
-      started_at: firstTurn?.created_at || null,
-      last_activity: lastTurn?.created_at || null,
-    }
-  })
-
-  const wantsAnalytics = _req.nextUrl.searchParams.get('analytics') === 'true'
-
-  if (!wantsAnalytics) {
-    // Compute live response_count from turns (no cached counter)
-    const { data: turnCountRows } = await db
-      .from('townhall_turns')
-      .select('theme_id')
-      .eq('session_id', params.id)
-      .not('user_message', 'is', null)
-      .eq('skipped', false)
-    const liveCounts: Record<string, number> = {}
-    for (const r of turnCountRows || []) { if (r.theme_id) liveCounts[r.theme_id] = (liveCounts[r.theme_id] || 0) + 1 }
-    const themesWithLiveCounts = (themes || []).map((t: any) => ({ ...t, response_count: liveCounts[t.id] || 0 }))
-    return NextResponse.json({ session, themes: themesWithLiveCounts, stats, participants: participantSummary }, {
-      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
-    })
-  }
-
-  // ── Analytics mode — shared pipeline (lib/townhallAnalytics; extracted
-  // 2026-07-04 so the new-substrate adapter computes identical analytics).
-  // fetchAllRows: a bare select was PostgREST-capped at 1000 turns — the
-  // same silent-cap class the 7/3 pre-push review swept; this instance
-  // was missed.
-  const allTurnsWithText = await fetchAllRows<AnalyticsTurn>((from, to) => db
-    .from('townhall_turns')
-    .select('user_message_en, user_message, theme_id, created_at, skipped, sentiment, sentiment_score')
-    .eq('session_id', params.id)
-    .order('created_at', { ascending: true })
-    .range(from, to))
-
-  const safetyConfig = (session.config as any)?.content_safety || {}
-  const { enrichedThemes, analytics } = computeSessionAnalytics({
-    turns: allTurnsWithText,
-    themes: themes || [],
-    safetyConfig,
-    bucketParam: _req.nextUrl.searchParams.get('bucket'),
-  })
-
-  return NextResponse.json({
-    session,
-    themes: enrichedThemes,
-    stats,
-    analytics,
-  }, {
+  // Full payload (with optional analytics) via the adapter — shared
+  // lib/townhallAnalytics pipeline over the conversation_turns projection.
+  const analyticsMode = _req.nextUrl.searchParams.get('analytics') === 'true'
+  const payload = await getTownHallAsLegacy(db, params.id, { analyticsMode, bucketParam: _req.nextUrl.searchParams.get('bucket') })
+  if (!payload) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })
 }
 
-// PATCH /api/townhall/sessions/:id — update session config or status
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const supabase = await createClient()
@@ -457,319 +334,12 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  // Phase-3 substrate: handle the operations a facilitator actually
-  // needs to run NOWOCATS — status changes, restart, delete_participants,
-  // reanalyze, discussion_guide sync, name/config edits. Slug edit +
-  // org_id transfer stay legacy-only (low-priority for launch). Status
-  // map: setup↔draft, active↔live, paused↔paused, ended↔closed.
-  if (gate.substrate === 'phase3') {
-    return await handlePhase3Patch(db, params.id, body, user.id)
-  }
-
-  // Handle delete_participants: remove specific participant conversations
-  if (body.delete_participants && Array.isArray(body.delete_participants)) {
-    const pids: string[] = body.delete_participants
-    if (pids.length === 0) return NextResponse.json({ error: 'No participant IDs provided' }, { status: 400 })
-    const { count: turnCount } = await db.from('townhall_turns').delete({ count: 'exact' }).eq('session_id', params.id).in('participant_id', pids)
-    await db.from('townhall_participant_responses').delete().eq('session_id', params.id).in('participant_id', pids)
-    // Recount response_counter
-    const { data: distinctParticipants } = await db.from('townhall_turns').select('participant_id').eq('session_id', params.id)
-    const uniqueRemaining = new Set((distinctParticipants || []).map(t => t.participant_id)).size
-    await db.from('townhall_sessions').update({ response_counter: uniqueRemaining }).eq('id', params.id)
-
-    // Un-complete themes that dropped below target after deletion (response_count computed live)
-    const { data: allThemes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id)
-    if (allThemes) {
-      const { data: turnCounts } = await db.from('townhall_turns').select('theme_id').eq('session_id', params.id).not('user_message', 'is', null).eq('skipped', false)
-      const countMap: Record<string, number> = {}
-      for (const t of turnCounts || []) { if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1 }
-      for (const theme of allThemes) {
-        if (theme.state === 'completed' && (countMap[theme.id] || 0) < theme.response_target) {
-          await db.from('townhall_themes').update({ state: 'active', completed_at: null }).eq('id', theme.id)
-        }
-      }
-    }
-    return NextResponse.json({ deleted: pids.length, turns_deleted: turnCount ?? 0 })
-  }
-
-  // Handle reanalyze: clear all auto-detected themes, fix completed states, re-run detection
-  if (body.reanalyze) {
-    // Delete all auto-detected (organic) themes
-    await db.from('townhall_themes').delete().eq('session_id', params.id).eq('source', 'auto_detected')
-    // Un-complete seed themes that lost their responses (response_count is now computed live)
-    const { data: guideThemes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id).in('source', ['guide', 'custom'])
-    if (guideThemes?.length) {
-      const { data: turnCounts } = await db
-        .from('townhall_turns')
-        .select('theme_id')
-        .eq('session_id', params.id)
-        .not('user_message', 'is', null)
-        .eq('skipped', false)
-      const countMap: Record<string, number> = {}
-      for (const t of turnCounts || []) { if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1 }
-      for (const theme of guideThemes) {
-        const liveCount = countMap[theme.id] || 0
-        if (theme.state === 'completed' && liveCount < theme.response_target) {
-          await db.from('townhall_themes').update({ state: 'active', completed_at: null }).eq('id', theme.id)
-        }
-      }
-    }
-    // Re-run organic theme detection (only if there are responses)
-    const { count } = await db.from('townhall_turns').select('id', { count: 'exact', head: true }).eq('session_id', params.id).not('user_message', 'is', null)
-    if ((count || 0) > 0) {
-      const { detectThemesForSession } = await import('@/lib/townhallThemeDetection')
-      const result = await detectThemesForSession(params.id)
-      return NextResponse.json({ reanalyzed: true, ...result })
-    }
-    return NextResponse.json({ reanalyzed: true, organic_detected: 0 })
-  }
-
-  // Handle restart: reset to setup, clear all turns and themes
-  if (body.restart) {
-    await db.from('townhall_turns').delete().eq('session_id', params.id)
-    await db.from('townhall_themes').delete().eq('session_id', params.id)
-    const { data, error } = await db
-      .from('townhall_sessions')
-      .update({ status: 'setup', started_at: null, ended_at: null, response_counter: 0 })
-      .eq('id', params.id)
-      .select('id, status, started_at, ended_at')
-      .single()
-    if (error) return serverError(error, 'townhall.session.restart', { orgId: gate.userOrgId ?? undefined })
-    return NextResponse.json(data)
-  }
-
-  // Validate slug if provided
-  if (body.slug !== undefined) {
-    if (body.slug) {
-      const slug = String(body.slug).toLowerCase().trim()
-      const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
-      if (!SLUG_REGEX.test(slug)) {
-        return NextResponse.json({ error: 'Link must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
-      }
-      const { data: conflict } = await db.from('townhall_sessions').select('id').eq('slug', slug).neq('id', params.id).limit(1)
-      if (conflict && conflict.length > 0) {
-        return NextResponse.json({ error: 'This link is already taken' }, { status: 409 })
-      }
-      body.slug = slug
-    } else {
-      body.slug = null
-    }
-  }
-
-  // Admin-only: allow changing org_id (transfer session to another org)
-  if ('org_id' in body) {
-    const { data: uData } = await supabase.from('users').select('organizations(is_admin_org)').eq('id', user.id).single()
-    const oData = Array.isArray(uData?.organizations) ? (uData.organizations as any)[0] : uData?.organizations as any
-    if (!oData?.is_admin_org) {
-      return NextResponse.json({ error: 'Only admins can transfer sessions' }, { status: 403 })
-    }
-    const svc = createServiceRoleClient()
-    const { data: cur } = await svc.from('townhall_sessions').select('org_id, name').eq('id', params.id).single()
-    const fromOrgId = (cur as any)?.org_id ?? null
-    const resourceName = (cur as any)?.name ?? null
-    const toOrgId = String(body.org_id || '')
-    const check = await checkTransferTarget(svc, fromOrgId, toOrgId)
-    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
-    const { error: txErr } = await db.from('townhall_sessions').update({ org_id: toOrgId }).eq('id', params.id)
-    if (txErr) return serverError(txErr, 'townhall.session.transfer', { orgId: fromOrgId })
-    await recordOrgTransfer({
-      service: svc, resourceType: 'townhall_session', resourceId: params.id,
-      resourceName, fromOrgId, toOrgId,
-      initiatedBy: user.id, initiatedByEmail: user.email || null,
-    })
-    return NextResponse.json({ success: true, transferred: true })
-  }
-
-  // Only allow updating specific fields
-  const allowed = ['name', 'config', 'discussion_guide', 'status', 'slug']
-  const updates: Record<string, unknown> = {}
-  for (const key of allowed) {
-    if (key in body) updates[key] = body[key]
-  }
-
-  // Handle status transitions
-  if (body.reopen) {
-    // Reopen from ended — go back to active, preserve started_at, clear ended_at
-    updates.status = 'active'
-    updates.ended_at = null
-  } else if (updates.status === 'active') {
-    updates.started_at = new Date().toISOString()
-  } else if (updates.status === 'ended') {
-    updates.ended_at = new Date().toISOString()
-  }
-
-  // Activation gate (legacy substrate): same rules as phase-3. Refuse to
-  // flip to 'active' until topics + description grade pass. Merge body
-  // overrides on top of the persisted row for combined-PATCH cases.
-  if (updates.status === 'active') {
-    const { data: current } = await db
-      .from('townhall_sessions')
-      .select('config, discussion_guide')
-      .eq('id', params.id)
-      .single()
-    const mergedGuide  = 'discussion_guide' in body ? body.discussion_guide : (current as any)?.discussion_guide
-    const mergedConfig = 'config'           in body ? body.config           : (current as any)?.config
-    const readiness = await checkActivationReadiness({ config: mergedConfig as any, discussion_guide: mergedGuide as any })
-    if (!readiness.ready) {
-      return NextResponse.json({
-        error: 'Town hall is not ready to start',
-        readiness,
-      }, { status: 400 })
-    }
-  }
-
-  const { data, error } = await db
-    .from('townhall_sessions')
-    .update(updates)
-    .eq('id', params.id)
-    .select('id, status, started_at, ended_at')
-    .single()
-
-  if (error) return serverError(error, 'townhall.session.update', { orgId: gate.userOrgId ?? undefined })
-
-  // When starting a session, seed the discussion guide topics into townhall_themes (once)
-  if (updates.status === 'active') {
-    // Check if guide themes already exist (prevents duplicates on repeated activation)
-    const { count: existingCount } = await db
-      .from('townhall_themes')
-      .select('id', { count: 'exact', head: true })
-      .eq('session_id', params.id)
-      .eq('source', 'guide')
-
-    if (!existingCount) {
-      const { data: session } = await db
-        .from('townhall_sessions')
-        .select('discussion_guide, config')
-        .eq('id', params.id)
-        .single()
-
-      if (session?.discussion_guide && Array.isArray(session.discussion_guide)) {
-        const enabledTopics = session.discussion_guide.filter((t: any) => t.enabled !== false)
-        // Round-based pacing: round 1 (lowest authored round) starts active; later
-        // rounds wait paused until the moderator pushes "Start Round N". In open
-        // mode round_number stays null and every topic seeds active (legacy behavior).
-        const roundsMode = session.config?.pacing_mode === 'rounds'
-        const firstRound = roundsMode
-          ? Math.min(...enabledTopics.map((t: any) => t.round || 1))
-          : null
-        const guideThemes = enabledTopics.map((topic: any, idx: number) => {
-          const round = topic.round || 1
-          return {
-          session_id: params.id,
-          label: topic.label,
-          description: topic.description || null,
-          question: topic.opening_question,
-          follow_up_angles: topic.follow_up_angles || [],
-          keywords: topic.keywords || [],
-          state: roundsMode && round !== firstRound ? 'paused' : 'active',
-          source: 'guide',
-          response_target: topic.response_target || session.config?.engine?.default_response_target || 30,
-          sort_order: idx,
-          // Only reference round_number in rounds mode so open-mode starts don't
-          // require sql/140 (column absent until applied). roundsMode is only
-          // reachable once the Phase 2 creator UI sets pacing_mode.
-          ...(roundsMode ? { round_number: round } : {}),
-          }
-        })
-
-      if (guideThemes.length > 0) {
-        await db.from('townhall_themes').insert(guideThemes)
-      }
-      }
-    }
-  }
-
-  // Sync discussion guide changes to townhall_themes for active/paused sessions
-  if (updates.discussion_guide && !updates.status) {
-    const currentStatus = data?.status
-    if (currentStatus === 'active' || currentStatus === 'paused') {
-      const guide = updates.discussion_guide as any[]
-      if (Array.isArray(guide)) {
-        // Fetch existing themes for this session (guide-sourced)
-        const { data: existingThemes } = await db
-          .from('townhall_themes')
-          .select('id, label, state, source')
-          .eq('session_id', params.id)
-
-        const existingLabels = new Set((existingThemes || []).map(t => t.label.toLowerCase()))
-
-        // Insert new enabled topics that don't already have a theme
-        const newTopics = guide
-          .filter((t: any) => t.enabled !== false && t.label.trim() && !existingLabels.has(t.label.toLowerCase().trim()))
-
-        if (newTopics.length > 0) {
-          const maxOrder = (existingThemes || []).length
-          const newThemes = newTopics.map((topic: any, idx: number) => ({
-            session_id: params.id,
-            label: topic.label,
-            description: topic.description || null,
-            question: topic.opening_question || '',
-            follow_up_angles: topic.follow_up_angles || [],
-            keywords: topic.keywords || [],
-            state: 'active',
-            source: 'guide',
-            response_target: topic.response_target || 30,
-            sort_order: maxOrder + idx,
-          }))
-          await db.from('townhall_themes').insert(newThemes)
-        }
-
-        // Pause themes for topics that were disabled in the guide
-        const disabledLabels = guide
-          .filter((t: any) => t.enabled === false && t.label.trim())
-          .map((t: any) => t.label.toLowerCase().trim())
-
-        if (disabledLabels.length > 0) {
-          const toDisable = (existingThemes || [])
-            .filter(t => t.source === 'guide' && t.state === 'active' && disabledLabels.includes(t.label.toLowerCase()))
-          for (const t of toDisable) {
-            await db.from('townhall_themes').update({ state: 'paused' }).eq('id', t.id)
-          }
-        }
-
-        // Re-activate themes for topics that were re-enabled
-        const enabledLabels = guide
-          .filter((t: any) => t.enabled !== false && t.label.trim())
-          .map((t: any) => t.label.toLowerCase().trim())
-
-        const toReactivate = (existingThemes || [])
-          .filter(t => t.source === 'guide' && t.state === 'paused' && enabledLabels.includes(t.label.toLowerCase()))
-        for (const t of toReactivate) {
-          await db.from('townhall_themes').update({ state: 'active' }).eq('id', t.id)
-        }
-
-        // Update existing guide themes with current guide data (label, description, keywords, question, target)
-        const guideThemes = (existingThemes || []).filter(t => t.source === 'guide')
-        for (const theme of guideThemes) {
-          // Match by label (case-insensitive) — the guide topic that corresponds to this theme
-          const guideTopic = guide.find((g: any) => g.label.toLowerCase().trim() === theme.label.toLowerCase())
-          if (guideTopic) {
-            await db.from('townhall_themes').update({
-              label: guideTopic.label,
-              description: guideTopic.description || null,
-              question: guideTopic.opening_question || '',
-              follow_up_angles: guideTopic.follow_up_angles || [],
-              keywords: guideTopic.keywords || [],
-              response_target: guideTopic.response_target || 30,
-            }).eq('id', theme.id)
-          }
-        }
-
-        // Remove themes for guide topics that were completely deleted from the guide
-        const guideLabelsLower = guide.map((g: any) => g.label.toLowerCase().trim()).filter(Boolean)
-        const orphaned = guideThemes.filter(t => !guideLabelsLower.includes(t.label.toLowerCase()))
-        for (const t of orphaned) {
-          // Don't delete — dismiss so data is preserved, but topic disappears from active view
-          await db.from('townhall_themes').update({ state: 'dismissed' }).eq('id', t.id)
-        }
-      }
-    }
-  }
-
-  return NextResponse.json(data)
+  // Status changes (with seed-on-activate), restart, delete_participants,
+  // reanalyze, discussion_guide sync, name/config edits. Status map:
+  // setup↔draft, active↔live, paused↔paused, ended↔closed.
+  return await handlePhase3Patch(db, params.id, body, user.id)
 }
 
-// DELETE /api/townhall/sessions/:id — delete session and all related data
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const supabase = await createClient()
@@ -781,10 +351,11 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   const gate = await gateSessionAccess(supabase, db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // Phase-3 substrate: cascade through pulseiq_session_conversations →
-  // conversations → conversation_turns (FK cascade) + pulseiq_topics
-  // (FK cascade on pulseiq_sessions delete), then drop the pulseiq_sessions row.
-  if (gate.substrate === 'phase3') {
+  // Cascade through pulseiq_session_conversations → conversations →
+  // conversation_turns (FK cascade) + pulseiq_topics + participant
+  // responses (both FK cascade on pulseiq_sessions delete), then drop the
+  // pulseiq_sessions row.
+  {
     const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id, bot_id').eq('id', params.id).maybeSingle()
     if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
     const orgId = (hall as any).org_id as string
@@ -812,13 +383,4 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     }
     return NextResponse.json({ deleted: true })
   }
-
-  // Delete in order: turns → themes → participant responses → session
-  await db.from('townhall_turns').delete().eq('session_id', params.id)
-  await db.from('townhall_themes').delete().eq('session_id', params.id)
-  await db.from('townhall_participant_responses').delete().eq('session_id', params.id)
-  const { error } = await db.from('townhall_sessions').delete().eq('id', params.id)
-
-  if (error) return serverError(error, 'townhall.session.delete', { orgId: gate.userOrgId ?? undefined })
-  return NextResponse.json({ deleted: true })
 }
