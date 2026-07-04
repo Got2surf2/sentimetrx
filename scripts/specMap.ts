@@ -89,6 +89,9 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'components/admin/GovernanceTrend.tsx',
     'components/admin/SentryDigest.tsx',
     'components/downloads/**',
+    // Promotion framework (§12) — config flows up test→prod
+    'lib/promotion.ts',
+    'scripts/promote.ts',
   ],
 
   'docs/TESTING.md': [

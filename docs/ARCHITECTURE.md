@@ -224,6 +224,34 @@ database (gaps + one-offs predate the ledger) — `docs/db/schema.sql` is the
 authoritative recreate-from-nothing artifact; compat views must be dropped
 deliberately when their consumers die, or they linger as false signals.
 
+## D13. Prod/test environment split: data flows down, config flows up
+
+**Decision:** Local development defaults to the Sentimetrx-Test project
+(`npm run dev`; `npm run dev:prod` opts into prod with a red banner).
+Movement between the two databases is asymmetric by design:
+**data flows down** — `scripts/clone-org-to-test.ts` restores a prod org
+into test from the nightly S3 snapshot (every routine clone doubles as a
+DR restore drill) — and **config flows up** — `npm run promote`
+(`scripts/promote.ts` + `lib/promotion.ts`) exports ONE configured entity
+(agent, PulseIQ session, or survey) as a versioned JSON manifest and
+imports it into prod, where it lands dormant (draft; a PulseIQ session's
+dedicated facilitator agent lands paused). Runtime data (responses,
+conversations, detected topics) never flows up; ids never survive the trip
+(surveys get a fresh guid, slugs ride a collision ladder).
+
+**Why:** With client data approaching, ambient write-capable dev sessions
+against prod became untenable — but things are *built* in test and must
+reach prod somehow. A reviewable manifest file is the promotion gate: open
+the JSON, check prompts/questions/guide, then import (prod import requires
+`--yes` and exits before any prod connection without it). The agent
+manifest is the pre-existing `bot_export_version: 1` route format, so UI
+downloads and CLI files interoperate.
+
+**Consequences:** Promotion is config-only — datasets/analytics stay
+clone-down territory. `promotions/` is gitignored (manifests can carry
+client prompts). Anything configurable a manifest doesn't capture is a
+promotion-framework bug, not a reason to hand-edit prod.
+
 ---
 
 *Add a D-entry when a decision (a) shapes more than one module, (b) would

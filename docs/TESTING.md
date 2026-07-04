@@ -56,6 +56,7 @@ tests/
 │   ├── projectCompare.test.ts # competitive + brand-360 comparison engine — primary focus resolution/reorder, matrix cells (count/dominant-sentiment/avg-rating), row sort by volume, brand_360 no-primary
 │   ├── projectReport.test.ts # project (brand) report aggregation — by-topic pooling case-insensitive, reconciling totals, deterministic 1:1 theme fallback, entity merge across sources, sentiment sum, source-attributed commentary
 │   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation
+│   ├── promotion.test.ts     # promotion manifests (lib/promotion) — parseManifest version gates, -copy[N] slug ladder, imports land dormant (draft/paused), allow-list stripping, fresh survey guid + null client_id, PulseIQ dedicated-agent rollback on failed session insert
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop

@@ -629,7 +629,28 @@ deployment; rollback is one CLI command if the post-deploy smoke
 check fails. The "manual gate" check is on the honor system until
 item 19 lands.
 
-### Build command — Turbopack opt-out (Next 16)
+### Promoting configured entities test → prod
+
+Code releases ship via git push; *configuration* built on the test
+project (an agent, a PulseIQ session, a survey) ships via the
+promotion framework (`lib/promotion.ts` + `scripts/promote.ts`;
+docs/ARCHITECTURE.md D13):
+
+```bash
+npm run promote -- export agent <slug>        # test → promotions/*.json
+# review the manifest JSON, then:
+npm run promote -- import promotions/<file>.json --org <prod-org-uuid> --yes
+```
+
+Manifests are versioned, config-only (no responses / conversations /
+topics / embeddings), and land dormant — agents and surveys as
+`draft`, a PulseIQ session as `draft` with its dedicated facilitator
+agent `paused` — so nothing serves traffic until activated in the UI.
+Surveys get a fresh guid; slug collisions append `-copy[N]`. A prod
+import without `--yes` exits before any prod connection. The agent
+manifest is the same `bot_export_version: 1` format the
+`/api/bots/[id]/export` route downloads, so both interoperate.
+`promotions/` is gitignored — manifests can carry client prompts.
 
 Next 16 makes **Turbopack the default** for `next build` / `next dev`,
 and a Turbopack build **fails** when a `webpack` key is present in the

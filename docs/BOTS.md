@@ -1177,6 +1177,8 @@ Org-member or admin gated. Returns a `bot_export_version: 1` JSON blob containin
 ### `POST /api/bots/import`
 Org-member gated. Body is a `bot_export_version: 1` JSON payload. Creates a new bot in the caller's org as `status='draft'`; slug collisions append `-copy[N]`. Inserts the payload's chunks **without embeddings** — the bot edit UI or a rescan run backfills them. Returns `{ id, slug, chunks_imported }`. Logs an `import` audit entry referencing `source_bot_id`/`source_bot_name`.
 
+Both routes delegate the manifest build/apply to `lib/promotion.ts` (2026-07-04), which is shared with the cross-project promote CLI (`npm run promote`, docs/ENGINEERING.md §12) — a UI-downloaded export file and a CLI-exported manifest are the same format and import interchangeably.
+
 ### `GET /api/bots/[id]/history?limit=N`
 Org-member or admin gated. Lists `bot_change_log` entries for the bot, newest first. Default `limit=100`, max `500`. Each entry: `{ id, bot_id, org_id, actor_id, actor_email, action, summary, before, after, metadata, created_at }`.
 

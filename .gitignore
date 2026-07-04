@@ -51,3 +51,7 @@ data/chuys-candidates*.jsonl
 scripts/_*.ts
 scripts/_*.mjs
 scripts/_*.sql
+
+# Promotion manifests (scripts/promote.ts) — reviewable JSON artifacts that
+# can carry client config (prompts, discussion guides); never committed.
+promotions/
