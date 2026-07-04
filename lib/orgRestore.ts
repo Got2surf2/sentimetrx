@@ -99,6 +99,29 @@ const REPLACE_PER_PARENT: Record<string, { parentKey: string; stripId?: boolean 
   user_favorites: { parentKey: 'user_id' },
 }
 
+// Columns a DB trigger reacts to, restored in a DEFERRED second pass.
+// datasets.brand_tag fires set_brand_collection_id (migration 062): on a
+// restore, datasets insert BEFORE collections (FK direction), so the
+// trigger's find-or-create would mint a PHANTOM brand collection (new id)
+// per brand — which then 23505-blocks the snapshot's real collections row
+// and FK-blocks its collection_members (the 2026-07-04 drill's
+// "collections 12/17" anomaly). Phase 1 inserts rows with these columns
+// nulled (no trigger effect); after every table has landed, the retained
+// full rows re-upsert, so the trigger's find-or-create takes its fast path
+// to the SNAPSHOT's collection. The AFTER trigger
+// (sync_brand_collection_members) also inserts a membership row on that
+// transition — a duplicate of the snapshot's own (no unique pair
+// constraint), so dedupChildPairs removes the non-snapshot twin.
+const DEFERRED_COLUMNS: Record<string, {
+  columns: string[]
+  dedupChildPairs?: { table: string; parentCol: string; otherCol: string }
+}> = {
+  datasets: {
+    columns: ['brand_tag', 'brand_collection_id'],
+    dedupChildPairs: { table: 'collection_members', parentCol: 'dataset_id', otherCol: 'collection_id' },
+  },
+}
+
 const CHUNK = 500
 const FK_VIOLATION = '23503'
 const UNIQUE_VIOLATION = '23505'
@@ -120,6 +143,9 @@ interface TableRun {
   claimIds: Set<unknown> | null // plain tables: upserted ids
   claimParents: Map<unknown, number> | null // identity tables: rows per parent
   identity: { parentKey: string; stripId?: boolean } | undefined
+  // Full original rows whose DEFERRED_COLUMNS were nulled in phase 1 —
+  // re-upserted after all tables land.
+  deferredRows: Record<string, unknown>[]
 }
 
 function freshReport(table: string): TableReport {
@@ -186,8 +212,10 @@ async function restoreTableOnce(
     claimIds: identity ? null : new Set<unknown>(),
     claimParents: identity ? new Map<unknown, number>() : null,
     identity,
+    deferredRows: [],
   }
   const report = run.report
+  const deferred = DEFERRED_COLUMNS[tableName]
 
   // Identity tables: replace-per-parent. The dump writes rows grouped
   // by parent, but correctness doesn't depend on it — the target's rows
@@ -234,8 +262,21 @@ async function restoreTableOnce(
     }
     if (seenIds) batch.forEach(r => seenIds.add(r.id))
 
+    // Phase 1 for trigger-sensitive columns: write the row with them
+    // nulled, retain the full original for the deferred pass.
+    let toWrite = batch
+    if (deferred) {
+      toWrite = batch.map(r => {
+        if (!deferred.columns.some(c => r[c] != null)) return r
+        run.deferredRows.push(r)
+        const stripped = { ...r }
+        for (const c of deferred.columns) stripped[c] = null
+        return stripped
+      })
+    }
+
     // Upsert in chunks of 500 to stay under PostgREST limits.
-    await writeRows(db, run, batch)
+    await writeRows(db, run, toWrite)
   }
 
   // A stream that ends early (truncated part, parse gap) must not read as
@@ -341,6 +382,47 @@ export async function restoreOrgSnapshotFromSource(
       runs.set(t, rerun)
     }
     if (!progress) break
+  }
+
+  // Deferred trigger-sensitive columns (see DEFERRED_COLUMNS): re-upsert
+  // the retained full rows now that every table has landed — the trigger's
+  // find-or-create resolves to the snapshot's rows instead of minting
+  // phantoms. Then remove the AFTER-trigger's duplicate child rows.
+  for (const t of names) {
+    const run = runs.get(t)!
+    if (run.deferredRows.length === 0) continue
+    for (let i = 0; i < run.deferredRows.length; i += CHUNK) {
+      const chunk = run.deferredRows.slice(i, i + CHUNK)
+      const { error } = await db.from(t).upsert(chunk, { onConflict: 'id' }).select('id')
+      if (error) {
+        run.report.errors += chunk.length
+        if (!run.report.first_error) run.report.first_error = 'deferred-columns pass: ' + error.message
+      }
+    }
+    const dedup = DEFERRED_COLUMNS[t]?.dedupChildPairs
+    if (dedup) {
+      const parentIds = run.deferredRows.map(r => r.id)
+      const childClaims = runs.get(dedup.table)?.claimIds ?? null
+      for (let i = 0; i < parentIds.length; i += 200) {
+        const { data } = await db.from(dedup.table).select('id, ' + dedup.parentCol + ', ' + dedup.otherCol)
+          .in(dedup.parentCol, parentIds.slice(i, i + 200))
+        if (!data) continue
+        const byPair = new Map<string, { id: unknown }[]>()
+        for (const r of data as unknown as Record<string, unknown>[]) {
+          const k = String(r[dedup.otherCol]) + '|' + String(r[dedup.parentCol])
+          const arr = byPair.get(k) ?? []
+          arr.push(r as { id: unknown })
+          byPair.set(k, arr)
+        }
+        const extras: unknown[] = []
+        for (const rows of byPair.values()) {
+          if (rows.length < 2) continue
+          const keep = rows.find(r => childClaims?.has(r.id)) ?? rows[0]
+          for (const r of rows) if (r !== keep) extras.push(r.id)
+        }
+        if (extras.length > 0) await db.from(dedup.table).delete().in('id', extras)
+      }
+    }
   }
 
   if (opts.verify !== false) {

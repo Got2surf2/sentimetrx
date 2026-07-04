@@ -22,6 +22,8 @@ type Row = Record<string, unknown>
 interface FkRule { table: string; col: string; ref: string }
 interface UniqueRule { table: string; name: string; key: (r: Row) => string | null }
 
+interface TriggerApi { tbl: (t: string) => Row[]; genId: () => string; set: (t: string, rows: Row[]) => void }
+
 function fkDb(opts: {
   fks?: FkRule[]
   uniques?: UniqueRule[]
@@ -31,11 +33,15 @@ function fkDb(opts: {
   // Tables whose DELETE always errors (pre-delete failure path).
   deleteErrors?: string[]
   seed?: Record<string, Row[]>
+  // Simulate a BEFORE trigger: may mutate the incoming row and write side
+  // rows into other tables (set_brand_collection_id-style).
+  beforeWrite?: (table: string, row: Row, old: Row | null, api: TriggerApi) => void
 } = {}) {
   const store = new Map<string, Row[]>()
   for (const [t, rows] of Object.entries(opts.seed || {})) store.set(t, rows.map(r => ({ ...r })))
   const tbl = (t: string) => { if (!store.has(t)) store.set(t, []); return store.get(t)! }
   let idSeq = 1
+  const api: TriggerApi = { tbl, genId: () => 'gen-' + idSeq++, set: (t, rows) => { store.set(t, rows) } }
 
   function violation(table: string, rows: Row[]): { code: string; message: string } | null {
     for (const fk of (opts.fks || []).filter(f => f.table === table)) {
@@ -61,15 +67,18 @@ function fkDb(opts: {
   }
 
   function land(table: string, rows: Row[], op: 'upsert' | 'insert'): Row[] {
-    const arr = tbl(table)
     const landed: Row[] = []
     for (const r of rows) {
       const row = 'id' in r ? { ...r } : { ...r, id: 'gen-' + idSeq++ }
+      const arr = tbl(table)
+      const existing = op === 'upsert' ? arr.find(x => x.id === row.id) ?? null : null
+      opts.beforeWrite?.(table, row, existing, api)
+      const target = tbl(table) // beforeWrite may have replaced the array via api.set
       if (op === 'upsert') {
-        const i = arr.findIndex(x => x.id === row.id)
-        if (i >= 0) arr[i] = row; else arr.push(row)
+        const i = target.findIndex(x => x.id === row.id)
+        if (i >= 0) target[i] = row; else target.push(row)
       } else {
-        arr.push(row)
+        target.push(row)
       }
       landed.push(row)
     }
@@ -110,12 +119,12 @@ function fkDb(opts: {
             },
           }
         },
-        select(col: string, o?: { count?: string; head?: boolean }) {
+        select(_col: string, o?: { count?: string; head?: boolean }) {
           return {
             in(c: string, vals: unknown[]) {
               const rows = tbl(table).filter(r => vals.includes(r[c]))
               if (o?.head) return Promise.resolve({ count: rows.length, error: null })
-              return Promise.resolve({ data: rows.map(r => ({ id: r.id, [col]: r[col] })), error: null })
+              return Promise.resolve({ data: rows.map(r => ({ ...r })), error: null })
             },
             eq(c: string, v: unknown) {
               const rows = tbl(table).filter(r => r[c] === v)
@@ -239,6 +248,77 @@ describe('unique-index collisions', () => {
     expect(c.skipped_conflict).toBe(1)
     expect(c.first_error).toContain('collections_brand_slug_uniq')
     expect(tbl('collections').map(r => r.id).sort()).toEqual(['c-live', 'c-other'])
+    expect(res.totals.missing).toBe(0)
+  })
+})
+
+describe('trigger-minted phantoms (deferred columns)', () => {
+  // Faithful simulation of set_brand_collection_id (BEFORE, migration 062)
+  // + sync_brand_collection_members (AFTER): a dataset written with a
+  // brand_tag find-or-creates the brand collection (phantom id if the
+  // snapshot's row hasn't landed yet) and syncs a membership row.
+  const brandTrigger = (table: string, row: Row, old: Row | null, api: TriggerApi) => {
+    if (table !== 'datasets' || row.source === 'collection') return
+    const newTag = String(row.brand_tag ?? '')
+    const oldTag = String(old?.brand_tag ?? '')
+    if (newTag === oldTag) return
+    let collId: unknown = null
+    if (newTag) {
+      const slug = newTag.toLowerCase().replace(/\W+/g, '_')
+      let coll = api.tbl('collections').find(c => c.org_id === row.org_id && c.kind === 'brand' && c.slug === slug)
+      if (!coll) {
+        const vds = { id: api.genId(), org_id: row.org_id, source: 'collection', name: newTag }
+        api.tbl('datasets').push(vds)
+        coll = { id: api.genId(), org_id: row.org_id, kind: 'brand', slug, dataset_id: vds.id }
+        api.tbl('collections').push(coll)
+      }
+      collId = coll.id
+    }
+    const oldColl = old?.brand_collection_id ?? null
+    row.brand_collection_id = collId
+    if (oldColl !== collId) {
+      if (oldColl != null) api.set('collection_members', api.tbl('collection_members').filter(m => !(m.collection_id === oldColl && m.dataset_id === row.id)))
+      if (collId != null) api.tbl('collection_members').push({ id: api.genId(), collection_id: collId, dataset_id: row.id, label: row.name, sort_order: 0 })
+    }
+  }
+
+  it('branded datasets restore without minting phantom brand collections (2026-07-04 live drill)', async () => {
+    // Snapshot: a virtual dataset backing the brand collection, a branded
+    // dataset pointing at it, the real collections row, its membership row.
+    const datasets = [
+      { id: 'vds-1', org_id: ORG, source: 'collection', name: 'Acme', brand_tag: null, brand_collection_id: null },
+      { id: 'd-1', org_id: ORG, source: 'upload', name: 'Acme reviews', brand_tag: 'Acme', brand_collection_id: 'c-1' },
+    ]
+    const collections = [{ id: 'c-1', org_id: ORG, kind: 'brand', slug: 'acme', dataset_id: 'vds-1' }]
+    const collection_members = [{ id: 'm-1', collection_id: 'c-1', dataset_id: 'd-1', label: 'Acme reviews', sort_order: 3 }]
+    const { db, tbl } = fkDb({
+      fks: REAL_FKS,
+      beforeWrite: brandTrigger,
+      uniques: [{
+        table: 'collections', name: 'collections_brand_slug_uniq',
+        key: r => (r.kind === 'brand' ? `${r.org_id}/${r.slug}` : null),
+      }],
+    })
+
+    const res = await restoreOrgSnapshot(db, snap({ datasets, collections, collection_members }))
+
+    // No phantom: exactly the snapshot's collection, under its ORIGINAL id.
+    expect(tbl('collections').map(c => c.id)).toEqual(['c-1'])
+    // The branded dataset points at the snapshot's collection.
+    expect(tbl('datasets').find(d => d.id === 'd-1')!.brand_collection_id).toBe('c-1')
+    expect(tbl('datasets').find(d => d.id === 'd-1')!.brand_tag).toBe('Acme')
+    // No phantom virtual dataset was minted.
+    expect(tbl('datasets').length).toBe(2)
+    // Membership: exactly the snapshot's row — the trigger's minted twin
+    // (same pair, generated id) was deduped away.
+    const members = tbl('collection_members').filter(m => m.dataset_id === 'd-1')
+    expect(members.length).toBe(1)
+    expect(members[0].id).toBe('m-1')
+    expect(members[0].sort_order).toBe(3)
+
+    const c = res.reports.find(r => r.table === 'collections')!
+    expect(c.skipped_conflict).toBe(0)
+    expect(res.ok).toBe(true)
     expect(res.totals.missing).toBe(0)
   })
 })
