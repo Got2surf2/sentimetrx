@@ -436,24 +436,26 @@ $$;
 ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
+CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer DEFAULT 1000, "p_after_id" bigint DEFAULT NULL::bigint) RETURNS TABLE("id" bigint, "data" "jsonb")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
   SELECT f.id, f.data
     FROM dataset_rows_flat f
    WHERE f.dataset_id = p_dataset_id
+     AND (p_after_id IS NULL OR f.id > p_after_id)
      AND NOT ((f.data -> '_tx' -> 'f') ? p_field_key)
      AND EXISTS (
        SELECT 1 FROM unnest(p_fields) AS fld
         WHERE COALESCE(regexp_replace(f.data ->> fld, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
      )
-   ORDER BY f.row_index
+   -- legacy calls keep row_index order; keyset calls page by id
+   ORDER BY CASE WHEN p_after_id IS NULL THEN f.row_index END, f.id
    LIMIT p_limit;
 $$;
 
 
-ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
@@ -1233,6 +1235,25 @@ $$;
 ALTER FUNCTION "public"."rls_auto_enable"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sample_dataset_rows"("p_dataset_id" "uuid", "p_limit" integer, "p_seed" "text") RETURNS TABLE("id" bigint, "row_index" integer, "data" "jsonb")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT f.id, f.row_index, f.data
+  FROM dataset_rows_flat f
+  WHERE f.dataset_id = p_dataset_id
+  ORDER BY md5(f.id::text || p_seed)
+  LIMIT p_limit;
+$$;
+
+
+ALTER FUNCTION "public"."sample_dataset_rows"("p_dataset_id" "uuid", "p_limit" integer, "p_seed" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sample_dataset_rows"("p_dataset_id" "uuid", "p_limit" integer, "p_seed" "text") IS 'Deterministic pseudo-random sample of a dataset''s flat rows: ORDER BY md5(id||seed) LIMIT n. Same dataset + seed returns the same sample forever (deck credibility, ARCHITECTURE.md D6). Used by the rows route all=true path when row_count exceeds the 50K bulk cap.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer DEFAULT 10000) RETURNS TABLE("data" "jsonb")
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -1703,7 +1724,7 @@ $$;
 ALTER FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text" DEFAULT NULL::"text", "p_date_field" "text" DEFAULT NULL::"text", "p_offset" integer DEFAULT 0, "p_limit" integer DEFAULT 1000) RETURNS TABLE("row_id" bigint, "tx" "jsonb", "rating_val" "text", "date_val" "text")
+CREATE OR REPLACE FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text" DEFAULT NULL::"text", "p_date_field" "text" DEFAULT NULL::"text", "p_offset" integer DEFAULT 0, "p_limit" integer DEFAULT 1000, "p_after_id" bigint DEFAULT NULL::bigint) RETURNS TABLE("row_id" bigint, "tx" "jsonb", "rating_val" "text", "date_val" "text")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -1714,13 +1735,14 @@ CREATE OR REPLACE FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uu
     FROM dataset_rows_flat f
    WHERE f.dataset_id = p_dataset_id
      AND (f.data -> '_tx' -> 'f') ? p_field_key
+     AND (p_after_id IS NULL OR f.id > p_after_id)
    ORDER BY f.id
-   OFFSET p_offset
+   OFFSET CASE WHEN p_after_id IS NULL THEN p_offset ELSE 0 END
    LIMIT p_limit;
 $$;
 
 
-ALTER FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("value" "text", "count" bigint)
@@ -2510,6 +2532,7 @@ CREATE TABLE IF NOT EXISTS "public"."conversation_turns" (
     "topic_id" "uuid",
     "skipped" boolean,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "town_hall_id" "uuid",
     CONSTRAINT "conversation_turns_role_check" CHECK (("role" = ANY (ARRAY['user'::"text", 'assistant'::"text", 'system'::"text"])))
 );
 
@@ -4499,6 +4522,10 @@ CREATE INDEX "idx_collections_dataset" ON "public"."collections" USING "btree" (
 
 
 CREATE INDEX "idx_collections_org" ON "public"."collections" USING "btree" ("org_id");
+
+
+
+CREATE INDEX "idx_conversation_turns_town_hall" ON "public"."conversation_turns" USING "btree" ("town_hall_id", "created_at") WHERE ("town_hall_id" IS NOT NULL);
 
 
 
@@ -6538,9 +6565,9 @@ GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_
 
 
 
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "service_role";
 
 
 
@@ -6702,6 +6729,11 @@ GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."sample_dataset_rows"("p_dataset_id" "uuid", "p_limit" integer, "p_seed" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sample_dataset_rows"("p_dataset_id" "uuid", "p_limit" integer, "p_seed" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "service_role";
@@ -6799,9 +6831,9 @@ GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") T
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "service_role";
 
 
 
