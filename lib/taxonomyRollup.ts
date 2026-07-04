@@ -219,12 +219,14 @@ export async function computeTaxonomyRollup(opts: {
   // window re-aggregation below.
   const acc = newTaxonomyAcc()
   const dated: TaxonomyRow[] = []
-  let from = 0
+  // Keyset on row_id (sql/155), not OFFSET — an OFFSET page re-walks (and
+  // re-detoasts the blob of) every earlier page's rows, O(n²) per rollup.
+  let afterId: number | null = null
   for (;;) {
     const { data, error } = await service.rpc('taxonomy_rows_for_field', {
       p_dataset_id: datasetId, p_field_key: field,
       p_rating_field: ratingField, p_date_field: dateField ?? null,
-      p_offset: from, p_limit: PAGE,
+      p_after_id: afterId, p_limit: PAGE,
     })
     if (error) throw new Error(error.message)
     const page = (data ?? []) as { row_id: number; tx: TaxonomyFieldBlock | null; rating_val: string | null; date_val: string | null }[]
@@ -243,7 +245,7 @@ export async function computeTaxonomyRollup(opts: {
       accumulateTaxonomyRow(acc, row)
     }
 
-    from += page.length
+    afterId = page[page.length - 1].row_id
     if (page.length < PAGE) break
   }
   const rollup = finalizeTaxonomy(acc, topSubs)

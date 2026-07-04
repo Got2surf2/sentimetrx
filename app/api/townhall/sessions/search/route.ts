@@ -56,20 +56,6 @@ export async function GET(req: Request) {
   for (const s of orgHalls as { id: string; name: string }[]) sessionMap[s.id] = s.name
   const hallIds = Object.keys(sessionMap)
 
-  // Map conversations → owning town hall so hits can group by session.
-  // Paged — PostgREST caps a single select at 1000 rows regardless of .limit().
-  const linkRows = await fetchAllRows<{ conversation_id: string; town_hall_id: string }>((from, to) => service
-    .from('pulseiq_session_conversations')
-    .select('conversation_id, town_hall_id')
-    .in('town_hall_id', hallIds)
-    .eq('org_id', orgId)
-    .order('conversation_id', { ascending: true })
-    .range(from, to), 10000)
-  const convToHall: Record<string, string> = {}
-  for (const r of linkRows) convToHall[r.conversation_id] = r.town_hall_id
-  const convIds = Object.keys(convToHall)
-  if (convIds.length === 0) return NextResponse.json({ results: [], query: q })
-
   // Two layers of escaping:
   //  1. SQL ILIKE pattern metas (\, %, _) — so the user can't use them as wildcards.
   //  2. PostgREST or() value-quote — wrap the value in "..." so a comma or
@@ -80,18 +66,21 @@ export async function GET(req: Request) {
   const like = '"%' + orQuoted + '%"'
 
   // Pull matching turns. We OR across content and content_en (covers user
-  // and bot messages — role distinguishes them in the new schema). Paged up
-  // to a 2000-hit result bound (a single select truncates at 1000).
-  const turns = await fetchAllRows<{ id: string; conversation_id: string; role: string; content: string | null; content_en: string | null; created_at: string }>((from, to) => service
+  // and bot messages — role distinguishes them in the new schema). Turns are
+  // grouped by their stamped town_hall_id — the old conversation-id hop via
+  // pulseiq_session_conversations broke at a few hundred participants on URL
+  // length. Paged up to a 2000-hit result bound (a single select truncates
+  // at 1000).
+  const turns = await fetchAllRows<{ id: string; town_hall_id: string; role: string; content: string | null; content_en: string | null; created_at: string }>((from, to) => service
     .from('conversation_turns')
-    .select('id, conversation_id, role, content, content_en, created_at')
-    .in('conversation_id', convIds)
+    .select('id, town_hall_id, role, content, content_en, created_at')
+    .in('town_hall_id', hallIds)
     .eq('org_id', orgId)
     .or('content.ilike.' + like + ',content_en.ilike.' + like)
     .order('created_at', { ascending: true })
     .range(from, to), 2000)
 
-  type TurnHit = { id: string; conversation_id: string; role: string; content: string | null; content_en: string | null; created_at: string }
+  type TurnHit = { id: string; town_hall_id: string; role: string; content: string | null; content_en: string | null; created_at: string }
 
   // Exclude bracketed transcript markers (skip/filter/language-switch rows).
   const isMarker = (t: TurnHit) => /^\[(Skipped|filtered|Language switch)/i.test(String(t.content || ''))
@@ -100,7 +89,7 @@ export async function GET(req: Request) {
   const bySession = new Map<string, { hits: number; firstTurn: TurnHit }>()
   for (const t of turns as TurnHit[]) {
     if (isMarker(t)) continue
-    const hallId = convToHall[t.conversation_id]
+    const hallId = t.town_hall_id
     if (!hallId) continue
     const cur = bySession.get(hallId)
     if (!cur) bySession.set(hallId, { hits: 1, firstTurn: t })

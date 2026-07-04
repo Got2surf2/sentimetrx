@@ -152,14 +152,22 @@ export async function classifyPendingRows(opts: {
   let classified = 0
   let hasMore = false
 
+  // Keyset on id (sql/155): without a cursor every iteration re-evaluates the
+  // `_tx ? field` predicate — a blob detoast — on every already-classified row
+  // before reaching the pending ones. Safe to skip past fetched rows: every
+  // fetched row gets a block embedded below (even empty text → tagless block),
+  // so nothing behind the cursor is still pending.
+  let afterId: number | null = null
   while (classified < maxRows) {
     const pageSize = Math.min(PAGE, maxRows - classified)
     const { data, error } = await service.rpc('dataset_rows_pending_field_taxonomy', {
       p_dataset_id: datasetId, p_field_key: fieldKey, p_fields: fields, p_limit: pageSize,
+      p_after_id: afterId,
     })
     if (error) throw new Error(error.message)
     const rows = (data ?? []) as { id: number; data: Record<string, unknown> }[]
     if (rows.length === 0) break
+    afterId = rows[rows.length - 1].id
 
     const items: { id: number; tx: TaxonomyFieldBlock }[] = []
     for (const row of rows) {

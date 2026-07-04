@@ -94,10 +94,10 @@ k6 results, 2026-07-04, local dev + TEST project (conservative floor):
 |---|---|---|
 | Survey submit (public, `/api/respond`) | 25 concurrent respondents, 4 min sustained | p95 **748 ms**, 0 failures (537 reqs) |
 | Agent chat turn (public, chatCore) | 3 concurrent conversations | avg **6.9 s**, p95 13.1 s per turn, 0 failures — AI-model-bound |
-| PulseIQ town hall (join+chat+responses) | 5 concurrent participants, 51 full journeys | **0 failures (204 reqs)**; cohort chat avg ~5 s / p95 20 s on local dev — AI-model-bound, converging on the plain agent path plus cohort overhead |
+| PulseIQ session (join+chat+responses) | 5 concurrent participants, 51 full journeys | **0 failures (204 reqs)**; cohort chat avg ~5 s / p95 20 s on local dev — AI-model-bound, converging on the plain agent path plus cohort overhead |
 | TextMine bulk rows (admin) | 3 concurrent × 27,234 rows | **18.5 MB** payload, avg 6.0 s, p95 8.9 s, 0 failures |
 
-The suite earned its keep on day one: the first town-hall runs failed 25%
+The suite earned its keep on day one: the first PulseIQ-session runs failed 25%
 of requests, which unpicked to (a) a k6-script slug/UUID mismatch,
 (b) a **real latent bug** — `/api/townhall/responses` validated
 participants against the *async analytics mirror*, whose best-effort
@@ -127,7 +127,7 @@ Interpretation per surface:
   auxiliary AI calls + ~10–15 pooled DB round trips, 5–13 s wall time.
   Rate limits (30/min/IP agents; 20/min/participant + 600/min/IP town
   halls) bind long before Anthropic Scale does. **Modeled ceiling: a
-  ~200-participant town hall** (each participant sends ≈1 message/30 s →
+  ~200-participant PulseIQ session** (each participant sends ≈1 message/30 s →
   ~7 turns/s platform, ~400 concurrent pooled connections at peak
   hold-time) **is the point where the Micro pooler (~200 clients)
   saturates** — the documented mitigation is a compute bump (Small/Medium)
@@ -148,7 +148,7 @@ Interpretation per surface:
 | Dataset upload/sync | ~500K rows/dataset practical | browser-driven chunk loop (D16) — no timeout exposure; time cost ~50 rows/POST |
 | Taxonomy classification | 10K rows/POST chunk, browser loop | resumable cursor; keyword tier ~instant, LLM tier not yet built |
 | PPTX/PDF export | ~50K rows/deck comfortably | in-request generation (D16), maxDuration 120–300 s; heaviest deck path is AI quote-picking (serial per theme — known ceiling, below) |
-| Org backup (nightly) | ~200K rows/org proven; all orgs serialized in one 300 s cron | streamed NDJSON per table; **known ceiling: multi-org growth needs per-org fan-out** (below) |
+| Org backup (nightly) | ~200K rows/org proven; ~240 s of orgs per hop × up to 20 hops | streamed NDJSON per table; time-budgeted self-continuation (`?after=<org-id>&hop=N`, 2026-07-04) removed the single-300 s-invocation ceiling |
 | Org restore/clone | 200,978 rows proven (2026-07-04 drill, 0 errors self-verified) | fixpoint restore w/ FK retry (D12/BACKUPS.md) |
 | Campaign send | quota-bound (Resend plan), 15-min cron cadence | sends are sequential by design vs 10 rps API limit |
 
@@ -158,18 +158,20 @@ Ordered by which wall arrives first:
 
 1. **Supabase Micro compute.** ~200 pooler clients, 1 GB RAM, 11 MB/s
    disk baseline. Symptoms: "Max client connections reached" during a
-   big town hall; sluggish analytics on IO-budget-exhausted days; DB
+   big PulseIQ session; sluggish analytics on IO-budget-exhausted days; DB
    size passing the ~8 GB included tier (~2M rows ≈ 7.7 GB all-in).
    **Mitigation: compute ladder — $15–$110/mo, minutes of downtime, no
    code change.** This is a knob, not a cliff.
-2. **Single-invocation nightly backup.** All orgs re-dumped sequentially
-   inside one 300 s cron run. At 10× data or 10× orgs it overruns.
-   Mitigation (designed, not built): per-org fan-out + incremental
-   manifests. Until then the failure mode is loud (cron 500 + Sentry),
-   not silent.
+2. **Single-invocation nightly backup — FIXED 2026-07-04.** The cron now
+   slices the org list on a 240 s time budget and self-continues via
+   `?after=<last-org-id>&hop=N` (D16, ≤20 hops ≈ 80 min of dump time),
+   so 10× orgs/data no longer overruns. Failure mode stays loud per hop
+   (500 + Sentry). Residual ceiling: a SINGLE org whose dump exceeds
+   ~240 s (≥ ~10× the largest org today) — incremental manifests are the
+   named fix. See BACKUPS.md "Time-budgeted continuation".
 3. **Read-amplifying live dashboards.** Facilitator console polls
    re-derive counts from raw turns (D17 consequence). Fine at ≤200
-   participants; at 10× town-hall scale, cached per-topic counters are
+   participants; at 10× PulseIQ-session scale, cached per-topic counters are
    the fix (efficiency-audit item, deliberately deferred).
 4. **Per-event AI cost, not AI throughput.** Anthropic Scale headroom is
    ~1000×; the practical AI constraint is $/event (~6 aux calls per
@@ -179,38 +181,60 @@ Ordered by which wall arrives first:
    Anthropic/OpenAI rate limits, Deepgram concurrency — all ≥10× away
    from mattering at modeled load.
 
-## 6. Known ceilings deliberately not fixed (documented tradeoffs)
+## 6. Ceiling status (after the 2026-07-04 fix pass)
 
-From the 2026-07-04 efficiency audit — items classified *fix-larger* or
-*document-deliberate*, kept as-is with eyes open:
+The audit's *fix-larger* items were initially documented as accepted
+tradeoffs; a same-day fix pass (owner call: early pilots could scale
+suddenly) retired most of them.
 
-- **Bulk rows `all=true` streams the full dataset through PostgREST to
-  build a ≤50K sample** — correct but bandwidth-heavy above 100K rows;
-  revisit with a SQL-side TABLESAMPLE when a real >100K dataset lands.
-- **Collection recompute buffers member rows sequentially** in the sync
-  path — bounded by collection size today; queue-shaped work if
-  collections grow past ~10 members × 50K rows.
-- **Deck AI quote-picking is serial per theme** — export latency grows
-  linearly with themes (~1–2 s each); parallelizing trades Anthropic
-  burst headroom for wall time when needed.
-- **Facilitator/presenter polls re-fetch transcript state** (see §5.3).
-- **`.in('conversation_id', ids)` URL-length cliff** at a few hundred
-  participants per town hall — same mitigation window as the pooler
-  ceiling (§3); fix is a join/RPC when 200+ participant halls are real.
-- **Sequential campaign sends** — deliberate vs Resend 10 rps; cadence
-  ceiling ≈ thousands of emails/hour, quota-bound anyway.
-- **Fresh Chromium per PDF request** (~1–2 s startup) — stateless and
-  reliable; a warm-pool is premature at current export volume.
-- **`sql/152` pending-rows RPC re-scans classified blobs per call** and
-  **`taxonomy_rows_for_field` pages by OFFSET** — both need RPC-signature
-  migrations (keyset `p_after_id` param); scheduled with the next
-  taxonomy schema change.
-- **Async analytics-mirror writes are fire-and-forget with no retry** —
-  under pooler saturation they fail permanently (observed live in the
-  2026-07-04 load test), so mirror-fed surfaces (dashboards, cohort
-  counts) can undercount after a load spike. Engine-critical paths no
-  longer depend on the mirror (D5, enforced); a retry/backfill sweep is
-  the named fix if dashboards need hard guarantees.
+**Retired 2026-07-04:**
+
+- **Bulk rows `all=true` full-dataset streaming** → `sample_dataset_rows`
+  (sql/157): SQL-side deterministic sample (`ORDER BY md5(id||seed)`,
+  seeded by dataset_id per D6) — only the sample crosses the wire;
+  at/below the cap the full-fetch path is unchanged. Route-level and
+  SQL-level samples proven identical (same id-list hash) and stable
+  across calls.
+- **Collection recompute buffering** → streams member rows in 1000-row
+  pages into an incremental accumulator (`createAnalyticsAccumulator`);
+  output verified byte-identical to the buffered computation.
+- **Taxonomy RPC OFFSET paging** → keyset `p_after_id` on both RPCs
+  (sql/155; NULL preserves legacy behavior for the deploy window).
+  Rollup output byte-identical and ~30% faster; the pending drain no
+  longer rescans classified blobs (48 ms end-of-scan probe vs a
+  full-table detoast pass).
+- **`.in('conversation_id', ids)` URL-length cliff** → gone. sql/156
+  stamps `town_hall_id` on every mirrored turn (indexed, backfilled,
+  cron self-heals nulls); all 9 call sites now filter by hall id. The
+  ~200-participant figure in §3 is now purely the pooler ceiling, with
+  the compute-bump mitigation unchanged.
+- **Async mirror writes failing permanently** → two layers: transient
+  errors retry at write time (3 attempts, backoff), and the 15-min cron
+  reconciles every live session (cheap count probe, then targeted
+  re-mirror of only the missing turn numbers). Gap-injection verified on
+  TEST — the first sweep also healed 4 real turns lost during the
+  earlier saturated load runs.
+- **Nightly backup single-invocation ceiling** → time-budgeted
+  continuation (240 s budget, id-cursor + hop-capped self-invocation,
+  fail-loud per hop; see BACKUPS.md).
+- **Deck AI quote-picking serial per theme** → bounded pool of 3.
+- **Fresh Chromium per PDF request** → module-scoped browser reuse on
+  warm instances (second render measured ~2× faster); the recordings and
+  agent-study PDF routes keep their own per-call launch (separate
+  low-volume copies, noted in lib/htmlToPdf.ts).
+
+**Still open, deliberately:**
+
+- **Sequential campaign sends** — the constraint is the Resend plan
+  quota, not the loop; parallelizing buys nothing.
+- **Facilitator/presenter polls re-derive engagement stats** from turns
+  per poll — topic counts are stored now (sql/154) and all reads are
+  hall-id-indexed (sql/156); the remaining per-poll transcript/keyword
+  work is fine at ≤200 participants.
+- **Single-org backup dump > 240 s** (≥10× today's largest org;
+  incremental manifests are the named fix) and **collection-union bulk
+  sampling** (the multi-dataset union path still samples in Node —
+  needs a different RPC shape; single datasets are covered).
 
 ## 7. Load-test suite
 
@@ -231,5 +255,5 @@ chatCore, `/api/respond`, the rows route, or a Supabase compute resize.
 ---
 
 *Update this doc when: a provider plan/tier changes, a compute resize
-happens, a dataset crosses 50K real rows, a town hall exceeds 100
+happens, a dataset crosses 50K real rows, a PulseIQ session exceeds 100
 participants, or the k6 numbers move by >2× in either direction.*

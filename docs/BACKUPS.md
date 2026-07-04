@@ -7,6 +7,8 @@
 
 Nightly cron at **04:00 UTC** (`vercel.json`): for every row in `organizations`, STREAMS all tenant-scoped tables to S3 as a **snapshot v2** — one gzipped NDJSON object per table plus a manifest, UNCAPPED, in constant memory (`lib/orgSnapshotV2.dumpOrgSnapshotV2` over `lib/snapshotStore`; multipart upload via `@aws-sdk/lib-storage`).
 
+**Time-budgeted continuation (2026-07-04):** the cron is no longer capped at one 300 s invocation for all orgs. Each invocation processes orgs in deterministic **id order** and bails out of the loop at **240 s** (headroom under `maxDuration: 300`); if orgs remain, it re-invokes itself via `waitUntil` with `?after=<last-org-id>&hop=N` and the `CRON_SECRET` bearer, so the chain covers every org (D16 time-budgeted slicing — this removes the CAPACITY.md "single-invocation nightly backup" 10× ceiling). Guards: the cursor strictly advances (each hop takes at least one org, and `after` filters `id >` it) and hops are capped at **20** — a deeper chain is refused loudly. Per-org dump work is unchanged.
+
 Object keys:
 ```
 s3://<BACKUP_S3_BUCKET>/org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/v2/tables/<table>.ndjson.gz
@@ -209,7 +211,8 @@ At present scale (~30 orgs, ~10 MB compressed each):
 
 ## Failure modes + monitoring
 
-- A single org's snapshot failure does NOT abort the whole cron — the route logs the error to its JSON response and moves on. The cron's response body has a `results[].error` field per failed org. Check this in Vercel Cron logs.
+- A single org's snapshot failure does NOT abort the whole cron — the route logs the error to its JSON response and moves on (and a budget-bail continuation still fires for the orgs after it). The cron's response body has a `results[].error` field per failed org. Check this in Vercel Cron logs.
+- Every hop fails loud for its own slice: any failed/incomplete org → HTTP 500 **and** an explicit Sentry event (`cron.orgSnapshot.run` via `lib/log.logError`) — necessary because only hop 0's response reaches the Vercel cron log; continuation hops' responses are read by no one. A continuation hop that never ran at all (non-2xx / network error on the kick) is reported as `cron.orgSnapshot.continuation`.
 - If `BACKUP_S3_BUCKET` or the AWS credentials are missing, the cron returns 503-equivalent (`results[].error: "BACKUP_S3_BUCKET env var missing"` for every org).
 - S3 versioning + lifecycle is the disaster-recovery floor: even if the cron silently fails for a week and you don't notice, the prior 7 days of snapshots still exist.
 

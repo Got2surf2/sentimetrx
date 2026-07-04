@@ -32,6 +32,21 @@ const STORYTIME_VERSION = '1.2.0'  // bump on each release
 
 interface Params { params: Promise<{ datasetId: string }> }
 
+// Bounded promise pool — keeps at most `limit` tasks in flight at once
+// (mirrors theme-counts/route.ts; used for per-theme AI quote-picking so
+// export latency doesn't grow linearly with theme count).
+async function runPool<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results = new Array<T>(tasks.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const i = next++
+      results[i] = await tasks[i]()
+    }
+  }))
+  return results
+}
+
 // Extended palette with datasets-specific colors
 const DN = {
   ...DN_SHARED,
@@ -1174,14 +1189,17 @@ export async function POST(req: Request, props: Params) {
             cards: page.map((t: any) => ({ name: t.name || '', pct: t.percentage || 0, count: t.count, total: t.totalResponses, sentiment: sentLabel(t.sentiment),
               keywords: ((t.kwFreqs && t.kwFreqs.length) ? t.kwFreqs : (t.keywords || []).map((w: string) => ({ word: w, pct: 0 }))).slice(0, 8).map((k: any) => ({ word: k.word, pct: k.pct })) })) })
         }
-        for (const t of canonicalThemes) {
-          const q = await themeDetailQuotes(t)
+        // Quote-picking per theme is AI-bound (~1-2s each) — run 3 at a time,
+        // then push slides in the original theme order.
+        const themeQuotes = await runPool(canonicalThemes.map(t => () => themeDetailQuotes(t)), 3)
+        canonicalThemes.forEach((t, ti) => {
+          const q = themeQuotes[ti]
           if (q.length > 0) {
             slides.push({ type: 'quotes', title: t.name || 'Theme',
               subtitle: metaSub((t.percentage || 0) + '% · ' + (t.count || 0).toLocaleString() + ' of ' + (t.totalResponses || 0).toLocaleString() + (t.sentiment ? ' · ' + sentLabel(t.sentiment) : '')),
               quotes: q, insight: t.description || undefined })
           }
-        }
+        })
       }
     }
 

@@ -125,7 +125,9 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `dataset_rows_pending_field_taxonomy` RPC: flat rows with no `_tx` block for the
   field key **and non-empty text** (text-less star-only reviews are excluded — the
   classifier writes them a tagless block so the LIMIT window converges; "reviews
-  classified" = text-bearing rows). Capped at `maxRows` per sync, non-fatal,
+  classified" = text-bearing rows). The drain loop pages by keyset (`p_after_id` =
+  last row's id, sql/155) so successive iterations don't re-scan the blobs of rows
+  they just classified — safe because every fetched row gets a block embedded. Capped at `maxRows` per sync, non-fatal,
   idempotent (a timeout just leaves already-embedded rows classified; the next sync
   continues).
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
@@ -146,7 +148,8 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   through `taxonomy_rows_for_field` (sql/151), which returns each row's verdict block PLUS
   its rating/date values **from the same row** (field names as bind params, so keys with
   spaces/commas/apostrophes work — the sidecar-era version needed two extra lookups per
-  page). `aggregateTaxonomy` then averages over matching rows. **Trend windows
+  page). Pages are keyset (`p_after_id` = last page's `row_id`, sql/155) — the old
+  OFFSET paging re-detoasted every earlier page's blobs, O(n²) per rollup recompute. `aggregateTaxonomy` then averages over matching rows. **Trend windows
   (2026-06-29):** `computeTaxonomyRollup` accepts an optional `dateField` — when set it also
   attaches each row's timestamp from the same RPC (best-effort; unparseable → no trend) and returns
   `recent`/`prior`-window rollups (`TaxonomyTrendRollup extends TaxonomyRollup`) by deriving

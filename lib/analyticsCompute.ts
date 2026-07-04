@@ -250,36 +250,58 @@ function finalize(accum: Accum, totalRows: number): FieldSummary {
 
 // -- Main export ---------------------------------------------------------
 
+// -- Incremental analytics accumulator (chunk-streaming callers) --------------
+// Same math as computeAnalyticsFromRows, but fed page-by-page so callers never
+// hold more than one chunk of rows in memory (collection recompute streams
+// member rows in 1000-row pages through this).
+
+export interface AnalyticsAccumulator {
+  pushRows(rows: Record<string, unknown>[]): void
+  finalize(): DatasetAnalytics
+}
+
+export function createAnalyticsAccumulator(schema: SchemaConfig): AnalyticsAccumulator {
+  const accumulators: Record<string, Accum> = {}
+  for (var i = 0; i < schema.fields.length; i++) {
+    accumulators[schema.fields[i].field] = makeAccum(schema.fields[i])
+  }
+  var totalRows = 0
+
+  return {
+    pushRows(rows: Record<string, unknown>[]) {
+      totalRows += rows.length
+      for (var ri = 0; ri < rows.length; ri++) {
+        var row = rows[ri]
+        for (var fi = 0; fi < schema.fields.length; fi++) {
+          var accum = accumulators[schema.fields[fi].field]
+          if (!accum) continue
+          accumRow(accum, row[schema.fields[fi].field])
+        }
+      }
+    },
+    finalize(): DatasetAnalytics {
+      var fieldSummaries: Record<string, FieldSummary> = {}
+      for (var ffi = 0; ffi < schema.fields.length; ffi++) {
+        fieldSummaries[schema.fields[ffi].field] = finalize(accumulators[schema.fields[ffi].field], totalRows)
+      }
+      return {
+        totalRows:      totalRows,
+        computedAt:     new Date().toISOString(),
+        fieldSummaries,
+      }
+    },
+  }
+}
+
 // -- In-memory analytics from pre-loaded rows (used by collections) ----------
 
 export function computeAnalyticsFromRows(
   rows:   Record<string, unknown>[],
   schema: SchemaConfig
 ): DatasetAnalytics {
-  const accumulators: Record<string, Accum> = {}
-  for (var i = 0; i < schema.fields.length; i++) {
-    accumulators[schema.fields[i].field] = makeAccum(schema.fields[i])
-  }
-
-  for (var ri = 0; ri < rows.length; ri++) {
-    var row = rows[ri]
-    for (var fi = 0; fi < schema.fields.length; fi++) {
-      var accum = accumulators[schema.fields[fi].field]
-      if (!accum) continue
-      accumRow(accum, row[schema.fields[fi].field])
-    }
-  }
-
-  var fieldSummaries: Record<string, FieldSummary> = {}
-  for (var ffi = 0; ffi < schema.fields.length; ffi++) {
-    fieldSummaries[schema.fields[ffi].field] = finalize(accumulators[schema.fields[ffi].field], rows.length)
-  }
-
-  return {
-    totalRows:      rows.length,
-    computedAt:     new Date().toISOString(),
-    fieldSummaries,
-  }
+  const acc = createAnalyticsAccumulator(schema)
+  acc.pushRows(rows)
+  return acc.finalize()
 }
 
 // -- SQL-based analytics (flat table) — handles 2M+ rows without JS memory --

@@ -191,16 +191,16 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
     return { participants: 0, turns: 0, conversations: [], perConv: {}, perTopic: {} }
   }
 
-  const convIds = conversations.map(c => c.id)
-
   // One query shape: user-role turns with conversation + topic + timestamp.
   // Lets us derive total turns, per-participant turns, and per-topic counts
-  // without three separate aggregations. Paged — the unbounded select was
-  // silently capped at 1000 rows by PostgREST.
+  // without three separate aggregations. Filtered on the stamped
+  // town_hall_id column — the old `.in(conversation_id, convIds)` broke at
+  // a few hundred participants on URL length. Paged — the unbounded select
+  // was silently capped at 1000 rows by PostgREST.
   const turnRows = await fetchAllRows<any>((from, to) => db
     .from('conversation_turns')
     .select('conversation_id, topic_id, created_at')
-    .in('conversation_id', convIds)
+    .eq('town_hall_id', townHallId)
     .eq('role', 'user')
     .eq('org_id', orgId)
     .order('created_at', { ascending: true })
@@ -468,10 +468,13 @@ export async function fetchTurnsAsLegacy(
   const partByConv: Record<string, string> = {}
   for (const c of convs) partByConv[c.id] = c.participant_id || c.session_id
 
+  // Filtered on the stamped town_hall_id column — the old
+  // `.in(conversation_id, …)` broke at a few hundred participants on URL
+  // length. The link fetch above stays for the conversation → participant map.
   const cts = await fetchAllRows((from, to) => db
     .from('conversation_turns')
     .select('id, conversation_id, turn_number, role, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
-    .in('conversation_id', Object.keys(partByConv))
+    .eq('town_hall_id', townHallId)
     .eq('org_id', orgId)
     .order('conversation_id', { ascending: true })
     .order('turn_number', { ascending: true })

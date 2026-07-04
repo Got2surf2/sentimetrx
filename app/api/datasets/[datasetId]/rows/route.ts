@@ -137,10 +137,45 @@ export async function GET(req: Request, props: Params) {
 
   // ── BULK MODE: return all rows (or a sample) in one response ─
   if (allMode) {
-    // Effective cap = the smaller of the caller's sampleMax and the hard ceiling;
-    // reservoir-sample as we page so heap is bounded to `cap` even if the dataset
-    // is 500K rows (fixes the unbounded-buffer path when sampleMax is omitted).
+    // Effective cap = the smaller of the caller's sampleMax and the hard ceiling.
     const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
+
+    // Above the cap: SQL-side deterministic sample (sql/157) — Postgres orders
+    // by md5(id || seed) and LIMITs to `cap`, so only the sampled rows cross
+    // the wire instead of streaming every row through PostgREST to sample in
+    // Node. Seeded by dataset_id (the same seed source the Node reservoir
+    // used) so the same dataset always yields the same sample (ARCHITECTURE.md
+    // D6 — deck credibility). Paged in FLAT_PAGE ranges because PostgREST caps
+    // rows per request; each page re-runs the same deterministic ORDER BY, so
+    // pages never overlap or drift.
+    if (totalRows > cap) {
+      const rows: Record<string, unknown>[] = []
+      const SAMPLE_PAGE = 1000
+      for (let sOffset = 0; sOffset < cap; sOffset += SAMPLE_PAGE) {
+        const pageEnd = Math.min(sOffset + SAMPLE_PAGE, cap)
+        const { data: sampleRows, error: sampleErr } = await service
+          .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_limit: cap, p_seed: params.datasetId })
+          .range(sOffset, pageEnd - 1)
+        if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
+        if (!sampleRows || sampleRows.length === 0) break
+        for (const sr of sampleRows as Array<{ id: number; row_index: number; data: Record<string, unknown> }>) {
+          const r = projectRow(sr.data, fieldSet)
+          if (withRowIds) r._rowId = sr.id
+          rows.push(r)
+        }
+        if (sampleRows.length < pageEnd - sOffset) break
+      }
+      const sampled = totalRows > rows.length
+      return NextResponse.json({
+        rows, page: 1, pageSize: rows.length, totalRows, totalPages: 1,
+        field: field || undefined, sampled,
+        sampleSize: rows.length,
+        sampleRate: sampled ? parseFloat((rows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
+      })
+    }
+
+    // At or below the cap: full fetch, unchanged — reservoir-sample as we page
+    // so heap is bounded to `cap` even if row_count is stale-low.
     const reservoir = makeReservoir(cap, mulberry32(seedFromString(params.datasetId)))
     const FLAT_PAGE = 1000
     let offset = 0

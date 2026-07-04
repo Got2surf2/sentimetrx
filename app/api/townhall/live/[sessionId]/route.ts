@@ -116,13 +116,16 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   const convIds = conversations.map(c => c.id)
   const participants = new Set(conversations.map(c => c.participant_id || c.session_id))
 
-  // User turns for response count + sentiment + keyword analytics
+  // User turns for response count + sentiment + keyword analytics. Filtered
+  // on the stamped town_hall_id column — the old `.in(conversation_id,
+  // convIds)` broke at a few hundred participants on URL length. The link
+  // fetch above stays for the participant count.
   let userTurns: UserTurn[] = []
   if (convIds.length > 0) {
     userTurns = await fetchAllRows<UserTurn>((from, to) => db
       .from('conversation_turns')
       .select('conversation_id, content, content_en, sentiment, topic_id, created_at')
-      .in('conversation_id', convIds)
+      .eq('town_hall_id', hall.id)
       .eq('role', 'user')
       .eq('org_id', hall.org_id)
       .order('created_at', { ascending: true })

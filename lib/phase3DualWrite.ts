@@ -64,6 +64,33 @@ function isEnabled(): boolean {
   return v === 'true' || v === '1'
 }
 
+// Transient-failure retry. The 2026-07-04 load test showed mirror writes
+// failing with pooler connection timeouts and never retrying — mirror-fed
+// surfaces (dashboards, cohort counts, theme detection) then undercount
+// FOREVER for the affected turns. Retry only errors that look transient;
+// constraint violations etc. fail immediately as before.
+const TRANSIENT_RX = /connect|connection|timeout|timed out|fetch failed|ECONN|reset|socket|EPIPE|ETIMEDOUT/i
+
+async function withRetry<T extends { error: { message: string } | null }>(
+  fn: () => PromiseLike<T>,
+  label: string,
+  attempts = 3,
+): Promise<T> {
+  let last: T | null = null
+  for (let i = 0; i < attempts; i++) {
+    try {
+      last = await fn()
+      if (!last.error || !TRANSIENT_RX.test(last.error.message)) return last
+    } catch (e: any) {
+      if (!TRANSIENT_RX.test(String(e?.message || e))) throw e
+      last = { error: { message: String(e?.message || e) } } as T
+    }
+    if (i < attempts - 1) await new Promise(r => setTimeout(r, 250 * (i + 1)))
+  }
+  console.error({ at: 'phase3-dual-write', msg: label + ' failed after ' + attempts + ' attempts', err: last?.error?.message })
+  return last as T
+}
+
 /**
  * Mirror a bot_conversation_turns insert into conversations + conversation_turns.
  * Fire-and-forget at the call site (returns Promise<void> that always resolves).
@@ -90,11 +117,14 @@ export async function mirrorTurns(
     }
     if (args.participantId) upsertPayload.participant_id = args.participantId
 
-    const { data: convRow, error: convErr } = await service
-      .from('conversations')
-      .upsert(upsertPayload, { onConflict: 'bot_id,session_id' })
-      .select('id, org_id')
-      .single()
+    const { data: convRow, error: convErr } = await withRetry(
+      () => service
+        .from('conversations')
+        .upsert(upsertPayload, { onConflict: 'bot_id,session_id' })
+        .select('id, org_id')
+        .single(),
+      'conversations upsert',
+    )
 
     if (convErr || !convRow) {
       console.error({ at: 'phase3-dual-write', msg: 'conversations upsert failed', err: convErr?.message, bot_id: args.botId, session_id: args.sessionId })
@@ -106,16 +136,19 @@ export async function mirrorTurns(
     // Link to town hall (idempotent — unique index on (town_hall_id,
     // conversation_id) makes this a no-op after first call per session).
     if (args.townHallId) {
-      const { error: linkErr } = await service
-        .from('pulseiq_session_conversations')
-        .upsert(
-          {
-            town_hall_id: args.townHallId,
-            conversation_id: conversationId,
-            org_id: args.orgId,
-          },
-          { onConflict: 'town_hall_id,conversation_id' },
-        )
+      const { error: linkErr } = await withRetry(
+        () => service
+          .from('pulseiq_session_conversations')
+          .upsert(
+            {
+              town_hall_id: args.townHallId,
+              conversation_id: conversationId,
+              org_id: args.orgId,
+            },
+            { onConflict: 'town_hall_id,conversation_id' },
+          ),
+        'pulseiq_session_conversations link',
+      )
       if (linkErr) {
         console.error({ at: 'phase3-dual-write', msg: 'pulseiq_session_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
       }
@@ -139,12 +172,19 @@ export async function mirrorTurns(
         sentiment: r.sentiment ?? null,
         sentiment_score: r.sentiment_score ?? null,
         topic_id: r.topic_id ?? null,
+        // Denormalized hall routing (sql/156) — lets live surfaces filter
+        // by one indexed equality instead of .in(<every conversation id>).
+        town_hall_id: args.townHallId ?? null,
       }))
 
     if (turnRows.length === 0) return
 
-    const { error: turnsErr } = await service.from('conversation_turns').insert(turnRows)
+    const { error: turnsErr } = await withRetry(
+      () => service.from('conversation_turns').insert(turnRows),
+      'conversation_turns insert',
+    )
     if (turnsErr) {
+      void logError('phase3DualWrite.turnsInsert', turnsErr, { orgId: args.orgId })
       console.error({ at: 'phase3-dual-write', msg: 'conversation_turns insert failed', err: turnsErr.message, bot_id: args.botId, session_id: args.sessionId, count: turnRows.length })
     }
   } catch (e: any) {
@@ -192,6 +232,113 @@ export async function mirrorFocusFlagsUpdate(
   } catch (e: any) {
     console.error({ at: 'phase3-dual-write', msg: 'unexpected error in flags update', err: e?.message })
   }
+}
+
+/**
+ * Reconcile the analytics mirror for one town hall: find participant
+ * sessions whose synchronous store (bot_conversation_turns) has turns the
+ * mirror (conversation_turns) is missing, and re-mirror ONLY the missing
+ * turn numbers. Safety net behind the per-write retry above — a turn that
+ * exhausts its retries during a load spike is healed by the next cron tick
+ * instead of undercounting forever.
+ *
+ * Bounded: at most maxSessions lagging sessions per call (the cron ticks
+ * every 15 min; overflow heals next tick, per the no-queue posture D16).
+ * Never throws.
+ *
+ * Limitation: the sync store has no topic_id (it's attached at mirror
+ * time), so healed turns carry no topic tag. Topic COUNTS are unaffected —
+ * sql/154 counters increment at write time — only per-topic transcript
+ * filtering of the healed turns degrades.
+ */
+export async function reconcileMirrorForHall(
+  service: SupabaseClient,
+  args: { townHallId: string; botId: string; orgId: string },
+  maxSessions = 20,
+): Promise<{ healed: number; lagging: number }> {
+  const out = { healed: 0, lagging: 0 }
+  try {
+    // Stamp-heal: turns mirrored by pre-sql/156 code carry a null
+    // town_hall_id (e.g. the window between migration apply and deploy).
+    // One idempotent UPDATE per sweep; affects 0 rows when clean.
+    const { data: links } = await service
+      .from('pulseiq_session_conversations')
+      .select('conversation_id')
+      .eq('town_hall_id', args.townHallId)
+    const linkIds = (links || []).map(l => l.conversation_id)
+    if (linkIds.length > 0) {
+      const { error: stampErr } = await service
+        .from('conversation_turns')
+        .update({ town_hall_id: args.townHallId })
+        .in('conversation_id', linkIds)
+        .is('town_hall_id', null)
+      if (stampErr) void logError('phase3DualWrite.reconcile.stamp', stampErr, { orgId: args.orgId })
+    }
+
+    // Sync-store per-participant-session turn counts. Cohort sessions use
+    // session_id = townHallId + ':' + participantId (chatCore convention).
+    const { data: syncTurns, error: syncErr } = await service
+      .from('bot_conversation_turns')
+      .select('session_id, turn_number, role, content, content_en, language, source, content_flags, sentiment, sentiment_score')
+      .eq('bot_id', args.botId)
+      .like('session_id', args.townHallId + ':%')
+      .order('session_id', { ascending: true })
+      .order('turn_number', { ascending: true })
+      .limit(5000)
+    if (syncErr || !syncTurns || syncTurns.length === 0) {
+      if (syncErr) void logError('phase3DualWrite.reconcile.syncRead', syncErr, { orgId: args.orgId })
+      return out
+    }
+    const bySession = new Map<string, typeof syncTurns>()
+    for (const t of syncTurns) {
+      const arr = bySession.get(t.session_id) || []
+      arr.push(t)
+      bySession.set(t.session_id, arr)
+    }
+
+    for (const [sessionId, turns] of bySession) {
+      if (out.lagging >= maxSessions) break
+      const { data: convRow } = await service
+        .from('conversations')
+        .select('id')
+        .eq('bot_id', args.botId)
+        .eq('session_id', sessionId)
+        .maybeSingle()
+      // Missing conversations row entirely → one mirrorTurns call rebuilds
+      // row + link + all turns.
+      if (!convRow) {
+        out.lagging++
+        await mirrorTurns(service, {
+          botId: args.botId, orgId: args.orgId, sessionId,
+          language: turns[0]?.language ?? null,
+          rows: turns as MirroredTurn[],
+          townHallId: args.townHallId,
+          participantId: sessionId.slice(args.townHallId.length + 1) || null,
+        })
+        out.healed += turns.length
+        continue
+      }
+      const { data: mirrored } = await service
+        .from('conversation_turns')
+        .select('turn_number')
+        .eq('conversation_id', (convRow as { id: string }).id)
+      const have = new Set((mirrored || []).map(m => m.turn_number))
+      const missing = turns.filter(t => !have.has(t.turn_number) && typeof t.content === 'string' && t.content.length > 0)
+      if (missing.length === 0) continue
+      out.lagging++
+      await mirrorTurns(service, {
+        botId: args.botId, orgId: args.orgId, sessionId,
+        language: missing[0]?.language ?? null,
+        rows: missing as MirroredTurn[],
+        townHallId: args.townHallId,
+        participantId: sessionId.slice(args.townHallId.length + 1) || null,
+      })
+      out.healed += missing.length
+    }
+  } catch (e) {
+    void logError('phase3DualWrite.reconcile', e, { orgId: args.orgId })
+  }
+  return out
 }
 
 /**

@@ -13,7 +13,7 @@
 // collection so the aggregates self-heal immediately.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { computeAnalyticsFromRows } from '@/lib/analyticsCompute'
+import { createAnalyticsAccumulator } from '@/lib/analyticsCompute'
 import { invalidateSignalStats } from '@/lib/signalStats'
 import { logError } from '@/lib/log'
 import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
@@ -51,7 +51,11 @@ export async function recomputeCollectionAnalytics(
   if (membersErr) void logError('collectionRecompute.recomputeCollectionAnalytics', membersErr)
   if (!members?.length) return null
 
-  const allRows: Record<string, unknown>[] = []
+  // Chunk-stream member rows into the analytics accumulator one FLAT_PAGE at a
+  // time — this runs inside the member-sync path, so it must never buffer a
+  // whole multi-member collection's rows in memory at once.
+  const acc = createAnalyticsAccumulator(schema)
+  let rowCount = 0
   for (const m of members as { dataset_id: string; label: string }[]) {
     let off = 0, more = true
     while (more) {
@@ -62,22 +66,23 @@ export async function recomputeCollectionAnalytics(
         .range(off, off + FLAT_PAGE - 1)
       if (fRowsErr) void logError('collectionRecompute.recomputeCollectionAnalytics', fRowsErr)
       if (!fRows || fRows.length === 0) break
-      for (const fr of fRows) allRows.push({ ...(fr as { data: Record<string, unknown> }).data, _collection_label: m.label })
+      acc.pushRows(fRows.map((fr) => ({ ...(fr as { data: Record<string, unknown> }).data, _collection_label: m.label })))
+      rowCount += fRows.length
       if (fRows.length < FLAT_PAGE) more = false
       off += FLAT_PAGE
     }
   }
 
-  const analytics = computeAnalyticsFromRows(allRows, schema)
+  const analytics = acc.finalize()
   const now = new Date().toISOString()
   const stateUpdate: Record<string, unknown> = { analytics, updated_at: now }
   if (updatedBy) stateUpdate.updated_by = updatedBy
   await service.from('dataset_state').update(stateUpdate).eq('dataset_id', collectionDatasetId)
-  await service.from('datasets').update({ row_count: allRows.length, updated_at: now }).eq('id', collectionDatasetId)
+  await service.from('datasets').update({ row_count: rowCount, updated_at: now }).eq('id', collectionDatasetId)
   // Drop the stale signal-stats cache — it's keyed on theme-model hash + row
   // count, but invalidating here guarantees an immediate refresh.
   await invalidateSignalStats(service, collectionDatasetId)
-  return { analytics, rowCount: allRows.length }
+  return { analytics, rowCount }
 }
 
 /**

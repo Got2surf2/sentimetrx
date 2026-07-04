@@ -60,23 +60,26 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   if (townHallErr) void logError('cohortThemeAggregator.detectThemesForTownHall', townHallErr)
   if (!townHall) return { inserted: 0, skipped: 0, error: 'Town hall not found' }
 
-  // 2. Fetch all user turns across the town hall's conversations.
-  // Two-step query (no nested joins through the join table in
-  // supabase-js without RPC): first conversation ids, then turns.
+  // 2. Fetch all user turns across the town hall's conversations, via the
+  // stamped conversation_turns.town_hall_id column — the old two-step hop
+  // through pulseiq_session_conversations passed every conversation id in
+  // the URL and broke at a few hundred participants. The link table is
+  // still checked (cheap existence probe) so the "no conversations yet"
+  // and "not enough responses" cases keep their distinct messages.
   const { data: linkedConvs, error: linkedConvsErr } = await supabase
     .from('pulseiq_session_conversations')
     .select('conversation_id')
     .eq('town_hall_id', townHallId)
+    .limit(1)
   if (linkedConvsErr) void logError('cohortThemeAggregator.detectThemesForTownHall', linkedConvsErr, { orgId: townHall.org_id })
-  const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
-  if (conversationIds.length === 0) {
+  if ((linkedConvs || []).length === 0) {
     return { inserted: 0, skipped: 0, error: 'No conversations linked to this town hall yet' }
   }
 
   const turns = await fetchAllRows<{ content: string | null; content_en: string | null; conversation_id: string; created_at: string }>((from, to) => supabase
     .from('conversation_turns')
     .select('content, content_en, conversation_id, created_at')
-    .in('conversation_id', conversationIds)
+    .eq('town_hall_id', townHallId)
     .eq('role', 'user')
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })

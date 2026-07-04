@@ -103,26 +103,22 @@ export async function POST(req: NextRequest) {
             if (elapsed >= (sessionEnd.duration_minutes || 90)) shouldEnd = true
           }
           if (sessionEnd.mode === 'inactivity') {
-            // Event-wide latest participant activity, via the event's linked
-            // conversations (mirrors the legacy session-wide check).
-            const { data: linked } = await supabase
-              .from('pulseiq_session_conversations')
-              .select('conversation_id')
+            // Event-wide latest participant activity (mirrors the legacy
+            // session-wide check). conversation_turns.town_hall_id is stamped
+            // on every cohort turn, so no per-conversation id list is needed
+            // (the old `.in(conversation_id, …)` broke at a few hundred
+            // participants on URL length).
+            const { data: lastTurn } = await supabase
+              .from('conversation_turns')
+              .select('created_at')
               .eq('town_hall_id', townHall.id)
-            const convIds = (linked || []).map(r => r.conversation_id)
-            if (convIds.length > 0) {
-              const { data: lastTurn } = await supabase
-                .from('conversation_turns')
-                .select('created_at')
-                .in('conversation_id', convIds)
-                .eq('role', 'user')
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle()
-              if (lastTurn) {
-                const idle = (Date.now() - new Date(lastTurn.created_at).getTime()) / 60000
-                if (idle >= (sessionEnd.inactivity_timeout_minutes || 30)) shouldEnd = true
-              }
+              .eq('role', 'user')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            if (lastTurn) {
+              const idle = (Date.now() - new Date(lastTurn.created_at).getTime()) / 60000
+              if (idle >= (sessionEnd.inactivity_timeout_minutes || 30)) shouldEnd = true
             }
           }
           if (shouldEnd) {

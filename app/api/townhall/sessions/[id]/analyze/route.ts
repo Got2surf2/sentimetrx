@@ -127,12 +127,14 @@ async function runPhase3Analyze(
   let assistantTurns: any[] = []
   if (convIds.length > 0) {
     // All user turns (cutoff-filtered; paged — the unbounded select was
-    // silently capped at 1000 rows by PostgREST).
+    // silently capped at 1000 rows by PostgREST). Filtered on the stamped
+    // town_hall_id column — the old `.in(conversation_id, convIds)` broke
+    // at a few hundred participants on URL length.
     userTurns = await fetchAllRows<any>((from, to) => {
       let userQ = service
         .from('conversation_turns')
         .select('id, conversation_id, turn_number, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
-        .in('conversation_id', convIds)
+        .eq('town_hall_id', hall.id)
         .eq('role', 'user')
         .eq('org_id', orgId)
         .order('conversation_id', { ascending: true })
@@ -142,15 +144,17 @@ async function runPhase3Analyze(
     }, 50000)
 
     // Pair-prior assistants: every conversation that has a new user turn
-    // needs the preceding assistant turn for `bot_message`. Pull the FULL
-    // assistant trail of affected conversations (bounded by conv size,
-    // not corpus size) so cross-cutoff pairing works.
-    const affectedConvIds = Array.from(new Set(userTurns.map(t => t.conversation_id)))
-    if (affectedConvIds.length > 0) {
+    // needs the preceding assistant turn for `bot_message`, including turns
+    // from before the cutoff. Pull the hall's full assistant trail — the
+    // old `.in(conversation_id, affectedConvIds)` hit the same URL-length
+    // cliff on the first sync, when every conversation is "affected". The
+    // pairing map below is keyed by conversation_id, so assistants from
+    // conversations without new user turns are simply never looked up.
+    if (userTurns.length > 0) {
       assistantTurns = await fetchAllRows<any>((from, to) => service
         .from('conversation_turns')
         .select('conversation_id, turn_number, content, content_en')
-        .in('conversation_id', affectedConvIds)
+        .eq('town_hall_id', hall.id)
         .eq('role', 'assistant')
         .eq('org_id', orgId)
         .order('conversation_id', { ascending: true })

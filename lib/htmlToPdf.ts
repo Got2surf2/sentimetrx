@@ -9,6 +9,7 @@
 
 import 'server-only'
 import { existsSync } from 'fs'
+import type { Browser } from 'puppeteer-core'
 
 const CHROME_FONT = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
 function escChrome(s: string): string {
@@ -61,6 +62,39 @@ function localChromePath(): string | null {
   return null
 }
 
+async function launchBrowser(): Promise<Browser> {
+  const puppeteer = (await import('puppeteer-core')).default
+  const onServerless = process.platform === 'linux'
+
+  if (onServerless) {
+    const chromium = (await import('@sparticuz/chromium')).default
+    return puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true })
+  }
+  const exe = localChromePath()
+  if (!exe) throw new Error('No local Chrome found — set PUPPETEER_EXECUTABLE_PATH')
+  return puppeteer.launch({ executablePath: exe, headless: true, args: ['--no-sandbox'] })
+}
+
+// Module-scoped browser cache. On Vercel Fluid, module scope survives across
+// invocations of a warm instance, so reusing one Chromium saves the ~1-2s
+// launch per PDF. The browser is SHARED across concurrent invocations (pages
+// are independent); pages are per-request and always closed, the browser is
+// never closed on the success path. Caching the promise (not the browser)
+// makes concurrent cold-start callers share a single launch.
+let browserPromise: Promise<Browser> | null = null
+
+async function getBrowser(): Promise<Browser> {
+  if (browserPromise) {
+    try {
+      const b = await browserPromise
+      if (b.connected) return b
+    } catch { /* previous launch failed — fall through to relaunch */ }
+    browserPromise = null
+  }
+  browserPromise = launchBrowser()
+  return browserPromise
+}
+
 export async function htmlToPdfBuffer(
   html: string,
   opts: {
@@ -70,32 +104,42 @@ export async function htmlToPdfBuffer(
     margin?: { top?: string; bottom?: string; left?: string; right?: string }
   } = {},
 ): Promise<Buffer> {
-  const puppeteer = (await import('puppeteer-core')).default
-  const onServerless = process.platform === 'linux'
+  const renderWith = async (browser: Browser): Promise<Buffer> => {
+    const page = await browser.newPage()
+    try {
+      await page.setContent(html, { waitUntil: 'load' })
+      const hasChrome = !!(opts.headerTemplate || opts.footerTemplate)
+      const pdf = await page.pdf({
+        format: opts.format || 'letter',
+        printBackground: true,
+        displayHeaderFooter: hasChrome,
+        ...(hasChrome ? { headerTemplate: opts.headerTemplate || '<span></span>', footerTemplate: opts.footerTemplate || '<span></span>' } : {}),
+        margin: opts.margin || { top: '14mm', bottom: '14mm', left: '12mm', right: '12mm' },
+      })
+      return Buffer.from(pdf)
+    } finally {
+      await page.close().catch(() => {})
+    }
+  }
 
-  let browser
-  if (onServerless) {
-    const chromium = (await import('@sparticuz/chromium')).default
-    browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true })
-  } else {
-    const exe = localChromePath()
-    if (!exe) throw new Error('No local Chrome found — set PUPPETEER_EXECUTABLE_PATH')
-    browser = await puppeteer.launch({ executablePath: exe, headless: true, args: ['--no-sandbox'] })
+  const attempt = async (): Promise<Buffer> => {
+    const browser = await getBrowser()
+    const cached = browserPromise
+    try {
+      return await renderWith(browser)
+    } catch (err) {
+      // Page-level failure — this browser may be wedged. Invalidate the cache
+      // (only if it still points at the browser we used — a concurrent caller
+      // may already have relaunched) and close the suspect in the background.
+      if (browserPromise === cached) browserPromise = null
+      void browser.close().catch(() => {})
+      throw err
+    }
   }
 
   try {
-    const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: 'load' })
-    const hasChrome = !!(opts.headerTemplate || opts.footerTemplate)
-    const pdf = await page.pdf({
-      format: opts.format || 'letter',
-      printBackground: true,
-      displayHeaderFooter: hasChrome,
-      ...(hasChrome ? { headerTemplate: opts.headerTemplate || '<span></span>', footerTemplate: opts.footerTemplate || '<span></span>' } : {}),
-      margin: opts.margin || { top: '14mm', bottom: '14mm', left: '12mm', right: '12mm' },
-    })
-    return Buffer.from(pdf)
-  } finally {
-    await browser.close()
+    return await attempt()
+  } catch {
+    return attempt() // retry ONCE with a fresh browser
   }
 }

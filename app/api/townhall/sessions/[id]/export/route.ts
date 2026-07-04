@@ -131,16 +131,18 @@ export async function GET(req: NextRequest, props: Params) {
           .filter(Boolean)
 
         if (convs.length > 0) {
-          const convIds = convs.map((c: any) => c.id)
           const convById: Record<string, any> = {}
           for (const c of convs) convById[c.id] = c
 
-          // All turns across linked conversations (paged — the unbounded
-          // select was silently capped at 1000 rows)
+          // All turns across the hall's conversations, via the stamped
+          // town_hall_id column — the old `.in(conversation_id, convIds)`
+          // broke at a few hundred participants on URL length. The link
+          // fetch above stays for participant/persona attribution (convById).
+          // Paged — the unbounded select was silently capped at 1000 rows.
           const cts = await fetchAllRows<any>((from, to) => db
             .from('conversation_turns')
             .select('id, conversation_id, turn_number, role, content, content_en, language, source, content_flags, sentiment, sentiment_score, topic_id, skipped, created_at')
-            .in('conversation_id', convIds)
+            .eq('town_hall_id', hall.id)
             .eq('org_id', hall.org_id)
             .order('conversation_id', { ascending: true })
             .order('turn_number', { ascending: true })
