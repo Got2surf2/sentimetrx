@@ -1,23 +1,26 @@
 // lib/orgSnapshot.ts
-// Dumps a single org's full tenant-scoped state as a JSON object suitable
-// for backup or restore. Configuration-driven: each table declares how to
-// filter to one org (either by direct `org_id` or via a parent_id-in-org).
+// Table registry + paged reader for per-org logical snapshots.
 //
 // Why this exists: Supabase PITR rolls back the WHOLE database to a point
 // in time, which would destroy other tenants' legitimate work. Per-tenant
 // logical snapshots let us restore one org without touching the rest.
 //
-// Tier strategy:
-// - Always: small, high-value tables (config, prompts, knowledge).
-// - With caps: rows that grow unboundedly (conversation turns, dataset
-//   rows). Capped at MAX_ROWS_PER_TABLE; if truncated, payload notes that
-//   and the operator can fall back to Supabase's daily backup for the
-//   excess.
+// Each table declares how to filter to one org (direct `org_id`, a
+// different org column, or via a parent table's ids). `iterateTablePages`
+// yields 1000-row pages so the dump layer (lib/orgSnapshotV2) can stream
+// a table of ANY size to the backing store in constant memory.
 //
-// Pure side-effect-free: returns the JSON. Upload is a separate layer.
+// UNCAPPED since snapshot v2 (2026-07-04): the old per-table row caps
+// (50K dataset rows, 100K default, 500K taxonomy) existed only because
+// snapshot v1 built one JSON document in a serverless function's memory.
+// v2 streams per-table NDJSON parts, so caps are gone — a truncated
+// backup is a data-loss bug, not a tuning knob.
+//
+// The OrgSnapshot/OrgSnapshotMeta types describe the v1 in-memory shape.
+// v1 is no longer WRITTEN, but existing S3 objects restore forever, and
+// the clone script materializes v2 snapshots into this same shape.
 
-import { createServiceRoleClient } from './supabase/server'
-import { logError } from './log'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface OrgSnapshotMeta {
   snapshot_version: 1
@@ -27,9 +30,9 @@ export interface OrgSnapshotMeta {
   table_row_counts: Record<string, number>
   truncated_tables: string[]
   // Per-table fetch errors. A NON-EMPTY map means the snapshot is INCOMPLETE —
-  // some table failed to read and shipped 0 rows. The cron must treat this as a
-  // failure, not silently accept an empty backup (which is how a whole content
-  // table went un-backed-up unnoticed before 2026-07-02).
+  // some table failed to read and shipped partial/zero rows. The cron must
+  // treat this as a failure, not silently accept a bad backup (which is how a
+  // whole content table went un-backed-up unnoticed before 2026-07-02).
   fetch_errors: Record<string, string>
 }
 
@@ -40,81 +43,83 @@ export interface OrgSnapshot {
 
 // Per-table dump config.
 //   filter: 'org_id'              -> WHERE org_id = $1
-//   filter: 'id'                  -> WHERE id = $1 (organizations only)
+//   filter: 'id_eq_org'           -> WHERE id = $1 (organizations only)
+//   filter: 'col_eq_org'          -> WHERE <col> = $1 (e.g. org_transfers.to_org_id)
 //   filter: { via: 'bot_id', parent: 'bots' }
 //                                  -> WHERE <fk> IN (SELECT id FROM <parent> WHERE org_id = $1)
-//   filter: { via: 'user_id', parent: 'users' }
-//                                  -> same for users
 //   filter: 'skip'                -> not snapshotted (legacy / global / unrelated)
 //
 // Order matters for restore: parents before children with FK references.
+export type SnapshotParent = 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections'
+
 type TableFilter =
   | { kind: 'org_id' }
   | { kind: 'id_eq_org' }
   | { kind: 'col_eq_org'; col: string }
-  | { kind: 'parent_via'; via: string; parent: 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections' }
+  | { kind: 'parent_via'; via: string; parent: SnapshotParent }
   | { kind: 'skip'; reason: string }
 
-interface TableSpec {
+export interface TableSpec {
   name: string
   filter: TableFilter
-  cap?: number // null = no cap; positive = max rows captured
   // Pagination sort key for parent_via tables. Default 'id'. Set to a
   // column with a composite index alongside the FK (e.g. row_index on
   // dataset_rows_flat's (dataset_id, row_index) index) — those tables
   // page PER PARENT so the sort is index-served and can't hit the
-  // statement timeout that sorting 50K heavy JSONB rows does.
+  // statement timeout that sorting 50K heavy JSONB rows does. Also the
+  // way to page a composite-PK parent_via table that has NO id column
+  // (user_features, user_favorites).
   pageOrder?: string
+  // Pagination sort key for org_id/col_eq_org tables without an id column
+  // (org_features — PK is (org_id, feature)). Default 'id'.
+  orderBy?: string
 }
 
-const DEFAULT_CAP = 100_000
-const NO_CAP = -1
-
-const TABLE_SPECS: TableSpec[] = [
+export const TABLE_SPECS: TableSpec[] = [
   // Identity + access
-  { name: 'organizations', filter: { kind: 'id_eq_org' }, cap: NO_CAP },
-  { name: 'users', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'invites', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'user_logins', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, cap: DEFAULT_CAP },
-  { name: 'user_events', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'organizations', filter: { kind: 'id_eq_org' } },
+  { name: 'users', filter: { kind: 'org_id' } },
+  { name: 'invites', filter: { kind: 'org_id' } },
+  { name: 'user_logins', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' } },
+  { name: 'user_events', filter: { kind: 'org_id' } },
 
   // Bots (config + content + activity)
-  { name: 'bots', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'bot_knowledge_chunks', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: NO_CAP },
-  { name: 'bot_change_log', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'bot_conversation_turns', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
-  { name: 'bot_session_personas', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
-  { name: 'bot_conversation_reviews', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' }, cap: DEFAULT_CAP },
+  { name: 'bots', filter: { kind: 'org_id' } },
+  { name: 'bot_knowledge_chunks', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' } },
+  { name: 'bot_change_log', filter: { kind: 'org_id' } },
+  { name: 'bot_conversation_turns', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' } },
+  { name: 'bot_session_personas', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' } },
+  { name: 'bot_conversation_reviews', filter: { kind: 'parent_via', via: 'bot_id', parent: 'bots' } },
   // Phase 3 substrate — new conversation tables. Until bot_conversation_turns
   // drops at end of Phase 3, both old and new tables are dumped so an org
   // snapshot is complete regardless of which one is currently authoritative.
-  { name: 'conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'conversation_turns', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'conversations', filter: { kind: 'org_id' } },
+  { name: 'conversation_turns', filter: { kind: 'org_id' } },
 
   // Surveys + responses
-  { name: 'studies', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'responses', filter: { kind: 'parent_via', via: 'study_id', parent: 'studies' }, cap: DEFAULT_CAP },
+  { name: 'studies', filter: { kind: 'org_id' } },
+  { name: 'responses', filter: { kind: 'parent_via', via: 'study_id', parent: 'studies' } },
 
   // Town Hall
-  { name: 'townhall_sessions', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'townhall_themes', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
-  { name: 'townhall_turns', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
-  { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' }, cap: DEFAULT_CAP },
+  { name: 'townhall_sessions', filter: { kind: 'org_id' } },
+  { name: 'townhall_themes', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
+  { name: 'townhall_turns', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
+  { name: 'townhall_participant_responses', filter: { kind: 'parent_via', via: 'session_id', parent: 'townhall_sessions' } },
   // Phase 3 substrate — town hall family. Currently empty in prod; populated
   // once Phase 4 absorbs the PulseIQ route into the unified chat handler.
-  { name: 'pulseiq_sessions', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'pulseiq_session_conversations', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'pulseiq_topics', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'pulseiq_sessions', filter: { kind: 'org_id' } },
+  { name: 'pulseiq_session_conversations', filter: { kind: 'org_id' } },
+  { name: 'pulseiq_topics', filter: { kind: 'org_id' } },
 
   // Datasets + entities + Ana
-  { name: 'datasets', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'collections', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'collection_members', filter: { kind: 'parent_via', via: 'collection_id', parent: 'collections' }, cap: NO_CAP },
-  { name: 'dataset_state', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: NO_CAP },
+  { name: 'datasets', filter: { kind: 'org_id' } },
+  { name: 'collections', filter: { kind: 'org_id' } },
+  { name: 'collection_members', filter: { kind: 'parent_via', via: 'collection_id', parent: 'collections' } },
+  { name: 'dataset_state', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' } },
   // dataset_rows_flat has NO org_id column (it's keyed by dataset_id) — filtering
   // it by org_id errored on every run and the snapshot silently shipped 0 rows.
   // Scope via the org's datasets instead. (Fixed 2026-07-02.)
-  { name: 'dataset_rows_flat', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, cap: 50_000, pageOrder: 'row_index' },
+  { name: 'dataset_rows_flat', filter: { kind: 'parent_via', via: 'dataset_id', parent: 'datasets' }, pageOrder: 'row_index' },
   // entity_catalog has NO org_id (polymorphic scope_type/scope_id) — the old
   // org_id spec errored on every nightly run (caught 2026-07-03). It is fully
   // regenerable via entity discovery, so it is skipped, not snapshotted.
@@ -122,63 +127,70 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'entity_catalog_refresh', filter: { kind: 'skip', reason: 'refresh bookkeeping, regenerable' } },
 
   // Campaigns
-  { name: 'campaigns', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'campaign_schedules', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' }, cap: NO_CAP },
-  { name: 'campaign_emails', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' }, cap: NO_CAP },
-  { name: 'campaign_respondents', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' }, cap: DEFAULT_CAP },
-  { name: 'campaign_send_log', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' }, cap: DEFAULT_CAP },
+  { name: 'campaigns', filter: { kind: 'org_id' } },
+  { name: 'campaign_schedules', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
+  { name: 'campaign_emails', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
+  { name: 'campaign_respondents', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
+  { name: 'campaign_send_log', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
 
   // Social
-  { name: 'social_connections', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'social_comments', filter: { kind: 'parent_via', via: 'connection_id', parent: 'social_connections' }, cap: DEFAULT_CAP },
-  { name: 'social_alert_rules', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'social_alerts_sent', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'social_dm_log', filter: { kind: 'parent_via', via: 'connection_id', parent: 'social_connections' }, cap: DEFAULT_CAP },
-  { name: 'social_moderation_log', filter: { kind: 'parent_via', via: 'connection_id', parent: 'social_connections' }, cap: DEFAULT_CAP },
+  { name: 'social_connections', filter: { kind: 'org_id' } },
+  { name: 'social_comments', filter: { kind: 'parent_via', via: 'connection_id', parent: 'social_connections' } },
+  { name: 'social_alert_rules', filter: { kind: 'org_id' } },
+  { name: 'social_alerts_sent', filter: { kind: 'org_id' } },
+  { name: 'social_dm_log', filter: { kind: 'parent_via', via: 'connection_id', parent: 'social_connections' } },
+  // social_moderation_log has org_id directly (old parent_via connection_id
+  // spec errored — the column doesn't exist; caught live 2026-07-04)
+  { name: 'social_moderation_log', filter: { kind: 'org_id' } },
 
   // Review sources (Google, Yelp, etc)
-  { name: 'review_sources', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'review_source_locations', filter: { kind: 'parent_via', via: 'source_id', parent: 'review_sources' }, cap: NO_CAP },
-  { name: 'review_downloads', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'review_sources', filter: { kind: 'org_id' } },
+  { name: 'review_source_locations', filter: { kind: 'parent_via', via: 'source_id', parent: 'review_sources' } },
+  { name: 'review_downloads', filter: { kind: 'org_id' } },
 
   // Reddit sources
-  { name: 'reddit_sources', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'reddit_source_threads', filter: { kind: 'parent_via', via: 'source_id', parent: 'reddit_sources' }, cap: DEFAULT_CAP },
+  { name: 'reddit_sources', filter: { kind: 'org_id' } },
+  // FK column is reddit_source_id, not source_id (same 2026-07-04 catch)
+  { name: 'reddit_source_threads', filter: { kind: 'parent_via', via: 'reddit_source_id', parent: 'reddit_sources' } },
 
   // Town Hall / recordings module (2026-07-03 — owner audit: the ENTIRE
   // module was missing from backups; media binaries live in Supabase
   // Storage and are NOT in DB snapshots — see docs/BACKUPS.md posture)
-  { name: 'recordings', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'recording_files', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'recording_transcripts', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'recording_extractions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'recording_config_versions', filter: { kind: 'org_id' }, cap: NO_CAP },
+  { name: 'recordings', filter: { kind: 'org_id' } },
+  { name: 'recording_files', filter: { kind: 'org_id' } },
+  { name: 'recording_transcripts', filter: { kind: 'org_id' } },
+  { name: 'recording_extractions', filter: { kind: 'org_id' } },
+  { name: 'recording_config_versions', filter: { kind: 'org_id' } },
 
-  // Feature flags + favorites (same audit)
-  { name: 'org_features', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'user_features', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, cap: NO_CAP },
-  { name: 'user_favorites', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, cap: NO_CAP },
+  // Feature flags + favorites (same audit). All three are composite-PK
+  // tables with NO id column (caught live 2026-07-04 — ordering by 'id'
+  // errored the fetch, which would have made every nightly run red):
+  // page by a real PK column instead, and lib/orgRestore restores them
+  // replace-per-parent.
+  { name: 'org_features', filter: { kind: 'org_id' }, orderBy: 'feature' },
+  { name: 'user_features', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, pageOrder: 'feature' },
+  { name: 'user_favorites', filter: { kind: 'parent_via', via: 'user_id', parent: 'users' }, pageOrder: 'resource_id' },
 
   // Dataset metadata (2026-07-03 — owner audit found these MISSING from
   // backups entirely: themes live in dataset_state which was covered, but
   // saved views, taxonomy classifications, client-review flow, gold sets,
   // and review/impression records were not backed up at all)
-  { name: 'saved_views', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'dataset_row_taxonomy', filter: { kind: 'org_id' }, cap: 500_000 },
-  { name: 'dataset_row_field_taxonomy', filter: { kind: 'org_id' }, cap: 500_000 },
-  { name: 'question_batches', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'logged_questions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'reo_gold_review', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'agent_impressions', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'conversation_reviews', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'saved_views', filter: { kind: 'org_id' } },
+  { name: 'dataset_row_taxonomy', filter: { kind: 'org_id' } },
+  { name: 'dataset_row_field_taxonomy', filter: { kind: 'org_id' } },
+  { name: 'question_batches', filter: { kind: 'org_id' } },
+  { name: 'logged_questions', filter: { kind: 'org_id' } },
+  { name: 'reo_gold_review', filter: { kind: 'org_id' } },
+  { name: 'agent_impressions', filter: { kind: 'org_id' } },
+  { name: 'conversation_reviews', filter: { kind: 'org_id' } },
 
   // Misc
-  { name: 'usage_logs', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'shared_links', filter: { kind: 'org_id' }, cap: NO_CAP },
-  { name: 'deck_download_log', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
-  { name: 'ai_consent_audit', filter: { kind: 'org_id' }, cap: DEFAULT_CAP },
+  { name: 'usage_logs', filter: { kind: 'org_id' } },
+  { name: 'shared_links', filter: { kind: 'org_id' } },
+  { name: 'deck_download_log', filter: { kind: 'org_id' } },
+  { name: 'ai_consent_audit', filter: { kind: 'org_id' } },
   { name: 'webhook_events', filter: { kind: 'skip', reason: 'global webhook receipts, no org linkage (old org_id spec errored nightly)' } },
-  { name: 'org_transfers', filter: { kind: 'col_eq_org', col: 'to_org_id' }, cap: NO_CAP },
+  { name: 'org_transfers', filter: { kind: 'col_eq_org', col: 'to_org_id' } },
 
   // Explicitly skipped
   { name: 'admin_action_log', filter: { kind: 'skip', reason: 'global admin actions, not org-scoped' } },
@@ -195,142 +207,101 @@ const TABLE_SPECS: TableSpec[] = [
   { name: 'mco_handoff_sessions', filter: { kind: 'skip', reason: 'demo scratch state' } },
 ]
 
-async function fetchParentIds(orgId: string, parent: 'bots' | 'users' | 'studies' | 'datasets' | 'collections' | 'campaigns' | 'townhall_sessions' | 'review_sources' | 'reddit_sources' | 'social_connections'): Promise<string[]> {
-  const service = createServiceRoleClient()
-  const { data, error } = await service.from(parent).select('id').eq('org_id', orgId)
+const PAGE = 1000
+const PARENT_CHUNK = 500
+
+async function fetchParentIds(db: SupabaseClient, orgId: string, parent: SnapshotParent): Promise<{ ids: string[]; error?: string }> {
+  const { data, error } = await db.from(parent).select('id').eq('org_id', orgId)
   if (error) {
     console.error('[orgSnapshot] parent fetch failed for ' + parent + ':', error.message)
-    return []
+    return { ids: [], error: error.message }
   }
-  return (data || []).map((r: any) => r.id as string)
+  return { ids: (data || []).map(r => (r as { id: string }).id) }
 }
 
-async function fetchTable(orgId: string, spec: TableSpec): Promise<{ rows: unknown[]; truncated: boolean; error?: string }> {
-  if (spec.filter.kind === 'skip') return { rows: [], truncated: false }
-  const service = createServiceRoleClient()
-  const cap = spec.cap === undefined ? DEFAULT_CAP : spec.cap
+// Yields a table's rows in ≤1000-row pages, UNCAPPED. PostgREST truncates
+// any single select at the project max-rows (1000) — a large .limit() is a
+// ceiling, not a fetch size (that bug silently capped nightly backups at
+// 1000 rows/table until 2026-07-03) — so everything pages via .range().
+// A page-level read error ends the table and is reported on the final
+// yield; the caller records it in meta.fetch_errors (fail-loud).
+export async function* iterateTablePages(
+  db: SupabaseClient,
+  orgId: string,
+  spec: TableSpec,
+): AsyncGenerator<{ rows: Record<string, unknown>[]; error?: string }> {
+  if (spec.filter.kind === 'skip') return
 
   if (spec.filter.kind === 'id_eq_org') {
-    const { data, error } = await service.from(spec.name).select('*').eq('id', orgId)
+    const { data, error } = await db.from(spec.name).select('*').eq('id', orgId)
     if (error) {
       console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-      return { rows: [], truncated: false, error: error.message }
+      yield { rows: [], error: error.message }
+      return
     }
-    return { rows: data || [], truncated: false }
+    if ((data || []).length > 0) yield { rows: (data || []) as Record<string, unknown>[] }
+    return
   }
 
-  // PAGED (2026-07-03): PostgREST truncates any single select at the
-  // project max-rows (1000) — a .limit(100000) was a ceiling, not a fetch
-  // size, so nightly backups were silently capturing at most 1000 rows per
-  // table. Page in 1000-row chunks up to the cap.
-  const PAGE = 1000
   if (spec.filter.kind === 'org_id' || spec.filter.kind === 'col_eq_org') {
     const orgCol = spec.filter.kind === 'col_eq_org' ? spec.filter.col : 'org_id'
-    const all: unknown[] = []
-    let truncated = false
-    let fetchErr: string | undefined
-    const hardCap = cap === NO_CAP ? Number.MAX_SAFE_INTEGER : cap
-    for (let from = 0; all.length < hardCap; from += PAGE) {
-      const { data, error } = await service.from(spec.name).select('*').eq(orgCol, orgId)
-        .order('id', { ascending: true })
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.from(spec.name).select('*').eq(orgCol, orgId)
+        .order(spec.orderBy || 'id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
         console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-        if (!fetchErr) fetchErr = error.message
-        break
+        yield { rows: [], error: error.message }
+        return
       }
-      const page = data || []
-      for (const row of page) {
-        if (all.length >= hardCap) { truncated = true; break }
-        all.push(row)
-      }
-      if (truncated || page.length < PAGE) break
+      const page = (data || []) as Record<string, unknown>[]
+      if (page.length > 0) yield { rows: page }
+      if (page.length < PAGE) return
     }
-    return { rows: all, truncated, error: fetchErr }
   }
 
   // parent_via — fetch parent IDs in the org, then filter the table by that FK.
-  const parentIds = await fetchParentIds(orgId, spec.filter.parent)
-  if (parentIds.length === 0) return { rows: [], truncated: false }
+  const { ids: parentIds, error: parentErr } = await fetchParentIds(db, orgId, spec.filter.parent)
+  if (parentErr) { yield { rows: [], error: 'parent fetch: ' + parentErr }; return }
+  if (parentIds.length === 0) return
 
-  // Supabase JS .in() has a practical limit; chunk parent IDs to be safe.
-  const CHUNK = 500
-  const allRows: unknown[] = []
-  let truncated = false
-  let fetchError: string | undefined
-  const hardCap = cap === NO_CAP ? Number.MAX_SAFE_INTEGER : cap
   if (spec.pageOrder) {
     // Per-parent, index-served pagination (eq on the FK + order on the
     // composite index column). Sorting across parents timed out on heavy
     // JSONB tables — 47K dataset_rows_flat rows hit the statement timeout.
     for (const pid of parentIds) {
-      if (truncated) break
       for (let from = 0; ; from += PAGE) {
-        const { data, error } = await service.from(spec.name).select('*').eq(spec.filter.via, pid)
+        const { data, error } = await db.from(spec.name).select('*').eq(spec.filter.via, pid)
           .order(spec.pageOrder, { ascending: true })
           .range(from, from + PAGE - 1)
         if (error) {
           console.error('[orgSnapshot] ' + spec.name + ' page fetch failed:', error.message)
-          if (!fetchError) fetchError = error.message
-          break
+          yield { rows: [], error: error.message }
+          return
         }
-        const page = data || []
-        for (const row of page) {
-          if (allRows.length >= hardCap) { truncated = true; break }
-          allRows.push(row)
-        }
-        if (truncated || page.length < PAGE) break
+        const page = (data || []) as Record<string, unknown>[]
+        if (page.length > 0) yield { rows: page }
+        if (page.length < PAGE) break
       }
     }
-    return { rows: allRows, truncated, error: fetchError }
+    return
   }
-  for (let i = 0; i < parentIds.length && !truncated; i += CHUNK) {
-    const slice = parentIds.slice(i, i + CHUNK)
-    // Page within each parent chunk (same 1000-row PostgREST truncation).
+
+  // Supabase JS .in() has a practical limit; chunk parent IDs to be safe.
+  for (let i = 0; i < parentIds.length; i += PARENT_CHUNK) {
+    const slice = parentIds.slice(i, i + PARENT_CHUNK)
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await service.from(spec.name).select('*').in(spec.filter.via, slice)
+      const { data, error } = await db.from(spec.name).select('*').in(spec.filter.via, slice)
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
         console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
-        if (!fetchError) fetchError = error.message
-        break
+        yield { rows: [], error: error.message }
+        return
       }
-      const page = data || []
-      for (const row of page) {
-        if (allRows.length >= hardCap) { truncated = true; break }
-        allRows.push(row)
-      }
-      if (truncated || page.length < PAGE) break
+      const page = (data || []) as Record<string, unknown>[]
+      if (page.length > 0) yield { rows: page }
+      if (page.length < PAGE) break
     }
   }
-  return { rows: allRows, truncated, error: fetchError }
-}
-
-export async function dumpOrgSnapshot(orgId: string): Promise<OrgSnapshot> {
-  const service = createServiceRoleClient()
-  const { data: org, error: orgErr } = await service.from('organizations').select('id, name').eq('id', orgId).single()
-  if (orgErr) void logError('orgSnapshot.dumpOrgSnapshot', orgErr, { orgId })
-
-  const meta: OrgSnapshotMeta = {
-    snapshot_version: 1,
-    org_id: orgId,
-    org_name: (org as any)?.name || null,
-    taken_at: new Date().toISOString(),
-    table_row_counts: {},
-    truncated_tables: [],
-    fetch_errors: {},
-  }
-  const tables: Record<string, unknown[]> = {}
-
-  for (const spec of TABLE_SPECS) {
-    if (spec.filter.kind === 'skip') continue
-    const { rows, truncated, error } = await fetchTable(orgId, spec)
-    tables[spec.name] = rows
-    meta.table_row_counts[spec.name] = rows.length
-    if (truncated) meta.truncated_tables.push(spec.name)
-    if (error) meta.fetch_errors[spec.name] = error
-  }
-
-  return { meta, tables }
 }

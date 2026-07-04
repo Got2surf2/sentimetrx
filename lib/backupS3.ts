@@ -1,99 +1,71 @@
 // lib/backupS3.ts
-// S3 wrapper for per-tenant backup uploads. Used by the nightly snapshot
-// cron + the admin restore flow.
+// S3 catalog for per-tenant backups: store factory + snapshot listing.
+// Used by the nightly snapshot cron, the admin backups UI, and
+// scripts/clone-org-to-test.ts.
 //
-// Env required:
+// Env required (see docs/BACKUPS.md):
 //   BACKUP_S3_BUCKET            — bucket name (e.g. "sentimetrx-backups")
 //   BACKUP_S3_REGION            — region (e.g. "us-east-1")
 //   BACKUP_AWS_ACCESS_KEY_ID
 //   BACKUP_AWS_SECRET_ACCESS_KEY
 //   BACKUP_S3_KMS_KEY_ID        — optional; if set, uses SSE-KMS
 //
-// Storage layout:
-//   s3://<bucket>/org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/snapshot.json.gz
-// Versioning is enabled on the bucket (configured via AWS console / IaC)
-// so overwrites within the same day keep prior copies retrievable.
+// Storage layout (bucket versioning keeps same-day overwrites retrievable):
+//   v1 (legacy, read-only): org-snapshots/<org_id>/<Y>/<M>/<D>/snapshot.json.gz
+//   v2 (current):           org-snapshots/<org_id>/<Y>/<M>/<D>/v2/tables/<table>.ndjson.gz
+//                           org-snapshots/<org_id>/<Y>/<M>/<D>/v2/manifest.json
+//
+// A v2 snapshot appears in listings as ONE item keyed by its manifest
+// (the commit marker — written last), with size aggregated across its
+// table parts. v2 days without a manifest are incomplete and hidden.
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3'
-import { gzipSync, gunzipSync } from 'zlib'
+import { S3SnapshotStore } from './snapshotStore'
 
-let _client: S3Client | null = null
+let _store: S3SnapshotStore | null = null
 
-function getClient(): S3Client {
-  if (_client) return _client
-  const region = process.env.BACKUP_S3_REGION
-  const accessKeyId = process.env.BACKUP_AWS_ACCESS_KEY_ID
-  const secretAccessKey = process.env.BACKUP_AWS_SECRET_ACCESS_KEY
-  if (!region || !accessKeyId || !secretAccessKey) {
-    throw new Error('BACKUP_S3_REGION / BACKUP_AWS_ACCESS_KEY_ID / BACKUP_AWS_SECRET_ACCESS_KEY missing')
-  }
-  _client = new S3Client({ region, credentials: { accessKeyId, secretAccessKey } })
-  return _client
-}
-
-function getBucket(): string {
-  const bucket = process.env.BACKUP_S3_BUCKET
-  if (!bucket) throw new Error('BACKUP_S3_BUCKET env var missing')
-  return bucket
-}
-
-export function orgSnapshotKey(orgId: string, date: Date = new Date()): string {
-  const y = date.getUTCFullYear()
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(date.getUTCDate()).padStart(2, '0')
-  return 'org-snapshots/' + orgId + '/' + y + '/' + m + '/' + d + '/snapshot.json.gz'
-}
-
-export async function uploadOrgSnapshot(orgId: string, payload: unknown): Promise<{ key: string; size_bytes: number }> {
-  const client = getClient()
-  const bucket = getBucket()
-  const key = orgSnapshotKey(orgId)
-  const json = JSON.stringify(payload)
-  const compressed = gzipSync(Buffer.from(json, 'utf-8'))
-
-  const kmsKey = process.env.BACKUP_S3_KMS_KEY_ID
-  await client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: compressed,
-    ContentType: 'application/json',
-    ContentEncoding: 'gzip',
-    ...(kmsKey
-      ? { ServerSideEncryption: 'aws:kms', SSEKMSKeyId: kmsKey }
-      : { ServerSideEncryption: 'AES256' }),
-    Metadata: { org_id: orgId, snapshot_version: '1' },
-  }))
-
-  return { key, size_bytes: compressed.length }
+export function s3SnapshotStore(): S3SnapshotStore {
+  if (!_store) _store = new S3SnapshotStore()
+  return _store
 }
 
 export interface SnapshotListItem {
   key: string
   last_modified: string
   size_bytes: number
+  snapshot_version: 1 | 2
 }
 
-export async function listOrgSnapshots(orgId: string, maxKeys = 100): Promise<SnapshotListItem[]> {
-  const client = getClient()
-  const bucket = getBucket()
+// Pure grouping — exported for tests.
+export function groupSnapshotObjects(objects: { key: string; last_modified: string; size_bytes: number }[]): SnapshotListItem[] {
+  const items: SnapshotListItem[] = []
+  // v2: group all objects under each .../v2/ prefix; emit only if the
+  // manifest exists.
+  const v2Groups = new Map<string, { manifest?: { key: string; last_modified: string }; bytes: number }>()
+
+  for (const o of objects) {
+    const v2Idx = o.key.indexOf('/v2/')
+    if (v2Idx >= 0) {
+      const groupPrefix = o.key.slice(0, v2Idx + 4)
+      const g = v2Groups.get(groupPrefix) || { bytes: 0 }
+      g.bytes += o.size_bytes
+      if (o.key.endsWith('/v2/manifest.json')) g.manifest = { key: o.key, last_modified: o.last_modified }
+      v2Groups.set(groupPrefix, g)
+      continue
+    }
+    if (o.key.endsWith('snapshot.json.gz')) {
+      items.push({ key: o.key, last_modified: o.last_modified, size_bytes: o.size_bytes, snapshot_version: 1 })
+    }
+  }
+  for (const g of v2Groups.values()) {
+    if (!g.manifest) continue // incomplete — dump died before the commit marker
+    items.push({ key: g.manifest.key, last_modified: g.manifest.last_modified, size_bytes: g.bytes, snapshot_version: 2 })
+  }
+
+  return items.sort((a, b) => (a.last_modified < b.last_modified ? 1 : -1))
+}
+
+export async function listOrgSnapshots(orgId: string, max = 100): Promise<SnapshotListItem[]> {
   const prefix = 'org-snapshots/' + orgId + '/'
-  const out = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, MaxKeys: maxKeys }))
-  return (out.Contents || []).map(o => ({
-    key: o.Key || '',
-    last_modified: o.LastModified ? o.LastModified.toISOString() : '',
-    size_bytes: o.Size || 0,
-  })).sort((a, b) => (a.last_modified < b.last_modified ? 1 : -1))
-}
-
-export async function downloadOrgSnapshot(key: string): Promise<unknown> {
-  const client = getClient()
-  const bucket = getBucket()
-  const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-  if (!out.Body) throw new Error('Empty S3 response body for ' + key)
-  const stream = out.Body as any
-  const chunks: Buffer[] = []
-  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  const compressed = Buffer.concat(chunks)
-  const json = gunzipSync(compressed).toString('utf-8')
-  return JSON.parse(json)
+  const objects = await s3SnapshotStore().list(prefix)
+  return groupSnapshotObjects(objects).slice(0, max)
 }

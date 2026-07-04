@@ -7,8 +7,8 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
-import { dumpOrgSnapshot } from '@/lib/orgSnapshot'
-import { uploadOrgSnapshot, listOrgSnapshots } from '@/lib/backupS3'
+import { dumpOrgSnapshotV2 } from '@/lib/orgSnapshotV2'
+import { s3SnapshotStore, listOrgSnapshots } from '@/lib/backupS3'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 
@@ -40,15 +40,14 @@ export async function POST(_req: NextRequest, props: Params) {
   if (!org) return NextResponse.json({ error: 'Org not found' }, { status: 404 })
 
   try {
-    const snap = await dumpOrgSnapshot(params.orgId)
-    const result = await uploadOrgSnapshot(params.orgId, snap)
+    const { manifestKey, meta } = await dumpOrgSnapshotV2(service, params.orgId, s3SnapshotStore())
     return NextResponse.json({
-      ok: true,
+      ok: Object.keys(meta.fetch_errors).length === 0,
       org_name: (org as any).name,
-      key: result.key,
-      size_bytes: result.size_bytes,
-      row_counts: snap.meta.table_row_counts,
-      truncated: snap.meta.truncated_tables,
+      key: manifestKey,
+      size_bytes: meta.total_bytes,
+      row_counts: meta.table_row_counts,
+      ...(Object.keys(meta.fetch_errors).length > 0 ? { fetch_errors: meta.fetch_errors } : {}),
     })
   } catch (e: any) {
     return serverError(e, 'admin.orgSnapshots.create', { orgId: params.orgId })

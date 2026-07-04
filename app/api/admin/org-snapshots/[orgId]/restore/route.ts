@@ -1,5 +1,8 @@
 // app/api/admin/org-snapshots/[orgId]/restore/route.ts
-// POST — restore an org from a given snapshot S3 key.
+// POST — restore an org from a given snapshot S3 key. Accepts BOTH formats:
+// a v1 key (.../snapshot.json.gz, whole-JSON) and a v2 manifest key
+// (.../v2/manifest.json) — v2 restores STREAM table parts in ≤500-row
+// batches, so an uncapped snapshot restores in constant memory.
 //
 // Body: { key: string, mode?: 'merge' | 'replace', tables?: string[] }
 //   mode='merge' (default): upsert all rows from the snapshot by id; leaves
@@ -18,11 +21,11 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
-import { downloadOrgSnapshot } from '@/lib/backupS3'
+import { s3SnapshotStore } from '@/lib/backupS3'
+import { openSnapshot, type SnapshotSource } from '@/lib/orgSnapshotV2'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { recordAdminAction } from '@/lib/orgTransfer'
-import type { OrgSnapshot } from '@/lib/orgSnapshot'
-import { restoreOrgSnapshot } from '@/lib/orgRestore'
+import { restoreOrgSnapshotFromSource } from '@/lib/orgRestore'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
@@ -45,17 +48,14 @@ export async function POST(req: NextRequest, props: Params) {
   const mode: 'merge' | 'replace' = body?.mode === 'replace' ? 'replace' : 'merge'
   const tableAllow: string[] | null = Array.isArray(body?.tables) && body.tables.length > 0 ? body.tables.map(String) : null
 
-  let snapshot: OrgSnapshot
+  let source: SnapshotSource
   try {
-    snapshot = await downloadOrgSnapshot(key) as OrgSnapshot
+    source = await openSnapshot(s3SnapshotStore(), key)
   } catch (e: any) {
     return serverError(e, 'admin.orgSnapshots.restore.download', { orgId: params.orgId })
   }
 
-  if (!snapshot?.meta || snapshot.meta.snapshot_version !== 1) {
-    return NextResponse.json({ error: 'Unsupported snapshot_version' }, { status: 400 })
-  }
-  if (snapshot.meta.org_id !== params.orgId) {
+  if (source.orgId !== params.orgId) {
     return NextResponse.json({ error: 'Snapshot org_id does not match URL org_id (refusing — possible key swap)' }, { status: 400 })
   }
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, props: Params) {
   // Shared restore core (lib/orgRestore) — same implementation the
   // cross-environment clone script uses; this route targets the SAME
   // environment's database.
-  const { reports, totals } = await restoreOrgSnapshot(service as any, snapshot, { mode, tables: tableAllow })
+  const { reports, totals } = await restoreOrgSnapshotFromSource(service as any, source, { mode, tables: tableAllow })
 
   // Audit: restoring a snapshot overwrites (merge) or replaces a tenant's live
   // data — the most destructive admin op there is. Always traced.
@@ -73,13 +73,13 @@ export async function POST(req: NextRequest, props: Params) {
   await recordAdminAction({
     service, actionType: 'org.snapshot_restore', resourceType: 'org', resourceId: params.orgId,
     targetOrgId: params.orgId, initiatedBy: actor?.id || null, initiatedByEmail: actor?.email || null,
-    metadata: { key, mode, snapshot_taken_at: snapshot.meta.taken_at, tables_restored: reports.length, ...totals },
+    metadata: { key, mode, snapshot_version: source.version, snapshot_taken_at: source.takenAt, tables_restored: reports.length, ...totals },
   })
 
   return NextResponse.json({
     ok: true,
     org_id: params.orgId,
-    snapshot_taken_at: snapshot.meta.taken_at,
+    snapshot_taken_at: source.takenAt,
     mode,
     tables_restored: reports.length,
     reports,

@@ -1,18 +1,23 @@
 # Per-Tenant Backups (Sentimetrx)
 
-> Last reviewed: 2026-05-19
+> Last reviewed: 2026-07-04 (snapshot v2 — streamed, uncapped)
 > Threat model: tenant-scoped data loss inside a single org (accidental delete, mass UI mistake, ransomware on the live database). Supabase PITR is the wrong shape for this — it rolls back the whole DB and would destroy other tenants' legitimate work. This system snapshots each org's data independently so a single tenant can be rolled forward or back without touching the others.
 
 ## What gets backed up
 
-Nightly cron at **04:00 UTC** (`vercel.json`): for every row in `organizations`, dumps all tenant-scoped tables to a single gzipped JSON, uploads to S3.
+Nightly cron at **04:00 UTC** (`vercel.json`): for every row in `organizations`, STREAMS all tenant-scoped tables to S3 as a **snapshot v2** — one gzipped NDJSON object per table plus a manifest, UNCAPPED, in constant memory (`lib/orgSnapshotV2.dumpOrgSnapshotV2` over `lib/snapshotStore`; multipart upload via `@aws-sdk/lib-storage`).
 
-Object key:
+Object keys:
 ```
-s3://<BACKUP_S3_BUCKET>/org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/snapshot.json.gz
+s3://<BACKUP_S3_BUCKET>/org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/v2/tables/<table>.ndjson.gz
+s3://<BACKUP_S3_BUCKET>/org-snapshots/<org_id>/<YYYY>/<MM>/<DD>/v2/manifest.json
 ```
 
-Key is deterministic per (org, day). Re-running on the same day overwrites the key; bucket versioning preserves the prior copy.
+The **manifest is the commit marker** — written only after every table part landed. Listings (`lib/backupS3.listOrgSnapshots`) show a v2 snapshot as one manifest-keyed item with aggregate size and HIDE manifest-less days (a dump that died mid-run is not restorable and must not look like a backup). Keys are deterministic per (org, day); a same-day re-run overwrites and bucket versioning preserves the prior copy.
+
+**NDJSON detail that matters:** rows are one-per-line with U+2028/U+2029 escaped — real tenant text (iPhone-pasted reviews) contains raw LINE SEPARATOR characters, which `JSON.stringify` legally leaves unescaped and which line-oriented readers (including Node's readline) treat as line breaks. The v2 reader splits on `\n` only. Caught live 2026-07-04 when a review containing U+2028 broke a streaming restore mid-table.
+
+Legacy **v1** objects (`.../<DD>/snapshot.json.gz`, one whole-org gzipped JSON) are no longer written but restore forever — `lib/orgSnapshotV2.openSnapshot` reads both formats behind one streaming interface.
 
 ### Tables captured
 
@@ -30,15 +35,19 @@ Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`.
 > durability; an S3 bucket-sync is a future hardening item. Regenerable AI
 > caches (readout/study) and demo scratch are skipped with reasons.
 >
-> **<TBD: snapshot v2 — streamed, uncapped>** The per-table caps (50K flat
-> rows, 500K taxonomy) exist ONLY because the nightly snapshot builds one
-> JSON document in a serverless function's memory. Owner flagged 2026-07-03
-> that 128K taxonomy rows exist pre-production — one real client pilot adds
-> ~300K, so caps will truncate real tenants quickly. The fix is structural,
-> not bigger numbers: stream each table to S3 as its own NDJSON part
-> (constant memory, no caps, resumable restore). Required before the first
-> client whose data outgrows the caps; pairs with deploy-behind-CI on the
-> client-readiness list. Grouped by how the org filter is applied:
+> **Snapshot v2 SHIPPED (2026-07-04)** — the caps this block used to
+> describe are GONE. Each table streams to S3 as its own NDJSON part in
+> constant memory; a truncated backup is now a data-loss bug, not a tuning
+> knob. Verified live against the test project: a 262K-row org (incl.
+> 2×100K taxonomy rows) dumped in ~60s at ~200 MB RSS, and a full
+> dump→restore round trip reconciled row-for-row. The same verification
+> caught and fixed FIVE latent spec bugs that would have erred nightly
+> runs: org_features / user_features / user_favorites have no `id` column
+> (pagination ordered by a real PK column now; restore handles them
+> replace-per-parent instead of skipping), social_moderation_log is
+> org_id-scoped (not connection_id), and reddit_source_threads' FK is
+> reddit_source_id (not source_id). Grouped by how the org filter is
+> applied:
 
 - **By `org_id` directly**: agents (formerly `bots`), studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, conversations, conversation_turns, pulseiq_sessions, pulseiq_session_conversations, pulseiq_topics, etc.
 - **Via a parent table** (e.g. `bot_id IN (SELECT id FROM agents WHERE org_id = $1)`): agent_knowledge_chunks, agent_conversation_reviews, bot_conversation_turns (transitional, drops at Tier 5), responses, campaign_emails, etc.
@@ -53,11 +62,19 @@ Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`.
 - `user_locations` — geo IP cache, regeneratable
 - `clients` — legacy
 
-### Row caps
+### Row caps — NONE (since v2, 2026-07-04)
 
-- `dataset_rows_flat` is capped at 50,000 rows per snapshot. Larger collections rely on Supabase's daily backup for the excess. The snapshot's `meta.truncated_tables` lists any table that hit its cap. **(Fixed 2026-07-03: table fetches are now PAGED in 1000-row chunks — PostgREST truncates any single select at 1000 rows, so a `.limit(100000)` was a ceiling, not a fetch size, and every capped table was silently capturing at most 1000 rows. `dataset_rows_flat` pages per-dataset ordered by `row_index` (index-served — sorting 47K JSONB rows across datasets hit the statement timeout). Also fixed the same day: `entity_catalog`/`entity_catalog_refresh` (polymorphic scope, no org_id — old spec errored every night; now skipped as regenerable), `webhook_events` (global, no org linkage — skipped), `org_transfers` (scopes via `to_org_id` — new `col_eq_org` filter kind). Restore side: extracted to `lib/orgRestore.ts` shared by the admin route and `scripts/clone-org-to-test.ts`; identity-id tables (`dataset_rows_flat`) restore as strip-id inserts with per-dataset replace — the old upsert-by-id could NEVER restore them anywhere. First successful full restore drill: 23,485 rows of a prod org into the test project, 4 expected cross-org audit-row residuals.)** **(Fixed 2026-07-02: `dataset_rows_flat` is scoped via the org's `datasets` (`parent_via dataset_id`), NOT `org_id` — it has no `org_id` column, so the previous `org_id` filter errored and silently shipped 0 content rows for every org. See "Incomplete-snapshot detection" below.)**
-- Other large tables (`bot_conversation_turns`, `responses`, `townhall_turns`, etc.) cap at 100,000 rows.
-- Tables that are typically small (bots, studies, knowledge chunks, organizations row) have no cap.
+Every table is captured in full. The caps that used to live here (50K
+`dataset_rows_flat`, 100K default, 500K taxonomy) were an artifact of v1
+building one JSON document in serverless memory; v2 streams, so they are
+gone. History that still matters for reading OLD snapshots: v1 objects
+taken before 2026-07-04 ARE capped (and those taken 2026-07-02–07-03 were
+additionally 1000-row-truncated by the un-paged PostgREST fetch — that
+window's snapshots are unreliable beyond config tables). `dataset_rows_flat`
+pages per-dataset ordered by `row_index` (index-served — sorting across
+datasets hit the statement timeout at 47K JSONB rows); it has no `org_id`
+and scopes via the org's datasets (`parent_via dataset_id`, fixed
+2026-07-02 after shipping 0 content rows nightly).
 
 ## AWS setup (one-time, in the AWS console)
 
@@ -112,6 +129,7 @@ Create a dedicated IAM user (or role) for the Vercel runtime. Attach this policy
 
 Notes:
 - Intentionally NO `s3:DeleteObject` — Vercel runtime can never delete. Cleanup happens via the lifecycle rule.
+- **v2 multipart uploads (2026-07-04):** large table parts upload via S3 multipart. Add `s3:AbortMultipartUpload` to the policy's Action list (so a failed upload can clean up after itself) and add a lifecycle rule `AbortIncompleteMultipartUpload after 7 days` as the backstop for orphaned parts. <TBD: owner applies both in the AWS console — until then a failed multipart upload leaves invisible billable parts.>
 - If using SSE-KMS, also grant the IAM user `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey` on the specific key ARN.
 
 ### 4. Env vars (Vercel project → Environment Variables)
@@ -139,6 +157,8 @@ All four (or five with KMS) need to be set on Production. Preview/Development ca
 
 **Replace (destructive, opt-in):** in addition to merge, deletes any current rows in `org_id`-filtered tables whose id is not in the snapshot. Use only when you genuinely want the org's state to match the snapshot exactly. Requires typing the org slug to confirm.
 
+Both modes stream v2 snapshots table-part by table-part in ≤500-row batches (`lib/orgRestore.restoreOrgSnapshotFromSource`), so an uncapped snapshot restores within serverless memory. Tables that can't upsert by `id` restore **replace-per-parent** (delete the target's rows for each parent on its first appearance in the stream, then insert): `dataset_rows_flat` / `archived_dataset_rows_flat` (identity ids, stripped) and the composite-PK config tables `org_features` / `user_features` / `user_favorites` (previously backed up but silently unrestorable — reported-and-skipped).
+
 ### What restore does NOT cover
 
 - **`auth.users`** — Supabase's auth schema is not in `public`. If a user record is deleted you need to re-invite (or contact Supabase support). The `users` row in `public.users` IS in the snapshot, but the corresponding `auth.users` row is not.
@@ -147,11 +167,18 @@ All four (or five with KMS) need to be set on Production. Preview/Development ca
 
 ### Reading a snapshot offline (forensics / one-off restore)
 
+v2:
+```bash
+aws s3 cp s3://sentimetrx-backups/org-snapshots/<org_id>/2026/07/04/v2/manifest.json - | jq '.table_row_counts'
+aws s3 cp s3://sentimetrx-backups/org-snapshots/<org_id>/2026/07/04/v2/tables/studies.ndjson.gz - | gunzip | jq -c '.name'
+```
+Each table part is gzipped NDJSON — one raw `select *` row per line.
+
+v1 (legacy objects):
 ```bash
 aws s3 cp s3://sentimetrx-backups/org-snapshots/<org_id>/2026/05/19/snapshot.json.gz - | gunzip | jq '.meta'
 ```
-
-The `.tables.<name>` shape is `Array<Row>` for each table, where `Row` is the raw `select *` payload. Restoring offline = pick a table, upsert rows by `id`.
+The `.tables.<name>` shape is `Array<Row>`. Restoring offline = pick a table, upsert rows by `id`.
 
 ## Cost estimate
 
@@ -172,5 +199,5 @@ At present scale (~30 orgs, ~10 MB compressed each):
 - **Incomplete-snapshot detection (2026-07-02):** `fetchTable` records any per-table read error into `meta.fetch_errors`, and the nightly cron (`/api/cron/org-snapshot`) now returns **HTTP 500** (not a silent `ok`) if any org's snapshot has fetch errors or failed to upload. A table that fails to read can no longer pass as a green backup shipping 0 rows.
 - **No paging/alerting yet**: the cron's failure now surfaces as a red (500) run in Vercel, but nothing pages anyone. Wire to Sentry / Slack when we have a real on-call.
 - **Restore drills:** none run yet — do NOT claim quarterly drills in buyer docs until one is logged here (CAIQ BC-03/04 must read "first drill scheduled" until then).
-- **No automated restore tests**: there is no nightly "spin up a scratch project, restore yesterday's snapshot, assert row counts" test. This is what would prove the backups are actually restorable. Add when budget allows.
+- **No automated restore tests**: there is no NIGHTLY "restore yesterday's snapshot, assert row counts" job yet. Partially covered since 2026-07-04: the v2 unit suite round-trips a dump→restore through the local store on every CI run, a live dump→restore→recount drill ran against the test project (row-for-row reconciliation), and every routine `clone-org-to-test` doubles as a restore drill. The missing piece is only the *scheduled* version.
 - **`auth.users` mirror**: consider also snapshotting Supabase Auth users (their JSON shape) so an accidental user delete can be partially recovered. Today, only `public.users` is captured.

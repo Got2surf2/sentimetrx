@@ -7,9 +7,13 @@
 //   npx tsx scripts/clone-org-to-test.ts <org-id> --key org-snapshots/...  # specific snapshot
 //
 // Default source is the NIGHTLY S3 BACKUP — every routine clone therefore
-// proves the backup chain restores (a rolling DR drill). --fresh takes an
-// on-demand snapshot through the same dumpOrgSnapshot code path when
-// yesterday's data isn't fresh enough.
+// proves the backup chain restores (a rolling DR drill). --fresh streams
+// an on-demand v2 snapshot through the same dump code path the nightly
+// uses (to S3 when BACKUP_* creds are available locally, else to a scratch
+// directory) when yesterday's data isn't fresh enough. Both snapshot
+// formats restore: v1 whole-JSON keys and v2 manifest keys (uncapped,
+// streamed) — the snapshot is materialized in RAM here (laptop workflow)
+// so the identity-remap/stub logic below can scan whole tables.
 //
 // Safety:
 //   - target creds come from SUPABASE_TEST_* in .env.local; the script
@@ -56,15 +60,29 @@ async function main() {
   if (prodUrl && testUrl === prodUrl) { console.error('Refusing: SUPABASE_TEST_URL equals the prod URL.'); process.exit(1) }
 
   // Lazy imports AFTER env checks — these pull in server-only modules.
-  const { downloadOrgSnapshot, listOrgSnapshots } = await import('@/lib/backupS3')
+  const { s3SnapshotStore, listOrgSnapshots } = await import('@/lib/backupS3')
+  const { openSnapshot, materializeSnapshot, dumpOrgSnapshotV2 } = await import('@/lib/orgSnapshotV2')
   const { restoreOrgSnapshot } = await import('@/lib/orgRestore')
 
   // 1. Obtain the snapshot.
   let snapshot: OrgSnapshot
   if (fresh) {
-    console.log('==> --fresh: taking an on-demand snapshot of prod org ' + orgId)
-    const { dumpOrgSnapshot } = await import('@/lib/orgSnapshot')
-    snapshot = await dumpOrgSnapshot(orgId)
+    const prodKey = envLocal('SUPABASE_SERVICE_ROLE_KEY')
+    if (!prodUrl || !prodKey) { console.error('Prod Supabase creds missing from .env.local — cannot --fresh.'); process.exit(1) }
+    const prod = createClient(prodUrl, prodKey, { auth: { persistSession: false } })
+    const { hasBackupS3Env, LocalDirSnapshotStore } = await import('@/lib/snapshotStore')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const store = hasBackupS3Env()
+      ? s3SnapshotStore()
+      : new LocalDirSnapshotStore(path.join(os.tmpdir(), 'sentimetrx-fresh-snapshots'))
+    console.log('==> --fresh: streaming a v2 snapshot of prod org ' + orgId
+      + (hasBackupS3Env() ? ' → S3' : ' → ' + path.join(os.tmpdir(), 'sentimetrx-fresh-snapshots') + ' (no BACKUP_* creds locally)'))
+    const { manifestKey, meta } = await dumpOrgSnapshotV2(prod, orgId, store)
+    if (Object.keys(meta.fetch_errors).length > 0) {
+      console.error('⚠ Snapshot INCOMPLETE — fetch errors: ' + JSON.stringify(meta.fetch_errors))
+    }
+    snapshot = await materializeSnapshot(await openSnapshot(store, manifestKey))
   } else {
     let key = explicitKey
     if (!key) {
@@ -74,9 +92,9 @@ async function main() {
         process.exit(1)
       }
       key = list[0].key
-      console.log('==> Using latest S3 snapshot: ' + key)
+      console.log('==> Using latest S3 snapshot: ' + key + (key.endsWith('manifest.json') ? ' (v2 streamed)' : ' (v1)'))
     }
-    snapshot = await downloadOrgSnapshot(key!) as OrgSnapshot
+    snapshot = await materializeSnapshot(await openSnapshot(s3SnapshotStore(), key!))
   }
   if (!snapshot?.meta || snapshot.meta.org_id !== orgId) {
     console.error('Snapshot meta missing or org mismatch — refusing.')

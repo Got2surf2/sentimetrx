@@ -1,9 +1,11 @@
 // app/api/cron/org-snapshot/route.ts
-// Nightly Vercel cron. Loops every org, dumps tenant-scoped state to JSON,
-// gzips, uploads to S3 at org-snapshots/<org_id>/YYYY/MM/DD/snapshot.json.gz.
+// Nightly Vercel cron. Loops every org and streams tenant-scoped state to
+// S3 as a snapshot v2 — one gzipped NDJSON object per table plus a
+// manifest commit marker (lib/orgSnapshotV2), UNCAPPED and constant-memory
+// regardless of tenant size.
 //
-// Designed to be re-runnable: the destination key is deterministic per
-// org+day, so a retry overwrites the same key (S3 versioning preserves
+// Designed to be re-runnable: the destination prefix is deterministic per
+// org+day, so a retry overwrites the same keys (S3 versioning preserves
 // prior copies for forensic recovery).
 //
 // Auth: Vercel cron header via lib/cronAuth.ts. Same fail-closed semantics
@@ -13,8 +15,8 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { dumpOrgSnapshot } from '@/lib/orgSnapshot'
-import { uploadOrgSnapshot } from '@/lib/backupS3'
+import { dumpOrgSnapshotV2 } from '@/lib/orgSnapshotV2'
+import { s3SnapshotStore } from '@/lib/backupS3'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
@@ -35,14 +37,13 @@ export async function GET(req: NextRequest) {
   }
 
   const started = Date.now()
-  const results: Array<{ org_id: string; org_name: string | null; key?: string; size_bytes?: number; row_counts?: Record<string, number>; truncated?: string[]; fetch_errors?: Record<string, string>; error?: string; ms: number }> = []
+  const results: Array<{ org_id: string; org_name: string | null; key?: string; size_bytes?: number; row_counts?: Record<string, number>; fetch_errors?: Record<string, string>; error?: string; ms: number }> = []
 
   for (const org of orgs || []) {
     const orgStart = Date.now()
     try {
-      const snap = await dumpOrgSnapshot((org as any).id)
-      const { key, size_bytes } = await uploadOrgSnapshot((org as any).id, snap)
-      const fetchErrors = snap.meta.fetch_errors
+      const { manifestKey, meta } = await dumpOrgSnapshotV2(service, (org as any).id, s3SnapshotStore())
+      const fetchErrors = meta.fetch_errors
       const hasFetchErrors = Object.keys(fetchErrors).length > 0
       if (hasFetchErrors) {
         // A table failed to read → the uploaded snapshot is INCOMPLETE. Surface
@@ -53,10 +54,9 @@ export async function GET(req: NextRequest) {
       results.push({
         org_id: (org as any).id,
         org_name: (org as any).name,
-        key,
-        size_bytes,
-        row_counts: snap.meta.table_row_counts,
-        truncated: snap.meta.truncated_tables,
+        key: manifestKey,
+        size_bytes: meta.total_bytes,
+        row_counts: meta.table_row_counts,
         ...(hasFetchErrors ? { fetch_errors: fetchErrors, error: 'incomplete snapshot: ' + Object.keys(fetchErrors).join(', ') } : {}),
         ms: Date.now() - orgStart,
       })

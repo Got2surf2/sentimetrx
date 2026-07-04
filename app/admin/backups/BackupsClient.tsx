@@ -29,8 +29,8 @@ export default function BackupsClient({ orgs, logoUrl, orgName, userEmail, fullN
         setResults(prev => ({ ...prev, [orgId]: { ok: false, msg: data?.error || ('HTTP ' + res.status) } }))
       } else {
         const size = data.size_bytes ? Math.round(data.size_bytes / 1024) + ' KB' : 'unknown size'
-        const truncated = data.truncated?.length > 0 ? ' (' + data.truncated.length + ' tables truncated)' : ''
-        setResults(prev => ({ ...prev, [orgId]: { ok: true, msg: 'Snapshot uploaded: ' + size + truncated } }))
+        const incomplete = data.fetch_errors ? ' ⚠ INCOMPLETE (' + Object.keys(data.fetch_errors).length + ' table fetch errors)' : ''
+        setResults(prev => ({ ...prev, [orgId]: { ok: !incomplete, msg: 'Snapshot uploaded: ' + size + incomplete } }))
       }
     } catch (e: any) {
       setResults(prev => ({ ...prev, [orgId]: { ok: false, msg: e?.message || 'Network error' } }))
