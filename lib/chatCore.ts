@@ -18,6 +18,7 @@ import { SUBTLE_DISENGAGE } from '@/lib/engagementSignals'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
+import { checkRateLimit } from '@/lib/rateLimit'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
 import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
 import { extractName } from '@/lib/nameExtractor'
@@ -811,11 +812,20 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (townHallRowErr) void logError('chatCore.handleChatTurn', townHallRowErr, { orgId: bot.org_id })
       const cohortConfig = (townHallRow?.cohort_config || {}) as any
 
+      // Bounded pool: per-turn cohort work (topic tallies, balancing,
+      // semantic matching, facilitation) scales with this list, and
+      // auto-detected themes land as 'pending' with no natural ceiling —
+      // a runaway discovery queue must not make every turn O(queue).
+      // 'active' sorts before 'pending', so seeds always survive the cap;
+      // pending slots go to the most-mentioned discovered themes.
       const { data: topics, error: topicsErr } = await service
         .from('pulseiq_topics')
         .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
         .eq('town_hall_id', ctx.townHallContext.townHallId)
         .in('state', ['active', 'pending'])
+        .order('state', { ascending: true })
+        .order('mention_count', { ascending: false })
+        .limit(25)
       if (topicsErr) void logError('chatCore.handleChatTurn', topicsErr, { orgId: bot.org_id })
 
       if (topics && topics.length > 0) {
@@ -1176,10 +1186,19 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         const detectionMode = cohortConfig?.theme_detection_mode
           ?? cohortConfig?.engine?.theme_detection_mode ?? 'auto'
         if (detectionMode === 'auto' && totalResponses > 0 && (totalResponses + 1) % threshold === 0) {
-          if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
-          detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
-            console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
-          })
+          // Advisory throttle: with exact counts, several concurrent turns
+          // can all observe the same pre-threshold total and fire at once —
+          // the racing detections each read existing topics BEFORE the
+          // others insert, so dedup misses and the pending pool balloons
+          // (414 topics minted in one load-tested session, 2026-07-04).
+          // One detection per 2 min per hall; the 15-min cron backstops.
+          const { limited: detectLimited } = await checkRateLimit('theme-detect:' + ctx.townHallContext.townHallId, 1, 120000)
+          if (!detectLimited) {
+            if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
+            detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
+              console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
+            })
+          }
         }
       } else if (debugMode) {
         _debug.push('PulseIQ topic: pool empty (no pulseiq_topics rows)')

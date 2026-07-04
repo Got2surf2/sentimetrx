@@ -94,18 +94,27 @@ k6 results, 2026-07-04, local dev + TEST project (conservative floor):
 |---|---|---|
 | Survey submit (public, `/api/respond`) | 25 concurrent respondents, 4 min sustained | p95 **748 ms**, 0 failures (537 reqs) |
 | Agent chat turn (public, chatCore) | 3 concurrent conversations | avg **6.9 s**, p95 13.1 s per turn, 0 failures — AI-model-bound |
-| PulseIQ town hall (join+chat+responses) | 5 concurrent participants, ~29 full journeys | 2.5% failures (3 chat reqs > 60 s client timeout); cohort chat avg ~12 s — markedly heavier than plain agent turns (topic tallies, facilitation, theme detection) |
+| PulseIQ town hall (join+chat+responses) | 5 concurrent participants, 51 full journeys | **0 failures (204 reqs)**; cohort chat avg ~5 s / p95 20 s on local dev — AI-model-bound, converging on the plain agent path plus cohort overhead |
 | TextMine bulk rows (admin) | 3 concurrent × 27,234 rows | **18.5 MB** payload, avg 6.0 s, p95 8.9 s, 0 failures |
 
 The suite earned its keep on day one: the first town-hall runs failed 25%
-of requests, which unpicked to (a) a k6-script slug/UUID mismatch and
+of requests, which unpicked to (a) a k6-script slug/UUID mismatch,
 (b) a **real latent bug** — `/api/townhall/responses` validated
 participants against the *async analytics mirror*, whose best-effort
 writes were timing out under pooler load and are never retried, so fresh
-participants 404'd on submitting demographics. Fixed the same day
-(validation moved to the synchronous turn store, per D5). Under load the
-TEST project's Micro pooler visibly shed mirror writes and usage-log
-writes — live confirmation of the §5 bottleneck ordering.
+participants 404'd on submitting demographics (fixed: validation moved to
+the synchronous turn store, per D5) — and (c) a **runaway-topic defect
+chain**: concurrent theme detections raced past dedup and minted 405
+near-duplicate pending topics in one session, and per-turn cohort work
+(tallies, balancing, semantic matching) scaled with that unbounded pool,
+inflating chat p95 to 55 s. Fixed with three bounded controls: the
+per-turn topic pool is capped at 25 (seeds always survive; pending slots
+go to most-mentioned), the response-count detection trigger is throttled
+to one per 2 min per hall, and detection skips (saving the AI spend) when
+30 pending themes await review. Re-run: **0 failures**, chat p95 55 s →
+20 s, participant throughput ×1.75. Under load the TEST project's Micro
+pooler also visibly shed mirror writes and usage-log writes — live
+confirmation of the §5 bottleneck ordering.
 
 Interpretation per surface:
 

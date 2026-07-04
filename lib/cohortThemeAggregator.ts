@@ -101,6 +101,18 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   }))
   const existingLabels = existingKeywords.map(t => t.label.toLowerCase())
 
+  // Pending-pool cap: detection APPENDS pending topics and nothing else
+  // drains them (a facilitator promotes or dismisses manually), so without
+  // a ceiling a long/busy session mints topics forever — one load-tested
+  // session reached 405 pending (2026-07-04), and label/keyword dedup can't
+  // stop AI synonym variants. A facilitator with 30 unreviewed themes needs
+  // review, not more detection. Checked BEFORE the AI call to skip the spend.
+  const PENDING_POOL_CAP = 30
+  const pendingCount = (existingTopics || []).filter(t => t.state === 'pending').length
+  if (pendingCount >= PENDING_POOL_CAP) {
+    return { inserted: 0, skipped: 0, error: 'Pending theme pool is full (' + pendingCount + '/' + PENDING_POOL_CAP + ') — review pending themes before detecting more' }
+  }
+
   // 4. Sample corpus
   const sampled = evenSample(allTexts, Math.min(200, allTexts.length))
   const corpus = sampled.map((t, i) => (i + 1) + '. ' + t.slice(0, 500)).join('\n')
