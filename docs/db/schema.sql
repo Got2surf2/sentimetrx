@@ -933,6 +933,35 @@ $_$;
 ALTER FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid" DEFAULT NULL::"uuid", "p_delta" integer DEFAULT 1) RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_counter integer;
+BEGIN
+  IF p_topic_id IS NOT NULL THEN
+    UPDATE pulseiq_topics
+    SET response_count = COALESCE(response_count, 0) + p_delta
+    WHERE id = p_topic_id AND town_hall_id = p_session_id;
+  END IF;
+
+  UPDATE pulseiq_sessions
+  SET response_counter = COALESCE(response_counter, 0) + p_delta
+  WHERE id = p_session_id
+  RETURNING response_counter INTO v_counter;
+
+  RETURN v_counter;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) IS 'Atomically bumps pulseiq_sessions.response_counter (+ the tagged topic''s response_count) per stored assistant reply. Returns the new session total. Replaces per-turn COUNT queries in chatCore (2026-07-04).';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."is_platform_admin"() RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2906,6 +2935,7 @@ CREATE TABLE IF NOT EXISTS "public"."pulseiq_sessions" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "last_theme_detection_at" timestamp with time zone,
+    "response_counter" integer DEFAULT 0 NOT NULL,
     CONSTRAINT "town_halls_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'live'::"text", 'paused'::"text", 'closed'::"text"])))
 );
 
@@ -6588,6 +6618,12 @@ GRANT ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids"
 GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "service_role";
 
 
 
