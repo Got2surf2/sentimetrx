@@ -806,7 +806,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // detection trigger (cohort_config.theme_detection_every_n_responses).
       const { data: townHallRow, error: townHallRowErr } = await service
         .from('pulseiq_sessions')
-        .select('cohort_config')
+        .select('cohort_config, response_counter')
         .eq('id', ctx.townHallContext.townHallId)
         .maybeSingle()
       if (townHallRowErr) void logError('chatCore.handleChatTurn', townHallRowErr, { orgId: bot.org_id })
@@ -820,7 +820,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // pending slots go to the most-mentioned discovered themes.
       const { data: topics, error: topicsErr } = await service
         .from('pulseiq_topics')
-        .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
+        .select('id, label, description, question, follow_up_angles, keywords, source, response_target, response_count')
         .eq('town_hall_id', ctx.townHallContext.townHallId)
         .in('state', ['active', 'pending'])
         .order('state', { ascending: true })
@@ -829,47 +829,18 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (topicsErr) void logError('chatCore.handleChatTurn', topicsErr, { orgId: bot.org_id })
 
       if (topics && topics.length > 0) {
-        // Cohort-wide response counts: join pulseiq_session_conversations →
-        // conversations → conversation_turns and tally by topic_id.
-        const { data: linkedConvs, error: linkedConvsErr } = await service
-          .from('pulseiq_session_conversations')
-          .select('conversation_id')
-          .eq('town_hall_id', ctx.townHallContext.townHallId)
-        if (linkedConvsErr) void logError('chatCore.handleChatTurn', linkedConvsErr, { orgId: bot.org_id })
-        const conversationIds = (linkedConvs || []).map(r => r.conversation_id)
-
+        // Cohort tallies come from STORED counters (sql/154 restores the
+        // legacy design): pulseiq_topics.response_count and
+        // pulseiq_sessions.response_counter are bumped atomically by
+        // increment_pulseiq_response_counter when the reply turn is
+        // stored below — O(1) per turn. No per-message COUNT queries.
         const responseCount: Record<string, number> = {}
-        let totalTopicResponses = 0
+        for (const t of topics) responseCount[(t as any).id] = (t as any).response_count || 0
+        const totalTopicResponses = (townHallRow as any)?.response_counter || 0
         const participantDiscussed = new Set<string>()
         let myTurns: any[] = []
 
-        if (conversationIds.length > 0) {
-          // Count-only queries (head:true) instead of fetching every topic-
-          // tagged turn row: the row fetch was silently capped at 1,000 by
-          // PostgREST max-rows, skewing topic balancing on large cohorts.
-          // One count per pool topic + one grand total (the total also
-          // covers topics no longer in the active/pending pool, preserving
-          // the theme-detection trigger cadence below).
-          const topicCounts = await Promise.all([
-            ...topics.map(t => service
-              .from('conversation_turns')
-              .select('id', { count: 'exact', head: true })
-              .in('conversation_id', conversationIds)
-              .eq('role', 'assistant')
-              .eq('topic_id', t.id)),
-            service
-              .from('conversation_turns')
-              .select('id', { count: 'exact', head: true })
-              .in('conversation_id', conversationIds)
-              .eq('role', 'assistant')
-              .not('topic_id', 'is', null),
-          ])
-          topicCounts.forEach((r, i) => {
-            if (r.error) { void logError('chatCore.handleChatTurn', r.error, { orgId: bot.org_id }); return }
-            if (i < topics.length) responseCount[topics[i].id] = r.count || 0
-            else totalTopicResponses = r.count || 0
-          })
-
+        {
           // Participant-specific: which topics has THIS session touched?
           // session_id from PulseIQ delegation = townHallId + ':' + participantId.
           const { data: thisConv, error: thisConvErr } = await service
@@ -1172,12 +1143,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         } // end facilitation decision (checkout / clarifier / topic selection)
 
         // Phase 5 commit 4 — response-count-based theme-detection trigger.
-        // Sum cohort-wide response_count across all topics; when the next
+        // Reads the STORED session counter (pulseiq_sessions.response_counter,
+        // sql/154 — restores the legacy atomic-counter design); when the next
         // turn crosses a multiple of cohort_config.theme_detection_every_n_responses
-        // (default 20), fire the aggregator fire-and-forget. The aggregator
-        // is also driven by the 15-min cron (Phase 5 commit 1) but the
-        // response-count trigger gives faster theme discovery for live
-        // sessions. Matches the legacy PulseIQ trigger semantics.
+        // (default 20, facilitator-settable in the wizard/console), fire the
+        // aggregator fire-and-forget. The aggregator is also driven by the
+        // 15-min cron (Phase 5 commit 1) but the response-count trigger gives
+        // faster theme discovery for live sessions.
         const totalResponses = totalTopicResponses
         const threshold = Number(cohortConfig?.theme_detection_every_n_responses) || 20
         // Honor Organic Topic Discovery mode (top-level lifted by sessions
@@ -1554,6 +1526,21 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           try {
             await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
           } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
+          // O(1) counter maintenance (sql/154): bump the session total +
+          // the picked topic's tally once per stored topic-tagged reply.
+          // Next turn's balancing + the every-N detection trigger read
+          // these stored counters instead of counting turns.
+          if (!insertErr && pickedTopicId) {
+            const assistantDelta = (turnsToInsert as any[]).filter(r => r.role === 'assistant').length
+            if (assistantDelta > 0) {
+              const { error: counterErr } = await service.rpc('increment_pulseiq_response_counter', {
+                p_session_id: ctx.townHallContext.townHallId,
+                p_topic_id: pickedTopicId,
+                p_delta: assistantDelta,
+              })
+              if (counterErr) void logError('chatCore.responseCounter', counterErr, { orgId: bot.org_id })
+            }
+          }
         } else {
           void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: null, participantId: null }).then(function() {})
         }

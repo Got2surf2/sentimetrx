@@ -66,39 +66,34 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
       return NextResponse.json({ holding: false, is_final: true, bot_message: cohortConfig.closing_message || 'Thank you for sharing your thoughts. Your input is really valuable.' })
     }
 
-    // Active topics + cohort-wide counts + this participant's discussed set —
-    // same reads as chatCore's town-hall layer (mirror-backed).
+    // Active topics + this participant's discussed set — same reads as
+    // chatCore's town-hall layer. Cohort tallies come from the STORED
+    // response_count column (sql/154), not per-request turn counting.
     const { data: topics, error: topicsErr } = await db
       .from('pulseiq_topics')
-      .select('id, label, description, question, follow_up_angles, keywords, source, response_target, round_number')
+      .select('id, label, description, question, follow_up_angles, keywords, source, response_target, response_count, round_number')
       .eq('town_hall_id', hall.id)
       .eq('state', 'active')
     if (topicsErr) void logError('townhall.resume.topics', topicsErr, { orgId: hall.org_id })
     if (!topics || topics.length === 0) return NextResponse.json({ holding: true })
 
-    const { data: linked } = await db
-      .from('pulseiq_session_conversations')
-      .select('conversation_id')
-      .eq('town_hall_id', hall.id)
-    const convIds = (linked || []).map(r => r.conversation_id)
     const responseCount: Record<string, number> = {}
+    for (const t of topics) responseCount[(t as any).id] = (t as any).response_count || 0
     const discussed = new Set<string>()
-    if (convIds.length > 0) {
-      const { data: topicTurns } = await db
-        .from('conversation_turns')
-        .select('topic_id, conversation_id, role')
-        .in('conversation_id', convIds)
-        .not('topic_id', 'is', null)
+    {
       const { data: myConv } = await db
         .from('conversations')
         .select('id')
         .eq('bot_id', hall.bot_id)
         .eq('session_id', unifiedSessionId)
         .maybeSingle()
-      for (const t of (topicTurns || [])) {
-        const tid = (t as any).topic_id as string
-        if (t.role === 'assistant') responseCount[tid] = (responseCount[tid] || 0) + 1
-        if (myConv && t.conversation_id === (myConv as any).id) discussed.add(tid)
+      if (myConv) {
+        const { data: myTurns } = await db
+          .from('conversation_turns')
+          .select('topic_id')
+          .eq('conversation_id', (myConv as any).id)
+          .not('topic_id', 'is', null)
+        for (const t of (myTurns || [])) discussed.add((t as any).topic_id as string)
       }
     }
 
