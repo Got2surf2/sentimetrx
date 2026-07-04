@@ -28,7 +28,7 @@
 //     dropped per-topic sentiment in favor of per-turn sentiment on
 //     conversation_turns.sentiment). Mention count is preserved.
 //   - Cohort config + industry context come from pulseiq_sessions.cohort_config
-//     and the linked agent row, not townhall_sessions.config.
+//     (industry: cohort_config.industry — legacy config.industry parity).
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
@@ -50,7 +50,7 @@ function keywordOverlap(existing: string[], candidate: string[]): number {
 export async function detectThemesForTownHall(townHallId: string): Promise<{ inserted: number; skipped: number; error?: string }> {
   const supabase = createServiceRoleClient()
 
-  // 1. Load town hall + linked agent (for org_id, industry/context)
+  // 1. Load town hall (org_id, config, guide)
   const { data: townHall, error: townHallErr } = await supabase
     .from('pulseiq_sessions')
     .select('id, org_id, bot_id, name, cohort_config, discussion_guide')
@@ -58,14 +58,6 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
     .single()
   if (townHallErr) void logError('cohortThemeAggregator.detectThemesForTownHall', townHallErr)
   if (!townHall) return { inserted: 0, skipped: 0, error: 'Town hall not found' }
-
-  const { data: agent, error: agentErr } = await supabase
-    .from('agents')
-    .select('id, industry, config, system_prompt, subject, name')
-    .eq('id', townHall.bot_id)
-    .single()
-  if (agentErr) void logError('cohortThemeAggregator.detectThemesForTownHall', agentErr, { orgId: townHall.org_id })
-  // agent can be null only if the FK is broken; treat as soft-fail rather than abort.
 
   // 2. Fetch all user turns across the town hall's conversations.
   // Two-step query (no nested joins through the join table in
@@ -121,8 +113,12 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
   const contextNote = discussionGuide?.event_description
     ? '\nEvent: ' + discussionGuide.event_description
     : (cohortConfig?.event_description ? '\nEvent: ' + cohortConfig.event_description : '')
-  const industryNote = agent && (agent as any).industry
-    ? '\nIndustry: ' + String((agent as any).industry).replace(/_/g, ' ')
+  // Industry context lives on the session's own config (legacy parity:
+  // townhall_sessions.config.industry → cohort_config.industry). An earlier
+  // version selected a nonexistent agents.industry column, which errored on
+  // every cron scan and meant the note NEVER rendered.
+  const industryNote = cohortConfig?.industry
+    ? '\nIndustry: ' + String(cohortConfig.industry).replace(/_/g, ' ')
     : ''
 
   const systemFraming = 'You are a qualitative research expert analyzing a live town hall discussion.' + contextNote + industryNote +

@@ -32,9 +32,26 @@ function extras(f: LogFields): Record<string, unknown> {
  * tags. Use at catch-sites and — critically — at the `if (error)` branches that
  * currently swallow a Supabase error and return a plausible-but-wrong 200.
  */
+/** Human-readable message from ANY thrown/returned error shape. Supabase
+ *  (PostgrestError) and fetch-style errors are plain objects, not Error
+ *  instances — String() on those yields '[object Object]', which is how a
+ *  real prod failure (agents.industry 42703, 2026-07-04) hid in the logs
+ *  for weeks. Pull the conventional fields, else JSON-encode. */
+export function errMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>
+    const parts = [e.message, e.code, e.details, e.hint]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    if (parts.length) return parts.join(' | ')
+    try { return JSON.stringify(err) } catch { return String(err) }
+  }
+  return String(err)
+}
+
 export async function logError(where: string, err: unknown, fields: LogFields = {}): Promise<void> {
   const requestId = await getRequestId().catch(() => null)
-  const message = err instanceof Error ? err.message : String(err)
+  const message = errMessage(err)
   try {
     console.error({ at: where, request_id: requestId, org_id: fields.orgId ?? null, err: message, ...extras(fields) })
   } catch { /* logging must never break the caller */ }
