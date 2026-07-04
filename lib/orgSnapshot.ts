@@ -143,7 +143,7 @@ export const TABLE_SPECS: TableSpec[] = [
 
   // Review sources (Google, Yelp, etc)
   { name: 'review_sources', filter: { kind: 'org_id' } },
-  { name: 'review_source_locations', filter: { kind: 'parent_via', via: 'source_id', parent: 'review_sources' } },
+  { name: 'review_source_locations', filter: { kind: 'parent_via', via: 'review_source_id', parent: 'review_sources' } },
   { name: 'review_downloads', filter: { kind: 'org_id' } },
 
   // Reddit sources
