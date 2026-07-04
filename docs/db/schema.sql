@@ -23,6 +23,32 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
+CREATE OR REPLACE FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") RETURNS bigint
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH items AS (
+    SELECT (it ->> 'id')::bigint AS id, it -> 'tx' AS tx
+      FROM jsonb_array_elements(p_items) AS it
+  ),
+  updated AS (
+    UPDATE dataset_rows_flat f
+       SET data = f.data || jsonb_build_object('_tx',
+                    COALESCE(f.data -> '_tx', '{}'::jsonb) || jsonb_build_object('f',
+                      COALESCE(f.data -> '_tx' -> 'f', '{}'::jsonb)
+                        || jsonb_build_object(p_field_key, i.tx)))
+      FROM items i
+     WHERE f.id = i.id
+       AND f.dataset_id = p_dataset_id
+    RETURNING f.id
+  )
+  SELECT count(*) FROM updated;
+$$;
+
+
+ALTER FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid" DEFAULT NULL::"uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -410,6 +436,29 @@ $$;
 ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT f.id, f.data
+    FROM dataset_rows_flat f
+    LEFT JOIN dataset_row_field_taxonomy t
+      ON t.dataset_id = f.dataset_id AND t.row_id = f.id AND t.field = p_field_key
+   WHERE f.dataset_id = p_dataset_id
+     AND NOT ((f.data -> '_tx' -> 'f') ? p_field_key)
+     AND t.row_id IS NULL
+     AND EXISTS (
+       SELECT 1 FROM unnest(p_fields) AS fld
+        WHERE COALESCE(regexp_replace(f.data ->> fld, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
+     )
+   ORDER BY f.row_index
+   LIMIT p_limit;
+$$;
+
+
+ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -503,8 +552,9 @@ DECLARE
   val TEXT;
   key TEXT;
 BEGIN
-  -- Concatenate all string values from the JSONB data column
-  FOR key, val IN SELECT k, v::text FROM jsonb_each_text(NEW.data) AS x(k, v)
+  -- Concatenate all string values from the JSONB data column, skipping the
+  -- reserved `_tx` taxonomy block (sql/151) so classification never pollutes FTS.
+  FOR key, val IN SELECT k, v::text FROM jsonb_each_text(NEW.data) AS x(k, v) WHERE k <> '_tx'
   LOOP
     -- Skip very short values and numeric-only values
     IF length(val) > 2 AND val ~ '[a-zA-Z]' THEN
@@ -747,9 +797,26 @@ COMMENT ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_q
 
 
 CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text" DEFAULT NULL::"text", "p_entity_query" "text" DEFAULT NULL::"text", "p_sub_touchpoint" "text"[] DEFAULT NULL::"text"[], "p_sub_attribute" "text"[] DEFAULT NULL::"text"[], "p_sub_product" "text"[] DEFAULT NULL::"text"[], "p_sub_beverage" "text"[] DEFAULT NULL::"text"[], "p_sub_ambiance" "text"[] DEFAULT NULL::"text"[], "p_sub_context" "text"[] DEFAULT NULL::"text"[], "p_sub_outcome" "text"[] DEFAULT NULL::"text"[], "p_has_dim" boolean DEFAULT false, "p_limit" integer DEFAULT 200, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "dataset_id" "uuid", "row_index" integer, "data" "jsonb", "total_count" bigint)
-    LANGUAGE "sql" STABLE SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
+DECLARE
+  v_fields jsonb := '{}'::jsonb;  -- dataset_id -> primary field key (blob-classified datasets only)
+  v_ds uuid;
+  v_f  text;
+BEGIN
+  -- Resolve each dataset's blob field once (the comments scope is a handful of
+  -- datasets at most). Datasets not in the map use the sidecar leg.
+  IF p_has_dim THEN
+    FOREACH v_ds IN ARRAY p_dataset_ids LOOP
+      v_f := taxonomy_primary_field(v_ds);
+      IF v_f IS NOT NULL AND taxonomy_field_in_blob(v_ds, v_f) THEN
+        v_fields := v_fields || jsonb_build_object(v_ds::text, v_f);
+      END IF;
+    END LOOP;
+  END IF;
+
+  RETURN QUERY
   WITH matched AS (
     SELECT r.id, r.dataset_id, r.row_index, r.data
     FROM public.dataset_rows_flat r
@@ -785,39 +852,54 @@ CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"
           )
         )
       )
-      -- Dimension facet: row carries a taxonomy tag overlapping any selected
-      -- sub on any axis. axis_<a> && selected_subs is TRUE only when both are
-      -- non-empty, so unselected axes never match.
+      -- Dimension facet: blob axes when the dataset is embedded, else the
+      -- legacy sidecar array-overlap. OR within the facet, per axis.
       AND (
         NOT p_has_dim
-        OR EXISTS (
-          SELECT 1 FROM public.dataset_row_taxonomy t
-          WHERE t.dataset_id = r.dataset_id
-            AND t.row_id = r.id
-            AND (
-              (p_sub_touchpoint IS NOT NULL AND t.axis_touchpoint && p_sub_touchpoint) OR
-              (p_sub_attribute  IS NOT NULL AND t.axis_attribute  && p_sub_attribute)  OR
-              (p_sub_product    IS NOT NULL AND t.axis_product    && p_sub_product)    OR
-              (p_sub_beverage   IS NOT NULL AND t.axis_beverage   && p_sub_beverage)   OR
-              (p_sub_ambiance   IS NOT NULL AND t.axis_ambiance   && p_sub_ambiance)   OR
-              (p_sub_context    IS NOT NULL AND t.axis_context    && p_sub_context)    OR
-              (p_sub_outcome    IS NOT NULL AND t.axis_outcome    && p_sub_outcome)
-            )
+        OR (
+          v_fields ? r.dataset_id::text
+          AND (
+            (p_sub_touchpoint IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'touchpoint') ?| p_sub_touchpoint) OR
+            (p_sub_attribute  IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'attribute')  ?| p_sub_attribute)  OR
+            (p_sub_product    IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'product')    ?| p_sub_product)    OR
+            (p_sub_beverage   IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'beverage')   ?| p_sub_beverage)   OR
+            (p_sub_ambiance   IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'ambiance')   ?| p_sub_ambiance)   OR
+            (p_sub_context    IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'context')    ?| p_sub_context)    OR
+            (p_sub_outcome    IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'outcome')    ?| p_sub_outcome)
+          )
+        )
+        OR (
+          NOT (v_fields ? r.dataset_id::text)
+          AND EXISTS (
+            SELECT 1 FROM public.dataset_row_taxonomy t
+            WHERE t.dataset_id = r.dataset_id
+              AND t.row_id = r.id
+              AND (
+                (p_sub_touchpoint IS NOT NULL AND t.axis_touchpoint && p_sub_touchpoint) OR
+                (p_sub_attribute  IS NOT NULL AND t.axis_attribute  && p_sub_attribute)  OR
+                (p_sub_product    IS NOT NULL AND t.axis_product    && p_sub_product)    OR
+                (p_sub_beverage   IS NOT NULL AND t.axis_beverage   && p_sub_beverage)   OR
+                (p_sub_ambiance   IS NOT NULL AND t.axis_ambiance   && p_sub_ambiance)   OR
+                (p_sub_context    IS NOT NULL AND t.axis_context    && p_sub_context)    OR
+                (p_sub_outcome    IS NOT NULL AND t.axis_outcome    && p_sub_outcome)
+              )
+          )
         )
       )
   )
-  SELECT id, dataset_id, row_index, data, count(*) OVER() AS total_count
-  FROM matched
-  ORDER BY row_index
+  SELECT m.id, m.dataset_id, m.row_index, m.data - '_tx', count(*) OVER() AS total_count
+  FROM matched m
+  ORDER BY m.row_index
   LIMIT p_limit
   OFFSET p_offset;
+END;
 $$;
 
 
 ALTER FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) IS 'Comments matching ALL active facets (theme keywords AND entity terms AND dimension tags), OR within each facet. Theme/entity reuse the get_rows_by_entity FTS prefilter + open-ended recheck; dimension is an axis array-overlap on dataset_row_taxonomy. total_count is the window count for pagination.';
+COMMENT ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) IS 'Comments matching ALL active facets (theme keywords AND entity terms AND dimension tags), OR within each facet. Dimension facet reads embedded data._tx axes (sql/151) with a legacy dataset_row_taxonomy fallback for pre-backfill datasets. total_count is the window count for pagination.';
 
 
 
@@ -1185,33 +1267,34 @@ ALTER FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "te
 
 CREATE OR REPLACE FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "row_index" integer, "data" "jsonb", "rank" real, "headline" "text")
     LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$                                                                                             
-  DECLARE                                                                                             
-    tsquery_val TSQUERY;                                                                              
-  BEGIN                                                                                               
-    tsquery_val := websearch_to_tsquery('english', p_query);                                          
-                                                                                                      
-    RETURN QUERY                                                                                      
-    SELECT                                                                                            
-      r.id,                                                                                           
-      r.row_index,                                                                                    
-      r.data,                                                                                         
-      ts_rank_cd(r.tsv, tsquery_val)::REAL AS rank,                                                   
-      ts_headline('english',                                                                          
-        (SELECT string_agg(v, ' | ')
-         FROM jsonb_each_text(r.data) AS x(k, v)                                                      
-         WHERE length(v) > 2 AND v ~ '[a-zA-Z]'),                                                     
-        tsquery_val,                                                                                  
-        'StartSel=<mark>, StopSel=</mark>, MaxWords=25, MinWords=10, MaxFragments=2'                  
-      ) AS headline                                                                                   
-    FROM dataset_rows_flat r                                                                        
-    WHERE r.dataset_id = p_dataset_id                                                                 
-      AND r.tsv @@ tsquery_val                                                                      
-    ORDER BY rank DESC                                                                                
-    LIMIT p_limit
-    OFFSET p_offset;                                                                                  
-  END;                                                                                              
-  $$;
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  tsquery_val TSQUERY;
+BEGIN
+  tsquery_val := websearch_to_tsquery('english', p_query);
+
+  RETURN QUERY
+  SELECT
+    r.id,
+    r.row_index,
+    r.data - '_tx' AS data,
+    ts_rank_cd(r.tsv, tsquery_val)::REAL AS rank,
+    ts_headline('english',
+      (SELECT string_agg(v, ' | ')
+       FROM jsonb_each_text(r.data) AS x(k, v)
+       WHERE k <> '_tx' AND length(v) > 2 AND v ~ '[a-zA-Z]'),
+      tsquery_val,
+      'StartSel=<mark>, StopSel=</mark>, MaxWords=25, MinWords=10, MaxFragments=2'
+    ) AS headline
+  FROM dataset_rows_flat r
+  WHERE r.dataset_id = p_dataset_id
+    AND r.tsv @@ tsquery_val
+  ORDER BY rank DESC
+  LIMIT p_limit
+  OFFSET p_offset;
+END;
+$$;
 
 
 ALTER FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer, "p_offset" integer) OWNER TO "postgres";
@@ -1425,22 +1508,34 @@ ALTER FUNCTION "public"."sync_brand_collection_members"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("axis_val" "text", "field_val" "text", "cnt" bigint)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
-  v_field text; v_table text; v_cond text;
+  v_field text; v_cond text;
   v_axes  text[] := ARRAY['touchpoint','attribute','product','beverage','ambiance','context','outcome'];
   v_axis  text;
   v_union text := '';
 BEGIN
-  -- Same field/table resolution as taxonomy_crosstab: prefer the per-field
-  -- taxonomy table scoped to the dataset's primary classified field, else the
-  -- legacy whole-row table.
   v_field := taxonomy_primary_field(p_dataset_id);
-  v_table := CASE WHEN v_field IS NOT NULL THEN 'dataset_row_field_taxonomy' ELSE 'dataset_row_taxonomy' END;
-  v_cond  := CASE WHEN v_field IS NOT NULL THEN format(' AND t.field = %L', v_field) ELSE '' END;
+  IF v_field IS NULL THEN RETURN; END IF;
 
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    -- One scan: jsonb_each over the axes object replaces the 7-way UNION.
+    RETURN QUERY
+    SELECT ax.key::text,
+           COALESCE(f.data ->> p_field, '')::text,
+           count(*)::bigint
+      FROM dataset_rows_flat f,
+           jsonb_each(f.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
+           jsonb_array_elements_text(ax.subs) AS sub
+     WHERE f.dataset_id = p_dataset_id
+       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+     GROUP BY ax.key, f.data ->> p_field;
+    RETURN;
+  END IF;
+
+  v_cond := format(' AND t.field = %L', v_field);
   FOREACH v_axis IN ARRAY v_axes LOOP
     v_union := v_union
       || CASE WHEN v_union = '' THEN '' ELSE ' UNION ALL ' END
@@ -1448,14 +1543,14 @@ BEGIN
            'SELECT %L::text AS axis_val,
                    COALESCE(f.data ->> $2, '''')::text AS field_val,
                    count(*)::bigint AS cnt
-              FROM %I t
+              FROM dataset_row_field_taxonomy t
               JOIN dataset_rows_flat f
                 ON f.id = t.row_id AND f.dataset_id = t.dataset_id,
                    unnest(t.%I) AS sub
              WHERE t.dataset_id = $1 %s
                AND ($3 IS NULL OR t.row_id = ANY($3))
              GROUP BY f.data ->> $2',
-           v_axis, v_table, 'axis_' || v_axis, v_cond
+           v_axis, 'axis_' || v_axis, v_cond
          );
   END LOOP;
 
@@ -1467,8 +1562,41 @@ $_$;
 ALTER FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") RETURNS TABLE("classified" bigint, "alerts" bigint)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_blob boolean;
+BEGIN
+  v_blob := EXISTS (
+    SELECT 1 FROM dataset_rows_flat f
+     WHERE f.dataset_id = p_dataset_id AND (f.data -> '_tx' -> 'f') ? p_field_key
+     LIMIT 1
+  );
+  IF v_blob THEN
+    RETURN QUERY
+    SELECT count(*)::bigint,
+           count(*) FILTER (WHERE jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'al', '[]'::jsonb)) > 0)::bigint
+      FROM dataset_rows_flat f
+     WHERE f.dataset_id = p_dataset_id
+       AND (f.data -> '_tx' -> 'f') ? p_field_key;
+  ELSE
+    RETURN QUERY
+    SELECT count(*)::bigint,
+           count(*) FILTER (WHERE t.alert_tags <> '{}')::bigint
+      FROM dataset_row_field_taxonomy t
+     WHERE t.dataset_id = p_dataset_id AND t.field = p_field_key;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer DEFAULT 50, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("sub_val" "text", "field_val" "text", "cnt" bigint)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
@@ -1477,10 +1605,27 @@ BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
-  v_col   := 'axis_' || p_axis;
   v_field := taxonomy_primary_field(p_dataset_id);
-  v_table := CASE WHEN v_field IS NOT NULL THEN 'dataset_row_field_taxonomy' ELSE 'dataset_row_taxonomy' END;
-  v_cond  := CASE WHEN v_field IS NOT NULL THEN format(' AND t.field = %L', v_field) ELSE '' END;
+  IF v_field IS NULL THEN RETURN; END IF;
+
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    RETURN QUERY
+    SELECT sub::text,
+           COALESCE(f.data ->> p_field, '')::text,
+           count(*)::bigint
+      FROM dataset_rows_flat f,
+           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+     WHERE f.dataset_id = p_dataset_id
+       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+     GROUP BY sub, f.data ->> p_field
+     ORDER BY count(*) DESC
+     LIMIT p_limit * p_limit;
+    RETURN;
+  END IF;
+
+  v_col   := 'axis_' || p_axis;
+  v_table := 'dataset_row_field_taxonomy';
+  v_cond  := format(' AND t.field = %L', v_field);
   RETURN QUERY EXECUTE format(
     'SELECT sub::text AS sub_val,
             COALESCE(f.data ->> $2, '''')::text AS field_val,
@@ -1503,7 +1648,7 @@ ALTER FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "tex
 
 
 CREATE OR REPLACE FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text" DEFAULT NULL::"text", "p_bucket" "text" DEFAULT 'day'::"text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("sub_val" "text", "bucket_date" "text", "n" bigint, "avg_val" double precision)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
@@ -1512,10 +1657,37 @@ BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
-  v_col   := 'axis_' || p_axis;
   v_field := taxonomy_primary_field(p_dataset_id);
-  v_table := CASE WHEN v_field IS NOT NULL THEN 'dataset_row_field_taxonomy' ELSE 'dataset_row_taxonomy' END;
-  v_cond  := CASE WHEN v_field IS NOT NULL THEN format(' AND t.field = %L', v_field) ELSE '' END;
+  IF v_field IS NULL THEN RETURN; END IF;
+
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    RETURN QUERY
+    SELECT sub::text,
+           CASE p_bucket
+             WHEN 'week'    THEN to_char(date_trunc('week',  (f.data ->> p_date_field)::date), 'YYYY-MM-DD')
+             WHEN 'month'   THEN to_char(date_trunc('month', (f.data ->> p_date_field)::date), 'YYYY-MM')
+             WHEN 'quarter' THEN to_char(date_trunc('quarter',(f.data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (f.data ->> p_date_field)::date))::text
+             WHEN 'year'    THEN to_char(date_trunc('year',  (f.data ->> p_date_field)::date), 'YYYY')
+             ELSE to_char((f.data ->> p_date_field)::date, 'YYYY-MM-DD')
+           END,
+           count(*)::bigint,
+           CASE WHEN p_metric_field IS NOT NULL AND p_metric_field <> '' THEN
+             avg((f.data ->> p_metric_field)::double precision) FILTER (WHERE f.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')
+           END
+      FROM dataset_rows_flat f,
+           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+     WHERE f.dataset_id = p_dataset_id
+       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+       AND f.data ->> p_date_field IS NOT NULL
+       AND (f.data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+     GROUP BY 1, 2
+     ORDER BY 1, 2;
+    RETURN;
+  END IF;
+
+  v_col   := 'axis_' || p_axis;
+  v_table := 'dataset_row_field_taxonomy';
+  v_cond  := format(' AND t.field = %L', v_field);
   RETURN QUERY EXECUTE format(
     'SELECT sub::text AS sub_val,
             CASE $3
@@ -1547,8 +1719,88 @@ $_$;
 ALTER FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text" DEFAULT NULL::"text", "p_sub" "text" DEFAULT NULL::"text", "p_alert" "text" DEFAULT NULL::"text", "p_limit" integer DEFAULT 100) RETURNS TABLE("row_id" bigint, "data" "jsonb", "tx" "jsonb", "total_count" bigint)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+DECLARE
+  v_blob boolean;
+  v_col  text;
+BEGIN
+  IF p_axis IS NOT NULL AND p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
+    RAISE EXCEPTION 'invalid axis: %', p_axis;
+  END IF;
+
+  v_blob := EXISTS (
+    SELECT 1 FROM dataset_rows_flat f
+     WHERE f.dataset_id = p_dataset_id AND (f.data -> '_tx' -> 'f') ? p_field_key
+     LIMIT 1
+  );
+
+  IF v_blob THEN
+    RETURN QUERY
+    SELECT f.id,
+           f.data - '_tx' AS data,
+           f.data -> '_tx' -> 'f' -> p_field_key AS tx,
+           count(*) OVER() AS total_count
+      FROM dataset_rows_flat f
+     WHERE f.dataset_id = p_dataset_id
+       AND (
+         (p_alert IS NOT NULL AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'al') ? p_alert)
+         OR (p_alert IS NULL AND p_sub IS NOT NULL
+             AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis) ? p_sub)
+         OR (p_alert IS NULL AND p_sub IS NULL AND p_axis IS NOT NULL
+             AND jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis, '[]'::jsonb)) > 0)
+       )
+     ORDER BY f.row_index
+     LIMIT p_limit;
+    RETURN;
+  END IF;
+
+  -- Sidecar fallback (pre-backfill datasets; leg dies in the drop migration).
+  v_col := CASE WHEN p_axis IS NOT NULL THEN 'axis_' || p_axis END;
+  RETURN QUERY EXECUTE format(
+    'SELECT t.row_id,
+            f.data - ''_tx'' AS data,
+            jsonb_build_object(''a'', ''{}''::jsonb, ''al'', to_jsonb(t.alert_tags), ''as'', t.assertions) AS tx,
+            count(*) OVER() AS total_count
+       FROM dataset_row_field_taxonomy t
+       JOIN dataset_rows_flat f ON f.id = t.row_id AND f.dataset_id = t.dataset_id
+      WHERE t.dataset_id = $1
+        AND t.field = $2
+        AND CASE
+              WHEN $3 IS NOT NULL THEN t.alert_tags @> ARRAY[$3]
+              WHEN $4 IS NOT NULL THEN t.%I @> ARRAY[$4]
+              ELSE t.%I <> ''{}''
+            END
+      ORDER BY f.row_index
+      LIMIT $5',
+    COALESCE(v_col, 'alert_tags'), COALESCE(v_col, 'alert_tags')
+  ) USING p_dataset_id, p_field_key, p_alert, p_sub, p_limit;
+END;
+$_$;
+
+
+ALTER FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM dataset_rows_flat f
+     WHERE f.dataset_id = p_dataset_id AND (f.data -> '_tx' -> 'f') ? p_field_key
+     LIMIT 1
+  );
+$$;
+
+
+ALTER FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("group_val" "text", "n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "q1_val" double precision, "q3_val" double precision, "stddev_val" double precision)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
@@ -1557,10 +1809,35 @@ BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
-  v_col   := 'axis_' || p_axis;
   v_field := taxonomy_primary_field(p_dataset_id);
-  v_table := CASE WHEN v_field IS NOT NULL THEN 'dataset_row_field_taxonomy' ELSE 'dataset_row_taxonomy' END;
-  v_cond  := CASE WHEN v_field IS NOT NULL THEN format(' AND t.field = %L', v_field) ELSE '' END;
+  IF v_field IS NULL THEN RETURN; END IF;
+
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    RETURN QUERY
+    WITH g AS (
+      SELECT sub::text AS gv, (f.data ->> p_value_field)::double precision AS v
+        FROM dataset_rows_flat f,
+             jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+       WHERE f.dataset_id = p_dataset_id
+         AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+         AND f.data ->> p_value_field IS NOT NULL
+         AND f.data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
+    )
+    SELECT gv, count(*)::bigint,
+           min(v), max(v), avg(v),
+           percentile_cont(0.5)  WITHIN GROUP (ORDER BY v),
+           percentile_cont(0.25) WITHIN GROUP (ORDER BY v),
+           percentile_cont(0.75) WITHIN GROUP (ORDER BY v),
+           stddev_samp(v)
+      FROM g
+     GROUP BY gv
+     ORDER BY count(*) DESC;
+    RETURN;
+  END IF;
+
+  v_col   := 'axis_' || p_axis;
+  v_table := 'dataset_row_field_taxonomy';
+  v_cond  := format(' AND t.field = %L', v_field);
   RETURN QUERY EXECUTE format(
     'WITH g AS (
        SELECT sub::text AS gv,
@@ -1598,20 +1875,48 @@ CREATE OR REPLACE FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uui
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  SELECT field
-    FROM dataset_row_field_taxonomy
-   WHERE dataset_id = p_dataset_id
-   GROUP BY field
-   ORDER BY count(*) DESC, field
-   LIMIT 1;
+  SELECT COALESCE(
+    (SELECT e.key
+       FROM dataset_state ds,
+            jsonb_each(ds.analytics -> 'taxonomy' -> 'fields') AS e(key, val)
+      WHERE ds.dataset_id = p_dataset_id
+      ORDER BY COALESCE((e.val -> 'rollup' ->> 'classifiedRows')::bigint, 0) DESC, e.key
+      LIMIT 1),
+    (SELECT t.field
+       FROM dataset_row_field_taxonomy t
+      WHERE t.dataset_id = p_dataset_id
+      GROUP BY t.field
+      ORDER BY count(*) DESC, t.field
+      LIMIT 1)
+  );
 $$;
 
 
 ALTER FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text" DEFAULT NULL::"text", "p_date_field" "text" DEFAULT NULL::"text", "p_offset" integer DEFAULT 0, "p_limit" integer DEFAULT 1000) RETURNS TABLE("row_id" bigint, "tx" "jsonb", "rating_val" "text", "date_val" "text")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT f.id,
+         f.data -> '_tx' -> 'f' -> p_field_key,
+         CASE WHEN p_rating_field IS NOT NULL THEN f.data ->> p_rating_field END,
+         CASE WHEN p_date_field   IS NOT NULL THEN f.data ->> p_date_field   END
+    FROM dataset_rows_flat f
+   WHERE f.dataset_id = p_dataset_id
+     AND (f.data -> '_tx' -> 'f') ? p_field_key
+   ORDER BY f.id
+   OFFSET p_offset
+   LIMIT p_limit;
+$$;
+
+
+ALTER FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("value" "text", "count" bigint)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
@@ -1620,10 +1925,24 @@ BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
-  v_col   := 'axis_' || p_axis;
   v_field := taxonomy_primary_field(p_dataset_id);
-  v_table := CASE WHEN v_field IS NOT NULL THEN 'dataset_row_field_taxonomy' ELSE 'dataset_row_taxonomy' END;
-  v_cond  := CASE WHEN v_field IS NOT NULL THEN format(' AND t.field = %L', v_field) ELSE '' END;
+  IF v_field IS NULL THEN RETURN; END IF;
+
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    RETURN QUERY
+    SELECT sub::text, count(*)::bigint
+      FROM dataset_rows_flat f,
+           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+     WHERE f.dataset_id = p_dataset_id
+       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+     GROUP BY sub
+     ORDER BY count(*) DESC;
+    RETURN;
+  END IF;
+
+  v_col   := 'axis_' || p_axis;
+  v_table := 'dataset_row_field_taxonomy';
+  v_cond  := format(' AND t.field = %L', v_field);
   RETURN QUERY EXECUTE format(
     'SELECT sub::text AS value, count(*)::bigint AS count
        FROM %I t, unnest(t.%I) AS sub
@@ -1640,14 +1959,38 @@ ALTER FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "t
 
 
 CREATE OR REPLACE FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer DEFAULT 8) RETURNS TABLE("axis" "text", "sub" "text", "count" bigint)
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 DECLARE
   pattern text;
+  v_field text;
 BEGIN
   -- Single word-boundary, case-insensitive alternation, same as count_theme_matches.
   pattern := '\m(' || array_to_string(p_keywords, '|') || ')';
+  v_field := taxonomy_primary_field(p_dataset_id);
+  IF v_field IS NULL THEN RETURN; END IF;
+
+  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
+    RETURN QUERY
+    WITH matched AS (
+      SELECT DISTINCT drf.id, drf.data
+        FROM dataset_rows_flat drf,
+             LATERAL unnest(p_field_keys) AS fk(key)
+       WHERE drf.dataset_id = p_dataset_id
+         AND drf.data ->> fk.key IS NOT NULL
+         AND drf.data ->> fk.key != ''
+         AND drf.data ->> fk.key ~* pattern
+    )
+    SELECT ax.key::text, sb::text, count(*)::bigint
+      FROM matched m,
+           jsonb_each(m.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
+           jsonb_array_elements_text(ax.subs) AS sb
+     GROUP BY ax.key, sb
+     ORDER BY count(*) DESC
+     LIMIT p_limit;
+    RETURN;
+  END IF;
 
   RETURN QUERY
   WITH matched AS (
@@ -1662,9 +2005,10 @@ BEGIN
   tagged AS (
     SELECT t.axis_touchpoint, t.axis_attribute, t.axis_product, t.axis_beverage,
            t.axis_ambiance, t.axis_context, t.axis_outcome
-      FROM dataset_row_taxonomy t
+      FROM dataset_row_field_taxonomy t
       JOIN matched m ON m.id = t.row_id
      WHERE t.dataset_id = p_dataset_id
+       AND t.field = v_field
   ),
   expanded AS (
     SELECT 'touchpoint'::text AS ax, s::text AS sb FROM tagged, unnest(axis_touchpoint) s
@@ -1675,7 +2019,7 @@ BEGIN
     UNION ALL SELECT 'context',   s::text FROM tagged, unnest(axis_context)   s
     UNION ALL SELECT 'outcome',   s::text FROM tagged, unnest(axis_outcome)   s
   )
-  SELECT ax AS axis, sb AS sub, count(*)::bigint AS count
+  SELECT ax, sb, count(*)::bigint
     FROM expanded
    GROUP BY ax, sb
    ORDER BY count(*) DESC
@@ -6853,6 +7197,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "service_role";
@@ -6943,6 +7293,12 @@ GRANT ALL ON FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_
 GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer) TO "service_role";
 
 
 
@@ -7159,6 +7515,12 @@ GRANT ALL ON FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "
 
 
 
+GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
@@ -7171,6 +7533,18 @@ GRANT ALL ON FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_
 
 
 
+GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[]) TO "service_role";
@@ -7180,6 +7554,12 @@ GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_
 GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer) TO "service_role";
 
 
 
