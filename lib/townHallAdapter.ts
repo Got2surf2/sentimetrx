@@ -21,12 +21,11 @@
 // in a follow-on commit when there's an actual customer demand
 // (zero live PulseIQ customers as of 2026-05-22, so urgency is low).
 //
-// Heavy analytics — keyword-regex matching, per-theme sentiment, time
-// series, top-keyword frequencies, example-quote extraction — are not
-// computed in this projector. They return empty arrays. When a real
-// town hall ships and the facilitator needs analytics, that's the
-// time to invest; for the sarina-cohort row used in Phase 5 testing
-// the basic stats panel + topic list is enough.
+// Analytics-mode (2026-07-04): the ?analytics=true branch computes REAL
+// analytics via the shared lib/townhallAnalytics pipeline (extracted from
+// the legacy route) over fetchTurnsAsLegacy projections — identical
+// numbers and response shape to the legacy route, so the analytics panel
+// works on both substrates.
 //
 // Status mapping (new → legacy):
 //   draft  → setup
@@ -36,6 +35,7 @@
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
+import { computeSessionAnalytics } from '@/lib/townhallAnalytics'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
@@ -259,13 +259,13 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
  * participants). Returns null if the identifier doesn't match a
  * pulseiq_sessions row — the caller should fall back to the legacy path.
  *
- * Analytics-mode (the ?analytics=true branch) returns an empty-analytics
- * shell. Real analytics rebuild is a follow-on commit.
+ * Analytics-mode (the ?analytics=true branch) computes the full legacy
+ * analytics payload from the new substrate (shared lib/townhallAnalytics).
  */
 export async function getTownHallAsLegacy(
   db: ServiceClient,
   slugOrId: string,
-  opts: { analyticsMode?: boolean } = {},
+  opts: { analyticsMode?: boolean; bucketParam?: string | null } = {},
 ): Promise<any | null> {
   // First try id, then slug. Slug is the more common public lookup.
   let hall: any = null
@@ -343,31 +343,26 @@ export async function getTownHallAsLegacy(
     return { session, themes, stats, participants: participantSummary }
   }
 
-  // Analytics-mode shell — populated with the same field set the legacy
-  // route returns so the client doesn't NPE on `.map` / `.length`. Real
-  // computation (keyword regex, sentiment, time-series, top keywords)
-  // is intentionally deferred until a paying town hall needs it.
-  const enrichedThemes = themes.map(t => ({
-    ...t,
-    sentiment:      'neutral',
-    match_count:    t.response_count,
-    mention_count:  t.mention_count || t.response_count,
-    response_count: t.response_count,
-    percentage:     0,
-    example_quotes: [] as string[],
-    quote_matches:  [] as { text: string; match: string }[],
-    top_keywords:   [] as { word: string; count: number }[],
-  }))
+  // Analytics mode — same pipeline as the legacy route (extracted to
+  // lib/townhallAnalytics 2026-07-04), fed by the legacy-shaped turn
+  // projection the exports already use. The old empty-analytics shell
+  // also had the WRONG shape (top-level fields instead of the `analytics`
+  // object TownHallAnalyticsPanel reads), so new-substrate sessions
+  // rendered a blank panel.
+  const legacyTurns = await fetchTurnsAsLegacy(db, hall.id, hall.org_id)
+  const { enrichedThemes, analytics } = computeSessionAnalytics({
+    turns: legacyTurns,
+    themes,
+    safetyConfig: session.config?.content_safety || {},
+    bucketParam: opts.bucketParam ?? null,
+  })
 
   return {
     session,
     themes: enrichedThemes,
     stats,
     participants: participantSummary,
-    overall_sentiment:    { positive: 0, negative: 0, neutral: 0, mixed: 0 },
-    responses_over_time:  [] as { bucket: string; count: number }[],
-    topic_frequency:      [] as { theme_id: string; label: string; series: { bucket: string; count: number }[] }[],
-    bucket:               'hour',
+    analytics,
   }
 }
 

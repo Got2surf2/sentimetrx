@@ -60,6 +60,7 @@ tests/
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
+│   ├── townhallAnalytics.test.ts # PulseIQ detail analytics (lib/townhallAnalytics, shared legacy route + phase-3 adapter) — seed vs organic theme counting, keyword supplement, sentiment_score-preferred trend w/ lexicon backfill, bucket pinning/auto, dismissed-theme exclusion, empty-session shell
 │   ├── snapshotV2.test.ts    # snapshot v2 (lib/orgSnapshotV2 + streaming orgRestore) — uncapped NDJSON dump→open round trip via local store, U+2028-in-text regression, manifest commit marker + listing grouping (manifest-less days hidden), replace-per-parent delete-once semantics, replace-mode zombie deletion, composite-PK reporting
 │   ├── signalStats.test.ts    # signal-stats cache freshness — recompute when row_count changes under a stable theme-model hash (stale-toolbar bug); persist path goes through the atomic merge RPC (sql/145)
 │   ├── secretbox.test.ts      # at-rest encryption for per-org BYOK AI keys (lib/secretbox) — round-trip, legacy-plaintext passthrough, no-key degradation, GCM tamper detection

@@ -1,12 +1,9 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
-import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
-import type { TimeBucket } from '@/lib/timeBucket';
-import { autoBucket, bucketKey } from '@/lib/timeBucket'
-import { bleepText } from '@/lib/contentGuard'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
-import { getTownHallAsLegacy } from '@/lib/townHallAdapter'
+import { getTownHallAsLegacy, fetchAllRows } from '@/lib/townHallAdapter'
+import { computeSessionAnalytics, type AnalyticsTurn } from '@/lib/townhallAnalytics'
 import { checkActivationReadiness } from '@/lib/townhallActivationGate'
 import { serverError } from '@/lib/apiError'
 
@@ -319,13 +316,12 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Phase 5 commit 6: new-substrate town halls return early via the
-  // adapter. The 600 lines of legacy analytics below operate on
-  // townhall_themes/_turns and don't apply yet — full analytics
-  // rebuild on conversation_turns is a follow-on commit (no live
-  // PulseIQ customers as of 2026-05-22).
+  // adapter — since 2026-07-04 including FULL analytics (shared
+  // lib/townhallAnalytics pipeline over the conversation_turns
+  // projection), identical shape to the legacy branch below.
   if (gate.substrate === 'phase3') {
     const analyticsMode = _req.nextUrl.searchParams.get('analytics') === 'true'
-    const payload = await getTownHallAsLegacy(db, params.id, { analyticsMode })
+    const payload = await getTownHallAsLegacy(db, params.id, { analyticsMode, bucketParam: _req.nextUrl.searchParams.get('bucket') })
     if (!payload) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
@@ -415,290 +411,31 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
     })
   }
 
-  // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──
-  const { data: allTurnsWithText } = await db
+  // ── Analytics mode — shared pipeline (lib/townhallAnalytics; extracted
+  // 2026-07-04 so the new-substrate adapter computes identical analytics).
+  // fetchAllRows: a bare select was PostgREST-capped at 1000 turns — the
+  // same silent-cap class the 7/3 pre-push review swept; this instance
+  // was missed.
+  const allTurnsWithText = await fetchAllRows<AnalyticsTurn>((from, to) => db
     .from('townhall_turns')
     .select('user_message_en, user_message, theme_id, created_at, skipped, sentiment, sentiment_score')
     .eq('session_id', params.id)
     .order('created_at', { ascending: true })
+    .range(from, to))
 
   const safetyConfig = (session.config as any)?.content_safety || {}
-  const responsesWithText = (allTurnsWithText || []).filter(t => !t.skipped && (t.user_message_en || t.user_message))
-  const allResponseTexts = responsesWithText.map(t => bleepText((t.user_message_en || t.user_message || '').trim(), safetyConfig)).filter(Boolean)
-
-  // Build a lookup: theme_id → response texts (from turns tagged with that theme)
-  const themeIdTexts: Record<string, string[]> = {}
-  for (const t of responsesWithText) {
-    if (t.theme_id) {
-      if (!themeIdTexts[t.theme_id]) themeIdTexts[t.theme_id] = []
-      themeIdTexts[t.theme_id].push((t.user_message_en || t.user_message || '').trim())
-    }
-  }
-
-  // Per-theme analytics — two strategies:
-  // 1) Seed/guide/custom topics: use theme_id assignment (AI-matched during conversation) as primary
-  // 2) Organic/auto_detected topics: use keyword matching (detected from text patterns)
-  const enrichedThemes = (themes || []).map(function(t: any) {
-    const keywords: string[] = t.keywords || []
-    const isOrganic = t.source === 'auto_detected'
-    let matchCount = 0, totalPos = 0, totalNeg = 0
-    const matchedQuotes: { text: string; match: string }[] = []
-    const kwFreq: Record<string, number> = {}
-    const seenTexts = new Set<string>()
-
-    if (!isOrganic) {
-      // SEED/GUIDE/CUSTOM: primary = AI-assigned theme_id on each turn
-      const tagged = themeIdTexts[t.id] || []
-      matchCount = tagged.length
-      for (const text of tagged) {
-        const score = lexiconScore(text)
-        totalPos += score.pos
-        totalNeg += score.neg
-        const trimmed = text.slice(0, 300)
-        if (matchedQuotes.length < 20 && !seenTexts.has(trimmed)) {
-          matchedQuotes.push({ text: trimmed, match: 'AI-assigned' })
-          seenTexts.add(trimmed)
-        }
-        // Still track keyword frequency for display
-        const lower = text.toLowerCase()
-        for (var ki = 0; ki < keywords.length; ki++) {
-          try {
-            if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
-          } catch {}
-        }
-      }
-      // Supplement: keyword matches NOT already tagged (catches responses about this topic assigned to another)
-      if (keywords.length > 0) {
-        const regexes = keywords.slice(0, 15).map(function(kw: string) {
-          try { return buildKwRegex(kw) } catch { return null }
-        }).filter(Boolean) as RegExp[]
-        for (const text of allResponseTexts) {
-          const lower = text.toLowerCase()
-          const trimmed = text.slice(0, 300)
-          if (!seenTexts.has(trimmed) && regexes.some(function(re) { return re.test(lower) })) {
-            // Find which keyword matched
-            let matchedKw = ''
-            for (var mki = 0; mki < keywords.length; mki++) {
-              try { if (buildKwRegex(keywords[mki]).test(lower)) { matchedKw = keywords[mki]; break } } catch {}
-            }
-            if (matchedQuotes.length < 20) {
-              matchedQuotes.push({ text: trimmed, match: 'keyword: ' + matchedKw })
-              seenTexts.add(trimmed)
-            }
-          }
-        }
-      }
-    } else {
-      // ORGANIC: keyword matching is the primary source
-      const regexes = keywords.slice(0, 15).map(function(kw: string) {
-        try { return buildKwRegex(kw) } catch { return null }
-      }).filter(Boolean) as RegExp[]
-
-      if (regexes.length > 0) {
-        for (const text of allResponseTexts) {
-          const lower = text.toLowerCase()
-          if (regexes.some(function(re) { return re.test(lower) })) {
-            matchCount++
-            const score = lexiconScore(text)
-            totalPos += score.pos
-            totalNeg += score.neg
-            const trimmed = text.slice(0, 300)
-            // Find which keyword matched
-            let matchedKw = ''
-            for (var oki = 0; oki < keywords.length; oki++) {
-              try { if (buildKwRegex(keywords[oki]).test(lower)) { matchedKw = keywords[oki]; kwFreq[keywords[oki]] = (kwFreq[keywords[oki]] || 0) + 1; break } } catch {}
-            }
-            // Count remaining keyword hits
-            for (var oki2 = 0; oki2 < keywords.length; oki2++) {
-              if (keywords[oki2] === matchedKw) continue
-              try { if (buildKwRegex(keywords[oki2]).test(lower)) kwFreq[keywords[oki2]] = (kwFreq[keywords[oki2]] || 0) + 1 } catch {}
-            }
-            if (matchedQuotes.length < 20 && !seenTexts.has(trimmed)) {
-              matchedQuotes.push({ text: trimmed, match: 'keyword: ' + matchedKw })
-              seenTexts.add(trimmed)
-            }
-          }
-        }
-      }
-      // Also include theme_id-tagged turns
-      const taggedTexts = themeIdTexts[t.id] || []
-      for (const text of taggedTexts) {
-        const trimmed = text.slice(0, 300)
-        if (!seenTexts.has(trimmed)) {
-          const score = lexiconScore(text)
-          totalPos += score.pos
-          totalNeg += score.neg
-          matchCount++
-          if (matchedQuotes.length < 20) { matchedQuotes.push({ text: trimmed, match: 'AI-assigned' }); seenTexts.add(trimmed) }
-        }
-      }
-    }
-
-    const sentiment = matchCount > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
-    const percentage = allResponseTexts.length > 0 ? Math.round(matchCount / allResponseTexts.length * 100) : 0
-    const topKeywords = Object.entries(kwFreq).sort(function(a, b) { return b[1] - a[1] }).slice(0, 10).map(function(e) { return { word: e[0], count: e[1] } })
-
-    return {
-      ...t,
-      sentiment,
-      match_count: matchCount,
-      mention_count: matchCount,
-      response_count: isOrganic ? matchCount : (themeIdTexts[t.id]?.length || 0),
-      percentage,
-      example_quotes: matchedQuotes.map(function(q) { return q.text }),
-      quote_matches: matchedQuotes,
-      top_keywords: topKeywords,
-    }
+  const { enrichedThemes, analytics } = computeSessionAnalytics({
+    turns: allTurnsWithText,
+    themes: themes || [],
+    safetyConfig,
+    bucketParam: _req.nextUrl.searchParams.get('bucket'),
   })
-
-  // Overall sentiment breakdown
-  let overallPos = 0, overallNeg = 0, overallNeutral = 0, overallMixed = 0
-  for (const text of allResponseTexts) {
-    const score = lexiconScore(text)
-    const sent = classifySentiment(score.pos, score.neg)
-    if (sent === 'positive') overallPos++
-    else if (sent === 'negative') overallNeg++
-    else if (sent === 'mixed') overallMixed++
-    else overallNeutral++
-  }
-
-  // Responses over time (smart bucketing)
-  const bucketParam = _req.nextUrl.searchParams.get('bucket') as TimeBucket | null
-  const timestamps = responsesWithText.map(t => new Date(t.created_at))
-  const chosenBucket: TimeBucket = bucketParam && ['hour', 'day', 'week', 'month'].includes(bucketParam)
-    ? bucketParam
-    : timestamps.length >= 2
-      ? autoBucket(timestamps[0], timestamps[timestamps.length - 1])
-      : 'hour'
-  const timeBuckets: Record<string, number> = {}
-  for (const t of responsesWithText) {
-    const key = bucketKey(t.created_at, chosenBucket)
-    timeBuckets[key] = (timeBuckets[key] || 0) + 1
-  }
-  const responsesOverTime = Object.entries(timeBuckets).sort().map(function(e) { return { bucket: e[0], count: e[1] } })
-
-  // Per-theme frequency over time (keyword-matched, same buckets)
-  const activeThemeList = (themes || []).filter((t: any) => t.state !== 'dismissed')
-  const themeRegexes: { id: string; label: string; regexes: RegExp[] }[] = activeThemeList.map(function(t: any) {
-    const kws: string[] = t.keywords || []
-    return {
-      id: t.id,
-      label: t.label,
-      regexes: kws.slice(0, 15).map(function(kw: string) { try { return buildKwRegex(kw) } catch { return null } }).filter(Boolean) as RegExp[],
-    }
-  })
-
-  // Build sorted bucket keys
-  const sortedBuckets = Object.keys(timeBuckets).sort()
-
-  // For each response, check which themes match, bucket by time
-  const themeTimeSeries: Record<string, Record<string, number>> = {}
-  for (const tr of themeRegexes) themeTimeSeries[tr.id] = {}
-
-  for (const t of responsesWithText) {
-    const text = (t.user_message_en || t.user_message || '').toLowerCase()
-    const bk = bucketKey(t.created_at, chosenBucket)
-    for (const tr of themeRegexes) {
-      if (tr.regexes.length > 0) {
-        if (tr.regexes.some(function(re) { return re.test(text) })) {
-          themeTimeSeries[tr.id][bk] = (themeTimeSeries[tr.id][bk] || 0) + 1
-        }
-      } else if (t.theme_id === tr.id) {
-        // Fallback: use turn-level theme tagging for themes without keywords
-        themeTimeSeries[tr.id][bk] = (themeTimeSeries[tr.id][bk] || 0) + 1
-      }
-    }
-  }
-
-  // Format: array of { theme_id, label, series: [{bucket, count}] }
-  const topicFrequency = themeRegexes.map(function(tr) {
-    return {
-      theme_id: tr.id,
-      label: tr.label,
-      series: sortedBuckets.map(function(bk) { return { bucket: bk, count: themeTimeSeries[tr.id][bk] || 0 } }),
-    }
-  })
-
-  // Shift detection: flag themes where the latest bucket is ≥2x the per-bucket average
-  const shifts: { theme_id: string; label: string; latest: number; avg: number }[] = []
-  for (const tf of topicFrequency) {
-    if (tf.series.length < 3) continue
-    const counts = tf.series.map(function(s) { return s.count })
-    const avg = counts.reduce(function(a, b) { return a + b }, 0) / counts.length
-    const latest = counts[counts.length - 1]
-    if (avg > 0 && latest >= avg * 2 && latest >= 3) {
-      shifts.push({ theme_id: tf.theme_id, label: tf.label, latest, avg: Math.round(avg * 10) / 10 })
-    }
-  }
-
-  // ── Sentiment trend: cumulative moving average per theme + overall ──
-  // For each theme, track the running average of sentiment_score over turns
-  // Also backfill sentiment for turns that don't have it stored yet (scored on the fly)
-  const sentimentTurns = (allTurnsWithText || []).filter(function(t: any) { return !t.skipped && (t.user_message_en || t.user_message) })
-
-  // Overall sentiment trend (all turns, chronological)
-  const overallTrend: { turn: number; score: number; cumulative: number }[] = []
-  let cumSum = 0, cumCount = 0
-  for (var si = 0; si < sentimentTurns.length; si++) {
-    var t = sentimentTurns[si]
-    var score = t.sentiment_score
-    if (score === null || score === undefined) {
-      // Backfill: score on the fly for turns that predate the migration
-      var txt = (t.user_message_en || t.user_message || '').trim()
-      if (txt) {
-        var ls = lexiconScore(txt)
-        score = Math.round((ls.pos - ls.neg) / Math.max(1, ls.pos + ls.neg + 1) * 100) / 100
-      } else {
-        score = 0
-      }
-    }
-    cumSum += score
-    cumCount++
-    overallTrend.push({ turn: si + 1, score: score, cumulative: Math.round((cumSum / cumCount) * 100) / 100 })
-  }
-
-  // Per-theme sentiment trend
-  const themeSentimentTrends: { theme_id: string; label: string; trend: { turn: number; score: number; cumulative: number }[] }[] = []
-  for (var ti = 0; ti < activeThemeList.length; ti++) {
-    var theme = activeThemeList[ti]
-    var themeTurns = sentimentTurns.filter(function(t: any) { return t.theme_id === theme.id })
-    if (themeTurns.length < 2) continue
-
-    var tCumSum = 0, tCumCount = 0
-    var trend: { turn: number; score: number; cumulative: number }[] = []
-    for (var tj = 0; tj < themeTurns.length; tj++) {
-      var tt = themeTurns[tj]
-      var tScore = tt.sentiment_score
-      if (tScore === null || tScore === undefined) {
-        var tTxt = (tt.user_message_en || tt.user_message || '').trim()
-        if (tTxt) {
-          var tLs = lexiconScore(tTxt)
-          tScore = Math.round((tLs.pos - tLs.neg) / Math.max(1, tLs.pos + tLs.neg + 1) * 100) / 100
-        } else {
-          tScore = 0
-        }
-      }
-      tCumSum += tScore
-      tCumCount++
-      trend.push({ turn: tj + 1, score: tScore, cumulative: Math.round((tCumSum / tCumCount) * 100) / 100 })
-    }
-    themeSentimentTrends.push({ theme_id: theme.id, label: theme.label, trend })
-  }
 
   return NextResponse.json({
     session,
     themes: enrichedThemes,
     stats,
-    analytics: {
-      sentiment_breakdown: { positive: overallPos, negative: overallNeg, mixed: overallMixed, neutral: overallNeutral },
-      responses_over_time: responsesOverTime,
-      topic_frequency: topicFrequency,
-      topic_shifts: shifts,
-      time_bucket: chosenBucket,
-      total_responses: allResponseTexts.length,
-      sentiment_trend: overallTrend,
-      theme_sentiment_trends: themeSentimentTrends,
-    },
+    analytics,
   }, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })

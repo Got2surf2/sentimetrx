@@ -314,9 +314,23 @@ projections (`fetchTurnsAsLegacy` — conversation_turns paired into the
 legacy townhall_turns row shape with marker-aware skip semantics;
 `fetchTopicsAsThemes`); analyze dropped its legacy leg (`runLegacyAnalyze`
 deleted, phase-3 path is the only path). Live-verified 7/7. Still
-legacy-reading: sessions/[id] detail (analytics pipeline), join/resume/
-responses/chat engine shims (drop with the orchestrator),
-`/api/townhall/status` is a deletion candidate (no in-repo consumer).
+legacy-reading: join/resume/responses/chat engine shims (drop with the
+orchestrator), `/api/townhall/status` is a deletion candidate (no in-repo
+consumer).
+
+Unit 4 (2026-07-04) — sessions/[id] detail analytics: the ?analytics=true
+pipeline (keyword regex, sentiment, time-series, top keywords, quotes,
+topic shifts, sentiment trends) extracted VERBATIM into pure
+`lib/townhallAnalytics.computeSessionAnalytics`; the legacy branch calls it
+(response byte-identical; its turns fetch also gained fetchAllRows paging —
+was PostgREST-capped at 1000) and the adapter's analytics mode feeds it
+`fetchTurnsAsLegacy` projections instead of returning the empty shell
+(which also had the WRONG shape — top-level fields, not the `analytics`
+object TownHallAnalyticsPanel reads, so new-substrate sessions rendered a
+blank panel). 9 unit tests + 10-check live verify on the test project's
+Test Planning Session + tranche-2 harness 8/8. Detail analytics is no
+longer a tranche-2 blocker — remaining tranche-2 work is the legacy DELETE
+after owner Phase-6 acceptance.
 
 **Estimate:** Tranche 1 (engine cutover: items 0–7 + a PulseIQ regression set
 mirroring the Sarina harness + prod flag flip + one real test town hall) ≈
