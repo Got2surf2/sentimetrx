@@ -442,11 +442,8 @@ CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dat
     AS $$
   SELECT f.id, f.data
     FROM dataset_rows_flat f
-    LEFT JOIN dataset_row_field_taxonomy t
-      ON t.dataset_id = f.dataset_id AND t.row_id = f.id AND t.field = p_field_key
    WHERE f.dataset_id = p_dataset_id
      AND NOT ((f.data -> '_tx' -> 'f') ? p_field_key)
-     AND t.row_id IS NULL
      AND EXISTS (
        SELECT 1 FROM unnest(p_fields) AS fld
         WHERE COALESCE(regexp_replace(f.data ->> fld, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
@@ -801,16 +798,14 @@ CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
 DECLARE
-  v_fields jsonb := '{}'::jsonb;  -- dataset_id -> primary field key (blob-classified datasets only)
+  v_fields jsonb := '{}'::jsonb;  -- dataset_id -> primary field key
   v_ds uuid;
   v_f  text;
 BEGIN
-  -- Resolve each dataset's blob field once (the comments scope is a handful of
-  -- datasets at most). Datasets not in the map use the sidecar leg.
   IF p_has_dim THEN
     FOREACH v_ds IN ARRAY p_dataset_ids LOOP
       v_f := taxonomy_primary_field(v_ds);
-      IF v_f IS NOT NULL AND taxonomy_field_in_blob(v_ds, v_f) THEN
+      IF v_f IS NOT NULL THEN
         v_fields := v_fields || jsonb_build_object(v_ds::text, v_f);
       END IF;
     END LOOP;
@@ -821,8 +816,6 @@ BEGIN
     SELECT r.id, r.dataset_id, r.row_index, r.data
     FROM public.dataset_rows_flat r
     WHERE r.dataset_id = ANY(p_dataset_ids)
-      -- Theme facet: FTS prefilter on the GIN-indexed tsv + an open-ended
-      -- recheck (so a keyword in a structured column doesn't match).
       AND (
         p_theme_query IS NULL
         OR (
@@ -837,7 +830,6 @@ BEGIN
           )
         )
       )
-      -- Entity facet: same prefilter + open-ended recheck, independent query.
       AND (
         p_entity_query IS NULL
         OR (
@@ -852,8 +844,6 @@ BEGIN
           )
         )
       )
-      -- Dimension facet: blob axes when the dataset is embedded, else the
-      -- legacy sidecar array-overlap. OR within the facet, per axis.
       AND (
         NOT p_has_dim
         OR (
@@ -866,23 +856,6 @@ BEGIN
             (p_sub_ambiance   IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'ambiance')   ?| p_sub_ambiance)   OR
             (p_sub_context    IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'context')    ?| p_sub_context)    OR
             (p_sub_outcome    IS NOT NULL AND (r.data -> '_tx' -> 'f' -> (v_fields ->> r.dataset_id::text) -> 'a' -> 'outcome')    ?| p_sub_outcome)
-          )
-        )
-        OR (
-          NOT (v_fields ? r.dataset_id::text)
-          AND EXISTS (
-            SELECT 1 FROM public.dataset_row_taxonomy t
-            WHERE t.dataset_id = r.dataset_id
-              AND t.row_id = r.id
-              AND (
-                (p_sub_touchpoint IS NOT NULL AND t.axis_touchpoint && p_sub_touchpoint) OR
-                (p_sub_attribute  IS NOT NULL AND t.axis_attribute  && p_sub_attribute)  OR
-                (p_sub_product    IS NOT NULL AND t.axis_product    && p_sub_product)    OR
-                (p_sub_beverage   IS NOT NULL AND t.axis_beverage   && p_sub_beverage)   OR
-                (p_sub_ambiance   IS NOT NULL AND t.axis_ambiance   && p_sub_ambiance)   OR
-                (p_sub_context    IS NOT NULL AND t.axis_context    && p_sub_context)    OR
-                (p_sub_outcome    IS NOT NULL AND t.axis_outcome    && p_sub_outcome)
-              )
           )
         )
       )
@@ -958,23 +931,6 @@ $_$;
 
 
 ALTER FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") RETURNS integer
-    LANGUAGE "sql"
-    AS $$
-  UPDATE townhall_sessions
-  SET response_counter = COALESCE(response_counter, 0) + 1
-  WHERE id = p_session_id
-  RETURNING response_counter;
-$$;
-
-
-ALTER FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") IS 'Atomically increments townhall_sessions.response_counter and returns the new value. Replaces a racy read-modify-write in the town-hall chat route.';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."is_platform_admin"() RETURNS boolean
@@ -1510,85 +1466,38 @@ ALTER FUNCTION "public"."sync_brand_collection_members"() OWNER TO "postgres";
 CREATE OR REPLACE FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("axis_val" "text", "field_val" "text", "cnt" bigint)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
-    AS $_$
+    AS $$
 DECLARE
-  v_field text; v_cond text;
-  v_axes  text[] := ARRAY['touchpoint','attribute','product','beverage','ambiance','context','outcome'];
-  v_axis  text;
-  v_union text := '';
+  v_field text;
 BEGIN
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    -- One scan: jsonb_each over the axes object replaces the 7-way UNION.
-    RETURN QUERY
-    SELECT ax.key::text,
-           COALESCE(f.data ->> p_field, '')::text,
-           count(*)::bigint
-      FROM dataset_rows_flat f,
-           jsonb_each(f.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
-           jsonb_array_elements_text(ax.subs) AS sub
-     WHERE f.dataset_id = p_dataset_id
-       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
-     GROUP BY ax.key, f.data ->> p_field;
-    RETURN;
-  END IF;
-
-  v_cond := format(' AND t.field = %L', v_field);
-  FOREACH v_axis IN ARRAY v_axes LOOP
-    v_union := v_union
-      || CASE WHEN v_union = '' THEN '' ELSE ' UNION ALL ' END
-      || format(
-           'SELECT %L::text AS axis_val,
-                   COALESCE(f.data ->> $2, '''')::text AS field_val,
-                   count(*)::bigint AS cnt
-              FROM dataset_row_field_taxonomy t
-              JOIN dataset_rows_flat f
-                ON f.id = t.row_id AND f.dataset_id = t.dataset_id,
-                   unnest(t.%I) AS sub
-             WHERE t.dataset_id = $1 %s
-               AND ($3 IS NULL OR t.row_id = ANY($3))
-             GROUP BY f.data ->> $2',
-           v_axis, 'axis_' || v_axis, v_cond
-         );
-  END LOOP;
-
-  RETURN QUERY EXECUTE v_union USING p_dataset_id, p_field, p_row_ids;
+  RETURN QUERY
+  SELECT ax.key::text,
+         COALESCE(f.data ->> p_field, '')::text,
+         count(*)::bigint
+    FROM dataset_rows_flat f,
+         jsonb_each(f.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sub
+   WHERE f.dataset_id = p_dataset_id
+     AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+   GROUP BY ax.key, f.data ->> p_field;
 END;
-$_$;
+$$;
 
 
 ALTER FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") RETURNS TABLE("classified" bigint, "alerts" bigint)
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-DECLARE
-  v_blob boolean;
-BEGIN
-  v_blob := EXISTS (
-    SELECT 1 FROM dataset_rows_flat f
-     WHERE f.dataset_id = p_dataset_id AND (f.data -> '_tx' -> 'f') ? p_field_key
-     LIMIT 1
-  );
-  IF v_blob THEN
-    RETURN QUERY
-    SELECT count(*)::bigint,
-           count(*) FILTER (WHERE jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'al', '[]'::jsonb)) > 0)::bigint
-      FROM dataset_rows_flat f
-     WHERE f.dataset_id = p_dataset_id
-       AND (f.data -> '_tx' -> 'f') ? p_field_key;
-  ELSE
-    RETURN QUERY
-    SELECT count(*)::bigint,
-           count(*) FILTER (WHERE t.alert_tags <> '{}')::bigint
-      FROM dataset_row_field_taxonomy t
-     WHERE t.dataset_id = p_dataset_id AND t.field = p_field_key;
-  END IF;
-END;
+  SELECT count(*)::bigint,
+         count(*) FILTER (WHERE jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'al', '[]'::jsonb)) > 0)::bigint
+    FROM dataset_rows_flat f
+   WHERE f.dataset_id = p_dataset_id
+     AND (f.data -> '_tx' -> 'f') ? p_field_key;
 $$;
 
 
@@ -1598,50 +1507,28 @@ ALTER FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "
 CREATE OR REPLACE FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer DEFAULT 50, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("sub_val" "text", "field_val" "text", "cnt" bigint)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
-    AS $_$
+    AS $$
 DECLARE
-  v_col text; v_field text; v_table text; v_cond text;
+  v_field text;
 BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    RETURN QUERY
-    SELECT sub::text,
-           COALESCE(f.data ->> p_field, '')::text,
-           count(*)::bigint
-      FROM dataset_rows_flat f,
-           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
-     WHERE f.dataset_id = p_dataset_id
-       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
-     GROUP BY sub, f.data ->> p_field
-     ORDER BY count(*) DESC
-     LIMIT p_limit * p_limit;
-    RETURN;
-  END IF;
-
-  v_col   := 'axis_' || p_axis;
-  v_table := 'dataset_row_field_taxonomy';
-  v_cond  := format(' AND t.field = %L', v_field);
-  RETURN QUERY EXECUTE format(
-    'SELECT sub::text AS sub_val,
-            COALESCE(f.data ->> $2, '''')::text AS field_val,
-            count(*)::bigint AS cnt
-       FROM %I t
-       JOIN dataset_rows_flat f
-         ON f.id = t.row_id AND f.dataset_id = t.dataset_id,
-            unnest(t.%I) AS sub
-      WHERE t.dataset_id = $1 %s
-        AND ($4 IS NULL OR t.row_id = ANY($4))
-      GROUP BY sub, f.data ->> $2
-      ORDER BY count(*) DESC
-      LIMIT $3', v_table, v_col, v_cond
-  ) USING p_dataset_id, p_field, p_limit * p_limit, p_row_ids;
+  RETURN QUERY
+  SELECT sub::text,
+         COALESCE(f.data ->> p_field, '')::text,
+         count(*)::bigint
+    FROM dataset_rows_flat f,
+         jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+   WHERE f.dataset_id = p_dataset_id
+     AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+   GROUP BY sub, f.data ->> p_field
+   ORDER BY count(*) DESC
+   LIMIT p_limit * p_limit;
 END;
-$_$;
+$$;
 
 
 ALTER FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
@@ -1652,66 +1539,34 @@ CREATE OR REPLACE FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid"
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
-  v_col text; v_field text; v_table text; v_cond text;
+  v_field text;
 BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    RETURN QUERY
-    SELECT sub::text,
-           CASE p_bucket
-             WHEN 'week'    THEN to_char(date_trunc('week',  (f.data ->> p_date_field)::date), 'YYYY-MM-DD')
-             WHEN 'month'   THEN to_char(date_trunc('month', (f.data ->> p_date_field)::date), 'YYYY-MM')
-             WHEN 'quarter' THEN to_char(date_trunc('quarter',(f.data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (f.data ->> p_date_field)::date))::text
-             WHEN 'year'    THEN to_char(date_trunc('year',  (f.data ->> p_date_field)::date), 'YYYY')
-             ELSE to_char((f.data ->> p_date_field)::date, 'YYYY-MM-DD')
-           END,
-           count(*)::bigint,
-           CASE WHEN p_metric_field IS NOT NULL AND p_metric_field <> '' THEN
-             avg((f.data ->> p_metric_field)::double precision) FILTER (WHERE f.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')
-           END
-      FROM dataset_rows_flat f,
-           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
-     WHERE f.dataset_id = p_dataset_id
-       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
-       AND f.data ->> p_date_field IS NOT NULL
-       AND (f.data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
-     GROUP BY 1, 2
-     ORDER BY 1, 2;
-    RETURN;
-  END IF;
-
-  v_col   := 'axis_' || p_axis;
-  v_table := 'dataset_row_field_taxonomy';
-  v_cond  := format(' AND t.field = %L', v_field);
-  RETURN QUERY EXECUTE format(
-    'SELECT sub::text AS sub_val,
-            CASE $3
-              WHEN ''week''    THEN to_char(date_trunc(''week'',  (f.data ->> $2)::date), ''YYYY-MM-DD'')
-              WHEN ''month''   THEN to_char(date_trunc(''month'', (f.data ->> $2)::date), ''YYYY-MM'')
-              WHEN ''quarter'' THEN to_char(date_trunc(''quarter'',(f.data ->> $2)::date), ''YYYY'') || ''-Q'' || extract(quarter from date_trunc(''quarter'', (f.data ->> $2)::date))::text
-              WHEN ''year''    THEN to_char(date_trunc(''year'',  (f.data ->> $2)::date), ''YYYY'')
-              ELSE to_char((f.data ->> $2)::date, ''YYYY-MM-DD'')
-            END AS bucket_date,
-            count(*)::bigint AS n,
-            CASE WHEN $4 IS NOT NULL AND $4 != '''' THEN
-              avg((f.data ->> $4)::double precision) FILTER (WHERE f.data ->> $4 ~ ''^-?[0-9]+\.?[0-9]*$'')
-            ELSE NULL END AS avg_val
-       FROM %I t
-       JOIN dataset_rows_flat f
-         ON f.id = t.row_id AND f.dataset_id = t.dataset_id,
-            unnest(t.%I) AS sub
-      WHERE t.dataset_id = $1 %s
-        AND ($5 IS NULL OR t.row_id = ANY($5))
-        AND f.data ->> $2 IS NOT NULL
-        AND (f.data ->> $2) ~ ''^\d{4}-\d{2}-\d{2}''
-      GROUP BY sub, bucket_date
-      ORDER BY sub, bucket_date', v_table, v_col, v_cond
-  ) USING p_dataset_id, p_date_field, p_bucket, p_metric_field, p_row_ids;
+  RETURN QUERY
+  SELECT sub::text,
+         CASE p_bucket
+           WHEN 'week'    THEN to_char(date_trunc('week',  (f.data ->> p_date_field)::date), 'YYYY-MM-DD')
+           WHEN 'month'   THEN to_char(date_trunc('month', (f.data ->> p_date_field)::date), 'YYYY-MM')
+           WHEN 'quarter' THEN to_char(date_trunc('quarter',(f.data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (f.data ->> p_date_field)::date))::text
+           WHEN 'year'    THEN to_char(date_trunc('year',  (f.data ->> p_date_field)::date), 'YYYY')
+           ELSE to_char((f.data ->> p_date_field)::date, 'YYYY-MM-DD')
+         END,
+         count(*)::bigint,
+         CASE WHEN p_metric_field IS NOT NULL AND p_metric_field <> '' THEN
+           avg((f.data ->> p_metric_field)::double precision) FILTER (WHERE f.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')
+         END
+    FROM dataset_rows_flat f,
+         jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+   WHERE f.dataset_id = p_dataset_id
+     AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+     AND f.data ->> p_date_field IS NOT NULL
+     AND (f.data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+   GROUP BY 1, 2
+   ORDER BY 1, 2;
 END;
 $_$;
 
@@ -1722,63 +1577,29 @@ ALTER FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "
 CREATE OR REPLACE FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text" DEFAULT NULL::"text", "p_sub" "text" DEFAULT NULL::"text", "p_alert" "text" DEFAULT NULL::"text", "p_limit" integer DEFAULT 100) RETURNS TABLE("row_id" bigint, "data" "jsonb", "tx" "jsonb", "total_count" bigint)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
-    AS $_$
-DECLARE
-  v_blob boolean;
-  v_col  text;
+    AS $$
 BEGIN
   IF p_axis IS NOT NULL AND p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
-
-  v_blob := EXISTS (
-    SELECT 1 FROM dataset_rows_flat f
-     WHERE f.dataset_id = p_dataset_id AND (f.data -> '_tx' -> 'f') ? p_field_key
-     LIMIT 1
-  );
-
-  IF v_blob THEN
-    RETURN QUERY
-    SELECT f.id,
-           f.data - '_tx' AS data,
-           f.data -> '_tx' -> 'f' -> p_field_key AS tx,
-           count(*) OVER() AS total_count
-      FROM dataset_rows_flat f
-     WHERE f.dataset_id = p_dataset_id
-       AND (
-         (p_alert IS NOT NULL AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'al') ? p_alert)
-         OR (p_alert IS NULL AND p_sub IS NOT NULL
-             AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis) ? p_sub)
-         OR (p_alert IS NULL AND p_sub IS NULL AND p_axis IS NOT NULL
-             AND jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis, '[]'::jsonb)) > 0)
-       )
-     ORDER BY f.row_index
-     LIMIT p_limit;
-    RETURN;
-  END IF;
-
-  -- Sidecar fallback (pre-backfill datasets; leg dies in the drop migration).
-  v_col := CASE WHEN p_axis IS NOT NULL THEN 'axis_' || p_axis END;
-  RETURN QUERY EXECUTE format(
-    'SELECT t.row_id,
-            f.data - ''_tx'' AS data,
-            jsonb_build_object(''a'', ''{}''::jsonb, ''al'', to_jsonb(t.alert_tags), ''as'', t.assertions) AS tx,
-            count(*) OVER() AS total_count
-       FROM dataset_row_field_taxonomy t
-       JOIN dataset_rows_flat f ON f.id = t.row_id AND f.dataset_id = t.dataset_id
-      WHERE t.dataset_id = $1
-        AND t.field = $2
-        AND CASE
-              WHEN $3 IS NOT NULL THEN t.alert_tags @> ARRAY[$3]
-              WHEN $4 IS NOT NULL THEN t.%I @> ARRAY[$4]
-              ELSE t.%I <> ''{}''
-            END
-      ORDER BY f.row_index
-      LIMIT $5',
-    COALESCE(v_col, 'alert_tags'), COALESCE(v_col, 'alert_tags')
-  ) USING p_dataset_id, p_field_key, p_alert, p_sub, p_limit;
+  RETURN QUERY
+  SELECT f.id,
+         f.data - '_tx' AS data,
+         f.data -> '_tx' -> 'f' -> p_field_key AS tx,
+         count(*) OVER() AS total_count
+    FROM dataset_rows_flat f
+   WHERE f.dataset_id = p_dataset_id
+     AND (
+       (p_alert IS NOT NULL AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'al') ? p_alert)
+       OR (p_alert IS NULL AND p_sub IS NOT NULL
+           AND (f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis) ? p_sub)
+       OR (p_alert IS NULL AND p_sub IS NULL AND p_axis IS NOT NULL
+           AND jsonb_array_length(COALESCE(f.data -> '_tx' -> 'f' -> p_field_key -> 'a' -> p_axis, '[]'::jsonb)) > 0)
+     )
+   ORDER BY f.row_index
+   LIMIT p_limit;
 END;
-$_$;
+$$;
 
 
 ALTER FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) OWNER TO "postgres";
@@ -1804,66 +1625,32 @@ CREATE OR REPLACE FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid"
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
-  v_col text; v_field text; v_table text; v_cond text;
+  v_field text;
 BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    RETURN QUERY
-    WITH g AS (
-      SELECT sub::text AS gv, (f.data ->> p_value_field)::double precision AS v
-        FROM dataset_rows_flat f,
-             jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
-       WHERE f.dataset_id = p_dataset_id
-         AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
-         AND f.data ->> p_value_field IS NOT NULL
-         AND f.data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
-    )
-    SELECT gv, count(*)::bigint,
-           min(v), max(v), avg(v),
-           percentile_cont(0.5)  WITHIN GROUP (ORDER BY v),
-           percentile_cont(0.25) WITHIN GROUP (ORDER BY v),
-           percentile_cont(0.75) WITHIN GROUP (ORDER BY v),
-           stddev_samp(v)
-      FROM g
-     GROUP BY gv
-     ORDER BY count(*) DESC;
-    RETURN;
-  END IF;
-
-  v_col   := 'axis_' || p_axis;
-  v_table := 'dataset_row_field_taxonomy';
-  v_cond  := format(' AND t.field = %L', v_field);
-  RETURN QUERY EXECUTE format(
-    'WITH g AS (
-       SELECT sub::text AS gv,
-              (f.data ->> $2)::double precision AS v
-         FROM %I t
-         JOIN dataset_rows_flat f
-           ON f.id = t.row_id AND f.dataset_id = t.dataset_id,
-              unnest(t.%I) AS sub
-        WHERE t.dataset_id = $1 %s
-          AND ($3 IS NULL OR t.row_id = ANY($3))
-          AND f.data ->> $2 IS NOT NULL
-          AND f.data ->> $2 ~ ''^-?[0-9]+\.?[0-9]*$''
-     )
-     SELECT gv AS group_val,
-            count(*)::bigint AS n,
-            min(v) AS min_val,
-            max(v) AS max_val,
-            avg(v) AS avg_val,
-            percentile_cont(0.5)  WITHIN GROUP (ORDER BY v) AS median_val,
-            percentile_cont(0.25) WITHIN GROUP (ORDER BY v) AS q1_val,
-            percentile_cont(0.75) WITHIN GROUP (ORDER BY v) AS q3_val,
-            stddev_samp(v) AS stddev_val
-       FROM g
-      GROUP BY gv
-      ORDER BY count(*) DESC', v_table, v_col, v_cond
-  ) USING p_dataset_id, p_value_field, p_row_ids;
+  RETURN QUERY
+  WITH g AS (
+    SELECT sub::text AS gv, (f.data ->> p_value_field)::double precision AS v
+      FROM dataset_rows_flat f,
+           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+     WHERE f.dataset_id = p_dataset_id
+       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+       AND f.data ->> p_value_field IS NOT NULL
+       AND f.data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
+  )
+  SELECT gv, count(*)::bigint,
+         min(v), max(v), avg(v),
+         percentile_cont(0.5)  WITHIN GROUP (ORDER BY v),
+         percentile_cont(0.25) WITHIN GROUP (ORDER BY v),
+         percentile_cont(0.75) WITHIN GROUP (ORDER BY v),
+         stddev_samp(v)
+    FROM g
+   GROUP BY gv
+   ORDER BY count(*) DESC;
 END;
 $_$;
 
@@ -1875,20 +1662,12 @@ CREATE OR REPLACE FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uui
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  SELECT COALESCE(
-    (SELECT e.key
-       FROM dataset_state ds,
-            jsonb_each(ds.analytics -> 'taxonomy' -> 'fields') AS e(key, val)
-      WHERE ds.dataset_id = p_dataset_id
-      ORDER BY COALESCE((e.val -> 'rollup' ->> 'classifiedRows')::bigint, 0) DESC, e.key
-      LIMIT 1),
-    (SELECT t.field
-       FROM dataset_row_field_taxonomy t
-      WHERE t.dataset_id = p_dataset_id
-      GROUP BY t.field
-      ORDER BY count(*) DESC, t.field
-      LIMIT 1)
-  );
+  SELECT e.key
+    FROM dataset_state ds,
+         jsonb_each(ds.analytics -> 'taxonomy' -> 'fields') AS e(key, val)
+   WHERE ds.dataset_id = p_dataset_id
+   ORDER BY COALESCE((e.val -> 'rollup' ->> 'classifiedRows')::bigint, 0) DESC, e.key
+   LIMIT 1;
 $$;
 
 
@@ -1918,41 +1697,25 @@ ALTER FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_fiel
 CREATE OR REPLACE FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("value" "text", "count" bigint)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
-    AS $_$
+    AS $$
 DECLARE
-  v_col text; v_field text; v_table text; v_cond text;
+  v_field text;
 BEGIN
   IF p_axis NOT IN ('touchpoint','attribute','product','beverage','ambiance','context','outcome') THEN
     RAISE EXCEPTION 'invalid axis: %', p_axis;
   END IF;
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    RETURN QUERY
-    SELECT sub::text, count(*)::bigint
-      FROM dataset_rows_flat f,
-           jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
-     WHERE f.dataset_id = p_dataset_id
-       AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
-     GROUP BY sub
-     ORDER BY count(*) DESC;
-    RETURN;
-  END IF;
-
-  v_col   := 'axis_' || p_axis;
-  v_table := 'dataset_row_field_taxonomy';
-  v_cond  := format(' AND t.field = %L', v_field);
-  RETURN QUERY EXECUTE format(
-    'SELECT sub::text AS value, count(*)::bigint AS count
-       FROM %I t, unnest(t.%I) AS sub
-      WHERE t.dataset_id = $1 %s
-        AND ($2 IS NULL OR t.row_id = ANY($2))
-      GROUP BY sub
-      ORDER BY count(*) DESC', v_table, v_col, v_cond
-  ) USING p_dataset_id, p_row_ids;
+  RETURN QUERY
+  SELECT sub::text, count(*)::bigint
+    FROM dataset_rows_flat f,
+         jsonb_array_elements_text(f.data -> '_tx' -> 'f' -> v_field -> 'a' -> p_axis) AS sub
+   WHERE f.dataset_id = p_dataset_id
+     AND (p_row_ids IS NULL OR f.id = ANY(p_row_ids))
+   GROUP BY sub
+   ORDER BY count(*) DESC;
 END;
-$_$;
+$$;
 
 
 ALTER FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
@@ -1966,62 +1729,24 @@ DECLARE
   pattern text;
   v_field text;
 BEGIN
-  -- Single word-boundary, case-insensitive alternation, same as count_theme_matches.
   pattern := '\m(' || array_to_string(p_keywords, '|') || ')';
   v_field := taxonomy_primary_field(p_dataset_id);
   IF v_field IS NULL THEN RETURN; END IF;
-
-  IF taxonomy_field_in_blob(p_dataset_id, v_field) THEN
-    RETURN QUERY
-    WITH matched AS (
-      SELECT DISTINCT drf.id, drf.data
-        FROM dataset_rows_flat drf,
-             LATERAL unnest(p_field_keys) AS fk(key)
-       WHERE drf.dataset_id = p_dataset_id
-         AND drf.data ->> fk.key IS NOT NULL
-         AND drf.data ->> fk.key != ''
-         AND drf.data ->> fk.key ~* pattern
-    )
-    SELECT ax.key::text, sb::text, count(*)::bigint
-      FROM matched m,
-           jsonb_each(m.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
-           jsonb_array_elements_text(ax.subs) AS sb
-     GROUP BY ax.key, sb
-     ORDER BY count(*) DESC
-     LIMIT p_limit;
-    RETURN;
-  END IF;
-
   RETURN QUERY
   WITH matched AS (
-    SELECT DISTINCT drf.id
+    SELECT DISTINCT drf.id, drf.data
       FROM dataset_rows_flat drf,
            LATERAL unnest(p_field_keys) AS fk(key)
      WHERE drf.dataset_id = p_dataset_id
        AND drf.data ->> fk.key IS NOT NULL
        AND drf.data ->> fk.key != ''
        AND drf.data ->> fk.key ~* pattern
-  ),
-  tagged AS (
-    SELECT t.axis_touchpoint, t.axis_attribute, t.axis_product, t.axis_beverage,
-           t.axis_ambiance, t.axis_context, t.axis_outcome
-      FROM dataset_row_field_taxonomy t
-      JOIN matched m ON m.id = t.row_id
-     WHERE t.dataset_id = p_dataset_id
-       AND t.field = v_field
-  ),
-  expanded AS (
-    SELECT 'touchpoint'::text AS ax, s::text AS sb FROM tagged, unnest(axis_touchpoint) s
-    UNION ALL SELECT 'attribute', s::text FROM tagged, unnest(axis_attribute) s
-    UNION ALL SELECT 'product',   s::text FROM tagged, unnest(axis_product)   s
-    UNION ALL SELECT 'beverage',  s::text FROM tagged, unnest(axis_beverage)  s
-    UNION ALL SELECT 'ambiance',  s::text FROM tagged, unnest(axis_ambiance)  s
-    UNION ALL SELECT 'context',   s::text FROM tagged, unnest(axis_context)   s
-    UNION ALL SELECT 'outcome',   s::text FROM tagged, unnest(axis_outcome)   s
   )
-  SELECT ax, sb, count(*)::bigint
-    FROM expanded
-   GROUP BY ax, sb
+  SELECT ax.key::text, sb::text, count(*)::bigint
+    FROM matched m,
+         jsonb_each(m.data -> '_tx' -> 'f' -> v_field -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sb
+   GROUP BY ax.key, sb
    ORDER BY count(*) DESC
    LIMIT p_limit;
 END;
@@ -2042,27 +1767,6 @@ $$;
 
 
 ALTER FUNCTION "public"."touch_updated_at"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) RETURNS TABLE("session_id" "uuid", "participants" bigint, "responses" bigint)
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  SELECT
-    session_id,
-    count(DISTINCT participant_id)::bigint AS participants,
-    count(*) FILTER (
-      WHERE skipped IS NOT TRUE
-        AND user_message IS NOT NULL
-        AND user_message <> ''
-    )::bigint AS responses
-  FROM townhall_turns
-  WHERE session_id = ANY(p_session_ids)
-  GROUP BY session_id;
-$$;
-
-
-ALTER FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_org" "uuid") RETURNS "void"
@@ -2826,74 +2530,6 @@ COMMENT ON COLUMN "public"."conversations"."session_id" IS 'Widget-side session 
 
 
 COMMENT ON COLUMN "public"."conversations"."participant_id" IS 'Town-hall participant identifier when the conversation is part of a town hall (PulseIQ-side concept). NULL for 1:1 bot chats.';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."dataset_row_field_taxonomy" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "org_id" "uuid" NOT NULL,
-    "dataset_id" "uuid" NOT NULL,
-    "row_id" bigint NOT NULL,
-    "field" "text" NOT NULL,
-    "axis_touchpoint" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_attribute" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_product" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_beverage" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_ambiance" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_context" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_outcome" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "alert_tags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "assertions" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "classified_by" "text",
-    "model_used" "text",
-    "prompt_version" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
-);
-
-
-ALTER TABLE "public"."dataset_row_field_taxonomy" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."dataset_row_field_taxonomy" IS 'Per-(dataset,row,field) 7-axis ABSA taxonomy (2026-06-06). Like dataset_row_taxonomy but keyed by the open-ended `field` the tags came from, so the Dimensions tab can show per-field results that react to the ANALYZE toggle. axis_* text[] = sub-bucket names from lib/taxonomyVocabulary.ts; assertions jsonb = full {axis,sub,item?,polarity,confidence,severity,evidence}; alert_tags = subs that fired at alert/crisis.';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."dataset_row_taxonomy" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "org_id" "uuid" NOT NULL,
-    "dataset_id" "uuid" NOT NULL,
-    "row_id" bigint NOT NULL,
-    "axis_touchpoint" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_attribute" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_product" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_beverage" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_ambiance" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_context" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "axis_outcome" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "alert_tags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "assertions" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "raw_legacy_tags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "classified_by" "text",
-    "model_used" "text",
-    "prompt_version" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
-);
-
-
-ALTER TABLE "public"."dataset_row_taxonomy" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."dataset_row_taxonomy" IS 'Per-row 7-axis ABSA taxonomy (Ruth''s Chris pilot 2026-05-27). axis_* text[] columns store sub-bucket names from the closed vocab in lib/taxonomyVocabulary.ts. assertions jsonb carries the full structured shape: [{axis, sub, item?, polarity, confidence, severity}]. alert_tags is the subset of axis subs that fired at severity:alert/crisis. raw_legacy_tags preserves the prospect''s legacy Classification column for side-by-side comparison.';
-
-
-
-COMMENT ON COLUMN "public"."dataset_row_taxonomy"."assertions" IS 'Full structured assertions. Each element: {axis, sub, item?, polarity, confidence, severity}. Per-axis text[] arrays are a denormalized projection for fast GIN-indexed filtering.';
-
-
-
-COMMENT ON COLUMN "public"."dataset_row_taxonomy"."classified_by" IS 'Free-text origin tag. Today: "llm:claude-haiku-4-5", "llm:claude-sonnet-4-6", "mapping:legacy" (when the row came from a pure legacy-label projection without an LLM call).';
 
 
 
@@ -4007,67 +3643,6 @@ CREATE OR REPLACE VIEW "public"."study_stats" AS
 ALTER VIEW "public"."study_stats" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."town_hall_conversations" WITH ("security_invoker"='true') AS
- SELECT "id",
-    "org_id",
-    "town_hall_id",
-    "conversation_id",
-    "joined_at"
-   FROM "public"."pulseiq_session_conversations";
-
-
-ALTER VIEW "public"."town_hall_conversations" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."town_hall_topics" WITH ("security_invoker"='true') AS
- SELECT "id",
-    "org_id",
-    "town_hall_id",
-    "label",
-    "description",
-    "question",
-    "follow_up_angles",
-    "keywords",
-    "state",
-    "source",
-    "response_target",
-    "response_count",
-    "mention_count",
-    "example_quote",
-    "sort_order",
-    "detected_at",
-    "approved_at",
-    "completed_at",
-    "created_at",
-    "round_number"
-   FROM "public"."pulseiq_topics";
-
-
-ALTER VIEW "public"."town_hall_topics" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."town_halls" WITH ("security_invoker"='true') AS
- SELECT "id",
-    "org_id",
-    "bot_id",
-    "slug",
-    "name",
-    "status",
-    "cohort_config",
-    "discussion_guide",
-    "response_target",
-    "started_at",
-    "ended_at",
-    "created_by",
-    "created_at",
-    "updated_at",
-    "last_theme_detection_at"
-   FROM "public"."pulseiq_sessions";
-
-
-ALTER VIEW "public"."town_halls" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."townhall_participant_responses" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "session_id" "uuid",
@@ -4081,90 +3656,6 @@ CREATE TABLE IF NOT EXISTS "public"."townhall_participant_responses" (
 
 
 ALTER TABLE "public"."townhall_participant_responses" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."townhall_sessions" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "study_id" "uuid",
-    "org_id" "uuid" NOT NULL,
-    "created_by" "uuid",
-    "name" "text" NOT NULL,
-    "status" "text" DEFAULT 'setup'::"text",
-    "config" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
-    "discussion_guide" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "response_counter" integer DEFAULT 0,
-    "started_at" timestamp with time zone,
-    "ended_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"(),
-    "slug" "text",
-    "last_theme_detection_at" timestamp with time zone,
-    CONSTRAINT "townhall_sessions_status_check" CHECK (("status" = ANY (ARRAY['setup'::"text", 'active'::"text", 'paused'::"text", 'ended'::"text"])))
-);
-
-
-ALTER TABLE "public"."townhall_sessions" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."townhall_themes" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "session_id" "uuid" NOT NULL,
-    "label" "text" NOT NULL,
-    "description" "text",
-    "question" "text" NOT NULL,
-    "follow_up_angles" "text"[] DEFAULT '{}'::"text"[],
-    "state" "text" DEFAULT 'active'::"text",
-    "source" "text" DEFAULT 'guide'::"text" NOT NULL,
-    "response_target" integer DEFAULT 30 NOT NULL,
-    "response_count" integer DEFAULT 0,
-    "mention_count" integer DEFAULT 0,
-    "example_quote" "text",
-    "detected_at" timestamp with time zone,
-    "approved_at" timestamp with time zone,
-    "completed_at" timestamp with time zone,
-    "sort_order" integer DEFAULT 0,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "keywords" "text"[] DEFAULT '{}'::"text"[],
-    "sentiment" "text" DEFAULT 'neutral'::"text",
-    "round_number" integer,
-    CONSTRAINT "townhall_themes_source_check" CHECK (("source" = ANY (ARRAY['guide'::"text", 'auto_detected'::"text", 'custom'::"text"]))),
-    CONSTRAINT "townhall_themes_state_check" CHECK (("state" = ANY (ARRAY['active'::"text", 'detected'::"text", 'paused'::"text", 'parked'::"text", 'completed'::"text", 'dismissed'::"text"])))
-);
-
-
-ALTER TABLE "public"."townhall_themes" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."townhall_themes"."round_number" IS 'Round-based pacing: which tasting round/item this theme belongs to (1-indexed). NULL = open-conversation pacing. round 1 seeds active, later rounds seed paused until the moderator advances.';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."townhall_turns" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "session_id" "uuid" NOT NULL,
-    "participant_id" "text" NOT NULL,
-    "turn_number" integer NOT NULL,
-    "bot_message" "text" NOT NULL,
-    "user_message" "text",
-    "theme_id" "uuid",
-    "source" "text" DEFAULT 'guide'::"text",
-    "skipped" boolean DEFAULT false,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "user_message_en" "text",
-    "language" "text" DEFAULT 'en'::"text",
-    "ai_thinking" "jsonb",
-    "theme_label" "text",
-    "sentiment" "text",
-    "sentiment_score" real,
-    CONSTRAINT "townhall_turns_source_check" CHECK (("source" = ANY (ARRAY['guide'::"text", 'clarifier'::"text", 'detected_theme'::"text", 'custom'::"text", 'deflect'::"text", 'standby'::"text", 'language_switch'::"text", 'system'::"text", 'revisit'::"text"])))
-);
-
-
-ALTER TABLE "public"."townhall_turns" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."townhall_turns"."ai_thinking" IS 'AI reasoning steps captured in verbose mode (array of strings)';
-
 
 
 CREATE TABLE IF NOT EXISTS "public"."usage_logs" (
@@ -4488,26 +3979,6 @@ ALTER TABLE ONLY "public"."conversations"
 
 
 
-ALTER TABLE ONLY "public"."dataset_row_field_taxonomy"
-    ADD CONSTRAINT "dataset_row_field_taxonomy_dataset_id_row_id_field_key" UNIQUE ("dataset_id", "row_id", "field");
-
-
-
-ALTER TABLE ONLY "public"."dataset_row_field_taxonomy"
-    ADD CONSTRAINT "dataset_row_field_taxonomy_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."dataset_row_taxonomy"
-    ADD CONSTRAINT "dataset_row_taxonomy_dataset_id_row_id_key" UNIQUE ("dataset_id", "row_id");
-
-
-
-ALTER TABLE ONLY "public"."dataset_row_taxonomy"
-    ADD CONSTRAINT "dataset_row_taxonomy_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."dataset_rows_flat"
     ADD CONSTRAINT "dataset_rows_flat_pkey" PRIMARY KEY ("id");
 
@@ -4778,26 +4249,6 @@ ALTER TABLE ONLY "public"."townhall_participant_responses"
 
 
 
-ALTER TABLE ONLY "public"."townhall_sessions"
-    ADD CONSTRAINT "townhall_sessions_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."townhall_sessions"
-    ADD CONSTRAINT "townhall_sessions_slug_key" UNIQUE ("slug");
-
-
-
-ALTER TABLE ONLY "public"."townhall_themes"
-    ADD CONSTRAINT "townhall_themes_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."townhall_turns"
-    ADD CONSTRAINT "townhall_turns_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."usage_logs"
     ADD CONSTRAINT "usage_logs_pkey" PRIMARY KEY ("id");
 
@@ -4934,86 +4385,6 @@ CREATE INDEX "conversations_org_created_idx" ON "public"."conversations" USING "
 
 
 CREATE INDEX "datasets_brand_collection_idx" ON "public"."datasets" USING "btree" ("brand_collection_id") WHERE ("brand_collection_id" IS NOT NULL);
-
-
-
-CREATE INDEX "drft_alert_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("alert_tags");
-
-
-
-CREATE INDEX "drft_ambiance_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_ambiance");
-
-
-
-CREATE INDEX "drft_attribute_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_attribute");
-
-
-
-CREATE INDEX "drft_beverage_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_beverage");
-
-
-
-CREATE INDEX "drft_context_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_context");
-
-
-
-CREATE INDEX "drft_dataset_field_row_idx" ON "public"."dataset_row_field_taxonomy" USING "btree" ("dataset_id", "field", "row_id");
-
-
-
-CREATE INDEX "drft_org_dataset_field_idx" ON "public"."dataset_row_field_taxonomy" USING "btree" ("org_id", "dataset_id", "field");
-
-
-
-CREATE INDEX "drft_outcome_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_outcome");
-
-
-
-CREATE INDEX "drft_product_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_product");
-
-
-
-CREATE INDEX "drft_touchpoint_gin" ON "public"."dataset_row_field_taxonomy" USING "gin" ("axis_touchpoint");
-
-
-
-CREATE INDEX "drt_alert_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("alert_tags");
-
-
-
-CREATE INDEX "drt_ambiance_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_ambiance");
-
-
-
-CREATE INDEX "drt_attribute_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_attribute");
-
-
-
-CREATE INDEX "drt_beverage_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_beverage");
-
-
-
-CREATE INDEX "drt_context_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_context");
-
-
-
-CREATE INDEX "drt_dataset_row_idx" ON "public"."dataset_row_taxonomy" USING "btree" ("dataset_id", "row_id");
-
-
-
-CREATE INDEX "drt_org_dataset_idx" ON "public"."dataset_row_taxonomy" USING "btree" ("org_id", "dataset_id");
-
-
-
-CREATE INDEX "drt_outcome_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_outcome");
-
-
-
-CREATE INDEX "drt_product_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_product");
-
-
-
-CREATE INDEX "drt_touchpoint_gin" ON "public"."dataset_row_taxonomy" USING "gin" ("axis_touchpoint");
 
 
 
@@ -5429,42 +4800,6 @@ CREATE INDEX "idx_th_responses_session" ON "public"."townhall_participant_respon
 
 
 
-CREATE INDEX "idx_townhall_sessions_org" ON "public"."townhall_sessions" USING "btree" ("org_id");
-
-
-
-CREATE INDEX "idx_townhall_sessions_status" ON "public"."townhall_sessions" USING "btree" ("status");
-
-
-
-CREATE INDEX "idx_townhall_themes_round" ON "public"."townhall_themes" USING "btree" ("session_id", "round_number");
-
-
-
-CREATE INDEX "idx_townhall_themes_session" ON "public"."townhall_themes" USING "btree" ("session_id");
-
-
-
-CREATE INDEX "idx_townhall_themes_state" ON "public"."townhall_themes" USING "btree" ("session_id", "state");
-
-
-
-CREATE INDEX "idx_townhall_turns_participant" ON "public"."townhall_turns" USING "btree" ("session_id", "participant_id");
-
-
-
-CREATE INDEX "idx_townhall_turns_session" ON "public"."townhall_turns" USING "btree" ("session_id");
-
-
-
-CREATE INDEX "idx_townhall_turns_session_created" ON "public"."townhall_turns" USING "btree" ("session_id", "created_at" DESC);
-
-
-
-CREATE INDEX "idx_townhall_turns_theme" ON "public"."townhall_turns" USING "btree" ("theme_id");
-
-
-
 CREATE INDEX "idx_ul_source" ON "public"."user_locations" USING "btree" ("review_source_id");
 
 
@@ -5681,10 +5016,6 @@ CREATE OR REPLACE TRIGGER "studies_updated_at" BEFORE UPDATE ON "public"."studie
 
 
 
-CREATE OR REPLACE TRIGGER "townhall_sessions_updated_at" BEFORE UPDATE ON "public"."townhall_sessions" FOR EACH ROW EXECUTE FUNCTION "public"."touch_updated_at"();
-
-
-
 CREATE OR REPLACE TRIGGER "trg_drf_tsv" BEFORE INSERT OR UPDATE OF "data" ON "public"."dataset_rows_flat" FOR EACH ROW EXECUTE FUNCTION "public"."drf_tsv_trigger"();
 
 
@@ -5878,16 +5209,6 @@ ALTER TABLE ONLY "public"."conversation_turns"
 
 ALTER TABLE ONLY "public"."conversations"
     ADD CONSTRAINT "conversations_bot_id_fkey" FOREIGN KEY ("bot_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."dataset_row_field_taxonomy"
-    ADD CONSTRAINT "dataset_row_field_taxonomy_dataset_id_fkey" FOREIGN KEY ("dataset_id") REFERENCES "public"."datasets"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."dataset_row_taxonomy"
-    ADD CONSTRAINT "dataset_row_taxonomy_dataset_id_fkey" FOREIGN KEY ("dataset_id") REFERENCES "public"."datasets"("id") ON DELETE CASCADE;
 
 
 
@@ -6247,37 +5568,7 @@ ALTER TABLE ONLY "public"."pulseiq_sessions"
 
 
 ALTER TABLE ONLY "public"."townhall_participant_responses"
-    ADD CONSTRAINT "townhall_participant_responses_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."townhall_sessions"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."townhall_participant_responses"
     ADD CONSTRAINT "townhall_participant_responses_town_hall_id_fkey" FOREIGN KEY ("town_hall_id") REFERENCES "public"."pulseiq_sessions"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."townhall_sessions"
-    ADD CONSTRAINT "townhall_sessions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
-
-
-
-ALTER TABLE ONLY "public"."townhall_sessions"
-    ADD CONSTRAINT "townhall_sessions_study_id_fkey" FOREIGN KEY ("study_id") REFERENCES "public"."studies"("id") ON DELETE SET NULL;
-
-
-
-ALTER TABLE ONLY "public"."townhall_themes"
-    ADD CONSTRAINT "townhall_themes_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."townhall_sessions"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."townhall_turns"
-    ADD CONSTRAINT "townhall_turns_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."townhall_sessions"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."townhall_turns"
-    ADD CONSTRAINT "townhall_turns_theme_id_fkey" FOREIGN KEY ("theme_id") REFERENCES "public"."townhall_themes"("id") ON DELETE SET NULL;
 
 
 
@@ -6563,24 +5854,6 @@ CREATE POLICY "creator can upsert dataset_state" ON "public"."dataset_state" USI
 
 
 
-ALTER TABLE "public"."dataset_row_field_taxonomy" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "dataset_row_field_taxonomy_org_read" ON "public"."dataset_row_field_taxonomy" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
-   FROM "public"."users"
-  WHERE ("users"."id" = "auth"."uid"()))));
-
-
-
-ALTER TABLE "public"."dataset_row_taxonomy" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "dataset_row_taxonomy_org_read" ON "public"."dataset_row_taxonomy" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
-   FROM "public"."users"
-  WHERE ("users"."id" = "auth"."uid"()))));
-
-
-
 ALTER TABLE "public"."dataset_rows" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6746,28 +6019,6 @@ CREATE POLICY "org members read review_downloads" ON "public"."review_downloads"
 CREATE POLICY "org members read studies" ON "public"."studies" FOR SELECT USING (("org_id" IN ( SELECT "users"."org_id"
    FROM "public"."users"
   WHERE ("users"."id" = "auth"."uid"()))));
-
-
-
-CREATE POLICY "org members read townhall_sessions" ON "public"."townhall_sessions" FOR SELECT USING (("org_id" IN ( SELECT "users"."org_id"
-   FROM "public"."users"
-  WHERE ("users"."id" = "auth"."uid"()))));
-
-
-
-CREATE POLICY "org members read townhall_themes" ON "public"."townhall_themes" FOR SELECT USING (("session_id" IN ( SELECT "townhall_sessions"."id"
-   FROM "public"."townhall_sessions"
-  WHERE ("townhall_sessions"."org_id" IN ( SELECT "users"."org_id"
-           FROM "public"."users"
-          WHERE ("users"."id" = "auth"."uid"()))))));
-
-
-
-CREATE POLICY "org members read townhall_turns" ON "public"."townhall_turns" FOR SELECT USING (("session_id" IN ( SELECT "townhall_sessions"."id"
-   FROM "public"."townhall_sessions"
-  WHERE ("townhall_sessions"."org_id" IN ( SELECT "users"."org_id"
-           FROM "public"."users"
-          WHERE ("users"."id" = "auth"."uid"()))))));
 
 
 
@@ -7083,45 +6334,6 @@ CREATE POLICY "th_responses_anon_insert" ON "public"."townhall_participant_respo
 ALTER TABLE "public"."townhall_participant_responses" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."townhall_sessions" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "townhall_sessions_insert" ON "public"."townhall_sessions" FOR INSERT WITH CHECK (("public"."is_platform_admin"() OR ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "townhall_sessions_select" ON "public"."townhall_sessions" FOR SELECT USING (("public"."is_platform_admin"() OR ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "townhall_sessions_update" ON "public"."townhall_sessions" FOR UPDATE USING (("public"."is_platform_admin"() OR ("org_id" = "public"."current_org_id"())));
-
-
-
-ALTER TABLE "public"."townhall_themes" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "townhall_themes_select" ON "public"."townhall_themes" FOR SELECT USING (("public"."is_platform_admin"() OR ("session_id" IN ( SELECT "townhall_sessions"."id"
-   FROM "public"."townhall_sessions"
-  WHERE ("townhall_sessions"."org_id" = "public"."current_org_id"())))));
-
-
-
-CREATE POLICY "townhall_themes_update" ON "public"."townhall_themes" FOR UPDATE USING (("public"."is_platform_admin"() OR ("session_id" IN ( SELECT "townhall_sessions"."id"
-   FROM "public"."townhall_sessions"
-  WHERE ("townhall_sessions"."org_id" = "public"."current_org_id"())))));
-
-
-
-ALTER TABLE "public"."townhall_turns" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "townhall_turns_select" ON "public"."townhall_turns" FOR SELECT USING (("public"."is_platform_admin"() OR ("session_id" IN ( SELECT "townhall_sessions"."id"
-   FROM "public"."townhall_sessions"
-  WHERE ("townhall_sessions"."org_id" = "public"."current_org_id"())))));
-
-
-
 ALTER TABLE "public"."usage_logs" ENABLE ROW LEVEL SECURITY;
 
 
@@ -7379,12 +6591,6 @@ GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_g
 
 
 
-GRANT ALL ON FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."increment_townhall_response_counter"("p_session_id" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."is_platform_admin"() TO "anon";
 GRANT ALL ON FUNCTION "public"."is_platform_admin"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_platform_admin"() TO "service_role";
@@ -7578,13 +6784,6 @@ GRANT ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."townhall_session_counts_for_ids"("p_session_ids" "uuid"[]) TO "service_role";
 
 
 
@@ -7788,18 +6987,6 @@ GRANT ALL ON TABLE "public"."conversation_turns" TO "service_role";
 GRANT ALL ON TABLE "public"."conversations" TO "anon";
 GRANT ALL ON TABLE "public"."conversations" TO "authenticated";
 GRANT ALL ON TABLE "public"."conversations" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."dataset_row_field_taxonomy" TO "anon";
-GRANT ALL ON TABLE "public"."dataset_row_field_taxonomy" TO "authenticated";
-GRANT ALL ON TABLE "public"."dataset_row_field_taxonomy" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."dataset_row_taxonomy" TO "anon";
-GRANT ALL ON TABLE "public"."dataset_row_taxonomy" TO "authenticated";
-GRANT ALL ON TABLE "public"."dataset_row_taxonomy" TO "service_role";
 
 
 
@@ -8065,45 +7252,9 @@ GRANT ALL ON TABLE "public"."study_stats" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."town_hall_conversations" TO "anon";
-GRANT ALL ON TABLE "public"."town_hall_conversations" TO "authenticated";
-GRANT ALL ON TABLE "public"."town_hall_conversations" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."town_hall_topics" TO "anon";
-GRANT ALL ON TABLE "public"."town_hall_topics" TO "authenticated";
-GRANT ALL ON TABLE "public"."town_hall_topics" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."town_halls" TO "anon";
-GRANT ALL ON TABLE "public"."town_halls" TO "authenticated";
-GRANT ALL ON TABLE "public"."town_halls" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."townhall_participant_responses" TO "anon";
 GRANT ALL ON TABLE "public"."townhall_participant_responses" TO "authenticated";
 GRANT ALL ON TABLE "public"."townhall_participant_responses" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."townhall_sessions" TO "anon";
-GRANT ALL ON TABLE "public"."townhall_sessions" TO "authenticated";
-GRANT ALL ON TABLE "public"."townhall_sessions" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."townhall_themes" TO "anon";
-GRANT ALL ON TABLE "public"."townhall_themes" TO "authenticated";
-GRANT ALL ON TABLE "public"."townhall_themes" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."townhall_turns" TO "anon";
-GRANT ALL ON TABLE "public"."townhall_turns" TO "authenticated";
-GRANT ALL ON TABLE "public"."townhall_turns" TO "service_role";
 
 
 
