@@ -28,7 +28,17 @@ Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`.
 > added. Explicit non-DB posture: **Supabase Storage binaries (recording
 > media, logos) are NOT in org snapshots** — they rely on Supabase Storage
 > durability; an S3 bucket-sync is a future hardening item. Regenerable AI
-> caches (readout/study) and demo scratch are skipped with reasons. Grouped by how the org filter is applied:
+> caches (readout/study) and demo scratch are skipped with reasons.
+>
+> **<TBD: snapshot v2 — streamed, uncapped>** The per-table caps (50K flat
+> rows, 500K taxonomy) exist ONLY because the nightly snapshot builds one
+> JSON document in a serverless function's memory. Owner flagged 2026-07-03
+> that 128K taxonomy rows exist pre-production — one real client pilot adds
+> ~300K, so caps will truncate real tenants quickly. The fix is structural,
+> not bigger numbers: stream each table to S3 as its own NDJSON part
+> (constant memory, no caps, resumable restore). Required before the first
+> client whose data outgrows the caps; pairs with deploy-behind-CI on the
+> client-readiness list. Grouped by how the org filter is applied:
 
 - **By `org_id` directly**: agents (formerly `bots`), studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, conversations, conversation_turns, pulseiq_sessions, pulseiq_session_conversations, pulseiq_topics, etc.
 - **Via a parent table** (e.g. `bot_id IN (SELECT id FROM agents WHERE org_id = $1)`): agent_knowledge_chunks, agent_conversation_reviews, bot_conversation_turns (transitional, drops at Tier 5), responses, campaign_emails, etc.
