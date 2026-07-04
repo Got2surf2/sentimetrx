@@ -1,6 +1,6 @@
  
-// Generalized taxonomy classifier driver — keyword tier, persists to
-// dataset_row_taxonomy for ANY dataset. Replaces the RC/Chuy's one-offs
+// Generalized taxonomy classifier driver — keyword tier, embeds verdicts into
+// dataset_rows_flat.data._tx (sql/151) for ANY dataset. Replaces the RC/Chuy's one-offs
 // (pilot-rc-classify is AI-tier + RC-hardcoded; chuys-classify was console-only).
 //
 // Run:

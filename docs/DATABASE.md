@@ -88,13 +88,13 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | Table | Purpose |
 |---|---|
 | `datasets` | Analysis container: name, source (`csv/google_reviews/reddit/townhall/recording/…`), `row_count`, sync state. |
-| `dataset_rows_flat` | **Sole source of truth for rows.** One row per record, `data` JSONB blob — one table stores wildly different shapes (survey answers, Google reviews, town-hall turns). No `org_id`; scopes via `dataset_id`. |
+| `dataset_rows_flat` | **Sole source of truth for rows.** One row per record, `data` JSONB blob — one table stores wildly different shapes (survey answers, Google reviews, town-hall turns). No `org_id`; scopes via `dataset_id`. The reserved `data._tx` key carries the row's per-field taxonomy verdicts (sql/151) — app metadata, never a dataset column (skipped by schema detection, the rows API, and the FTS trigger). |
 | `dataset_state` | Per-dataset analysis state: `schema_config` (field types/stats, grown by `mergeSchemaStats`), `theme_model`, analytics cache, entity settings. |
 | `dataset_rows` / `archived_dataset_rows(_flat)` | (legacy) v1 batched row storage + archives; removed from all read paths May 2026. |
 | `collections` | Grouping of datasets (`kind='brand'` = Brand Profile); cached merged schema/themes. |
 | `collection_members` | Link table: datasets in a collection. |
 | `entity_catalog` / `entity_catalog_refresh` | Canonical entity registry (polymorphic `scope_type`/`scope_id` — dataset/collection/bot; NO org_id) and refresh bookkeeping. Regenerable via entity discovery; excluded from org snapshots (2026-07-03). |
-| `dataset_row_taxonomy` / `dataset_row_field_taxonomy` | Per-row / per-field taxonomy classifications (RC pilot + productized Domain›Aspect). |
+| `dataset_row_taxonomy` / `dataset_row_field_taxonomy` | (retiring) Sidecar taxonomy verdicts — superseded 2026-07-04 by the embedded `dataset_rows_flat.data._tx` block + rollups in `dataset_state.analytics.taxonomy` (sql/151); tables + RPC fallback legs drop via sql/152 after the prod backfill verifies. |
 | `reo_gold_review` | REO taxonomy gold-set: owner-graded extraction drafts for calibration. |
 | `saved_views` | Saved filter/view definitions on a dataset. |
 

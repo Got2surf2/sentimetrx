@@ -224,6 +224,9 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
                     {isExpanded && (
                       <div style={{ marginTop: 10, padding: 10, background: T.bgCard, borderRadius: 8, border: '1px solid ' + T.border }}>
                         {Object.entries(r.data).map(function(e) {
+                          // Skip reserved metadata keys (e.g. the _tx taxonomy
+                          // block) — internals, not row fields.
+                          if (e[0].startsWith('_')) return null
                           var val = String(e[1] ?? '')
                           if (!val || val === 'none' || val === 'null') return null
                           // Comment text is already shown in full above; don't repeat it

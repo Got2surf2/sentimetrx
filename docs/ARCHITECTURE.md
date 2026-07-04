@@ -252,6 +252,34 @@ clone-down territory. `promotions/` is gitignored (manifests can carry
 client prompts). Anything configurable a manifest doesn't capture is a
 promotion-framework bug, not a reason to hand-edit prod.
 
+## D14. Per-row enrichments embed in the blob, not sidecar tables
+
+**Decision:** Derived per-row artifacts that must live and die with the row —
+starting with taxonomy verdicts (sql/151, 2026-07-04) — are embedded in
+`dataset_rows_flat.data` under a **reserved underscore key** (`_tx`;
+registry in `lib/taxonomyEmbed.ts` `RESERVED_ROW_KEYS`), with aggregates
+stored beside the schema in `dataset_state` (`analytics.taxonomy`) so
+dashboards never scan blobs. Sidecar row-tables keyed by `row_id` are the
+rejected default.
+
+**Why:** The taxonomy sidecars minted one row per (row, field) verdict —
+128K rows before the first client; a 1M-comment dataset would mint 5–7M.
+Worse, a sidecar has an independent lifecycle, and every lifecycle event
+must remember it exists: they were MISSING from org backups until
+2026-07-03, and the org-clone restore re-identified flat rows without
+remapping sidecar `row_id`s — silently dangling every cloned verdict
+(found 2026-07-04). Embedded enrichments ride backup/restore/clone/delete
+with the row; the failure class is structural, not a checklist item.
+
+**Consequences:** Reserved keys are app metadata, never dataset columns —
+schema detection, the rows API projection, AI row-context, search
+rendering, and the Postgres `tsv` trigger all skip them, and any new
+enumerator of data keys must too (`isReservedRowKey`). Re-classification
+overwrites in place (no verdict history — owner call 2026-07-03). Server
+aggregation reads the blob per dataset (jsonb ops; the `data` GIN index
+serves containment probes). And anything that rewrites a whole `data`
+object must carry `_tx` through or knowingly drop it.
+
 ---
 
 *Add a D-entry when a decision (a) shapes more than one module, (b) would

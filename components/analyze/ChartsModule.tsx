@@ -1956,7 +1956,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   // Inject virtual "Dimensions" fields (one per taxonomy axis) when the dataset
   // carries taxonomy classification. Values + averages are computed server-side
-  // from the stored dataset_row_taxonomy tags via the tax_* /aggregate ops —
+  // from the verdicts embedded in data._tx via the tax_* /aggregate ops —
   // gated to google_reviews (where the restaurant taxonomy is meaningful),
   // matching the Dimensions sub-tab gate.
   var hasDimensions = !!taxonomyEnabled || (datasetSource === 'google_reviews' && !taxonomySuppressed)

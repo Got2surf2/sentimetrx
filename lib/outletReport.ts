@@ -313,7 +313,18 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   const byId = new Map<number, any>()
   for (const r of flat) byId.set(Number(r.id), r.data)
 
-  const tax = await pageAll('dataset_row_field_taxonomy', 'row_id, assertions', datasetId)
+  // Taxonomy verdicts ride on the flat rows themselves (data._tx, sql/151) —
+  // one entry per classified field; same (row, field) granularity the sidecar
+  // table had.
+  type TaxAssertion = { axis: string; sub: string; polarity?: string; evidence?: string }
+  const tax: { row_id: number; assertions: TaxAssertion[] }[] = []
+  for (const r of flat) {
+    const fieldBlocks = (r.data as { _tx?: { f?: Record<string, { as?: TaxAssertion[] }> } })?._tx?.f
+    if (!fieldBlocks) continue
+    for (const block of Object.values(fieldBlocks)) {
+      tax.push({ row_id: Number(r.id), assertions: block?.as ?? [] })
+    }
+  }
 
   const outlets = new Map<string, Outlet>()
   const getOutlet = (d: any): Outlet | null => {
@@ -412,7 +423,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     if (!o) continue
     o.dimClassified++
     for (const a of (t.assertions || [])) {
-      if (!AXES.includes(a.axis)) continue
+      if (!(AXES as readonly string[]).includes(a.axis)) continue
       if (isNoiseAssertion(a)) continue
       const key = `${a.axis}:${a.sub}`
       const cu = dimChain.get(key) || (dimChain.set(key, newAcc()), dimChain.get(key)!)

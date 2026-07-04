@@ -1,12 +1,20 @@
 // lib/taxonomyRollup.ts
-// The tag-analytics model: read persisted dataset_row_taxonomy rows and roll
-// them up into axis/sub mention rates, sentiment, and alert counts — the shape
-// the in-app Taxonomy tab and any deck consume. `aggregateTaxonomy` is pure
-// (over an in-memory row array) so it's unit-testable; `computeTaxonomyRollup`
-// adds the org-scoped paged read.
+// The tag-analytics model: read the per-row verdicts embedded in
+// dataset_rows_flat.data._tx (sql/151) and roll them up into axis/sub mention
+// rates, sentiment, and alert counts — the shape the in-app Taxonomy tab and
+// any deck consume. `aggregateTaxonomy` is pure (over an in-memory row array)
+// so it's unit-testable; `computeTaxonomyRollup` adds the paged read (org
+// access is gated by callers per the route contract; dataset_rows_flat scopes
+// through dataset_id per ARCHITECTURE.md D2).
+//
+// The completed rollup is STORED in dataset_state.analytics.taxonomy at
+// classify time (updateStoredTaxonomyRollup) so dashboards read aggregates
+// instead of scanning blobs; readStoredTaxonomyRollup is the fast path.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
+import { blockAxisSubs, TAXONOMY_VERSION, type TaxonomyFieldBlock } from './taxonomyEmbed'
+import { mergeDatasetAnalytics } from './datasetAnalytics'
 import { deriveTrendWindows } from './trendWindows'
 import { logError } from './log'
 
@@ -147,9 +155,27 @@ async function detectRatingField(service: SupabaseClient, datasetId: string): Pr
   }
 }
 
-/** Org-scoped paged read + aggregate, for ONE open-ended field. Pairs
- *  (dataset_id, org_id) per invariant and filters to the field's tags so the
- *  Dimensions view reflects whichever open-end the user is analyzing. */
+/** Map an embedded field block to the axis-array row shape aggregateTaxonomy
+ *  consumes (kept stable so the pure aggregate + its unit tests don't move). */
+function blockToTaxonomyRow(block: TaxonomyFieldBlock | null): TaxonomyRow {
+  return {
+    axis_touchpoint: blockAxisSubs(block, 'touchpoint'),
+    axis_attribute:  blockAxisSubs(block, 'attribute'),
+    axis_product:    blockAxisSubs(block, 'product'),
+    axis_beverage:   blockAxisSubs(block, 'beverage'),
+    axis_ambiance:   blockAxisSubs(block, 'ambiance'),
+    axis_context:    blockAxisSubs(block, 'context'),
+    axis_outcome:    blockAxisSubs(block, 'outcome'),
+    alert_tags:      block?.al ?? [],
+    assertions:      block?.as ?? [],
+  }
+}
+
+/** Paged read + aggregate over the embedded verdicts, for ONE field key. The
+ *  taxonomy_rows_for_field RPC returns the block PLUS the row's rating/date
+ *  values (same row now — the sidecar version needed two extra lookups per
+ *  page); field names are bind params so survey-question keys with spaces or
+ *  commas work. Callers gate org access before calling (route contract). */
 export async function computeTaxonomyRollup(opts: {
   service: SupabaseClient; datasetId: string; orgId: string; field: string; topSubs?: number
   /** When set, also compute recent/prior-window rollups bucketed by this date
@@ -158,65 +184,37 @@ export async function computeTaxonomyRollup(opts: {
 }): Promise<TaxonomyTrendRollup> {
   const { service, datasetId, orgId, field, topSubs, dateField } = opts
 
-  // Resolve the rating field once (dynamic — supports survey/aliased fields, not
-  // just a literal `rating` column). The key can carry spaces/commas/apostrophes
-  // (survey question text), which a PostgREST select string can't express, so
-  // values are fetched via the dataset_field_values RPC (field passed as a bind
-  // param). A plain `rating`-named field still uses the direct select so existing
-  // google_reviews rollups don't depend on the new RPC being applied first.
+  // Resolve the rating field once (dynamic — supports survey/aliased fields,
+  // not just a literal `rating` column). Aliased fields store a text label →
+  // resolve via the alias map after the fetch.
   const { field: ratingField, aliases } = await detectRatingField(service, datasetId)
-  const useDirectSelect = ratingField === 'rating' && !aliases
 
   const all: TaxonomyRow[] = []
   let from = 0
   for (;;) {
-    const { data, error } = await service
-      .from('dataset_row_field_taxonomy')
-      .select('row_id,axis_touchpoint,axis_attribute,axis_product,axis_beverage,axis_ambiance,axis_context,axis_outcome,alert_tags,assertions')
-      .eq('dataset_id', datasetId)
-      .eq('org_id', orgId)
-      .eq('field', field)
-      .range(from, from + PAGE - 1)
+    const { data, error } = await service.rpc('taxonomy_rows_for_field', {
+      p_dataset_id: datasetId, p_field_key: field,
+      p_rating_field: ratingField, p_date_field: dateField ?? null,
+      p_offset: from, p_limit: PAGE,
+    })
     if (error) throw new Error(error.message)
-    if (!data || data.length === 0) break
-    const page = data as unknown as (TaxonomyRow & { row_id: number })[]
+    const page = (data ?? []) as { row_id: number; tx: TaxonomyFieldBlock | null; rating_val: string | null; date_val: string | null }[]
+    if (page.length === 0) break
 
-    // Attach each row's star rating (for avg-rating-per-dimension) from the flat
-    // table — fetch only the rating value, keyed by row_id, for this page.
-    const ids = page.map(r => r.row_id).filter((x): x is number => x != null)
-    if (ids.length) {
-      const ratingById = new Map<number, number>()
-      const rows: { id: number; val: string | null }[] = useDirectSelect
-        ? ((await service.from('dataset_rows_flat').select('id, val:data->>rating').in('id', ids)).data as unknown as { id: number; val: string | null }[] || [])
-        : ((await service.rpc('dataset_field_values', { p_dataset_id: datasetId, p_field: ratingField, p_ids: ids })).data as { id: number; val: string | null }[] || [])
-      for (const r of rows) {
-        // Remapped fields store a text label → resolve via the alias map; plain
-        // numeric fields parse directly.
-        const mapped = aliases && r.val != null ? aliases[r.val] : r.val
-        const v = mapped != null ? parseFloat(mapped) : NaN
-        if (!isNaN(v)) ratingById.set(r.id, v)
-      }
-      for (const r of page) r.rating = ratingById.get(r.row_id) ?? null
-
-      // Attach each row's timestamp (for recent/prior trend windows). Best-effort:
-      // a simple `field` name uses a direct select; anything exotic (survey
-      // question text) goes through the bind-param RPC. Failure → no trend.
+    for (const r of page) {
+      const row = blockToTaxonomyRow(r.tx)
+      const mapped = aliases && r.rating_val != null ? aliases[r.rating_val] : r.rating_val
+      const v = mapped != null ? parseFloat(mapped) : NaN
+      row.rating = isNaN(v) ? null : v
       if (dateField) {
-        try {
-          const dateById = new Map<number, number>()
-          const simple = /^[a-z0-9_]+$/i.test(dateField)
-          const drows: { id: number; val: string | null }[] = simple
-            ? ((await service.from('dataset_rows_flat').select(`id, val:data->>${dateField}`).in('id', ids)).data as unknown as { id: number; val: string | null }[] || [])
-            : ((await service.rpc('dataset_field_values', { p_dataset_id: datasetId, p_field: dateField, p_ids: ids })).data as { id: number; val: string | null }[] || [])
-          for (const r of drows) { const t = r.val != null ? Date.parse(String(r.val)) : NaN; if (isFinite(t)) dateById.set(r.id, t) }
-          for (const r of page) r.dateMs = dateById.get(r.row_id) ?? null
-        } catch { /* leave dateMs undefined → no trend */ }
+        const t = r.date_val != null ? Date.parse(String(r.date_val)) : NaN
+        row.dateMs = isFinite(t) ? t : null
       }
+      all.push(row)
     }
 
-    all.push(...page)
-    from += data.length
-    if (data.length < PAGE) break
+    from += page.length
+    if (page.length < PAGE) break
   }
   const rollup = aggregateTaxonomy(all, topSubs)
 
@@ -261,4 +259,56 @@ export async function computeTaxonomyRollup(opts: {
   }
 
   return { ...rollup, recent, prior, windowLabel }
+}
+
+// ── Stored rollups (dataset_state.analytics.taxonomy) ────────────────────────
+// Written at classify completion; read by the Dimensions tab route as the fast
+// path (no blob scan) and by taxonomy_primary_field (sql/151) to resolve the
+// Charts dimension field. Shape:
+//   analytics.taxonomy = { fields: { [fieldKey]: StoredTaxonomyField } }
+
+export interface StoredTaxonomyField {
+  /** the real field names behind the combined key — reviewSync's auto-classify
+   *  safety net re-runs pending classification per entry without parsing the key */
+  selFields: string[]
+  rollup: TaxonomyRollup
+  updatedAt: string
+  version: string
+}
+
+export interface StoredTaxonomy { fields: Record<string, StoredTaxonomyField> }
+
+/** The stored taxonomy block, or null when the dataset has none. */
+export async function readStoredTaxonomy(
+  service: SupabaseClient,
+  datasetId: string,
+): Promise<StoredTaxonomy | null> {
+  const { data, error } = await service
+    .from('dataset_state').select('analytics').eq('dataset_id', datasetId).maybeSingle()
+  if (error) { void logError('taxonomyRollup.readStoredTaxonomy', error); return null }
+  const tax = (data?.analytics as { taxonomy?: StoredTaxonomy } | null)?.taxonomy
+  return tax && tax.fields && typeof tax.fields === 'object' ? tax : null
+}
+
+/** Recompute one field's rollup from the embedded verdicts and store it,
+ *  preserving other fields' entries. RMW on the `taxonomy` key only (the
+ *  merge RPC is atomic per top-level analytics key; concurrent classifies of
+ *  DIFFERENT fields are rare enough that last-writer-wins is acceptable). */
+export async function updateStoredTaxonomyRollup(opts: {
+  service: SupabaseClient; datasetId: string; orgId: string
+  field: string; selFields: string[]
+}): Promise<TaxonomyRollup> {
+  const { service, datasetId, orgId, field, selFields } = opts
+  const { recent: _r, prior: _p, windowLabel: _w, ...rollup } =
+    await computeTaxonomyRollup({ service, datasetId, orgId, field })
+  const cur = await readStoredTaxonomy(service, datasetId)
+  const next: StoredTaxonomy = { fields: { ...(cur?.fields ?? {}) } }
+  next.fields[field] = {
+    selFields,
+    rollup,
+    updatedAt: new Date().toISOString(),
+    version: TAXONOMY_VERSION,
+  }
+  await mergeDatasetAnalytics(service, datasetId, { taxonomy: next })
+  return rollup
 }

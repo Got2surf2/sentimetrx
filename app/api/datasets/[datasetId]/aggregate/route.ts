@@ -104,7 +104,7 @@ export async function POST(req: Request, props: Params) {
   }
 
   // ── Taxonomy ("Dimensions") aggregations — group by a multi-value axis ──
-  // axis subs come from dataset_row_taxonomy.axis_<a> (unnested); a row tagged
+  // axis subs come from the verdicts embedded in data._tx (sql/151); a row tagged
   // with several subs counts in each. Responses mirror the scalar ops above so
   // chart components consume them unchanged.
   var TAX_AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome']

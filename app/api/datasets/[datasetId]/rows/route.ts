@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { ROWS_PER_BATCH } from '@/lib/constants'
+import { stripReservedRowKeys } from '@/lib/taxonomyEmbed'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
@@ -76,9 +77,12 @@ async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
-// Project a row down to only the requested fields
+// Project a row down to only the requested fields. Unprojected rows are
+// stripped of reserved metadata keys (data._tx taxonomy block, sql/151) —
+// they're app internals, not dataset columns, and TextMine's bulk fetch would
+// otherwise ship every classified row's assertions to the client.
 function projectRow(row: Record<string, unknown>, fieldSet: Set<string> | null): Record<string, unknown> {
-  if (!fieldSet) return row
+  if (!fieldSet) return stripReservedRowKeys(row)
   const out: Record<string, unknown> = {}
   fieldSet.forEach(function(f) { if (f in row) out[f] = row[f] })
   return out
@@ -225,7 +229,7 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
       var { data: flatRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', memberId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
       if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
       for (var fi = 0; fi < flatRows.length; fi++) {
-        reservoir.push({ ...flatRows[fi].data, _collection_label: label })
+        reservoir.push({ ...stripReservedRowKeys(flatRows[fi].data), _collection_label: label })
       }
       if (flatRows.length < FLAT_PAGE) fetchMore = false
       offset += FLAT_PAGE

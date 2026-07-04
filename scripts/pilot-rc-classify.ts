@@ -1,9 +1,11 @@
 /* eslint-disable */
-// Ruth's Chris taxonomy pilot — classifier driver.
+// Ruth's Chris taxonomy pilot — classifier driver (AI tier).
 //
-// Reads dataset_rows_flat for the pilot dataset, runs classifyReview() from
-// lib/taxonomyExtractor.ts on each unclassified row, and upserts the result
-// into dataset_row_taxonomy.
+// Reads dataset_rows_flat for the pilot dataset, runs the extractor from
+// lib/taxonomyExtractor.ts on each unclassified row, and embeds the result
+// into the row blob (data._tx, sql/151) under the 'description' field key.
+// (The row's original Classification column stays available as data.legacy_tags
+// — the old sidecar's raw_legacy_tags copy was redundant.)
 //
 // Run: node_modules/.bin/tsx scripts/pilot-rc-classify.ts [--limit 50] [--concurrency 4] [--dataset-id <uuid>]
 //
@@ -13,9 +15,8 @@
 //   --dataset-id        defaults to the "Ruth's Chris (pilot) — Google Reviews 2024-2025"
 //                       dataset under the Datanautix admin org
 //
-// Idempotent: rows already present in dataset_row_taxonomy are skipped (a
-// UNIQUE constraint on (dataset_id, row_id) prevents dupes anyway, but the
-// skip avoids burning model spend on already-classified rows).
+// Idempotent: rows whose blob already carries a 'description' verdict are
+// skipped, so a re-run never burns model spend on already-classified rows.
 
 import { readFileSync } from 'fs'
 import path from 'path'
@@ -31,12 +32,14 @@ import {
   buildSystemPrompt,
   buildUserMessage,
   parseExtractorOutput,
-  projectAxes,
   PROMPT_VERSION,
 } from '../lib/taxonomyExtractor'
-import { mapLegacyLabels } from '../lib/taxonomyMapping'
 import { classifyByKeyword, mergeAssertions } from '../lib/taxonomyKeywordMatcher'
-import type { Assertion, Axis } from '../lib/taxonomyVocabulary'
+import { buildFieldBlock } from '../lib/taxonomyEmbed'
+import type { Assertion } from '../lib/taxonomyVocabulary'
+
+// The pilot classifies the RC CSV's review column.
+const FIELD_KEY = 'description'
 
 const MODEL = 'claude-haiku-4-5-20251001'
 
@@ -116,33 +119,33 @@ async function main() {
     console.log(`Resolved dataset: ${datasetId} (row_count=${ds[0].row_count})`)
   }
 
-  // Find already-classified row ids (skip unless --force)
-  let done = new Set<number>()
-  if (!force) {
-    const { data: existingRows, error: exErr } = await service
-      .from('dataset_row_taxonomy')
-      .select('row_id')
-      .eq('dataset_id', datasetId)
-      .eq('org_id', ADMIN_ORG_ID)
-    if (exErr) throw exErr
-    done = new Set<number>((existingRows ?? []).map((r: any) => r.row_id))
-    console.log(`Already classified: ${done.size} rows (skip with --force to re-classify)`)
-  } else {
-    console.log(`--force: ignoring existing rows; will overwrite via upsert`)
+  // Pull rows, skipping already-classified ones (their blob carries a
+  // FIELD_KEY verdict) unless --force. Paged so the skip set can't outgrow a
+  // single overfetch.
+  if (force) console.log(`--force: ignoring existing verdicts; will overwrite in place`)
+  const todo: FlatRow[] = []
+  {
+    const PAGE = 1000
+    let from = 0
+    while (todo.length < limit) {
+      const { data: rows, error: rowErr } = await service
+        .from('dataset_rows_flat')
+        .select('id, row_index, data')
+        .eq('dataset_id', datasetId)
+        .order('row_index', { ascending: true })
+        .order('id', { ascending: true })   // stable pages while we UPDATE the same table
+        .range(from, from + PAGE - 1)
+      if (rowErr) throw rowErr
+      if (!rows || rows.length === 0) break
+      for (const r of rows as any[]) {
+        if (!force && r.data?._tx?.f?.[FIELD_KEY]) continue
+        todo.push(r)
+        if (todo.length >= limit) break
+      }
+      if (rows.length < PAGE) break
+      from += PAGE
+    }
   }
-
-  // Pull next batch of unclassified rows
-  const { data: rows, error: rowErr } = await service
-    .from('dataset_rows_flat')
-    .select('id, row_index, data')
-    .eq('dataset_id', datasetId)
-    .order('row_index', { ascending: true })
-    .limit(limit + done.size + 100)  // overfetch so we can skip done rows
-  if (rowErr) throw rowErr
-
-  const todo: FlatRow[] = ((rows ?? []) as any[])
-    .filter(r => !done.has(r.id))
-    .slice(0, limit)
   console.log(`Classifying ${todo.length} rows — mode=${mode}, concurrency=${concurrency}...`)
 
   let processed = 0
@@ -152,25 +155,12 @@ async function main() {
   async function classifyOne(row: FlatRow): Promise<void> {
     const text = row.data?.description ?? ''
     if (!text.trim()) {
-      // Empty review — write a no-op row so we don't keep retrying it
-      const legacy = mapLegacyLabels(row.data?.legacy_tags ?? [])
-      await service.from('dataset_row_taxonomy').upsert({
-        org_id:           ADMIN_ORG_ID,
-        dataset_id:       datasetId,
-        row_id:           row.id,
-        axis_touchpoint:  [],
-        axis_attribute:   [],
-        axis_product:     [],
-        axis_beverage:    [],
-        axis_ambiance:    [],
-        axis_context:     [],
-        axis_outcome:     [],
-        alert_tags:       [],
-        assertions:       [],
-        raw_legacy_tags:  legacy.canonical,
-        classified_by:    'skip:empty-review',
-        prompt_version:   null,
-      }, { onConflict: 'dataset_id,row_id' })
+      // Empty review — embed a no-op block so we don't keep retrying it
+      const { error } = await service.rpc('apply_taxonomy_verdicts', {
+        p_dataset_id: datasetId, p_field_key: FIELD_KEY,
+        p_items: [{ id: row.id, tx: buildFieldBlock([], { version: 'none', by: 'skip:empty-review', model: 'none' }) }],
+      })
+      if (error) { failed++; console.error(`Row ${row.id} embed failed: ${error.message}`); return }
       processed++
       return
     }
@@ -210,27 +200,18 @@ async function main() {
         promptVersion = llmResult.prompt_version
       }
 
-      const projected = projectAxes(merged)
-      const legacy = mapLegacyLabels(row.data?.legacy_tags ?? [])
-
-      await service.from('dataset_row_taxonomy').upsert({
-        org_id:           ADMIN_ORG_ID,
-        dataset_id:       datasetId,
-        row_id:           row.id,
-        axis_touchpoint:  projected.axis_touchpoint,
-        axis_attribute:   projected.axis_attribute,
-        axis_product:     projected.axis_product,
-        axis_beverage:    projected.axis_beverage,
-        axis_ambiance:    projected.axis_ambiance,
-        axis_context:     projected.axis_context,
-        axis_outcome:     projected.axis_outcome,
-        alert_tags:       projected.alert_tags,
-        assertions:       merged,
-        raw_legacy_tags:  legacy.canonical,
-        classified_by:    classifiedBy,
-        model_used:       modelUsed,
-        prompt_version:   promptVersion ?? (mode === 'keyword' ? 'keyword.v1' : PROMPT_VERSION),
-      }, { onConflict: 'dataset_id,row_id' })
+      const { error: embedErr } = await service.rpc('apply_taxonomy_verdicts', {
+        p_dataset_id: datasetId, p_field_key: FIELD_KEY,
+        p_items: [{
+          id: row.id,
+          tx: buildFieldBlock(merged, {
+            version: promptVersion ?? (mode === 'keyword' ? 'keyword.v1' : PROMPT_VERSION),
+            by: classifiedBy,
+            model: modelUsed,
+          }),
+        }],
+      })
+      if (embedErr) throw new Error(`embed failed: ${embedErr.message}`)
 
       processed++
       if (processed % 10 === 0) {

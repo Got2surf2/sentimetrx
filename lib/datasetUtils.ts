@@ -4,6 +4,7 @@
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
 import type { SurveyPayload, StudyConfig } from './types'
 import { ratingAliases } from './scaleUtils'
+import { isReservedRowKey } from './taxonomyEmbed'
 
 export function sanitizeColumnName(raw: string): string {
   return raw
@@ -36,6 +37,7 @@ export function applySchema(
   return rows.map(function(row) {
     const out: ProcessedRow = {}
     for (const [key, val] of Object.entries(row)) {
+      if (isReservedRowKey(key)) continue
       const cfg = fieldMap[key]
       if (cfg?.hidden) continue
       if (cfg?.type === 'ignore') continue
@@ -176,7 +178,10 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
   if (rows.length === 0) {
     return { fields: [], autoDetected: true, version: 1 }
   }
-  const columns = Object.keys(rows[0])
+  // Reserved row-metadata keys (data._tx taxonomy block, sql/151) are app
+  // internals, never dataset columns — detecting one would surface a bogus
+  // "[object Object]" categorical field.
+  const columns = Object.keys(rows[0]).filter(function(c) { return !isReservedRowKey(c) })
 
   const fields: SchemaFieldConfig[] = columns.map(function(col) {
     const colValues = rows.map(function(r) { return r[col] })

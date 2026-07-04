@@ -1,7 +1,7 @@
 // app/analyze/[datasetId]/taxonomy/page.tsx
-// Taxonomy module — the in-app tag-analytics view. Reads persisted
-// dataset_row_taxonomy via /api/datasets/[id]/taxonomy (no dataset_state
-// dependency), renders axis/sub rates + sentiment + alerts.
+// Taxonomy module — the in-app tag-analytics view. Reads the embedded
+// per-row verdicts (data._tx, sql/151) via /api/datasets/[id]/taxonomy,
+// renders axis/sub rates + sentiment + alerts.
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'

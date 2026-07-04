@@ -1,8 +1,8 @@
 // /api/admin/taxonomy-pilot/[datasetId]
 //
 // Admin-only paged read of rows + their taxonomy for the Ruth's Chris pilot.
-// Returns up to pageSize rows ordered by row_index, joined with
-// dataset_row_taxonomy via (dataset_id, row_id).
+// Returns up to pageSize rows ordered by row_index; the verdicts come from the
+// embedded data._tx block (sql/151) for the dataset's primary classified field.
 
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
@@ -47,37 +47,25 @@ export async function GET(req: Request, props: Params) {
   const { data: rows, error: rowsErr, count: totalRows } = await rowsQuery
   if (rowsErr) return serverError(rowsErr, 'admin.taxonomyPilot.rows', { orgId: dataset.org_id })
 
-  const rowIds = (rows ?? []).map((r: any) => r.id)
-  let taxonomy: any[] = []
-  if (rowIds.length > 0) {
-    const { data: tax, error: taxErr } = await service
-      .from('dataset_row_taxonomy')
-      .select('*')
-      .eq('dataset_id', params.datasetId)
-      .eq('org_id', dataset.org_id)
-      .in('row_id', rowIds)
-    if (taxErr) return serverError(taxErr, 'admin.taxonomyPilot.taxonomy', { orgId: dataset.org_id })
-    taxonomy = tax ?? []
+  // The verdicts ride on the rows themselves (data._tx); resolve the dataset's
+  // primary classified field once, then read each row's block for it.
+  const { data: pf } = await service.rpc('taxonomy_primary_field', { p_dataset_id: params.datasetId })
+  const fieldKey = (pf as string | null) ?? ''
+
+  // Counts (classified rows / alert rows for the field)
+  let classifiedCount = 0, alertCount = 0
+  if (fieldKey) {
+    const { data: counts, error: cntErr } = await service
+      .rpc('taxonomy_counts', { p_dataset_id: params.datasetId, p_field_key: fieldKey })
+    if (cntErr) return serverError(cntErr, 'admin.taxonomyPilot.counts', { orgId: dataset.org_id })
+    const c = Array.isArray(counts) ? counts[0] : null
+    classifiedCount = Number(c?.classified ?? 0)
+    alertCount = Number(c?.alerts ?? 0)
   }
-  const taxByRow = new Map<number, any>()
-  for (const t of taxonomy) taxByRow.set(t.row_id, t)
-
-  // Counts
-  const { count: classifiedCount } = await service
-    .from('dataset_row_taxonomy')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
-    .eq('org_id', dataset.org_id)
-
-  const { count: alertCount } = await service
-    .from('dataset_row_taxonomy')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
-    .eq('org_id', dataset.org_id)
-    .not('alert_tags', 'eq', '{}')
 
   const merged = (rows ?? []).map((r: any) => {
-    const t = taxByRow.get(r.id)
+    const t = fieldKey ? r.data?._tx?.f?.[fieldKey] : null
+    const a = t?.a ?? {}
     return {
       row_id: r.id,
       row_index: r.row_index,
@@ -88,19 +76,19 @@ export async function GET(req: Request, props: Params) {
       state: r.data?.state ?? '',
       legacy_tags: r.data?.legacy_tags ?? [],
       taxonomy: t ? {
-        axis_touchpoint: t.axis_touchpoint ?? [],
-        axis_attribute:  t.axis_attribute  ?? [],
-        axis_product:    t.axis_product    ?? [],
-        axis_beverage:   t.axis_beverage   ?? [],
-        axis_ambiance:   t.axis_ambiance   ?? [],
-        axis_context:    t.axis_context    ?? [],
-        axis_outcome:    t.axis_outcome    ?? [],
-        alert_tags:      t.alert_tags      ?? [],
-        assertions:      t.assertions      ?? [],
-        classified_by:   t.classified_by   ?? null,
-        model_used:      t.model_used      ?? null,
-        prompt_version:  t.prompt_version  ?? null,
-        created_at:      t.created_at,
+        axis_touchpoint: a.touchpoint ?? [],
+        axis_attribute:  a.attribute  ?? [],
+        axis_product:    a.product    ?? [],
+        axis_beverage:   a.beverage   ?? [],
+        axis_ambiance:   a.ambiance   ?? [],
+        axis_context:    a.context    ?? [],
+        axis_outcome:    a.outcome    ?? [],
+        alert_tags:      t.al         ?? [],
+        assertions:      t.as         ?? [],
+        classified_by:   t.by         ?? null,
+        model_used:      t.m          ?? null,
+        prompt_version:  t.v          ?? null,
+        created_at:      t.at         ?? null,
       } : null,
     }
   })

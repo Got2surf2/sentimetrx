@@ -4,8 +4,9 @@
 // `__dim_<axis>__` (e.g. `__dim_product__`) and its values are the axis
 // sub-buckets (steak, seafood, …). Unlike `__themes__` (re-derived from row
 // text client-side), dimension values are aggregated server-side from the
-// stored dataset_row_taxonomy tags via the tax_* /aggregate ops — client
-// re-derivation of the 250+ keyword dictionary is too slow (~30s/50K rows).
+// verdicts embedded in dataset_rows_flat.data._tx (sql/151) via the tax_*
+// /aggregate ops — client re-derivation of the 250+ keyword dictionary is too
+// slow (~30s/50K rows).
 
 import { AXES, type Axis } from './taxonomyVocabulary'
 

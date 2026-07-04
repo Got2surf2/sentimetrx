@@ -591,34 +591,32 @@ A single Google Reviews source for a multi-location brand can produce 50K+ revie
 
 ## 14. Per-Row Taxonomy (admin pilot — Ruth's Chris 2026-05-27)
 
-Closed-vocab 7-axis ABSA layered over `dataset_rows_flat`. Separate table — does **not** add columns to the flat row table.
+Closed-vocab 7-axis ABSA layered over `dataset_rows_flat`.
 
-### Table — `sql/088_dataset_row_taxonomy.sql`
+### Storage — embedded `data._tx` (sql/151, 2026-07-04)
 
-```sql
-dataset_row_taxonomy (
-  id uuid PK,
-  org_id uuid NOT NULL,
-  dataset_id uuid NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-  row_id bigint NOT NULL,   -- references dataset_rows_flat.id
-  axis_touchpoint text[]    -- subset of {server, manager, host, bartender, ...}
-  axis_attribute  text[]    -- {flavor, speed, attentive, clean, ..., food safety, pests, rude}
-  axis_product    text[]    -- {steak, sides, apps, desserts, salads, ...}
-  axis_beverage   text[]    -- {wine, cocktail, beer, nab, ...}
-  axis_ambiance   text[]    -- {noise, light, music, decor, ...}
-  axis_context    text[]    -- daypart ∪ holiday ∪ channel ∪ {weekend, prime-hour, sporting-event}
-  axis_outcome    text[]    -- IOR + value + improvement
-  alert_tags      text[]    -- subset of any axis sub at severity ∈ {alert, crisis}
-  assertions      jsonb     -- [{axis, sub, item?, polarity, confidence, severity}]
-  raw_legacy_tags text[]    -- canonicalized prospect Classification column for audit
-  classified_by, model_used, prompt_version  -- provenance
-  UNIQUE (dataset_id, row_id)
-)
+Verdicts live INSIDE each flat row's `data` blob under the reserved `_tx` key
+(shape + full transition story: `docs/TAXONOMY.md §3`; helpers in
+`lib/taxonomyEmbed.ts`):
+
+```
+data._tx = { "f": { "<fieldKey>": {
+  "a":  { "<axis>": ["sub", …], … },   -- 7-axis projection, only non-empty axes
+  "al": ["sub", …],                     -- severity ∈ {alert, crisis}
+  "as": [{axis, sub, item?, polarity, confidence, severity, evidence}],
+  "v": "…", "by": "…", "m": "…", "at": "<iso>"   -- provenance
+} } }
 ```
 
-RLS: enabled, `dataset_row_taxonomy_org_read` SELECT policy scoped to the caller's `users.org_id`. No write policies — service-role only.
-
-GIN indexes on each `axis_*` array + `alert_tags`.
+Access control rides the row: `dataset_rows_flat` scopes via `dataset_id`, and
+every taxonomy route pairs the dataset's `org_id` before reading. The original
+sidecar tables (`dataset_row_taxonomy` sql/088, `dataset_row_field_taxonomy`
+sql/114 — per-axis text[] columns, GIN indexes, org-scoped RLS SELECT) are
+retiring: sql/151 ports every RPC to the blob with a transitional sidecar
+fallback, and sql/152 drops the tables once the prod backfill
+(`scripts/backfill-taxonomy-embed.ts`) verifies. The pilot's
+`raw_legacy_tags` audit copy was redundant — the prospect's Classification
+column already rides on each row as `data.legacy_tags`.
 
 ### Closed vocab
 
@@ -669,7 +667,7 @@ The chip legend is rendered above the row list so first-time viewers learn the e
 ### Pipeline
 
 - `scripts/pilot-rc-ingest.ts` — RFC4180 parser → `dataset_rows_flat` under Datanautix admin org, preserves prospect's `Classification` column as `legacy_classification` + parsed `legacy_tags` array on each row.
-- `scripts/pilot-rc-classify.ts` — concurrent driver (default `--limit 50 --concurrency 4`), idempotent on `(dataset_id, row_id)`.
+- `scripts/pilot-rc-classify.ts` — concurrent driver (default `--limit 50 --concurrency 4`), idempotent per `(row, 'description')` block.
 - `/admin/taxonomy-pilot/[datasetId]` — side-by-side viewer (admin-only). API route at `/api/admin/taxonomy-pilot/[datasetId]` returns paged rows + their taxonomy.
 
 ### In-app classification (self-serve) — `components/analyze/TaxonomyModule.tsx` + `POST /api/datasets/[datasetId]/taxonomy`
@@ -678,8 +676,8 @@ The **Dimensions** tab (Analyze nav) is no longer view-only. When the selected f
 
 - **Endpoint** (`POST`): org-gated identically to the `GET` (pairs the dataset's `org_id`; non-admins must own it). Each call runs `classifyDatasetKeyword({ offset: cursor, limit: CHUNK, textField })` over one `CHUNK` (10K rows) using the **`core`** brand overlay, then returns `{ classifiedThisCall, scanned, nextCursor, done, totalRows }`. `maxDuration = 120`. Keyword-tier only — **no AI cost**.
 - **Per-field & reactive** (no in-tab picker as of 2026-06-06): the classified field is the parent TextMine ANALYZE selection (`effectiveFields[0]`), passed to `<TaxonomyModule>` as `textField`/`fieldLabel` and ridden into the POST body as `textField`. The GET takes `?field=` and the tab refetches on the Liked Most/Least toggle, so Dimensions reacts per field. `detectTextFields` still runs server-side but the UI no longer renders the old "Field to classify" dropdown.
-- **Dual-write storage** (`lib/taxonomyClassify.ts` → `dualUpsert`): every classified row is written to **both** `dataset_row_taxonomy` (legacy single-field, `(dataset_id,row_id)` — keeps Charts/Stats `__dim_*`, theme-card chips, Comments dimension filter, deck, admin viewer working) **and** `dataset_row_field_taxonomy` (per-field, `(dataset_id,row_id,field)`, sql/114 — powers the reactive Dimensions tab). The new table is additive; the migration never alters the live legacy table.
-- **Chunking** (`lib/taxonomyClassify.ts`): `classifyDatasetKeyword` takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so a large dataset (a Cheddar's-scale 600K-review pull would otherwise blow the function timeout) is processed in resumable chunks driven by the client. Writes are idempotent (legacy `(dataset_id,row_id)`, per-field `(dataset_id,row_id,field)`), so an interrupted run resumes safely.
+- **Embedded storage** (`lib/taxonomyClassify.ts` → `apply_taxonomy_verdicts` RPC, sql/151): every classified row gets a per-fieldKey block in its own `data._tx` — one source feeds Charts/Stats `__dim_*`, theme-card chips, the Comments dimension filter, decks, the admin viewer, AND the reactive Dimensions tab. Completed runs also store the field's rollup in `dataset_state.analytics.taxonomy`.
+- **Chunking** (`lib/taxonomyClassify.ts`): `classifyDatasetKeyword` takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so a large dataset (a Cheddar's-scale 600K-review pull would otherwise blow the function timeout) is processed in resumable chunks driven by the client. Writes are idempotent per `(row, fieldKey)`, so an interrupted run resumes safely.
 - The brand-tuned `rc` / `chuys` overlays stay **script-only** (`scripts/taxonomy-classify.ts --brand …`) — they're internal pilot tuning; the self-serve button always uses the generic `core` vertical.
 
 ### Production scope

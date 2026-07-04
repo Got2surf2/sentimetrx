@@ -43,52 +43,84 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
 
 ## 3. Persistence + roll-up
 
-- **Two tables, dual-written** (per-field landed 2026-06-06):
-  - **`dataset_row_taxonomy`** (sql/088) — the **legacy single classification per row**,
-    UNIQUE `(dataset_id,row_id)`. Still read by the theme-card / Theme-cloud **Dimension chips**
-    (`theme_dimension_counts`, sql/111), the Comments **dimension filter** (`get_rows_by_filters`,
-    sql/113), the Datanautix deck, and the admin pilot viewer (last classified field wins,
-    field-agnostic). **Charts `__dim_*` aggregates moved to per-field** (`sql/115`: the `tax_*`
-    RPCs read `dataset_row_field_taxonomy` for the dataset's primary classified field, legacy
-    fallback) **and are filter-aware** (`sql/116`: optional `p_row_ids` — the chart passes the
-    view's filtered row-id set so dimensions honor active filters; rows arrive with `_rowId`
-    via the rows GET `?withRowIds=true`). So Charts match the Dimensions tab's field + filters.
-  - **`dataset_row_field_taxonomy`** (sql/114) — **per `(dataset_id,row_id,field)`**, where
-    `field` is the **combined key** `taxonomyFieldKey(selectedFields)` (sorted ' + '-join; a
-    single field is just its name). So each open-end OR combination of open-ends (e.g. Liked
-    Most, or Liked Most + Liked Least concatenated) carries its own tags. Read by the
-    **Dimensions tab**, which passes the ANALYZE selection so the view **reacts to it (single or
-    multi-field)** like TextMine themes. The "has text"/pending helper RPCs take the real field
-    list + the combined key (sql/117). Same RLS pattern (org-scoped SELECT, service-role writes),
-    same GIN indexes per axis.
-  - The classifier **`dualUpsert`s** every classified row into both (base row → legacy;
-    base + `field` → per-field), so existing consumers keep working unchanged while the
-    Dimensions tab gets per-field reactivity. The new table is additive — the migration never
-    touches the live `dataset_row_taxonomy`, so the running prod app is unaffected.
+- **Verdicts are EMBEDDED in the row blob** (sql/151, 2026-07-04 — the "taxonomy
+  embed" architecture; consistent with ARCHITECTURE.md D2, the record IS the blob):
+  - **`dataset_rows_flat.data._tx`** — a reserved top-level key:
+    `{"f": {"<fieldKey>": {a, al, as, v, by, m, at}}}` where `a` = axes→sub arrays
+    (only non-empty axes), `al` = alert/crisis subs, `as` = the full structured
+    assertions (`{axis, sub, item?, polarity, confidence, severity, evidence}`),
+    and `v/by/m/at` = version/classifier/model/timestamp. `fieldKey` is the
+    **combined key** `taxonomyFieldKey(selectedFields)` (sorted ' + '-join; a single
+    field is just its name), so each open-end OR combination carries its own block.
+    **No version history** — a re-classify overwrites the field's block in place
+    (owner decision 2026-07-03: the workflow is replace-then-spot-check).
+    WHY embedded: the old sidecar tables minted one row per `(row, field)` verdict —
+    128K rows pre-production; a 1M-comment dataset ⇒ 5–7M sidecar rows — and had to
+    be independently covered by backup/clone/delete (the sidecars were MISSED by
+    backups until 2026-07-03, and the org-clone restore never remapped their
+    `row_id`s, silently dangling every cloned verdict). Embedded verdicts ride the
+    row through backup/restore/clone/delete for free; the shape is defined in
+    `lib/taxonomyEmbed.ts` (`TaxonomyFieldBlock`, `buildFieldBlock`).
+  - **`_tx` is a RESERVED key**, never a dataset column: schema detection
+    (`autoDetectSchema`/`applySchema`), the rows API (`projectRow` strips it from
+    every client payload — TextMine's bulk fetch must not ship assertions),
+    Ana's row-context formatter (`NOISE_FIELDS`), the TextMine search detail, and
+    the **Postgres `tsv` trigger + `search_dataset_rows` headline** (fixed in
+    sql/151 — without the skip, tag names and evidence quotes would pollute FTS)
+    all exclude it. New enumerators of row-data keys must check
+    `isReservedRowKey` (`lib/taxonomyEmbed.ts`).
+  - **Stored rollups**: `dataset_state.analytics.taxonomy.fields[<fieldKey>]` =
+    `{selFields, rollup, updatedAt, version}` — written at classify completion
+    (`updateStoredTaxonomyRollup`, merged via the sql/145 atomic-merge RPC) so
+    dashboards read aggregates instead of scanning blobs. The Dimensions GET uses
+    it as the fast path; `taxonomy_primary_field` resolves the Charts field from
+    it (most classified rows wins).
+  - **RPCs** (same names/signatures as sql/115/116 — the /aggregate route and
+    ChartsModule changed zero code): the `tax_*` aggregates, the axis crosstab
+    (sql/133), theme×dimension chips (sql/111), the Comments dimension filter
+    (`get_rows_by_filters`, sql/113), the pending-rows helper (sql/117), plus new
+    `apply_taxonomy_verdicts` (batch writer), `taxonomy_rows_for_field` (paged
+    verdict read incl. same-row rating/date), `taxonomy_drill_rows` (drill-down),
+    and `taxonomy_counts` (admin pilot). All read `data._tx`; filter-awareness
+    (`p_row_ids`) is unchanged. **Transition**: each read RPC keeps a
+    sidecar-fallback leg (chosen per dataset) so sql/151 could be applied to prod
+    before the code deployed; the legs AND the sidecar tables
+    (`dataset_row_taxonomy` sql/088, `dataset_row_field_taxonomy` sql/114) die
+    together in sql/152 — **gated on the prod backfill
+    (`scripts/backfill-taxonomy-embed.ts`) verifying clean
+    (`scripts/_verify_taxembed.ts --mode parity --prod`)**. Until sql/152 applies,
+    `lib/orgSnapshot`/`lib/orgDelete` deliberately keep the sidecar entries as the
+    rollback path.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
-  pages a dataset's rows, runs the keyword tier, projects assertions into the axis
-  columns, `dualUpsert`s idempotently. Pairs `(dataset_id, org_id)` on every write
-  (multi-tenancy invariant). **Strips NUL/C0/surrogate chars** from text — Postgres
+  pages a dataset's rows, runs the keyword tier, and embeds field blocks via the
+  `apply_taxonomy_verdicts` RPC in 500-row batches. Pages order by
+  `(row_index, id)` — the `id` tiebreak is load-bearing: classify now UPDATEs the
+  very table it's paging, so an unstable order can repeat/skip rows across page
+  windows mid-run (caught live on the test project: 10,651 classify events over
+  10,648 rows). **Strips NUL/C0/surrogate chars** from text — Postgres
   jsonb rejects them and emoji-split evidence windows produce lone surrogates.
   Takes an `offset` and returns `{ nextOffset, reachedEnd, … }` so the self-serve
   UI can drive it in resumable chunks (CLI passes no offset → scans from 0).
   Accepts either a single `textField` or `textFields[]` (concatenated with ` . ` so a
-  phrase can't span a boundary) — e.g. a survey's MOST + LEAST verbatims classified together.
-- **Auto-classify-on-sync safety net** (`classifyPendingRows` + `sql/108`): without this,
+  phrase can't span a boundary) — e.g. a survey's MOST + LEAST verbatims classified
+  together. When a run completes (`reachedEnd`, or a pending drain finishes), it
+  refreshes the stored rollup for that field key (non-fatal on error — the next
+  completed run repairs it).
+- **Auto-classify-on-sync safety net** (`classifyPendingRows`): without this,
   reviews pulled by the 6-hourly `review-sync` cron (and manual sync) land in
   `dataset_rows_flat` but stay **unclassified** until a manual Re-classify, so the
   Dimensions tab silently drifts behind the live data. After every sync,
-  `lib/reviewSync.syncReviewSource` now — **only if the dataset is already classified**
-  (≥1 `dataset_row_taxonomy` row; never auto-starts an un-opted dataset) — classifies the
-  still-pending rows via `classifyPendingRows`. That reads pending rows from the
-  `dataset_rows_pending_taxonomy(dataset, text_field, limit)` RPC: an anti-join for flat
-  rows with no taxonomy row **and non-empty text** (text-less star-only reviews are
-  excluded — the classifier skips them and never writes a row, so including them would
-  make the LIMIT window loop forever and never reach the new rows; excluding them also
-  keeps "reviews classified" = text-bearing rows). Capped at `maxRows` per sync, non-fatal,
-  idempotent (a timeout just leaves already-upserted rows classified; the next sync
-  continues). Assumes the `review_text` field (the default the button uses); a dataset
-  manually classified on a non-default field would need a manual Re-classify to stay exact.
+  `lib/reviewSync.syncReviewSource` — **only if the dataset is already classified**
+  (the stored rollup exists; never auto-starts an un-opted dataset) — classifies the
+  still-pending rows via `classifyPendingRows` **for EVERY stored field combo**
+  (each rollup entry carries its real `selFields`, so non-default field selections
+  stay current too — previously only `review_text` did). Pending rows come from the
+  `dataset_rows_pending_field_taxonomy` RPC: flat rows with no `_tx` block for the
+  field key **and non-empty text** (text-less star-only reviews are excluded — the
+  classifier writes them a tagless block so the LIMIT window converges; "reviews
+  classified" = text-bearing rows). Capped at `maxRows` per sync, non-fatal,
+  idempotent (a timeout just leaves already-embedded rows classified; the next sync
+  continues).
 - **Roll-up** `lib/taxonomyRollup.ts`: `aggregateTaxonomy` (pure, unit-tested) +
   `computeTaxonomyRollup` (org-scoped paged read) → classified-row count, per-axis &
   per-sub mention rates, sentiment per sub, alert tag counts, and **avg star rating per
@@ -103,14 +135,13 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   `scoreField` — the same rule the metric strip uses), not a hardcoded `rating` key, so it
   works for surveys whose rating lives under an arbitrary question-text key. **Remapped
   fields** (stored text labels like "Highly Satisfied" mapped to numbers via the field's
-  `valueAliases`) are resolved label→number per row before averaging. Per-page values are
-  read via the `dataset_field_values(dataset, field, ids[])` RPC (field passed as a bind
-  param, so keys with spaces/commas/apostrophes work); a plain `rating`-named field still
-  uses a direct `data->>rating` select so existing google_reviews rollups don't depend on
-  the new RPC. `aggregateTaxonomy` then averages over matching rows. **Trend windows
+  `valueAliases`) are resolved label→number per row before averaging. The paged read goes
+  through `taxonomy_rows_for_field` (sql/151), which returns each row's verdict block PLUS
+  its rating/date values **from the same row** (field names as bind params, so keys with
+  spaces/commas/apostrophes work — the sidecar-era version needed two extra lookups per
+  page). `aggregateTaxonomy` then averages over matching rows. **Trend windows
   (2026-06-29):** `computeTaxonomyRollup` accepts an optional `dateField` — when set it also
-  attaches each row's timestamp (direct `data->>field` select for a simple identifier, else
-  the `dataset_field_values` RPC; best-effort, failure → no trend) and returns
+  attaches each row's timestamp from the same RPC (best-effort; unparseable → no trend) and returns
   `recent`/`prior`-window rollups (`TaxonomyTrendRollup extends TaxonomyRollup`) by deriving
   recent-vs-prior windows from the dated rows (`lib/trendWindows.deriveTrendWindows`) and
   re-running `aggregateTaxonomy` on each partition. This is what lets the StoryTime/Report
@@ -138,7 +169,7 @@ exists for nuance/severity but is **not** wired into the persisting path yet.
   (`{ cursor, textFields }` body → `{ classifiedThisCall, nextCursor, done, totalRows }`,
   10K-row chunks, `core` overlay, org-gated like the GET) with a live progress bar until
   `done`. Keyword-tier → no AI cost;
-  tags are **saved per (row, field-key)** in `dataset_row_field_taxonomy` (idempotent) so the
+  tags are **saved per (row, field-key)** in the row's `data._tx` block (idempotent) so the
   tab reads them back — classification is a one-time pass per selection, never re-run on view.
   **Multi-field & reactive** (no separate picker, as of 2026-06-07): the view follows the
   parent TextMine **ANALYZE** selection — **one OR several** open-ends (`effectiveFields`),

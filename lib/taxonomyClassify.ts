@@ -1,67 +1,60 @@
 // lib/taxonomyClassify.ts
 // Persisting keyword-tier classifier — runs the layered dictionary over a
-// dataset's rows and upserts the per-row 7-axis result into
-// dataset_row_taxonomy. Free (no AI), deterministic, idempotent on
-// (dataset_id, row_id). Used by scripts/taxonomy-classify.ts and any future
-// ingest hook. Pairs (dataset_id, org_id) on every write per the multi-tenancy
-// invariant; caller passes the dataset's verified org_id.
+// dataset's rows and embeds the per-row 7-axis result into the row blob
+// (dataset_rows_flat.data._tx, sql/151) via the apply_taxonomy_verdicts RPC.
+// Free (no AI), deterministic, idempotent per (row, fieldKey) — a re-run
+// overwrites the field's block in place (no version history by design).
+// Used by scripts/taxonomy-classify.ts, the self-serve taxonomy route, and the
+// reviewSync auto-classify safety net. When a run completes, the per-field
+// rollup in dataset_state.analytics.taxonomy is recomputed so dashboards read
+// stored aggregates instead of scanning blobs.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyByKeyword } from './taxonomyKeywordMatcher'
 import { resolveDictionary, type BrandOverlay } from './taxonomyDictionary'
-import type { Assertion } from './taxonomyVocabulary'
+import { buildFieldBlock, TAXONOMY_VERSION, type TaxonomyFieldBlock } from './taxonomyEmbed'
+import { updateStoredTaxonomyRollup } from './taxonomyRollup'
 import { taxonomyFieldKey } from './dimensionFields'
+import { logError } from './log'
 
-// Bump when the closed vocabulary / dictionary changes so stale rows are
-// detectable (mirrors the productization plan's taxonomy_version).
-export const TAXONOMY_VERSION = 'v3'  // v3: generalized in-food hair phrasings (hair in the…, hair found in); v2: hair + foreign-object cadre in food-safety dict
+export { TAXONOMY_VERSION }
 
-const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
-const ALERT_SEVERITIES = new Set(['alert', 'crisis'])
 // NUL + C0 control chars (keep tab/newline/CR) - Postgres rejects them in
 // and scraped review text occasionally carries control bytes.
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF]/g
 
-/** Denormalize assertions into the table's per-axis text[] columns + alert_tags. */
-function projectAxes(assertions: Assertion[]) {
-  const byAxis: Record<string, Set<string>> = Object.fromEntries(AXES.map(a => [a, new Set<string>()]))
-  const alerts = new Set<string>()
-  for (const a of assertions) {
-    if (byAxis[a.axis]) byAxis[a.axis].add(a.sub)
-    if (ALERT_SEVERITIES.has(a.severity)) alerts.add(a.sub)
-  }
-  return {
-    axis_touchpoint: [...byAxis.touchpoint].sort(),
-    axis_attribute:  [...byAxis.attribute].sort(),
-    axis_product:    [...byAxis.product].sort(),
-    axis_beverage:   [...byAxis.beverage].sort(),
-    axis_ambiance:   [...byAxis.ambiance].sort(),
-    axis_context:    [...byAxis.context].sort(),
-    axis_outcome:    [...byAxis.outcome].sort(),
-    alert_tags:      [...alerts].sort(),
-  }
-}
-
 const PAGE = 1000
 
-/** Write each classified row to BOTH taxonomy tables:
- *  - legacy single-field `dataset_row_taxonomy` (read by Charts/Stats `__dim_*`
- *    fields, theme-card / Theme-cloud Dimension chips, the Comments dimension
- *    filter, the Datanautix deck, and the admin viewer) — keyed (dataset_id,row_id),
- *    so the last-classified field wins, exactly as before; and
- *  - per-field `dataset_row_field_taxonomy` (the field-reactive Dimensions tab) —
- *    keyed (dataset_id,row_id,field).
- *  Base rows carry no `field`; the per-field copy adds it. Both pair org_id. */
-async function dualUpsert(service: SupabaseClient, baseRows: Record<string, unknown>[], field: string): Promise<void> {
-  if (!baseRows.length) return
-  const { error: eLegacy } = await service
-    .from('dataset_row_taxonomy')
-    .upsert(baseRows, { onConflict: 'dataset_id,row_id' })
-  if (eLegacy) throw new Error(`dataset_row_taxonomy upsert failed: ${eLegacy.message}`)
-  const { error: eField } = await service
-    .from('dataset_row_field_taxonomy')
-    .upsert(baseRows.map(r => ({ ...r, field })), { onConflict: 'dataset_id,row_id,field' })
-  if (eField) throw new Error(`dataset_row_field_taxonomy upsert failed: ${eField.message}`)
+/** Embed a batch of field blocks into the rows' data._tx via the RPC (one
+ *  UPDATE per batch; the tsv trigger skips the reserved key). */
+async function embedVerdicts(
+  service: SupabaseClient,
+  datasetId: string,
+  fieldKey: string,
+  items: { id: number; tx: TaxonomyFieldBlock }[],
+): Promise<void> {
+  if (!items.length) return
+  const { error } = await service.rpc('apply_taxonomy_verdicts', {
+    p_dataset_id: datasetId, p_field_key: fieldKey, p_items: items,
+  })
+  if (error) throw new Error(`apply_taxonomy_verdicts failed: ${error.message}`)
+}
+
+/** Recompute + store the field's rollup after a completed run. Non-fatal: a
+ *  rollup hiccup must not fail the classify itself (the verdicts are already
+ *  embedded; the next completed run repairs the rollup). */
+async function refreshRollup(
+  service: SupabaseClient,
+  datasetId: string,
+  orgId: string,
+  fieldKey: string,
+  selFields: string[],
+): Promise<void> {
+  try {
+    await updateStoredTaxonomyRollup({ service, datasetId, orgId, field: fieldKey, selFields })
+  } catch (e) {
+    void logError('taxonomyClassify.refreshRollup', e, { orgId })
+  }
 }
 
 export interface ClassifyResult {
@@ -86,64 +79,63 @@ export async function classifyDatasetKeyword(opts: {
   const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
   const dict = resolveDictionary(brand)
   const fields = textFields && textFields.length ? textFields : [textField]
-  // The `field` column records which open-ended field(s) these tags came from (the
-  // canonical combined key), so the Dimensions view can show per-field results that
-  // react to the ANALYZE selection (single or multi-field).
-  const storedField = taxonomyFieldKey(textFields && textFields.length ? textFields : [textField])
+  // The fieldKey records which open-ended field(s) these tags came from (the
+  // canonical combined key), so the Dimensions view can show per-field results
+  // that react to the ANALYZE selection (single or multi-field).
+  const storedField = taxonomyFieldKey(fields)
 
   let from = offset, classified = 0, skippedEmpty = 0, total = 0, reachedEnd = false
   for (;;) {
     const remaining = limit !== undefined ? limit - total : Infinity
     if (remaining <= 0) break
     const pageSize = Math.min(PAGE, remaining)
+    // `id` tiebreak matters: row_index has ties, and classify now UPDATEs the
+    // very table it's paging (the embed write moves tuples within a tie group),
+    // so an unstable order can repeat/skip rows across page windows mid-run.
     const { data, error } = await service
       .from('dataset_rows_flat')
       .select('id, data')
       .eq('dataset_id', datasetId)
       .order('row_index', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + pageSize - 1)
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) { reachedEnd = true; break }
 
-    const upserts: Record<string, unknown>[] = []
+    const items: { id: number; tx: TaxonomyFieldBlock }[] = []
     for (const row of data as { id: number; data: Record<string, unknown> }[]) {
       total++
       // Join multiple fields with ' . ' so a phrase can't span a field boundary.
       const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
       if (!text) { skippedEmpty++; continue }
       const { assertions } = classifyByKeyword(text, dict)
-      upserts.push({
-        org_id: orgId,
-        dataset_id: datasetId,
-        row_id: row.id,
-        ...projectAxes(assertions),
-        assertions,
-        classified_by: 'keyword',
-        model_used: 'keyword-tier',
-        prompt_version: TAXONOMY_VERSION,
-        updated_at: new Date().toISOString(),
+      items.push({
+        id: row.id,
+        tx: buildFieldBlock(assertions, { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
       })
     }
-    for (let i = 0; i < upserts.length; i += 500) {
-      const slice = upserts.slice(i, i + 500)
-      await dualUpsert(service, slice, storedField)
+    for (let i = 0; i < items.length; i += 500) {
+      await embedVerdicts(service, datasetId, storedField, items.slice(i, i + 500))
     }
-    classified += upserts.length
+    classified += items.length
     from += data.length
     onProgress?.(classified)
 
     if (data.length < pageSize) { reachedEnd = true; break }
   }
+  // A completed pass over the dataset's last row means the embedded verdicts
+  // are current end-to-end → refresh the stored rollup dashboards read.
+  if (reachedEnd) await refreshRollup(service, datasetId, orgId, storedField, fields)
   return { classified, skippedEmpty, total, nextOffset: from, reachedEnd }
 }
 
-// Classify ONLY the rows that still lack a dataset_row_taxonomy entry — the
-// auto-classify "safety net". Used after a review sync (lib/reviewSync) so newly
-// synced reviews get tagged without a full re-classify. Reads pending rows via
-// the dataset_rows_pending_taxonomy RPC (text-bearing + unclassified), classifies
-// them with the keyword tier, and upserts. Capped per call (maxRows); leftover
-// pending rows are picked up by the next sync — converges. Idempotent: a timeout
-// mid-run just leaves the already-upserted rows classified.
+// Classify ONLY the rows that still lack an embedded verdict for the field key —
+// the auto-classify "safety net". Used after a review sync (lib/reviewSync) so
+// newly synced reviews get tagged without a full re-classify. Reads pending rows
+// via the dataset_rows_pending_field_taxonomy RPC (text-bearing + unclassified),
+// classifies them with the keyword tier, and embeds. Capped per call (maxRows);
+// leftover pending rows are picked up by the next sync — converges. Idempotent:
+// a timeout mid-run just leaves the already-embedded rows classified.
 export async function classifyPendingRows(opts: {
   service:    SupabaseClient
   datasetId:  string
@@ -154,7 +146,7 @@ export async function classifyPendingRows(opts: {
 }): Promise<{ classified: number; hasMore: boolean }> {
   const { service, datasetId, orgId, textFields, brand = 'core', maxRows = 10000 } = opts
   const fields = textFields && textFields.length ? textFields : ['review_text']
-  const fieldKey = taxonomyFieldKey(fields)   // combined key the per-field rows are stored under
+  const fieldKey = taxonomyFieldKey(fields)   // combined key the blocks are stored under
   const dict = resolveDictionary(brand)
   let classified = 0
   let hasMore = false
@@ -168,7 +160,7 @@ export async function classifyPendingRows(opts: {
     const rows = (data ?? []) as { id: number; data: Record<string, unknown> }[]
     if (rows.length === 0) break
 
-    const upserts: Record<string, unknown>[] = []
+    const items: { id: number; tx: TaxonomyFieldBlock }[] = []
     for (const row of rows) {
       // Concatenate the selected fields' text (matches classifyDatasetKeyword); ' . '
       // separator keeps a phrase from spanning a field boundary.
@@ -177,22 +169,23 @@ export async function classifyPendingRows(opts: {
       // SQL considers "has text"; a few may be empty after the classifier's JS
       // strip (unicode whitespace etc.). Skipping them left those rows pending
       // FOREVER (the "N rows aren't tagged" nudge could never clear). Writing a
-      // (tagless) row converges: classifyByKeyword('') just returns no assertions.
+      // (tagless) block converges: classifyByKeyword('') just returns no assertions.
       const { assertions } = classifyByKeyword(text, dict)
-      upserts.push({
-        org_id: orgId, dataset_id: datasetId, row_id: row.id,
-        ...projectAxes(assertions), assertions,
-        classified_by: 'keyword', model_used: 'keyword-tier',
-        prompt_version: TAXONOMY_VERSION, updated_at: new Date().toISOString(),
+      items.push({
+        id: row.id,
+        tx: buildFieldBlock(assertions, { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
       })
     }
-    for (let i = 0; i < upserts.length; i += 500) {
-      await dualUpsert(service, upserts.slice(i, i + 500), fieldKey)
+    for (let i = 0; i < items.length; i += 500) {
+      await embedVerdicts(service, datasetId, fieldKey, items.slice(i, i + 500))
     }
     classified += rows.length
 
     if (rows.length < pageSize) break          // drained the pending queue
     if (classified >= maxRows) { hasMore = true; break }  // hit the cap; more remain
   }
+  // Queue drained with fresh verdicts → the stored rollup is stale; refresh it.
+  // (hasMore → the next call finishes the drain and refreshes then.)
+  if (classified > 0 && !hasMore) await refreshRollup(service, datasetId, orgId, fieldKey, fields)
   return { classified, hasMore }
 }

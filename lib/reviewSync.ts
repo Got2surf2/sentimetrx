@@ -9,6 +9,7 @@ import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } fro
 import { computeAnalyticsSQL } from './analyticsCompute'
 import { getReviewBudget, logReviewDownload } from './reviewLimits'
 import { classifyPendingRows } from './taxonomyClassify'
+import { readStoredTaxonomy } from './taxonomyRollup'
 import { logError } from '@/lib/log'
 
 export interface SyncResult {
@@ -351,20 +352,19 @@ export async function syncReviewSource(
     // Gated on prior classification (never auto-starts an un-opted dataset),
     // capped, and non-fatal so a hiccup can't fail the sync.
     try {
-      // Gate on the legacy table — the historical "opted-in / classified before"
-      // record (existing datasets predate the per-field table). classifyPendingRows
-      // dual-writes, so this also backfills the new per-field table over time.
-      const { count: taxCount, error: taxCountErr } = await service
-        .from('dataset_row_taxonomy')
-        .select('row_id', { count: 'exact', head: true })
-        .eq('dataset_id', source.dataset_id)
-      if (taxCountErr) void logError('reviewSync.syncReviewSource', taxCountErr, { orgId: source.org_id })
-      if (taxCount && taxCount > 0) {
+      // Gate on the stored rollups (dataset_state.analytics.taxonomy) — the
+      // "opted-in / classified before" record under the embed architecture
+      // (sql/151). Each stored entry carries its real field names (selFields),
+      // so EVERY classified field-combo stays current, not just review_text.
+      const stored = await readStoredTaxonomy(service, source.dataset_id)
+      const entries = Object.values(stored?.fields ?? {})
+      for (const entry of entries) {
+        const textFields = entry.selFields?.length ? entry.selFields : ['review_text']
         const { classified } = await classifyPendingRows({
           service, datasetId: source.dataset_id, orgId: source.org_id,
-          textFields: ['review_text'], brand: 'core', maxRows: 10000,
+          textFields, brand: 'core', maxRows: 10000,
         })
-        if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified })
+        if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified, textFields })
       }
     } catch (e) {
       console.error({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, err: e })

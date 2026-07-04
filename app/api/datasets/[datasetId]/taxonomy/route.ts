@@ -1,17 +1,18 @@
 // app/api/datasets/[datasetId]/taxonomy/route.ts
-// GET  — the tag-analytics roll-up for the in-app Taxonomy tab. Reads the
-//        persisted dataset_row_taxonomy rows and returns axis/sub mention
-//        rates, sentiment, and alert counts.
+// GET  — the tag-analytics roll-up for the in-app Taxonomy tab. Fast path:
+//        the rollup stored in dataset_state.analytics.taxonomy at classify
+//        time (sql/151 embed architecture); falls back to computing from the
+//        embedded row verdicts when no stored entry exists yet.
 // POST — self-serve classifier. Runs one chunk of the keyword-tier classifier
 //        over the dataset's rows starting at a cursor; the client loops until
-//        `done`. Keyword-only (no AI cost), idempotent on (dataset_id, row_id).
+//        `done`. Keyword-only (no AI cost), idempotent per (row, fieldKey).
 // Both org-gated: pair the dataset's org_id (multi-tenancy invariant);
 // non-admins must own the dataset.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { computeTaxonomyRollup } from '@/lib/taxonomyRollup'
+import { computeTaxonomyRollup, readStoredTaxonomy, type TaxonomyRollup } from '@/lib/taxonomyRollup'
 import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClassify'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -125,10 +126,17 @@ export async function GET(req: Request, props: Params) {
     })
   }
 
-  const [rollup, rwt] = await Promise.all([
-    computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey }),
+  // Stored-rollup fast path (written at classify completion) — dashboards
+  // never scan row blobs. Fallback: compute from the embedded verdicts (e.g.
+  // a dataset classified before the rollup store existed).
+  const [stored, rwt] = await Promise.all([
+    readStoredTaxonomy(service, datasetId),
     service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields }),
   ])
+  let rollup: TaxonomyRollup | undefined = stored?.fields?.[fieldKey]?.rollup
+  if (!rollup) {
+    rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey })
+  }
   // rowsWithText = the reconciling denominator (rows with text in ANY selected
   // field) — header reads "N rows with text · X% tagged", aligned with the strip.
   return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText: Number(rwt.data ?? 0), field: fieldKey })

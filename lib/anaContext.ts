@@ -33,6 +33,7 @@ const NOISE_FIELDS = new Set([
   'extraction_id', 'response_text', 'confidence', 'flagged', 'flag_reason',
   'start_sec', 'source_file', 'sentiment_score', 'row_index', 'turn_number',
   'session_id', 'conversation',
+  '_tx',  // reserved embedded-taxonomy block (sql/151) — app metadata, not content
 ])
 
 function nonEmpty(v: unknown): boolean {

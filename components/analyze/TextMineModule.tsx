@@ -2883,7 +2883,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ DIMENSIONS SECTION ═══ Overview / Clouds / Compare share the
                 'dimensions' subTab; the active view picks the renderer.
-                (self-contained modules — fetch dataset_row_taxonomy themselves) */}
+                (self-contained modules — fetch the embedded taxonomy themselves) */}
             {subTab === 'dimensions' && activeView === 'overview' && (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <TaxonomyModule datasetId={datasetId} fields={effectiveFields} fieldLabel={effectiveFields.length ? effectiveFields.map(fieldLabel).join(' + ') : null} />

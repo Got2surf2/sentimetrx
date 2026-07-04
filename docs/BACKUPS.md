@@ -50,6 +50,14 @@ Configured in `lib/orgSnapshot.ts` → `TABLE_SPECS`.
 > applied:
 
 - **By `org_id` directly**: agents (formerly `bots`), studies, datasets, campaigns, collections, entity_catalog, usage_logs, social_*, review_sources, reddit_sources, conversations, conversation_turns, pulseiq_sessions, pulseiq_session_conversations, pulseiq_topics, etc.
+
+> **Taxonomy embed transition (2026-07-04, sql/151):** taxonomy verdicts now
+> live INSIDE `dataset_rows_flat.data._tx` (with rollups in
+> `dataset_state.analytics.taxonomy`), so they ride the existing row/state
+> coverage automatically — the class of "sidecar module missed by backups"
+> is structurally gone for taxonomy. The sidecar tables
+> `dataset_row(_field)_taxonomy` stay in `TABLE_SPECS` as the rollback path
+> until sql/152 drops them (remove both entries in that same commit).
 - **Via a parent table** (e.g. `bot_id IN (SELECT id FROM agents WHERE org_id = $1)`): agent_knowledge_chunks, agent_conversation_reviews, bot_conversation_turns (transitional, drops at Tier 5), responses, campaign_emails, etc.
 - **The organization row itself**: filtered by `id = $1`.
 
