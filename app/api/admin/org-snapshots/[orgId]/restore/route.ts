@@ -63,8 +63,10 @@ export async function POST(req: NextRequest, props: Params) {
 
   // Shared restore core (lib/orgRestore) — same implementation the
   // cross-environment clone script uses; this route targets the SAME
-  // environment's database.
-  const { reports, totals } = await restoreOrgSnapshotFromSource(service as any, source, { mode, tables: tableAllow })
+  // environment's database. Includes the post-write verification pass:
+  // `ok` is false if any row errored OR any claimed row is missing from
+  // the target afterwards (never report success for dropped rows).
+  const { reports, totals, ok } = await restoreOrgSnapshotFromSource(service as any, source, { mode, tables: tableAllow })
 
   // Audit: restoring a snapshot overwrites (merge) or replaces a tenant's live
   // data — the most destructive admin op there is. Always traced.
@@ -77,11 +79,12 @@ export async function POST(req: NextRequest, props: Params) {
   })
 
   return NextResponse.json({
-    ok: true,
+    ok,
     org_id: params.orgId,
     snapshot_taken_at: source.takenAt,
     mode,
     tables_restored: reports.length,
+    totals,
     reports,
   })
 }

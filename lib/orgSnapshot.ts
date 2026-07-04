@@ -126,8 +126,11 @@ export const TABLE_SPECS: TableSpec[] = [
 
   // Campaigns
   { name: 'campaigns', filter: { kind: 'org_id' } },
-  { name: 'campaign_schedules', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
+  // campaign_emails BEFORE campaign_schedules: schedules.email_id FKs
+  // emails, and restore follows this registry order (the reversed order
+  // FK-failed every schedule on a clean target — 2026-07-04 DR drill).
   { name: 'campaign_emails', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
+  { name: 'campaign_schedules', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
   { name: 'campaign_respondents', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
   { name: 'campaign_send_log', filter: { kind: 'parent_via', via: 'campaign_id', parent: 'campaigns' } },
 

@@ -14,14 +14,19 @@ interface TableReport {
   upserted: number
   deleted: number
   errors: number
+  skipped_fk: number
+  skipped_conflict: number
+  missing: number
   first_error?: string
 }
 
 interface RestoreResult {
+  ok: boolean
   org_id: string
   snapshot_taken_at: string
   mode: 'merge' | 'replace'
   tables_restored: number
+  totals?: { upserted: number; deleted: number; errors: number; skipped_fk: number; skipped_conflict: number; missing: number }
   reports: TableReport[]
 }
 
@@ -108,20 +113,32 @@ export default function OrgBackupsClient({ orgId, targetOrgName, targetOrgSlug, 
         )}
 
         {result && (
-          <div className='mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg p-4 text-sm'>
-            <div className='font-semibold mb-2'>Restore complete</div>
+          <div className={'mb-4 rounded-lg p-4 text-sm border ' + (result.ok
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            : 'bg-red-50 border-red-200 text-red-900')}>
+            <div className='font-semibold mb-2'>{result.ok ? 'Restore complete — verified' : 'Restore INCOMPLETE — some rows did not land'}</div>
             <div className='text-xs mb-2'>Snapshot taken {new Date(result.snapshot_taken_at).toLocaleString()} · mode: {result.mode} · {result.tables_restored} tables touched</div>
+            {result.totals && (result.totals.skipped_fk > 0 || result.totals.skipped_conflict > 0 || result.totals.missing > 0 || result.totals.errors > 0) && (
+              <div className='text-xs mb-2'>
+                {result.totals.errors > 0 && <span className='mr-3 font-semibold'>errors: {result.totals.errors}</span>}
+                {result.totals.missing > 0 && <span className='mr-3 font-semibold'>missing after verification: {result.totals.missing}</span>}
+                {result.totals.skipped_fk > 0 && <span className='mr-3'>skipped (missing parent): {result.totals.skipped_fk}</span>}
+                {result.totals.skipped_conflict > 0 && <span className='mr-3'>skipped (conflict): {result.totals.skipped_conflict}</span>}
+              </div>
+            )}
             <details>
               <summary className='cursor-pointer text-xs'>Show per-table report</summary>
               <table className='mt-2 text-xs w-full'>
-                <thead><tr className='border-b border-emerald-300'><th className='text-left p-1'>Table</th><th className='text-right p-1'>Upserted</th><th className='text-right p-1'>Deleted</th><th className='text-right p-1'>Errors</th><th className='text-left p-1'>First error</th></tr></thead>
+                <thead><tr className={result.ok ? 'border-b border-emerald-300' : 'border-b border-red-300'}><th className='text-left p-1'>Table</th><th className='text-right p-1'>Upserted</th><th className='text-right p-1'>Deleted</th><th className='text-right p-1'>Errors</th><th className='text-right p-1'>Skipped</th><th className='text-right p-1'>Missing</th><th className='text-left p-1'>First error</th></tr></thead>
                 <tbody>
                   {result.reports.map(r => (
-                    <tr key={r.table} className='border-b border-emerald-200'>
+                    <tr key={r.table} className={result.ok ? 'border-b border-emerald-200' : 'border-b border-red-200'}>
                       <td className='p-1 font-mono'>{r.table}</td>
                       <td className='p-1 text-right'>{r.upserted}</td>
                       <td className='p-1 text-right'>{r.deleted}</td>
                       <td className={'p-1 text-right ' + (r.errors > 0 ? 'text-red-700 font-semibold' : '')}>{r.errors}</td>
+                      <td className={'p-1 text-right ' + ((r.skipped_fk || 0) + (r.skipped_conflict || 0) > 0 ? 'text-amber-700 font-semibold' : '')}>{(r.skipped_fk || 0) + (r.skipped_conflict || 0)}</td>
+                      <td className={'p-1 text-right ' + ((r.missing || 0) > 0 ? 'text-red-700 font-semibold' : '')}>{r.missing || 0}</td>
                       <td className='p-1 text-red-700'>{r.first_error || ''}</td>
                     </tr>
                   ))}

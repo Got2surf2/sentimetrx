@@ -170,6 +170,12 @@ All four (or five with KMS) need to be set on Production. Preview/Development ca
 
 Both modes stream v2 snapshots table-part by table-part in ≤500-row batches (`lib/orgRestore.restoreOrgSnapshotFromSource`), so an uncapped snapshot restores within serverless memory. Tables that can't upsert by `id` restore **replace-per-parent** (delete the target's rows for each parent on its first appearance in the stream, then insert): `dataset_rows_flat` / `archived_dataset_rows_flat` (identity ids, stripped) and the composite-PK config tables `org_features` / `user_features` / `user_favorites` (previously backed up but silently unrestorable — reported-and-skipped).
 
+### Restore fidelity (2026-07-04 rework, after the first DR drill)
+
+- **Ordering + retry:** tables restore in `TABLE_SPECS` dependency order (parents before children), and any table with FK-blocked rows automatically re-runs after the rest have landed. This is required, not defensive: `datasets.brand_collection_id` ↔ `collections.dataset_id` is a circular dependency no static order can satisfy.
+- **Referential debt is skipped and counted, not batch-poisoning:** a row referencing a parent that exists nowhere in the target (org-transfer leftovers pointing at other orgs'/deleted rows) fails its whole 500-row PostgREST batch atomically. The restore bisects failing batches down to the individual offenders — good rows land, debt rows surface as `skipped_fk` (and non-id unique collisions, e.g. `collections_brand_slug_uniq` on re-restore-over-existing, as `skipped_conflict`). Skips are honest report items, not fatal errors — the debt is a property of the source data.
+- **Self-verification (never claim success for dropped rows):** after all writes, the restore re-queries the target for every row it claims to have landed (by id, or per-parent counts for identity tables) and reports any shortfall as `missing`. Pre-delete failures, partial writes, and streams that under-deliver vs the manifest row count all count as errors inline. The result's `ok` is true only with zero errors AND zero missing.
+
 ### What restore does NOT cover
 
 - **`auth.users`** — Supabase's auth schema is not in `public`. If a user record is deleted you need to re-invite (or contact Supabase support). The `users` row in `public.users` IS in the snapshot, but the corresponding `auth.users` row is not.
@@ -209,6 +215,6 @@ At present scale (~30 orgs, ~10 MB compressed each):
 
 - **Incomplete-snapshot detection (2026-07-02):** `fetchTable` records any per-table read error into `meta.fetch_errors`, and the nightly cron (`/api/cron/org-snapshot`) now returns **HTTP 500** (not a silent `ok`) if any org's snapshot has fetch errors or failed to upload. A table that fails to read can no longer pass as a green backup shipping 0 rows.
 - **No paging/alerting yet**: the cron's failure now surfaces as a red (500) run in Vercel, but nothing pages anyone. Wire to Sentry / Slack when we have a real on-call.
-- **Restore drills:** none run yet — do NOT claim quarterly drills in buyer docs until one is logged here (CAIQ BC-03/04 must read "first drill scheduled" until then).
+- **Restore drills:** first full prod→test drill run **2026-07-04** (fresh v2 dump of the Datanautix org: 200,986 rows / 50 tables / 0 fetch errors — capture verified complete). The restore side surfaced three fidelity bug classes (FK ordering, referential-debt batch poisoning, silent-loss accounting), fixed same day — see "Restore fidelity" above. Log each subsequent drill here.
 - **No automated restore tests**: there is no NIGHTLY "restore yesterday's snapshot, assert row counts" job yet. Partially covered since 2026-07-04: the v2 unit suite round-trips a dump→restore through the local store on every CI run, a live dump→restore→recount drill ran against the test project (row-for-row reconciliation), and every routine `clone-org-to-test` doubles as a restore drill. The missing piece is only the *scheduled* version.
 - **`auth.users` mirror**: consider also snapshotting Supabase Auth users (their JSON shape) so an accidental user delete can be partially recovered. Today, only `public.users` is captured.

@@ -263,20 +263,34 @@ async function main() {
   }
 
   // 3. Restore into the TEST project.
-  const { reports, totals } = await restoreOrgSnapshot(test, snapshot, { mode: 'merge' })
+  const { reports, totals, ok } = await restoreOrgSnapshot(test, snapshot, { mode: 'merge' })
 
   // 4. Mark the clone unmistakably.
   const cloneName = '[CLONE] ' + (snapshot.tables.organizations?.[0] as { name?: string } | undefined)?.name
     + ' — ' + new Date().toISOString().slice(0, 10)
   await test.from('organizations').update({ name: cloneName }).eq('id', orgId)
 
-  console.log('\n==> Restore report (errors only):')
-  for (const r of reports) if (r.errors > 0) console.log(`   ${r.table}: ${r.errors}/${r.attempted} errors — ${r.first_error}`)
-  console.log(`\n✅ Cloned into TEST as "${cloneName}"`)
-  console.log(`   upserted=${totals.upserted} errors=${totals.errors} across ${reports.length} tables`)
+  console.log('\n==> Restore report (problem tables only):')
+  for (const r of reports) {
+    if (r.errors > 0 || r.missing > 0 || r.skipped_fk > 0 || r.skipped_conflict > 0) {
+      console.log(`   ${r.table}: upserted=${r.upserted}/${r.attempted}`
+        + (r.errors ? ` errors=${r.errors}` : '')
+        + (r.skipped_fk ? ` skipped_fk=${r.skipped_fk}` : '')
+        + (r.skipped_conflict ? ` skipped_conflict=${r.skipped_conflict}` : '')
+        + (r.missing ? ` MISSING=${r.missing}` : '')
+        + (r.first_error ? ` — ${r.first_error}` : ''))
+    }
+  }
+  console.log(`\n${ok ? '✅' : '❌'} Cloned into TEST as "${cloneName}"`)
+  console.log(`   upserted=${totals.upserted} errors=${totals.errors} skipped_fk=${totals.skipped_fk}`
+    + ` skipped_conflict=${totals.skipped_conflict} missing=${totals.missing} across ${reports.length} tables (verified)`)
+  if (totals.skipped_fk > 0) {
+    console.log('   ⚠ skipped_fk = referential debt: rows referencing parents outside the snapshot')
+    console.log('     (org-transfer leftovers pointing at other orgs\'/deleted rows). NOT restored — by policy.')
+  }
   console.log('   Log in via the seeded dev admin (npm run dev) to browse it.')
   console.log('   Cleanup when done: delete the org from /admin on the test project (full sweep).')
-  if (totals.errors > 0) process.exit(1)
+  if (!ok) process.exit(1)
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

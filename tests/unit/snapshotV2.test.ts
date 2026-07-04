@@ -139,31 +139,58 @@ describe('snapshotSourceFromV1', () => {
   })
 })
 
-// --- fake TARGET db: records upserts / inserts / deletes --------------------
+// --- fake TARGET db: stateful store, records upserts / inserts / deletes ----
+// Stores landed rows so the restore's post-write verification pass (which
+// re-queries the target for the rows it claims to have landed) sees them.
 
 function targetDb(opts: { liveIds?: Record<string, string[]> } = {}) {
   const ops: { table: string; op: string; payload: unknown }[] = []
+  const store = new Map<string, Record<string, unknown>[]>()
+  const tbl = (t: string) => { if (!store.has(t)) store.set(t, []); return store.get(t)! }
+  let idSeq = 1
   const db = {
     from(table: string) {
       return {
         upsert(rows: Record<string, unknown>[], _o: unknown) {
           ops.push({ table, op: 'upsert', payload: rows })
-          return { select: (_c: string) => Promise.resolve({ data: rows.map(r => ({ id: r.id })), error: null }) }
+          return {
+            select: (_c: string) => {
+              const arr = tbl(table)
+              for (const r of rows) {
+                const i = arr.findIndex(x => x.id === r.id)
+                if (i >= 0) arr[i] = { ...r }; else arr.push({ ...r })
+              }
+              return Promise.resolve({ data: rows.map(r => ({ id: r.id })), error: null })
+            },
+          }
         },
         insert(rows: Record<string, unknown>[]) {
           ops.push({ table, op: 'insert', payload: rows })
-          return Promise.resolve({ error: null })
+          return {
+            select: (c: string) => {
+              const arr = tbl(table)
+              const landed: Record<string, unknown>[] = rows.map(r => ('id' in r ? { ...r } : { ...r, id: 'gen-' + idSeq++ }))
+              arr.push(...landed)
+              return Promise.resolve({ data: landed.map(r => ({ [c]: r[c] })), error: null })
+            },
+          }
         },
         delete() {
           return {
             in(col: string, vals: unknown[]) {
               ops.push({ table, op: 'delete', payload: { col, vals } })
+              store.set(table, tbl(table).filter(r => !vals.includes(r[col])))
               return Promise.resolve({ error: null })
             },
           }
         },
-        select(_c: string) {
+        select(col: string, o?: { count?: string; head?: boolean }) {
           return {
+            in(c: string, vals: unknown[]) {
+              const rows = tbl(table).filter(r => vals.includes(r[c]))
+              if (o?.head) return Promise.resolve({ count: rows.length, error: null })
+              return Promise.resolve({ data: rows.map(r => ({ id: r.id, [col]: r[col] })), error: null })
+            },
             eq(_col: string, _v: unknown) {
               const ids = opts.liveIds?.[table] || []
               return Promise.resolve({ data: ids.map(id => ({ id, org_id: ORG })), error: null })
@@ -173,7 +200,7 @@ function targetDb(opts: { liveIds?: Record<string, string[]> } = {}) {
       }
     },
   }
-  return { db: db as unknown as SupabaseClient, ops }
+  return { db: db as unknown as SupabaseClient, ops, store }
 }
 
 describe('restoreOrgSnapshotFromSource', () => {

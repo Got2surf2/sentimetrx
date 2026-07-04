@@ -38,7 +38,7 @@ vi.mock('@/lib/supabase/server', () => ({
 // Heavy / side-effecting libs — admin gate rejects before any of these run.
 vi.mock('@/lib/aiKey', () => ({}))
 vi.mock('@/lib/backupS3', () => ({}))
-vi.mock('@/lib/orgSnapshot', () => ({}))
+vi.mock('@/lib/orgSnapshot', () => ({ TABLE_SPECS: [] }))
 vi.mock('@/lib/orgTransfer', () => ({}))
 vi.mock('@/lib/reoVocabulary', () => ({}))
 vi.mock('@/lib/email/inviteTemplate', () => ({}))
