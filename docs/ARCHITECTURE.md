@@ -280,6 +280,128 @@ aggregation reads the blob per dataset (jsonb ops; the `data` GIN index
 serves containment probes). And anything that rewrites a whole `data`
 object must carry `_tx` through or knowingly drop it.
 
+## D15. Layered aggregation instead of a cache tier
+
+**Decision:** Derived numbers are served from four layers, chosen per
+surface — and there is deliberately no external cache tier (no Redis, no
+Upstash, no Vercel KV):
+
+1. **Write-time cached aggregates** in `dataset_state` (`analytics`,
+   `analytics.taxonomy`, signal stats): recomputed by the ingest/classify
+   path that changed the data, read for free by dashboards.
+2. **One materialized view**, `study_response_stats` (survey dashboard
+   counts): refreshed `CONCURRENTLY` after response ingest, read by the
+   studies dashboard. It is the only MV because it is the only surface that
+   is both read-hot and cross-entity; everything else fits layer 1 or 3.
+3. **On-demand SQL aggregation RPCs** (`count_field_values`,
+   `crosstab_counts`, `search_dataset_rows`, …) for ad-hoc questions over
+   row data — correct by construction, no staleness.
+4. **Per-instance in-memory memos with short TTLs** (e.g. the presenter
+   "Trending Now" 60s map) strictly as AI-cost dampers — they may miss on
+   every new serverless instance and that must stay acceptable.
+
+**Why:** Every cache is a staleness bug waiting for an invalidation
+(the Coalition survey-count incident was exactly a stale layer-1 key).
+Keeping derived data in Postgres beside the source rows means one backup
+story, one consistency model, and zero extra infrastructure to operate
+(D7). A cache tier would add a second data system for latency we don't
+yet need.
+
+**Consequences:** Layer-1 caches must be keyed on *everything* that
+invalidates them (theme-model hash + row count, learned the hard way);
+MV refresh cost grows with total platform responses, so refreshes must be
+debounced and off the request path — never awaited by a respondent
+(2026-07-04 efficiency audit finding); and any new hot read surface must
+state which layer it uses.
+
+## D16. No background job queue — three substitutes, each with a stated ceiling
+
+**Decision:** There is no job queue (no Inngest, no QStash, no worker
+dyno). Long-running work uses one of three shapes: (a) **resumable
+browser-driven loops** — the client POSTs bounded chunks and loops on a
+cursor (taxonomy classification, imports); (b) **time-budgeted request
+slicing** — the handler bails at `TIME_BUDGET_MS` and reports partial
+progress for the caller to continue; (c) **cron sweeps with per-run caps**
+— every 15-min tick processes a bounded batch and the next tick picks up
+the overflow (theme detection, social sync, campaign sends, auto-classify
+safety net).
+
+**Why:** A queue is a second runtime to operate, monitor, and secure
+(D7: serverless-only, one-owner ops). All three substitutes run inside
+the same Next.js + cron surface already deployed, and every deferred-work
+path degrades to "it happens next tick" rather than "it is lost."
+
+**Consequences:** No built-in retries, dead-letter, or backpressure —
+idempotency must come from the work itself (content-hash dedup, upserts);
+browser-driven loops die with the tab (acceptable: the cursor resumes);
+and throughput ceilings are set by cron cadence × per-run caps —
+quantified in `docs/CAPACITY.md`. When a workload outgrows next-tick
+semantics (multi-org campaign blasts), a queue is the named upgrade path.
+
+## D17. Live surfaces poll; nothing uses WebSockets or Supabase Realtime
+
+**Decision:** Every live surface is HTTP polling on a stated cadence —
+PulseIQ participants poll join-status ~3s, facilitator console 4s,
+presenter screen 10s. No Supabase Realtime subscriptions, no WebSockets
+(the one exception is Deepgram's ASR socket for live capture, which is
+vendor-terminated).
+
+**Why:** Polling is stateless and serverless-native — every poll is an
+ordinary function invocation with auth, rate limiting, and org scoping
+applied uniformly; Realtime would add a second delivery path whose
+tenant-isolation guarantees (D1) would need separate auditing against
+RLS, plus connection-count limits to manage.
+
+**Consequences:** Live dashboards pay read amplification (pollers ×
+cadence × query cost) — the facilitator console re-deriving counts from
+raw turns is the known hot spot (efficiency audit 2026-07-04); event
+latency is bounded by the poll interval, acceptable for cohort chat.
+At venue scale the fix is cheaper reads (cached counts), not a transport
+change. Realtime remains available behind the same Supabase project if a
+surface ever genuinely needs push.
+
+## D18. Rate limiting lives in Postgres, and fails open
+
+**Decision:** Rate limits are enforced by an atomic `check_rate_limit`
+RPC over a `rate_limit_buckets` table — shared across all serverless
+instances — with limits declared per route (public chat 30/min/IP,
+survey submit 120/min/IP, town-hall 20/min/participant + 600/min/IP
+backstop). If the DB call errors, the limiter **fails open** through a
+deliberately permissive per-instance in-memory fallback.
+
+**Why:** Correct rate limiting needs shared state; Postgres is the only
+shared state we operate (D15: no Redis). Failing open is a product call:
+a degraded database must not lock respondents out of surveys and chats —
+the per-request cost guards (AI spend caps, content guard) still apply.
+
+**Consequences:** Every rate-limited request adds one pooler round trip
+(counted in the CAPACITY.md connection math); the limiter itself must
+never become the bottleneck it guards against; and abuse pressure during
+a DB incident is absorbed by the permissive fallback — an accepted risk,
+revisit if a real abuse event hits during degradation.
+
+## D19. Chat replies are non-streaming, and the turn is durable before the reply
+
+**Decision:** `handleChatTurn` returns one buffered JSON reply — no token
+streaming — and the turn is written to the synchronous store *before* the
+HTTP response is sent. The model-tier split is part of the same posture:
+the participant-facing reply runs on the advanced tier (Sonnet), while
+per-turn auxiliary calls (summarization, deflection, sentiment, language)
+run on cheaper tiers.
+
+**Why:** The clients are embedded widgets, kiosks, and QR-code phones —
+buffered JSON keeps them trivial (no SSE handling, no partial-render
+states) and keeps every reply guardrail-checkable *in full* before a
+respondent sees a word of it. Durable-before-respond means a crash after
+reply can't lose a turn that the participant saw.
+
+**Consequences:** Perceived latency equals full model time (~5–13s
+measured p95 under load) — acceptable for reflective cohort conversation,
+and the widget owns the typing indicator; guardrails never race the
+render. If a future surface demands streaming, it must add a post-hoc
+moderation path (retract-after-display), which is a product decision, not
+a transport one.
+
 ---
 
 *Add a D-entry when a decision (a) shapes more than one module, (b) would
