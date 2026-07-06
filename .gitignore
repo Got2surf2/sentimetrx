@@ -55,3 +55,7 @@ scripts/_*.sql
 # Promotion manifests (scripts/promote.ts) — reviewable JSON artifacts that
 # can carry client config (prompts, discussion guides); never committed.
 promotions/
+scripts/_*.json
+
+# Harness-local session lock — machine state, never commit (was committed by accident once)
+.claude/scheduled_tasks.lock
