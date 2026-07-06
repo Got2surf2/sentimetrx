@@ -754,6 +754,19 @@ analytics export — dataset-row CSV download is not part of this module.
   entity / provenance / custom-decks → their existing kinds. The old per-slide `build*Slide`
   builders and the navy `DN`-palette draw helpers were deleted. The cream `section` divider
   has **no emoji/PNG art** (the old navy dividers did).
+- **Deck styles (2026-07-06)**: the renderer's palette is no longer hard-coded — presets live
+  in `lib/pptx/styles.ts` (`DECK_STYLES`: **Datanautix Modern** = the exact former cream
+  constant and the DEFAULT, **Datanautix Classic** = the original navy/teal/gold brand
+  palette, plus **Warm** and **Ocean** variants). The ExportModal shows a swatched "Deck
+  Style" picker (PPTX only — the HTML export keeps its fixed styling); the choice flows
+  `body.style` → route validation against `DECK_STYLES` → `DeckSpec.style` → `renderDeck`,
+  and lands on the recap slide for traceability. Inside the renderer the resolved palette
+  rides the **per-request pptx instance** (read via `pal(pptx)` in every builder) —
+  deliberately NOT a module global, because Fluid Compute serves concurrent exports from one
+  warm instance and a shared global would bleed colors between two simultaneous exports of
+  different styles. Every other `renderDeck` caller passes no style and renders
+  pixel-identical to before (verified pre/post-refactor on a 9-slide spec). The datanautix
+  footer mark stays in every style.
 - **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),
   `full` (full team — most detail, drives theme-impact slide inclusion)
 - **Slides**: Title, executive summary, **survey overview** (survey sources only — see

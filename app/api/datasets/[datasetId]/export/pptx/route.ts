@@ -15,6 +15,7 @@ import { buildKwRegex } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, trunc } from '@/lib/pptx/shared'
 import { renderDeck, type DeckSpec, type SlideSpec, type DistBarsSlide, type NumericStatsSlide, type CompactGridSlide } from '@/lib/pptx/slideRenderer'
+import { DECK_STYLES } from '@/lib/pptx/styles'
 import { catalogToAggregate, entitySlideSpecs, categoriseEntityNames } from '@/lib/entityAnalysis'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { discoverEntities } from '@/lib/entityDiscovery'
@@ -318,6 +319,7 @@ export async function POST(req: Request, props: Params) {
   const reportTitle: string             = body.reportTitle || ''
   const impactOEFields: string[]       = body.impactOEFields || []
   const skipAI: boolean                = body.skipAI === true
+  const deckStyle: string | undefined  = typeof body.style === 'string' && body.style in DECK_STYLES ? body.style : undefined
   // Closer-slide toggles — default ON; ExportModal lets the user opt out per export
   const includeCustomDecks: boolean    = body.includeCustomDecks !== false
   const includeProvenance:  boolean    = body.includeProvenance  !== false
@@ -1412,6 +1414,7 @@ export async function POST(req: Request, props: Params) {
         const recapRows: { k: string; v: string }[] = []
         recapRows.push({ k: 'Mode', v: mode === 'quick' ? 'Quick (selected fields)' : 'Builder (full schema)' })
         recapRows.push({ k: 'Audience', v: audience })
+        if (deckStyle) recapRows.push({ k: 'Style', v: DECK_STYLES[deckStyle as keyof typeof DECK_STYLES]?.label || deckStyle })
         if (reportTitle) recapRows.push({ k: 'Report title', v: cap(reportTitle) })
         recapRows.push({ k: 'Fields', v: selectedFields.length ? cap(`${selectedFields.length}: ` + selectedFields.map(f => f.label || f.field).join(', ')) : 'all schema fields' })
         if (skipTextAnalytics) recapRows.push({ k: 'Text analytics', v: 'skipped (entity-only deck)' })
@@ -1434,7 +1437,7 @@ export async function POST(req: Request, props: Params) {
 
     // ── Render via the shared cream renderer ─────────────────────────────────
     const deckTitle = reportTitle || narratives.reportTitle || datasetName
-    const deck: DeckSpec = { title: deckTitle, subtitle: '', preparedBy: 'Datanautix', slides }
+    const deck: DeckSpec = { title: deckTitle, subtitle: '', preparedBy: 'Datanautix', style: deckStyle, slides }
     const buffer = await renderDeck(deck, datasetName)
     const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
     const filename = safeName + '_report_' + new Date().toISOString().slice(0, 10) + '.pptx'

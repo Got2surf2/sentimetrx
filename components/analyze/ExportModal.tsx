@@ -9,6 +9,7 @@ import { serializeFilters, filterCount } from '@/lib/filterUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GhostTextarea from '@/components/ui/GhostTextarea'
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
+import { deckStyleOptions, DEFAULT_DECK_STYLE } from '@/lib/pptx/styles'
 
 const HERMES = '#e8622a'
 
@@ -66,6 +67,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [fieldCounts,  setFieldCounts]  = useState<Record<string, number>>({})
   const [selected,     setSelected]     = useState<Set<string>>(new Set())
   const [audience,     setAudience]     = useState('stakeholder')
+  const [deckStyle,    setDeckStyle]    = useState<string>(DEFAULT_DECK_STYLE)
   const [reportTitle,  setReportTitle]  = useState('')
   const [instructions, setInstructions] = useState('')
   const [loading,      setLoading]      = useState(true)
@@ -251,6 +253,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
       if (impactScoreFields.size > 0) body.impactScoreFields = Array.from(impactScoreFields)
       if (activeFilterCount > 0) body.filters = serializeFilters(filters)
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
+      if (format === 'pptx') body.style = deckStyle
       const endpoint = format === 'html' ? '/api/datasets/' + datasetId + '/export/html' : '/api/datasets/' + datasetId + '/export/pptx'
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -589,6 +592,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                       style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #d1d5db', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }} />
                   </div>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
+                  {format === 'pptx' && <StylePicker deckStyle={deckStyle} setDeckStyle={setDeckStyle} />}
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} />
                   <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
@@ -654,6 +658,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   </div>
 
                   <AudiencePicker audience={audience} setAudience={setAudience} />
+                  {format === 'pptx' && <StylePicker deckStyle={deckStyle} setDeckStyle={setDeckStyle} />}
 
                   {/* Field selector — collapsible, secondary */}
                   <div style={{ marginBottom: 12 }}>
@@ -717,6 +722,33 @@ function AudiencePicker({ audience, setAudience }: { audience: string; setAudien
               style={{ flex: 1, padding: '9px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', border: '1.5px solid ' + (active ? HERMES : S.border), background: active ? S.accentBg : S.bg, transition: 'all .12s' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: active ? HERMES : S.textMid, marginBottom: 2 }}>{opt.label}</div>
               <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4 }}>{opt.desc}</div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Deck style (palette preset) picker — PPTX only; the HTML export has its own
+// fixed styling. Swatch dots preview each preset's ink/accent/counterpoint/pop.
+function StylePicker({ deckStyle, setDeckStyle }: { deckStyle: string; setDeckStyle: (v: string) => void }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Deck Style</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {deckStyleOptions().map(function(opt) {
+          const active = deckStyle === opt.id
+          return (
+            <button key={opt.id} onClick={function() { setDeckStyle(opt.id) }}
+              style={{ flex: 1, padding: '9px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', border: '1.5px solid ' + (active ? HERMES : S.border), background: active ? S.accentBg : S.bg, transition: 'all .12s' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                {opt.swatch.map(function(c, i) {
+                  return <span key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: '#' + c, border: '1px solid rgba(0,0,0,.12)', display: 'inline-block' }} />
+                })}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: active ? HERMES : S.textMid, marginBottom: 2 }}>{opt.label}</div>
+              <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4 }}>{opt.blurb}</div>
             </button>
           )
         })}
