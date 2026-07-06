@@ -22,6 +22,8 @@
 -- Existing rows are v3 (no emotion key) until re-classified; every reader
 -- treats a missing axis as empty, so this is backward-compatible.
 
+BEGIN;
+
 -- ── 1. Axis-guard widening ───────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("value" "text", "count" bigint)
@@ -175,7 +177,7 @@ $$;
 
 DROP FUNCTION IF EXISTS "public"."get_rows_by_filters"("uuid"[], "jsonb", "text", "text", "text"[], "text"[], "text"[], "text"[], "text"[], "text"[], "text"[], boolean, integer, integer);
 
-CREATE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text" DEFAULT NULL::"text", "p_entity_query" "text" DEFAULT NULL::"text", "p_sub_touchpoint" "text"[] DEFAULT NULL::"text"[], "p_sub_attribute" "text"[] DEFAULT NULL::"text"[], "p_sub_product" "text"[] DEFAULT NULL::"text"[], "p_sub_beverage" "text"[] DEFAULT NULL::"text"[], "p_sub_ambiance" "text"[] DEFAULT NULL::"text"[], "p_sub_context" "text"[] DEFAULT NULL::"text"[], "p_sub_outcome" "text"[] DEFAULT NULL::"text"[], "p_sub_emotion" "text"[] DEFAULT NULL::"text"[], "p_has_dim" boolean DEFAULT false, "p_limit" integer DEFAULT 200, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "dataset_id" "uuid", "row_index" integer, "data" "jsonb", "total_count" bigint)
+CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text" DEFAULT NULL::"text", "p_entity_query" "text" DEFAULT NULL::"text", "p_sub_touchpoint" "text"[] DEFAULT NULL::"text"[], "p_sub_attribute" "text"[] DEFAULT NULL::"text"[], "p_sub_product" "text"[] DEFAULT NULL::"text"[], "p_sub_beverage" "text"[] DEFAULT NULL::"text"[], "p_sub_ambiance" "text"[] DEFAULT NULL::"text"[], "p_sub_context" "text"[] DEFAULT NULL::"text"[], "p_sub_outcome" "text"[] DEFAULT NULL::"text"[], "p_sub_emotion" "text"[] DEFAULT NULL::"text"[], "p_has_dim" boolean DEFAULT false, "p_limit" integer DEFAULT 200, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "dataset_id" "uuid", "row_index" integer, "data" "jsonb", "total_count" bigint)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
@@ -258,3 +260,4 @@ GRANT ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "
 GRANT ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) TO "service_role";
 
 COMMENT ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) IS 'Comments matching ALL active facets (theme keywords AND entity terms AND dimension tags), OR within each facet. Dimension facet reads embedded data._tx axes (sql/151, emotion axis sql/158). total_count is the window count for pagination.';
+COMMIT;
