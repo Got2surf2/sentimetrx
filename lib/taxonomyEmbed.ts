@@ -17,11 +17,11 @@
 // enumerates a row blob's keys as data columns must check isReservedRowKey.
 
 import type { Assertion } from './taxonomyVocabulary'
-import { AXES, type Axis } from './taxonomyVocabulary'
+import { ALL_AXES, type Axis } from './taxonomyVocabulary'
 
 // Bump when the closed vocabulary / dictionary changes so stale rows are
 // detectable (mirrors the productization plan's taxonomy_version).
-export const TAXONOMY_VERSION = 'v3'  // v3: generalized in-food hair phrasings (hair in the…, hair found in); v2: hair + foreign-object cadre in food-safety dict
+export const TAXONOMY_VERSION = 'v4'  // v4: emotion axis (disappointment/blame/churn-intent language flags, lib/emotionFlags.ts); v3: generalized in-food hair phrasings; v2: hair + foreign-object cadre in food-safety dict
 
 /** Top-level data-blob keys that are app metadata, not dataset columns. */
 export const RESERVED_ROW_KEYS = ['_tx'] as const
@@ -68,13 +68,13 @@ export function buildFieldBlock(
   const byAxis: Partial<Record<Axis, Set<string>>> = {}
   const alerts = new Set<string>()
   for (const a of assertions) {
-    if ((AXES as readonly string[]).includes(a.axis)) {
+    if ((ALL_AXES as readonly string[]).includes(a.axis)) {
       (byAxis[a.axis as Axis] ??= new Set()).add(a.sub)
     }
     if (ALERT_SEVERITIES.has(a.severity)) alerts.add(a.sub)
   }
   const axes: Partial<Record<Axis, string[]>> = {}
-  for (const ax of AXES) {
+  for (const ax of ALL_AXES) {
     const subs = byAxis[ax]
     if (subs && subs.size) axes[ax] = [...subs].sort()
   }

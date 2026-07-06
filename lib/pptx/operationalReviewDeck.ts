@@ -265,24 +265,26 @@ export function buildOperationalReviewDeck(
   // ── 10. Dimensions section (NEW) — only if classified signal exists ─────────
   const dim = opts.dimensions
   if (dim && dim.withSignal > 0) {
-    // 10a. Aspect coverage (column_chart) — the 7 axes by mention rate.
+    // 10a. Aspect coverage (column_chart) — the 7 ABSA axes by mention rate.
     // (column_chart, not bar_chart: bar_chart adds a misleading %-of-total column
     // for a rate metric — the per-axis mention rate IS the value here.)
+    // The emotion-language axis is NOT an aspect — it gets its own tile (10c).
+    const absaAxes = dim.axes.filter((a) => a.axis !== 'emotion')
     slides.push({
       type: 'column_chart',
       title: 'Dimensions — Aspect Coverage',
       subtitle: `Aspect-level ABSA lens · ${dim.withSignal.toLocaleString()} of ${dim.classifiedRows.toLocaleString()} classified reviews carry at least one aspect`,
       yAxisLabel: '% of classified reviews mentioning the axis',
       valueSuffix: '%',
-      data: dim.axes.map((a) => ({ label: a.label, value: Math.round(a.rate) })),
+      data: absaAxes.map((a) => ({ label: a.label, value: Math.round(a.rate) })),
       insight:
         `Dimensions are an aspect-level ABSA lens — touchpoint, attribute, product, beverage, ambiance, context, and outcome. ` +
-        `Each value is the share of classified reviews that mention the axis (${dim.axes.map((a) => `${a.label} ${Math.round(a.rate)}%`).slice(0, 3).join(', ')}…). ` +
+        `Each value is the share of classified reviews that mention the axis (${absaAxes.map((a) => `${a.label} ${Math.round(a.rate)}%`).slice(0, 3).join(', ')}…). ` +
         `This is the lens the parent org tracks.`,
     })
 
-    // 10b. What stands out (table) — top sub-aspects by count.
-    const topSubs = [...dim.subs].sort((a, b) => b.count - a.count).slice(0, 10)
+    // 10b. What stands out (table) — top sub-aspects by count (ABSA axes only).
+    const topSubs = dim.subs.filter((s) => s.axis !== 'emotion').sort((a, b) => b.count - a.count).slice(0, 10)
     const ranked = topSubs.filter((s) => s.posPct != null)
     const lowest = [...ranked].sort((a, b) => (a.posPct as number) - (b.posPct as number)).slice(0, 3)
     let standOut =
@@ -307,6 +309,33 @@ export function buildOperationalReviewDeck(
       ]),
       insight: standOut,
     })
+
+    // 10c. Emotion-language tile (kpi_grid) — only when the flags fired.
+    // Expressed-language framing throughout: these count reviews CONTAINING the
+    // language, never claimed feelings. Rates use the 1–3★ denominator (the
+    // validated territory); no composite emotion score by design.
+    const emo = dim.emotion
+    if (emo && emo.negRows > 0 && emo.flags.some((f) => f.negCount > 0)) {
+      const flagOf = (sub: string) => emo.flags.find((f) => f.sub === sub)
+      const disap = flagOf('disappointment')
+      const churn = flagOf('churn intent')
+      const blame = flagOf('blame')
+      const kpis: { value: string; label: string; sub: string; color: string }[] = []
+      if (disap?.negCount) kpis.push({ value: `${disap.negRate}%`, label: 'Disappointment language', sub: `${disap.negCount.toLocaleString()} of ${emo.negRows.toLocaleString()} 1–3★ reviews`, color: DN.orange })
+      if (churn?.negCount) kpis.push({ value: `${churn.negRate}%`, label: 'Churn-intent language', sub: `"never again / won't be back" — ${churn.negCount.toLocaleString()} reviews`, color: DN.navy })
+      if (blame?.negCount) kpis.push({ value: `${blame.negRate}%`, label: 'Blame language', sub: `names a controllable decision — ${blame.negCount.toLocaleString()} reviews`, color: DN.amber })
+      if (emo.disapChurnNegCount > 0) kpis.push({ value: emo.disapChurnNegCount.toLocaleString(), label: 'Disappointment + churn intent', sub: 'reviews carrying BOTH — the priority recovery list', color: DN.teal })
+      slides.push({
+        type: 'kpi_grid',
+        title: 'Emotion Language in Negative Reviews',
+        subtitle: `Share of ${emo.negRows.toLocaleString()} 1–3★ reviews whose text contains each signal · deterministic keyword pass, every hit carries a verbatim evidence span`,
+        kpis,
+        insight:
+          `Expressed language, not inferred feelings — a review counts only when it literally contains the signal (e.g. "expected better", "never coming back", "whoever decided…"). ` +
+          `Disappointment language marks an expectation gap the price point set; churn-intent language is a stated decision not to return; blame language names a controllable call and is management-actionable. ` +
+          `Reviews carrying disappointment AND churn intent together are the sharpest recovery targets: the guest wanted this to work and told you why it didn't.`,
+      })
+    }
   }
 
   // ── 11. What guests are telling you (quotes) — from improvement plan ───────

@@ -15,7 +15,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildEntityQuery, buildThemeQuery } from '@/lib/entityFilter'
-import { AXES, type Axis } from '@/lib/taxonomyVocabulary'
+import { ALL_AXES, type Axis } from '@/lib/taxonomyVocabulary'
 import { logError } from '@/lib/log'
 
 /** Collection → member dataset ids; any other dataset → itself. */
@@ -71,14 +71,14 @@ export async function getRowsByFilters(opts: {
 
   // One text[] of selected subs per axis (OR'd across axes in SQL).
   const subsByAxis: Record<Axis, string[]> = {
-    touchpoint: [], attribute: [], product: [], beverage: [], ambiance: [], context: [], outcome: [],
+    touchpoint: [], attribute: [], product: [], beverage: [], ambiance: [], context: [], outcome: [], emotion: [],
   }
   for (const d of (opts.dimensions || [])) {
-    if ((AXES as readonly string[]).includes(d.axis) && d.sub) subsByAxis[d.axis as Axis].push(d.sub)
+    if ((ALL_AXES as readonly string[]).includes(d.axis) && d.sub) subsByAxis[d.axis as Axis].push(d.sub)
   }
   const hasDim = (opts.dimensions || []).length > 0
 
-  const { data: rpcRows, error } = await service.rpc('get_rows_by_filters', {
+  const rpcArgs: Record<string, unknown> = {
     p_dataset_ids:    datasetIds,
     p_text_fields:    Object.keys(textFields).length > 0 ? textFields : null,
     p_theme_query:    themeQuery,
@@ -93,7 +93,12 @@ export async function getRowsByFilters(opts: {
     p_has_dim:        hasDim,
     p_limit:          limit,
     p_offset:         offset,
-  })
+  }
+  // Only sent when an emotion chip is actually selected: the param defaults to
+  // NULL server-side, and omitting it keeps this call compatible with the
+  // pre-sql/158 function signature (deploy-order safety).
+  if (subsByAxis.emotion.length) rpcArgs.p_sub_emotion = subsByAxis.emotion
+  const { data: rpcRows, error } = await service.rpc('get_rows_by_filters', rpcArgs)
   if (error) throw new Error(error.message)
 
   const matched = (rpcRows || []) as Array<{

@@ -163,6 +163,9 @@ legacy substrate in sql/153 (2026-07-04). The rest are aggregate helpers:
 The 61 functions are mostly: atomic counter/merge RPCs (sql/144–146:
 townhall response counter, `dataset_state` analytics merge, session counts),
 `updated_at` triggers, and RLS helper predicates. All are in the snapshot.
+sql/158 (2026-07-06) widened the five taxonomy read RPCs' axis allow-lists
+to accept the `emotion` axis and re-created `get_rows_by_filters` with a
+`p_sub_emotion` facet param (no table changes).
 
 ---
 

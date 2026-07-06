@@ -107,7 +107,7 @@ export async function POST(req: Request, props: Params) {
   // axis subs come from the verdicts embedded in data._tx (sql/151); a row tagged
   // with several subs counts in each. Responses mirror the scalar ops above so
   // chart components consume them unchanged.
-  var TAX_AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome']
+  var TAX_AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome', 'emotion']
 
   // Optional filtered row-id set (view-level dimensions). null = whole dataset;
   // an empty/array value restricts the aggregate to those flat row ids. Sanitized

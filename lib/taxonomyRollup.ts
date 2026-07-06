@@ -18,7 +18,7 @@ import { mergeDatasetAnalytics } from './datasetAnalytics'
 import { deriveTrendWindows } from './trendWindows'
 import { logError } from './log'
 
-export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'] as const
+export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome', 'emotion'] as const
 export type Axis = typeof AXES[number]
 
 // Verbose axis labels — single source lives in lib/dimensionFields.ts so the tab,
@@ -28,13 +28,28 @@ export const AXIS_LABEL: Record<Axis, string> = DIM_AXIS_LABEL_LONG
 export interface TaxonomyRow {
   axis_touchpoint: string[]; axis_attribute: string[]; axis_product: string[]
   axis_beverage: string[];   axis_ambiance: string[];  axis_context: string[]
-  axis_outcome: string[];    alert_tags: string[]
+  axis_outcome: string[];    axis_emotion: string[];   alert_tags: string[]
   assertions: { axis: string; sub: string; polarity?: string }[]
   rating?: number | null     // attached by computeTaxonomyRollup from dataset_rows_flat
   dateMs?: number | null     // attached when a trend date field is requested
 }
 
 export interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
+
+// Emotion-language summary (expressed-language framing — "contains X language").
+// Rates that go client-facing are denominated on NEGATIVE rows (rating ≤ 3):
+// that's the spot-check-validated territory; the positive-row counts exist for
+// the lift comparison only. Omitted entirely when nothing fired (never show
+// "0% emotion" on ideation-genre datasets).
+export interface EmotionRollup {
+  negRows: number   // classified rows rated ≤ 3
+  posRows: number   // classified rows rated ≥ 4
+  flags: { sub: string; count: number; negCount: number; posCount: number; negRate: number | null; avgRating: number | null }[]
+  /** rows containing BOTH disappointment and churn-intent language — the co-occurrence tile */
+  disapChurnCount: number
+  disapChurnNegCount: number
+}
+
 export interface TaxonomyRollup {
   classifiedRows: number
   withSignal:     number
@@ -43,6 +58,7 @@ export interface TaxonomyRollup {
   subs:   SubStat[]
   alerts: { tag: string; count: number }[]
   alertRows: number
+  emotion?: EmotionRollup
 }
 
 // computeTaxonomyRollup return when a trend date field is supplied: the full
@@ -72,6 +88,11 @@ interface TaxonomyAcc {
   subRatS: Record<string, number>;  subRatN: Record<string, number>
   overallRatS: number; overallRatN: number
   withSignal: number; alertRows: number
+  // emotion-language accumulators: rated-neg/pos row counts, per-flag neg/pos
+  // splits, and the disappointment×churn-intent co-occurrence
+  negRows: number; posRows: number
+  emoNeg: Record<string, number>; emoPos: Record<string, number>
+  disapChurn: number; disapChurnNeg: number
 }
 
 function newTaxonomyAcc(): TaxonomyAcc {
@@ -79,6 +100,7 @@ function newTaxonomyAcc(): TaxonomyAcc {
     n: 0, axisCount: {}, subCount: {}, subPos: {}, subNeg: {}, alertCount: {},
     axisRatS: {}, axisRatN: {}, subRatS: {}, subRatN: {},
     overallRatS: 0, overallRatN: 0, withSignal: 0, alertRows: 0,
+    negRows: 0, posRows: 0, emoNeg: {}, emoPos: {}, disapChurn: 0, disapChurnNeg: 0,
   }
 }
 
@@ -102,6 +124,20 @@ function accumulateTaxonomyRow(acc: TaxonomyAcc, r: TaxonomyRow): void {
     }
   }
   if (any) acc.withSignal++
+  // Emotion-language splits (client-facing rates use the NEG denominator)
+  const isNeg = rating != null && rating <= 3
+  const isPos = rating != null && rating >= 4
+  if (isNeg) acc.negRows++
+  if (isPos) acc.posRows++
+  const emo = r.axis_emotion || []
+  for (const sub of emo) {
+    if (isNeg) acc.emoNeg[sub] = (acc.emoNeg[sub] || 0) + 1
+    else if (isPos) acc.emoPos[sub] = (acc.emoPos[sub] || 0) + 1
+  }
+  if (emo.includes('disappointment') && emo.includes('churn intent')) {
+    acc.disapChurn++
+    if (isNeg) acc.disapChurnNeg++
+  }
   if (r.alert_tags && r.alert_tags.length) {
     acc.alertRows++
     for (const t of r.alert_tags) acc.alertCount[t] = (acc.alertCount[t] || 0) + 1
@@ -116,14 +152,19 @@ function accumulateTaxonomyRow(acc: TaxonomyAcc, r: TaxonomyRow): void {
 function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
   const { n, axisCount, subCount, subPos, subNeg, alertCount,
           axisRatS, axisRatN, subRatS, subRatN,
-          overallRatS, overallRatN, withSignal, alertRows } = acc
+          overallRatS, overallRatN, withSignal, alertRows,
+          negRows, posRows, emoNeg, emoPos, disapChurn, disapChurnNeg } = acc
   const denom = Math.max(1, n)
-  const axes = AXES.map(ax => ({
-    axis: ax, label: AXIS_LABEL[ax],
-    count: axisCount[ax] || 0,
-    rate: +(100 * (axisCount[ax] || 0) / denom).toFixed(1),
-    avgRating: mean(axisRatS[ax] || 0, axisRatN[ax] || 0),
-  })).sort((a, b) => b.rate - a.rate)
+  // The emotion axis is suppressed when it never fired (evaluative-genre gate:
+  // never present "0% emotion language" on ideation prompts / captive verticals).
+  const axes = AXES
+    .filter(ax => ax !== 'emotion' || (axisCount[ax] || 0) > 0)
+    .map(ax => ({
+      axis: ax, label: AXIS_LABEL[ax],
+      count: axisCount[ax] || 0,
+      rate: +(100 * (axisCount[ax] || 0) / denom).toFixed(1),
+      avgRating: mean(axisRatS[ax] || 0, axisRatN[ax] || 0),
+    })).sort((a, b) => b.rate - a.rate)
 
   const subs: SubStat[] = Object.keys(subCount).map(k => {
     const [axis, sub] = k.split(':')
@@ -139,7 +180,27 @@ function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
   const alerts = Object.keys(alertCount).map(t => ({ tag: t, count: alertCount[t] }))
     .sort((a, b) => b.count - a.count)
 
-  return { classifiedRows: n, withSignal, overallAvgRating: mean(overallRatS, overallRatN), axes, subs, alerts, alertRows }
+  const rollup: TaxonomyRollup = {
+    classifiedRows: n, withSignal, overallAvgRating: mean(overallRatS, overallRatN), axes, subs, alerts, alertRows,
+  }
+  if ((axisCount['emotion'] || 0) > 0) {
+    const flagSubs = Object.keys(subCount).filter(k => k.startsWith('emotion:')).map(k => k.slice('emotion:'.length))
+    rollup.emotion = {
+      negRows, posRows,
+      flags: flagSubs.map(sub => {
+        const k = 'emotion:' + sub
+        const negCount = emoNeg[sub] || 0
+        return {
+          sub, count: subCount[k] || 0, negCount, posCount: emoPos[sub] || 0,
+          negRate: negRows > 0 ? +(100 * negCount / negRows).toFixed(1) : null,
+          avgRating: mean(subRatS[k] || 0, subRatN[k] || 0),
+        }
+      }).sort((a, b) => b.count - a.count),
+      disapChurnCount: disapChurn,
+      disapChurnNegCount: disapChurnNeg,
+    }
+  }
+  return rollup
 }
 
 /** Pure aggregation over already-fetched taxonomy rows. */
@@ -191,6 +252,7 @@ function blockToTaxonomyRow(block: TaxonomyFieldBlock | null): TaxonomyRow {
     axis_ambiance:   blockAxisSubs(block, 'ambiance'),
     axis_context:    blockAxisSubs(block, 'context'),
     axis_outcome:    blockAxisSubs(block, 'outcome'),
+    axis_emotion:    blockAxisSubs(block, 'emotion'),
     alert_tags:      block?.al ?? [],
     assertions:      (block?.as ?? []).map(a => ({ axis: a.axis, sub: a.sub, polarity: a.polarity })),
   }

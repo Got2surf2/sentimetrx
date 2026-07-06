@@ -5,7 +5,8 @@ import { KEYWORD_DICTIONARY } from '@/lib/taxonomyKeywords'
 
 const blank = (): TaxonomyRow => ({
   axis_touchpoint: [], axis_attribute: [], axis_product: [], axis_beverage: [],
-  axis_ambiance: [], axis_context: [], axis_outcome: [], alert_tags: [], assertions: [],
+  axis_ambiance: [], axis_context: [], axis_outcome: [], axis_emotion: [],
+  alert_tags: [], assertions: [],
 })
 
 describe('aggregateTaxonomy', () => {
@@ -50,6 +51,41 @@ describe('aggregateTaxonomy', () => {
     expect(r.withSignal).toBe(0)
     expect(r.subs).toEqual([])
     expect(r.axes.every(a => a.rate === 0)).toBe(true)
+  })
+
+  it('omits the emotion axis and summary entirely when no flags fired', () => {
+    const r = aggregateTaxonomy([{ ...blank(), axis_product: ['steak'], assertions: [] }])
+    expect(r.axes.find(a => a.axis === 'emotion')).toBeUndefined()  // never show "0% emotion"
+    expect(r.emotion).toBeUndefined()
+  })
+
+  it('aggregates emotion flags with negative-row denominators and co-occurrence', () => {
+    const rows: TaxonomyRow[] = [
+      { ...blank(), rating: 1, axis_emotion: ['disappointment', 'churn intent'] },
+      { ...blank(), rating: 2, axis_emotion: ['disappointment'] },
+      { ...blank(), rating: 2, axis_emotion: ['blame'] },
+      { ...blank(), rating: 3 },                                   // negative, no flags
+      { ...blank(), rating: 5, axis_emotion: ['churn intent'] },   // positive-row hit: counted separately
+      { ...blank(), rating: 5 },
+    ]
+    const r = aggregateTaxonomy(rows)
+
+    expect(r.axes.find(a => a.axis === 'emotion')?.count).toBe(4)
+    const e = r.emotion!
+    expect(e.negRows).toBe(4)
+    expect(e.posRows).toBe(2)
+
+    const disap = e.flags.find(f => f.sub === 'disappointment')!
+    expect(disap.count).toBe(2)
+    expect(disap.negCount).toBe(2)
+    expect(disap.negRate).toBe(50)         // 2 of 4 negative rows
+
+    const churn = e.flags.find(f => f.sub === 'churn intent')!
+    expect(churn.negCount).toBe(1)
+    expect(churn.posCount).toBe(1)         // the lift comparison needs both splits
+
+    expect(e.disapChurnCount).toBe(1)      // row 1 carries both
+    expect(e.disapChurnNegCount).toBe(1)
   })
 })
 

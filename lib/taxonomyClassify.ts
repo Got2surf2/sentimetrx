@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyByKeyword } from './taxonomyKeywordMatcher'
+import { detectEmotionAssertions } from './emotionFlags'
 import { resolveDictionary, type BrandOverlay } from './taxonomyDictionary'
 import { buildFieldBlock, TAXONOMY_VERSION, type TaxonomyFieldBlock } from './taxonomyEmbed'
 import { updateStoredTaxonomyRollup } from './taxonomyRollup'
@@ -110,9 +111,10 @@ export async function classifyDatasetKeyword(opts: {
       const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
       if (!text) { skippedEmpty++; continue }
       const { assertions } = classifyByKeyword(text, dict)
+      const emotion = detectEmotionAssertions(text)
       items.push({
         id: row.id,
-        tx: buildFieldBlock(assertions, { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
+        tx: buildFieldBlock([...assertions, ...emotion], { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
       })
     }
     for (let i = 0; i < items.length; i += 500) {
@@ -180,9 +182,10 @@ export async function classifyPendingRows(opts: {
       // FOREVER (the "N rows aren't tagged" nudge could never clear). Writing a
       // (tagless) block converges: classifyByKeyword('') just returns no assertions.
       const { assertions } = classifyByKeyword(text, dict)
+      const emotion = detectEmotionAssertions(text)
       items.push({
         id: row.id,
-        tx: buildFieldBlock(assertions, { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
+        tx: buildFieldBlock([...assertions, ...emotion], { version: TAXONOMY_VERSION, by: 'keyword', model: 'keyword-tier' }),
       })
     }
     for (let i = 0; i < items.length; i += 500) {

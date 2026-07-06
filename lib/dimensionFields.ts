@@ -8,10 +8,12 @@
 // /aggregate ops — client re-derivation of the 250+ keyword dictionary is too
 // slow (~30s/50K rows).
 
-import { AXES, type Axis } from './taxonomyVocabulary'
+import { ALL_AXES, type Axis } from './taxonomyVocabulary'
 
 export type { Axis }
-export const DIM_AXES = AXES
+// All embeddable axes: the 7 ABSA axes + the keyword-tier `emotion` axis
+// (emotion-language flags, lib/emotionFlags.ts — expressed-language framing).
+export const DIM_AXES = ALL_AXES
 
 export const DIM_AXIS_LABEL: Record<Axis, string> = {
   touchpoint: 'Touchpoint',
@@ -21,6 +23,7 @@ export const DIM_AXIS_LABEL: Record<Axis, string> = {
   ambiance:   'Ambiance',
   context:    'Context',
   outcome:    'Outcome',
+  emotion:    'Emotion Language',
 }
 
 // Verbose, customer-facing axis names. Single source of truth: the Dimensions tab
@@ -34,6 +37,7 @@ export const DIM_AXIS_LABEL_LONG: Record<Axis, string> = {
   ambiance:   'Room — ambiance & décor',
   context:    'Occasion — when & why',
   outcome:    'Outcome — will they return',
+  emotion:    'Emotion — disappointment, blame & churn-intent language',
 }
 
 // Per-axis identity color — the single source of truth for axis dots/chips
@@ -48,6 +52,7 @@ export const AXIS_COLOR: Record<Axis, string> = {
   ambiance:   '#16A34A',
   context:    '#CA8A04',
   outcome:    '#DB2777',
+  emotion:    '#DC2626',
 }
 
 export function dimFieldName(axis: Axis): string {

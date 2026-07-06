@@ -27,8 +27,11 @@ objects **in food**) and `pests` fire at alert/crisis. Hair is matched only on
 — deliberately NOT on staff-appearance/hygiene phrasings (`blonde hair`, `hairnet`,
 `hair dangling`) which would false-flag. Closed vocabulary lives in
 `lib/taxonomyVocabulary.ts`; the keyword dict carries a `TAXONOMY_VERSION` (now
-**v3**) bumped on vocabulary changes — already-tagged rows keep their prior version
-until re-classified (no auto-reclassify of tagged rows).
+**v4** — emotion axis) bumped on vocabulary changes — already-tagged rows keep their
+prior version until re-classified (no auto-reclassify of tagged rows).
+
+Beside the 7 ABSA axes, blocks can carry an 8th **`emotion` axis** (§2a) — emotion-
+language flags, keyword-tier only, excluded from the LLM extractor's vocabulary.
 
 ## 2. Layered dictionary (keyword tier)
 
@@ -40,6 +43,53 @@ The matcher (`lib/taxonomyKeywordMatcher.ts`, `classifyByKeyword(text, dict)`) i
 **word-boundary strict** — surface forms must be listed explicitly (`roach` ≠
 `roaches`, `fly` ≠ `flies`). An AI tier (`lib/taxonomyExtractor.ts`, `classifyReview`)
 exists for nuance/severity but is **not** wired into the persisting path yet.
+
+## 2a. Emotion-language flags — the `emotion` axis (BUILT 2026-07-06)
+
+`lib/emotionFlags.ts` (`detectEmotionAssertions`) runs in the same keyword-tier
+pass as the dictionary matcher and emits assertions on an 8th axis, **`emotion`**,
+with three subs: `disappointment`, `blame`, `churn intent`. Design was validated
+2026-07-04 on 4 prod datasets + a 30-sample owner spot-check (disappointment
+12/12 precision, blame 6/6; on Ruth's Chris: disappointment ≈31% of 1–3★ reviews,
+blame ≈0.8%, churn intent ≈6% of negatives vs 0.3% of positives — ~20× lift).
+
+Rules (all deliberate, from the validation session):
+
+- **Expressed-language framing ONLY** — a flag asserts the text *contains*
+  disappointment/blame/churn-intent language, never that the author felt an
+  emotion. Every assertion carries a verbatim `evidence` span. Polarity is
+  always `neg`, severity `normal` (flags never join `al`).
+- **Regret is dark** until the LLM tier (keyword precision only 50–60%): the
+  "should have" subject-attribution routes third-party subjects → blame,
+  passive/impersonal ("should have been…", "$700 should have…") →
+  disappointment, and DROPS first-person self-counterfactuals.
+- **Negation guard** on disappointment ("you won't be disappointed", "never
+  disappoints") — cut positive-row false hits ~2× vs the probe.
+- **LLM lockout**: `emotion` ∉ `AXES` (the extractor's closed vocab), so the
+  LLM tier can never emit it; `ALL_AXES` = the 7 ABSA axes + `emotion` is what
+  embed/read surfaces enumerate.
+- **Vertical gating**: churn intent is only meaningful where the audience chose
+  the venue — captive verticals (airport, civic) pass `suppressChurn`. Blame
+  subjects are core ⊕ per-vertical overlay (restaurant roles today).
+- **Genre gating / zero-suppression**: the rollup omits the emotion axis and
+  the `emotion` summary entirely when nothing fired — ideation-genre prompts
+  (wish-lists) never show "0% emotion language". Client-facing rates are
+  denominated on **negative rows (rating ≤ 3)** — the validated territory; the
+  positive-row split exists only for the lift comparison. No composite emotion
+  score, by design. Per-vertical 30-sample spot-check before client-facing use
+  in a NEW vertical.
+
+Storage rides the embed unchanged (`data._tx.f[key].a.emotion` + assertions in
+`as`). `sql/158` widened the axis allow-lists (`taxonomy_sub_counts` /
+`group_stats` / `crosstab` / `date_series` / `drill_rows`) and added a
+`p_sub_emotion` facet to `get_rows_by_filters` (param is omitted client-side
+unless an emotion chip is selected — deploy-order safe). Rollup adds an optional
+`emotion` block: per-flag neg/pos splits + `disapChurn*` co-occurrence (the
+"disappointment + churn intent" recovery-list tile). Surfaces inherit via
+`DIM_AXES`: Dimensions tab card, TextMine dimension cloud/compare + Comments
+facet, Charts/Stats `__dim_emotion__`, and an Operational Review deck kpi_grid
+tile ("Emotion Language in Negative Reviews" — excluded from the ABSA aspect-
+coverage chart, which stays 7-axis).
 
 ## 3. Persistence + roll-up
 

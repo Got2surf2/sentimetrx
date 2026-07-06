@@ -210,6 +210,7 @@ export function projectAxes(assertions: Assertion[]) {
     ambiance:   new Set(),
     context:    new Set(),
     outcome:    new Set(),
+    emotion:    new Set(),  // keyword-tier only; never emitted here (axis ∉ AXES)
   }
   const alertSubs = new Set<string>()
   for (const a of assertions) {

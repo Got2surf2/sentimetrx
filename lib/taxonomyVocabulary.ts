@@ -206,10 +206,23 @@ export type Axis =
   | 'ambiance'
   | 'context'
   | 'outcome'
+  | 'emotion'
 
+// The 7 ABSA axes — the LLM extractor's closed vocabulary. `emotion` is
+// deliberately NOT here: emotion-language flags (lib/emotionFlags.ts) are
+// keyword-tier only, so the extractor's isAxis() guard rejects any LLM attempt
+// to emit them.
 export const AXES: Axis[] = [
   'touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome',
 ]
+
+// Every axis that can appear in an embedded block (data._tx.f[key].a) — the
+// list read surfaces (dimensions, rollup, drill) enumerate.
+export const ALL_AXES: Axis[] = [...AXES, 'emotion']
+
+// Emotion-language subs (expressed-language framing; regret stays dark until
+// the LLM tier). Detection lives in lib/emotionFlags.ts, not the dictionary.
+export const EMOTION_SUBS = ['disappointment', 'blame', 'churn intent'] as const
 
 /**
  * Where this assertion came from.
@@ -241,6 +254,7 @@ export const AXIS_VOCAB: Record<Axis, readonly string[]> = {
   ambiance:   AMBIANCE_SUBS,
   context:    CONTEXT_SUBS,
   outcome:    OUTCOME_SUBS,
+  emotion:    EMOTION_SUBS,   // keyword-tier only — never offered to the LLM (axis ∉ AXES)
 }
 
 export function isValidAxisSub(axis: Axis, sub: string): boolean {

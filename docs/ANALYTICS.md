@@ -460,6 +460,17 @@ A restaurant-specific capability that classifies every review against one shared
 context · outcome) + a cross-cutting **severity flag** (`normal | alert | crisis`).
 Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integration:
 
+- **Emotion-language axis (2026-07-06).** The keyword pass also emits an 8th
+  **`emotion`** axis — `disappointment` / `blame` / `churn intent` expressed-language
+  flags (`lib/emotionFlags.ts`; design + gating rules in `TAXONOMY.md §2a`). It rides
+  every Dimensions surface through `DIM_AXES`: an extra pill/card set in the
+  Dimensions view, DimensionCloud chips, DimensionCompareTab axis, the Comments
+  dimension facet (`p_sub_emotion`, sql/158 — param sent only when a chip is
+  selected), and Charts/Stats `__dim_emotion__`. Zero-suppressed end-to-end: the
+  rollup omits the axis when nothing fired, so ideation-genre datasets never show
+  a "0% emotion" pill. The aggregate route's `TAX_AXES` allow-list and the drill
+  route's `AXIS_SET` include `emotion` (guards widened in sql/158).
+
 - **Where it lives.** The **"Dimensions"** peer section **inside TextMine** (`TextMineModule` renders
   `<TaxonomyModule>` for the section's Overview view — `subTab==='dimensions' && activeView==='overview'`; the
   section also carries Clouds=`DimensionCloud`, Compare=`DimensionCompareTab`, and the unified Comments), shown when **`taxonomyEnabled`** is true — which the

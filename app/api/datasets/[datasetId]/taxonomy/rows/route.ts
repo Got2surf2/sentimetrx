@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 interface Params { params: Promise<{ datasetId: string }> }
 
 // Allowlist so the `axis` query param can never reach SQL as an arbitrary key.
-const AXIS_SET = new Set(['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome'])
+const AXIS_SET = new Set(['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome', 'emotion'])
 
 /** Best-effort pick of the human-readable text from a flat row. */
 function pickText(data: Record<string, unknown>): string {
