@@ -59,7 +59,10 @@ Rules (all deliberate, from the validation session):
   disappointment/blame/churn-intent language, never that the author felt an
   emotion. Every assertion carries a verbatim `evidence` span. Polarity is
   always `neg`, severity `normal` (flags never join `al`).
-- **Regret is dark** until the LLM tier (keyword precision only 50–60%): the
+- **Regret is TABLED** (owner decision 2026-07-06): keyword precision is only
+  50–60% — below the deck-safe bar — and the owner ruled out running regret
+  through an LLM, so the sub stays off entirely rather than shipping a weak
+  keyword version. Revisit only if a non-LLM approach can clear the bar. The
   "should have" subject-attribution routes third-party subjects → blame,
   passive/impersonal ("should have been…", "$700 should have…") →
   disappointment, and DROPS first-person self-counterfactuals.
@@ -100,7 +103,8 @@ Measured findings — the wiring decision rides the RC pilot deal:
 
 - **Regret becomes viable**: 8 candidates (4.0% of negatives), ≈6/8 clean +
   1 marginal + 1 FP on first read (~75–80% precision vs the keyword tier's
-  50–60% that kept it dark). Owner spot-check of the 8 is the ship gate.
+  50–60% that kept it dark). *Superseded 2026-07-06: owner tabled regret —
+  no LLM run for it; the 8-candidate spot-check is moot.*
 - **Recall**: the LLM catches 90–100% of the validated keyword-tier emotion
   hits AND finds 2–5× more (disappointment 108 vs 44, blame 40 vs 2, churn
   51 vs 10 on the sample). LLM-only hits are unvalidated precision until
@@ -114,7 +118,7 @@ Measured findings — the wiring decision rides the RC pilot deal:
 - **Cost (measured)**: $0.0047/review live Haiku → RC full ≈ $97; the Batch
   API halves it (≈$48) and removes the wall-clock constraint.
 - Wiring plan when triggered: fold the emotion addendum into prompt v5
-  (emotion axis gains a `regret` sub), merge tiers via `mergeAssertions`,
+  (WITHOUT a `regret` sub — tabled per §2a), merge tiers via `mergeAssertions`,
   Batch API for backfill. External precision benchmark option: GoEmotions
   (separate `remorse` + `disappointment` labels) — validation, not training.
 - Harness (untracked): `scripts/_llm-tier-prototype.ts`; per-review results
