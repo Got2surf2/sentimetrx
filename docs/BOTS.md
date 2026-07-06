@@ -1435,10 +1435,25 @@ End-to-end verification with both flags on: sent two messages to a fresh Sarina 
 
 ---
 
-## 14. Research Probes — in-conversation market research (RUNTIME BUILT 2026-07-06)
+## 14. Research Probes — in-conversation market research (BUILT 2026-07-06)
 
-> **Status: substrate + runtime + disclosure BUILT (2026-07-06); admin setup
-> UI and results dashboard pending.** Built: `sql/159` (probe library column,
+> **Status: FULLY BUILT (2026-07-06)** — substrate, runtime, disclosure,
+> setup UI and results dashboard. **Setup (§14.6):** a "Research Probes"
+> section in the agent editor (after Prompt Focuses) — per-probe question,
+> verbatim/concept delivery, open/yes-no answer format, sample %, stop-after-N
+> quota, earliest turn, one-neutral-follow-up toggle, concept construct;
+> fields the compact UI doesn't expose (topic triggers, field window) survive
+> saves via the carried raw object; a question-wording edit shows and applies
+> the automatic version bump. `research_probes` added to the PATCH allow-list.
+> **Results (§14.6):** `/bots/[id]/probes` (card link "Probes") →
+> `GET /api/bots/[id]/probes` — per (probe, version): assigned→asked→answered
+> funnel with the decline/no-engagement/never-fit/quota-closed breakdown,
+> response + decline rates, quota progress, yes/no + emotion-language coded
+> chips, wording variants actually used (concept mode), and a verbatim-answer
+> drill-down (latest 50 w/ follow-ups). Historical versions and removed
+> probes with data still render. Remaining follow-ups: async AI `probe_code`
+> coding pass, exports, pilot on a low-stakes agent before client use.
+> Built: `sql/159` (probe library column,
 > outcome-accounted `agent_probe_responses`, `agent_probe_quota` + atomic
 > counter RPC — applied to TEST; prod apply rides the next migration batch),
 > `lib/researchProbes.ts` (pure scheduler/eligibility/delivery/coding

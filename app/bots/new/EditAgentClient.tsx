@@ -186,6 +186,11 @@ function BotCreatorInner() {
   const [intents, setIntents] = useState<{ label: string; description: string; keywords: string; url: string; message: string; enabled: boolean }[]>([])
   const [focuses, setFocuses] = useState<{ slug: string; label: string; description: string; enabled: boolean }[]>([])
   const [suggestingFocuses, setSuggestingFocuses] = useState(false)
+  // Research probes (BOTS.md §14) — editor rows carry the raw JSONB object so
+  // fields the compact UI doesn't expose (topic triggers, field window, …)
+  // survive a save. origQuestion powers the §14.2 rule-7 version auto-bump.
+  interface ProbeRow { raw: Record<string, unknown>; id: string; question: string; origQuestion: string; mode: 'verbatim' | 'concept'; construct: string; answerSchema: string; followUp: boolean; samplePct: number; targetN: number; minTurns: number; enabled: boolean }
+  const [researchProbes, setResearchProbes] = useState<ProbeRow[]>([])
   const [demographicInference, setDemographicInference] = useState(false)
   const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
   const [step, setStep] = useState(0)
@@ -238,6 +243,15 @@ function BotCreatorInner() {
       }))
       if (Array.isArray(bot.focuses)) setFocuses(bot.focuses.map(function(f: any) {
         return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: f.enabled !== false }
+      }))
+      if (Array.isArray(bot.research_probes)) setResearchProbes(bot.research_probes.map(function(p: { id?: string; question?: string; mode?: string; construct?: string; answer_schema?: string; follow_up?: number; enabled?: boolean; sampling?: { sample_pct?: number; target_n?: number }; eligibility?: { min_user_turns?: number } }) {
+        return {
+          raw: p as Record<string, unknown>, id: p.id || '', question: p.question || '', origQuestion: p.question || '',
+          mode: p.mode === 'concept' ? 'concept' as const : 'verbatim' as const, construct: p.construct || '',
+          answerSchema: p.answer_schema || 'open', followUp: p.follow_up === 1,
+          samplePct: p.sampling?.sample_pct ?? 25, targetN: p.sampling?.target_n ?? 0,
+          minTurns: p.eligibility?.min_user_turns ?? 3, enabled: p.enabled !== false,
+        }
       }))
     }).catch(function() {
       setError('Failed to load agent')
@@ -390,6 +404,20 @@ function BotCreatorInner() {
       }),
       focuses: focuses.filter(function(f) { return f.slug.trim() && f.label.trim() }).map(function(f) {
         return { slug: autoSlug(f.slug), label: f.label.trim(), description: f.description.trim(), enabled: f.enabled }
+      }),
+      research_probes: researchProbes.filter(function(p) { return p.id.trim() && p.question.trim() }).map(function(p) {
+        // Any wording change mints a new version (§14.2 rule 7) — analysis
+        // and quota counters only aggregate within a version.
+        var version = (p.raw.version as number) || 1
+        if (p.origQuestion && p.question.trim() !== p.origQuestion) version = version + 1
+        return {
+          ...p.raw,
+          id: autoSlug(p.id), version, mode: p.mode, question: p.question.trim(),
+          construct: p.construct.trim() || undefined, answer_schema: p.answerSchema,
+          follow_up: p.followUp ? 1 : 0, enabled: p.enabled,
+          eligibility: { ...(p.raw.eligibility || {}), min_user_turns: p.minTurns },
+          sampling: { ...(p.raw.sampling || {}), sample_pct: p.samplePct, target_n: p.targetN > 0 ? p.targetN : undefined },
+        }
       }),
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
@@ -1079,6 +1107,83 @@ function BotCreatorInner() {
             })}
             <button onClick={function() { setFocuses(function(prev) { return [...prev, { slug: '', label: '', description: '', enabled: true }] }) }}
               style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #99f6e4', background: '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add focus</button>
+          </Section>
+
+          <Section title="Research Probes">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>Market-research questions the agent weaves into ordinary conversations — sampled deterministically, capped at one probe per conversation, every assignment outcome-accounted (asked/answered/declined/never-fit). While any probe is enabled, the public chat shows a required disclosure line (&quot;Chats may include occasional feedback questions&quot;). Changing a question&apos;s wording automatically starts a new version — results are only compared within a version.</p>
+            {researchProbes.map(function(p, i) {
+              var upd = function(patch: Partial<typeof p>) { setResearchProbes(function(prev) { var n = [...prev]; n[i] = { ...n[i], ...patch }; return n }) }
+              return (
+                <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <input type="checkbox" checked={p.enabled} onChange={function(e) { upd({ enabled: e.target.checked }) }} style={{ width: 14, height: 14, accentColor: '#0E7B7B' }} />
+                      <input type="text" value={p.id} onChange={function(e) { upd({ id: e.target.value }) }} onBlur={function(e) { upd({ id: autoSlug(e.target.value) }) }}
+                        placeholder="probe-id (stable slug)"
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11, fontFamily: 'monospace', color: '#6b7280', width: 220 }} />
+                      <span style={{ fontSize: 10, color: '#9ca3af' }}>v{(p.raw.version as number) || 1}{p.origQuestion && p.question.trim() !== p.origQuestion ? ' → v' + (((p.raw.version as number) || 1) + 1) + ' on save (wording changed)' : ''}</span>
+                    </label>
+                    <button onClick={function() { setResearchProbes(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16 }}>&times;</button>
+                  </div>
+                  <label style={{ display: 'block', marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>The question</span>
+                    <textarea value={p.question} onChange={function(e) { upd({ question: e.target.value }) }}
+                      placeholder="e.g., If you were starting this season over today, would you get the games the same way?"
+                      rows={2}
+                      style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }} />
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Delivery
+                      <select value={p.mode} onChange={function(e) { upd({ mode: e.target.value as 'verbatim' | 'concept' }) }}
+                        style={{ display: 'block', marginTop: 2, padding: '4px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }}>
+                        <option value="verbatim">Verbatim (exact wording, comparable)</option>
+                        <option value="concept">Concept (AI adapts wording)</option>
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Answer format
+                      <select value={p.answerSchema} onChange={function(e) { upd({ answerSchema: e.target.value }) }}
+                        style={{ display: 'block', marginTop: 2, padding: '4px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }}>
+                        <option value="open">Open-ended</option>
+                        <option value="yes_no">Yes / No</option>
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Ask
+                      <span style={{ display: 'block', marginTop: 2 }}>
+                        <input type="number" min={1} max={100} value={p.samplePct} onChange={function(e) { upd({ samplePct: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }) }}
+                          style={{ width: 54, padding: '4px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                        <span style={{ fontSize: 10, color: '#6b7280' }}> % of conversations</span>
+                      </span>
+                    </label>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Stop after
+                      <span style={{ display: 'block', marginTop: 2 }}>
+                        <input type="number" min={0} value={p.targetN} onChange={function(e) { upd({ targetN: Math.max(0, Number(e.target.value) || 0) }) }}
+                          style={{ width: 64, padding: '4px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                        <span style={{ fontSize: 10, color: '#6b7280' }}> answers (0 = no cap)</span>
+                      </span>
+                    </label>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Earliest turn
+                      <input type="number" min={1} max={20} value={p.minTurns} onChange={function(e) { upd({ minTurns: Math.max(1, Number(e.target.value) || 1) }) }}
+                        style={{ display: 'block', marginTop: 2, width: 54, padding: '4px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                    </label>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: 5, paddingBottom: 4 }}>
+                      <input type="checkbox" checked={p.followUp} onChange={function(e) { upd({ followUp: e.target.checked }) }} style={{ width: 13, height: 13, accentColor: '#0E7B7B' }} />
+                      One neutral follow-up
+                    </label>
+                  </div>
+                  {p.mode === 'concept' && (
+                    <label style={{ display: 'block', marginTop: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Construct being measured (guides the AI&apos;s adapted wording)</span>
+                      <input type="text" value={p.construct} onChange={function(e) { upd({ construct: e.target.value }) }}
+                        placeholder="e.g., latent regret about auto-renewal"
+                        style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                    </label>
+                  )}
+                </div>
+              )
+            })}
+            <button onClick={function() { setResearchProbes(function(prev) { return [...prev, { raw: {}, id: '', question: '', origQuestion: '', mode: 'verbatim' as const, construct: '', answerSchema: 'open', followUp: false, samplePct: 25, targetN: 0, minTurns: 3, enabled: true }] }) }}
+              style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #99f6e4', background: '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add research probe</button>
           </Section>
 
           <Section title="Hard Rules">
