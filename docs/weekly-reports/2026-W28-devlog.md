@@ -63,3 +63,9 @@ CONCURRENCY: personaExtractor (persona/demographics) and the legacy townhall/cha
 GUARD: logUsage/logFlatCost now console.warn when a customer resource type (bot|townhall|social|dataset|study|recording) logs with null org_id, so regressions surface. `system` stays the one org-less bucket. HONEST system cases: nora-chat (Tabla) and clara-chat (Craniometrix) are hardcoded-KB platform assistants with no org binding in code — reclassified from mislabeled dataset+null to resource_type:'system' (hardcode a client org_id later if they should bill). Moderation + health probes are free endpoints, left unlogged.
 
 Verified: tsc clean, 1238 tests pass, lint held at ceiling. docs/USAGE_ACCOUNTING.md gets a dated hardening addendum + the ~19 event types that had drifted undocumented. No push.
+
+## Bareburger demo conversational survey (Jul 6)
+
+WHY: Owner wanted a ready-to-show conversational survey for Bareburger to demo the by-score follow-up + AI-clarifier flow.
+
+`scripts/seed-bareburger-demo.ts` upserts an active study (slug `bareburger`) from a hand-built StudyConfig — 5-star experience rating (NPS off); per-score `experienceFollowUp` (per-response mode) where 1–3 probe what fell short and 4 & 5 ask a "what could we improve" question; `useAIClarify:true` so the /api/clarify pass deepens thin answers; 8 Bareburger-tailored psychographics (organic/plant-based/sourcing lean), 3 shown per session; legacy q3/q4 off so the per-score follow-up is the sole open-end. Green/earthy theme. Seeded to TEST + verified /s/bareburger serves HTTP 200 with the intended config. `--prod`/`--org` flags exist but were NOT run against prod. No new survey behavior — reuses existing engine fields, so no spec change. No push.
