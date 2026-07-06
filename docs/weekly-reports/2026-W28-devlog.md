@@ -69,3 +69,9 @@ Verified: tsc clean, 1238 tests pass, lint held at ceiling. docs/USAGE_ACCOUNTIN
 WHY: Owner wanted a ready-to-show conversational survey for Bareburger to demo the by-score follow-up + AI-clarifier flow.
 
 `scripts/seed-bareburger-demo.ts` upserts an active study (slug `bareburger`) from a hand-built StudyConfig — 5-star experience rating (NPS off); per-score `experienceFollowUp` (per-response mode) where 1–3 probe what fell short and 4 & 5 ask a "what could we improve" question; `useAIClarify:true` so the /api/clarify pass deepens thin answers; 8 Bareburger-tailored psychographics (organic/plant-based/sourcing lean), 3 shown per session; legacy q3/q4 off so the per-score follow-up is the sole open-end. Green/earthy theme. Seeded to TEST + verified /s/bareburger serves HTTP 200 with the intended config. `--prod`/`--org` flags exist but were NOT run against prod. No new survey behavior — reuses existing engine fields, so no spec change. No push.
+
+## Bareburger demo — brand colors + shipped to prod (Jul 6)
+
+WHY: Owner asked if the colors were right and to get the demo onto production.
+
+Pulled Bareburger's official logo SVGs — real palette is deep green `#0C5C43` + accent pink `#E584B0` (my first pass used an off-brand olive/lime). Corrected the theme in `seed-bareburger-demo.ts` and added a `--slug` flag. Found a pre-existing generic Bareburger survey already live on prod (`/s/bareback`, 2 responses, no per-score follow-ups, cyan theme); owner chose to upgrade it in place rather than duplicate. Ran `--prod --slug bareback --org <datanautix>` — updated the existing study's config (same guid `07aee641`, responses preserved). Verified live: https://www.sentimetrx.ai/s/bareback serves 200 with the new config (brand palette, per-score follow-ups incl. 4★/5★ "what can we improve", AI clarify, 8 psychographics). DB update only — no Vercel deploy. No push.

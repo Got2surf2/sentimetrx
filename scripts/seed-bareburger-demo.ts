@@ -1,12 +1,14 @@
 /**
  * Seed the Bareburger demo conversational survey.
  *
- *   npx tsx scripts/seed-bareburger-demo.ts            → TEST project (default; view via `npm run dev`)
- *   npx tsx scripts/seed-bareburger-demo.ts --prod     → PRODUCTION db (only when explicitly asked)
- *   npx tsx scripts/seed-bareburger-demo.ts --org <id> → attach to a specific org (else first org)
+ *   npx tsx scripts/seed-bareburger-demo.ts                    → TEST project (default; view via `npm run dev`)
+ *   npx tsx scripts/seed-bareburger-demo.ts --prod             → PRODUCTION db (only when explicitly asked)
+ *   npx tsx scripts/seed-bareburger-demo.ts --org <id>         → attach to a specific org (else first org)
+ *   npx tsx scripts/seed-bareburger-demo.ts --slug <slug>      → target study slug (default 'bareburger')
  *
- * Upserts by slug 'bareburger' so it's safe to re-run after tweaking the config.
- * Public URL once seeded + status=active:  /s/bareburger
+ * Prod canonical: `--prod --slug bareback --org <datanautix>` upgrades the existing
+ * /s/bareback demo in place (owner-chosen 2026-07-06). Upserts by slug so it's safe
+ * to re-run after tweaking the config; the public URL is /s/<slug>.
  *
  * Design (per owner brief):
  *  - 5-star experience rating (NPS off).
@@ -117,13 +119,14 @@ const config: StudyConfig = {
   closingMessage: 'Thanks so much for sharing — it genuinely helps us do better. Enjoy the rest of your day! 🌱',
   closingCard: 'Your feedback has been saved. Thanks for helping us keep it fresh.',
 
-  // ── Theme (Bareburger green / earthy) ───────────────────────────────
+  // ── Theme — authentic Bareburger palette from their logo SVGs ───────
+  // primary #0C5C43 (deep brand green), accent #E584B0 (logo pink), white contrast.
   theme: {
-    primaryColor: '#5b8c3e',
-    headerGradient: 'linear-gradient(135deg, #6cb33f, #3f6b28)',
-    backgroundColor: '#101a0c',
-    accentColor: '#8fd14f',
-    botAvatarGradient: 'linear-gradient(135deg, #6cb33f, #3f6b28)',
+    primaryColor: '#0C5C43',
+    headerGradient: 'linear-gradient(135deg, #0C5C43, #063a2a)',
+    backgroundColor: '#0a1f18',
+    accentColor: '#E584B0',
+    botAvatarGradient: 'linear-gradient(135deg, #0C5C43, #063a2a)',
   },
 }
 
@@ -132,6 +135,8 @@ async function main() {
   const useProd = args.includes('--prod')
   const orgFlagIdx = args.indexOf('--org')
   const explicitOrg = orgFlagIdx >= 0 ? args[orgFlagIdx + 1] : null
+  const slugFlagIdx = args.indexOf('--slug')
+  const slug = slugFlagIdx >= 0 ? args[slugFlagIdx + 1] : 'bareburger'
 
   const url = useProd ? envLocal('NEXT_PUBLIC_SUPABASE_URL') : envLocal('SUPABASE_TEST_URL')
   const key = useProd ? envLocal('SUPABASE_SERVICE_ROLE_KEY') : envLocal('SUPABASE_TEST_SERVICE_ROLE_KEY')
@@ -154,13 +159,13 @@ async function main() {
   }
 
   // Upsert by slug
-  const { data: existing } = await db.from('studies').select('id, guid').eq('slug', 'bareburger').maybeSingle()
+  const { data: existing } = await db.from('studies').select('id, guid').eq('slug', slug).maybeSingle()
   const row = {
     name: 'Bareburger — Guest Experience',
     bot_name: 'Bareburger',
     bot_emoji: '🍔',
     status: 'active',
-    slug: 'bareburger',
+    slug,
     org_id: orgId,
     config,
   }
@@ -169,13 +174,13 @@ async function main() {
     const { error } = await db.from('studies').update(row).eq('id', existing.id)
     if (error) { console.error('Update failed:', error.message); process.exit(1) }
     console.log(`✓ Updated existing study  guid=${existing.guid}`)
-    console.log(`  URL: /s/bareburger   (or /s/${existing.guid})`)
+    console.log(`  URL: /s/${slug}   (or /s/${existing.guid})`)
   } else {
     const guid = randomUUID()
     const { error } = await db.from('studies').insert({ guid, ...row })
     if (error) { console.error('Insert failed:', error.message); process.exit(1) }
     console.log(`✓ Created study  guid=${guid}`)
-    console.log(`  URL: /s/bareburger   (or /s/${guid})`)
+    console.log(`  URL: /s/${slug}   (or /s/${guid})`)
   }
 }
 
