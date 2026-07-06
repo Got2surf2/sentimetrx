@@ -91,6 +91,51 @@ facet, Charts/Stats `__dim_emotion__`, and an Operational Review deck kpi_grid
 tile ("Emotion Language in Negative Reviews" — excluded from the ABSA aspect-
 coverage chart, which stays 7-axis).
 
+### 2a.1 LLM-tier prototype (RUN 2026-07-06 — results, not wired)
+
+A 300-review gold sample (150 neg / 150 pos, deterministic evenly-spaced picks
+from the Ruth's Chris dataset) ran through the dormant LLM extractor (§ AI
+tier; Haiku fast tier, prompt v4 + a prototype emotion-axis addendum).
+Measured findings — the wiring decision rides the RC pilot deal:
+
+- **Regret becomes viable**: 8 candidates (4.0% of negatives), ≈6/8 clean +
+  1 marginal + 1 FP on first read (~75–80% precision vs the keyword tier's
+  50–60% that kept it dark). Owner spot-check of the 8 is the ship gate.
+- **Recall**: the LLM catches 90–100% of the validated keyword-tier emotion
+  hits AND finds 2–5× more (disappointment 108 vs 44, blame 40 vs 2, churn
+  51 vs 10 on the sample). LLM-only hits are unvalidated precision until
+  spot-checked.
+- **Taxonomy lift**: merged 9.76 vs keyword 7.60 assertions/review; ≥1 new
+  axis:sub on 87.7% of reviews (top adds are inference buckets:
+  not-recommend, speed, attentive, quality). Only 50.8% of keyword
+  assertions were LLM-confirmed — the learned dictionary likely has an FP
+  tail worth a triage pass. LLM made 37 alert-severity judgments vs
+  keyword's 2 (context-based escalation — spot-check before trusting).
+- **Cost (measured)**: $0.0047/review live Haiku → RC full ≈ $97; the Batch
+  API halves it (≈$48) and removes the wall-clock constraint.
+- Wiring plan when triggered: fold the emotion addendum into prompt v5
+  (emotion axis gains a `regret` sub), merge tiers via `mergeAssertions`,
+  Batch API for backfill. External precision benchmark option: GoEmotions
+  (separate `remorse` + `disappointment` labels) — validation, not training.
+- Harness (untracked): `scripts/_llm-tier-prototype.ts`; per-review results
+  incl. regret evidence: `scripts/_llm-tier-prototype-results.json`.
+
+### 2a.2 Vertical overlays — membership (EA) scoped, not built
+
+The first non-restaurant vertical will be a membership org (EA): churn intent
+becomes *non-renewal* language ("not renewing", "cancel my membership",
+"letting it lapse", "not worth the dues", "my last year as a member", softer
+"considering canceling"), value-gap disappointment ("expected more from my
+membership", "what am I paying for", "barely used it"), and blame subjects
+gain board/leadership/chapter/membership-team. Slots into the existing
+`EmotionDetectOptions` overlay seam; per-vertical 30-sample spot-check on real
+EA responses required before client-facing (the 28-comment corpus is too thin
+— validate on the first real survey wave). Decision 2026-07-06: EA runs
+keyword-tier always-on (the non-renewal flag is the actionable one); the LLM
+pass is a per-wave analysis step (trivial cost at EA volumes); the bigger
+lever is evaluative-genre elicitation via adaptive follow-ups (§2a genre
+gating).
+
 ## 3. Persistence + roll-up
 
 - **Verdicts are EMBEDDED in the row blob** (sql/151, 2026-07-04 — the "taxonomy
