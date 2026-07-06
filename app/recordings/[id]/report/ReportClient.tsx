@@ -26,6 +26,7 @@ import type {
   Signoff,
 } from '@/lib/recordings/types'
 import TranscriptComparisonTab from './TranscriptComparisonTab'
+import ParticipationTab from './ParticipationTab'
 import TranscriptReview from '@/components/recordings/TranscriptReview'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
 import { buildReplacements, normalizeText } from '@/lib/recordings/normalize'
@@ -57,11 +58,11 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
-type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'transcript' | 'comparison' | 'export'
+type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'participation' | 'transcript' | 'comparison' | 'export'
 
 const HERMES = '#E8632A'
 
-const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'transcript', 'comparison', 'export']
+const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'participation', 'transcript', 'comparison', 'export']
 
 export default function ReportClient({ data }: { data: ReportData }) {
   // Draft report (sql/125): unreviewed AI output → watermark + pending-review
@@ -160,6 +161,11 @@ export default function ReportClient({ data }: { data: ReportData }) {
     return Array.isArray(setup?.agenda) ? setup.agenda : []
   }, [data.recording.setup_inputs])
 
+  const panelRoster = useMemo(() => {
+    const setup = data.recording.setup_inputs as Partial<QaSetupInputs>
+    return Array.isArray(setup?.panel) ? setup.panel : []
+  }, [data.recording.setup_inputs])
+
   // Audio modal — a single player shared by every "▶ Play" affordance.
   const [audioReq, setAudioReq] = useState<AudioRequest | null>(null)
   const nonceRef = useRef(0)
@@ -245,6 +251,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
         {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} nz={reportNz} />}
         {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
+        {tab === 'participation' && <ParticipationTab transcript={transcript} speakerNames={data.recording.speaker_names} channelLabels={data.recording.channel_labels} audioChannels={data.recording.audio_channels} panel={panelRoster} onPlay={playAt} />}
         {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
@@ -393,6 +400,7 @@ function TabBar({
     { key: 'coverage',   label: 'Coverage',     badge: counts.coverage, tone: 'warn' },
     { key: 'qa',         label: 'Q&A',          badge: counts.qa },
     { key: 'actions',    label: 'Action items', badge: counts.actions },
+    { key: 'participation', label: 'Participation' },
     { key: 'transcript', label: 'Transcript' },
     ...(hasLiveTranscript ? [{ key: 'comparison' as Tab, label: 'Live vs Final' }] : []),
     { key: 'export',     label: 'Reports' },
