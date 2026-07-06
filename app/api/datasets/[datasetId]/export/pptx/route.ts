@@ -130,12 +130,12 @@ async function generateNarratives(
     const s = f.summary
     if (!s) return `${f.label} (${f.type}): no data available`
     if (s.type === 'categorical') {
-      const aliasedC = f.valueAliases && Object.keys(f.valueAliases).length > 0
+      const aliasedC: Record<string, number> = f.valueAliases && Object.keys(f.valueAliases).length > 0
         ? aliasedCounts(f.field, s.counts || {}, [{ field: f.field, valueAliases: f.valueAliases }])
         : (s.counts || {})
       const top5 = Object.entries(aliasedC)
-        .sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
-        .map(([k, v]: any) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
+        .sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([k, v]) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
       return `${f.label} (categorical, n=${s.nonNull}): top responses — ${top5} | unique values: ${s.uniqueCount}`
     } else if (s.type === 'numeric') {
       const range = s.max - s.min
@@ -226,6 +226,69 @@ interface SelectedField {
   section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
   prompt?:    string   // original survey question text
   liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
+  sqt?:       string   // survey-question type (rating/…) — present on some survey schema fields
+  scoreField?: boolean | string
+}
+
+// Minimal shape of a schema field (dataset_state.schema_config.fields[*]).
+interface SchemaField {
+  field:      string
+  label?:     string
+  type:       string
+  status?:    string
+  section?:   string
+  prompt?:    string
+  remapping?: Record<string, number>
+  valueAliases?: Record<string, string>
+  sqt?:       string
+  scoreField?: boolean | string
+}
+
+interface SchemaConfig {
+  fields?: SchemaField[]
+  primaryDateField?: string
+}
+
+// Theme object as it flows through the deck: the stored theme model theme, plus
+// the count/percentage/totalResponses/kwFreqs fields computed here at export time.
+interface DeckTheme {
+  id:            string
+  name?:         string
+  description?:  string
+  keywords?:     string[]
+  sentiment?:    string
+  count?:        number
+  percentage?:   number
+  totalResponses?: number
+  snippetCount?: number
+  kwFreqs?:      { word: string; freq: number; pct: number }[]
+}
+
+interface ThemeModelRow {
+  themes?:     DeckTheme[]
+  fieldNames?: string[]
+  fieldName?:  string
+}
+
+// Minimal shape of the study config referenced for prompt backfill.
+interface StudyConfig {
+  questions?:         { id?: string; prompt?: string; exportLabel?: string }[]
+  psychographicBank?: { key: string; q?: string }[]
+  demoFields?:        { key: string; label?: string }[]
+}
+
+// Minimal shape of the datasets row selected by this route.
+interface DatasetRow {
+  id:            string
+  name:          string
+  source:        string | null
+  row_count:     number | null
+  ana_library:   unknown
+  study_id:      string | null
+  org_id:        string
+  taxonomy_enabled:    boolean | null
+  taxonomy_suppressed: boolean | null
+  studies?:      { id: string; name: string; config: unknown } | null
 }
 
 // ── Slide builders ────────────────────────────────────────────────────────────
@@ -312,7 +375,7 @@ export async function POST(req: Request, props: Params) {
   // Themes per slide on the Theme Analysis grid: 0/undefined = auto, else 1/2/4/6.
   const themesPerSlide: number        = Number(body.themesPerSlide) || 0
   const selectedThemeIds: string[]    = body.selectedThemeIds   || []
-  const rawFilters: Record<string, any> = body.filters || {}
+  const rawFilters: SerializedFilters = body.filters || {}
   const hasFilters = Object.keys(rawFilters).length > 0
   const reportTitle: string             = body.reportTitle || ''
   const impactOEFields: string[]       = body.impactOEFields || []
@@ -346,29 +409,30 @@ export async function POST(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
 
-  const { data: dataset } = await service
+  const { data: datasetRaw } = await service
     .from('datasets').select('id, name, source, row_count, ana_library, study_id, org_id, taxonomy_enabled, taxonomy_suppressed, studies(id, name, config)').eq('id', params.datasetId).single()
+  const dataset = datasetRaw as DatasetRow | null
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
     .from('dataset_state').select('schema_config, analytics, theme_model').eq('dataset_id', params.datasetId).single()
   if (!stateRow) return NextResponse.json({ error: 'Dataset state not found' }, { status: 404 })
 
-  const schema      = stateRow.schema_config
+  const schema      = stateRow.schema_config as SchemaConfig | null
   const analytics   = stateRow.analytics
-  const allThemes   = (stateRow.theme_model as any)?.themes || []
+  const allThemes: DeckTheme[] = (stateRow.theme_model as ThemeModelRow | null)?.themes || []
 
   // Backfill missing prompts from study config (for PPTX subtitles)
-  const studyConfig = (dataset as any).studies?.config
+  const studyConfig = dataset.studies?.config as StudyConfig | undefined
   if (studyConfig && schema?.fields) {
-    schema.fields.forEach(function(f: any) {
+    schema.fields.forEach(function(f: SchemaField) {
       if (f.prompt) return  // Already has prompt
       // Try to find matching question in study config
       if (studyConfig.questions) {
-        const q = studyConfig.questions.find((qq: any) => {
+        const q = studyConfig.questions.find((qq) => {
           const col = qq.exportLabel || qq.prompt || qq.id
-          return f.field === col || f.field.includes(col)
+          return f.field === col || f.field.includes(col as string)
         })
         if (q?.prompt) f.prompt = q.prompt
       }
@@ -376,14 +440,14 @@ export async function POST(req: Request, props: Params) {
       if (!f.prompt && f.field.startsWith('psycho_') && studyConfig.psychographicBank) {
         const sanitize = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
         const fieldKey = f.field.replace('psycho_', '')
-        const pq = studyConfig.psychographicBank.find((pp: any) => sanitize(pp.key) === fieldKey)
+        const pq = studyConfig.psychographicBank.find((pp) => sanitize(pp.key) === fieldKey)
         if (pq?.q) f.prompt = pq.q
       }
       // Try demo fields — match exactly how sanitizeColumnName works
       if (!f.prompt && f.field.startsWith('demo_') && studyConfig.demoFields) {
         const sanitize = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
         const fieldKey = f.field.replace('demo_', '')
-        const df = studyConfig.demoFields.find((dd: any) => sanitize(dd.key) === fieldKey)
+        const df = studyConfig.demoFields.find((dd) => sanitize(dd.key) === fieldKey)
         if (df) {
           f.prompt = df.label
         }
@@ -391,7 +455,7 @@ export async function POST(req: Request, props: Params) {
     })
   }
   const themes      = selectedThemeIds.length > 0
-    ? allThemes.filter((t: any) => selectedThemeIds.includes(t.id))
+    ? allThemes.filter((t: DeckTheme) => selectedThemeIds.includes(t.id))
     : allThemes
   const datasetName = dataset.name
 
@@ -401,13 +465,13 @@ export async function POST(req: Request, props: Params) {
 
   // Builder mode with no explicit fields → use all schema fields
   const allSchemaFields: string[] = (schema?.fields || [])
-    .filter((f: any) => ['open-ended', 'categorical', 'numeric', 'date'].includes(f.type) && f.status !== 'ignored')
-    .map((f: any) => f.field)
+    .filter((f) => ['open-ended', 'categorical', 'numeric', 'date'].includes(f.type) && f.status !== 'ignored')
+    .map((f) => f.field)
   const fieldNamesToUse = selectedFieldNames.length > 0 ? selectedFieldNames : allSchemaFields
 
   const selectedFields: SelectedField[] = fieldNamesToUse
     .map(function(fieldName) {
-      const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
+      const schemaField = (schema?.fields || []).find((f) => f.field === fieldName)
       if (!schemaField) return null
       return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, valueAliases: schemaField.valueAliases, section: schemaField.section || undefined, prompt: schemaField.prompt }
     })
@@ -423,7 +487,7 @@ export async function POST(req: Request, props: Params) {
   // Row cap honors the platform's no-sampling-under-50K rule (CLAUDE.md): load
   // EVERY row when the dataset is ≤50K, only sampling above that. The real value
   // is set from flatCount below; this is just the >50K ceiling.
-  const allRows: Record<string, any>[] = []
+  const allRows: Record<string, unknown>[] = []
   let rowsSampled = false
   let MAX_ROWS = 50_000
 
@@ -466,7 +530,7 @@ export async function POST(req: Request, props: Params) {
           .range(flatOffset, flatOffset + FLAT_PAGE - 1)
         if (flatErr || !flatRows || flatRows.length === 0) break
         for (const fr of flatRows) {
-          const row = (fr as any).data || fr
+          const row = (fr.data || fr) as Record<string, unknown>
           if (label) row._collection_label = label
           allRows.push(row)
           if (allRows.length >= MAX_ROWS) break
@@ -494,7 +558,7 @@ export async function POST(req: Request, props: Params) {
   if (allRows.length > 0) {
     for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
   }
-  function rowVal(row: Record<string, any>, fieldKey: string): string {
+  function rowVal(row: Record<string, unknown>, fieldKey: string): string {
     // Direct match first, then normalized fallback
     if (row[fieldKey] !== undefined && row[fieldKey] !== null) return String(row[fieldKey]).trim()
     const actual = rowKeyMap[normalize(fieldKey)]
@@ -505,7 +569,7 @@ export async function POST(req: Request, props: Params) {
   // Apply filters if provided — filter rows before any analysis
   let filterDescription = ''
   if (hasFilters) {
-    const filters = deserializeFilters(rawFilters as SerializedFilters)
+    const filters = deserializeFilters(rawFilters)
     const before = allRows.length
     const filtered = applyFilters(allRows, filters)
     // Replace allRows so all downstream processing uses filtered data
@@ -515,7 +579,7 @@ export async function POST(req: Request, props: Params) {
     const parts: string[] = []
     for (const field of Object.keys(rawFilters)) {
       const f = rawFilters[field]
-      const schemaField = (schema?.fields || []).find((sf: any) => sf.field === field)
+      const schemaField = (schema?.fields || []).find((sf) => sf.field === field)
       const label = schemaField?.label || field
       if (f.type === 'cat' && f.values?.length) {
         parts.push(label + ': ' + f.values.slice(0, 5).join(', ') + (f.values.length > 5 ? ' (+' + (f.values.length - 5) + ' more)' : ''))
@@ -615,7 +679,7 @@ export async function POST(req: Request, props: Params) {
   // Re-compute theme counts by keyword-matching allRows against a specific open-ended field.
   // Uses multi-match semantics (a row can match multiple themes) so percentage = "% of
   // respondents who mentioned this theme", with denominator = rows that have text in this field.
-  function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
+  function computeFieldThemes(fieldKey: string, themeList: DeckTheme[]): DeckTheme[] {
     if (!themeList.length || !allRows.length) return themeList
     // Extract + lowercase each row's text once (not per theme)
     const texts = allRows
@@ -624,24 +688,24 @@ export async function POST(req: Request, props: Params) {
       .map(function(t) { return t.toLowerCase() })
     const total = texts.length || 1
     // Pre-compile regexes once per theme (not per row)
-    const themeRegexes = themeList.map(function(t: any) {
+    const themeRegexes = themeList.map(function(t: DeckTheme) {
       return (t.keywords || []).map(function(kw: string) { return buildKwRegex(kw) })
     })
     return themeList
-      .map(function(t: any, ti: number) {
+      .map(function(t: DeckTheme, ti: number) {
         const regexes = themeRegexes[ti]
         const count = texts.filter(function(text) {
           return regexes.some(function(re: RegExp) { return re.test(text) })
         }).length
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100), totalResponses: total })
       })
-      .filter(function(t: any) { return t.count > 0 })
-      .sort(function(a: any, b: any) { return b.count - a.count })
+      .filter(function(t: DeckTheme) { return (t.count || 0) > 0 })
+      .sort(function(a: DeckTheme, b: DeckTheme) { return (b.count || 0) - (a.count || 0) })
   }
 
   // Theme text fields the theme model was built on (canonical theme scope). Mirrors
   // /api/share/analytics + the in-app Themes page so deck theme numbers match the app.
-  const themeModelAny: any = (stateRow.theme_model as any) || {}
+  const themeModelAny: ThemeModelRow = (stateRow.theme_model as ThemeModelRow | null) || {}
   const themeFields: string[] = (Array.isArray(themeModelAny.fieldNames) && themeModelAny.fieldNames.length)
     ? themeModelAny.fieldNames
     : (themeModelAny.fieldName ? [themeModelAny.fieldName]
@@ -651,14 +715,14 @@ export async function POST(req: Request, props: Params) {
   // field), so the executive summary, the Theme Analysis slides, and the in-app Themes
   // page all report the same %. Also computes per-keyword frequency (kwFreqs) so the
   // theme-cloud slides can size each keyword by how often it appears.
-  function computeCanonicalThemes(themeList: any[]): any[] {
+  function computeCanonicalThemes(themeList: DeckTheme[]): DeckTheme[] {
     if (!themeList.length || !allRows.length || !themeFields.length) return themeList
     const rowTexts = allRows
       .map(function(row) { return themeFields.map(function(fk) { return rowVal(row, fk) }).join('  ').toLowerCase() })
       .filter(function(txt) { return txt.trim().length > 0 })
     const total = rowTexts.length || 1
     return themeList
-      .map(function(t: any) {
+      .map(function(t: DeckTheme) {
         const kws: string[] = t.keywords || []
         const regexes = kws.map(function(kw: string) { return buildKwRegex(kw) })
         const kwCounts = kws.map(function() { return 0 })
@@ -677,14 +741,14 @@ export async function POST(req: Request, props: Params) {
           .sort(function(a, b) { return b.freq - a.freq })
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100), totalResponses: total, kwFreqs })
       })
-      .filter(function(t: any) { return t.count > 0 })
-      .sort(function(a: any, b: any) { return b.count - a.count })
+      .filter(function(t: DeckTheme) { return (t.count || 0) > 0 })
+      .sort(function(a: DeckTheme, b: DeckTheme) { return (b.count || 0) - (a.count || 0) })
   }
 
   // Visibility filter: drop themes at or below 3% (matches the in-app Theme Clouds).
   // Falls back to the top 5 by count if nothing clears the bar.
-  function visibleThemes(list: any[]): any[] {
-    const vis = list.filter(function(t: any) { return (t.percentage || 0) > 3 })
+  function visibleThemes(list: DeckTheme[]): DeckTheme[] {
+    const vis = list.filter(function(t: DeckTheme) { return (t.percentage || 0) > 3 })
     return vis.length > 0 ? vis : list.slice(0, 5)
   }
 
@@ -699,7 +763,7 @@ export async function POST(req: Request, props: Params) {
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '', watchout: '' }])),
   }
   if (!skipAI) {
-    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, knownTotal || analytics.totalRows, audience, selectedFields, instructions || undefined) }
+    try { narratives = await generateNarratives(dataset.org_id, datasetName, knownTotal || analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error({ at: 'export/pptx', msg: "AI error", err: e }) }
   }
 
@@ -772,11 +836,11 @@ export async function POST(req: Request, props: Params) {
     // Canonical theme set — counted ONCE across all theme fields (matches the
     // in-app Themes page / export picker) and reused everywhere so every theme %
     // in the deck agrees. >3% visibility filter applied.
-    const sortedThemes = [...themes].sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
+    const sortedThemes = [...themes].sort((a, b) => (b.count || 0) - (a.count || 0))
     const canonicalThemes = (allRows.length > 0) ? visibleThemes(computeCanonicalThemes(sortedThemes)) : sortedThemes
     const canonMeta: TextCounts | undefined = (allRows.length > 0 && themeFields.length > 0)
       ? { comments: canonicalThemes[0]?.totalResponses ?? allRows.filter(r => themeFields.some(fk => rowVal(r, fk).trim().length > 0)).length,
-          signals: canonicalThemes.reduce((sum: number, t: any) => sum + (t.count || 0), 0) }
+          signals: canonicalThemes.reduce((sum, t) => sum + (t.count || 0), 0) }
       : undefined
     const metaSub = (base: string) => canonMeta ? base + ' · ' + canonMeta.comments.toLocaleString() + ' comments · ' + canonMeta.signals.toLocaleString() + ' signals' : base
 
@@ -787,7 +851,7 @@ export async function POST(req: Request, props: Params) {
     const numericField = selectedFields.find(f => f.type === 'numeric')
     const openField = selectedFields.find(f => f.type === 'open-ended')
     const execKpis: { value: string; label: string; sub?: string; color?: string }[] = []
-    const ratingNum = selectedFields.find(f => f.type === 'numeric' && ((f as any).sqt === 'rating' || (f as any).scoreField || f.field === 'rating')) || numericField
+    const ratingNum = selectedFields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.scoreField || f.field === 'rating')) || numericField
     if (ratingNum?.summary?.avg != null) {
       const isStar = (ratingNum.summary.max ?? 5) <= 5
       execKpis.push({ value: (isStar ? '★' : '') + ratingNum.summary.avg.toFixed(1), label: 'Overall ' + trunc(ratingNum.label || ratingNum.field, 16) })
@@ -802,27 +866,27 @@ export async function POST(req: Request, props: Params) {
 
     // ── 2. Survey Overview (survey sources only) ─────────────────────────────
     {
-      const surveyFields = (schema?.fields || []) as any[]
+      const surveyFields = (schema?.fields || [])
       const isSurveySource = !!dataset.study_id
-        || surveyFields.some((f: any) => ['custom', 'psychographic', 'demographic'].includes(f.section))
-        || allRows.some((r: any) => r.status != null)
+        || surveyFields.some((f) => ['custom', 'psychographic', 'demographic'].includes(f.section || ''))
+        || allRows.some((r) => r.status != null)
       if (isSurveySource && allRows.length > 0) {
-        const has = (row: any, key: string) => rowVal(row, key).length > 0
-        const oeF = surveyFields.filter((f: any) => f.type === 'open-ended')
+        const has = (row: Record<string, unknown>, key: string) => rowVal(row, key).length > 0
+        const oeF = surveyFields.filter((f) => f.type === 'open-ended')
         const stages: { label: string; count: number }[] = [{ label: 'Started', count: allRows.length }]
-        const ratingF = surveyFields.find((f: any) => f.field === 'experience_score') || surveyFields.find((f: any) => f.field === 'nps_score')
-        if (ratingF) { const c = allRows.filter((r: any) => has(r, ratingF.field)).length; if (c > 0) stages.push({ label: ratingF.label || 'Rating', count: c }) }
-        if (oeF.length > 0) { const c = allRows.filter((r: any) => oeF.some((f: any) => has(r, f.field))).length; if (c > 0) stages.push({ label: 'Conversation', count: c }) }
-        const custF = surveyFields.filter((f: any) => f.section === 'custom')
-        if (custF.length > 0) { let maxA = 0; const c = allRows.filter((r: any) => { const a = custF.filter((f: any) => has(r, f.field)).length; if (a > maxA) maxA = a; return a > 0 }).length; if (c > 0) stages.push({ label: 'Survey Questions (' + maxA + ')', count: c }) }
-        const psyF = surveyFields.filter((f: any) => f.section === 'psychographic')
-        if (psyF.length > 0) { let maxA = 0; const c = allRows.filter((r: any) => { const a = psyF.filter((f: any) => has(r, f.field)).length; if (a > maxA) maxA = a; return a > 0 }).length; if (c > 0) stages.push({ label: 'Psychographics (' + maxA + ')', count: c }) }
-        const demF = surveyFields.filter((f: any) => f.section === 'demographic')
-        if (demF.length > 0) { const c = allRows.filter((r: any) => demF.some((f: any) => has(r, f.field))).length; if (c > 0) stages.push({ label: 'Demographics (optional)', count: c }) }
-        const completed = allRows.filter((r: any) => rowVal(r, 'status').toLowerCase() === 'complete').length
+        const ratingF = surveyFields.find((f) => f.field === 'experience_score') || surveyFields.find((f) => f.field === 'nps_score')
+        if (ratingF) { const c = allRows.filter((r) => has(r, ratingF.field)).length; if (c > 0) stages.push({ label: ratingF.label || 'Rating', count: c }) }
+        if (oeF.length > 0) { const c = allRows.filter((r) => oeF.some((f) => has(r, f.field))).length; if (c > 0) stages.push({ label: 'Conversation', count: c }) }
+        const custF = surveyFields.filter((f) => f.section === 'custom')
+        if (custF.length > 0) { let maxA = 0; const c = allRows.filter((r) => { const a = custF.filter((f) => has(r, f.field)).length; if (a > maxA) maxA = a; return a > 0 }).length; if (c > 0) stages.push({ label: 'Survey Questions (' + maxA + ')', count: c }) }
+        const psyF = surveyFields.filter((f) => f.section === 'psychographic')
+        if (psyF.length > 0) { let maxA = 0; const c = allRows.filter((r) => { const a = psyF.filter((f) => has(r, f.field)).length; if (a > maxA) maxA = a; return a > 0 }).length; if (c > 0) stages.push({ label: 'Psychographics (' + maxA + ')', count: c }) }
+        const demF = surveyFields.filter((f) => f.section === 'demographic')
+        if (demF.length > 0) { const c = allRows.filter((r) => demF.some((f) => has(r, f.field))).length; if (c > 0) stages.push({ label: 'Demographics (optional)', count: c }) }
+        const completed = allRows.filter((r) => rowVal(r, 'status').toLowerCase() === 'complete').length
         stages.push({ label: 'Completed', count: completed })
-        const commentFields: string[] = (themeFields && themeFields.length) ? themeFields : oeF.map((f: any) => f.field)
-        const withComments = commentFields.length > 0 ? allRows.filter((r: any) => commentFields.some((fk: string) => has(r, fk))).length : 0
+        const commentFields: string[] = (themeFields && themeFields.length) ? themeFields : oeF.map((f) => f.field)
+        const withComments = commentFields.length > 0 ? allRows.filter((r) => commentFields.some((fk: string) => has(r, fk))).length : 0
         if (stages.length >= 3) {
           slides.push({ type: 'survey_funnel', title: 'Survey Overview', subtitle: 'Responses, engagement and completion funnel',
             kpis: [ { value: allRows.length.toLocaleString(), label: 'Responses', sub: 'total collected' },
@@ -838,7 +902,7 @@ export async function POST(req: Request, props: Params) {
       try {
         const { data: resp } = await service.from('responses').select('status, payload').eq('study_id', dataset.study_id).order('created_at', { ascending: true }).limit(1000)
         if (resp && resp.length > 0) {
-          const completeCount = resp.filter((r: any) => r.status === 'complete' || r.status == null).length
+          const completeCount = resp.filter((r: { status?: string | null }) => r.status === 'complete' || r.status == null).length
           const cpct = Math.round(completeCount / resp.length * 100)
           completionNote = resp.length.toLocaleString() + ' total responses · ' + completeCount.toLocaleString() + ' complete (' + cpct + '%)'
         }
@@ -852,7 +916,7 @@ export async function POST(req: Request, props: Params) {
       // Date range of the DATA in the report (distinct from the generation date).
       let dataRange: string | undefined
       {
-        const dRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
+        const dRaw = schema?.primaryDateField || (dataset.source === 'google_reviews' ? 'review_date' : null)
         if (dRaw) {
           const dk = rowKeyMap[normalize(dRaw)] || dRaw
           let mn = Infinity, mx = -Infinity
@@ -880,32 +944,32 @@ export async function POST(req: Request, props: Params) {
     // the in-view date range. Renders for ANY dataset that surfaces ≥1 alert — no
     // longer gated on Dimensions. Placed up front as the executive exception list.
     const rk = (f: string) => rowKeyMap[normalize(f)] || f
-    const dateRaw = (schema as any)?.primaryDateField || ((dataset as any).source === 'google_reviews' ? 'review_date' : null)
+    const dateRaw = schema?.primaryDateField || (dataset.source === 'google_reviews' ? 'review_date' : null)
     const dateKey = dateRaw ? rk(dateRaw) : null
 
     // Dimensions rollup (with trend windows) — computed ONCE here and reused by
     // the Dimensions section below. Gated on Dimensions being enabled (explicit
     // flag, or the google_reviews proxy unless suppressed — mirrors textmineNav).
-    const dimEnabled = !!(dataset as any).taxonomy_enabled ||
-      ((dataset as any).source === 'google_reviews' && !(dataset as any).taxonomy_suppressed)
+    const dimEnabled = !!dataset.taxonomy_enabled ||
+      (dataset.source === 'google_reviews' && !dataset.taxonomy_suppressed)
     let dim: Awaited<ReturnType<typeof computeTaxonomyRollup>> | null = null
     if (includeDimensions && dimEnabled) {
       const { data: dimField } = await service.rpc('taxonomy_primary_field', { p_dataset_id: params.datasetId })
       if (dimField) {
-        const r = await computeTaxonomyRollup({ service, datasetId: params.datasetId, orgId: (dataset as any).org_id, field: String(dimField), dateField: dateRaw })
+        const r = await computeTaxonomyRollup({ service, datasetId: params.datasetId, orgId: dataset.org_id, field: String(dimField), dateField: dateRaw })
         if (r.withSignal > 0) dim = r
       }
     }
 
     {
       // Quant lens — numeric fields (rating + any other numerics), recent-vs-prior.
-      const numFields = ((schema?.fields || []) as any[]).filter(f => f.type === 'numeric' && f.status !== 'ignored')
+      const numFields = (schema?.fields || []).filter(f => f.type === 'numeric' && f.status !== 'ignored')
       const ratingFieldName = numFields.find(f => f.sqt === 'rating' || f.scoreField || f.field === 'rating')?.field
       const quantSpecs = numFields.map(f => ({ key: rk(f.field), label: f.label || f.field, isRating: f.field === ratingFieldName }))
       const { signals: quantSignals, windowLabel: quantWin } = buildQuantSignals(allRows, dateKey, quantSpecs)
 
       // Theme lens — organic themes, windowed keyword re-matching + rating pos/neg.
-      const themeSpecs = (canonicalThemes as any[]).map(t => ({ label: t.name || '', keywords: t.keywords || [] }))
+      const themeSpecs = canonicalThemes.map(t => ({ label: t.name || '', keywords: t.keywords || [] }))
       const { signals: themeSig, windowLabel: themeWin } = buildThemeSignals({
         themes: themeSpecs, rows: allRows, textKeys: themeFields.map(fk => rk(fk)),
         ratingKey: ratingKey || null, dateKey,
@@ -1059,7 +1123,7 @@ export async function POST(req: Request, props: Params) {
         histogram = keys.map(k => ({ label: k, count: rc[k] || 0 }))
         if (s?.avg != null && range > 0) { meanFrac = (s.avg - s.min) / range; meanLabel = 'avg ' + (Math.round(s.avg * 10) / 10) }
       } else if (Array.isArray(s?.histogram) && s.histogram.length > 0) {
-        histogram = s.histogram.map((b: any) => ({ label: String(Math.round(b.min)), count: b.count }))
+        histogram = s.histogram.map((b: { min: number; count: number }) => ({ label: String(Math.round(b.min)), count: b.count }))
         if (s?.avg != null && range > 0) { meanFrac = (s.avg - s.min) / range; meanLabel = 'avg ' + Math.round(s.avg) }
       }
       const insight = hasRealAI(ai, f) ? aiInsight(ai, f) : (posInRange >= 0.65 ? 'Average sits in the upper range — strong performance.' : posInRange <= 0.35 ? 'Average sits in the lower range — opportunity for improvement.' : 'Average sits in the mid range.')
@@ -1120,7 +1184,7 @@ export async function POST(req: Request, props: Params) {
       if (items.length === 0) return
       const cFieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : []
       const cComments = cFieldThemes[0]?.totalResponses ?? allRows.filter(r => rowVal(r, f.field).trim().length > 0).length
-      const cSignals = cFieldThemes.reduce((sum: number, t: any) => sum + (t.count || 0), 0)
+      const cSignals = cFieldThemes.reduce((sum, t) => sum + (t.count || 0), 0)
       const numSlides = Math.ceil(items.length / perSlide)
       for (let si = 0; si < numSlides; si++) {
         const slice = items.slice(si * perSlide, (si + 1) * perSlide)
@@ -1138,7 +1202,7 @@ export async function POST(req: Request, props: Params) {
       const lower = text.toLowerCase()
       return regexes.some(function(re) { return re.test(lower) })
     }
-    async function themeDetailQuotes(t: any): Promise<{ text: string }[]> {
+    async function themeDetailQuotes(t: DeckTheme): Promise<{ text: string }[]> {
       if (!allRows.length || !themeFields.length) return []
       const keys = themeFields.map(fk => rowKeyMap[normalize(fk)] || fk)
       const kwRegexes = ((t.keywords || []) as string[]).map(function(kw) {
@@ -1155,7 +1219,7 @@ export async function POST(req: Request, props: Params) {
       matched.sort((a, b) => b.length - a.length)
       const pool = matched.slice(0, Math.min(matched.length, 40))
       const themeInfo = { name: t.name || '', description: t.description || '', keywords: t.keywords || [], sentiment: t.sentiment || '' }
-      const useAI = pool.length > 8 ? (skipAI ? undefined : (dataset as any).org_id) : undefined
+      const useAI = pool.length > 8 ? (skipAI ? undefined : dataset!.org_id) : undefined
       const picked = await pickBestComments(pool, themeInfo, 4, useAI, usedCommentTexts, 350)
       return picked.map(text => ({ text: trimNatural(text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' '), 240) }))
     }
@@ -1186,8 +1250,8 @@ export async function POST(req: Request, props: Params) {
         for (let pg = 0; pg < canonicalThemes.length; pg += perGrid) {
           const page = canonicalThemes.slice(pg, pg + perGrid)
           slides.push({ type: 'theme_cards', title: 'Theme Analysis', subtitle: metaSub(canonicalThemes.length + ' themes identified'),
-            cards: page.map((t: any) => ({ name: t.name || '', pct: t.percentage || 0, count: t.count, total: t.totalResponses, sentiment: sentLabel(t.sentiment),
-              keywords: ((t.kwFreqs && t.kwFreqs.length) ? t.kwFreqs : (t.keywords || []).map((w: string) => ({ word: w, pct: 0 }))).slice(0, 8).map((k: any) => ({ word: k.word, pct: k.pct })) })) })
+            cards: page.map((t) => ({ name: t.name || '', pct: t.percentage || 0, count: t.count, total: t.totalResponses, sentiment: sentLabel(t.sentiment),
+              keywords: ((t.kwFreqs && t.kwFreqs.length) ? t.kwFreqs : (t.keywords || []).map((w: string) => ({ word: w, pct: 0 }))).slice(0, 8).map((k: { word: string; pct: number }) => ({ word: k.word, pct: k.pct })) })) })
         }
         // Quote-picking per theme is AI-bound (~1-2s each) — run 3 at a time,
         // then push slides in the original theme order.
@@ -1205,7 +1269,7 @@ export async function POST(req: Request, props: Params) {
 
     // ── 4b. Entity analysis — native specs from the stored entity catalog ────
     if (entityFields.length > 0) {
-      const entLabels = entityFields.map(k => { const sf = (schema?.fields || []).find((s: any) => s.field === k); return sf?.label || k })
+      const entLabels = entityFields.map(k => { const sf = (schema?.fields || []).find((s) => s.field === k); return sf?.label || k })
       const sectionTitle = entLabels.length === 1 ? entLabels[0] + ' — Entity Analysis' : 'Entity Analysis'
       const PLATFORM_NAMES = new Set(['sentimetrx', 'datanautix'])
       try {
@@ -1288,7 +1352,7 @@ export async function POST(req: Request, props: Params) {
     ).slice(0, 2)
     const impactOE = impactOEFields.length > 0 ? openEndedSelected.filter(f => impactOEFields.indexOf(f.field) !== -1) : []
     if (audience === 'full' && themes.length >= 3 && scoreFields.length > 0 && impactOE.length > 0 && allRows.length >= 30) {
-      const themeInput = themes.map((t: any) => ({ id: t.id || '', name: t.name || '', keywords: t.keywords || [] }))
+      const themeInput = themes.map((t) => ({ id: t.id || '', name: t.name || '', keywords: t.keywords || [] }))
       for (const sf of scoreFields.slice(0, 2)) {
         for (const oe of impactOE) {
           try {
@@ -1302,7 +1366,7 @@ export async function POST(req: Request, props: Params) {
                 + 'Longer bars mean a stronger connection. The themes collectively explain ' + r2Pct + '% of what drives ' + targetLabel + ' scores.'
               slides.push({ type: 'theme_impact', title: 'Key Driver Analysis — ' + targetLabel,
                 subtitle: 'OLS regression · n=' + analysis.n.toLocaleString() + ' · R²=' + r2Pct + '% · baseline=' + analysis.intercept.toFixed(1),
-                impacts: analysis.impacts.slice(0, 10).map((im: any) => ({ themeName: im.themeName, coefficient: im.coefficient, significant: im.significant })),
+                impacts: analysis.impacts.slice(0, 10).map((im) => ({ themeName: im.themeName, coefficient: im.coefficient, significant: im.significant })),
                 interpretation })
             }
           } catch { /* skip */ }
@@ -1353,11 +1417,11 @@ export async function POST(req: Request, props: Params) {
           totalSentences += v.split(/[.!?]+/).filter(s => s.trim().length > 2).length
         }
       }
-      const schemaFields = (schema?.fields || []).filter((f: any) => f.status !== 'ignored')
-      const oeCount = schemaFields.filter((f: any) => f.type === 'open-ended').length
-      const catCount = schemaFields.filter((f: any) => f.type === 'categorical').length
-      const numCount = schemaFields.filter((f: any) => f.type === 'numeric').length
-      const dateCount = schemaFields.filter((f: any) => f.type === 'date').length
+      const schemaFields = (schema?.fields || []).filter((f) => f.status !== 'ignored')
+      const oeCount = schemaFields.filter((f) => f.type === 'open-ended').length
+      const catCount = schemaFields.filter((f) => f.type === 'categorical').length
+      const numCount = schemaFields.filter((f) => f.type === 'numeric').length
+      const dateCount = schemaFields.filter((f) => f.type === 'date').length
       const fieldsCaptured = oeCount + catCount + numCount + dateCount
       const themesCount = (themes && themes.length) || 0
       const takeawaysCount = (narratives.keyTakeaways || []).length
@@ -1399,16 +1463,16 @@ export async function POST(req: Request, props: Params) {
         humanEquivHigh: humanHours,
         note: 'Estimated analyst time to produce the equivalent readout by hand — reading every response, identifying themes, selecting quotes, building charts, and writing the narrative. Assumes ~15 minutes per content slide (excluding the title and closing slides).',
       })
-    } catch (provErr: any) {
-      if (provErr !== '__skip_closers__') console.error({ at: 'export/pptx', msg: 'provenance/custom-decks slide failed', err: provErr?.message || provErr })
+    } catch (provErr) {
+      if (provErr !== '__skip_closers__') console.error({ at: 'export/pptx', msg: 'provenance/custom-decks slide failed', err: provErr instanceof Error ? provErr.message : provErr })
     }
 
     // ── 10. Generation-recap appendix ────────────────────────────────────────
     if (includeRecap) {
       try {
-        const labelFor = (key: string): string => selectedFields.find(f => f.field === key)?.label || (schema?.fields || []).find((f: any) => f.field === key)?.label || key
+        const labelFor = (key: string): string => selectedFields.find(f => f.field === key)?.label || (schema?.fields || []).find((f) => f.field === key)?.label || key
         const cap = (s: string) => (s.length > 160 ? s.slice(0, 157) + '…' : s)
-        const themeNames = (themes || []).map((t: any) => t.name).filter(Boolean)
+        const themeNames = (themes || []).map((t) => t.name).filter(Boolean)
         const recapRows: { k: string; v: string }[] = []
         recapRows.push({ k: 'Mode', v: mode === 'quick' ? 'Quick (selected fields)' : 'Builder (full schema)' })
         recapRows.push({ k: 'Audience', v: audience })
@@ -1428,8 +1492,8 @@ export async function POST(req: Request, props: Params) {
         if (instructions && instructions.trim()) {
           slides.push({ type: 'bullets', title: 'Custom Instructions (verbatim)', bullets: [instructions.trim()] })
         }
-      } catch (recapErr: any) {
-        console.error({ at: 'export/pptx', msg: 'recap slide failed', err: recapErr?.message || recapErr })
+      } catch (recapErr) {
+        console.error({ at: 'export/pptx', msg: 'recap slide failed', err: recapErr instanceof Error ? recapErr.message : recapErr })
       }
     }
 
@@ -1448,7 +1512,7 @@ export async function POST(req: Request, props: Params) {
         'Content-Length': String(buffer.length),
       },
     })
-  } catch (buildErr: any) {
+  } catch (buildErr) {
     return serverError(buildErr, 'datasets.exportPptx', { orgId: orgId ?? undefined })
   }
 }

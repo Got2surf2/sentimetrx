@@ -15,6 +15,10 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+type OrgRel = { is_admin_org: boolean | null }
+type UserWithOrg = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
+type InsertedChunk = { id: string; title: string; content: string }
+
 // ── GET: list chunks ──────────────────────────────────────────
 export async function GET(_req: Request, props: Params) {
   const params = await props.params;
@@ -27,14 +31,14 @@ export async function GET(_req: Request, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  const orgRel = (userData as UserWithOrg | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = (userData as UserWithOrg | null)?.org_id ?? null
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+  if (!isAdmin && bot.org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -67,8 +71,8 @@ export async function POST(req: Request, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as UserWithOrg | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id, subject, opponents').eq('id', params.id).single()
@@ -89,7 +93,7 @@ export async function POST(req: Request, props: Params) {
     .select('content')
     .eq('bot_id', params.id)
 
-  const existingSet = new Set((existingChunks || []).map(function(c: any) { return c.content.trim() }))
+  const existingSet = new Set((existingChunks || []).map(function(c: { content: string }) { return c.content.trim() }))
   const deduped = chunks.filter(function(c) { return !existingSet.has(c.content.trim()) })
 
   if (deduped.length === 0) {
@@ -114,30 +118,30 @@ export async function POST(req: Request, props: Params) {
   // Generate and store embeddings (non-blocking — chunks work without them via full-text fallback)
   if (inserted && inserted.length > 0) {
     try {
-      const texts = inserted.map(function(c: any) { return c.title + '\n' + c.content })
+      const texts = inserted.map(function(c: InsertedChunk) { return c.title + '\n' + c.content })
       const embeddings = await generateEmbeddings(texts, bot.org_id)
       for (var i = 0; i < inserted.length; i++) {
         if (embeddings[i]) {
           await service.from('agent_knowledge_chunks')
             .update({ embedding: JSON.stringify(embeddings[i]) })
-            .eq('id', (inserted[i] as any).id)
+            .eq('id', (inserted[i] as InsertedChunk).id)
         }
       }
-    } catch (e: any) {
-      console.error({ at: 'knowledge', msg: "Embedding generation failed (chunks still usable)", err: e?.message })
+    } catch (e: unknown) {
+      console.error({ at: 'knowledge', msg: "Embedding generation failed (chunks still usable)", err: e instanceof Error ? e.message : undefined })
     }
 
     // Sentiment + opponent classification
-    const subject = (bot as any).subject
-    const opponents = (bot as any).opponents
-    const opponentNames = Array.isArray(opponents) ? opponents.map(function(o: any) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean) : []
+    const subject = (bot as { subject?: string | null }).subject
+    const opponents = (bot as { opponents?: Array<string | { name?: string }> | null }).opponents
+    const opponentNames = Array.isArray(opponents) ? opponents.map(function(o: string | { name?: string }) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean) : []
 
     if ((subject && subject.trim()) || opponentNames.length > 0) {
       try {
         const batchSize = 20
         for (var b = 0; b < inserted.length; b += batchSize) {
           var batch = inserted.slice(b, b + batchSize)
-          var chunkList = batch.map(function(c: any, idx: number) {
+          var chunkList = batch.map(function(c: InsertedChunk, idx: number) {
             var preview = (c.content || '').slice(0, 300)
             return (b + idx + 1) + '. [' + c.title + '] ' + preview
           }).join('\n')
@@ -173,9 +177,9 @@ export async function POST(req: Request, props: Params) {
             var opponentMatch = tags.match(/opponent\s*:\s*([^,]+)/)
             var opponent = opponentMatch ? opponentMatch[1].trim() : undefined
 
-            var chunkId = (batch[chunkIdx] as any).id
+            var chunkId = (batch[chunkIdx] as InsertedChunk).id
             var existingMeta = rows[b + chunkIdx]?.metadata || {}
-            var updatedMeta: any = { ...existingMeta, sentiment }
+            var updatedMeta: Record<string, unknown> = { ...existingMeta, sentiment }
             if (opponent) updatedMeta.opponent = opponent
 
             await service.from('agent_knowledge_chunks')
@@ -183,8 +187,8 @@ export async function POST(req: Request, props: Params) {
               .eq('id', chunkId)
           }
         }
-      } catch (e: any) {
-        console.error({ at: 'knowledge', msg: "Classification failed (chunks still usable)", err: e?.message })
+      } catch (e: unknown) {
+        console.error({ at: 'knowledge', msg: "Classification failed (chunks still usable)", err: e instanceof Error ? e.message : undefined })
       }
     }
   }
@@ -214,14 +218,14 @@ export async function DELETE(req: Request, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  const orgRel = (userData as UserWithOrg | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = (userData as UserWithOrg | null)?.org_id ?? null
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+  if (!isAdmin && bot.org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -245,7 +249,7 @@ export async function DELETE(req: Request, props: Params) {
 
   void logBotChange({
     botId: params.id,
-    orgId: (bot as any).org_id,
+    orgId: bot.org_id,
     actorId: user.id,
     actorEmail: user.email || null,
     action: 'knowledge_cleared',
@@ -259,12 +263,12 @@ export async function DELETE(req: Request, props: Params) {
 // ── Chunking logic ────────────────────────────────────────────
 // Splits markdown/text by headings (## or ---) into titled sections.
 // Falls back to paragraph-based splitting if no headings found.
-function chunkText(text: string, source?: string, sourceType?: string): { title: string; content: string; metadata: Record<string, any> }[] {
+function chunkText(text: string, source?: string, sourceType?: string): { title: string; content: string; metadata: Record<string, unknown> }[] {
   const lines = text.split('\n')
-  const chunks: { title: string; content: string; metadata: Record<string, any> }[] = []
+  const chunks: { title: string; content: string; metadata: Record<string, unknown> }[] = []
   let currentTitle = 'General'
   let currentLines: string[] = []
-  const baseMeta: Record<string, any> = {}
+  const baseMeta: Record<string, unknown> = {}
   if (source) baseMeta.source = source
   if (sourceType) baseMeta.source_type = sourceType
 

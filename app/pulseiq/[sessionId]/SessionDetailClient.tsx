@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
-import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, DemoField, PsychoQuestion } from '@/lib/types'
+import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, TownHallSessionType, DemoField, PsychoQuestion } from '@/lib/types'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import TownHallAnalyticsPanel from '@/components/townhall/TownHallAnalyticsPanel'
@@ -48,7 +48,75 @@ const STATE_BADGE: Record<string, { bg: string; text: string; label: string }> =
   dismissed: { bg: '#fee2e2', text: '#991b1b', label: 'Dismissed' },
 }
 
-function buildTHConversationHtml(botName: string, botEmoji: string, gradient: string, pid: string, turns: any[]) {
+// Session as returned by the legacy adapter — carries a `__substrate` marker
+// distinguishing phase-3 (pulseiq_*) from legacy town-hall rows.
+type THSession = TownHallSession & { __substrate?: string }
+
+// A single paired conversation turn as projected by the export endpoint
+// (app/api/townhall/sessions/[id]/export/route.ts).
+interface ConvTurn {
+  turn?: number
+  bot?: string
+  user?: string | null
+  user_en?: string | null
+  language?: string
+  topic?: string | null
+  source?: string
+  skipped?: boolean
+  time?: string
+  bot_flags?: string[] | null
+  user_flags?: string[] | null
+  user_sentiment?: string | null
+  user_sentiment_score?: number | null
+}
+
+// Loosely-structured persona blob from agent_session_personas.persona (jsonb).
+interface Persona {
+  life_stage?: { value?: string }
+  occupation?: { value?: string }
+  industry?: { value?: string }
+  location_type?: { value?: string }
+  communication_style?: { value?: string }
+  concerns?: { values?: string[] }
+  [key: string]: unknown
+}
+
+// Per-participant summary row from getTownHallAsLegacy (lib/townHallAdapter.ts).
+interface ParticipantSummary {
+  participant_id: string
+  turns: number
+  answered: number
+  skipped: number
+  topics: number
+  last_source: string | null
+  is_complete: boolean
+  started_at: string | null
+  last_activity: string | null
+}
+
+// A per-conversation export record (participants[] entry from the export route).
+interface ConvExport {
+  participant_id: string
+  turns: ConvTurn[]
+  demographics: Record<string, string> | null
+  psychographics: Record<string, string> | null
+  name: string | null
+  persona: Persona | null
+}
+
+// A theme enriched by the analytics-mode fetch (adds per-quote match reasons).
+type EnrichedTheme = TownHallTheme & { quote_matches?: { text: string; match: string }[] }
+
+// Session config plus the UI theme overlay used by the conversation modal.
+type SessionConfig = TownHallConfig & { theme?: { headerGradient?: string; primaryColor?: string } }
+
+// Config with the legacy fields still read when migrating opening/closing copy.
+type LegacyTHConfig = TownHallConfig & {
+  display: TownHallConfig['display'] & { welcome_message?: string; thank_you_message?: string }
+  session_end: TownHallConfig['session_end'] & { closing_message?: string }
+}
+
+function buildTHConversationHtml(botName: string, botEmoji: string, gradient: string, pid: string, turns: ConvTurn[]) {
   const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -79,7 +147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </style></head><body>
 <div class="wrap">
 <div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${pid.slice(0, 12)}...</div></div><div class="brand"><span class="brand-top">powered by</span><br><span class="brand-name">DATANAUTIX</span></div></div>
-<div class="chat">${turns.map((t: any) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + esc(t.bot) + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + esc(t.user) + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + esc(t.user || 'skipped') + '</div></div>'; return o }).join('')}</div>
+<div class="chat">${turns.map((t) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + esc(t.bot) + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + esc(t.user) + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + esc(t.user || 'skipped') + '</div></div>'; return o }).join('')}</div>
 <div class="footer"><a href="https://datanautix.com" target="_blank">datanautix.com</a></div>
 </div></body></html>`
 }
@@ -108,11 +176,11 @@ function CompletionDonut({ current, target, size = 40 }: { current: number; targ
 function generateId() { return 'topic_' + Math.random().toString(36).slice(2, 8) }
 
 export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled, campaignsEnabled, features, user }: Props) {
-  const [session, setSession] = useState<TownHallSession | null>(null)
+  const [session, setSession] = useState<THSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const searchParams = useSearchParams()
-  const initialTab = (['topics', 'responses', 'analytics'] as const).includes(searchParams.get('tab') as any) ? searchParams.get('tab') as 'topics' | 'responses' | 'analytics' : 'topics'
+  const initialTab = (['topics', 'responses', 'analytics'] as const).includes(searchParams.get('tab') as 'topics' | 'responses' | 'analytics') ? searchParams.get('tab') as 'topics' | 'responses' | 'analytics' : 'topics'
   const [activeTab, setActiveTab] = useState<'topics' | 'responses' | 'analytics'>(initialTab)
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null)
   const [gridCols, setGridCols] = useState(2)
@@ -120,8 +188,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [participantList, setParticipantList] = useState<any[]>([])
-  const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any; name?: string | null; persona?: any } | null>(null)
+  const [participantList, setParticipantList] = useState<ParticipantSummary[]>([])
+  const [convModal, setConvModal] = useState<{ pid: string; turns: ConvTurn[]; demographics?: Record<string, string> | null; psychographics?: Record<string, string> | null; name?: string | null; persona?: Persona | null } | null>(null)
   const [convShareState, setConvShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
   const [showShare, setShowShare] = useState(false)
   const [jsonView, setJsonView] = useState(false)
@@ -149,8 +217,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       setDeleteToast('Deleted ' + (json.deleted ?? checkedPids.size) + ' conversation' + (json.deleted !== 1 ? 's' : ''))
       setTimeout(() => setDeleteToast(null), 3000)
       void fetchData()
-    } catch (e: any) {
-      setDeleteToast('Error: ' + e.message)
+    } catch (e) {
+      setDeleteToast('Error: ' + (e instanceof Error ? e.message : String(e)))
       setTimeout(() => setDeleteToast(null), 4000)
     } finally { setDeleting(false) }
   }
@@ -196,8 +264,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // — if we re-derived detailTopic from the latest themes array, the modal
   // would visibly "collapse" after each poll. Snapshotting keeps the rich
   // analytics-mode data the user clicked into.
-  const [detailTopic, setDetailTopicState] = useState<TownHallTheme | null>(null)
-  const setDetailTopic = (t: TownHallTheme | null) => {
+  const [detailTopic, setDetailTopicState] = useState<EnrichedTheme | null>(null)
+  const setDetailTopic = (t: EnrichedTheme | null) => {
     setDetailTopicState(t)
     // Fetch full analytics (quotes, match reasons) on-demand when opening detail popup
     if (t) void fetchData(true)
@@ -238,7 +306,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       if (analytics) {
         setDetailTopicState(prev => {
           if (!prev) return prev
-          const fresh = newThemes.find(t => t.id === prev.id) as any
+          const fresh: EnrichedTheme | undefined = newThemes.find(t => t.id === prev.id)
           if (!fresh) return prev
           if (fresh.top_keywords || fresh.example_quotes || fresh.quote_matches) return fresh
           return prev
@@ -279,12 +347,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     const cfg = JSON.parse(JSON.stringify(session.config)) as TownHallConfig
     // Ensure opening_message is populated from legacy fields if not set
     if (!cfg.opening_message) {
-      const welcome = (cfg as any).display?.welcome_message || ''
-      const oq = (cfg as any).opening_question || ''
+      const welcome = (cfg as LegacyTHConfig).display?.welcome_message || ''
+      const oq = cfg.opening_question || ''
       cfg.opening_message = (welcome && oq) ? welcome + '\n\n' + oq : welcome || oq || ''
     }
     if (!cfg.closing_message) {
-      cfg.closing_message = (cfg as any).session_end?.closing_message || (cfg as any).display?.thank_you_message || 'Thank you for participating!'
+      cfg.closing_message = (cfg as LegacyTHConfig).session_end?.closing_message || (cfg as LegacyTHConfig).display?.thank_you_message || 'Thank you for participating!'
     }
     setEditName(session.name)
     setEditSlug(session.slug || '')
@@ -368,7 +436,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         const tail = reasons && reasons.length > 0 ? ' — ' + reasons.join('; ') : ''
         setError('Failed to ' + action + ': ' + (d.error || res.status) + tail)
       }
-    } catch (err: any) { setError('Network error: ' + (err?.message || 'unknown')) }
+    } catch (err) { setError('Network error: ' + (err instanceof Error ? err.message : 'unknown')) }
     await fetchData()
     setActionLoading(null)
   }
@@ -414,7 +482,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
   if (!session) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Session not found</div></Shell>
 
-  const cfg = session.config as any
+  const cfg = session.config as SessionConfig
   const isSetup = session.status === 'setup'
   const isActive = session.status === 'active'
   const isPaused = session.status === 'paused'
@@ -426,7 +494,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // when the snapshot text matches the current description verbatim; a
   // mismatch (or missing snapshot) is treated as "needs grading."
   const activationMissing: string[] = []
-  const topicsReady = Array.isArray(session.discussion_guide) && session.discussion_guide.some((t: any) =>
+  const topicsReady = Array.isArray(session.discussion_guide) && session.discussion_guide.some((t) =>
     t && t.enabled !== false && (t.label || '').trim() && (t.opening_question || '').trim())
   if (!topicsReady) activationMissing.push('Add at least one enabled topic with a label and opening question.')
 
@@ -458,7 +526,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // moderator can gate the room round-by-round.
   const roundsMode = cfg?.pacing_mode === 'rounds'
   const rounds: { number: number; item_name?: string; item_photo?: string }[] =
-    roundsMode ? (cfg?.rounds || []).slice().sort((a: any, b: any) => a.number - b.number) : []
+    roundsMode ? (cfg?.rounds || []).slice().sort((a, b) => a.number - b.number) : []
   const roundInfo = rounds.map(r => {
     const rt = seedTopics.filter(t => t.round_number === r.number)
     const status: 'done' | 'active' | 'pending' =
@@ -537,7 +605,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     body: JSON.stringify({ reopen: true }),
                   })
                   if (!res.ok) { const d = await res.json().catch(() => ({})); setError('Failed to reopen: ' + (d.error || res.status)) }
-                } catch (err: any) { setError('Network error: ' + (err?.message || 'unknown')) }
+                } catch (err) { setError('Network error: ' + (err instanceof Error ? err.message : 'unknown')) }
                 await fetchData()
                 setActionLoading(null)
               })() }} disabled={actionLoading === 'reopen'}
@@ -607,11 +675,11 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/pi/</span>
                   <input type="text" value={editSlug}
                     onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    readOnly={(session as any)?.__substrate === 'phase3'}
+                    readOnly={session?.__substrate === 'phase3'}
                     placeholder="e.g. neighborhood-meeting"
-                    className={'flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200' + ((session as any)?.__substrate === 'phase3' ? ' bg-gray-50 text-gray-500 cursor-not-allowed' : '')} />
+                    className={'flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200' + (session?.__substrate === 'phase3' ? ' bg-gray-50 text-gray-500 cursor-not-allowed' : '')} />
                 </div>
-                {(session as any)?.__substrate === 'phase3' && (
+                {session?.__substrate === 'phase3' && (
                   <p className="text-xs text-gray-500 -mt-1">URL is locked — printed materials (postcards, QR codes, signage) reference this slug.</p>
                 )}
                 <ELabel>Industry</ELabel>
@@ -643,7 +711,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
                 <ELabel>Session Type</ELabel>
                 <select value={editConfig.session_type || 'community'}
-                  onChange={e => setEditConfig((c: any) => ({ ...c, session_type: e.target.value }))}
+                  onChange={e => setEditConfig(c => ({ ...(c as TownHallConfig), session_type: e.target.value as TownHallSessionType }))}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 mb-2">
                   <option value="community">Community (residents)</option>
                   <option value="employee">Employee (team members)</option>
@@ -1048,7 +1116,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         try {
                           const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=json')
                           const data = await res.json()
-                          const conv = data.conversations?.find((c: any) => c.participant_id === p.participant_id)
+                          const conv = data.conversations?.find((c: ConvExport) => c.participant_id === p.participant_id)
                           if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns, demographics: conv.demographics, psychographics: conv.psychographics, name: conv.name || null, persona: conv.persona || null })
                         } catch {}
                       })() }} title="View conversation"
@@ -1102,7 +1170,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   persona has been extracted (phase-3 substrate only;
                   legacy townhall sessions don't carry persona data). */}
               {convModal.persona && (function() {
-                const p = convModal.persona as any
+                const p = convModal.persona
                 const bits: string[] = []
                 if (p?.life_stage?.value) bits.push(p.life_stage.value)
                 if (p?.occupation?.value) bits.push(p.occupation.value)
@@ -1119,7 +1187,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 )
               })()}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-                {convModal.turns.map((t: any, i: number) => {
+                {convModal.turns.map((t, i) => {
                   const botFlags = Array.isArray(t.bot_flags) ? t.bot_flags : []
                   const userFlags = Array.isArray(t.user_flags) ? t.user_flags : []
                   return (
@@ -1164,7 +1232,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   )
                 })}
                 {/* Participant ended flag */}
-                {convModal.turns.some((t: any) => t.user?.includes('[Done') || t.user?.includes('[done]')) && (
+                {convModal.turns.some((t) => t.user?.includes('[Done') || t.user?.includes('[done]')) && (
                   <div className="flex justify-center mt-2">
                     <span className="text-[10px] px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">Participant chose to end conversation</span>
                   </div>
@@ -1461,7 +1529,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       {/* Keywords with frequency */}
                       {(detailTopic.top_keywords || detailTopic.keywords || []).length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          {(detailTopic.top_keywords || []).map((kw: any) => (
+                          {(detailTopic.top_keywords || []).map((kw) => (
                             <span key={kw.word} className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium border border-orange-200">
                               {kw.word} <span className="text-orange-400">({kw.count})</span>
                             </span>
@@ -1511,7 +1579,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       </h3>
                       {(() => {
                         // Use quote_matches if available (has match reason), fall back to plain quotes
-                        const qm = (detailTopic as any).quote_matches as { text: string; match: string }[] | undefined
+                        const qm = detailTopic.quote_matches
                         if (qm && qm.length > 0) {
                           return (
                             <div className="space-y-2">
@@ -1554,12 +1622,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
                   <h3 className="text-sm font-bold text-green-700">Active</h3>
-                  <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).filter((t: any) => t.enabled !== false).length : activeTopics.length}</span>
+                  <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).filter((t) => t.enabled !== false).length : activeTopics.length}</span>
                 </div>
 
                 {isSetup ? (
                   <div className="space-y-2">
-                    {(session.discussion_guide || []).filter((t: any) => t.enabled !== false).map((t: any, i: number) => (
+                    {(session.discussion_guide || []).filter((t) => t.enabled !== false).map((t, i) => (
                       <div key={t.id || i} className="border border-gray-100 rounded-lg p-3 flex items-start gap-3">
                         <CompletionDonut current={0} target={t.response_target || 30} size={36} />
                         <div className="flex-1 min-w-0">
@@ -1569,7 +1637,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         </div>
                       </div>
                     ))}
-                    {(session.discussion_guide || []).filter((t: any) => t.enabled !== false).length === 0 && (
+                    {(session.discussion_guide || []).filter((t) => t.enabled !== false).length === 0 && (
                       <p className="text-xs text-gray-400">No active topics. Enable seed topics or click Edit.</p>
                     )}
                   </div>
@@ -1662,15 +1730,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               )}
 
               {/* ── SETUP: Disabled topics ────────────────────── */}
-              {isSetup && (session.discussion_guide || []).some((t: any) => t.enabled === false) && (
+              {isSetup && (session.discussion_guide || []).some((t) => t.enabled === false) && (
                 <div className="bg-white rounded-xl border border-gray-100 p-5 opacity-60">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-gray-300" />
                     <h3 className="text-sm font-bold text-gray-400">Disabled</h3>
-                    <span className="text-[10px] text-gray-300">{(session.discussion_guide || []).filter((t: any) => t.enabled === false).length}</span>
+                    <span className="text-[10px] text-gray-300">{(session.discussion_guide || []).filter((t) => t.enabled === false).length}</span>
                   </div>
                   <div className="space-y-2">
-                    {(session.discussion_guide || []).filter((t: any) => t.enabled === false).map((t: any, i: number) => (
+                    {(session.discussion_guide || []).filter((t) => t.enabled === false).map((t, i) => (
                       <div key={t.id || i} className="border border-gray-50 rounded-lg p-3">
                         <span className="text-sm font-semibold text-gray-400">{t.label}</span>
                         <p className="text-xs text-gray-300 mt-0.5">Disabled — enable in Edit to include in session</p>

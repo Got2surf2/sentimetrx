@@ -11,7 +11,7 @@
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
-import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
+import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull, type ContentSafetyConfig } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { evaluateDeflection } from '@/lib/deflectionRouter'
 import { SUBTLE_DISENGAGE } from '@/lib/engagementSignals'
@@ -28,7 +28,7 @@ import {
 import { detectEmotionAssertions } from '@/lib/emotionFlags'
 import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
 import { extractName } from '@/lib/nameExtractor'
-import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
+import { mirrorTurns, mirrorFocusFlagsUpdate, type MirroredTurn } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
@@ -44,8 +44,8 @@ export interface TownHallContext {
    *  conversations.participant_id can be populated and cohort analysis can
    *  group by participant without parsing the synthesized session_id. */
   participantId?: string
-  themes?: any[]
-  coverage?: any
+  themes?: unknown[]
+  coverage?: unknown
   /** Session-level content-safety toggles (cohort_config.content_safety) —
    *  merged over the agent's own config.content_safety (item 5). */
   contentSafety?: Record<string, unknown>
@@ -58,7 +58,60 @@ export interface ChatCoreContext {
   townHallContext?: TownHallContext
 }
 
-export type ChatCoreResult = Record<string, any>
+export type ChatCoreResult = Record<string, unknown>
+
+// ── Local shapes for this handler ─────────────────────────────────────
+// The service-role Supabase client is untyped (no Database generic), so
+// query rows arrive as `any`; these minimal interfaces annotate the
+// callback params / locals that read them without pulling in generated
+// types. `bot`/`body` stay `any` — they carry a large, dynamic surface.
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
+type AgentFocus = BotFocus & { probe_template?: string; keywords?: string[] }
+interface AgentIntent {
+  label?: string
+  enabled?: boolean
+  keywords?: string[]
+  description?: string
+  message?: string
+  url?: string
+}
+interface Guardrail { rule?: string; text?: string }
+interface Opponent { name?: string }
+interface RagChunk {
+  title?: string
+  content?: string
+  confidence?: number | null
+  metadata?: { sentiment?: string; opponent?: unknown } | null
+}
+interface TurnRow {
+  role?: string
+  topic_id?: string | null
+  source?: string | null
+  content?: string | null
+  turn_number?: number
+}
+interface PulseiqTopicRow {
+  id: string
+  label: string
+  description?: string | null
+  question?: string | null
+  follow_up_angles?: string[] | null
+  keywords?: string[] | null
+  source: string
+  response_target: number
+  response_count?: number | null
+}
+interface CohortConfig {
+  pacing?: Record<string, unknown>
+  pacing_mode?: string
+  max_turns_per_participant?: number
+  standby_message?: string
+  chill_message?: string
+  theme_detection_every_n_responses?: number
+  theme_detection_mode?: string
+  engine?: { theme_detection_mode?: string }
+  content_safety?: Record<string, unknown>
+}
 
 export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<ChatCoreResult> {
   const bot = ctx.agent
@@ -84,8 +137,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (!session_id) {
       return { reply: null, skipped: 'no_session' }
     }
-    const probeFocuses: BotFocus[] = (bot as any).focuses || []
-    const enabledFocuses = probeFocuses.filter(function(f: any) { return f.enabled !== false })
+    const probeFocuses: AgentFocus[] = bot.focuses || []
+    const enabledFocuses = probeFocuses.filter(function(f: AgentFocus) { return f.enabled !== false })
     if (enabledFocuses.length === 0) {
       return { reply: null, skipped: 'no_focuses' }
     }
@@ -102,7 +155,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         .eq('conversations.session_id', session_id)
         .order('turn_number', { ascending: true })
       if (turnsErr) void logError('chatCore.handleChatTurn', turnsErr, { orgId: bot.org_id })
-      existingTurns = (data || []) as any
+      existingTurns = data || []
     } else {
       const { data, error: legacyTurnsErr } = await service
         .from('bot_conversation_turns')
@@ -111,9 +164,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         .eq('session_id', session_id)
         .order('turn_number', { ascending: true })
       if (legacyTurnsErr) void logError('chatCore.handleChatTurn', legacyTurnsErr, { orgId: bot.org_id })
-      existingTurns = (data || []) as any
+      existingTurns = data || []
     }
-    const silenceAlreadyFired = (existingTurns || []).some(function(t: any) { return t.source === 'silence_probe' })
+    const silenceAlreadyFired = (existingTurns || []).some(function(t) { return t.source === 'silence_probe' })
     if (silenceAlreadyFired) {
       return { reply: null, skipped: 'already_fired' }
     }
@@ -125,21 +178,21 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         if (typeof f === 'string' && f.startsWith('focus:')) firedSlugs[f.slice(6)] = true
       }
     }
-    const unfired = enabledFocuses.find(function(f: any) { return !firedSlugs[f.slug] })
+    const unfired = enabledFocuses.find(function(f: AgentFocus) { return !firedSlugs[f.slug] })
     if (!unfired) {
       return { reply: null, skipped: 'all_focuses_covered' }
     }
-    const probeLang = userLanguage || (bot.config as any)?.language || 'en'
+    const probeLang = userLanguage || bot.config?.language || 'en'
     // Per-focus probe template (set in agents.focuses[].probe_template) wins
     // when present. Otherwise fall back to a generic nudge — the earlier
     // "your thoughts on <label>" template inserted admin-facing labels
     // ("The decision") into respondent-facing text, which read awkwardly
     // and broke mirroring (focuses § 9.x.1).
-    const customTemplate = (unfired as any).probe_template
+    const customTemplate = unfired.probe_template
     const probeText = (typeof customTemplate === 'string' && customTemplate.trim())
       ? customTemplate.trim()
       : "Still there? Happy to keep going whenever you are."
-    const maxTurn = (existingTurns && existingTurns.length > 0) ? Math.max(...existingTurns.map((t: any) => t.turn_number || 0)) : -1
+    const maxTurn = (existingTurns && existingTurns.length > 0) ? Math.max(...existingTurns.map((t) => t.turn_number || 0)) : -1
     const probeRow = {
       bot_id: bot.id,
       session_id,
@@ -148,7 +201,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       content: probeText,
       language: probeLang,
       source: 'silence_probe',
-      content_flags: ['silence_probe', 'focus:' + (unfired as any).slug],
+      content_flags: ['silence_probe', 'focus:' + unfired.slug],
     }
     const { error: insertErr } = await service.from('bot_conversation_turns').insert(probeRow)
     if (insertErr) {
@@ -172,7 +225,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // Conversation compression: if history is long, summarize older turns
   // Keep the last 8 messages verbatim, compress earlier ones into a summary
-  let recentMessages: any[]
+  let recentMessages: ChatMessage[]
   if (messages.length > 12) {
     const olderMessages = messages.slice(0, -8)
     const recentRaw = messages.slice(-8)
@@ -216,7 +269,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     } else {
 
     // Build a quick summary of older turns
-    const olderSummary = olderMessages.map(function(m: any) {
+    const olderSummary = olderMessages.map(function(m: ChatMessage) {
       const prefix = m.role === 'user' ? 'User' : 'Bot'
       return prefix + ': ' + m.content.substring(0, 100)
     }).join('\n')
@@ -275,18 +328,18 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // parity): per-agent toggles (bot.config.content_safety) merged under
   // any session-level override; strikes keyed per PARTICIPANT in town-hall
   // mode (a venue's shared NAT IP must not pool the whole room's strikes).
-  const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
+  const lastUserMsg = [...recentMessages].reverse().find((m: ChatMessage) => m.role === 'user')
   let toneNudge = false
   if (lastUserMsg) {
     const safetyConfig = {
       enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true,
-      ...(((bot.config as any)?.content_safety) || {}),
+      ...((bot.config?.content_safety) || {}),
       ...((ctx.townHallContext?.contentSafety) || {}),
     }
     const strikeKey = ctx.townHallContext
       ? 'th_' + ctx.townHallContext.townHallId + ':' + (ctx.townHallContext.participantId || ip)
       : 'cbot_' + ip
-    const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as any, maxLength: 1200 })
+    const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as ContentSafetyConfig, maxLength: 1200 })
     if (check.nudge) toneNudge = true
     if (!check.safe) {
       // Over-length input is NOT a conduct violation: no [filtered] audit
@@ -305,7 +358,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             .from('bot_conversation_turns').select('turn_number')
             .eq('bot_id', bot.id).eq('session_id', session_id)
             .order('turn_number', { ascending: false }).limit(1).maybeSingle()
-          const base = ((maxRow as any)?.turn_number || 0) + 1
+          const base = (maxRow?.turn_number || 0) + 1
           const guardRows = [
             { bot_id: bot.id, session_id, turn_number: base, role: 'user', content: '[filtered]', language: userLanguage || 'en', source: 'normal', content_flags: ['filtered'] },
             { bot_id: bot.id, session_id, turn_number: base + 1, role: 'assistant', content: warning, language: userLanguage || 'en', source: 'normal' },
@@ -315,9 +368,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           else if (ctx.townHallContext) {
             // Awaited in town-hall mode: the warning turn counts toward the
             // participant budget the policy reads from the mirror.
-            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
           } else {
-            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as any, townHallId: null, participantId: null }).then(function() {})
+            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
           }
         } catch { /* audit-trail storage is best-effort */ }
       }
@@ -329,7 +382,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   }
 
   // Language — resolve early for deflection + turn storage
-  const botLang = userLanguage || (bot.config as any)?.language || 'en'
+  const botLang = userLanguage || bot.config?.language || 'en'
 
   // ── Content audit (non-blocking) for flag tracking ──────────────────
   var auditFlags: string[] = []
@@ -355,16 +408,16 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // FEEDBACK_SIGNALS stays local — PulseIQ uses a domain-specific superset.
   const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|important|critical|essential|ridiculous|absurd|outrageous|unfair|fair|wrong|right|better|worse|enough|lack|missing)\b/i
 
-  if ((bot as any).deflection_enabled !== false && lastUserMsg && recentMessages.length > 2) {
+  if (bot.deflection_enabled !== false && lastUserMsg && recentMessages.length > 2) {
     var analyzeText = lastUserMsg.content
-    var sensitiveTopics: string[] = (bot as any).sensitive_topics || []
-    var focusTopics: string[] = (bot as any).focus_topics || []
+    var sensitiveTopics: string[] = bot.sensitive_topics || []
+    var focusTopics: string[] = bot.focus_topics || []
     var deflectDecision = evaluateDeflection(analyzeText, sensitiveTopics, FEEDBACK_SIGNALS)
     var hitsSensitive = deflectDecision.hitsSensitive
 
     if (deflectDecision.shouldAttempt) {
       try {
-        var topicContext = focusTopics.length > 0 ? focusTopics.join(', ') : ((bot as any).subject || bot.name)
+        var topicContext = focusTopics.length > 0 ? focusTopics.join(', ') : (bot.subject || bot.name)
         var deflectResult = await callAI({
           tier: 'fast', maxTokens: 150, timeoutMs: 5000,
           messages: [{ role: 'user', content: 'Decide if redirection is needed.' }],
@@ -391,14 +444,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
         if (deflectText) {
           // Custom deflection message override
-          if ((bot as any).deflection_message?.trim()) {
-            deflectText = (bot as any).deflection_message.trim()
+          if (bot.deflection_message?.trim()) {
+            deflectText = bot.deflection_message.trim()
           }
 
           // Store turns with deflection flag
           auditFlags.push('outside_scope')
           if (session_id) {
-            var turnNumber = Math.max(0, recentMessages.filter(function(m: any) { return m.role === 'user' }).length - 1) * 2
+            var turnNumber = Math.max(0, recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).length - 1) * 2
             var deflectTurns = [
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber, role: 'user', content: lastUserMsg.content, language: botLang || 'en', content_flags: auditFlags, source: 'normal' },
               { bot_id: bot.id, session_id: session_id, turn_number: turnNumber + 1, role: 'assistant', content: deflectText, language: botLang || 'en', source: 'deflect' },
@@ -433,12 +486,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   var intentContext = ''
   var intentHasAction = false
   var detectedIntents: string[] = []
-  var botIntents: any[] = (bot as any).intents || []
-  var activeIntents = botIntents.filter(function(i: any) { return i.enabled !== false })
+  var botIntents: AgentIntent[] = bot.intents || []
+  var activeIntents = botIntents.filter(function(i: AgentIntent) { return i.enabled !== false })
 
   if (activeIntents.length > 0 && lastUserMsg) {
     var msgLower = lastUserMsg.content.toLowerCase()
-    var keywordHits: any[] = []
+    var keywordHits: AgentIntent[] = []
     var needsAiCheck = false
 
     for (var ii = 0; ii < activeIntents.length; ii++) {
@@ -458,8 +511,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (needsAiCheck && keywordHits.length === 0 && recentMessages.length > 2) {
       try {
         var intentDescriptions = activeIntents
-          .filter(function(i: any) { return i.description })
-          .map(function(i: any, idx: number) { return (idx + 1) + '. ' + i.label + ': ' + i.description })
+          .filter(function(i: AgentIntent) { return i.description })
+          .map(function(i: AgentIntent, idx: number) { return (idx + 1) + '. ' + i.label + ': ' + i.description })
           .join('\n')
         var intentCheck = await callAI({
           tier: 'fast', maxTokens: 50, timeoutMs: 3000,
@@ -471,7 +524,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         var checkText = (intentCheck.text || '').trim()
         if (!/^NONE/i.test(checkText)) {
           var nums = checkText.match(/\d+/g) || []
-          var descIntents = activeIntents.filter(function(i: any) { return i.description })
+          var descIntents = activeIntents.filter(function(i: AgentIntent) { return i.description })
           for (var ni = 0; ni < nums.length; ni++) {
             var idx = parseInt(nums[ni]) - 1
             if (idx >= 0 && idx < descIntents.length) keywordHits.push(descIntents[idx])
@@ -507,8 +560,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // ── Persona profiling ───────────────────────────────────────────────
   var personaContext = ''
-  var askProfileEnabled = (bot as any).ask_profile === true
-  var userTurnCount = recentMessages.filter(function(m: any) { return m.role === 'user' }).length
+  var askProfileEnabled = bot.ask_profile === true
+  var userTurnCount = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).length
 
   if (session_id && askProfileEnabled) {
     // Check if persona already exists for this session
@@ -527,7 +580,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // Periodic enrichment: every 5th user turn, re-extract and merge
       if (userTurnCount > 0 && userTurnCount % 5 === 0) {
         var currentPersona = existingPersona.persona as Persona
-        var userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+        var userMsgs = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).map(function(m: ChatMessage) { return m.content })
         extractPersona(userMsgs, personaUsageCtx).then(function(update) {
           if (Object.keys(update).length > 0) {
             var merged = mergePersona(currentPersona, update)
@@ -541,7 +594,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       }
     } else if (userTurnCount >= 2 && userTurnCount <= 4) {
       // Early turns after name — extract persona from what we have so far
-      var userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+      var userMsgs = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).map(function(m: ChatMessage) { return m.content })
       try {
         var persona = await extractPersona(userMsgs, personaUsageCtx)
         if (Object.keys(persona).length > 0) {
@@ -559,7 +612,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // ── Demographic inference ──────────────────────────────────────────
   var demographicContext = ''
-  var demographicEnabled = (bot as any).demographic_inference === true
+  var demographicEnabled = bot.demographic_inference === true
 
   if (session_id && demographicEnabled && userTurnCount >= 3) {
     var { data: existingPersonaRow, error: existingPersonaRowErr } = await service
@@ -574,7 +627,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
     // Extract/re-extract every 5th turn (same cadence as persona)
     if (userTurnCount <= 5 || (userTurnCount % 5 === 0)) {
-      var demoMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+      var demoMsgs = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).map(function(m: ChatMessage) { return m.content })
       extractDemographics(demoMsgs, personaUsageCtx).then(function(update) {
         if (Object.keys(update).length > 0) {
           var merged = Object.keys(existingDemographics).length > 0 ? mergeDemographics(existingDemographics, update) : update
@@ -615,12 +668,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     }
     const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '', priorAssistant)
     if (liveBlock) systemParts.push(liveBlock)
-  } catch (e: any) {
-    if (debugMode) _debug.push('mco-live-context: ' + (e?.message || String(e)))
+  } catch (e) {
+    if (debugMode) _debug.push('mco-live-context: ' + ((e as Error)?.message || String(e)))
   }
 
-  if ((bot as any).personality) {
-    systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
+  if (bot.personality) {
+    systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + bot.personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
 
@@ -645,9 +698,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   systemParts.push('\nFACTUAL ACCURACY: Only state facts that appear in your knowledge base or system prompt. If you don\'t have specific information about something, say so — never fill gaps with assumptions or invented details. Getting a fact wrong is far worse than saying "I\'m not sure about that specific detail."')
   // Guardrails: inject as explicit rules in the system prompt
-  const guardrails = (bot as any).guardrails
+  const guardrails = bot.guardrails
   if (Array.isArray(guardrails) && guardrails.length > 0) {
-    const rules = guardrails.map(function(g: any, i: number) { return (i + 1) + '. ' + (typeof g === 'string' ? g : g.rule || g.text || '') }).filter(function(r: string) { return r.length > 3 }).join('\n')
+    const rules = guardrails.map(function(g: string | Guardrail, i: number) { return (i + 1) + '. ' + (typeof g === 'string' ? g : g.rule || g.text || '') }).filter(function(r: string) { return r.length > 3 }).join('\n')
     if (rules) systemParts.push('\n\nRULES YOU MUST FOLLOW:\n' + rules)
   }
 
@@ -657,7 +710,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // strips the marker from the visible text. Injected here — gated on the
   // config flag — so the feature works for ANY agent with the flag on, without
   // hand-editing each agent's prompt.
-  if ((bot.config as any)?.dynamicChips === true || (bot.config as any)?.dynamicChips === 'true') {
+  if (bot.config?.dynamicChips === true || bot.config?.dynamicChips === 'true') {
     systemParts.push('\n\nFOLLOW-UP PILLS: When you END a reply by offering the person a choice between a few next steps (e.g. "Want to hear about the impact, the buildings, or how to get involved?"), append a trailer on its own final line in EXACTLY this format:\n[[chips: First option | Second option | Third option]]\nRules: 2–4 options, each 2–5 words, phrased in the visitor\'s voice as something they would tap, mirroring the choices you just named. Use it ONLY when there are discrete next-step options — never after an open-ended question (like asking their name) or when there is nothing concrete to choose. The widget renders the trailer as clickable buttons and hides the raw text, so never mention "chips" or the brackets in your prose.')
   }
 
@@ -681,7 +734,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // Generate query embedding for semantic search
       const queryEmbedding = await generateEmbedding(userQuery, bot.org_id)
 
-      const rpcParams: any = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
+      const rpcParams: Record<string, unknown> = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
       let rpcName = 'search_knowledge_chunks'
 
       // Try semantic search first, fall back to basic search
@@ -701,18 +754,18 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (rpcErr) console.error({ at: 'bot-chat', msg: "RAG search error", err: rpcErr.message })
 
       if (chunks && chunks.length > 0) {
-        const negMode = (bot as any).negative_content_mode || 'deflect'
-        const subjectName = (bot as any).subject || bot.name
+        const negMode = bot.negative_content_mode || 'deflect'
+        const subjectName = bot.subject || bot.name
 
         // Separate positive/neutral chunks from negative ones
-        const safeChunks = chunks.filter(function(c: any) { return !c.metadata?.sentiment || c.metadata.sentiment !== 'negative' })
-        const negativeChunks = chunks.filter(function(c: any) { return c.metadata?.sentiment === 'negative' })
+        const safeChunks = chunks.filter(function(c: RagChunk) { return !c.metadata?.sentiment || c.metadata.sentiment !== 'negative' })
+        const negativeChunks = chunks.filter(function(c: RagChunk) { return c.metadata?.sentiment === 'negative' })
         const hasOnlyNegative = safeChunks.length === 0 && negativeChunks.length > 0
 
         const topConfidence = chunks[0].confidence ?? 0
         if (debugMode) {
           _debug.push('RAG: ' + chunks.length + ' chunks found (top confidence: ' + (topConfidence * 100).toFixed(0) + '%)')
-          _debug.push('RAG chunks: ' + chunks.slice(0, 5).map(function(c: any) { return '"' + (c.title || '').substring(0, 50) + '" (' + ((c.confidence || 0) * 100).toFixed(0) + '%)' }).join(', '))
+          _debug.push('RAG chunks: ' + chunks.slice(0, 5).map(function(c: RagChunk) { return '"' + (c.title || '').substring(0, 50) + '" (' + ((c.confidence || 0) * 100).toFixed(0) + '%)' }).join(', '))
           if (negativeChunks.length > 0) _debug.push('Negative chunks: ' + negativeChunks.length + ' (mode: ' + negMode + ')')
         }
 
@@ -737,7 +790,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }
         } else {
           // Use safe chunks as context
-          const context = safeChunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+          const context = safeChunks.map(function(c: RagChunk) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
 
           if (topConfidence > 0.85) {
             systemParts.push('\n\n--- HIGHLY RELEVANT KNOWLEDGE ---\nAnswer the question using ONLY the following information. Do not add anything beyond what is provided here.\n\n' + context)
@@ -748,10 +801,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         knowledgeInjected = true
 
         // Contrast mode: inject opponent positions for policy questions
-        const contrastMode = (bot as any).contrast_mode || 'off'
-        const opponents = (bot as any).opponents
+        const contrastMode = bot.contrast_mode || 'off'
+        const opponents = bot.opponents
         if (contrastMode !== 'off' && Array.isArray(opponents) && opponents.length > 0 && !hasOnlyNegative) {
-          const opponentNames = opponents.map(function(o: any) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean)
+          const opponentNames = opponents.map(function(o: string | Opponent) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean)
 
           // Check if user is asking for contrast (for user_triggered mode)
           const queryLower = userQuery.toLowerCase()
@@ -761,13 +814,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
           if (shouldContrast) {
             // Search for opponent-tagged chunks on the same topic
-            const oppoChunks = (chunks || []).filter(function(c: any) {
+            const oppoChunks = (chunks || []).filter(function(c: RagChunk) {
               return c.metadata?.opponent || c.metadata?.sentiment === 'negative'
             })
             // Also search with opponent names to find relevant contrast material
             var oppoContext = ''
             if (oppoChunks.length > 0) {
-              oppoContext = oppoChunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+              oppoContext = oppoChunks.map(function(c: RagChunk) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
             }
 
             const oppoList = opponentNames.join(', ')
@@ -779,8 +832,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           }
         }
       }
-    } catch (e: any) {
-      console.error({ at: 'bot-chat', msg: "RAG search exception", err: e?.message })
+    } catch (e) {
+      console.error({ at: 'bot-chat', msg: "RAG search exception", err: (e as Error)?.message })
     }
   }
   if (!knowledgeInjected && bot.knowledge_base) {
@@ -816,7 +869,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         .eq('id', ctx.townHallContext.townHallId)
         .maybeSingle()
       if (townHallRowErr) void logError('chatCore.handleChatTurn', townHallRowErr, { orgId: bot.org_id })
-      const cohortConfig = (townHallRow?.cohort_config || {}) as any
+      const cohortConfig = (townHallRow?.cohort_config || {}) as CohortConfig
 
       // Bounded pool: per-turn cohort work (topic tallies, balancing,
       // semantic matching, facilitation) scales with this list, and
@@ -841,10 +894,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // increment_pulseiq_response_counter when the reply turn is
         // stored below — O(1) per turn. No per-message COUNT queries.
         const responseCount: Record<string, number> = {}
-        for (const t of topics) responseCount[(t as any).id] = (t as any).response_count || 0
-        const totalTopicResponses = (townHallRow as any)?.response_counter || 0
+        for (const t of topics) responseCount[t.id] = t.response_count || 0
+        const totalTopicResponses = townHallRow?.response_counter || 0
         const participantDiscussed = new Set<string>()
-        let myTurns: any[] = []
+        let myTurns: TurnRow[] = []
 
         {
           // Participant-specific: which topics has THIS session touched?
@@ -860,19 +913,19 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             const { data: thisTurns, error: thisTurnsErr } = await service
               .from('conversation_turns')
               .select('topic_id, role, content, source, turn_number')
-              .eq('conversation_id', (thisConv as any).id)
+              .eq('conversation_id', thisConv.id)
               .order('turn_number', { ascending: true })
             if (thisTurnsErr) void logError('chatCore.handleChatTurn', thisTurnsErr, { orgId: bot.org_id })
             for (const t of (thisTurns || [])) {
-              const tid = (t as any).topic_id as string
+              const tid = t.topic_id as string
               if (tid) participantDiscussed.add(tid)
             }
-            myTurns = (thisTurns || []) as any[]
+            myTurns = thisTurns || []
           }
         }
 
         const pickerTopics: NextTopic[] = topics
-          .map((t: any) => ({
+          .map((t: PulseiqTopicRow) => ({
             id: t.id,
             label: t.label,
             description: t.description,
@@ -893,8 +946,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // per-session tunable via cohort_config.pacing with the legacy
         // values as defaults.
         const isOpeningResponse = (Array.isArray(body?.messages) ? body.messages : [])
-          .filter((m: any) => m?.role === 'assistant').length === 0
-        const pacing = (cohortConfig?.pacing || {}) as any
+          .filter((m: ChatMessage) => m?.role === 'assistant').length === 0
+        const pacing: Record<string, unknown> = cohortConfig?.pacing || {}
         const knob = (v: unknown, dflt: number) => (v == null || Number.isNaN(Number(v))) ? dflt : Number(v)
         const MAX_CLAR_BASE = knob(pacing.max_clarifiers_per_topic, 2)
         const MIN_TOPIC_TURNS = knob(pacing.min_topic_turns, 2)
@@ -1113,7 +1166,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // through to the plain standby and let the shim's turn cap
           // close the conversation on the next request.
           const assistantTurnsUsed = (Array.isArray(body?.messages) ? body.messages : [])
-            .filter((m: any) => m?.role === 'assistant').length
+            .filter((m: ChatMessage) => m?.role === 'assistant').length
           const maxTurnsBudget = Number(cohortConfig?.max_turns_per_participant) || 20
           if (cohortConfig?.pacing_mode === 'rounds' && assistantTurnsUsed < maxTurnsBudget - 2) {
             // source='seed' is the new-schema spelling of legacy 'guide'
@@ -1173,16 +1226,16 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           const { limited: detectLimited } = await checkRateLimit('theme-detect:' + ctx.townHallContext.townHallId, 1, 120000)
           if (!detectLimited) {
             if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
-            detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: any) {
-              console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: e?.message, townHallId: ctx.townHallContext?.townHallId })
+            detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: unknown) {
+              console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: (e as Error)?.message, townHallId: ctx.townHallContext?.townHallId })
             })
           }
         }
       } else if (debugMode) {
         _debug.push('PulseIQ topic: pool empty (no pulseiq_topics rows)')
       }
-    } catch (e: any) {
-      console.error({ at: 'chat-core', msg: 'pulseiq topic injection failed', err: e?.message, townHallId: ctx.townHallContext.townHallId })
+    } catch (e) {
+      console.error({ at: 'chat-core', msg: 'pulseiq topic injection failed', err: (e as Error)?.message, townHallId: ctx.townHallContext.townHallId })
     }
   }
 
@@ -1244,7 +1297,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   // Persona profiling: inject profile question instruction for early turns
   if (askProfileEnabled && !personaContext && userTurnCount === 1) {
-    var profileQ = (bot as any).profile_question?.trim() || 'Tell me a bit about yourself so I can make our conversation more relevant to you.'
+    var profileQ = bot.profile_question?.trim() || 'Tell me a bit about yourself so I can make our conversation more relevant to you.'
     systemParts.push('\n\nAFTER greeting the user, naturally ask them: "' + profileQ + '" Keep it warm and conversational — don\'t make it feel like a form. This helps you tailor the conversation to them.')
   } else if (askProfileEnabled && userTurnCount === 2 && !personaContext) {
     systemParts.push('\n\nThe user just shared something about themselves. Respond warmly to what they shared. If their response was brief, ask ONE natural follow-up to understand them better (e.g., "That\'s great — what brought you here today?" or "Nice! What\'s on your mind?"). Do NOT ask multiple questions or make it feel like an interview.')
@@ -1273,9 +1326,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // append a CRITICAL OVERRIDE instruction so the model sees it last
   // (highest recency = highest priority for the AI). Config lives on
   // bot.config.probeEnforcement so it's bot-specific without code edits.
-  var probeEnforcement = (bot.config as any)?.probeEnforcement
+  var probeEnforcement = bot.config?.probeEnforcement
   if (probeEnforcement?.required && probeEnforcement.detectionRegex) {
-    var userTurnCount = recentMessages.filter(function(m: any) { return m.role === 'user' }).length
+    var userTurnCount = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).length
     var fallbackTurn = Number(probeEnforcement.fallbackTurn) || 6
     // Skip the CRITICAL OVERRIDE on info-only turns (greeting/thanks/ack/sign-off).
     // Forcing a probe on a turn with no substance produces a jarring "by the way..."
@@ -1286,7 +1339,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     } else if (userTurnCount >= fallbackTurn) {
       try {
         var probeRegex = new RegExp(probeEnforcement.detectionRegex, 'i')
-        var probeAlreadyFired = recentMessages.some(function(m: any) { return m.role === 'assistant' && probeRegex.test(m.content || '') })
+        var probeAlreadyFired = recentMessages.some(function(m: ChatMessage) { return m.role === 'assistant' && probeRegex.test(m.content || '') })
         if (!probeAlreadyFired) {
           var fallbackText = probeEnforcement.fallbackInstruction || 'CRITICAL OVERRIDE: The required probe has not yet fired in this conversation. You MUST fire the probe in this reply, before any other content. This overrides any other instruction.'
           systemParts.push('\n\n' + fallbackText)
@@ -1294,8 +1347,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         } else if (debugMode) {
           _debug.push('Probe enforcement: probe already fired earlier this session')
         }
-      } catch (e: any) {
-        console.error({ at: 'bot-chat', msg: 'probeEnforcement regex failed', err: e?.message })
+      } catch (e) {
+        console.error({ at: 'bot-chat', msg: 'probeEnforcement regex failed', err: (e as Error)?.message })
       }
     } else if (debugMode) {
       _debug.push('Probe enforcement: turn ' + userTurnCount + ' < fallback ' + fallbackTurn)
@@ -1314,10 +1367,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   // Gated by bot.config.statefulFocusTracking — opt-in, default off, so
   // non-research bots are unaffected.
   const statefulFocus =
-    (bot.config as any)?.statefulFocusTracking === true &&
-    (bot as any).probe_focus_enabled &&
-    Array.isArray((bot as any).focuses) &&
-    ((bot as any).focuses as any[]).length > 0 &&
+    bot.config?.statefulFocusTracking === true &&
+    bot.probe_focus_enabled &&
+    Array.isArray(bot.focuses) &&
+    bot.focuses.length > 0 &&
     !!session_id
   if (statefulFocus) {
     try {
@@ -1330,22 +1383,22 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (priorTurnsErr) void logError('chatCore.handleChatTurn', priorTurnsErr, { orgId: bot.org_id })
       const capturedSlugs = new Set<string>()
       for (const t of priorTurns || []) {
-        const flags = ((t as any).content_flags || []) as unknown[]
+        const flags = (t.content_flags || []) as unknown[]
         for (const f of flags) {
           if (typeof f === 'string' && f.startsWith('topic:')) {
             capturedSlugs.add(f.slice(6))
           }
         }
       }
-      const focusList: any[] = ((bot as any).focuses as any[]).filter(function(f: any) { return f && f.enabled !== false && typeof f.slug === 'string' })
-      const captured: any[] = []
-      const remaining: any[] = []
+      const focusList: AgentFocus[] = (bot.focuses as AgentFocus[]).filter(function(f: AgentFocus) { return f && f.enabled !== false && typeof f.slug === 'string' })
+      const captured: AgentFocus[] = []
+      const remaining: AgentFocus[] = []
       for (const f of focusList) {
         if (capturedSlugs.has(f.slug)) captured.push(f); else remaining.push(f)
       }
-      const fmt = function(list: any[]): string {
+      const fmt = function(list: AgentFocus[]): string {
         if (list.length === 0) return '  (none)'
-        return list.map(function(f: any) { return '  • ' + f.slug + ' — ' + (f.label || f.slug) }).join('\n')
+        return list.map(function(f: AgentFocus) { return '  • ' + f.slug + ' — ' + (f.label || f.slug) }).join('\n')
       }
       const stateBlock =
         '\n\n--- CONVERSATION STATE (deterministic, computed from prior turn classifications) ---\n' +
@@ -1353,9 +1406,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         'REMAINING — ask the simplest natural next question to surface one of these (roughly in the order listed):\n' + fmt(remaining) + '\n\n' +
         'Use this block as ground truth. Do not "double-check" a CAPTURED item by re-asking. If REMAINING contains only the trailing closing items (open_close / demographics / attitudes / close) and the respondent is not actively expanding, proceed through the closing block (open close → demographics → 3 attitude items → thanks) and end.'
       systemParts.push(stateBlock)
-      if (debugMode) _debug.push('Stateful focus: ' + captured.length + ' captured / ' + remaining.length + ' remaining (' + remaining.slice(0, 3).map(function(f: any) { return f.slug }).join(', ') + (remaining.length > 3 ? ', …' : '') + ')')
-    } catch (e: any) {
-      console.error({ at: 'chat-core', msg: 'stateful focus injection failed', err: e?.message, sessionId: session_id })
+      if (debugMode) _debug.push('Stateful focus: ' + captured.length + ' captured / ' + remaining.length + ' remaining (' + remaining.slice(0, 3).map(function(f: AgentFocus) { return f.slug }).join(', ') + (remaining.length > 3 ? ', …' : '') + ')')
+    } catch (e) {
+      console.error({ at: 'chat-core', msg: 'stateful focus injection failed', err: (e as Error)?.message, sessionId: session_id })
     }
   }
 
@@ -1516,7 +1569,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   }
 
   if (debugMode) {
-    var guardrailCount = Array.isArray((bot as any).guardrails) ? (bot as any).guardrails.length : 0
+    var guardrailCount = Array.isArray(bot.guardrails) ? bot.guardrails.length : 0
     _debug.push('Guardrails: ' + guardrailCount + ' rules')
     _debug.push('AI call: tier=fast, maxTokens=400, system prompt=' + Math.round(systemParts.join('\n').length / 1000) + 'K chars, ' + recentMessages.length + ' messages')
   }
@@ -1598,7 +1651,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             .order('turn_number', { ascending: false })
             .limit(1)
           if (maxTurnErr) void logError('chatCore.handleChatTurn', maxTurnErr, { orgId: bot.org_id })
-          existingTurns = (data || []) as any
+          existingTurns = data || []
         } else {
           const { data, error: legacyMaxTurnErr } = await service
             .from('bot_conversation_turns')
@@ -1608,7 +1661,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             .order('turn_number', { ascending: false })
             .limit(1)
           if (legacyMaxTurnErr) void logError('chatCore.handleChatTurn', legacyMaxTurnErr, { orgId: bot.org_id })
-          existingTurns = (data || []) as any
+          existingTurns = data || []
         }
 
         const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
@@ -1629,14 +1682,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           // see the greeting prefixed with the name but no record of how
           // the name was elicited.
           if (user_name && typeof user_name === 'string' && user_name.trim()) {
-            var askPrompt = ((bot.config as any)?.askNamePrompt as string)?.trim() || "What's your name?"
+            var askPrompt = (bot.config?.askNamePrompt as string)?.trim() || "What's your name?"
             var nameAnswer = user_name.trim().slice(0, 60)
             turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: askPrompt, language: botLang, source: 'greeting' })
             turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 1, role: 'user', content: nameAnswer, language: botLang, source: 'normal' })
             insertedAskNameThisTurn = true
           }
 
-          var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
+          var initialMsg = recentMessages.find(function(m: ChatMessage) { return m.role === 'assistant' })
           if (initialMsg) {
             var greetingTurnNum = insertedAskNameThisTurn ? 2 : 0
             turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: greetingTurnNum, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
@@ -1695,8 +1748,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // Tag both user + assistant turns with the picked topic_id when in
         // townHallContext mode — cohort response_count tallies live off this.
         const turnsForMirror = pickedTopicId
-          ? (turnsToInsert as any[]).map(r => ({ ...r, topic_id: pickedTopicId }))
-          : (turnsToInsert as any[])
+          ? turnsToInsert.map(r => ({ ...r, topic_id: pickedTopicId }))
+          : turnsToInsert
         // In town-hall mode the mirror is AWAITED: the facilitation policy
         // reads the NEXT request's budgets (clarifier caps, topic caps,
         // seed budget) from conversation_turns, so a lagging or failed
@@ -1704,14 +1757,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // mode keeps the async fast path (nothing reads the mirror inline).
         if (ctx.townHallContext) {
           try {
-            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
           } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
           // O(1) counter maintenance (sql/154): bump the session total +
           // the picked topic's tally once per stored topic-tagged reply.
           // Next turn's balancing + the every-N detection trigger read
           // these stored counters instead of counting turns.
           if (!insertErr && pickedTopicId) {
-            const assistantDelta = (turnsToInsert as any[]).filter(r => r.role === 'assistant').length
+            const assistantDelta = turnsToInsert.filter(r => r.role === 'assistant').length
             if (assistantDelta > 0) {
               const { error: counterErr } = await service.rpc('increment_pulseiq_response_counter', {
                 p_session_id: ctx.townHallContext.townHallId,
@@ -1722,15 +1775,15 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
             }
           }
         } else {
-          void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as any, townHallId: null, participantId: null }).then(function() {})
+          void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
         }
 
         // Focus classify happens after the insert lands — best-effort
         // tag of the just-saved assistant turn. Slow AI call must not
         // block the user from seeing their conversation persisted.
-        var botFocuses: BotFocus[] = (bot as any).focuses || []
+        var botFocuses: BotFocus[] = bot.focuses || []
         if (botFocuses.length > 0 && insertedRows && insertedRows.length > 0) {
-          const assistantRow = insertedRows.find(function(r: any) { return r.role === 'assistant' && r.turn_number === turnBase + 1 })
+          const assistantRow = insertedRows.find(function(r) { return r.role === 'assistant' && r.turn_number === turnBase + 1 })
           if (assistantRow) {
             classifyResponseFocuses(botFocuses, result.text).then(function(focusResult) {
               if (focusResult.usage) {
@@ -1738,10 +1791,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               }
               if (focusResult.slugs.length > 0) {
                 const flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
-                service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', (assistantRow as any).id).then(function() {})
-                void mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (assistantRow as any).turn_number, flags }).then(function() {})
+                service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', assistantRow.id).then(function() {})
+                void mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: assistantRow.turn_number, flags }).then(function() {})
               }
-            }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
+            }).catch(function(e: unknown) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: (e as Error)?.message }) })
           }
         }
 
@@ -1793,11 +1846,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                   .eq('session_id', session_id)
                   .maybeSingle()
                 if (existingErr) void logError('chatCore.persistWidgetName', existingErr, { orgId: bot.org_id })
-                if (existing && (existing as any).name) return  // already captured; idempotent skip
+                if (existing && existing.name) return  // already captured; idempotent skip
                 await service.from('agent_session_personas')
                   .upsert({ bot_id: bot.id, session_id, name: widgetName, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
-              } catch (e: any) {
-                console.error({ at: 'bot-chat', msg: 'widget name persist failed', err: e?.message })
+              } catch (e) {
+                console.error({ at: 'bot-chat', msg: 'widget name persist failed', err: (e as Error)?.message })
               }
             })()
           }
@@ -1806,10 +1859,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // Only mine a name from chat content when the agent is configured
         // to ask for one. Otherwise the respondent stays Anonymous — we
         // must not infer a name they were never asked to give.
-        const askNameOn = (bot.config as any)?.askName !== 'false'
+        const askNameOn = bot.config?.askName !== 'false'
         const userTurnCountForName = lastUserMsg ? (turnBase / 2) + 1 : 0
         if (askNameOn && session_id && lastUserMsg?.content && (userTurnCountForName === 2 || userTurnCountForName === 5)) {
-          const userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+          const userMsgs = recentMessages.filter(function(m: ChatMessage) { return m.role === 'user' }).map(function(m: ChatMessage) { return m.content })
           ;void (async function captureName() {
             try {
               const { data: existing, error: existingErr } = await service
@@ -1819,14 +1872,14 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                 .eq('session_id', session_id)
                 .maybeSingle()
               if (existingErr) void logError('chatCore.captureName', existingErr, { orgId: bot.org_id })
-              if (existing && (existing as any).name) return // already captured; no AI call
+              if (existing && existing.name) return // already captured; no AI call
               const r = await extractName(userMsgs, bot.org_id)
               if (!r.name) return
               logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'name_extract' }, undefined)
               await service.from('agent_session_personas')
                 .upsert({ bot_id: bot.id, session_id, name: r.name, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
-            } catch (e: any) {
-              console.error({ at: 'bot-chat', msg: 'name capture failed', err: e?.message })
+            } catch (e) {
+              console.error({ at: 'bot-chat', msg: 'name capture failed', err: (e as Error)?.message })
             }
           })()
         }
@@ -1838,13 +1891,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         // runs ALWAYS (free, no AI); probe focuses only when
         // agents.probe_focus_enabled is true.
         if (insertedRows && insertedRows.length > 0 && lastUserMsg?.content && session_id) {
-          const userRow = insertedRows.find(function(r: any) { return r.role === 'user' && r.turn_number === turnBase })
+          const userRow = insertedRows.find(function(r) { return r.role === 'user' && r.turn_number === turnBase })
           if (userRow) {
             void (async function() {
               try {
                 const entitySlugs = await detectEntityMentions(service, bot.id, lastUserMsg.content)
                 let topicSlugs: string[] = []
-                if (botFocuses.length > 0 && (bot as any).probe_focus_enabled) {
+                if (botFocuses.length > 0 && bot.probe_focus_enabled) {
                   const probeResult = await classifyProbeFocuses(botFocuses, lastUserMsg.content)
                   if (probeResult.usage) {
                     logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'probe_focus_classify' }, probeResult.usage)
@@ -1852,20 +1905,21 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
                   topicSlugs = probeResult.slugs
                 }
                 if (entitySlugs.length === 0 && topicSlugs.length === 0) return
-                const existing = Array.isArray((userRow as any).content_flags) ? (userRow as any).content_flags : []
+                const existingFlags = (userRow as { content_flags?: unknown }).content_flags
+                const existing: unknown[] = Array.isArray(existingFlags) ? existingFlags : []
                 const entityFlags = entitySlugs.map(function(s) { return 'entity:' + s })
                 const topicFlags = topicSlugs.map(function(s) { return 'topic:' + s })
                 const merged = Array.from(new Set([...existing, ...topicFlags, ...entityFlags]))
-                await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', (userRow as any).id)
-                await mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: (userRow as any).turn_number, flags: merged })
-              } catch (e: any) {
-                console.error({ at: 'bot-chat', msg: 'user-turn classify failed', err: e?.message })
+                await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', userRow.id)
+                await mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: userRow.turn_number, flags: merged as string[] })
+              } catch (e) {
+                console.error({ at: 'bot-chat', msg: 'user-turn classify failed', err: (e as Error)?.message })
               }
             })()
           }
         }
-      } catch (e: any) {
-        console.error({ at: 'bot-chat', msg: 'turn storage failed', err: e?.message, session_id, bot_id: bot.id })
+      } catch (e) {
+        console.error({ at: 'bot-chat', msg: 'turn storage failed', err: (e as Error)?.message, session_id, bot_id: bot.id })
       }
     }
 
@@ -1899,7 +1953,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       void logQuestion({ service, orgId: bot.org_id, botId: bot.id, sessionId: session_id, userMessage: lastUserMsg.content, language: botLang || null, classification: 'ai_uncertain' })
     }
     return { reply: scrubbed.reply, roundHold: townHallRoundHold || undefined, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }
-  } catch (err: any) {
-    return { reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + (err?.message || 'unknown')] : undefined, _signals: demoMode ? _signals : undefined }
+  } catch (err) {
+    return { reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + ((err as Error)?.message || 'unknown')] : undefined, _signals: demoMode ? _signals : undefined }
   }
 }

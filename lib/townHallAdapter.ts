@@ -36,8 +36,124 @@
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
 import { computeSessionAnalytics } from '@/lib/townhallAnalytics'
+import type { ContentSafetyConfig } from '@/lib/contentGuard'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
+
+// ── Row / projection shapes ─────────────────────────────────────────────────
+// Minimal structural types for the new-substrate rows this adapter reads and
+// the legacy-shaped JSON it projects them into. The service-role client is
+// untyped (no Database generic), so `select('*')` yields `any` rows — these
+// interfaces annotate the projection functions so downstream callers get a
+// real shape rather than `any`.
+
+interface CohortConfig {
+  bot_name?: string
+  bot_emoji?: string
+  context?: {
+    org_name?: string
+    event_description?: string
+    tone?: string
+    sensitive_topics?: unknown[]
+    priority_areas?: unknown[]
+  }
+  opening_message?: string
+  closing_message?: string
+  engine?: Record<string, unknown>
+  session_end?: Record<string, unknown>
+  display?: Record<string, unknown>
+  content_safety?: Partial<ContentSafetyConfig>
+  [key: string]: unknown
+}
+
+interface PulseiqTopicRow {
+  id: string
+  label: string
+  description?: string | null
+  question: string
+  follow_up_angles?: unknown[]
+  state?: string
+  source?: string
+  response_target?: number
+  response_count?: number
+  mention_count?: number
+  keywords?: string[]
+  sort_order?: number
+  detected_at?: string | null
+  approved_at?: string | null
+  completed_at?: string | null
+  created_at: string
+  example_quote?: string | null
+  round_number?: number | null
+}
+
+interface PulseiqSessionRow {
+  id: string
+  org_id: string
+  bot_id: string
+  created_by: string | null
+  name: string
+  slug: string
+  status: string
+  cohort_config: CohortConfig | null
+  discussion_guide: unknown
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface LegacyTheme {
+  id: string
+  session_id: string
+  label: string
+  description: string | null
+  question: string
+  follow_up_angles: unknown[]
+  state: string
+  source: string
+  response_target: number
+  response_count: number
+  mention_count: number
+  keywords: string[]
+  sentiment: string | null
+  sort_order: number
+  detected_at: string | null
+  approved_at: string | null
+  completed_at: string | null
+  created_at: string
+  example_quote: string | null
+}
+
+interface LegacySession {
+  id: string
+  study_id: null
+  org_id: string
+  created_by: string | null
+  name: string
+  slug: string
+  status: 'setup' | 'active' | 'paused' | 'ended'
+  config: CohortConfig
+  discussion_guide: unknown[]
+  response_counter: number
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+  updated_at: string
+  __substrate: string
+}
+
+type TownHallListItem = LegacySession & {
+  participants: number
+  turns: number
+  org_name: string | null
+}
+
+// Shapes returned by the conversation-link + turn-count fetches in
+// computeBasicStats (mirrors the LinkConv type used by fetchTurnsAsLegacy).
+type LinkConvRow = { id: string; session_id: string; participant_id: string | null; org_id: string }
+type LinkRow = { conversation_id: string; conversations: LinkConvRow | LinkConvRow[] }
+type TurnCountRow = { conversation_id: string; topic_id: string | null; created_at: string }
 
 /**
  * PostgREST caps any single select at the project max-rows setting (1000
@@ -76,7 +192,7 @@ function projectStatus(s: string): 'setup' | 'active' | 'paused' | 'ended' {
 // Projects a pulseiq_topics row into the legacy townhall_themes JSON
 // shape. Fields the dashboard doesn't render are still populated with
 // sensible defaults so downstream code doesn't NPE.
-function projectTopicAsTheme(t: any, sessionId: string): any {
+function projectTopicAsTheme(t: PulseiqTopicRow, sessionId: string): LegacyTheme {
   return {
     id:               t.id,
     session_id:       sessionId,
@@ -103,8 +219,8 @@ function projectTopicAsTheme(t: any, sessionId: string): any {
 // Projects a pulseiq_sessions row into a legacy-shaped townhall_sessions row
 // (no themes, no turns — just the parent fields). Used by both list +
 // detail surfaces.
-function projectTownHallAsSession(h: any): any {
-  const cohortConfig = (h.cohort_config && typeof h.cohort_config === 'object') ? h.cohort_config : {}
+function projectTownHallAsSession(h: PulseiqSessionRow): LegacySession {
+  const cohortConfig: CohortConfig = (h.cohort_config && typeof h.cohort_config === 'object') ? h.cohort_config : {}
   const minimalConfig = {
     bot_name:  cohortConfig.bot_name  || h.name || 'Agent',
     bot_emoji: cohortConfig.bot_emoji || '🗳️',
@@ -174,7 +290,7 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   // topic for 3 turns contributes 3 mentions but 1 response).
   perTopic: Record<string, { responses: number; mentions: number }>
 }> {
-  const linkRows = await fetchAllRows<any>((from, to) => db
+  const linkRows = await fetchAllRows<LinkRow>((from, to) => db
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', townHallId)
@@ -197,7 +313,7 @@ async function computeBasicStats(db: ServiceClient, townHallId: string, orgId: s
   // town_hall_id column — the old `.in(conversation_id, convIds)` broke at
   // a few hundred participants on URL length. Paged — the unbounded select
   // was silently capped at 1000 rows by PostgREST.
-  const turnRows = await fetchAllRows<any>((from, to) => db
+  const turnRows = await fetchAllRows<TurnCountRow>((from, to) => db
     .from('conversation_turns')
     .select('conversation_id, topic_id, created_at')
     .eq('town_hall_id', townHallId)
@@ -266,9 +382,12 @@ export async function getTownHallAsLegacy(
   db: ServiceClient,
   slugOrId: string,
   opts: { analyticsMode?: boolean; bucketParam?: string | null } = {},
+  // Return type stays `any` (rather than the structured TownHallLegacyPayload
+  // below) because a stale verification script reads analytics fields that
+  // moved under `.analytics` — narrowing here would break its typecheck.
 ): Promise<any | null> {
   // First try id, then slug. Slug is the more common public lookup.
-  let hall: any = null
+  let hall: PulseiqSessionRow | null = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
     const { data, error: idErr } = await db.from('pulseiq_sessions').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.getTownHallAsLegacy', idErr)
@@ -303,7 +422,7 @@ export async function getTownHallAsLegacy(
   //     ("how many times the topic came up overall" — a conversation
   //     that stayed on one topic for 3 turns contributes 3 mentions
   //     but 1 response).
-  const themes = (topics || []).map((t: any) => {
+  const themes = (topics || []).map((t: PulseiqTopicRow) => {
     const projected = projectTopicAsTheme(t, hall.id)
     const live = basics.perTopic[t.id]
     if (live) {
@@ -375,8 +494,8 @@ export async function getTownHallAsLegacy(
 export async function resolveTownHall(
   db: ServiceClient,
   slugOrId: string,
-): Promise<any | null> {
-  let hall: any = null
+): Promise<PulseiqSessionRow | null> {
+  let hall: PulseiqSessionRow | null = null
   if (/^[0-9a-f-]{36}$/i.test(slugOrId)) {
     const { data, error: idErr } = await db.from('pulseiq_sessions').select('*').eq('id', slugOrId).maybeSingle()
     if (idErr) void logError('townHallAdapter.resolveTownHall', idErr)
@@ -395,7 +514,7 @@ export async function resolveTownHall(
  * returns — exposed so participant routes (`/api/townhall/join`) can reuse
  * the projection without re-fetching topics / stats. Static; never hits the DB.
  */
-export function projectHallAsSession(hall: any): any {
+export function projectHallAsSession(hall: PulseiqSessionRow): LegacySession {
   return projectTownHallAsSession(hall)
 }
 
@@ -409,7 +528,7 @@ export async function fetchTopicsAsThemes(
   db: ServiceClient,
   townHallId: string,
   orgId: string,
-): Promise<any[]> {
+): Promise<(LegacyTheme & { round_number: number | null })[]> {
   const { data: topics, error } = await db
     .from('pulseiq_topics')
     .select('*')
@@ -417,7 +536,7 @@ export async function fetchTopicsAsThemes(
     .eq('org_id', orgId)
     .order('sort_order', { ascending: true })
   if (error) void logError('townHallAdapter.fetchTopicsAsThemes', error, { orgId })
-  return (topics || []).map((t: { round_number?: number | null }) => ({ ...projectTopicAsTheme(t, townHallId), round_number: t.round_number ?? null }))
+  return (topics || []).map((t: PulseiqTopicRow) => ({ ...projectTopicAsTheme(t, townHallId), round_number: t.round_number ?? null }))
 }
 
 // Legacy-shaped turn row (one row per user exchange, as townhall_turns
@@ -576,7 +695,7 @@ export async function fetchTurnsAsLegacy(
 export async function listTownHallsAsLegacy(
   db: ServiceClient,
   scopeOrgId: string | null,
-): Promise<any[] | null> {
+): Promise<TownHallListItem[] | null> {
   let q = db
     .from('pulseiq_sessions')
     .select('id, org_id, name, slug, status, cohort_config, discussion_guide, response_target, started_at, ended_at, created_at, updated_at, created_by')
@@ -593,8 +712,10 @@ export async function listTownHallsAsLegacy(
   // Pull participants + turns counts per town hall in a small fan-out.
   // Number of town halls is small (1 today, low double digits realistic)
   // — no need for a heroic single-query CTE.
-  const results: any[] = []
-  for (const h of halls as any[]) {
+  const results: TownHallListItem[] = []
+  // The list select omits bot_id (unused by the projection/stats below), so
+  // the rows aren't structurally full PulseiqSessionRow — cast through unknown.
+  for (const h of halls as unknown as PulseiqSessionRow[]) {
     const projected = projectTownHallAsSession(h)
     const basics = await computeBasicStats(db, h.id, h.org_id)
     results.push({

@@ -8,11 +8,72 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
-import { projectHallAsSession, resolveTownHall, fetchTopicsAsThemes, fetchTurnsAsLegacy, fetchAllRows } from '@/lib/townHallAdapter'
+import { projectHallAsSession, resolveTownHall, fetchTopicsAsThemes, fetchTurnsAsLegacy, fetchAllRows, type LegacyShapedTurn } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
+
+// Minimal shapes for the projected session config, exported theme rows,
+// and the conversation-turn / link rows this route reads. The adapter
+// returns `any`; these narrow the fields this file actually touches.
+interface SessionConfig {
+  pacing_mode?: string
+  rounds?: Array<{ number?: number | null; item_name?: string | null }>
+  [key: string]: unknown
+}
+
+interface ExportTheme {
+  id: string
+  label: string
+  source: string
+  state: string
+  sentiment: string | null
+  keywords: string[]
+  round_number: number | null
+}
+
+// One paired exchange emitted per participant in the JSON export.
+interface ParticipantTurn {
+  turn: number
+  bot: string
+  user: string | null
+  user_en: string | null
+  language: string | null
+  topic: string | null
+  source: string | null
+  skipped: boolean
+  time: string
+  bot_flags: unknown[] | null
+  user_flags: unknown[] | null
+  user_sentiment: string | null
+  user_sentiment_score: number | null
+}
+
+// Conversation joined off pulseiq_session_conversations.
+interface LinkConv { id: string; session_id: string; participant_id: string | null; org_id: string; bot_id: string | null }
+interface LinkRow { conversation_id: string; conversations: LinkConv | LinkConv[] }
+
+// Selected columns from conversation_turns.
+interface ConvTurnRow {
+  id: string
+  conversation_id: string
+  turn_number: number
+  role: string
+  content: string | null
+  content_en: string | null
+  language: string | null
+  source: string | null
+  content_flags: unknown[] | null
+  sentiment: string | null
+  sentiment_score: number | null
+  topic_id: string | null
+  skipped: boolean | null
+  created_at: string
+}
+
+// Row from agent_session_personas.
+interface PersonaRow { bot_id: string; session_id: string; name: string | null; persona: unknown; demographics: unknown }
 
 export async function GET(req: NextRequest, props: Params) {
   const params = await props.params;
@@ -36,7 +97,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (!hall) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   if (!isAdmin && hall.org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   const projected = projectHallAsSession(hall)
-  const session: { name: string; status: string; config: any; started_at: string | null; ended_at: string | null } = {
+  const session: { name: string; status: string; config: SessionConfig; started_at: string | null; ended_at: string | null } = {
     name: projected.name,
     status: projected.status,
     config: projected.config,
@@ -45,7 +106,7 @@ export async function GET(req: NextRequest, props: Params) {
   }
 
   // Fetch themes (legacy-projected pulseiq_topics)
-  const themes = await fetchTopicsAsThemes(db, hall.id, hall.org_id)
+  const themes: ExportTheme[] = await fetchTopicsAsThemes(db, hall.id, hall.org_id)
 
   const themeMap: Record<string, string> = {}
   for (const t of themes) themeMap[t.id] = t.label
@@ -113,13 +174,13 @@ export async function GET(req: NextRequest, props: Params) {
     // The legacy-turns seeding loop is gone (tranche 2) — `turns` is now
     // itself a projection of conversation_turns, so seeding from it would
     // double-count every exchange.
-    const participants: Record<string, any[]> = {}
+    const participants: Record<string, ParticipantTurn[]> = {}
 
-    const phase3PersonaByParticipant: Record<string, { name: string | null; persona: any }> = {}
+    const phase3PersonaByParticipant: Record<string, { name: string | null; persona: unknown }> = {}
     {
         // Pull conversations linked to this town hall (paged — PostgREST
         // caps a single select at 1000 rows regardless of .limit())
-        const linkRows = await fetchAllRows<any>((from, to) => db
+        const linkRows = await fetchAllRows<LinkRow>((from, to) => db
           .from('pulseiq_session_conversations')
           .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id, bot_id)')
           .eq('town_hall_id', hall.id)
@@ -131,7 +192,7 @@ export async function GET(req: NextRequest, props: Params) {
           .filter(Boolean)
 
         if (convs.length > 0) {
-          const convById: Record<string, any> = {}
+          const convById: Record<string, LinkConv> = {}
           for (const c of convs) convById[c.id] = c
 
           // All turns across the hall's conversations, via the stamped
@@ -139,7 +200,7 @@ export async function GET(req: NextRequest, props: Params) {
           // broke at a few hundred participants on URL length. The link
           // fetch above stays for participant/persona attribution (convById).
           // Paged — the unbounded select was silently capped at 1000 rows.
-          const cts = await fetchAllRows<any>((from, to) => db
+          const cts = await fetchAllRows<ConvTurnRow>((from, to) => db
             .from('conversation_turns')
             .select('id, conversation_id, turn_number, role, content, content_en, language, source, content_flags, sentiment, sentiment_score, topic_id, skipped, created_at')
             .eq('town_hall_id', hall.id)
@@ -153,25 +214,25 @@ export async function GET(req: NextRequest, props: Params) {
           const topicLabel: Record<string, string> = {}
           if (topicIds.length > 0) {
             const { data: thts } = await db.from('pulseiq_topics').select('id, label').in('id', topicIds)
-            for (const t of (thts || [])) topicLabel[(t as any).id] = (t as any).label
+            for (const t of ((thts || []) as { id: string; label: string }[])) topicLabel[t.id] = t.label
           }
 
           // Persona/name lookup keyed on (bot_id, session_id) via agent_session_personas
-          const sessionIds = Array.from(new Set(convs.map((c: any) => c.session_id)))
+          const sessionIds = Array.from(new Set(convs.map(c => c.session_id)))
           const { data: ps } = await db
             .from('agent_session_personas')
             .select('bot_id, session_id, name, persona, demographics')
             .eq('bot_id', hall.bot_id)
             .in('session_id', sessionIds)
-          const personaBySession: Record<string, any> = {}
-          for (const p of (ps || [])) personaBySession[(p as any).session_id] = p
+          const personaBySession: Record<string, PersonaRow> = {}
+          for (const p of ((ps || []) as PersonaRow[])) personaBySession[p.session_id] = p
 
           // Pair turns into {bot, user} per turn_number-pair, per
           // participant. Each conversation_turns row is a SINGLE turn
           // (user OR assistant). Pair the user turn with the
           // immediately-preceding assistant turn in the same
           // conversation (same algorithm as bot-level analyze).
-          const byConv: Record<string, any[]> = {}
+          const byConv: Record<string, ConvTurnRow[]> = {}
           for (const r of cts) {
             if (!byConv[r.conversation_id]) byConv[r.conversation_id] = []
             byConv[r.conversation_id].push(r)
@@ -182,8 +243,8 @@ export async function GET(req: NextRequest, props: Params) {
             if (!c) continue
             const pid = c.participant_id || c.session_id
             if (!participants[pid]) participants[pid] = []
-            const sortedTurns = byConv[convId].sort((a: any, b: any) => a.turn_number - b.turn_number)
-            let pendingAssistant: any = null
+            const sortedTurns = byConv[convId].sort((a, b) => a.turn_number - b.turn_number)
+            let pendingAssistant: ConvTurnRow | null = null
             let exchangeNo = 0
             for (const ct of sortedTurns) {
               if (ct.role === 'assistant') {
@@ -218,7 +279,7 @@ export async function GET(req: NextRequest, props: Params) {
           for (const c of convs) {
             const pid = c.participant_id || c.session_id
             const p = personaBySession[c.session_id]
-            if (p) phase3PersonaByParticipant[pid] = { name: (p as any).name || null, persona: (p as any).persona || null }
+            if (p) phase3PersonaByParticipant[pid] = { name: p.name || null, persona: p.persona || null }
           }
         }
     }
@@ -249,15 +310,15 @@ export async function GET(req: NextRequest, props: Params) {
         ended_at: session.ended_at,
         config: session.config,
       },
-      themes: (themes || []).map(t => ({ id: t.id, label: t.label, source: t.source, state: t.state, sentiment: t.sentiment, keywords: t.keywords, ...(roundsMode ? { round: (t as any).round_number ?? null, item: (t as any).round_number != null ? (roundItems[(t as any).round_number] || null) : null } : {}) })),
+      themes: (themes || []).map(t => ({ id: t.id, label: t.label, source: t.source, state: t.state, sentiment: t.sentiment, keywords: t.keywords, ...(roundsMode ? { round: t.round_number ?? null, item: t.round_number != null ? (roundItems[t.round_number] || null) : null } : {}) })),
       conversations,
       summary: {
         participants: Object.keys(participants).length,
         // Sum user-turn count across all participants. For phase-3 sessions
         // `turns` (the legacy townhall_turns query) is empty; the real count
         // is on the per-participant entries built from conversation_turns.
-        total_turns: Object.values(participants).reduce((s: number, ts: any[]) => s + ts.filter(t => t.user).length, 0),
-        answered: Object.values(participants).reduce((s: number, ts: any[]) => s + ts.filter(t => !t.skipped && t.user).length, 0),
+        total_turns: Object.values(participants).reduce((s: number, ts: ParticipantTurn[]) => s + ts.filter(t => t.user).length, 0),
+        answered: Object.values(participants).reduce((s: number, ts: ParticipantTurn[]) => s + ts.filter(t => !t.skipped && t.user).length, 0),
       },
     }
 
@@ -274,7 +335,7 @@ export async function GET(req: NextRequest, props: Params) {
 }
 
 function buildResponsesSheet(
-  turns: any[],
+  turns: LegacyShapedTurn[],
   themeMap: Record<string, string>,
   demoMap: Record<string, Record<string, unknown>>,
   psychoMap: Record<string, Record<string, unknown>>,
@@ -329,7 +390,7 @@ function buildResponsesSheet(
   return { name: 'Responses', headers, rows }
 }
 
-function buildThemesSheet(themes: any[], turns: any[], roundItems: Record<number, string> | null): Sheet {
+function buildThemesSheet(themes: ExportTheme[], turns: LegacyShapedTurn[], roundItems: Record<number, string> | null): Sheet {
   // One row per theme with aggregated stats
   const themeTurnCounts: Record<string, number> = {}
   for (const t of turns) {

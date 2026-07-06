@@ -39,7 +39,7 @@ const W = 13.33
 const H = 7.5
 
 // ── Shared layout primitives ───────────────────────────────────────────────
-function addHeader(slide: any, title: string, subtitle?: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, {
     x: 0.6, y: subtitle ? 0.1 : 0.15, w: 9.5, h: subtitle ? 0.5 : 0.7,
@@ -60,7 +60,7 @@ function addHeader(slide: any, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('datanautix.com  ·  AI-Native Roll-up of Customer Intelligence  ·  Confidential', {
     x: 0.5, y: H - 0.4, w: 10, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
   })
@@ -69,7 +69,7 @@ function addFooter(slide: any, pageNum: number) {
   })
 }
 
-function bullet(text: string, opts: any = {}) {
+function bullet(text: string, opts: PptxGenJS.TextPropsOptions = {}) {
   return {
     text,
     options: {
@@ -91,7 +91,7 @@ function getDeckDates() {
   return { lastUpdated, downloaded }
 }
 
-function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: string) {
+function addTitleSlide(pptx: PptxGenJS, title: string, subtitle: string, tagline: string) {
   const s = pptx.addSlide()
   const { lastUpdated, downloaded } = getDeckDates()
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
@@ -121,7 +121,7 @@ function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: stri
 }
 
 // ── Slide builders ─────────────────────────────────────────────────────────
-function slideOpportunity(pptx: any, pg: number) {
+function slideOpportunity(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'A fragmented market about to be rebuilt.')
   addFooter(s, pg)
@@ -157,7 +157,7 @@ Next slide is the credibility story — why us.`
   return pg
 }
 
-function slideBeforeAfter(pptx: any, pg: number) {
+function slideBeforeAfter(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Before Sentimetrx  vs.  After Sentimetrx', 'A researcher\'s day with legacy tools (Medallia, SurveyMonkey, Qualtrics, Forsta) vs. with Sentimetrx')
   addFooter(s, pg)
@@ -252,7 +252,7 @@ function slideBeforeAfter(pptx: any, pg: number) {
   })
 }
 
-function slideAILedVsAdded(pptx: any, pg: number) {
+function slideAILedVsAdded(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led, Not AI-Added', 'The category is splitting in two — we are already on the right side')
   addFooter(s, pg)
@@ -279,14 +279,14 @@ function slideAILedVsAdded(pptx: any, pg: number) {
       fill: { color: i === 2 ? DN.tealPale : i === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.4, w: 12.3, colW: [2.4, 4.7, 5.2], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.65 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.4, w: 12.3, colW: [2.4, 4.7, 5.2], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.65 })
 
   s.addText('Architecture difference. Margins, speed, and product depth compound in ways AI-added incumbents cannot match without a full rewrite.', {
     x: 0.6, y: 6.5, w: 12.0, h: 0.5, fontSize: 12, fontFace: 'Arial', color: DN.navy, italic: true, bold: true, align: 'center',
   })
 }
 
-function slideCompetitive(pptx: any, pg: number) {
+function slideCompetitive(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Fragmented across six categories. None does the whole stack.')
   addFooter(s, pg)
@@ -401,7 +401,7 @@ This slide answers two questions at once: "who else is doing this?" (lots, but i
   )
 }
 
-function slideWhatWeBuilt(pptx: any, pg: number) {
+function slideWhatWeBuilt(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Six modules. Already serving enterprise.')
   addFooter(s, pg)
@@ -449,7 +449,7 @@ Don't dwell. The point is "we've shipped this, customers use it, this is not a d
   )
 }
 
-function slideWedge(pptx: any, pg: number) {
+function slideWedge(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Hospitality first.')
   addFooter(s, pg)
@@ -495,7 +495,7 @@ SIDEBAR (parallel channels): sports & venues (Globetrotters, Magic) and politica
   )
 }
 
-function slidePlaybook(pptx: any, pg: number) {
+function slidePlaybook(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Buy. Migrate. Expand. Cross-sell. Compound.')
   addFooter(s, pg)
@@ -532,7 +532,7 @@ This is the slide where the math becomes inevitable. The next slide shows the nu
   )
 }
 
-function slideMath(pptx: any, pg: number) {
+function slideMath(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Every $1 of acquired EBITDA → ~5× richer on exit.')
   addFooter(s, pg)
@@ -561,7 +561,7 @@ function slideMath(pptx: any, pg: number) {
       align: ci === 0 ? 'left' : 'center',
     },
   })))]
-  s.addTable(rows as any, { x: 0.6, y: 1.4, w: 12.1, colW: [3.4, 2.9, 2.9, 2.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.42 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.6, y: 1.4, w: 12.1, colW: [3.4, 2.9, 2.9, 2.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.42 })
 
   // arbitrage callout
   s.addShape('rect', { x: 0.6, y: 5.3, w: 12.1, h: 1.4, fill: { color: DN.navy }, rectRadius: 0.1 })
@@ -601,7 +601,7 @@ This is the slide where LPs do the math in their heads. Give them 30 seconds of 
   )
 }
 
-function slidePhasing(pptx: any, pg: number, isAsk = true) {
+function slidePhasing(pptx: PptxGenJS, pg: number, isAsk = true) {
   const s = pptx.addSlide()
   addHeader(s, 'Capital matched to proof.')
   addFooter(s, pg)
@@ -626,7 +626,7 @@ function slidePhasing(pptx: any, pg: number, isAsk = true) {
     { text: source, options: { fontSize: 10, fontFace: 'Arial', color: highlight ? DN.white : DN.ink, align: 'center', fill: { color: highlight ? DN.sarinaBlue : DN.white } } },
     { text: milestone, options: { fontSize: 10, fontFace: 'Arial', color: highlight ? DN.white : DN.ink, align: 'center', fill: { color: highlight ? DN.sarinaBlue : DN.slateCard } } },
   ])]
-  s.addTable(rows as any, { x: 0.5, y: 1.35, w: 12.3, colW: [1.0, 1.8, 2.1, 3.4, 4.0], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.35, w: 12.3, colW: [1.0, 1.8, 2.1, 3.4, 4.0], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
 
   if (isAsk) {
     s.addShape('rect', { x: 0.5, y: 4.7, w: 12.3, h: 2.0, fill: { color: DN.navy }, rectRadius: 0.1 })
@@ -658,7 +658,7 @@ The reason this structure works: PE typically wants to fund a proven playbook. B
   )
 }
 
-function slideOrigin(pptx: any, pg: number) {
+function slideOrigin(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'We did not pivot to AI. We were waiting for it.')
   addFooter(s, pg)
@@ -714,7 +714,7 @@ That sentence is the entire pitch. Stop and let it sit.`
   )
 }
 
-function slideWhyUs(pptx: any, pg: number) {
+function slideWhyUs(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'The platform is shipped. The customers are real.')
   addFooter(s, pg)
@@ -760,7 +760,7 @@ Close: "Already serving enterprise. No R&D risk for the LP. The risk is executio
   )
 }
 
-function slideExit(pptx: any, pg: number) {
+function slideExit(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Multiple buyers. Multiple paths.')
   addFooter(s, pg)
@@ -805,7 +805,7 @@ Close the meeting on the exit. Then ask for the meeting.`
 }
 
 // ── Long-deck-only slides ──────────────────────────────────────────────────
-function slideExecSummary(pptx: any, pg: number) {
+function slideExecSummary(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Executive Summary', 'One slide. The whole deal.')
   addFooter(s, pg)
@@ -826,7 +826,7 @@ function slideExecSummary(pptx: any, pg: number) {
   })
 }
 
-function slideMarket(pptx: any, pg: number) {
+function slideMarket(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'The Market', 'Five adjacent segments. Fragmented at the edges.')
   addFooter(s, pg)
@@ -853,7 +853,7 @@ function slideMarket(pptx: any, pg: number) {
   })
 }
 
-function slideWhyNow(pptx: any, pg: number) {
+function slideWhyNow(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Why Now', 'Three forces. Time-bounded window.')
   addFooter(s, pg)
@@ -875,7 +875,7 @@ function slideWhyNow(pptx: any, pg: number) {
   })
 }
 
-function slideIncumbentFragility(pptx: any, pg: number) {
+function slideIncumbentFragility(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Incumbent Fragility', 'Why Qualtrics, Medallia & Sprinklr cannot easily catch us')
   addFooter(s, pg)
@@ -892,7 +892,7 @@ function slideIncumbentFragility(pptx: any, pg: number) {
   })
 }
 
-function slideAILedCollection(pptx: any, pg: number) {
+function slideAILedCollection(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led Collection', 'Sarina + Agents + PulseIQ — every channel is conversational')
   addFooter(s, pg)
@@ -911,7 +911,7 @@ function slideAILedCollection(pptx: any, pg: number) {
   })
 }
 
-function slideAILedAnalysis(pptx: any, pg: number) {
+function slideAILedAnalysis(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led Analysis: Ana', 'The text analytics engine that makes services-firm owners weep')
   addFooter(s, pg)
@@ -932,7 +932,7 @@ function slideAILedAnalysis(pptx: any, pg: number) {
   s.addText('— Dr. Fevzi Okumus, UCF Rosen College', { x: 0.85, y: 6.3, w: 11.7, h: 0.3, fontSize: 10, fontFace: 'Arial', color: DN.sarinaBlue, align: 'right' })
 }
 
-function slideAILedIngestion(pptx: any, pg: number) {
+function slideAILedIngestion(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led Ingestion', 'Same LLM pipeline. Any source.')
   addFooter(s, pg)
@@ -962,7 +962,7 @@ function slideAILedIngestion(pptx: any, pg: number) {
   })
 }
 
-function slideAILedReporting(pptx: any, pg: number) {
+function slideAILedReporting(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led Reporting', 'Consulting-grade decks. Generated, not authored.')
   addFooter(s, pg)
@@ -987,7 +987,7 @@ function slideAILedReporting(pptx: any, pg: number) {
   ], { x: 0.6, y: 5.8, w: 12.1, h: 1.0 })
 }
 
-function slideAILedInfra(pptx: any, pg: number) {
+function slideAILedInfra(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led Infrastructure', 'Built for white-label and multi-tenant migration from day one')
   addFooter(s, pg)
@@ -1005,7 +1005,7 @@ function slideAILedInfra(pptx: any, pg: number) {
   })
 }
 
-function slideProofPoints(pptx: any, pg: number) {
+function slideProofPoints(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Proof Points', 'Five verticals. Named enterprise clients. Two product lines live.')
   addFooter(s, pg)
@@ -1031,7 +1031,7 @@ function slideProofPoints(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.6, y: 1.4, w: 12.1, colW: [3.0, 5.5, 3.6], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.6, y: 1.4, w: 12.1, colW: [3.0, 5.5, 3.6], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
 
   s.addShape('rect', { x: 0.6, y: 5.4, w: 12.1, h: 1.3, fill: { color: DN.navy }, rectRadius: 0.1 })
   s.addText('HEADLINE METRICS', { x: 0.85, y: 5.5, w: 6, h: 0.3, fontSize: 11, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
@@ -1043,7 +1043,7 @@ function slideProofPoints(pptx: any, pg: number) {
   })
 }
 
-function slideTargetArchetypes(pptx: any, pg: number) {
+function slideTargetArchetypes(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Target Archetypes', 'Four types of acquired company. Different roles in the portfolio.')
   addFooter(s, pg)
@@ -1064,7 +1064,7 @@ function slideTargetArchetypes(pptx: any, pg: number) {
   })
 }
 
-function slideAcquisitionCriteria(pptx: any, pg: number) {
+function slideAcquisitionCriteria(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Acquisition Criteria', 'A clear, repeatable filter')
   addFooter(s, pg)
@@ -1098,7 +1098,7 @@ function slideAcquisitionCriteria(pptx: any, pg: number) {
   ], { x: 7.1, y: 2.05, w: 5.5, h: 4.5 })
 }
 
-function slide90DayPlaybook(pptx: any, pg: number) {
+function slide90DayPlaybook(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, '90-Day Integration Playbook', 'Same playbook. Every deal.')
   addFooter(s, pg)
@@ -1119,7 +1119,7 @@ function slide90DayPlaybook(pptx: any, pg: number) {
   })
 }
 
-function slidePortfolioProForma(pptx: any, pg: number) {
+function slidePortfolioProForma(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Portfolio Pro Forma', 'Five deals. Three years. The compounding effect.')
   addFooter(s, pg)
@@ -1147,14 +1147,14 @@ function slidePortfolioProForma(pptx: any, pg: number) {
       align: ci === 0 ? 'left' : 'center',
     },
   })))]
-  s.addTable(rows as any, { x: 0.6, y: 1.4, w: 12.1, colW: [3.5, 2.15, 2.15, 2.15, 2.15], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.6, y: 1.4, w: 12.1, colW: [3.5, 2.15, 2.15, 2.15, 2.15], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
   s.addShape('rect', { x: 0.6, y: 5.5, w: 12.1, h: 1.2, fill: { color: DN.navy }, rectRadius: 0.1 })
   s.addText('Year 5–6 exit at 10–12× EBITDA  →  $140–200M+ enterprise value', {
     x: 0.6, y: 5.5, w: 12.1, h: 1.2, fontSize: 18, fontFace: 'Arial', color: DN.gold, bold: true, align: 'center', valign: 'middle',
   })
 }
 
-function slideRisks(pptx: any, pg: number) {
+function slideRisks(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Risks & Mitigations', "What could go wrong. How we have thought about it.")
   addFooter(s, pg)
@@ -1179,10 +1179,10 @@ function slideRisks(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.6, y: 1.4, w: 12.1, colW: [3.8, 8.3], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.6 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.6, y: 1.4, w: 12.1, colW: [3.8, 8.3], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.6 })
 }
 
-function slideTeam(pptx: any, pg: number) {
+function slideTeam(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Team & Advisory', 'Built for execution. Hiring for scale.')
   addFooter(s, pg)
@@ -1210,7 +1210,7 @@ function slideTeam(pptx: any, pg: number) {
   ], { x: 7.1, y: 2.05, w: 5.5, h: 4.5 })
 }
 
-function slideUseOfFunds(pptx: any, pg: number) {
+function slideUseOfFunds(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
   s.addShape('rect', { x: 0, y: 0, w: W, h: 0.07, fill: { color: DN.gold } })
@@ -1253,7 +1253,7 @@ function slideUseOfFunds(pptx: any, pg: number) {
 }
 
 // ── Deck assemblers ────────────────────────────────────────────────────────
-function buildShortDeck(pptx: any) {
+function buildShortDeck(pptx: PptxGenJS) {
   let pg = 0
   addTitleSlide(pptx,
     'The AI-Native Roll-up of\nCustomer Intelligence',
@@ -1275,7 +1275,7 @@ function buildShortDeck(pptx: any) {
   slideExit(pptx, ++pg)
 }
 
-function buildLongDeck(pptx: any) {
+function buildLongDeck(pptx: PptxGenJS) {
   let pg = 0
   addTitleSlide(pptx,
     'The AI-Native Roll-up of\nCustomer Intelligence',

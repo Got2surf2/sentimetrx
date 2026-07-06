@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
-import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey } from '@/lib/types'
+import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey, RatingOption, LikertFollowUp, ContactFieldType } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
 import { pickBrandColor } from '@/components/survey/SurveyWidget'
 
@@ -710,7 +710,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
   // -- Section ordering ----------------------------------------
   const sectionOrder: SectionKey[] = config.sectionOrder || ['customQuestions', 'psychographics', 'demographics', 'contact']
   const sectionIdx = useRef(0)
-  const sectionRunners = useRef<Record<string, () => Promise<void>>>({} as any)
+  const sectionRunners = useRef<Record<string, () => Promise<void>>>({} as Record<string, () => Promise<void>>)
 
   const advanceSection = useCallback(async () => {
     sectionIdx.current++
@@ -829,7 +829,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     submitBtn.className = 'rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
     submitBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;margin-top:4px;'
     submitBtn.onclick = async function() {
-      wrap.querySelectorAll('select,input,button').forEach(function(el) { (el as any).disabled = true })
+      wrap.querySelectorAll<HTMLSelectElement | HTMLInputElement | HTMLButtonElement>('select,input,button').forEach(function(el) { el.disabled = true })
       for (var ei = 0; ei < fieldElements.length; ei++) {
         state.current.demographics[fieldElements[ei].key] = fieldElements[ei].el.value
       }
@@ -927,7 +927,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         }
 
         if (val) {
-          var validationError = validateContactField(fe.type as any, val)
+          var validationError = validateContactField(fe.type as ContactFieldType, val)
           if (validationError) {
             fe.errorEl.textContent = validationError
             fe.errorEl.style.display = 'block'
@@ -937,7 +937,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
       if (hasError) return
 
-      wrap.querySelectorAll('select,input,button').forEach(function(el) { (el as any).disabled = true })
+      wrap.querySelectorAll<HTMLSelectElement | HTMLInputElement | HTMLButtonElement>('select,input,button').forEach(function(el) { el.disabled = true })
       for (var ci = 0; ci < fieldElements.length; ci++) {
         var value = fieldElements[ci].el.value.trim()
         if (value) state.current.contactInfo[fieldElements[ci].key] = value
@@ -969,7 +969,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const psychoBtns: HTMLButtonElement[] = []
     const tOpts = tPsycho(q.key, 'opts', q.opts) as string[]
     const commitPsycho = (opt: string) => {
-      col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+      col.querySelectorAll('button').forEach((b) => { b.disabled = true })
       addMsg('user', opt)
       // Store original English key for analytics consistency
       const origIdx = tOpts.indexOf(opt)
@@ -1051,7 +1051,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const submit = async () => {
       const v = ta.value.trim()
       if (checkVerbose(v, ta)) return
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       if (v) {
         addMsg('user', v)
         if (storageKey) {
@@ -1111,7 +1111,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.onclick = async () => {
       const val = ta.value.trim()
       if (checkVerbose(val, ta)) return
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       if (val && !isDecline(val)) {
         addMsg('user', val)
         state.current.answers[storageKey] = originalVal + ' [+ ' + val + ']'
@@ -1273,7 +1273,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             const v = ta.value.trim()
             if (checkVerbose(v, ta)) return
             if (!v && q.required) return
-            wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
             if (v) addMsg('user', v)
             await submit(v)
           }
@@ -1286,7 +1286,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
             skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
             skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
-            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); void submit('') }
+            skipBtn.onclick = () => { wrap.querySelectorAll<HTMLButtonElement | HTMLTextAreaElement>('button,textarea').forEach((el) => { el.disabled = true }); void submit('') }
             wrap.appendChild(skipBtn)
           }
           clearInput()
@@ -1318,7 +1318,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 btn.style.background  = config.theme.primaryColor + '20'
                 if (confirmBtn) { confirmBtn.style.display = 'block'; confirmBtn.style.background = config.theme.primaryColor; confirmBtn.style.color = '#fff' }
               } else {
-                col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+                col.querySelectorAll('button').forEach((b) => { b.disabled = true })
                 btn.style.borderColor = config.theme.primaryColor
                 btn.style.background  = config.theme.primaryColor + '20'
                 addMsg('user', opt)
@@ -1337,7 +1337,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             confirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             confirmBtn.onclick = () => {
               if (!selectedOpt) return
-              col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              col.querySelectorAll('button').forEach((b) => { b.disabled = true })
               addMsg('user', selectedOpt)
               customAnswers[q.id] = selectedOpt
               clearInput()
@@ -1405,7 +1405,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:2px solid transparent;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
-            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            wrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             const arr = Array.from(selected)
             if (arr.length > 0) addMsg('user', arr.join(', '))
             customAnswers[q.id] = arr
@@ -1419,7 +1419,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
             skipBtn.onclick = () => {
-              wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              wrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
               customAnswers[q.id] = []
               clearInput()
               resolve()
@@ -1461,7 +1461,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           }
           goBtn.onclick = () => {
             if (!sel.value && q.required) return
-            wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true)
+            wrap.querySelectorAll<HTMLSelectElement | HTMLButtonElement>('select,button').forEach((el) => { el.disabled = true })
             if (sel.value) addMsg('user', sel.value)
             customAnswers[q.id] = sel.value
             clearInput()
@@ -1472,7 +1472,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
-            skipBtn.onclick = () => { wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
+            skipBtn.onclick = () => { wrap.querySelectorAll<HTMLSelectElement | HTMLButtonElement>('select,button').forEach((el) => { el.disabled = true }); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.append(sel, goBtn, skipBtn)
           } else {
             wrap.append(sel, goBtn)
@@ -1490,7 +1490,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             const tr = config.translations[activeLang.current]?.questions?.[q.id]
             return tr?.likertLabels || null
           })()
-          const tLikertLabels = storedLabels || scale.map((s: any) => tRatingLabel(s.label))
+          const tLikertLabels = storedLabels || scale.map((s) => tRatingLabel(s.label))
           const likertConfirm = confirmMode
           let selectedScore: typeof scale[0] | null = null
           let likertConfirmBtn: HTMLButtonElement | null = null
@@ -1501,7 +1501,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const allLikertBtns: HTMLButtonElement[] = []
 
           const commitLikert = async (s: typeof scale[0]) => {
-            likertWrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            likertWrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             const selBtn = allLikertBtns[scale.indexOf(s)]
             if (selBtn) { selBtn.style.borderColor = config.theme.primaryColor; selBtn.style.background = config.theme.primaryColor + '20' }
             const tLabel = tLikertLabels[scale.indexOf(s)] || s.label
@@ -1589,7 +1589,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 sb.style.background  = config.theme.primaryColor + '20'
                 if (ratingConfirmBtn) { ratingConfirmBtn.style.display = 'block'; ratingConfirmBtn.style.background = config.theme.primaryColor; ratingConfirmBtn.style.color = '#fff' }
               } else {
-                ratingRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+                ratingRow.querySelectorAll('button').forEach((b) => { b.disabled = true })
                 sb.style.borderColor = config.theme.primaryColor
                 sb.style.background  = config.theme.primaryColor + '20'
                 addMsg('user', String(score))
@@ -1609,7 +1609,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             ratingConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             ratingConfirmBtn.onclick = () => {
               if (selectedRating === null) return
-              ratingWrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              ratingWrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
               addMsg('user', String(selectedRating))
               customAnswers[q.id] = String(selectedRating)
               clearInput()
@@ -1644,7 +1644,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           goBtn.onclick = () => {
             const v = inp.value.trim()
             if (!v && q.required) return
-            wrap.querySelectorAll('input,button').forEach((el: any) => el.disabled = true)
+            wrap.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach((el) => { el.disabled = true })
             if (v) addMsg('user', v)
             customAnswers[q.id] = v
             clearInput()
@@ -1657,7 +1657,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
-            skipBtn.onclick = () => { wrap.querySelectorAll('input,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
+            skipBtn.onclick = () => { wrap.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach((el) => { el.disabled = true }); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.appendChild(skipBtn)
           }
           clearInput()
@@ -1752,7 +1752,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             const v = ta.value.trim()
             if (checkVerbose(v, ta)) return
             if (!v && q.required) return
-            wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
             if (v) addMsg('user', v)
             customAnswers[q.id] = v
             clearInput(); resolve()
@@ -1766,7 +1766,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
             skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
             skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
-            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
+            skipBtn.onclick = () => { wrap.querySelectorAll<HTMLButtonElement | HTMLTextAreaElement>('button,textarea').forEach((el) => { el.disabled = true }); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.appendChild(skipBtn)
           }
           clearInput()
@@ -1786,7 +1786,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             btn.onmouseenter = () => { btn.style.borderColor = config.theme.primaryColor; btn.style.background = C.btnHoverBg }
             btn.onmouseleave = () => { btn.style.borderColor = C.inputBdr; btn.style.background = C.btnBg }
             btn.onclick = () => {
-              col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              col.querySelectorAll('button').forEach((b) => { b.disabled = true })
               btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20'
               addMsg('user', opt); customAnswers[q.id] = opt; clearInput(); resolve()
             }
@@ -1840,7 +1840,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:2px solid transparent;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
-            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            wrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             const arr = Array.from(selected)
             if (arr.length > 0) addMsg('user', arr.join(', '))
             customAnswers[q.id] = arr; clearInput(); resolve()
@@ -1852,7 +1852,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
             skipBtn.onclick = () => {
-              wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              wrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
               customAnswers[q.id] = []; clearInput(); resolve()
             }
             btnRow.appendChild(skipBtn)
@@ -1886,7 +1886,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     demographics: stepDemographics,
     contact: stepContactInfo,
     _done: stepDone,
-  } as any
+  }
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4', skipAck?: boolean) => {
     // Also check flag set by deflection in clarify/likert handlers
@@ -1990,7 +1990,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.onclick = () => {
       const val = ta.value.trim(); if (!val) return
       if (checkVerbose(val, ta)) return
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       addMsg('user', val)
       // Store immediately and save — belt-and-suspenders, don't rely solely on handleOpenEnded
       state.current.answers[qKey] = val
@@ -2040,7 +2040,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.onclick = async () => {
       const val = ta.value.trim(); if (!val) return
       if (checkVerbose(val, ta)) return
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       addMsg('user', val)
       const accumulated = isDecline(val) ? originalVal : originalVal + ' [+ ' + val + ']'
       if (!isDecline(val)) state.current.answers[qKey] = accumulated
@@ -2113,7 +2113,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.onclick = () => {
       const val = ta.value.trim()
       if (checkVerbose(val, ta)) return
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       if (val) {
         addMsg('user', val)
         state.current.answers[qKey] = val
@@ -2132,7 +2132,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
     skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
     skipBtn.onclick = () => {
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
       addMsg('user', 'Skip')
       state.current.answers[qKey] = ''
       clearInput()
@@ -2156,10 +2156,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans) return fallback
-    return (trans as any)[key] || fallback
+    return (trans as unknown as Record<string, string>)[key] || fallback
   }
 
-  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): any {
+  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): string | string[] {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans?.questions?.[qId]) return fallback
@@ -2172,7 +2172,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (activeLang.current === 'en') return fallback
     // Check stored translation first
     const trans = config.translations?.[activeLang.current]
-    if (trans?.ui && (trans.ui as any)[key]) return (trans.ui as any)[key]
+    if (trans?.ui && (trans.ui as unknown as Record<string, string>)[key]) return (trans.ui as unknown as Record<string, string>)[key]
     // Fall back to built-in translations
     const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
     if (builtin?.[key]) return builtin[key]
@@ -2209,7 +2209,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     return fallback
   }
 
-  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): any {
+  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): string | string[] {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans?.psychographics?.[key]) return fallback
@@ -2276,12 +2276,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
 
-          const enabledLangs = SUPPORTED_LANGUAGES.filter((l: any) => config.languages!.includes(l.code))
+          const enabledLangs = SUPPORTED_LANGUAGES.filter((l) => config.languages!.includes(l.code))
           let selectedLang: string | null = null
           let confirmBtn: HTMLButtonElement | null = null
           const langBtns: HTMLButtonElement[] = []
 
-          enabledLangs.forEach((lang: any) => {
+          enabledLangs.forEach((lang) => {
             const btn = document.createElement('button')
             btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
             btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
@@ -2315,9 +2315,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             // Also set on closest survey wrapper if available
             const surveyRoot = chatRef.current?.closest('[data-survey]') as HTMLElement | null
             if (surveyRoot) surveyRoot.lang = selectedLang
-            const langObj = enabledLangs.find((l: any) => l.code === selectedLang)
+            const langObj = enabledLangs.find((l) => l.code === selectedLang)
             addMsg('user', langObj?.nativeName || selectedLang)
-            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            wrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             clearInput()
             resolve()
           }
@@ -2356,7 +2356,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       btn.onmouseenter = () => { btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '18' }
       btn.onmouseleave = () => { btn.style.borderColor = C.btnBdr; btn.style.background = C.btnBg }
       btn.onclick = async () => {
-        row.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+        row.querySelectorAll('button').forEach((b) => { b.disabled = true })
         addMsg('user', label)
         if (val === 'no') {
           clearInput()
@@ -2368,7 +2368,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
         // Helper: show adaptive Likert follow-up then call next()
         const showLikertFollowUp = async (
-          followUp: any,
+          followUp: LikertFollowUp | undefined,
           score: number,
           next: () => Promise<void>,
           storageKey?: 'q1' | 'q2',
@@ -2418,17 +2418,17 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           expWrap.className = 'flex flex-col gap-1.5 mt-1.5'
           const ratingRow = document.createElement('div')
           ratingRow.className = 'flex gap-1 flex-wrap'
-          let expSel: any = null
+          let expSel: RatingOption | null = null
           let expConfirmBtn: HTMLButtonElement | null = null
           const expBtns: HTMLButtonElement[] = []
-          const commitExp = async (r: any) => {
-            expWrap.querySelectorAll('button').forEach((b: any) => { b.disabled = true })
+          const commitExp = async (r: RatingOption) => {
+            expWrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             const selBtn = expBtns[config.ratingScale.indexOf(r)]
             if (selBtn) { selBtn.style.borderColor = config.theme.primaryColor; selBtn.style.background = config.theme.primaryColor + '20' }
             state.current.rating = r.score
             state.current.ratingLabel = r.label
-            var maxScore = Math.max.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
-            var minScore = Math.min.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
+            var maxScore = Math.max.apply(null, config.ratingScale.map(function(x) { return x.score }))
+            var minScore = Math.min.apply(null, config.ratingScale.map(function(x) { return x.score }))
             var range = maxScore - minScore || 1
             var pct = (r.score - minScore) / range
             state.current.sentiment = pct >= 0.6 ? 'positive' : pct <= 0.4 ? 'negative' : 'neutral'
@@ -2436,7 +2436,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             addMsg('user', r.emoji + ' ' + tRatingLabel(r.label))
             await showLikertFollowUp(config.experienceFollowUp, r.score, next, 'q2', 'experienceFollowUp')
           }
-          config.ratingScale.forEach((r: any) => {
+          config.ratingScale.forEach((r) => {
             const tLabel = tRatingLabel(r.label)
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
@@ -2495,7 +2495,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           let npsConfirmBtn: HTMLButtonElement | null = null
           const npsBtns: HTMLButtonElement[] = []
           const commitNps = async (s: typeof stars[0]) => {
-            npsWrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            npsWrap.querySelectorAll('button').forEach((b) => { b.disabled = true })
             const selBtn = npsBtns[stars.indexOf(s)]
             if (selBtn) { selBtn.style.borderColor = config.theme.primaryColor; selBtn.style.background = config.theme.primaryColor + '20' }
             state.current.npsScore = s.score
@@ -2573,7 +2573,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           oeSendBtn.onclick = async () => {
             const v = ta.value.trim()
             if (checkVerbose(v, ta)) return
-            oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            oeWrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
             if (v) { addMsg('user', v); state.current.openingAnswers[item.id] = v }
             savePartial()
             clearInput()
@@ -2586,7 +2586,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           oeSkipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
           oeSkipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
           oeSkipBtn.onclick = async () => {
-            oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            oeWrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
             clearInput(); await next()
           }
           oeWrap.appendChild(oeSkipBtn)

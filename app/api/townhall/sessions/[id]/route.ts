@@ -10,6 +10,40 @@ import { serverError } from '@/lib/apiError'
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
 
+// ── Local row/shape types (service-role selects are untyped) ─────────────────
+interface OrgIsAdmin { is_admin_org?: boolean }
+interface UserOrgRow {
+  org_id: string | null
+  organizations: OrgIsAdmin | OrgIsAdmin[] | null
+}
+// A discussion_guide topic as stored in JSON on the session.
+interface GuideTopic {
+  label: string
+  description?: string | null
+  opening_question?: string
+  follow_up_angles?: unknown
+  keywords?: unknown
+  response_target?: number
+  enabled?: boolean
+}
+interface CohortConfig {
+  engine?: { default_response_target?: number }
+  [key: string]: unknown
+}
+// pulseiq_sessions row (superset of the columns any handler selects here).
+interface SessionRow {
+  id: string
+  org_id: string
+  status: string
+  discussion_guide: GuideTopic[]
+  cohort_config: CohortConfig | null
+  started_at: string | null
+  ended_at: string | null
+  [key: string]: unknown
+}
+// pulseiq_topics row as selected for guide-sync (id, label, state, source).
+interface TopicRow { id: string; label: string; state: string; source: string }
+
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
 async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | { ok: false; status: number; error: string }> {
@@ -18,11 +52,11 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
     .select('org_id, organizations(is_admin_org)')
     .eq('id', userId)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  const orgRel = (userData as UserOrgRow | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = (userData as UserOrgRow | null)?.org_id as string | null
 
-  let hall: any = null
+  let hall: { org_id: string } | null = null
   if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
     const { data } = await db.from('pulseiq_sessions').select('org_id').eq('id', sessionId).maybeSingle()
     if (data) hall = data
@@ -32,7 +66,7 @@ async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClien
     if (data) hall = data
   }
   if (!hall) return { ok: false, status: 404, error: 'Session not found' }
-  if (!isAdmin && (hall as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
+  if (!isAdmin && hall.org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
   return { ok: true, isAdmin, userOrgId }
 }
 
@@ -50,7 +84,7 @@ const LEGACY_TO_PHASE3_STATUS: Record<string, string> = {
 // insert shape. Used by both the status=active seed and the discussion_guide
 // sync block below. NOWOCATS doesn't use `target_mode`/`target_pct` — pass
 // through if present.
-function guideTopicToHallTopic(topic: any, sortOrder: number, defaultResponseTarget: number): Record<string, unknown> {
+function guideTopicToHallTopic(topic: GuideTopic, sortOrder: number, defaultResponseTarget: number): Record<string, unknown> {
   return {
     label:             topic.label,
     description:       topic.description || null,
@@ -78,7 +112,7 @@ async function handlePhase3Patch(
   // Pull pulseiq_sessions + org for every downstream write.
   const { data: hall } = await db.from('pulseiq_sessions').select('*').eq('id', hallId).maybeSingle()
   if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
-  const orgId = (hall as any).org_id as string
+  const orgId = (hall as SessionRow).org_id
 
   // ── delete_participants ─────────────────────────────────────────
   // Resolve participant_id → conversations.id (via .participant_id) for
@@ -93,10 +127,12 @@ async function handlePhase3Patch(
       .select('conversation_id, conversations!inner(id, participant_id, org_id)')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
-    const targets = ((convRows || []) as any[])
+    interface ConvInner { id: string; participant_id: string | null; org_id: string }
+    interface ConvJoinRow { conversation_id: string; conversations: ConvInner | ConvInner[] }
+    const targets = ((convRows || []) as ConvJoinRow[])
       .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
       .filter(c => c && pids.includes(c.participant_id || ''))
-    const convIds = targets.map((c: any) => c.id)
+    const convIds = targets.map((c: ConvInner) => c.id)
 
     if (convIds.length > 0) {
       // CASCADE on conversations.id deletes both the pulseiq_session_conversations
@@ -117,7 +153,7 @@ async function handlePhase3Patch(
       .select('conversation_id')
       .eq('town_hall_id', hallId)
       .eq('org_id', orgId)
-    const convIds = (convRows || []).map((r: any) => r.conversation_id)
+    const convIds = (convRows || []).map((r: { conversation_id: string }) => r.conversation_id)
     if (convIds.length > 0) {
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
@@ -180,8 +216,8 @@ async function handlePhase3Patch(
   // edits config/discussion_guide and flips status in one go is evaluated
   // against the post-edit state.
   if (nextStatusLegacy === 'active') {
-    const mergedGuide  = 'discussion_guide' in body ? (body.discussion_guide as any) : (hall as any).discussion_guide
-    const mergedConfig = 'config'           in body ? (body.config           as any) : (hall as any).cohort_config
+    const mergedGuide: unknown  = 'discussion_guide' in body ? body.discussion_guide : (hall as SessionRow).discussion_guide
+    const mergedConfig = ('config' in body ? body.config : (hall as SessionRow).cohort_config) as Record<string, unknown>
     const readiness = await checkActivationReadiness({ config: mergedConfig, discussion_guide: mergedGuide })
     if (!readiness.ready) {
       return NextResponse.json({
@@ -208,11 +244,11 @@ async function handlePhase3Patch(
       .eq('town_hall_id', hallId)
       .eq('source', 'seed')
     if (!existingSeed) {
-      const guide = Array.isArray((updated as any).discussion_guide) ? (updated as any).discussion_guide : []
-      const cfg = (updated as any).cohort_config || {}
-      const enabledTopics = guide.filter((t: any) => t.enabled !== false)
+      const guide = Array.isArray((updated as SessionRow).discussion_guide) ? (updated as SessionRow).discussion_guide : []
+      const cfg: CohortConfig = (updated as SessionRow).cohort_config || {}
+      const enabledTopics = guide.filter((t: GuideTopic) => t.enabled !== false)
       const defaultTarget = cfg?.engine?.default_response_target || 30
-      const rows = enabledTopics.map((t: any, i: number) => ({
+      const rows = enabledTopics.map((t: GuideTopic, i: number) => ({
         ...guideTopicToHallTopic(t, i, defaultTarget),
         town_hall_id: hallId,
         org_id: orgId,
@@ -225,23 +261,23 @@ async function handlePhase3Patch(
   // disabled ones, re-activate re-enabled ones, update fields, dismiss
   // orphans. Mirrors the legacy logic with pulseiq_topics.
   if (updates.discussion_guide && !nextStatusLegacy) {
-    const currentStatus = (updated as any).status
+    const currentStatus = (updated as SessionRow).status
     if (currentStatus === 'live' || currentStatus === 'paused') {
-      const guide = updates.discussion_guide as any[]
+      const guide = updates.discussion_guide as GuideTopic[]
       const { data: existingTopics } = await db
         .from('pulseiq_topics')
         .select('id, label, state, source')
         .eq('town_hall_id', hallId)
         .eq('org_id', orgId)
 
-      const existingLabels = new Set((existingTopics || []).map((t: any) => t.label.toLowerCase()))
+      const existingLabels = new Set((existingTopics || []).map((t: TopicRow) => t.label.toLowerCase()))
 
-      const newTopics = guide.filter((t: any) => t.enabled !== false && t.label?.trim() && !existingLabels.has(t.label.toLowerCase().trim()))
+      const newTopics = guide.filter((t: GuideTopic) => t.enabled !== false && t.label?.trim() && !existingLabels.has(t.label.toLowerCase().trim()))
       if (newTopics.length > 0) {
         const maxOrder = (existingTopics || []).length
-        const cfg = (updated as any).cohort_config || {}
+        const cfg: CohortConfig = (updated as SessionRow).cohort_config || {}
         const defaultTarget = cfg?.engine?.default_response_target || 30
-        const rows = newTopics.map((t: any, i: number) => ({
+        const rows = newTopics.map((t: GuideTopic, i: number) => ({
           ...guideTopicToHallTopic(t, maxOrder + i, defaultTarget),
           town_hall_id: hallId,
           org_id: orgId,
@@ -249,23 +285,23 @@ async function handlePhase3Patch(
         await db.from('pulseiq_topics').insert(rows)
       }
 
-      const disabledLabels = guide.filter((t: any) => t.enabled === false && t.label?.trim()).map((t: any) => t.label.toLowerCase().trim())
-      const enabledLabels  = guide.filter((t: any) => t.enabled !== false && t.label?.trim()).map((t: any) => t.label.toLowerCase().trim())
+      const disabledLabels = guide.filter((t: GuideTopic) => t.enabled === false && t.label?.trim()).map((t: GuideTopic) => t.label.toLowerCase().trim())
+      const enabledLabels  = guide.filter((t: GuideTopic) => t.enabled !== false && t.label?.trim()).map((t: GuideTopic) => t.label.toLowerCase().trim())
 
-      for (const t of existingTopics || []) {
-        if ((t as any).source !== 'seed') continue
-        const lab = (t as any).label.toLowerCase()
-        if ((t as any).state === 'active' && disabledLabels.includes(lab)) {
-          await db.from('pulseiq_topics').update({ state: 'paused' }).eq('id', (t as any).id)
+      for (const t of (existingTopics || []) as TopicRow[]) {
+        if (t.source !== 'seed') continue
+        const lab = t.label.toLowerCase()
+        if (t.state === 'active' && disabledLabels.includes(lab)) {
+          await db.from('pulseiq_topics').update({ state: 'paused' }).eq('id', t.id)
         }
-        if ((t as any).state === 'paused' && enabledLabels.includes(lab)) {
-          await db.from('pulseiq_topics').update({ state: 'active' }).eq('id', (t as any).id)
+        if (t.state === 'paused' && enabledLabels.includes(lab)) {
+          await db.from('pulseiq_topics').update({ state: 'active' }).eq('id', t.id)
         }
       }
 
       // Update existing seed topic fields to mirror the guide edits.
-      for (const t of (existingTopics || []).filter((t: any) => t.source === 'seed')) {
-        const guideTopic = guide.find((g: any) => g.label?.toLowerCase().trim() === (t as any).label.toLowerCase())
+      for (const t of ((existingTopics || []) as TopicRow[]).filter((t: TopicRow) => t.source === 'seed')) {
+        const guideTopic = guide.find((g: GuideTopic) => g.label?.toLowerCase().trim() === t.label.toLowerCase())
         if (guideTopic) {
           await db.from('pulseiq_topics').update({
             label: guideTopic.label,
@@ -274,25 +310,25 @@ async function handlePhase3Patch(
             follow_up_angles: guideTopic.follow_up_angles || [],
             keywords: guideTopic.keywords || [],
             response_target: guideTopic.response_target || 30,
-          }).eq('id', (t as any).id)
+          }).eq('id', t.id)
         }
       }
 
       // Orphans → dismissed.
-      const guideLabelsLower = guide.map((g: any) => g.label?.toLowerCase().trim()).filter(Boolean)
-      for (const t of (existingTopics || []).filter((t: any) => t.source === 'seed' && !guideLabelsLower.includes((t as any).label.toLowerCase()))) {
-        await db.from('pulseiq_topics').update({ state: 'dismissed' }).eq('id', (t as any).id)
+      const guideLabelsLower = guide.map((g: GuideTopic) => g.label?.toLowerCase().trim()).filter(Boolean)
+      for (const t of ((existingTopics || []) as TopicRow[]).filter((t: TopicRow) => t.source === 'seed' && !guideLabelsLower.includes(t.label.toLowerCase()))) {
+        await db.from('pulseiq_topics').update({ state: 'dismissed' }).eq('id', t.id)
       }
     }
   }
 
   // Project status back to legacy shape for the client.
-  const reverseStatus = Object.entries(LEGACY_TO_PHASE3_STATUS).find(([_, v]) => v === (updated as any).status)?.[0] || (updated as any).status
+  const reverseStatus = Object.entries(LEGACY_TO_PHASE3_STATUS).find(([_, v]) => v === (updated as SessionRow).status)?.[0] || (updated as SessionRow).status
   return NextResponse.json({
-    id: (updated as any).id,
+    id: (updated as SessionRow).id,
     status: reverseStatus,
-    started_at: (updated as any).started_at,
-    ended_at: (updated as any).ended_at,
+    started_at: (updated as SessionRow).started_at,
+    ended_at: (updated as SessionRow).ended_at,
   })
 }
 
@@ -358,13 +394,14 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   {
     const { data: hall } = await db.from('pulseiq_sessions').select('id, org_id, bot_id').eq('id', params.id).maybeSingle()
     if (!hall) return NextResponse.json({ error: 'Town hall not found' }, { status: 404 })
-    const orgId = (hall as any).org_id as string
+    const hallRow = hall as { id: string; org_id: string; bot_id: string | null }
+    const orgId = hallRow.org_id
     const { data: convRows } = await db
       .from('pulseiq_session_conversations')
       .select('conversation_id')
       .eq('town_hall_id', params.id)
       .eq('org_id', orgId)
-    const convIds = (convRows || []).map((r: any) => r.conversation_id)
+    const convIds = (convRows || []).map((r: { conversation_id: string }) => r.conversation_id)
     if (convIds.length > 0) {
       await db.from('conversations').delete().in('id', convIds).eq('org_id', orgId)
     }
@@ -374,10 +411,10 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     // duplicate) so it doesn't survive as an orphan holding the
     // '<slug>-agent' slug. Marker-gated: a session pointed at a real
     // linked agent (e.g. Sarina) must never have that agent deleted.
-    const botId = (hall as any).bot_id as string | null
+    const botId = hallRow.bot_id
     if (botId) {
       const { data: agent } = await db.from('agents').select('id, config').eq('id', botId).eq('org_id', orgId).maybeSingle()
-      if ((agent as any)?.config?.pulseiq_dedicated) {
+      if ((agent as { config?: { pulseiq_dedicated?: boolean } | null } | null)?.config?.pulseiq_dedicated) {
         await db.from('agents').delete().eq('id', botId).eq('org_id', orgId)
       }
     }

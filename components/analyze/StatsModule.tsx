@@ -9,13 +9,17 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 
 // Dynamic Plotly import — avoids SSR crash
-var PlotlyRef: any = null
-function getPlotly(): Promise<any> {
+interface PlotlyLib {
+  newPlot: (el: HTMLElement, data: unknown[], layout?: unknown, config?: unknown) => void
+  purge: (el: HTMLElement) => void
+}
+var PlotlyRef: PlotlyLib | null = null
+function getPlotly(): Promise<PlotlyLib> {
   if (PlotlyRef) return Promise.resolve(PlotlyRef)
-  return import('plotly.js-dist-min').then(function(m) { PlotlyRef = m.default || m; return PlotlyRef })
+  return import('plotly.js-dist-min').then(function(m) { PlotlyRef = m.default || m; return PlotlyRef! })
 }
 
-function PlotlyChart({ data, layout, style }: { data: any[]; layout?: any; style?: React.CSSProperties }) {
+function PlotlyChart({ data, layout, style }: { data: unknown[]; layout?: Record<string, unknown>; style?: React.CSSProperties }) {
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
     if (!ref.current || !data.length) return
@@ -60,6 +64,16 @@ import { smartOrder } from '@/lib/scaleUtils'
 var _statsDrag: { field: string; type: string; label: string } | null = null
 
 import { T } from '@/lib/analyzeTheme'
+
+type ThemeT = typeof T
+
+// OLS regression result shape (mirrors olsRegression() in lib/statsUtils)
+interface RegressionCoef { name: string; beta: number; se: number; t: number; p: number; ci: [number, number] }
+interface RegressionResult {
+  coefs: RegressionCoef[]; R2: number; R2adj: number; F: number; Fp: number
+  n: number; p: number; SSE: number; SST: number; MSE: number
+  yhat: number[]; resid: number[]; names: string[]
+}
 
 interface Props {
   datasetId: string
@@ -186,7 +200,7 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
   var [sel, setSel] = useState(numFields[0]?.field || '')
   var [descRestored, setDescRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_dk)
+    var saved = readSession<{ sel?: string }>(_dk)
     if (saved?.sel) setSel(saved.sel)
     setDescRestored(true)
   }, [_dk])
@@ -210,7 +224,7 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
       <PanelHeader icon={'\u2211'} title="Descriptive Statistics" desc="Summary statistics, distribution shape, and normality tests for each numeric variable." />
       {stats && <BottomLine text={descBL(selLabel, stats)} naiveText={descBL_naive(selLabel, stats)} />}
       <div style={{ maxWidth: 320, marginBottom: 20 }}>
-        <DSSelect label="Numeric field" value={sel} onChange={setSel} options={numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: (f as any).subCategory } })} />
+        <DSSelect label="Numeric field" value={sel} onChange={setSel} options={numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: (f as SchemaFieldConfig & { subCategory?: string }).subCategory } })} />
       </div>
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -335,7 +349,7 @@ function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields:
   var [excluded, setExcluded] = useState<Set<string>>(function() { return new Set() })
   var [corrRestored, setCorrRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_ck)
+    var saved = readSession<{ corrType?: string; excluded?: string[] }>(_ck)
     if (saved?.corrType) setCorrType(saved.corrType)
     if (Array.isArray(saved?.excluded)) setExcluded(new Set(saved.excluded))
     setCorrRestored(true)
@@ -489,7 +503,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
   var [catF2, setCatF2] = useState(catFields[1]?.field || catFields[0]?.field || '')
   var [groupRestored, setGroupRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_gk)
+    var saved = readSession<{ testType?: string; numF?: string; catF?: string; catF2?: string }>(_gk)
     if (saved?.testType) setTestType(saved.testType)
     if (saved?.numF) setNumF(saved.numF)
     if (saved?.catF) setCatF(saved.catF)
@@ -544,7 +558,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
   useEffect(function() {
     if (!dimInvolved) { setDimResult(null); return }
     var cancelled = false
-    var post = function(body: any) { return fetch('/api/datasets/' + datasetId + '/aggregate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r) { return r.json() }) }
+    var post = function(body: Record<string, unknown>) { return fetch('/api/datasets/' + datasetId + '/aggregate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r) { return r.json() }) }
     void (async function() {
       try {
         if (testType === 'chisq') {
@@ -567,7 +581,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
         var gKeys = Object.keys(groups).filter(function(k) { return groups[k].n >= 2 })
         if (gKeys.length < 2) { setDimResult(null); return }
         var eff = testType === 'auto' ? (gKeys.length === 2 ? 'ttest' : 'anova') : testType
-        var boxStats: Record<string, any> = {}
+        var boxStats: Record<string, { q1: number | null; median: number; q3: number | null; min: number; max: number; mean: number }> = {}
         gKeys.forEach(function(k) { var s = groups[k]; boxStats[k] = { q1: s.q1, median: s.median, q3: s.q3, min: s.min, max: s.max, mean: s.mean } })
         if (eff === 'mw') { setDimResult({ type: 'mw_unsupported' }); return }
         if (eff === 'ttest') {
@@ -761,7 +775,7 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
   var [outcomesOpen, setOutcomesOpen] = useState(true)
   var [regRestored, setRegRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_rk)
+    var saved = readSession<{ outcomes?: string[]; predictors?: string[]; activeOutcome?: string }>(_rk)
     if (Array.isArray(saved?.outcomes)) setOutcomes(new Set(saved.outcomes))
     if (Array.isArray(saved?.predictors)) setPredictors(new Set(saved.predictors))
     if (saved?.activeOutcome) setActiveOutcome(saved.activeOutcome)
@@ -800,7 +814,7 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
   }
 
   var results = useMemo(function() {
-    var out: Record<string, any> = {}
+    var out: Record<string, RegressionResult> = {}
     if (!outcomes.size || !predictors.size) return out
     outcomes.forEach(function(oc) {
       var preds = Array.from(predictors).filter(function(p) { return p !== oc })
@@ -1005,7 +1019,7 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
                           return <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border }}>{h}</th>
                         })}
                       </tr></thead>
-                      <tbody>{activeResult.coefs.map(function(c: any, i: number) {
+                      <tbody>{activeResult.coefs.map(function(c: RegressionCoef, i: number) {
                         return (
                           <tr key={i} style={{ background: c.p < 0.05 ? T.greenBg + '80' : 'transparent' }}>
                             <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{aliases[c.name] || c.name}</td>
@@ -1413,7 +1427,7 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
   var [copied,     setCopied]           = useState(false)
   var [outlierRestored, setOutlierRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_ok)
+    var saved = readSession<{ quantField?: string; catField?: string; showAll?: boolean; threshold?: number }>(_ok)
     if (saved?.quantField) setQuantField(saved.quantField)
     if (saved?.catField)   setCatField(saved.catField)
     if (typeof saved?.showAll === 'boolean') setShowAll(saved.showAll)
@@ -1723,7 +1737,7 @@ function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.fiel
 
 // ── Collapsible sidebar field group ────────────────────────────
 function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen, diag }: {
-  label: string; icon: string; color: string; fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; defaultOpen?: boolean; diag?: Record<string, string>
+  label: string; icon: string; color: string; fields: SchemaFieldConfig[]; T: ThemeT; fl: (f: SchemaFieldConfig) => string; defaultOpen?: boolean; diag?: Record<string, string>
 }) {
   var [open, setOpen] = useState(defaultOpen !== false)
   if (fields.length === 0) return null
@@ -1780,7 +1794,7 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
 }
 
 function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
-  fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; isAssigned?: (f: SchemaFieldConfig) => boolean; diag?: Record<string, string>
+  fields: SchemaFieldConfig[]; T: ThemeT; fl: (f: SchemaFieldConfig) => string; isAssigned?: (f: SchemaFieldConfig) => boolean; diag?: Record<string, string>
 }) {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
@@ -1825,7 +1839,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var [statsRestored, setStatsRestored] = useState(false)
 
   useEffect(function() {
-    var saved = readSession<any>(_statKey)
+    var saved = readSession<{ activePanel?: string; confidenceLevel?: number; sampleCap?: number }>(_statKey)
     if (saved?.activePanel) setActivePanel(saved.activePanel)
     if (typeof saved?.confidenceLevel === 'number') {
       setConfidenceLevel(saved.confidenceLevel)
@@ -1880,7 +1894,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var [themeEnrichKey, setThemeEnrichKey] = useState(0)
   var [statsThemeRestored, setStatsThemeRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<any>(_stk)
+    var saved = readSession<{ themeSourceField?: string; activeThemeNames?: string[] }>(_stk)
     if (saved?.themeSourceField) setThemeSourceField(saved.themeSourceField)
     if (Array.isArray(saved?.activeThemeNames)) setActiveThemeNames(new Set(saved.activeThemeNames))
     setStatsThemeRestored(true)
@@ -1934,9 +1948,9 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
 
   var allFields = useMemo(function() {
     var af = allSchemaFields.slice()
-    if (hasThemes) af = af.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
+    if (hasThemes) af = af.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as SchemaFieldConfig])
     mappedFields.forEach(function(f) {
-      af = af.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
+      af = af.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as SchemaFieldConfig])
     })
     return af
   }, [allSchemaFields, hasThemes, mappedFields])
@@ -1953,7 +1967,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   // global catFields — so the row-based panels never see fields they can't compute.
   var hasDimensions = datasetSource === 'google_reviews' || !!taxonomyEnabled
   var groupTestCatFields = useMemo(function() {
-    return hasDimensions ? catFields.concat(dimVirtualFields() as any) : catFields
+    return hasDimensions ? catFields.concat(dimVirtualFields() as SchemaFieldConfig[]) : catFields
   }, [catFields, hasDimensions])
 
   var aliases = useMemo(function() {
@@ -2212,7 +2226,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
                         setPendingConfidence(best)
                       }
                     }}
-                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' as any }}
+                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' }}
                   />
                   <div style={{ fontSize: 10, color: T.textFaint, marginTop: 3 }}>
                     {pendingCap === 0 ? 'All rows (may be slow on large datasets)' : 'Preview: ±' + pendingMoe + '% MOE'}

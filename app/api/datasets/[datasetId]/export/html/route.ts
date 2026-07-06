@@ -40,8 +40,50 @@ interface SelectedField {
   liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
 }
 
+// Theme record as stored in dataset_state.theme_model.themes and derived per-field.
+interface Theme {
+  id: string
+  name?: string
+  label?: string
+  count?: number
+  percentage?: number
+  color?: string
+  sentiment?: string
+  description?: string
+  keywords?: string[]
+}
+
+// Schema field shape (dataset_state.schema_config.fields).
+interface SchemaField {
+  field: string
+  label?: string
+  type: string
+  prompt?: string
+  remapping?: Record<string, number>
+  valueAliases?: Record<string, string>
+  section?: string | null
+}
+
+// Study config shape (datasets.studies.config) used to backfill field prompts.
+interface StudyQuestion { id: string; prompt?: string; exportLabel?: string }
+interface StudyConfig {
+  questions?: StudyQuestion[]
+  psychographicBank?: { key: string; q?: string }[]
+  demoFields?: { key: string; label?: string }[]
+}
+
+// Dataset row returned by the service-role select.
+interface DatasetRow {
+  id: string
+  name: string
+  row_count: number
+  study_id: string | null
+  org_id: string
+  studies?: { id?: string; name?: string; config?: StudyConfig } | null
+}
+
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
-function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
+function trunc(s: string | undefined | null, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
 function trimNatural(s: string, max: number): string {
   if (!s) return s
   const candidate = s.length > max ? s.slice(0, max) : s
@@ -67,11 +109,11 @@ async function generateNarratives(
     const s = f.summary
     if (!s) return `${f.label} (${f.type}): no data`
     if (s.type === 'categorical') {
-      const aliased = f.valueAliases && Object.keys(f.valueAliases).length > 0
+      const aliased: Record<string, number> = f.valueAliases && Object.keys(f.valueAliases).length > 0
         ? aliasedCounts(f.field, s.counts || {}, [{ field: f.field, valueAliases: f.valueAliases }])
         : (s.counts || {})
-      const top5 = Object.entries(aliased).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
-        .map(([k, v]: any) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
+      const top5 = Object.entries(aliased).sort((a: [string, number], b: [string, number]) => b[1] - a[1]).slice(0, 5)
+        .map(([k, v]: [string, number]) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
       return `${f.label} (categorical, n=${s.nonNull}): top — ${top5}`
     }
     if (s.type === 'numeric') return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}`
@@ -118,7 +160,7 @@ ${fields.map(f => {
 
 interface SlideCtx {
   chartIndex: number
-  charts: Record<string, { data: any[]; layout: any }>
+  charts: Record<string, { data: Record<string, unknown>[]; layout: Record<string, unknown> }>
   manifest: { title: string; icon: string; section?: string }[]
 }
 
@@ -160,7 +202,7 @@ function buildTitleSlide(ctx: SlideCtx, datasetName: string, reportTitle: string
   </section>`
 }
 
-function buildSummarySlide(ctx: SlideCtx, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]): string {
+function buildSummarySlide(ctx: SlideCtx, totalRows: number, bullets: string[], takeaways: string[], themes: Theme[], fields: SelectedField[]): string {
   ctx.manifest.push({ title: 'Executive Summary', icon: '📋' })
   const kpis: { v: string; l: string }[] = [{ v: totalRows.toLocaleString(), l: 'Total Responses' }]
   const numF = fields.find(f => f.type === 'numeric')
@@ -208,7 +250,7 @@ function buildCategoricalSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight
     ? aliasedCounts(f.field, countsRaw, [{ field: f.field, valueAliases: f.valueAliases }])
     : countsRaw
   const allKeys = Object.keys(counts)
-  const total  = Object.values(counts).reduce((s: number, v: any) => s + Number(v), 0) || 1
+  const total  = Object.values(counts).reduce((s: number, v: number) => s + Number(v), 0) || 1
 
   // Use smartOrder: remapping first, then scale detection, then count-descending
   const isOrdinal = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
@@ -279,13 +321,13 @@ function buildCategoricalSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight
   </section>`
 }
 
-function buildNumericSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, allRows: Record<string,any>[], rowKeyMap: Record<string,string>): string {
+function buildNumericSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, allRows: Record<string,unknown>[], rowKeyMap: Record<string,string>): string {
   ctx.manifest.push({ title: f.label, icon: '🔢', section: f.section })
   const s = f.summary || {}
   const subtitle = f.prompt || 'Numeric · ' + (s.nonNull||0).toLocaleString() + ' responses'
 
   // Extract raw values from rows for histogram
-  function rowVal(row: Record<string,any>, key: string): string {
+  function rowVal(row: Record<string,unknown>, key: string): string {
     if (row[key] != null) return String(row[key]).trim()
     const actual = rowKeyMap[normalize(key)]
     if (actual && row[actual] != null) return String(row[actual]).trim()
@@ -338,7 +380,7 @@ function buildNumericSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, al
   </section>`
 }
 
-function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, themes: any[]): string {
+function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, themes: Theme[]): string {
   ctx.manifest.push({ title: f.label, icon: '💬', section: f.section })
   const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
   // Prefer AI-curated quotes (≤140 chars each); fall back to raw sample
@@ -354,8 +396,8 @@ function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, 
   let chartHtml = ''
   if (fieldThemes.length > 0) {
     const cid = chartId(ctx)
-    const labels = fieldThemes.map((t: any) => trunc(t.name||t.label, 30))
-    const vals   = fieldThemes.map((t: any) => t.percentage || 0)
+    const labels = fieldThemes.map(t => trunc(t.name||t.label, 30))
+    const vals   = fieldThemes.map(t => t.percentage || 0)
     ctx.charts[cid] = {
       data: [{
         type: 'bar', orientation: 'h',
@@ -363,7 +405,7 @@ function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, 
         x: vals.slice().reverse(),
         text: vals.slice().reverse().map((v: number) => v + '%'),
         textposition: 'outside',
-        marker: { color: fieldThemes.slice().reverse().map((_: any, i: number) =>
+        marker: { color: fieldThemes.slice().reverse().map((_, i: number) =>
           i === fieldThemes.length - 1 ? DN.teal : i === fieldThemes.length - 2 ? DN.tealLight : DN.navyLight) },
         hovertemplate: '<b>%{y}</b>: %{x:.0f}%<extra></extra>',
       }],
@@ -398,8 +440,8 @@ function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, 
 }
 
 async function buildThemeDetailSlides(
-  ctx: SlideCtx, themes: any[], fieldLabel: string,
-  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[],
+  ctx: SlideCtx, themes: Theme[], fieldLabel: string,
+  allRows: Record<string,unknown>[], rowKeyMap: Record<string,string>, fieldKeys: string[],
   orgId?: string,
 ): Promise<string[]> {
   if (!themes?.length) return []
@@ -420,7 +462,7 @@ async function buildThemeDetailSlides(
     return regexes.some(function(re) { return re.test(lower) })
   }
 
-  async function getComments(t: any): Promise<string[]> {
+  async function getComments(t: Theme): Promise<string[]> {
     if (!allRows?.length) return []
     const keys = fieldKeys.map(fk => {
       const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -449,7 +491,7 @@ async function buildThemeDetailSlides(
   const total = themes.length
   const slides: string[] = []
   for (let tidx = 0; tidx < themes.length; tidx++) {
-    const t = themes[tidx] as any
+    const t = themes[tidx]
     ctx.manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
     const themeColor = t.color || DN.teal
     const sent       = t.sentiment || ''
@@ -812,7 +854,7 @@ export async function POST(req: Request, props: Params) {
   const instructions:        string   = body.instructions || ''
   const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
   const selectedThemeIds:    string[] = body.selectedThemeIds || []
-  const rawFilters: Record<string, any> = body.filters || {}
+  const rawFilters: Record<string, unknown> = body.filters || {}
   const skipAI:              boolean  = body.skipAI === true
   const hasFilters = Object.keys(rawFilters).length > 0
 
@@ -830,7 +872,7 @@ export async function POST(req: Request, props: Params) {
   const { data: dataset } = await service
     .from('datasets').select('id, name, row_count, study_id, org_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && (dataset as DatasetRow).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
     .from('dataset_state').select('schema_config, analytics, theme_model').eq('dataset_id', params.datasetId).single()
@@ -838,15 +880,15 @@ export async function POST(req: Request, props: Params) {
 
   const schema    = stateRow.schema_config
   const analytics = stateRow.analytics
-  const allThemes = (stateRow.theme_model as any)?.themes || []
+  const allThemes: Theme[] = (stateRow.theme_model as { themes?: Theme[] } | null)?.themes || []
 
   // Backfill prompts from study config
-  const studyConfig = (dataset as any).studies?.config
+  const studyConfig = (dataset as DatasetRow).studies?.config
   if (studyConfig && schema?.fields) {
-    schema.fields.forEach(function(f: any) {
+    schema.fields.forEach(function(f: SchemaField) {
       if (f.prompt) return
       if (studyConfig.questions) {
-        const q = studyConfig.questions.find((qq: any) => {
+        const q = studyConfig.questions.find((qq: StudyQuestion) => {
           const col = qq.exportLabel || qq.prompt || qq.id
           return f.field === col || f.field.includes(col)
         })
@@ -854,19 +896,19 @@ export async function POST(req: Request, props: Params) {
       }
       if (!f.prompt && f.field.startsWith('psycho_') && studyConfig.psychographicBank) {
         const san = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
-        const pq = studyConfig.psychographicBank.find((pp: any) => san(pp.key) === f.field.replace('psycho_',''))
+        const pq = studyConfig.psychographicBank.find((pp: { key: string; q?: string }) => san(pp.key) === f.field.replace('psycho_',''))
         if (pq?.q) f.prompt = pq.q
       }
       if (!f.prompt && f.field.startsWith('demo_') && studyConfig.demoFields) {
         const san = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
-        const df = studyConfig.demoFields.find((dd: any) => san(dd.key) === f.field.replace('demo_',''))
+        const df = studyConfig.demoFields.find((dd: { key: string; label?: string }) => san(dd.key) === f.field.replace('demo_',''))
         if (df) f.prompt = df.label
       }
     })
   }
 
-  const themes      = selectedThemeIds.length > 0 ? allThemes.filter((t: any) => selectedThemeIds.includes(t.id)) : allThemes
-  const sortedThemes = [...themes].sort((a: any, b: any) => (b.count||0) - (a.count||0))
+  const themes      = selectedThemeIds.length > 0 ? allThemes.filter((t: Theme) => selectedThemeIds.includes(t.id)) : allThemes
+  const sortedThemes = [...themes].sort((a: Theme, b: Theme) => (b.count||0) - (a.count||0))
   const datasetName  = dataset.name
 
   if (!analytics?.fieldSummaries) {
@@ -875,7 +917,7 @@ export async function POST(req: Request, props: Params) {
 
   const selectedFields: SelectedField[] = selectedFieldNames
     .map(fieldName => {
-      const sf = (schema?.fields || []).find((f: any) => f.field === fieldName)
+      const sf = (schema?.fields || []).find((f: SchemaField) => f.field === fieldName)
       if (!sf) return null
       return { field: fieldName, label: sf.label || fieldName, type: sf.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: sf.remapping, valueAliases: sf.valueAliases, section: sf.section || undefined, prompt: sf.prompt }
     }).filter(Boolean) as SelectedField[]
@@ -886,7 +928,7 @@ export async function POST(req: Request, props: Params) {
 
   // Fetch rows from dataset_rows_flat (the sole source of truth). The legacy
   // dataset_rows batch fallback was removed 2026-07-02.
-  const allRows: Record<string,any>[] = []
+  const allRows: Record<string,unknown>[] = []
   const MAX_ROWS = hasFilters ? 30_000 : 10_000
 
   const FLAT_PAGE = 1000
@@ -900,7 +942,7 @@ export async function POST(req: Request, props: Params) {
       .range(flatOffset, flatOffset + FLAT_PAGE - 1)
     if (flatErr || !flatRows || flatRows.length === 0) break
     for (const fr of flatRows) {
-      allRows.push((fr as any).data || fr)
+      allRows.push((fr as { data?: Record<string, unknown> }).data || fr)
       if (allRows.length >= MAX_ROWS) break
     }
     if (flatRows.length < FLAT_PAGE) break
@@ -952,7 +994,7 @@ export async function POST(req: Request, props: Params) {
   // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
   // For positively-framed fields ("liked most", "best", etc.) filter out complaint-pattern responses.
   if (allRows.length > 0) {
-    const htmlRowVal = (row: Record<string,any>, key: string): string => {
+    const htmlRowVal = (row: Record<string,unknown>, key: string): string => {
       if (row[key] != null) return String(row[key]).trim()
       const actual = rowKeyMap[normalize(key)]
       return actual && row[actual] != null ? String(row[actual]).trim() : ''
@@ -990,7 +1032,7 @@ export async function POST(req: Request, props: Params) {
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])),
   }
   if (!skipAI) {
-    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
+    try { narratives = await generateNarratives((dataset as DatasetRow).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error({ at: 'export/html', msg: "AI error", err: e }) }
   }
 
@@ -1011,18 +1053,18 @@ export async function POST(req: Request, props: Params) {
 
   // Re-compute theme counts per field: denominator = rows with text in THIS field,
   // multi-match so percentage = "% of respondents who mentioned this theme."
-  function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
+  function computeFieldThemes(fieldKey: string, themeList: Theme[]): Theme[] {
     if (!themeList.length || !allRows.length) return themeList
-    function fRowVal(row: Record<string,any>, key: string): string {
+    function fRowVal(row: Record<string,unknown>, key: string): string {
       if (row[key] != null) return String(row[key]).trim()
       const actual = rowKeyMap[normalize(key)]
       return actual && row[actual] != null ? String(row[actual]).trim() : ''
     }
     const nonEmpty = allRows.filter(row => fRowVal(row, fieldKey).length > 0)
     const total = nonEmpty.length || 1
-    var fieldThemeRegexes = themeList.map(function(t: any) { return (t.keywords || []).map(function(kw: string) { return buildKwRegex(kw) }) })
+    var fieldThemeRegexes = themeList.map(function(t) { return (t.keywords || []).map(function(kw: string) { return buildKwRegex(kw) }) })
     return themeList
-      .map(function(t: any, ti: number) {
+      .map(function(t, ti: number) {
         var regexes = fieldThemeRegexes[ti]
         const count = nonEmpty.filter(function(row) {
           const text = fRowVal(row, fieldKey).toLowerCase()
@@ -1030,8 +1072,8 @@ export async function POST(req: Request, props: Params) {
         }).length
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100) })
       })
-      .filter(function(t: any) { return t.count > 0 })
-      .sort(function(a: any, b: any) { return b.count - a.count })
+      .filter(function(t) { return t.count > 0 })
+      .sort(function(a, b) { return b.count - a.count })
   }
 
   async function renderField(f: SelectedField) {
@@ -1053,7 +1095,7 @@ export async function POST(req: Request, props: Params) {
     // After each open-ended slide, add per-theme detail slides with field-specific counts
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
       const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
-      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (dataset as any).org_id)
+      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (dataset as DatasetRow).org_id)
       themeSlides.forEach(ts => slides.push(ts))
     }
   }

@@ -43,7 +43,7 @@ const W = 13.33
 const H = 7.5
 
 // ── Shared layout primitives ───────────────────────────────────────────────
-function addHeader(slide: any, title: string, subtitle?: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, {
     x: 0.6, y: subtitle ? 0.1 : 0.15, w: 9.5, h: subtitle ? 0.5 : 0.7,
@@ -62,7 +62,7 @@ function addHeader(slide: any, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('datanautix.com  ·  Platform Architecture  ·  Confidential — for technical diligence', {
     x: 0.5, y: H - 0.4, w: 10, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
   })
@@ -71,7 +71,7 @@ function addFooter(slide: any, pageNum: number) {
   })
 }
 
-function bullet(text: string, opts: any = {}) {
+function bullet(text: string, opts: PptxGenJS.TextPropsOptions = {}) {
   return {
     text,
     options: {
@@ -83,7 +83,7 @@ function bullet(text: string, opts: any = {}) {
 }
 
 // helper: section label pill (small uppercase tag inside a slide)
-function tag(slide: any, x: number, y: number, w: number, label: string, color: string) {
+function tag(slide: PptxGenJS.Slide, x: number, y: number, w: number, label: string, color: string) {
   slide.addShape('rect', { x, y, w, h: 0.3, fill: { color }, rectRadius: 0.05 })
   slide.addText(label, {
     x, y, w, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.white, bold: true,
@@ -96,7 +96,7 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function addTitleSlide(pptx: any) {
+function addTitleSlide(pptx: PptxGenJS) {
   const s = pptx.addSlide()
   const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
   const lastUpdated = buildDate ? fmtDate(new Date(buildDate)) : fmtDate(new Date())
@@ -131,7 +131,7 @@ function addTitleSlide(pptx: any) {
 }
 
 // ── 1. TL;DR ───────────────────────────────────────────────────────────────
-function slideTLDR(pptx: any, pg: number) {
+function slideTLDR(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Architecture in One Slide', 'AI-native, multi-tenant SaaS — production hardened on Vercel + Supabase')
   addFooter(s, pg)
@@ -156,7 +156,7 @@ function slideTLDR(pptx: any, pg: number) {
 }
 
 // ── 1.5 Platform by the Numbers ────────────────────────────────────────────
-function slidePlatformByNumbers(pptx: any, pg: number) {
+function slidePlatformByNumbers(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Platform by the Numbers', 'The surface area of what is built and serving enterprise customers today.')
   addFooter(s, pg)
@@ -201,7 +201,7 @@ function slidePlatformByNumbers(pptx: any, pg: number) {
 }
 
 // ── 2. Stack at a glance ───────────────────────────────────────────────────
-function slideStack(pptx: any, pg: number) {
+function slideStack(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Stack at a Glance', 'Named technologies. Production versions.')
   addFooter(s, pg)
@@ -234,11 +234,11 @@ function slideStack(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.3, w: 12.3, colW: [2.3, 3.5, 6.5], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.4 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.3, w: 12.3, colW: [2.3, 3.5, 6.5], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.4 })
 }
 
 // ── 3. System architecture (layered) ───────────────────────────────────────
-function slideSystemArch(pptx: any, pg: number) {
+function slideSystemArch(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'System Architecture', 'Six layers · clear boundaries · no hidden coupling')
   addFooter(s, pg)
@@ -263,7 +263,7 @@ function slideSystemArch(pptx: any, pg: number) {
 }
 
 // ── 3.5 AI at the Center (hub-and-spoke) ───────────────────────────────────
-function slideAICenter(pptx: any, pg: number) {
+function slideAICenter(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI at the Center', 'Every workflow touches the same AI layer — by design')
   addFooter(s, pg)
@@ -348,7 +348,7 @@ function slideAICenter(pptx: any, pg: number) {
 }
 
 // ── 4. Data layer (39 tables, six domains) ─────────────────────────────────
-function slideDataLayer(pptx: any, pg: number) {
+function slideDataLayer(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Data Layer: 44 Tables, 7 Domains', 'Org-scoped from the schema up. No tenant routers — multi-tenancy is a column.')
   addFooter(s, pg)
@@ -381,7 +381,7 @@ function slideDataLayer(pptx: any, pg: number) {
 }
 
 // ── 5. Multi-tenancy ───────────────────────────────────────────────────────
-function slideMultiTenancy(pptx: any, pg: number) {
+function slideMultiTenancy(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Multi-Tenancy Model', 'org_id is in every data-bearing table. Features are JSONB. RLS does the gating.')
   addFooter(s, pg)
@@ -403,7 +403,7 @@ function slideMultiTenancy(pptx: any, pg: number) {
 }
 
 // ── 6. AuthZ + RLS ─────────────────────────────────────────────────────────
-function slideAuthZ(pptx: any, pg: number) {
+function slideAuthZ(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AuthZ: RLS at the Database, Not the App', 'Defense in depth — even a leaky route cannot return another tenant\'s data')
   addFooter(s, pg)
@@ -431,7 +431,7 @@ function slideAuthZ(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.25, w: 12.3, colW: [3.0, 2.6, 6.7], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.25, w: 12.3, colW: [3.0, 2.6, 6.7], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.55 })
 
   s.addText('All tables have RLS enabled (sql/032_enable_rls_everywhere.sql). Default-deny posture. Public read exceptions are explicit and named.', {
     x: 0.6, y: 6.4, w: 12.1, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.navy, italic: true, align: 'center',
@@ -439,7 +439,7 @@ function slideAuthZ(pptx: any, pg: number) {
 }
 
 // ── 7. AI Pipeline ─────────────────────────────────────────────────────────
-function slideAIPipeline(pptx: any, pg: number) {
+function slideAIPipeline(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI Pipeline: One Router, Three Tiers, Every Call Logged', 'lib/ai.ts is the single LLM entry point. callAI() wraps every model invocation.')
   addFooter(s, pg)
@@ -473,7 +473,7 @@ function slideAIPipeline(pptx: any, pg: number) {
 }
 
 // ── 8. AI feature map ──────────────────────────────────────────────────────
-function slideAIFeatureMap(pptx: any, pg: number) {
+function slideAIFeatureMap(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI Feature Map', 'Every AI capability has a named home in the codebase')
   addFooter(s, pg)
@@ -505,11 +505,11 @@ function slideAIFeatureMap(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.25, w: 12.3, colW: [2.6, 3.6, 1.4, 4.7], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.42 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.25, w: 12.3, colW: [2.6, 3.6, 1.4, 4.7], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.42 })
 }
 
 // ── 9. Embeddings + retrieval ─────────────────────────────────────────────
-function slideRetrieval(pptx: any, pg: number) {
+function slideRetrieval(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Hybrid Retrieval', 'Semantic + lexical + fuzzy in one SQL function')
   addFooter(s, pg)
@@ -537,7 +537,7 @@ function slideRetrieval(pptx: any, pg: number) {
 }
 
 // ── 10. Multi-source ingestion ─────────────────────────────────────────────
-function slideIngestion(pptx: any, pg: number) {
+function slideIngestion(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Multi-Source Ingestion', 'Seven sources. One pipeline. Idempotent and timeout-safe.')
   addFooter(s, pg)
@@ -566,7 +566,7 @@ function slideIngestion(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.25, w: 12.3, colW: [2.7, 4.0, 2.7, 2.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.5 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.25, w: 12.3, colW: [2.7, 4.0, 2.7, 2.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.5 })
 
   s.addShape('rect', { x: 0.5, y: 6.0, w: 12.3, h: 0.7, fill: { color: DN.navy }, rectRadius: 0.08 })
   s.addText('All sources land in dataset_rows_flat or domain-specific tables — same downstream AI pipeline. One model. Any input.', {
@@ -575,7 +575,7 @@ function slideIngestion(pptx: any, pg: number) {
 }
 
 // ── 11. Cron orchestration ─────────────────────────────────────────────────
-function slideCron(pptx: any, pg: number) {
+function slideCron(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Cron Orchestration', 'Seven jobs. CRON_SECRET-gated. 45-second time budget on a 60-second timeout.')
   addFooter(s, pg)
@@ -603,7 +603,7 @@ function slideCron(pptx: any, pg: number) {
       fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white },
     },
   })))]
-  s.addTable(rows as any, { x: 0.5, y: 1.25, w: 12.3, colW: [3.4, 2.0, 6.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.5 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.25, w: 12.3, colW: [3.4, 2.0, 6.9], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.5 })
 
   s.addText([
     bullet('Every cron handler bails at TIME_BUDGET_MS=45000 — never lets Vercel kill mid-write', { fontSize: 12 }),
@@ -613,7 +613,7 @@ function slideCron(pptx: any, pg: number) {
 }
 
 // ── 12. Reporting pipeline ─────────────────────────────────────────────────
-function slideReporting(pptx: any, pg: number) {
+function slideReporting(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Reporting Pipeline', 'Server-rendered consulting decks. Generated, not authored.')
   addFooter(s, pg)
@@ -633,7 +633,7 @@ function slideReporting(pptx: any, pg: number) {
 }
 
 // ── 13. Scalability ────────────────────────────────────────────────────────
-function slideScalability(pptx: any, pg: number) {
+function slideScalability(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Scalability Patterns', '500K rows. Sub-10ms vector search. Predictable tail latency.')
   addFooter(s, pg)
@@ -658,7 +658,7 @@ function slideScalability(pptx: any, pg: number) {
 }
 
 // ── 13.5 Bottlenecks & Bound Profile ──────────────────────────────────────
-function slideBottlenecks(pptx: any, pg: number) {
+function slideBottlenecks(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Bottlenecks & Bound Profile', 'Where the limits live — per subsystem, plus where it would break first')
   addFooter(s, pg)
@@ -691,7 +691,7 @@ function slideBottlenecks(pptx: any, pg: number) {
     { text: r[2], options: { fontSize: 9.5, fontFace: 'Arial', color: DN.ink, fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white } } },
     { text: r[3], options: { fontSize: 9.5, fontFace: 'Arial', color: DN.ink, fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white } } },
   ])]
-  s.addTable(rows as any, { x: 0.5, y: 1.2, w: 12.3, colW: [3.3, 1.0, 4.0, 4.0], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.34 })
+  s.addTable(rows as PptxGenJS.TableRow[], { x: 0.5, y: 1.2, w: 12.3, colW: [3.3, 1.0, 4.0, 4.0], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.34 })
 
   // System-level constraints
   s.addShape('rect', { x: 0.5, y: 5.4, w: 6.0, h: 1.7, fill: { color: DN.slateCard }, rectRadius: 0.08 })
@@ -716,7 +716,7 @@ function slideBottlenecks(pptx: any, pg: number) {
 }
 
 // ── 14. Security ───────────────────────────────────────────────────────────
-function slideSecurity(pptx: any, pg: number) {
+function slideSecurity(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Security Posture', 'Defense in depth. Boundaries that survive bugs.')
   addFooter(s, pg)
@@ -733,7 +733,7 @@ function slideSecurity(pptx: any, pg: number) {
 }
 
 // ── 15. Auditability ──────────────────────────────────────────────────────
-function slideAuditability(pptx: any, pg: number) {
+function slideAuditability(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Auditability', 'Three audit trails. Real-time. Org-scoped.')
   addFooter(s, pg)
@@ -787,7 +787,7 @@ function slideAuditability(pptx: any, pg: number) {
 }
 
 // ── 16. Observability + FinOps ─────────────────────────────────────────────
-function slideObservability(pptx: any, pg: number) {
+function slideObservability(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Observability + AI FinOps', 'Errors, traces, and AI cost — all visible per org.')
   addFooter(s, pg)
@@ -808,7 +808,7 @@ function slideObservability(pptx: any, pg: number) {
 }
 
 // ── 17. Failure & DR ───────────────────────────────────────────────────────
-function slideFailureDR(pptx: any, pg: number) {
+function slideFailureDR(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Failure Modes + Data Integrity', 'Idempotent ingestion. Cascade-protected deletes. Supabase-managed backups.')
   addFooter(s, pg)
@@ -824,7 +824,7 @@ function slideFailureDR(pptx: any, pg: number) {
 }
 
 // ── 18. Compliance + remediation ───────────────────────────────────────────
-function slideCompliance(pptx: any, pg: number) {
+function slideCompliance(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Compliance Posture & Honest Gaps', 'What\'s done. What\'s in flight. What we deferred and why.')
   addFooter(s, pg)
@@ -876,7 +876,7 @@ function slideCompliance(pptx: any, pg: number) {
 }
 
 // ── 19. 12-month roadmap ───────────────────────────────────────────────────
-function slideRoadmap(pptx: any, pg: number) {
+function slideRoadmap(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, '12-Month Architecture Roadmap', 'What investment unlocks technically.')
   addFooter(s, pg)
@@ -897,7 +897,7 @@ function slideRoadmap(pptx: any, pg: number) {
 }
 
 // ── 20. The technical bet ──────────────────────────────────────────────────
-function slideTheBet(pptx: any, pg: number) {
+function slideTheBet(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
   s.addShape('rect', { x: 0, y: 0, w: W, h: 0.07, fill: { color: DN.gold } })
@@ -930,7 +930,7 @@ function slideTheBet(pptx: any, pg: number) {
 }
 
 // ── Deck assembler ─────────────────────────────────────────────────────────
-function buildDeck(pptx: any) {
+function buildDeck(pptx: PptxGenJS) {
   let pg = 0
   addTitleSlide(pptx)
   pg = 1

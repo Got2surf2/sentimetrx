@@ -15,12 +15,20 @@ import { useRows } from '@/components/analyze/RowsContext'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { applyFilters } from '@/lib/filterUtils'
 import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
+import type { ImpactAnalysis, ThemeImpactResult } from '@/lib/themeImpact'
+
+// Minimal shape of the Plotly bundle we call into.
+interface PlotlyModule {
+  newPlot: (...args: unknown[]) => void
+  purge: (el: HTMLElement) => void
+  downloadImage: (el: HTMLElement, opts: Record<string, unknown>) => void
+}
 
 // Dynamic Plotly import
-var PlotlyRef: any = null
-function getPlotly(): Promise<any> {
+var PlotlyRef: PlotlyModule | null = null
+function getPlotly(): Promise<PlotlyModule> {
   if (PlotlyRef) return Promise.resolve(PlotlyRef)
-  return import('plotly.js-dist-min').then(function(m) { PlotlyRef = m.default || m; return PlotlyRef })
+  return import('plotly.js-dist-min').then(function(m) { PlotlyRef = (m.default || m) as PlotlyModule; return PlotlyRef as PlotlyModule })
 }
 
 import { T } from '@/lib/analyzeTheme'
@@ -173,7 +181,7 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
   var urlParamFields = fields.filter(function(f) { return f.section === 'url_param' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
-  var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
+  var asc2 = function(a: SchemaField, b: SchemaField) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
   var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
   // Themes (__themes__) and Dimensions (__dim_*) are DERIVED categories, not schema
   // columns \u2014 pull them out of raw "Categorical" into their own groups so the picker
@@ -226,7 +234,7 @@ function wrapLabels(cats: string[], targetWidth: number): string[] {
 
 // Returns xaxis overrides that prevent categorical label overlap on vertical bar / waterfall / crosstab.
 // Wraps long labels at word boundaries; falls back to rotation only for very dense charts.
-function catXAxis(cats: string[]): Record<string, any> {
+function catXAxis(cats: string[]): Record<string, unknown> {
   var maxLen = cats.reduce(function(mx, c) { return Math.max(mx, String(c).length) }, 0)
   // For few categories with long labels, wrapping handles it — no rotation needed
   if (cats.length < 5 || maxLen <= 10) return {}
@@ -236,7 +244,7 @@ function catXAxis(cats: string[]): Record<string, any> {
   }
 }
 
-function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; style?: React.CSSProperties }) {
+function PlotlyChart({ traces, layout, style }: { traces: Record<string, unknown>[]; layout?: any; style?: React.CSSProperties }) {
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
     if (!ref.current || !traces.length) return
@@ -347,7 +355,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   // Apply value aliases to all field summary counts so every chart gets aliased labels
   var fs: Record<string, FieldSummary> = {}
   Object.entries(rawFs).forEach(function(entry) {
-    var key = entry[0], summary = entry[1] as any
+    var key = entry[0], summary = entry[1]
     if (summary.counts) {
       var al = aliasedCounts(key, summary.counts, schema)
       fs[key] = Object.assign({}, summary, { counts: al, topN: summary.topN ? summary.topN.map(function(v: string) { return resolveAlias(key, v, schema) }) : undefined })
@@ -425,7 +433,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       })
     }
     var wrappedCats = wrapLabels(cats, isH ? 28 : 18)
-    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, cliponaxis: false, hovertemplate: hoverTpl }
+    var trace: Record<string, unknown> = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, cliponaxis: false, hovertemplate: hoverTpl }
     if (isH) { trace.y = wrappedCats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = wrappedCats; trace.y = displayVals }
 
@@ -446,8 +454,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       var hy = sum.histogram.map(function(b) { return b.count })
       var intX = isSmallIntRange(sum.min, sum.max)
       var maxY = Math.max.apply(null, hy)
-      var distShapes: any[] = []
-      var distAnnotations: any[] = []
+      var distShapes: Record<string, unknown>[] = []
+      var distAnnotations: Record<string, unknown>[] = []
       if (sum.avg != null) {
         distShapes.push({ type: 'line', x0: sum.avg, x1: sum.avg, y0: 0, y1: 1, yref: 'paper', line: { color: T.accent, width: 2, dash: 'dash' } })
         distAnnotations.push({ x: sum.avg, y: 0.98, yref: 'paper', text: 'Mean ' + sum.avg.toFixed(1), showarrow: false, font: { size: 11, color: T.accent }, xanchor: sum.avg > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.avg > (sum.max || 0) * 0.7 ? -4 : 4 })
@@ -623,7 +631,7 @@ function useChartRows(datasetId: string, enrichKey: number = 0) {
 }
 
 // Aggregation hook — fetches pre-computed results from SQL, no raw rows needed
-var _aggCache: Record<string, any> = {}
+var _aggCache: Record<string, unknown> = {}
 
 function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
   var [data, setData] = useState<any>(null)
@@ -730,7 +738,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   if (!needsRows && aggData && aggData.grid) {
     grid = aggData.grid
     ;(aggData.cols || []).forEach(function(c: string) { colorVals.add(c) })
-    Object.values(grid).forEach(function(row: any) { Object.entries(row).forEach(function(e: any) { colorTotals[e[0]] = (colorTotals[e[0]] || 0) + e[1] }) })
+    Object.values(grid).forEach(function(row: Record<string, number>) { Object.entries(row).forEach(function(e: [string, number]) { colorTotals[e[0]] = (colorTotals[e[0]] || 0) + e[1] }) })
   } else {
     rows.forEach(function(r) {
       var cat = String(r[catField] || '').trim()
@@ -799,7 +807,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     var stackHoverTpl = isH
       ? (isBarPercent ? '%{x:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
       : (isBarPercent ? '%{y:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
-    var trace: any = { type: 'bar', name: colLabel + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
+    var trace: Record<string, unknown> = { type: 'bar', name: colLabel + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
     if (isH) { trace.y = catLabels; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = catLabels; trace.y = ys }
     return trace
@@ -885,7 +893,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   }
 
   var hoverTpl = isH ? '%{x:.2f}<extra>%{y}</extra>' : '%{y:.2f}<extra>%{x}</extra>'
-  var trace: any = {
+  var trace: Record<string, unknown> = {
     type: 'bar',
     marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } },
     text: vals.map(function(v) { return String(v) }),
@@ -1161,8 +1169,8 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   var [minN, setMinN] = useState(3)
   var [sortBy, setSortBy] = useState<'delta' | 'count'>('delta')
   var [mode, setMode] = useState<'delta' | 'regression'>('delta')
-  var [regressionResults, setRegressionResults] = useState<any[]>([]) // one per OE field
-  var [combinedResult, setCombinedResult] = useState<any>(null)
+  var [regressionResults, setRegressionResults] = useState<ImpactAnalysis[]>([]) // one per OE field
+  var [combinedResult, setCombinedResult] = useState<ImpactAnalysis | null>(null)
 
   var themeModel = _enrichCtx.themeModel
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
@@ -1180,7 +1188,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     var oeArr = Array.from(selectedOE)
 
     // Per-field regressions
-    var perField: any[] = []
+    var perField: ImpactAnalysis[] = []
     for (var oi = 0; oi < oeArr.length; oi++) {
       var fieldObj = schema.find(function(f) { return f.field === oeArr[oi] })
       var r = computeThemeImpact({
@@ -1244,7 +1252,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
       var themeScores: Record<string, number[]> = {}
       themeModel.themes.forEach(function(t: any) { themeScores[t.name] = [] })
 
-      rows.forEach(function(r: any) {
+      rows.forEach(function(r: Record<string, unknown>) {
         var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
         if (isNaN(score)) return
         var text = String(r[oeFld] || '').toLowerCase().trim()
@@ -1296,7 +1304,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   var xFormat = '+.2f'
   var rInfo = ''
   var isGrouped = false
-  var traces: any[] = []
+  var traces: Record<string, unknown>[] = []
   var maxAbs = 0.1
   var xPad = 0.1
 
@@ -1344,14 +1352,14 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     var fieldColors = pal.slice(0, 4)
     // Collect all theme names across all regressions
     var allNames = new Set<string>()
-    regressionResults.forEach(function(r: any) { r.impacts.forEach(function(imp: any) { allNames.add(imp.themeName) }) })
+    regressionResults.forEach(function(r: ImpactAnalysis) { r.impacts.forEach(function(imp: ThemeImpactResult) { allNames.add(imp.themeName) }) })
     var themeNames = Array.from(allNames)
     // Sort by absolute max coefficient across fields
     themeNames.sort(function(a, b) {
       var maxA = 0, maxB = 0
-      regressionResults.forEach(function(r: any) {
-        var ia = r.impacts.find(function(i: any) { return i.themeName === a })
-        var ib = r.impacts.find(function(i: any) { return i.themeName === b })
+      regressionResults.forEach(function(r: ImpactAnalysis) {
+        var ia = r.impacts.find(function(i: ThemeImpactResult) { return i.themeName === a })
+        var ib = r.impacts.find(function(i: ThemeImpactResult) { return i.themeName === b })
         if (ia) maxA = Math.max(maxA, Math.abs(ia.coefficient))
         if (ib) maxB = Math.max(maxB, Math.abs(ib.coefficient))
       })
@@ -1359,15 +1367,15 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     })
 
     var maxAbs = 0.1
-    regressionResults.forEach(function(r: any, ri: number) {
+    regressionResults.forEach(function(r: ImpactAnalysis, ri: number) {
       var coeffs = themeNames.map(function(tn) {
-        var imp = r.impacts.find(function(i: any) { return i.themeName === tn })
+        var imp = r.impacts.find(function(i: ThemeImpactResult) { return i.themeName === tn })
         return imp ? imp.coefficient : 0
       })
       coeffs.forEach(function(c) { if (Math.abs(c) > maxAbs) maxAbs = Math.abs(c) })
       var baseColor = fieldColors[ri % fieldColors.length]
       var barOpacities = coeffs.map(function(c, ci) {
-        var imp = r.impacts.find(function(i: any) { return i.themeName === themeNames[ci] })
+        var imp = r.impacts.find(function(i: ThemeImpactResult) { return i.themeName === themeNames[ci] })
         return imp && imp.significant ? 1.0 : 0.3
       })
       traces.push({
@@ -1381,7 +1389,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     })
     xLabel = 'Regression coefficient (impact on ' + scoreLabel + ')'
     xFormat = '+.1f'
-    rInfo = regressionResults.map(function(r: any) {
+    rInfo = regressionResults.map(function(r: ImpactAnalysis) {
       return (r.fieldLabel || '?') + ': R\u00B2=' + (r.rSquared * 100).toFixed(0) + '%'
     }).join('  \u00B7  ') + '  \u00B7  n=' + (regressionResults[0]?.n || 0).toLocaleString()
 
@@ -1391,9 +1399,9 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   } else if (useRegression) {
     // Single OE field — single trace
     var singleResult = regressionResults[0]
-    chartData = singleResult.impacts.map(function(imp: any) {
+    chartData = singleResult.impacts.map(function(imp: ThemeImpactResult) {
       return { name: imp.themeName, delta: imp.coefficient, n: imp.mentions, avg: imp.avgScore || 0, significant: imp.significant }
-    })
+    }) as unknown as typeof chartData
     xLabel = 'Regression coefficient (impact on ' + scoreLabel + ')'
     xFormat = '+.1f'
     rInfo = 'R\u00B2 = ' + (singleResult.rSquared * 100).toFixed(1) + '%  \u00B7  n = ' + singleResult.n.toLocaleString() + '  \u00B7  baseline = ' + singleResult.intercept.toFixed(1)
@@ -1430,7 +1438,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     xPad = maxAbs * 0.35
   }
 
-  var layout: any = {
+  var layout: Record<string, unknown> = {
     xaxis: { title: xLabel, range: [-(maxAbs + (xPad || maxAbs * 0.35)), maxAbs + (xPad || maxAbs * 0.35)], zeroline: true, zerolinewidth: 2, zerolinecolor: T.textMid, tickformat: xFormat },
     yaxis: { automargin: true },
     margin: { t: 20, r: 100, b: 60, l: 20 },
@@ -1446,7 +1454,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Mode:</span>
           {([['delta', 'Mean Delta'], ['regression', 'Regression']] as [string, string][]).map(function(pair) {
-            return <button key={pair[0]} onClick={function() { setMode(pair[0] as any) }}
+            return <button key={pair[0]} onClick={function() { setMode(pair[0] as 'delta' | 'regression') }}
               style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (mode === pair[0] ? T.accent : T.border), background: mode === pair[0] ? T.accentBg : 'transparent', color: mode === pair[0] ? T.accent : T.textMid, cursor: 'pointer', fontWeight: mode === pair[0] ? 700 : 400 }}>
               {pair[1]}
             </button>
@@ -1464,7 +1472,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Sort:</span>
           {([['delta', 'By impact'], ['count', 'By volume']] as [string, string][]).map(function(pair) {
-            return <button key={pair[0]} onClick={function() { setSortBy(pair[0] as any) }}
+            return <button key={pair[0]} onClick={function() { setSortBy(pair[0] as 'delta' | 'count') }}
               style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (sortBy === pair[0] ? T.accent : T.border), background: sortBy === pair[0] ? T.accentBg : 'transparent', color: sortBy === pair[0] ? T.accent : T.textMid, cursor: 'pointer', fontWeight: sortBy === pair[0] ? 700 : 400 }}>
               {pair[1]}
             </button>
@@ -1652,7 +1660,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var catAgg: Record<string, Record<string, { n: number; avg: number | null }>> | null = null
   if (tsDimAxis && taxSeries.data && taxSeries.data.series) {
     catAgg = {}
-    taxSeries.data.series.forEach(function(s: any) {
+    taxSeries.data.series.forEach(function(s: { sub: string; date: string; count: number; avg: number | null }) {
       if (!catAgg![s.sub]) catAgg![s.sub] = {}
       catAgg![s.sub][s.date] = { n: s.count, avg: s.avg }
     })
@@ -1662,7 +1670,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
   // ── Build traces — with optional categorical breakdown ──────────────
-  var traces: any[] = []
+  var traces: Record<string, unknown>[] = []
 
   // Pre-compute breakdown groups (used by both combined and split modes)
   var catGroups: Record<string, Record<string, number[]>> = {}
@@ -1711,7 +1719,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
     var dates: string[] = []
     var yVals: number[] = []
     if (aggData && aggData.series && aggData.series.length > 0) {
-      aggData.series.forEach(function(s: any) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
+      aggData.series.forEach(function(s: { date: string; avg: number | null; count: number }) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
     } else {
       var grouped: Record<string, number[]> = {}
       rows.forEach(function(r) { var raw = String(r[dateField] || ''); if (!raw) return; var d = bucketKey(raw, effectiveBucket); if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
@@ -1741,7 +1749,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var bucketLabel = BUCKET_OPTIONS.find(function(o) { return o.value === effectiveBucket })?.label || 'Daily'
 
   // Build split chart data if splitMode + breakdown
-  var splitCharts: { name: string; traces: any[]; color: string }[] = []
+  var splitCharts: { name: string; traces: Record<string, unknown>[]; color: string }[] = []
   if (hasBreakdown && splitMode && catNames.length > 0) {
     catNames.forEach(function(cat, ci) {
       var yVals = sortedDates.map(function(d) { return tsBreakdownY(cat, d) })
@@ -1758,7 +1766,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ fontSize: 10, color: T.textFaint }}>Group by:</span>
-          <select value={bucketOverride} onChange={function(e) { setBucketOverride(e.target.value as any) }}
+          <select value={bucketOverride} onChange={function(e) { setBucketOverride(e.target.value as TimeBucket | 'auto') }}
             style={{ fontSize: 10, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, padding: '2px 6px', background: 'transparent', cursor: 'pointer' }}>
             <option value="auto">Auto ({bucketLabel})</option>
             {BUCKET_OPTIONS.filter(function(o) { return o.value !== 'hour' }).map(function(o) {
@@ -1912,7 +1920,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     var savedChart = readSession<string>(_activeChartKey)
     if (savedChart) setActiveChart(savedChart)
 
-    var savedDisplay = readSession<any>(_displayKey)
+    var savedDisplay = readSession<{ barMode?: 'count' | 'percent' | 'average'; barStack?: boolean; barOrient?: 'v' | 'h'; smartAxes?: boolean; activePalette?: string }>(_displayKey)
     if (savedDisplay) {
       if (savedDisplay.barMode) setBarMode(savedDisplay.barMode)
       if (typeof savedDisplay.barStack === 'boolean') setBarStack(savedDisplay.barStack)
@@ -1942,7 +1950,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var _anyFilter = Object.keys(_effFilters || {}).length > 0
   var _topRows = useChartRows(datasetId, _anyFilter ? (enrichKey || 0) : -1)
   var _filteredRowIds: number[] | null = (_anyFilter && _topRows.loaded)
-    ? (_topRows.rows.map(function(r) { return (r as any)._rowId }).filter(function(v: any) { return typeof v === 'number' }) as number[])
+    ? (_topRows.rows.map(function(r) { return r._rowId }).filter(function(v: unknown) { return typeof v === 'number' }) as number[])
     : null
 
   // Set enrichment context for useRows — must be before any inner component renders
@@ -1973,7 +1981,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       .then(function(d) {
         if (cancelled || !d || !Array.isArray(d.subs)) return
         var byAxis: Record<string, Record<string, number>> = {}
-        d.subs.forEach(function(s: any) {
+        d.subs.forEach(function(s: { axis: string; sub: string; count: number }) {
           if (!byAxis[s.axis]) byAxis[s.axis] = {}
           byAxis[s.axis][s.sub] = Number(s.count) || 0
         })
@@ -2025,16 +2033,16 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // Inject virtual mapped numeric fields for categoricals with remapping
   var mappedFields = fields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
   mappedFields.forEach(function(f) {
-    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
+    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as SchemaField])
   })
 
   // Inject the 7 virtual "Dimension" categorical fields.
-  if (hasDimensions) allFields = allFields.concat(dimVirtualFields() as any)
+  if (hasDimensions) allFields = allFields.concat(dimVirtualFields() as SchemaField[])
 
   // Build theme counts for the virtual field
   var enrichedAnalytics = analytics
   if (analytics) {
-    var extraSummaries: Record<string, any> = {}
+    var extraSummaries: Record<string, FieldSummary> = {}
     if (hasThemes) {
       var themeCounts: Record<string, number> = {}
       themeModel.themes
@@ -2140,7 +2148,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
-      .then(function(r) { return r.ok ? r.json() : {} as any })
+      .then(function(r) { return r.ok ? r.json() : {} as Record<string, unknown> })
       .then(function(d) { if (d.saved_charts && Array.isArray(d.saved_charts)) setSavedCharts(d.saved_charts) })
       .catch(function() {})
   }, [datasetId])

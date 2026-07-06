@@ -15,15 +15,62 @@ export const dynamic = 'force-dynamic'
 
 type ShareType = 'study' | 'campaign' | 'townhall' | 'conversation' | 'analytics' | 'agent_study'
 
+type OrgIdRow = { org_id: string | null }
+type OrgAdminFlag = { is_admin_org: boolean }
+type UserOrgRow = { org_id: string | null; organizations: OrgAdminFlag | OrgAdminFlag[] | null }
+type RespStudiesRow = { studies: OrgIdRow | OrgIdRow[] | null }
+
+interface ShareRequestBody {
+  type?: string
+  target_id?: string
+  expires_in?: string
+  html?: string
+  html_labeled?: string
+  metadata?: unknown
+}
+
+interface StudyThemeSummary {
+  name: string
+  description: string
+  keywords: string[]
+  sentiment: string
+  count: number
+  percentage: number
+  avgRating: number | null
+  ratingDelta: number | null
+}
+
+interface ThemeModelTheme {
+  name: string
+  description?: string
+  keywords?: string[]
+  sentiment?: string
+  count?: number
+  percentage?: number
+  avgRating?: number | null
+  ratingDelta?: number | null
+}
+
+interface TownhallTheme {
+  label?: string
+  source?: string
+  state?: string
+  keywords?: string[]
+  sentiment?: string
+  response_count?: number
+  mention_count?: number
+  example_quote?: string
+}
+
 async function getUserOrg(service: ReturnType<typeof createServiceRoleClient>, userId: string) {
   const { data: userData } = await service
     .from('users')
     .select('org_id, organizations(is_admin_org)')
     .eq('id', userId)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const orgId = (userData as any)?.org_id as string | null
+  const orgRel = (userData as UserOrgRow | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const orgId = (userData as UserOrgRow | null)?.org_id as string | null
   return { orgId, isAdmin }
 }
 
@@ -33,33 +80,33 @@ async function getUserOrg(service: ReturnType<typeof createServiceRoleClient>, u
 async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleClient>, type: ShareType, targetId: string): Promise<string | null> {
   if (type === 'study') {
     const { data } = await service.from('studies').select('org_id').eq('id', targetId).single()
-    return (data as any)?.org_id ?? null
+    return (data as OrgIdRow | null)?.org_id ?? null
   }
   if (type === 'campaign') {
     const { data } = await service.from('campaigns').select('org_id').eq('id', targetId).single()
-    return (data as any)?.org_id ?? null
+    return (data as OrgIdRow | null)?.org_id ?? null
   }
   if (type === 'townhall') {
     const { data } = await service.from('pulseiq_sessions').select('org_id').eq('id', targetId).single()
-    return (data as any)?.org_id ?? null
+    return (data as OrgIdRow | null)?.org_id ?? null
   }
   if (type === 'analytics') {
     const { data } = await service.from('datasets').select('org_id').eq('id', targetId).single()
-    return (data as any)?.org_id ?? null
+    return (data as OrgIdRow | null)?.org_id ?? null
   }
   if (type === 'agent_study') {
     const { data } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
-    return (data as any)?.org_id ?? null
+    return (data as OrgIdRow | null)?.org_id ?? null
   }
   if (type === 'conversation') {
     const { data: bot } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
-    if ((bot as any)?.org_id) return (bot as any).org_id as string
+    if ((bot as OrgIdRow | null)?.org_id) return (bot as OrgIdRow).org_id as string
     const { data: resp } = await service
       .from('responses')
       .select('studies(org_id)')
       .eq('id', targetId)
       .maybeSingle()
-    const s = (resp as any)?.studies
+    const s = (resp as RespStudiesRow | null)?.studies
     const orgId = Array.isArray(s) ? s[0]?.org_id : s?.org_id
     return orgId ?? null
   }
@@ -95,7 +142,7 @@ export async function POST(req: NextRequest) {
   const baseFromReq = reqUrl.origin // includes protocol + host + port
   const baseUrl = baseFromReq || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
 
-  let body: any
+  let body: ShareRequestBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { type, target_id, expires_in } = body
@@ -113,12 +160,12 @@ export async function POST(req: NextRequest) {
   // surfaces a Plain | Labeled toggle when html_labeled is present.
   if (type === 'conversation' && body.html) {
     const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
-    const hours2 = expiryHours2[expires_in] || 168
+    const hours2 = expiryHours2[expires_in as string] || 168
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     let html_labeled: string | undefined
     if (body.html_labeled) {
       const { data: caller } = await service.from('users').select('role').eq('id', user.id).single()
-      if ((caller as any)?.role === 'platform_admin') html_labeled = String(body.html_labeled)
+      if ((caller as { role: string | null } | null)?.role === 'platform_admin') html_labeled = String(body.html_labeled)
     }
     const meta: Record<string, unknown> = { html: body.html }
     if (html_labeled) meta.html_labeled = html_labeled
@@ -142,7 +189,7 @@ export async function POST(req: NextRequest) {
   // conversation branch above, minus the labeled variant.
   if (type === 'agent_study' && body.html) {
     const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
-    const hours2 = expiryHours2[expires_in] || 720
+    const hours2 = expiryHours2[expires_in as string] || 720
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     const { data: asData, error: asErr } = await service
       .from('shared_links')
@@ -160,7 +207,7 @@ export async function POST(req: NextRequest) {
   // For analytics shares, store filter criteria in metadata
   if (type === 'analytics' && body.metadata) {
     const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
-    const hours2 = expiryHours2[expires_in] || 168
+    const hours2 = expiryHours2[expires_in as string] || 168
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     const { data: aData, error: aErr } = await service
       .from('shared_links')
@@ -178,7 +225,7 @@ export async function POST(req: NextRequest) {
 
   // Calculate expiry
   const expiryHours: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
-  const hours = expiryHours[expires_in] || 168 // default 7 days
+  const hours = expiryHours[expires_in as string] || 168 // default 7 days
   const expiresAt = new Date(Date.now() + hours * 3600 * 1000)
 
   const { data, error } = await service
@@ -296,7 +343,7 @@ export async function GET(req: NextRequest) {
     const npsPrompt = config.npsPrompt || null
 
     // Fetch themes from dataset_state (pre-computed, no raw text exposed)
-    let themesSummary: any[] = []
+    let themesSummary: StudyThemeSummary[] = []
     const { data: dsRow } = await service
       .from('datasets')
       .select('id')
@@ -313,7 +360,7 @@ export async function GET(req: NextRequest) {
       const tm = stateRow?.theme_model as any
       if (tm?.themes?.length > 0) {
         const totalCount = (responses || []).length
-        themesSummary = tm.themes.map((t: any) => ({
+        themesSummary = tm.themes.map((t: ThemeModelTheme) => ({
           name: t.name,
           description: t.description || '',
           keywords: (t.keywords || []).slice(0, 6),
@@ -394,13 +441,13 @@ export async function GET(req: NextRequest) {
     const avgWords = totalResponses > 0 ? Math.round(texts.reduce((s, t) => s + t.split(/\s+/).length, 0) / totalResponses) : 0
 
     const visibleThemes = (themes || [])
-      .filter((t: any) => t.state !== 'dismissed')
-      .sort((a: any, b: any) => (b.response_count || 0) - (a.response_count || 0))
+      .filter((t: TownhallTheme) => t.state !== 'dismissed')
+      .sort((a: TownhallTheme, b: TownhallTheme) => (b.response_count || 0) - (a.response_count || 0))
 
     return NextResponse.json({
       type: 'townhall',
       session: { name: session.name, bot_emoji: cfg?.bot_emoji || '', status: session.status, started_at: session.started_at, ended_at: session.ended_at },
-      themes: visibleThemes.map((t: any) => ({
+      themes: visibleThemes.map((t: TownhallTheme) => ({
         label: t.label, source: t.source, state: t.state, keywords: t.keywords || [],
         sentiment: t.sentiment || 'neutral', response_count: t.response_count || 0,
         percentage: totalResponses > 0 ? Math.round((t.mention_count || t.response_count || 0) / totalResponses * 100) : 0,

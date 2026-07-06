@@ -6,6 +6,9 @@ export interface TTestResult { t: number; df: number; p: number; ma: number; mb:
 export interface ANOVAResult { F: number; dfB: number; dfW: number; p: number; eta2: number; SSB: number; SSW: number; MSB: number; MSW: number; groupStats: Record<string, { n: number; mean: number; sd: number }>; pairwise: { a: string; b: string; t: number; df: number; p: number; ma: number; mb: number; pAdj: number }[]; k: number; N: number }
 export interface ChiSquareResult { chi2: number; df: number; p: number; V: number; N: number; rows: string[]; cols: string[]; table: Record<string, Record<string, number>>; rowSums: Record<string, number>; colSums: Record<string, number> }
 export interface RegressionResult { coefs: { name: string; beta: number; se: number; t: number; p: number; ci: [number, number] }[]; R2: number; R2adj: number; F: number; Fp: number; n: number; p: number; SSE: number; SST: number; MSE: number; yhat: number[]; resid: number[]; names: string[] }
+export interface MannWhitneyResult { U: number; z: number; p: number; na: number; nb: number }
+export interface DescStats { n: number; mn: number; sd: number; med: number; skew: number; sw?: { W: number; p: number } | null }
+export interface TTestBL { t: number; df: number; p: number; ma: number; mb: number; d: number }
 
 export function mean(a: number[]): number { return a.length ? a.reduce(function(s, v) { return s + v }, 0) / a.length : NaN }
 export function variance(a: number[], ddof: number = 1): number { if (a.length < 2) return NaN; var m = mean(a); return a.reduce(function(s, v) { return s + (v - m) ** 2 }, 0) / (a.length - ddof) }
@@ -184,7 +187,7 @@ export function anovaFromStats(groups: Record<string, { mean: number; sd: number
   var dfB = kk - 1, dfW = N - kk; if (dfW <= 0) return null
   var MSB = SSB / dfB, MSW = SSW / dfW; if (!MSW) return null
   var F = MSB / MSW, p = fDistP(F, dfB, dfW), eta2 = SSB / (SSB + SSW)
-  var pairwise: any[] = []
+  var pairwise: ANOVAResult['pairwise'] = []
   for (var ii = 0; ii < keys.length; ii++) {
     for (var jj = ii + 1; jj < keys.length; jj++) {
       var r = welchTTestFromStats(groups[keys[ii]], groups[keys[jj]])
@@ -233,7 +236,7 @@ export function oneWayANOVA(groups: Record<string, number[]>): any {
   var dfB = kk - 1, dfW = N - kk; if (dfW <= 0) return null
   var MSB = SSB / dfB, MSW = SSW / dfW; if (!MSW) return null
   var F = MSB / MSW, p = fDistP(F, dfB, dfW), eta2 = SSB / (SSB + SSW)
-  var pairwise: any[] = []
+  var pairwise: ANOVAResult['pairwise'] = []
   for (var ii = 0; ii < keys.length; ii++) {
     for (var jj = ii + 1; jj < keys.length; jj++) {
       var r = welchTTest(groups[keys[ii]], groups[keys[jj]])
@@ -382,7 +385,7 @@ export function sigTooltip(sig: { dir: string; z: number; p1: number; p2: number
 }
 
 // ─── BottomLine text generators (Expert) ──────────────────────────────────
-export function descBL(field: string, s: any): string {
+export function descBL(field: string, s: DescStats): string {
   var normal = s.sw && s.sw.p > 0.05
   var sk = Math.abs(s.skew) < 0.5 ? 'approximately symmetric' : s.skew > 0 ? 'positively skewed' : 'negatively skewed'
   var normStr = s.sw && !isNaN(s.sw.p) ? ' and ' + (normal ? 'appears normally distributed' : 'departs from normality') + ' (Shapiro-Wilk W=' + fmt2(s.sw.W) + ', ' + fmtP(s.sw.p) + ')' : '.'
@@ -398,7 +401,7 @@ export function corrBL(f1: string, f2: string, r: number, p: number, n: number, 
   return f1 + ' and ' + f2 + ' show a ' + str + ' ' + dir + ' ' + type + ' correlation (r=' + fmt2(r) + ', ' + fmtP(p) + ', n=' + n + '). ' + dirStr
 }
 
-export function ttestBL(res: any, f: string): string {
+export function ttestBL(res: TTestBL | null, f: string): string {
   if (!res) return ''
   var d = Math.abs(res.d) < 0.2 ? 'negligible' : Math.abs(res.d) < 0.5 ? 'small' : Math.abs(res.d) < 0.8 ? 'medium' : 'large'
   if (res.p >= 0.05) return 'No significant difference in ' + f + ' between the two groups (t=' + fmt2(res.t) + ', df=' + fmt2(res.df) + ', ' + fmtP(res.p) + '). Means: ' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '.'
@@ -406,41 +409,41 @@ export function ttestBL(res: any, f: string): string {
   return 'Significant difference in ' + f + ' between groups (t=' + fmt2(res.t) + ', df=' + fmt2(res.df) + ', ' + fmtP(res.p) + '). ' + hi + ' group has higher mean (' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '). Effect size is ' + d + " (Cohen's d = " + fmt2(res.d) + ').'
 }
 
-export function anovaBL(res: any, f: string): string {
+export function anovaBL(res: ANOVAResult | null, f: string): string {
   if (!res) return ''
   var eff = res.eta2 < 0.01 ? 'negligible' : res.eta2 < 0.06 ? 'small' : res.eta2 < 0.14 ? 'medium' : 'large'
   if (res.p >= 0.05) return 'No significant difference in ' + f + ' across ' + res.k + ' groups (F=' + fmt2(res.F) + ', df=' + res.dfB + ',' + res.dfW + ', ' + fmtP(res.p) + ', \u03B7\u00B2=' + fmt2(res.eta2) + ').'
-  var sig = res.pairwise ? res.pairwise.filter(function(pw: any) { return pw.pAdj < 0.05 }) : []
-  var pwStr = sig.length ? ' Significant pairwise differences: ' + sig.map(function(pw: any) { return pw.a + ' vs ' + pw.b }).join('; ') + '.' : ''
+  var sig = res.pairwise ? res.pairwise.filter(function(pw: ANOVAResult['pairwise'][number]) { return pw.pAdj < 0.05 }) : []
+  var pwStr = sig.length ? ' Significant pairwise differences: ' + sig.map(function(pw: ANOVAResult['pairwise'][number]) { return pw.a + ' vs ' + pw.b }).join('; ') + '.' : ''
   return 'Significant difference in ' + f + ' across ' + res.k + ' groups (F=' + fmt2(res.F) + ', ' + fmtP(res.p) + '). Effect size is ' + eff + ' (\u03B7\u00B2=' + fmt2(res.eta2) + ').' + pwStr
 }
 
-export function mwBL(res: any, f: string, g1: string, g2: string): string {
+export function mwBL(res: MannWhitneyResult | null, f: string, g1: string, g2: string): string {
   if (!res) return ''
   if (res.p >= 0.05) return 'No significant difference in ' + f + ' between ' + g1 + ' and ' + g2 + ' (U=' + fmtN(res.U) + ', z=' + fmt2(res.z) + ', ' + fmtP(res.p) + ').'
   return 'Significant difference in ' + f + ' between ' + g1 + ' and ' + g2 + ' (U=' + fmtN(res.U) + ', z=' + fmt2(res.z) + ', ' + fmtP(res.p) + ').'
 }
 
-export function chiBL(res: any, rf: string, cf: string): string {
+export function chiBL(res: ChiSquareResult | null, rf: string, cf: string): string {
   if (!res) return ''
   var assoc = res.V < 0.1 ? 'negligible' : res.V < 0.3 ? 'weak' : res.V < 0.5 ? 'moderate' : 'strong'
   if (res.p >= 0.05) return 'No significant association between ' + rf + ' and ' + cf + ' (\u03C7\u00B2=' + fmt2(res.chi2) + ', df=' + res.df + ', ' + fmtP(res.p) + ', N=' + res.N + ').'
   return 'Significant association between ' + rf + ' and ' + cf + ' (\u03C7\u00B2=' + fmt2(res.chi2) + ', df=' + res.df + ', ' + fmtP(res.p) + ', N=' + res.N + '). The association is ' + assoc + " (Cram\u00E9r\u2019s V=" + fmt2(res.V) + ').'
 }
 
-export function regrBL(res: any, out: string, aliases?: Record<string, string>): string {
+export function regrBL(res: RegressionResult | null, out: string, aliases?: Record<string, string>): string {
   if (!res) return ''
   var r2 = Math.round(res.R2 * 100)
-  var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
+  var sig = res.coefs.slice(1).filter(function(c: RegressionResult['coefs'][number]) { return c.p < 0.05 })
   var s = sigLabel(res.Fp)
   var label = function(name: string) { return (aliases && aliases[name]) || name }
   if (s.label === 'not significant') return 'The model is not significant (F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '), explaining only ' + r2 + '% of variance in ' + out + '.'
-  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: any) { return label(c.name) + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
+  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: RegressionResult['coefs'][number]) { return label(c.name) + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
   return 'The model explains ' + r2 + '% of variance in ' + out + ' (R\u00B2=' + fmt2(res.R2) + ', adj.R\u00B2=' + fmt2(res.R2adj) + ', F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '). ' + sigStr
 }
 
 // ─── BottomLine text generators (Plain English) ───────────────────────────
-export function descBL_naive(field: string, s: any): string {
+export function descBL_naive(field: string, s: DescStats): string {
   var skLabel = Math.abs(s.skew) < 0.5 ? 'clustered around the middle' : s.skew > 0 ? 'skewed toward lower values (a few high outliers pull the average up)' : 'skewed toward higher values (a few low outliers pull the average down)'
   var normNote = s.sw && !isNaN(s.sw.p) ? (s.sw.p > 0.05 ? ' Scores follow a reasonably bell-shaped distribution.' : " Scores don't follow a typical bell curve \u2014 the spread is uneven.") : ''
   return field + ' had ' + s.n.toLocaleString() + ' answers. The average score was ' + fmt2(s.mn) + ' and the middle answer was ' + fmt2(s.med) + '. Scores were ' + skLabel + ', typically varying by about \u00B1' + fmt2(s.sd) + ' from the average.' + normNote
@@ -453,7 +456,7 @@ export function corrBL_naive(f1: string, f2: string, r: number, p: number, n: nu
   return "There's " + str + ' connection between ' + f1 + ' and ' + f2 + ' \u2014 ' + dir + '. This pattern is unlikely to be a coincidence (seen across ' + n + ' observations).'
 }
 
-export function ttestBL_naive(res: any, f: string): string {
+export function ttestBL_naive(res: TTestBL | null, f: string): string {
   if (!res) return ''
   var d = Math.abs(res.d)
   var sizeStr = d < 0.2 ? 'tiny (barely noticeable in practice)' : d < 0.5 ? 'small but real' : d < 0.8 ? 'a noticeable difference' : 'quite a big difference'
@@ -462,35 +465,35 @@ export function ttestBL_naive(res: any, f: string): string {
   return 'There is a real difference in ' + f + ' \u2014 ' + hi + ' scores higher on average (' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '). The gap is ' + sizeStr + '.'
 }
 
-export function anovaBL_naive(res: any, f: string): string {
+export function anovaBL_naive(res: ANOVAResult | null, f: string): string {
   if (!res) return ''
   var eff = res.eta2 < 0.01 ? 'tiny' : res.eta2 < 0.06 ? 'small' : res.eta2 < 0.14 ? 'moderate' : 'large'
   if (res.p >= 0.05) return 'We compared ' + res.k + ' groups on ' + f + '. No meaningful differences \u2014 the variation looks like normal randomness.'
-  var sig = res.pairwise ? res.pairwise.filter(function(pw: any) { return pw.pAdj < 0.05 }) : []
-  var pwStr = sig.length ? ' In particular, these pairs stand out: ' + sig.slice(0, 3).map(function(pw: any) { return pw.a + ' vs ' + pw.b }).join(', ') + '.' : ''
+  var sig = res.pairwise ? res.pairwise.filter(function(pw: ANOVAResult['pairwise'][number]) { return pw.pAdj < 0.05 }) : []
+  var pwStr = sig.length ? ' In particular, these pairs stand out: ' + sig.slice(0, 3).map(function(pw: ANOVAResult['pairwise'][number]) { return pw.a + ' vs ' + pw.b }).join(', ') + '.' : ''
   return "The groups are genuinely different on " + f + " \u2014 which group someone's in explains a " + eff + ' chunk of the variation.' + pwStr
 }
 
-export function mwBL_naive(res: any, f: string, g1: string, g2: string): string {
+export function mwBL_naive(res: MannWhitneyResult | null, f: string, g1: string, g2: string): string {
   if (!res) return ''
   if (res.p >= 0.05) return 'We compared ' + g1 + ' and ' + g2 + ' on ' + f + " using a non-parametric test. There's no meaningful difference between them — the gap we see could just be random variation."
   return 'There is a real difference in ' + f + ' between ' + g1 + ' and ' + g2 + '. This holds up even without assuming the data follows a bell curve.'
 }
 
-export function chiBL_naive(res: any, rf: string, cf: string): string {
+export function chiBL_naive(res: ChiSquareResult | null, rf: string, cf: string): string {
   if (!res) return ''
   var assoc = res.V < 0.1 ? 'barely related' : res.V < 0.3 ? 'weakly related' : res.V < 0.5 ? 'noticeably related' : 'strongly related'
   if (res.p >= 0.05) return 'We checked if ' + rf + ' and ' + cf + " are connected. They don't appear to be \u2014 the pattern looks like it could just be random."
   return rf + ' and ' + cf + ' are ' + assoc + ' to each other. How people answer one question tends to go with how they answer the other. This is not just coincidence (based on ' + res.N + ' people).'
 }
 
-export function regrBL_naive(res: any, out: string, aliases?: Record<string, string>): string {
+export function regrBL_naive(res: RegressionResult | null, out: string, aliases?: Record<string, string>): string {
   if (!res) return ''
   var r2 = Math.round(res.R2 * 100)
-  var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
+  var sig = res.coefs.slice(1).filter(function(c: RegressionResult['coefs'][number]) { return c.p < 0.05 })
   var label = function(name: string) { return (aliases && aliases[name]) || name }
   if (res.Fp >= 0.05) return "We tried to predict " + out + " using the other factors. The model isn't reliable \u2014 it doesn't do meaningfully better than just guessing the average."
   var r2str = r2 < 10 ? 'only a small slice' : r2 < 30 ? 'a fair amount' : r2 < 60 ? 'a lot' : 'most'
-  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: any) { return label(c.name) }).join(', ') + '.' : ''
+  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: RegressionResult['coefs'][number]) { return label(c.name) }).join(', ') + '.' : ''
   return 'Our factors explain ' + r2str + ' of why ' + out + ' varies across people (' + r2 + '% of the variation).' + sigStr
 }

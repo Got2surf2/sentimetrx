@@ -8,6 +8,56 @@ import { autoBucket, bucketKey, formatBucketLabel, BUCKET_OPTIONS } from '@/lib/
 const HERMES = '#E8632A'
 const SARINA = '#00b4d8'
 
+// -- Shared response shapes (loosely-typed API payloads) --
+interface StudyMeta { bot_emoji?: string; name?: string }
+interface StudyResponse {
+  status?: string
+  completed_at?: string
+  experience_score?: number | null
+  nps_score?: number | null
+  sentiment?: string | null
+}
+interface RatingScaleOption { label?: string; score: number; emoji?: string }
+interface StudyTheme {
+  name: string
+  sentiment: string
+  description?: string
+  percentage: number
+  keywords: string[]
+  avgRating?: number | null
+  ratingDelta: number
+}
+interface CampaignMeta { name?: string; target_responses?: number }
+interface CampaignStats {
+  total: number; sent: number; opened: number; clicked: number
+  completed: number; unsubscribed: number; pending: number; bounced: number
+}
+interface THSession { bot_emoji?: string; name?: string; status?: string; started_at?: string; ended_at?: string }
+interface THTheme { label: string; sentiment: string; percentage: number; keywords: string[]; example_quote?: string }
+interface THStats { participants: number; responses: number; avg_words: number }
+interface Outlier { significant?: boolean; direction?: string; p: number; z: number }
+interface StatBlock { n: number; mean: number }
+interface NumericMetric {
+  label: string
+  filtered: StatBlock
+  benchmark: StatBlock
+  counts?: Record<string, number>
+  valueAliases?: Record<string, string>
+  remapping?: Record<string, number>
+  outlier?: Outlier | null
+}
+interface CompletionStage { label: string; count: number }
+interface AnalyticsThemeStat { rate: number; count: number }
+interface AnalyticsTheme {
+  name: string
+  sentiment: string
+  description?: string
+  keywords?: string[]
+  filtered: AnalyticsThemeStat
+  benchmark: AnalyticsThemeStat
+  outlier?: Outlier | null
+}
+
 export default function SharedDashboard(props: { params: Promise<{ token: string }> }) {
   const params = use(props.params);
   const [data, setData] = useState<any>(null)
@@ -59,13 +109,13 @@ export default function SharedDashboard(props: { params: Promise<{ token: string
 }
 
 // -- Responses over time bar chart (CSS-only, no deps) --
-function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
+function ResponsesOverTimeChart({ responses }: { responses: StudyResponse[] }) {
   const [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
 
   // Get all timestamps
   const timestamps = responses
-    .map((r: any) => r.completed_at)
-    .filter(Boolean)
+    .map((r) => r.completed_at)
+    .filter((t): t is string => Boolean(t))
     .map((t: string) => new Date(t))
     .sort((a, b) => a.getTime() - b.getTime())
 
@@ -186,20 +236,20 @@ function isSatisfactionPrompt(prompt: string): boolean {
 const STUDY_THEME_COLORS = ['#E8632A', '#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#a21caf', '#0d9488', '#ca8a04', '#db2777', '#0891b2']
 
 function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt, themes, lastRefreshed, refreshing, onRefresh }: {
-  study: any; responses: any[]; expiresAt: string
-  ratingScale?: any[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
-  ratingPrompt?: string | null; npsPrompt?: string | null; themes?: any[]
+  study: StudyMeta; responses: StudyResponse[]; expiresAt: string
+  ratingScale?: RatingScaleOption[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
+  ratingPrompt?: string | null; npsPrompt?: string | null; themes?: StudyTheme[]
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   const total = responses.length
-  const complete = responses.filter((r: any) => r.status !== 'incomplete' && r.status !== 'partial').length
+  const complete = responses.filter((r) => r.status !== 'incomplete' && r.status !== 'partial').length
 
   // Determine primary rating from the data
-  const expScores = responses.map((r: any) => r.experience_score).filter((v: any) => v != null)
-  const npsScores = responses.map((r: any) => r.nps_score).filter((v: any) => v != null)
+  const expScores = responses.map((r) => r.experience_score).filter((v): v is number => v != null)
+  const npsScores = responses.map((r) => r.nps_score).filter((v): v is number => v != null)
   const hasExp = expScores.length > 0
   const hasNps = npsScores.length > 0
-  const hasSentiment = responses.some((r: any) => r.sentiment)
+  const hasSentiment = responses.some((r) => r.sentiment)
 
   // Pick whichever score field has data. If both exist, NPS is the primary
   // rating if npsEnabled and experience is disabled, otherwise experience is primary.
@@ -236,9 +286,9 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
   if (aliasIsNps) {
     // Alias is NPS: use Promoter/Passive/Detractor labels
     if (hasSentiment) {
-      const topCount = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
-      const midCount = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
-      const botCount = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
+      const topCount = responses.filter((r) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
+      const midCount = responses.filter((r) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
+      const botCount = responses.filter((r) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
       breakdownBars = [
         { label: 'Promoters', value: topCount, color: '#22c55e' },
         { label: 'Passives', value: midCount, color: '#f59e0b' },
@@ -256,27 +306,27 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
     }
   } else if (hasExp && ratingScale && ratingScale.length > 0) {
     // Non-NPS with ratingScale config — use labels, detect direction for color coding
-    const labels = ratingScale.map((r: any) => r.label).filter(Boolean)
+    const labels = ratingScale.map((r) => r.label).filter((l): l is string => Boolean(l))
     const detected = detectScale(labels)
     const hasDirection = !!detected
 
     // Order: use detected ordinal scale order (low→high), else sort by score descending
-    let ordered: any[]
+    let ordered: RatingScaleOption[]
     if (detected) {
       // detected is in low→high order; reverse for display (best first)
       const labelOrder = [...detected].reverse()
-      ordered = labelOrder.map(label => ratingScale.find((r: any) => r.label === label)).filter(Boolean)
+      ordered = labelOrder.map(label => ratingScale.find((r) => r.label === label)).filter((r): r is RatingScaleOption => Boolean(r))
       // Add any unmatched items at the end
-      const matched = new Set(ordered.map((r: any) => r.score))
+      const matched = new Set(ordered.map((r) => r.score))
       for (const r of ratingScale) { if (!matched.has(r.score)) ordered.push(r) }
     } else {
-      ordered = [...ratingScale].sort((a: any, b: any) => b.score - a.score)
+      ordered = [...ratingScale].sort((a, b) => b.score - a.score)
     }
 
     // Colors: traffic light if direction known OR prompt suggests satisfaction; brand colors otherwise
     const useTrafficLight = hasDirection || promptSuggestsSatisfaction
 
-    breakdownBars = ordered.map((opt: any, i: number) => ({
+    breakdownBars = ordered.map((opt, i: number) => ({
       label: (opt.emoji ? opt.emoji + ' ' : '') + opt.label,
       value: expScores.filter((s: number) => s === opt.score).length,
       color: useTrafficLight ? trafficLight(ordered.length, i) : brandGradient(ordered.length, i),
@@ -304,9 +354,9 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
   } else if (hasSentiment) {
     // No scores at all but sentiment exists
     breakdownTitle = 'Sentiment Breakdown'
-    const topCount = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
-    const midCount = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
-    const botCount = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
+    const topCount = responses.filter((r) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
+    const midCount = responses.filter((r) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
+    const botCount = responses.filter((r) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
     breakdownBars = [
       { label: 'Positive', value: topCount, color: '#22c55e' },
       { label: 'Neutral', value: midCount, color: '#f59e0b' },
@@ -375,7 +425,7 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
           <div className="mb-4">
             <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Themes ({themes.length})</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {themes.map((t: any, i: number) => {
+              {themes.map((t: StudyTheme, i: number) => {
                 const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
                 return (
                   <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -427,7 +477,7 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
             <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Theme Distribution</h3>
             <div className="space-y-2">
-              {[...themes].sort((a: any, b: any) => (b.percentage || 0) - (a.percentage || 0)).map((t: any, i: number) => {
+              {[...themes].sort((a, b) => (b.percentage || 0) - (a.percentage || 0)).map((t: StudyTheme, i: number) => {
                 const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
                 return (
                   <div key={i} className="flex items-center gap-3">
@@ -455,7 +505,7 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
 }
 
 function SharedCampaignDashboard({ campaign, stats, expiresAt, lastRefreshed, refreshing, onRefresh }: {
-  campaign: any; stats: any; expiresAt: string
+  campaign: CampaignMeta; stats: CampaignStats; expiresAt: string
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   const delivered = stats.sent + stats.opened + stats.clicked + stats.completed + stats.unsubscribed
@@ -548,7 +598,7 @@ const sentColorMap: Record<string, string> = { positive: '#16a34a', negative: '#
 const sentBgMap: Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f9fafb' }
 
 function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefreshed, refreshing, onRefresh }: {
-  session: any; themes: any[]; stats: any; expiresAt: string
+  session: THSession; themes: THTheme[]; stats: THStats; expiresAt: string
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   return (
@@ -577,7 +627,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
             { label: 'Participants', value: stats.participants },
             { label: 'Responses', value: stats.responses },
             { label: 'Avg Words', value: stats.avg_words },
-          ].map((s: any) => (
+          ].map((s: { label: string; value: number }) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <div className="text-2xl font-bold text-gray-800">{s.value}</div>
               <div className="text-xs text-gray-400 font-semibold uppercase">{s.label}</div>
@@ -590,7 +640,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
           <div className="mb-4">
             <h2 className="text-sm font-bold text-gray-700 mb-3 uppercase">Topics ({themes.length})</h2>
             <div className="grid grid-cols-2 gap-3">
-              {themes.map((t: any, i: number) => {
+              {themes.map((t: THTheme, i: number) => {
                 const color = TH_COLORS[i % TH_COLORS.length]
                 return (
                   <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -634,7 +684,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
             <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Distribution</h3>
             <div className="space-y-2">
-              {[...themes].sort((a: any, b: any) => b.percentage - a.percentage).map((t: any, i: number) => {
+              {[...themes].sort((a, b) => b.percentage - a.percentage).map((t: THTheme, i: number) => {
                 const color = TH_COLORS[i % TH_COLORS.length]
                 return (
                   <div key={i} className="flex items-center gap-3">
@@ -660,7 +710,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
 
 // ── Shared Analytics Dashboard (filtered vs benchmark with outlier flags) ───
 
-function OutlierBadge({ outlier, metric }: { outlier: any; metric?: string }) {
+function OutlierBadge({ outlier, metric }: { outlier?: Outlier | null; metric?: string }) {
   if (!outlier || !outlier.significant) return null
   const isAbove = outlier.direction === 'above' || outlier.direction === 'over'
   const color = isAbove ? '#059669' : '#dc2626'
@@ -713,7 +763,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
     </div>
   )
 
-  const numericEntries = Object.entries(data.numeric || {}) as [string, any][]
+  const numericEntries = Object.entries(data.numeric || {}) as [string, NumericMetric][]
   const themes = data.themes || []
   const filterSummary = data.filterSummary || {}
   const filterFields = Object.entries(filterSummary)
@@ -813,7 +863,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
               {(data.completion.stages || [
                 { label: 'Started', count: data.completion.started },
                 { label: 'Completed', count: data.completion.completed },
-              ]).map(function(stage: any, i: number, arr: any[]) {
+              ]).map(function(stage: CompletionStage, i: number, arr: CompletionStage[]) {
                 var pct = data.completion.started > 0 ? Math.round(stage.count / data.completion.started * 100) : 0
                 var color = pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626'
                 var prevCount = i > 0 ? arr[i - 1].count : stage.count
@@ -854,12 +904,12 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                 const invertedRemap: Record<string, string> = {}
                 Object.entries(remap).forEach(([text, num]) => { invertedRemap[String(num)] = text })
                 // Sort high→low (most positive first) using remapping scores
-                const countEntries = Object.entries(counts).sort(function(a: any, b: any) {
+                const countEntries = Object.entries(counts).sort(function(a: [string, number], b: [string, number]) {
                   var ra = remap[a[0]] ?? Number(a[0]), rb = remap[b[0]] ?? Number(b[0])
                   return rb - ra  // highest score (most positive) first
                 })
-                const totalN = countEntries.reduce(function(s: number, e: any) { return s + e[1] }, 0)
-                const maxCount = countEntries.reduce(function(mx: number, e: any) { return Math.max(mx, e[1]) }, 0)
+                const totalN = countEntries.reduce(function(s: number, e: [string, number]) { return s + e[1] }, 0)
+                const maxCount = countEntries.reduce(function(mx: number, e: [string, number]) { return Math.max(mx, e[1]) }, 0)
                 const nVals = countEntries.length
                 // Green→yellow→red gradient: index 0 = most positive (green), last = most negative (red)
                 // Green → grey/amber → warm orange. Middle is neutral, no harsh red.
@@ -887,7 +937,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                         </div>
                         {nVals > 0 && !useStacked && (
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {countEntries.map(function(e: any, i: number) {
+                            {countEntries.map(function(e: [string, number], i: number) {
                               var barPct = maxCount > 0 ? Math.round(e[1] / maxCount * 100) : 0
                               var pctOfTotal = totalN > 0 ? Math.round(e[1] / totalN * 100) : 0
                               var color = gradColor(i, nVals)
@@ -908,7 +958,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                         {nVals > 0 && useStacked && (
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', height: 28, borderRadius: 6, overflow: 'hidden' }}>
-                              {countEntries.map(function(e: any, i: number) {
+                              {countEntries.map(function(e: [string, number], i: number) {
                                 var pct = totalN > 0 ? (e[1] / totalN * 100) : 0
                                 if (pct < 0.5) return null
                                 return <div key={e[0]} title={valLabel(e[0]) + ': ' + e[1] + ' (' + Math.round(pct) + '%)'} style={{ width: pct + '%', height: '100%', background: gradColor(i, nVals) }} />
@@ -971,7 +1021,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
               <p className="text-xs text-gray-500 mb-3">Based on: <span className="font-medium text-gray-700">{data.themeFieldLabels.join(', ')}</span></p>
             )}
             <div className="space-y-3">
-              {themes.map((t: any, i: number) => {
+              {themes.map((t: AnalyticsTheme, i: number) => {
                 const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
                 const fPct = Math.round(t.filtered.rate * 100)
                 const bPct = Math.round(t.benchmark.rate * 100)

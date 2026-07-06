@@ -8,8 +8,39 @@ import { validateOrgFilter } from '@/lib/orgValidate'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import AnalyzeClient from './AnalyzeClient'
+import type { ModuleFeatures } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
+
+// Minimal shapes for the untyped Supabase query rows this page reads.
+interface RawDatasetRow {
+  id:         string
+  org_id:     string
+  source:     string | null
+  created_by: string | null
+  updated_at: string | null
+}
+interface OrgRow { id: string; name: string; plan?: string }
+interface CreatorRow { id: string; full_name: string | null; email: string | null }
+interface CollectionRow {
+  id:         string
+  dataset_id: string
+  kind:       string | null
+  purpose:    'community' | 'competitive' | 'brand_360' | null
+}
+interface MemberDatasetRow {
+  id:             string
+  row_count:      number | null
+  updated_at:     string | null
+  last_synced_at: string | null
+}
+interface MemberCollectionRow {
+  dataset_id:  string
+  collections:
+    | { dataset_id: string | null; datasets: { name: string | null } | { name: string | null }[] | null }
+    | { dataset_id: string | null; datasets: { name: string | null } | { name: string | null }[] | null }[]
+    | null
+}
 
 export default async function AnalyzePage(props: { searchParams: Promise<{ org?: string }> }) {
   const searchParams = await props.searchParams;
@@ -23,8 +54,8 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const orgData = resolveOrg(userData?.organizations)
+  const features = effectiveFeatures(orgData?.features, (userData?.features as ModuleFeatures | null | undefined))
 
   if (!features.analyze) redirect('/dashboard')
 
@@ -44,7 +75,7 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
       .neq('plan', 'suspended')
       .neq('status', 'suspended')
       .order('name')
-    allOrgs = (orgs || []).filter((o: any) => o.id !== orgId).map((o: any) => ({ id: o.id, name: o.name }))
+    allOrgs = ((orgs || []) as OrgRow[]).filter((o) => o.id !== orgId).map((o) => ({ id: o.id, name: o.name }))
   }
 
   let dsQuery = supabase
@@ -57,24 +88,24 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   if (dsErr) console.error('[AnalyzePage] datasets query error:', dsErr.message)
 
   // Fetch creator names separately (the FK join to auth.users is unreliable)
-  const creatorIds = Array.from(new Set((rawDatasets || []).map(function(d: any) { return d.created_by }).filter(Boolean)))
+  const creatorIds = Array.from(new Set(((rawDatasets || []) as RawDatasetRow[]).map(function(d) { return d.created_by }).filter(Boolean)))
   const creatorMap: Record<string, string> = {}
   if (creatorIds.length > 0) {
     const { data: creators } = await supabase
       .from('users')
       .select('id, full_name, email')
       .in('id', creatorIds)
-    ;(creators || []).forEach(function(c: any) { creatorMap[c.id] = c.full_name || c.email || 'Unknown' })
+    ;((creators || []) as CreatorRow[]).forEach(function(c) { creatorMap[c.id] = c.full_name || c.email || 'Unknown' })
   }
 
   // Fetch org names — for admin cross-org view, each card needs its own org label.
   const orgNameMap: Record<string, string> = {}
   if (isAdmin) {
-    const orgIds = Array.from(new Set((rawDatasets || []).map((d: any) => d.org_id).filter(Boolean)))
+    const orgIds = Array.from(new Set(((rawDatasets || []) as RawDatasetRow[]).map((d) => d.org_id).filter(Boolean)))
     if (orgIds.length > 0) {
       const service = createServiceRoleClient()
       const { data: orgs } = await service.from('organizations').select('id, name').in('id', orgIds)
-      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+      ;((orgs || []) as OrgRow[]).forEach((o) => { orgNameMap[o.id] = o.name })
     }
   }
 
@@ -82,7 +113,7 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   // kind/collection_id are mapped for every collection (incl. empty ones)
   // so the Brand pill still renders; row/member counts only exist once a
   // collection has members.
-  const collectionDs = (rawDatasets || []).filter((d: any) => d.source === 'collection')
+  const collectionDs = ((rawDatasets || []) as RawDatasetRow[]).filter((d) => d.source === 'collection')
   const collectionRowCounts:    Record<string, number> = {}
   const collectionMemberCounts: Record<string, number> = {}
   const collectionKindByDsId:   Record<string, 'manual' | 'brand'> = {}
@@ -92,19 +123,19 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   // Collection's last recompute time (its dataset updated_at) — a member that
   // changed after this is "newer than the cache" → the refresh badge.
   const collectionUpdatedAt: Record<string, number> = {}
-  ;(collectionDs as any[]).forEach(d => { collectionUpdatedAt[d.id] = d.updated_at ? new Date(d.updated_at).getTime() : 0 })
+  collectionDs.forEach(d => { collectionUpdatedAt[d.id] = d.updated_at ? new Date(d.updated_at).getTime() : 0 })
   if (collectionDs.length > 0) {
     // Aggregate member counts/rows via service-role: `collectionDs` is already
     // RLS-filtered, so we only ever roll up collections the caller can see —
     // but RLS on collection_members hides cross-org rows from an admin viewing
     // another org's collection (the "0 datasets despite 16,989 comments" bug).
     const colSvc = createServiceRoleClient()
-    const { data: cols } = await colSvc.from('collections').select('id, dataset_id, kind, purpose').in('dataset_id', collectionDs.map((d: any) => d.id))
+    const { data: cols } = await colSvc.from('collections').select('id, dataset_id, kind, purpose').in('dataset_id', collectionDs.map((d) => d.id))
     if (cols && cols.length > 0) {
-      for (const col of cols) {
-        collectionKindByDsId[col.dataset_id] = (col as any).kind === 'brand' ? 'brand' : 'manual'
+      for (const col of cols as CollectionRow[]) {
+        collectionKindByDsId[col.dataset_id] = col.kind === 'brand' ? 'brand' : 'manual'
         collectionIdByDsId[col.dataset_id]   = col.id
-        if ((col as any).purpose) collectionPurposeByDsId[col.dataset_id] = (col as any).purpose
+        if (col.purpose) collectionPurposeByDsId[col.dataset_id] = col.purpose
       }
       const { data: members } = await colSvc.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
@@ -112,11 +143,11 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
         const { data: memberDs } = await colSvc.from('datasets').select('id, row_count, updated_at, last_synced_at').in('id', memberDsIds)
         const memberCounts: Record<string, number> = {}
         const memberChangedAt: Record<string, number> = {}
-        ;(memberDs || []).forEach(d => {
+        ;((memberDs || []) as MemberDatasetRow[]).forEach(d => {
           memberCounts[d.id] = d.row_count || 0
           // A member's "last changed" = the later of its sync + its analyze/edit.
-          const u = (d as any).updated_at ? new Date((d as any).updated_at).getTime() : 0
-          const s = (d as any).last_synced_at ? new Date((d as any).last_synced_at).getTime() : 0
+          const u = d.updated_at ? new Date(d.updated_at).getTime() : 0
+          const s = d.last_synced_at ? new Date(d.last_synced_at).getTime() : 0
           memberChangedAt[d.id] = Math.max(u, s)
         })
         for (const col of cols) {
@@ -136,14 +167,14 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
   // dataset in one query. Previously each DatasetCard did its own
   // /api/datasets/<id>/collection-check fetch on mount — Sentry flagged
   // the N+1 (30 cards → 30 round-trips on every /analyze load).
-  const nonCollectionIds = (rawDatasets || []).filter((d: any) => d.source !== 'collection').map((d: any) => d.id)
+  const nonCollectionIds = ((rawDatasets || []) as RawDatasetRow[]).filter((d) => d.source !== 'collection').map((d) => d.id)
   const collectionInfoByDsId: Record<string, { collectionDatasetId: string; collectionName: string }> = {}
   if (nonCollectionIds.length > 0) {
     const { data: mems } = await supabase
       .from('collection_members')
       .select('dataset_id, collections(dataset_id, datasets!collections_dataset_id_fkey(name))')
       .in('dataset_id', nonCollectionIds)
-    for (const m of (mems || []) as any[]) {
+    for (const m of (mems || []) as MemberCollectionRow[]) {
       const colRel = Array.isArray(m.collections) ? m.collections[0] : m.collections
       const colDsId = colRel?.dataset_id
       const nameRel = colRel?.datasets

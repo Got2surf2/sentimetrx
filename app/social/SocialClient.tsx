@@ -8,6 +8,12 @@ import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
 
+interface Flag {
+  type: string
+  severity: string | null
+  action?: string
+}
+
 interface Comment {
   id: string
   platform: string
@@ -18,10 +24,11 @@ interface Comment {
   author_id: string | null
   text: string
   sentiment: string | null
-  flags: Array<{ type: string; severity: string | null }>
+  flags: Flag[]
   is_hidden: boolean
   is_deleted: boolean
   is_reply: boolean
+  is_handled?: boolean
   our_reply: string | null
   replied_at: string | null
   platform_created_at: string | null
@@ -217,7 +224,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   async function handleExportToTextMine() {
     setExporting(true)
     try {
-      var body: any = {}
+      var body: { platform?: string; sentiment?: string; flagged?: boolean } = {}
       if (platform) body.platform = platform
       if (sentiment) body.sentiment = sentiment
       if (flaggedOnly) body.flagged = true
@@ -310,7 +317,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   function renderComment(c: Comment) {
     var sentBadge = SENTIMENT_BADGES[c.sentiment || 'neutral'] || SENTIMENT_BADGES.neutral
     var isReplying = replyingTo === c.id
-    var needsReview = !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
+    var needsReview = !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: Flag) { return f.type === 'review' })
 
     return (
       <div key={c.id} style={{
@@ -328,7 +335,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{c.author_name || 'Unknown'}</span>
           <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(c.platform_created_at)}</span>
           <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: sentBadge.bg, color: sentBadge.text }}>{sentBadge.label}</span>
-          {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
+          {Array.isArray(c.flags) && c.flags.map(function(f: Flag, i: number) {
             var flagColor = FLAG_COLORS[f.type] || '#6b7280'
             var displayText = f.action && (f.type === 'topics' || f.type === 'emotion' || f.type === 'intent') ? f.action : (FLAG_LABELS[f.type] || f.type)
             return <span key={i} title={f.action || ''} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: flagColor + '15', color: flagColor, border: '1px solid ' + flagColor + '30' }}>{displayText}</span>
@@ -337,7 +344,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
           {c.is_hidden && !c.is_deleted && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>Hidden</span>}
           {needsReview && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>Needs Review</span>}
           {c.is_reply && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#3b82f6' }}>Reply</span>}
-          {(c as any).is_handled && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#dcfce7', color: '#15803d' }}>Handled</span>}
+          {c.is_handled && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#dcfce7', color: '#15803d' }}>Handled</span>}
         </div>
         {/* Post context — only in recent view */}
         {viewMode === 'recent' && c.post_text && (
@@ -359,7 +366,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         )}
         {/* Actions */}
         <div style={{ display: 'flex', gap: 6, paddingLeft: 28 }}>
-          <ActionBtn label={(c as any).is_handled ? 'Undo Handled' : 'Mark Handled'} onClick={function() { void handleToggleHandled(c.id) }} active={(c as any).is_handled} />
+          <ActionBtn label={c.is_handled ? 'Undo Handled' : 'Mark Handled'} onClick={function() { void handleToggleHandled(c.id) }} active={c.is_handled} />
           <ActionBtn label={c.is_hidden ? 'Unhide' : 'Hide'} onClick={function() { void handleHide(c.id) }} />
           <ActionBtn label="Delete" onClick={function() { void handleDelete(c.id) }} danger />
           <ActionBtn label="Reply" onClick={function() { setReplyingTo(isReplying ? null : c.id); setReplyText('') }} active={isReplying} />
@@ -525,7 +532,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                 { value: 'true', label: 'Handled' },
               ].map(function(f) {
                 var isActive = handledFilter === f.value
-                return <button key={f.value} onClick={function() { setHandledFilter(f.value as any); setPage(1) }} style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: isActive ? '#4f46e5' : '#fff', color: isActive ? '#fff' : '#6b7280', border: 'none', cursor: 'pointer' }}>
+                return <button key={f.value} onClick={function() { setHandledFilter(f.value as '' | 'true' | 'false'); setPage(1) }} style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: isActive ? '#4f46e5' : '#fff', color: isActive ? '#fff' : '#6b7280', border: 'none', cursor: 'pointer' }}>
                   {f.label}
                 </button>
               })}
@@ -634,8 +641,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                   var neuCount = group.comments.filter(function(c) { return c.sentiment === 'neutral' }).length
                   var deletedCount = group.comments.filter(function(c) { return c.is_deleted }).length
                   var hiddenCount = group.comments.filter(function(c) { return c.is_hidden && !c.is_deleted }).length
-                  var reviewCount = group.comments.filter(function(c) { return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' }) }).length
-                  var offTopicCount = group.comments.filter(function(c) { return Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'off_topic' }) }).length
+                  var reviewCount = group.comments.filter(function(c) { return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: Flag) { return f.type === 'review' }) }).length
+                  var offTopicCount = group.comments.filter(function(c) { return Array.isArray(c.flags) && c.flags.some(function(f: Flag) { return f.type === 'off_topic' }) }).length
                   // Last comment time
                   var lastTime = group.comments.reduce(function(max, c) { return c.platform_created_at && c.platform_created_at > max ? c.platform_created_at : max }, '')
                   return (
@@ -643,7 +650,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                       <summary style={{ padding: '14px 16px', cursor: 'pointer', background: '#f9fafb' }}>
                         {/* Top row: post text + last comment time */}
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>{group.postText}</span>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>{group.postText}</span>
                           <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0, marginLeft: 12, whiteSpace: 'nowrap' }}>Last: {timeAgo(lastTime)}</span>
                         </div>
                         {/* Pills row — clickable to filter */}
@@ -686,8 +693,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                             if (pf === 'positive' || pf === 'negative' || pf === 'neutral') return c.sentiment === pf
                             if (pf === 'deleted') return c.is_deleted
                             if (pf === 'hidden') return c.is_hidden && !c.is_deleted
-                            if (pf === 'review') return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
-                            if (pf === 'off_topic') return Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'off_topic' })
+                            if (pf === 'review') return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: Flag) { return f.type === 'review' })
+                            if (pf === 'off_topic') return Array.isArray(c.flags) && c.flags.some(function(f: Flag) { return f.type === 'off_topic' })
                             return true
                           })
                           return filtered.map(function(c) { return renderComment(c) })
@@ -856,8 +863,16 @@ function SettingsPanel({ connections, onDisconnect }: { connections: Connection[
   )
 }
 
+interface AlertRule {
+  id: string
+  rule_type: string
+  enabled: boolean
+  config?: Record<string, unknown>
+  channels?: string[]
+}
+
 function AlertRulesPanel() {
-  const [rules, setRules] = useState<any[]>([])
+  const [rules, setRules] = useState<AlertRule[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(function() {
@@ -867,7 +882,7 @@ function AlertRulesPanel() {
   }, [])
 
   async function addRule(ruleType: string) {
-    const defaults: Record<string, any> = {
+    const defaults: Record<string, { config: Record<string, unknown>; channels: string[] }> = {
       hate_speech: { config: {}, channels: [] },
       negative_spike: { config: { threshold: 10, window_minutes: 30 }, channels: [] },
       keyword: { config: { keywords: [] }, channels: [] },
@@ -1041,9 +1056,17 @@ function OutcomeVisualization({ sensitivity, autoHide, autoDelete }: { sensitivi
   )
 }
 
+interface AutoConfig {
+  auto_reply_enabled?: boolean
+  auto_reply_mode?: string
+  moderation_sensitivity?: string
+  auto_hide_enabled?: boolean
+  auto_delete_enabled?: boolean
+}
+
 function AutoConfigPanel() {
-  const [savedConfig, setSavedConfig] = useState<any>(null)
-  const [config, setConfig] = useState<any>(null)
+  const [savedConfig, setSavedConfig] = useState<AutoConfig | null>(null)
+  const [config, setConfig] = useState<AutoConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -1055,8 +1078,8 @@ function AutoConfigPanel() {
     }).finally(function() { setLoading(false) })
   }, [])
 
-  function update(key: string, value: any) {
-    setConfig(function(prev: any) { return { ...prev, [key]: value } })
+  function update(key: keyof AutoConfig, value: boolean | string) {
+    setConfig(function(prev) { return { ...prev, [key]: value } as AutoConfig })
     setSaved(false)
   }
 

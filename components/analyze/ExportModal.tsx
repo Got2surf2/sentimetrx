@@ -58,6 +58,65 @@ type ShareState = 'idle' | 'uploading' | 'done' | 'error'
 
 interface Props { datasetId: string; datasetName: string; datasetSource?: string; aiEnabled?: boolean; onClose: () => void }
 
+// Theme objects as they flow through this modal: sourced from the saved
+// theme_model and merged with live per-theme counts. Only the fields this
+// component reads are declared.
+interface ExportTheme {
+  id: string
+  name?: string
+  description?: string
+  keywords?: string[]
+  sentiment?: string
+  count?: number
+  percentage?: number
+  color?: string
+}
+
+// Per-theme live count row returned by /theme-counts.
+interface ThemeCount { id: string; count: number; percentage: number }
+
+// Request payload for the export endpoints. Base fields are always sent;
+// the rest are attached conditionally.
+interface ExportRequestBody {
+  fields: string[]
+  audience: string
+  mode: 'quick' | 'builder'
+  commentConfig: Record<string, { enabled: boolean; slides: number }>
+  commentAnnotations: string[]
+  commentColorField: string
+  includeThemeSlides: boolean
+  themesPerSlide: number
+  selectedThemeIds: string[]
+  skipAI: boolean
+  includeCustomDecks: boolean
+  includeProvenance: boolean
+  includeRecap: boolean
+  includeDimensions: boolean
+  entityFields?: string[]
+  skipTextAnalytics?: boolean
+  reportTitle?: string
+  impactOEFields?: string[]
+  impactScoreFields?: string[]
+  filters?: ReturnType<typeof serializeFilters>
+  instructions?: string
+  style?: string
+}
+
+// Minimal shape of the File System Access API surface this component uses.
+interface SaveFileWritable {
+  write: (data: Blob) => Promise<void>
+  close: () => Promise<void>
+}
+interface SaveFileHandle {
+  createWritable: () => Promise<SaveFileWritable>
+}
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (opts: {
+    suggestedName?: string
+    types?: { description: string; accept: Record<string, string[]> }[]
+  }) => Promise<SaveFileHandle>
+}
+
 export default function ExportModal({ datasetId, datasetName, datasetSource, aiEnabled = false, onClose }: Props) {
   const { effectiveFilters: filters } = useFilters()
   const activeFilterCount = filterCount(filters)
@@ -78,7 +137,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
   const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
   const [commentColorField,  setCommentColorField]  = useState<string>('')
-  const [themes,             setThemes]             = useState<any[]>([])
+  const [themes,             setThemes]             = useState<ExportTheme[]>([])
   const [includeThemeSlides, setIncludeThemeSlides] = useState(true)
   // Themes per slide on the Theme Analysis grid: 0 = auto, else 1/2/4/6.
   const [themesPerSlide,     setThemesPerSlide]     = useState<number>(0)
@@ -153,9 +212,9 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
         }).map(function(fld: SchemaField) { return fld.field }))
         // Load themes from theme_model
         const tm = d.theme_model || {}
-        const themeList: any[] = tm.themes || []
+        const themeList: ExportTheme[] = tm.themes || []
         setThemes(themeList)
-        setSelectedThemeIds(new Set(themeList.map(function(t: any) { return t.id })))
+        setSelectedThemeIds(new Set(themeList.map(function(t) { return t.id })))
         // The saved theme_model persists count/percentage as 0 (real counts are
         // computed live in TextMine, never written back), which made the picker
         // cards read n=0 / 0%. Fetch live per-theme counts and merge them in.
@@ -167,17 +226,17 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              themes: themeList.map(function(t: any) { return { id: t.id, keywords: t.keywords || [] } }),
+              themes: themeList.map(function(t) { return { id: t.id, keywords: t.keywords || [] } }),
               fields: tmFields,
             }),
           })
             .then(function(r) { return r.ok ? r.json() : null })
-            .then(function(data) {
+            .then(function(data: { counts?: ThemeCount[] } | null) {
               if (!data || !Array.isArray(data.counts)) return
               const byId: Record<string, { count: number; percentage: number }> = {}
-              data.counts.forEach(function(c: any) { byId[c.id] = { count: c.count, percentage: c.percentage } })
+              data.counts.forEach(function(c) { byId[c.id] = { count: c.count, percentage: c.percentage } })
               setThemes(function(prev) {
-                return prev.map(function(t: any) {
+                return prev.map(function(t) {
                   return byId[t.id] ? Object.assign({}, t, byId[t.id]) : t
                 })
               })
@@ -245,7 +304,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap, includeDimensions }
+      const body: ExportRequestBody = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap, includeDimensions }
       if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
       if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
@@ -268,8 +327,8 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
       const url  = URL.createObjectURL(blob)
       setBlobUrl(url)
       setStep('done')
-    } catch (e: any) {
-      setError(e.message || 'Export failed — try again')
+    } catch (e) {
+      setError((e instanceof Error && e.message) || 'Export failed — try again')
       setStep(mode)
     } finally {
       clearInterval(msgInterval)
@@ -292,7 +351,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
       const blob = await res.blob()
       setBlobUrl(URL.createObjectURL(blob))
       setStep('done')
-    } catch (e: any) { setError(e.message || 'Signal tiers export failed'); setStep('mode') } finally { clearInterval(msgInterval) }
+    } catch (e) { setError((e instanceof Error && e.message) || 'Signal tiers export failed'); setStep('mode') } finally { clearInterval(msgInterval) }
   }
 
   const byType: Record<string, SchemaField[]> = {}
@@ -337,8 +396,8 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
       setShareUrl(url)
       setShareExpiry(new Date(expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))
       setShareState('done')
-    } catch (e: any) {
-      setShareError(e.message || 'Share failed — check AWS configuration')
+    } catch (e) {
+      setShareError((e instanceof Error && e.message) || 'Share failed — check AWS configuration')
       setShareState('error')
     }
   }
@@ -366,12 +425,13 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     if (!blobUrl) return
     const suggestedName = fileName
     // Use native File System Access API when available (Chrome / Edge)
-    if (typeof (window as any).showSaveFilePicker === 'function') {
+    const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+    if (typeof picker === 'function') {
       try {
         const fileTypes = format === 'html'
           ? [{ description: 'HTML Presentation', accept: { 'text/html': ['.html'] } }]
           : [{ description: 'PowerPoint Presentation', accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] } }]
-        const handle = await (window as any).showSaveFilePicker({
+        const handle = await picker({
           suggestedName,
           types: fileTypes,
         })
@@ -383,8 +443,8 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
         URL.revokeObjectURL(blobUrl)
         onClose()
         return
-      } catch (err: any) {
-        if (err.name === 'AbortError') return
+      } catch (err) {
+        if (err && typeof err === 'object' && 'name' in err && (err as { name?: string }).name === 'AbortError') return
         // fall through to anchor fallback
       }
     }
@@ -665,7 +725,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span>Fields to Include <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional — defaults to all)</span></span>
                       {(function() {
-                        const allFieldsSelected = fields.length > 0 && fields.every(function(f: any) { return selected.has(f.field) })
+                        const allFieldsSelected = fields.length > 0 && fields.every(function(f) { return selected.has(f.field) })
                         return (
                           <button onClick={function() {
                             if (allFieldsSelected) setSelected(new Set())
@@ -758,11 +818,11 @@ function StylePicker({ deckStyle, setDeckStyle }: { deckStyle: string; setDeckSt
 }
 
 interface FieldPickerProps {
-  byType: Record<string, any[]>
+  byType: Record<string, SchemaField[]>
   selected: Set<string>
   toggleField: (f: string) => void
   selectAllType: (t: string) => void
-  fields: any[]
+  fields: SchemaField[]
   setSelected: (fn: (prev: Set<string>) => Set<string>) => void
   fieldCounts: Record<string, number>
 }
@@ -831,15 +891,15 @@ function CloserSlidesToggles({
 
 function FieldPicker({ byType, selected, toggleField, selectAllType, fields, setSelected, fieldCounts }: FieldPickerProps) {
   // For categorical/demo/psycho sections: hide fields confirmed to have 0 data
-  function hasData(f: any): boolean {
+  function hasData(f: SchemaField): boolean {
     if (f.type === 'open-ended') return true  // open-ended filtered in CommentConfig instead
     if (fieldCounts[f.field] == null) return true   // no analytics yet → show
     return fieldCounts[f.field] > 0
   }
 
   // Group by section first, then by type within each section
-  const bySection: Record<string, any[]> = { core: [], custom: [], psychographic: [], demographic: [] }
-  fields.forEach(function(f: any) {
+  const bySection: Record<string, SchemaField[]> = { core: [], custom: [], psychographic: [], demographic: [] }
+  fields.forEach(function(f) {
     const sec = (f.section === 'psychographic' || f.section === 'demographic' || f.section === 'custom') ? f.section : 'core'
     // Hide zero-data categorical/demo/psycho fields (but always show custom survey questions — they're sparsely filled by design)
     if (sec !== 'custom' && (sec === 'psychographic' || sec === 'demographic' || f.type === 'categorical') && !hasData(f)) return
@@ -860,11 +920,11 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
           )}
         </div>
         {(function() {
-          const allSelected = fields.length > 0 && fields.every(function(f: any) { return selected.has(f.field) })
+          const allSelected = fields.length > 0 && fields.every(function(f) { return selected.has(f.field) })
           return (
             <button onClick={function() {
               setSelected(function() {
-                return allSelected ? new Set<string>() : new Set(fields.map((f: any) => f.field))
+                return allSelected ? new Set<string>() : new Set(fields.map((f) => f.field))
               })
             }}
               style={{ fontSize: 11, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
@@ -887,13 +947,13 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
                 <span style={{ fontSize: 10, color: S.textFaint }}>· {meta.desc}</span>
               </div>
               {(function() {
-                const allInSection = secFields.length > 0 && secFields.every(function(f: any) { return selected.has(f.field) })
+                const allInSection = secFields.length > 0 && secFields.every(function(f) { return selected.has(f.field) })
                 return (
                   <button onClick={function() {
                     setSelected(function(prev) {
                       const next = new Set(prev)
-                      if (allInSection) secFields.forEach(function(f: any) { next.delete(f.field) })
-                      else              secFields.forEach(function(f: any) { next.add(f.field) })
+                      if (allInSection) secFields.forEach(function(f) { next.delete(f.field) })
+                      else              secFields.forEach(function(f) { next.add(f.field) })
                       return next
                     })
                   }}
@@ -904,16 +964,16 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
               })()}
             </div>
             {/* Fields within this section, sub-grouped by type */}
-            {TYPE_ORDER.filter(t => secFields.some((f: any) => f.type === t)).map(function(type) {
+            {TYPE_ORDER.filter(t => secFields.some((f) => f.type === t)).map(function(type) {
               const tc = TYPE_COLOR[type]
-              const typeFields = secFields.filter((f: any) => f.type === type)
+              const typeFields = secFields.filter((f) => f.type === type)
               return (
                 <div key={type} style={{ marginBottom: 6 }}>
                   <div style={{ fontSize: 9, color: tc, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, paddingLeft: 2 }}>
                     {TYPE_LABELS[type]}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {typeFields.map(function(f: any) {
+                    {typeFields.map(function(f) {
                       const checked = selected.has(f.field)
                       return (
                         <label key={f.field}
@@ -1167,7 +1227,7 @@ function ThemePicker({
   themes, includeThemeSlides, setIncludeThemeSlides, selectedThemeIds, setSelectedThemeIds,
   themesPerSlide, setThemesPerSlide,
 }: {
-  themes: any[]
+  themes: ExportTheme[]
   includeThemeSlides: boolean
   setIncludeThemeSlides: (v: boolean) => void
   selectedThemeIds: Set<string>
@@ -1177,7 +1237,7 @@ function ThemePicker({
 }) {
   if (themes.length === 0) return null
 
-  const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
+  const sortedThemes = [...themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
 
   function toggleTheme(id: string) {
     setSelectedThemeIds(function(prev) {
@@ -1220,7 +1280,7 @@ function ThemePicker({
           </div>
           {/* Select all / none */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={function() { setSelectedThemeIds(function() { return new Set(sortedThemes.map(function(t: any) { return t.id })) }) }}
+            <button onClick={function() { setSelectedThemeIds(function() { return new Set(sortedThemes.map(function(t) { return t.id })) }) }}
               style={{ fontSize: 10, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, padding: 0 }}>
               All
             </button>
@@ -1232,7 +1292,7 @@ function ThemePicker({
           </div>
           {/* Theme cards grid — sorted by frequency */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-            {sortedThemes.map(function(t: any, idx: number) {
+            {sortedThemes.map(function(t, idx: number) {
               const color   = t.color || THEME_COLORS[idx % THEME_COLORS.length]
               const checked = selectedThemeIds.has(t.id)
               const sent    = t.sentiment || 'neutral'
@@ -1254,7 +1314,7 @@ function ThemePicker({
                   <div style={{ fontSize: 12, fontWeight: 800, color: S.text, marginBottom: 3, lineHeight: 1.3 }}>{t.name}</div>
                   {/* Description */}
                   {t.description && (
-                    <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4, marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4, marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>
                       {t.description}
                     </div>
                   )}

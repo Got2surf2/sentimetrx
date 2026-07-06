@@ -46,7 +46,7 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function addHeader(slide: any, title: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string) {
   // Lighter than the dense decks: no subtitle line, more white space below
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, {
@@ -60,7 +60,7 @@ function addHeader(slide: any, title: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('Datanautix · for client discussion · Confidential', {
     x: 0.5, y: H - 0.4, w: 10, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
   })
@@ -70,7 +70,7 @@ function addFooter(slide: any, pageNum: number) {
 }
 
 // ── Cover ──────────────────────────────────────────────────────────────────
-function addTitleSlide(pptx: any, clientName: string) {
+function addTitleSlide(pptx: PptxGenJS, clientName: string) {
   const s = pptx.addSlide()
   const downloaded = fmtDate(new Date())
 
@@ -102,7 +102,7 @@ Then go to the next slide.`
 }
 
 // ── 1. You already use Ana ────────────────────────────────────────────────
-function slideWhereWeStarted(pptx: any, pg: number) {
+function slideWhereWeStarted(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'You already use Ana.')
   addFooter(s, pg)
@@ -137,7 +137,7 @@ Then pivot: "What's changed is the data that feeds Ana." Click to next slide.`
 }
 
 // ── 2. Six modules ─────────────────────────────────────────────────────────
-function slidePlatformToday(pptx: any, pg: number) {
+function slidePlatformToday(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Six modules. One platform.')
   addFooter(s, pg)
@@ -179,7 +179,7 @@ Pause on the colors: sarinaBlue Ana = the centerpiece. The rest orbit it.`
 }
 
 // ── 2.5 With or without AI ─────────────────────────────────────────────────
-function slideWithWithoutAI(pptx: any, pg: number) {
+function slideWithWithoutAI(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Available with or without AI.')
   addFooter(s, pg)
@@ -244,7 +244,7 @@ That's the lead-in to the next slide — which addresses "and even when AI is on
 }
 
 // ── 2.6 AI-agnostic ────────────────────────────────────────────────────────
-function slideAIAgnostic(pptx: any, pg: number) {
+function slideAIAgnostic(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-agnostic. Bring your own.')
   addFooter(s, pg)
@@ -305,7 +305,7 @@ That's the differentiator for any enterprise IT/legal team that has policies on 
 }
 
 // ── 3. Why now ─────────────────────────────────────────────────────────────
-function slideWhyNow(pptx: any, pg: number) {
+function slideWhyNow(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Three things changed at once.')
   addFooter(s, pg)
@@ -343,7 +343,7 @@ Land on the bottom strap: "You already have the analytics. What you've been miss
 }
 
 // ── 4. Sarina ──────────────────────────────────────────────────────────────
-function slideSarina(pptx: any, pg: number) {
+function slideSarina(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Sarina — ask better questions in the moment.')
   addFooter(s, pg)
@@ -393,7 +393,7 @@ OPTIONAL service-recovery talking point if it comes up:
 }
 
 // ── 5. Agents ──────────────────────────────────────────────────────────────
-function slideAgents(pptx: any, pg: number) {
+function slideAgents(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Agents — trained on your menu. Your voice.')
   addFooter(s, pg)
@@ -438,7 +438,7 @@ OPTIONAL safety talking point if asked:
 }
 
 // ── 6. PulseIQ ─────────────────────────────────────────────────────────────
-function slidePulseIQ(pptx: any, pg: number) {
+function slidePulseIQ(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'PulseIQ — many concurrent conversations, one AI moderator.')
   addFooter(s, pg)
@@ -483,7 +483,7 @@ Tagline: "What used to take a focus group and a 3-week readout now happens durin
 }
 
 // ── 7. Listening ───────────────────────────────────────────────────────────
-function slideListening(pptx: any, pg: number) {
+function slideListening(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Listening — one pipeline, every channel.')
   addFooter(s, pg)
@@ -526,7 +526,7 @@ THE PAYOFF (land this hard): "Every channel feeds the same theme model. When a '
 }
 
 // ── 8. Campaigns ───────────────────────────────────────────────────────────
-function slideCampaigns(pptx: any, pg: number) {
+function slideCampaigns(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Campaigns — close the loop.')
   addFooter(s, pg)
@@ -562,7 +562,7 @@ The close: "Same platform that captured the feedback closes the loop. You stop g
 }
 
 // ── 9. It all rolls into Ana ───────────────────────────────────────────────
-function slideItAllRollsIntoAna(pptx: any, pg: number) {
+function slideItAllRollsIntoAna(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'It all rolls into Ana.')
   addFooter(s, pg)
@@ -611,7 +611,7 @@ That's the next slide.`
 }
 
 // ── 9.5 Business benefit: analyst time ────────────────────────────────────
-function slideAnalystsDoInsights(pptx: any, pg: number) {
+function slideAnalystsDoInsights(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Your analysts do insights. Not data prep.')
   addFooter(s, pg)
@@ -664,7 +664,7 @@ That's the upgrade. The cost doesn't move. The output multiplies.`
 }
 
 // ── 9.6 Business benefit: AI at the core ──────────────────────────────────
-function slideAIAtTheCore(pptx: any, pg: number) {
+function slideAIAtTheCore(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI at the core unlocks shared intelligence.')
   addFooter(s, pg)
@@ -728,7 +728,7 @@ THE PUNCHLINE: this is why the architecture choice matters. Bolting AI onto a 15
 }
 
 // ── 10. Proposed pilot ─────────────────────────────────────────────────────
-function slidePilot(pptx: any, pg: number) {
+function slidePilot(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, '90 days. 5–10 locations. Decide together.')
   addFooter(s, pg)
@@ -774,7 +774,7 @@ Stop talking. Wait for their response.`
 }
 
 // ── Deck assembler ─────────────────────────────────────────────────────────
-function buildDeck(pptx: any, clientName: string) {
+function buildDeck(pptx: PptxGenJS, clientName: string) {
   let pg = 0
   addTitleSlide(pptx, clientName)
   pg = 1
