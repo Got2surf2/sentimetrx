@@ -89,6 +89,32 @@ describe('aggregateTaxonomy', () => {
   })
 })
 
+describe('zero-axis suppression (universal emotion tier)', () => {
+  it('emotion-only rows yield ONLY the emotion axis — no empty restaurant cards', () => {
+    const rows: TaxonomyRow[] = [
+      { ...blank(), rating: 2, axis_emotion: ['disappointment'],
+        assertions: [{ axis: 'emotion', sub: 'disappointment', polarity: 'neg' }] },
+      { ...blank(), rating: 5 },
+    ]
+    const r = aggregateTaxonomy(rows)
+    expect(r.axes.map(a => a.axis)).toEqual(['emotion'])
+    expect(r.emotion).toBeTruthy()
+  })
+  it('a fired ABSA axis still appears; unfired ones are dropped', () => {
+    const r = aggregateTaxonomy([{ ...blank(), axis_product: ['steak'],
+      assertions: [{ axis: 'product', sub: 'steak', polarity: 'pos' }] }])
+    expect(r.axes.map(a => a.axis)).toEqual(['product'])
+  })
+  it('rating-less emotion rows still count; negRate degrades to null', () => {
+    const r = aggregateTaxonomy([
+      { ...blank(), axis_emotion: ['churn intent'],
+        assertions: [{ axis: 'emotion', sub: 'churn intent', polarity: 'neg' }] },
+    ])
+    expect(r.emotion?.flags[0].count).toBe(1)
+    expect(r.emotion?.flags[0].negRate).toBeNull()
+  })
+})
+
 describe('resolveDictionary', () => {
   it('core is the bare hand-written dictionary', () => {
     expect(resolveDictionary('core')).toBe(KEYWORD_DICTIONARY)

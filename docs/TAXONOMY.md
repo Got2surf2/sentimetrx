@@ -94,6 +94,42 @@ facet, Charts/Stats `__dim_emotion__`, and an Operational Review deck kpi_grid
 tile ("Emotion Language in Negative Reviews" — excluded from the ABSA aspect-
 coverage chart, which stays 7-axis).
 
+### 2a.0 Universal tier — emotion on EVERY dataset (2026-07-06)
+
+Emotion language is not restaurant-specific, so the emotion axis is decoupled
+from the restaurant gate (owner directive 2026-07-06). The classify tier is
+decided **server-side** in the taxonomy route (never client-passed):
+
+- **`full`** — the restaurant ABSA dictionary + emotion. Runs when the dataset
+  is NOT `taxonomy_suppressed` (the mine-themes AI's non-food judgment,
+  sql/139 — a hotel's google reviews now gets emotion instead of restaurant
+  cards) AND (`google_reviews` OR its org is taxonomy-capable
+  (`orgTaxonomyEnabled`: `features.taxonomy` or a restaurant
+  `primaryIndustries` entry; the admin org qualifies via the feature
+  auto-grant)). Unchanged behavior for every current full-taxonomy dataset.
+- **`emotion`** — the emotion axis ONLY, for every other dataset. Restaurant
+  menu vocabulary on, say, a donor survey would be invented taxonomy; the
+  disappointment/blame/churn-intent lexicons are vertical-neutral by design
+  (§2a rules all still apply — expressed-language framing, negation guard,
+  evidence spans, genre zero-suppression).
+
+Consequences: the per-dataset `taxonomy_enabled` flag (Settings toggle /
+upload checkbox) now means "Dimensions on" for ANY dataset — the mode, not the
+flag, decides what runs. Setup/Settings/Upload copy describes both tiers. The
+rollup **zero-suppresses every axis that never fired** (was emotion-only
+suppression), so an emotion-only dataset shows a single Emotion dimension
+card, never seven empty restaurant cards. `classifyDatasetKeyword` /
+`classifyPendingRows` take `mode: 'full' | 'emotion'`; the reviewSync
+auto-classify stays `full` (it only runs on google-reviews syncs). Known
+corner: the mine-themes `foodService` auto-detect on an UPLOAD in a
+non-restaurant org sets `taxonomy_enabled` but the classify still runs
+emotion-only (the flag no longer implies full) — a restaurant client org
+should carry restaurant `primaryIndustries` (org-setup norm) or be granted
+the `taxonomy` feature (existing admin lever), which restores full. Live-verified
+2026-07-06 on a TEST survey dataset ("liked LEAST" field, 11,420 rows):
+rollup contains ONLY the emotion axis — disappointment 5.4% of negative rows
+/ churn-intent 0.8% / blame 0.6%, avg rating ~2.1 on flagged rows.
+
 ### 2a.1 LLM-tier prototype (RUN 2026-07-06 — results, not wired)
 
 A 300-review gold sample (150 neg / 150 pos, deterministic evenly-spaced picks

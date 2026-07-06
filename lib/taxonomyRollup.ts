@@ -155,10 +155,13 @@ function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
           overallRatS, overallRatN, withSignal, alertRows,
           negRows, posRows, emoNeg, emoPos, disapChurn, disapChurnNeg } = acc
   const denom = Math.max(1, n)
-  // The emotion axis is suppressed when it never fired (evaluative-genre gate:
-  // never present "0% emotion language" on ideation prompts / captive verticals).
+  // Zero-suppression on EVERY axis (2026-07-06, was emotion-only): an axis
+  // that never fired carries no information — and on emotion-only datasets
+  // (the universal tier for non-restaurant data) the seven restaurant ABSA
+  // axes would otherwise render as empty 0% cards. Same evaluative-genre
+  // logic the emotion axis always had.
   const axes = AXES
-    .filter(ax => ax !== 'emotion' || (axisCount[ax] || 0) > 0)
+    .filter(ax => (axisCount[ax] || 0) > 0)
     .map(ax => ({
       axis: ax, label: AXIS_LABEL[ax],
       count: axisCount[ax] || 0,

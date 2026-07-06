@@ -478,8 +478,12 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (a) Google Reviews datasets; (b) **org capability** — `orgTaxonomyEnabled` (`lib/resolveOrg`) = the explicit
   per-org `ModuleFeatures.taxonomy` toggle **OR** the org's `primaryIndustries` includes a restaurant type
   (`casual_dining`/`fine_dining`/`fast_food`, auto-enabled); (c) **per-dataset** — `datasets.taxonomy_enabled`
-  (sql/109), set by an "Apply Dimensions" checkbox at CSV upload or a toggle on the Schema tab, for admin/one-off
-  datasets whose org isn't a restaurant. `taxonomyEnabled` is threaded to TextMine/Charts/Stats. The classify
+  (sql/109), set by an "Apply Dimensions" checkbox at CSV upload or a toggle on the Schema tab — since the
+  **universal emotion tier (2026-07-06, TAXONOMY.md §2a.0)** this flag means "Dimensions on" for ANY dataset,
+  not restaurant opt-in: the classify route decides the tier server-side (full restaurant ABSA for
+  unsuppressed google-reviews / taxonomy-capable orgs; the vertical-neutral **Emotion** dimension only for
+  everything else), so a donor survey that toggles Dimensions gets disappointment/blame/churn-intent
+  language tags, never invented restaurant cards. `taxonomyEnabled` is threaded to TextMine/Charts/Stats. The classify
   route is org-gated, not source-gated, so classification already works on any dataset. Exempt from the theme-model lock. User-facing label "Dimensions"; internal key/route stays
   `taxonomy` (`/analyze/[datasetId]/taxonomy` still resolves but is unlinked). Moved here from a
   top-level tab 2026-06-04 so dimensions can later feed Charts/Stats like `__themes__`. Renders
@@ -523,7 +527,11 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Classification (self-serve from the tab).** `lib/taxonomyClassify.ts`
   (`classifyDatasetKeyword`) runs the keyword tier over a dataset and embeds tags,
   idempotent per `(row, fieldKey)`; the layered dictionary (`lib/taxonomyDictionary.ts`,
-  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. **Smart auto-detect
+  `resolveDictionary(core|rc|chuys)`) composes a shared core ⊕ per-brand overlay. Takes
+  `mode: 'full' | 'emotion'` (2026-07-06): emotion mode skips the restaurant dictionary and embeds
+  only the emotion axis — the universal tier; the route picks the mode server-side and
+  `taxonomy_suppressed` forces emotion even on google-reviews sources. The rollup zero-suppresses
+  every axis that never fired, so emotion-only datasets show a single Emotion dimension. **Smart auto-detect
   (2026-06-28):** Dimensions only make sense for restaurant data, so we detect that at theme-generation
   time instead of trusting the `google_reviews` source. (1) `mine-themes` asks the AI for a `foodService`
   boolean alongside the themes; when true the route sets `datasets.taxonomy_enabled=true` and returns the

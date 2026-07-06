@@ -480,7 +480,7 @@ export default function UploadClient() {
               <input type="checkbox" checked={applyDimensions} onChange={function() { setApplyDimensions(function(v) { return !v }) }} className="accent-orange-500 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-gray-700">Apply Dimensions</p>
-                <p className="text-xs text-gray-400">Classify rows into the restaurant taxonomy (service, food, drinks, ambiance…) so the Dimensions tab is available. For restaurant data — you can also turn this on later from the Schema tab.</p>
+                <p className="text-xs text-gray-400">Tag rows with dimensions so the Dimensions tab is available. Restaurant data gets the full restaurant taxonomy (service, food, drinks, ambiance…); everything else gets the universal Emotion dimension (disappointment, blame, churn-intent language). You can also turn this on later from the Schema tab.</p>
               </div>
             </label>
             <div className="flex flex-col gap-2">

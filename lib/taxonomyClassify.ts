@@ -66,19 +66,26 @@ export interface ClassifyResult {
   reachedEnd:  boolean // true when the dataset's last row was scanned this run
 }
 
+// 'full' = restaurant ABSA dictionary + emotion axis (google-reviews datasets /
+// restaurant orgs). 'emotion' = emotion-language axis ONLY — the universal tier
+// for every other dataset, where restaurant menu vocabulary would be invented
+// taxonomy. Mode is decided SERVER-SIDE by the taxonomy route, never the client.
+export type ClassifyMode = 'full' | 'emotion'
+
 export async function classifyDatasetKeyword(opts: {
   service:    SupabaseClient
   datasetId:  string
   orgId:      string
   brand?:     BrandOverlay
+  mode?:      ClassifyMode
   textField?:  string
   textFields?: string[]  // classify the concatenation of several fields (e.g. a survey's MOST + LEAST verbatims). Takes precedence over textField.
   limit?:     number   // max rows to scan this run (relative to offset)
   offset?:    number   // id cursor to resume from (exclusive; default 0 = start)
   onProgress?: (done: number) => void
 }): Promise<ClassifyResult> {
-  const { service, datasetId, orgId, brand = 'core', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
-  const dict = resolveDictionary(brand)
+  const { service, datasetId, orgId, brand = 'core', mode = 'full', textField = 'review_text', textFields, limit, offset = 0, onProgress } = opts
+  const dict = mode === 'full' ? resolveDictionary(brand) : null
   const fields = textFields && textFields.length ? textFields : [textField]
   // The fieldKey records which open-ended field(s) these tags came from (the
   // canonical combined key), so the Dimensions view can show per-field results
@@ -110,7 +117,7 @@ export async function classifyDatasetKeyword(opts: {
       // Join multiple fields with ' . ' so a phrase can't span a field boundary.
       const text = fields.map(function(f) { return String(row.data?.[f] ?? '') }).join(' . ').replace(CONTROL_CHARS, '').trim()
       if (!text) { skippedEmpty++; continue }
-      const { assertions } = classifyByKeyword(text, dict)
+      const assertions = dict ? classifyByKeyword(text, dict).assertions : []
       const emotion = detectEmotionAssertions(text)
       items.push({
         id: row.id,
@@ -145,12 +152,13 @@ export async function classifyPendingRows(opts: {
   orgId:      string
   textFields: string[]   // the open-ended field(s) being analyzed; combined into one classification
   brand?:     BrandOverlay
+  mode?:      ClassifyMode
   maxRows?:   number
 }): Promise<{ classified: number; hasMore: boolean }> {
-  const { service, datasetId, orgId, textFields, brand = 'core', maxRows = 10000 } = opts
+  const { service, datasetId, orgId, textFields, brand = 'core', mode = 'full', maxRows = 10000 } = opts
   const fields = textFields && textFields.length ? textFields : ['review_text']
   const fieldKey = taxonomyFieldKey(fields)   // combined key the blocks are stored under
-  const dict = resolveDictionary(brand)
+  const dict = mode === 'full' ? resolveDictionary(brand) : null
   let classified = 0
   let hasMore = false
 
@@ -181,7 +189,7 @@ export async function classifyPendingRows(opts: {
       // strip (unicode whitespace etc.). Skipping them left those rows pending
       // FOREVER (the "N rows aren't tagged" nudge could never clear). Writing a
       // (tagless) block converges: classifyByKeyword('') just returns no assertions.
-      const { assertions } = classifyByKeyword(text, dict)
+      const assertions = dict ? classifyByKeyword(text, dict).assertions : []
       const emotion = detectEmotionAssertions(text)
       items.push({
         id: row.id,

@@ -14,6 +14,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeTaxonomyRollup, readStoredTaxonomy, type TaxonomyRollup } from '@/lib/taxonomyRollup'
 import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClassify'
+import { orgTaxonomyEnabled } from '@/lib/resolveOrg'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -144,7 +145,7 @@ export async function GET(req: Request, props: Params) {
 
 export async function POST(req: Request, props: Params) {
   const { datasetId } = await props.params
-  const gate = await gateDataset(datasetId, 'org_id, row_count')
+  const gate = await gateDataset(datasetId, 'org_id, row_count, source, taxonomy_suppressed')
   if (gate.error) return gate.error
   const { dataset } = gate
 
@@ -160,20 +161,40 @@ export async function POST(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
 
+  // Classify tier is decided SERVER-SIDE (never client-passed): the full
+  // restaurant ABSA dictionary only runs where restaurant vocabulary is
+  // meaningful — google-reviews datasets and taxonomy-capable (restaurant)
+  // orgs — and NEVER where the mine-themes AI judged the data non-food
+  // (taxonomy_suppressed, sql/139: a hotel's google reviews). Every other
+  // dataset gets the universal EMOTION-ONLY tier (disappointment / blame /
+  // churn-intent language) — restaurant menu dimensions on, say, a donor
+  // survey would be invented taxonomy. NB the per-dataset taxonomy_enabled
+  // flag deliberately does NOT imply full: it now just reveals Dimensions;
+  // a restaurant client org gets full via primaryIndustries/features.
+  let mode: 'full' | 'emotion' = 'emotion'
+  if (!dataset.taxonomy_suppressed) {
+    if ((dataset.source as string) === 'google_reviews') mode = 'full'
+    else {
+      const { data: org } = await service
+        .from('organizations').select('features').eq('id', dataset.org_id as string).single()
+      if (orgTaxonomyEnabled(org?.features as { taxonomy?: boolean; primaryIndustries?: string[] } | null)) mode = 'full'
+    }
+  }
+
   // Drift nudge: classify ONLY the rows that lack a taxonomy entry (new since the
   // last classify). Non-destructive — existing tags are untouched — so it's safe
   // to surface contextually when rows have been added. One call drains up to 10K
   // pending rows; the client loops on hasMore.
   if (body?.pendingOnly) {
     const p = await classifyPendingRows({
-      service, datasetId, orgId: dataset.org_id as string, brand: 'core', textFields, maxRows: CHUNK,
+      service, datasetId, orgId: dataset.org_id as string, brand: 'core', mode, textFields, maxRows: CHUNK,
     })
-    return NextResponse.json({ classifiedThisCall: p.classified, done: !p.hasMore, pendingOnly: true })
+    return NextResponse.json({ classifiedThisCall: p.classified, done: !p.hasMore, pendingOnly: true, mode })
   }
 
   const r = await classifyDatasetKeyword({
     service, datasetId, orgId: dataset.org_id as string,
-    brand: 'core', textFields, offset: cursor, limit: CHUNK,
+    brand: 'core', mode, textFields, offset: cursor, limit: CHUNK,
   })
 
   return NextResponse.json({

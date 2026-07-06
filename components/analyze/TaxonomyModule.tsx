@@ -295,7 +295,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
           <>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Enable Dimensions</h2>
             <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.55, marginBottom: 18 }}>
-              Classify every comment in <strong>{fieldLabel || 'this field'}</strong> into a consistent set of restaurant dimensions — service, food, drinks, ambiance, value, and more — each with sentiment and severity flags, so you can compare and filter by aspect. Uses the built-in restaurant taxonomy (keyword-based, no AI cost) and runs in one pass.
+              Tag every comment in <strong>{fieldLabel || 'this field'}</strong> with consistent dimensions you can compare and filter by. Restaurant datasets (Google reviews, restaurant orgs) get the full menu of dimensions — service, food, drinks, ambiance, value and more, each with sentiment and severity. Every other dataset gets the universal <strong>Emotion</strong> dimension: disappointment, blame, and churn-intent <em>language</em>, each backed by the verbatim phrase that triggered it. Keyword-based, no AI cost, one pass.
             </p>
             <button onClick={() => { void enableAndClassify() }}
               style={{ background: ORANGE, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
