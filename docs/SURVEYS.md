@@ -139,6 +139,7 @@ Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kios
 - `ratingScale` — Custom emoji + label + score array
 - `clarifiers` — `{ keyword: follow_on_prompt, default: fallback }`
 - `useAIClarify` — Enable Claude-powered follow-ups
+- `forceClarify` — Deep-probe/demo mode. Bypasses the short-answer length gate **and** tells `/api/clarify` to always return a new-angle question instead of `SKIP`ping detailed answers, so every open-end gets one tailored follow-up regardless of answer length. Declines / off-topic / unsafe input still skip. Default off; `maxClarifierCount` still caps the total.
 - `maxClarifierCount` — Session-wide cap on total clarifiers fired; default 5; 0 = unlimited
 - `q3ClarifyDepth` / `q4ClarifyDepth` — Per-prompt clarifier depth (default 1). Max number of consecutive follow-ups the bot may ask on that open-end **while the answer stays vague** (`shouldClarify` re-checked each turn; a specific answer stops it early). Capped by `maxClarifierCount`. Set in Creator → Conversation step, shown only when that prompt's clarifier toggle is on.
 

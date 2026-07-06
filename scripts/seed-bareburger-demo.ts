@@ -72,8 +72,10 @@ const config: StudyConfig = {
     },
   },
 
-  // AI clarifier on
+  // AI clarifier on — force one tailored follow-up on every open-end (demo deep-probe),
+  // even when the answer is long/detailed.
   useAIClarify: true,
+  forceClarify: true,
   maxClarifierCount: 2,
   clarifiers: {
     default: 'Could you tell me a bit more about that?',

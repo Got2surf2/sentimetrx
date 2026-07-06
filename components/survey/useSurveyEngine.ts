@@ -437,6 +437,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
   const shouldClarify = (text: string) => {
     if (isDecline(text) || isQuestionOrOffTopic(text)) return false
+    // Force mode (config.forceClarify): always probe — even long, detailed answers —
+    // so a demo shows a tailored follow-up every time. Declines/off-topic still skip (above).
+    if (config.forceClarify) return true
     // Negative / low-rating answers are where a follow-up matters most — probe them
     // regardless of length. The AI clarifier decides if the answer is already
     // detailed enough (it returns SKIP for 3+ specific points), so a long, specific
@@ -557,6 +560,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           priorQA,
           language:        activeLang.current !== 'en' ? activeLang.current : undefined,
           testing:         config.testing || undefined,
+          force:           config.forceClarify || undefined,
         }),
       })
       if (!res.ok) throw new Error('API error')

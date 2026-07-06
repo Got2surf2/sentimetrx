@@ -24,6 +24,7 @@ interface ClarifyRequest {
   industry?:       string
   language?:       string
   testing?:        boolean
+  force?:          boolean               // always ask a follow-up (deep-probe/demo mode); skip only for unsafe/off-topic
 }
 
 export async function POST(req: NextRequest) {
@@ -86,9 +87,12 @@ Rules:
 - Do not repeat anything already asked
 - Ask only one question -- pick the single most valuable angle
 - Stay strictly on-topic to the survey subject matter
-- If the answer only refers back to something already covered in the earlier answers above (e.g. "just the slow pacing I mentioned earlier", "same issue as before"), that detail is ALREADY captured — return exactly: SKIP. Never ask them to re-explain or add more to a point they already made earlier.
+${body.force
+  ? `- ALWAYS return a follow-up question. Even when the answer is already detailed, pick ONE new, specific angle they have NOT yet covered — a concrete example, the reason behind it, or a related detail — and ask about that. Never ask them to repeat something already said.
+- Only return SKIP if the answer is off-topic, nonsensical, inappropriate, or abusive.`
+  : `- If the answer only refers back to something already covered in the earlier answers above (e.g. "just the slow pacing I mentioned earlier", "same issue as before"), that detail is ALREADY captured — return exactly: SKIP. Never ask them to re-explain or add more to a point they already made earlier.
 - Only return SKIP if the answer is very detailed (3+ specific points) OR it only restates earlier feedback. Otherwise short or vague answers should get a follow-up
-- If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP
+- If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP`}
 - Never echo back offensive, harmful, or inappropriate content from the respondent
 - NEVER mention "Datanautix", "sentimetrx", or any platform/tool names — only reference "${studyName}" as the organization
 

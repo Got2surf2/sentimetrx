@@ -262,6 +262,7 @@ export interface StudyConfig {
   // Clarifiers (used by legacy Q1/Q3/Q4 and open custom questions)
   clarifiers:         StudyClarifiers
   useAIClarify?:      boolean
+  forceClarify?:      boolean           // always ask one AI follow-up on open-ends, even for long/detailed answers (demo/deep-probe mode); still skips declines/off-topic/unsafe
   maxClarifierCount?: number           // max times a clarifier fires per session (default 5; 0 = unlimited)
 
   // Response control
