@@ -245,6 +245,17 @@ A separate `/campaigns/[id]/edit` page provides a focused form for the same camp
 ## Feature Flag
 
 Campaigns controlled via `org.features.campaigns` — must be enabled per organization.
+Since 2026-07-03 the gate resolves through `resolveOrg` with `is_admin_org`, so the
+admin org's auto-grant applies (part of the 17-site feature-gate sweep; previously
+the campaigns page read stored flags only).
+
+## Maintenance notes
+
+- **2026-07-04 (DD efficiency sweep, `bf90a85`):** the campaign-scheduler cron's
+  target-respondent query is now **paged** — a single PostgREST request caps at
+  1,000 rows (`max-rows`), so scheduled sends to campaigns with >1,000 pending
+  respondents previously truncated the target list silently. Part of the
+  silent-1000-cap class sweep (CAPACITY.md).
 
 ---
 

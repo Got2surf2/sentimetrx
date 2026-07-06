@@ -498,3 +498,10 @@ Both pass `resource_type: 'dataset'`, `resource_id: datasetId`, `org_id`. See `U
    - AI Search on a multi-concern query → expansion banner shows + relevance pills appear.
    - Search a collection → results from multiple member datasets, each tagged with `_collection_label`.
    - Edge: empty query, query matching nothing, query matching everything (should still cap at limit).
+
+## 10. Maintenance notes
+
+- **2026-07-04 (taxonomy embed, `11ef822`):** the search result detail renderer
+  skips reserved `_`-prefixed row keys when enumerating a row's fields — the
+  embedded `data._tx` taxonomy block (sql/151) is app metadata, not a dataset
+  column, and must never display as a field in search results.

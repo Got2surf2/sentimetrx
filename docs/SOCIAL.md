@@ -782,3 +782,14 @@ const [postFilter, setPostFilter] = useState<Record<string, string>>({})
 8. Implement config/alerts/stats/export-dataset routes (§ 11–12).
 9. Wire `social` flag into `organizations.features` and the nav gate.
 10. Build `/app/social/SocialClient.tsx` per § 13.
+
+## 17. Maintenance notes
+
+- **2026-07-03 (feature-gate sweep, `2f222eb`):** the social gates — `auto-config`
+  route and the `social-sync` cron — resolve org features through `resolveOrg`
+  with `is_admin_org`, so the admin org's feature auto-grant applies (previously
+  these read stored `organizations.features` only; one of the 17 swept sites).
+- **2026-07-04 (DD efficiency sweep, `bf90a85`):** the Facebook comment fetch in
+  the `social-sync` cron runs with **bounded concurrency**
+  (`GRAPH_FETCH_CONCURRENCY = 4`) instead of one serial Graph API round-trip per
+  post — page syncs with many posts no longer scale linearly in wall-clock.
