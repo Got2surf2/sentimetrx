@@ -62,6 +62,8 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `agent_change_log` | Config change audit per agent. |
 | `agent_impressions` | Widget impression counts (loads vs engagements). |
 | `agent_readout_cache` / `agent_study_cache` | Cached AI-generated conversation readouts / Agent Study reports. |
+| `agent_probe_responses` | Research-probe outcome accounting (BOTS.md §14, sql/159): one row per (session, probe) assignment — asked_answered / asked_declined / asked_ignored / never_fit / quota_closed, with the wording actually asked, ask context, verbatim answer and keyword-tier coding. RLS org-read; service-role writes pair agent_id+org_id. |
+| `agent_probe_quota` | O(1) answered-count per (agent, probe, version) via the `increment_probe_answered` RPC — quota checks never re-count the responses table. |
 | `mco_handoff_sessions` | MCO demo: canvas-to-agent handoff state. |
 
 ## Unified conversation substrate (Phase 3 — docs/CONVERGENCE.md)

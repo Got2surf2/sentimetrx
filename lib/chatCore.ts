@@ -20,6 +20,12 @@ import { extractPersona, mergePersona, personaToPromptContext, extractDemographi
 import { logUsage } from '@/lib/usageLog'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
+import {
+  enabledProbes, assignProbe, isEligibleNow, buildProbeInstruction,
+  detectVerbatimDelivery, classifyProbeAnswer, codeYesNo, classifyConceptDelivery,
+  PROBE_FLAG_PREFIX, type ResearchProbe,
+} from '@/lib/researchProbes'
+import { detectEmotionAssertions } from '@/lib/emotionFlags'
 import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
 import { extractName } from '@/lib/nameExtractor'
 import { mirrorTurns, mirrorFocusFlagsUpdate } from '@/lib/phase3DualWrite'
@@ -1353,6 +1359,162 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     }
   }
 
+  // ── Research probes (BOTS.md §14) — deterministic scheduler + capture ──
+  // All state is computed in code (Decision-Study state-injection pattern):
+  // assignment = deterministic hash at session level; the model only picks
+  // the natural moment within an eligible turn. Every assignment resolves to
+  // exactly one outcome row — written PROVISIONALLY as 'asked_ignored' at
+  // delivery time and upgraded here when the next user turn arrives.
+  // v1 targets 1:1 agents only; PulseIQ sessions are already structured
+  // research, so town-hall mode skips entirely.
+  const researchProbes = (!ctx.townHallContext && session_id) ? enabledProbes(bot as { research_probes?: unknown }) : []
+  let probeToDetect: ResearchProbe | null = null           // instruction injected this turn — detect delivery post-response
+  let probeAskContext: Record<string, unknown> | null = null
+  let probeAskTurn = 0
+  if (researchProbes.length > 0) {
+    try {
+      const assignedProbe = assignProbe(researchProbes, session_id, new Date())
+      if (assignedProbe) {
+        const probeVersion = assignedProbe.version ?? 1
+        const { data: probeTurns, error: probeTurnsErr } = await service
+          .from('bot_conversation_turns')
+          .select('role, turn_number, content_flags, sentiment_score')
+          .eq('bot_id', bot.id)
+          .eq('session_id', session_id)
+          .order('turn_number', { ascending: true })
+        if (probeTurnsErr) void logError('chatCore.probes', probeTurnsErr, { orgId: bot.org_id })
+        const pTurns = (probeTurns || []) as { role: string; turn_number: number; content_flags: unknown; sentiment_score: number | null }[]
+        const userTurnCount = pTurns.filter(t => t.role === 'user').length + 1  // + the current message
+        const topicSlugs = new Set<string>()
+        for (const t of pTurns) {
+          for (const f of ((t.content_flags || []) as unknown[])) {
+            if (typeof f !== 'string') continue
+            if (f.startsWith('topic:')) topicSlugs.add(f.slice(6))
+            if (f.startsWith('focus:')) topicSlugs.add(f.slice(6))
+          }
+        }
+        const lastScoredUser = [...pTurns].reverse().find(t => t.role === 'user' && typeof t.sentiment_score === 'number')
+        const lastSentimentScore = typeof lastScoredUser?.sentiment_score === 'number' ? lastScoredUser.sentiment_score : null
+        const userAnswerText = String(lastUserMsg?.content || '').slice(0, 4000)
+
+        // Probe state lives in the response row itself (race-free: the row is
+        // written at delivery time; turn content_flags are diagnostic only).
+        const { data: probeRow, error: probeRowErr } = await service
+          .from('agent_probe_responses')
+          .select('outcome, asked_turn, followup_text')
+          .eq('agent_id', bot.id).eq('org_id', bot.org_id)
+          .eq('session_id', session_id).eq('probe_id', assignedProbe.id)
+          .maybeSingle()
+        if (probeRowErr) void logError('chatCore.probeRowRead', probeRowErr, { orgId: bot.org_id })
+
+        if (probeRow && probeRow.outcome === 'asked_ignored' && probeRow.asked_turn === userTurnCount - 1) {
+          // The previous assistant turn delivered the probe → THIS user
+          // message is the answer. Upgrade the provisional row.
+          const outcome = classifyProbeAnswer(userAnswerText)
+          const coded: Record<string, unknown> = {}
+          if (assignedProbe.answer_schema === 'yes_no') {
+            const yn = codeYesNo(userAnswerText)
+            if (yn != null) coded.yes_no = yn
+          }
+          if (outcome === 'asked_answered' && assignedProbe.tag_hooks?.length) {
+            // Keyword-tier emotion coding on the answer (§14.7 — expressed-
+            // language framing; the hooks filter which subs are recorded).
+            const hooks = assignedProbe.tag_hooks.map(h => h.toLowerCase())
+            const flags = detectEmotionAssertions(userAnswerText)
+              .map(a => a.sub)
+              .filter(s => hooks.some(h => s.toLowerCase().includes(h) || h.includes(s.toLowerCase())))
+            if (flags.length) coded.emotion_flags = flags
+          }
+          const { data: updatedRows, error: capErr } = await service
+            .from('agent_probe_responses')
+            .update({
+              outcome,
+              answer_text: outcome === 'asked_answered' ? userAnswerText : null,
+              coded: Object.keys(coded).length ? coded : null,
+            })
+            .eq('agent_id', bot.id).eq('org_id', bot.org_id)
+            .eq('session_id', session_id).eq('probe_id', assignedProbe.id)
+            .select('id')
+          if (capErr) void logError('chatCore.probeCapture', capErr, { orgId: bot.org_id })
+          if (outcome === 'asked_answered' && (updatedRows?.length ?? 0) > 0) {
+            const { error: quotaErr } = await service.rpc('increment_probe_answered', {
+              p_agent_id: bot.id, p_probe_id: assignedProbe.id, p_probe_version: probeVersion,
+            })
+            if (quotaErr) void logError('chatCore.probeQuota', quotaErr, { orgId: bot.org_id })
+            if (assignedProbe.follow_up === 1) {
+              systemParts.push(
+                '\n\n--- RESEARCH PROBE FOLLOW-UP ---\nThe user just answered the research question. Ask exactly ONE short neutral clarifying follow-up (e.g. "what makes you say that?") woven into your reply, then return to helping them. It must not introduce any opinion, valence, or example answers.')
+            }
+          }
+          if (debugMode) _debug.push('Probe ' + assignedProbe.id + ': answer captured (' + outcome + ')')
+        } else if (
+          probeRow && probeRow.outcome === 'asked_answered' && probeRow.followup_text == null &&
+          assignedProbe.follow_up === 1 && probeRow.asked_turn === userTurnCount - 2
+        ) {
+          // The one allowed follow-up rode the answer-acknowledgement reply →
+          // this user turn answers it. Same deterministic arithmetic: answer
+          // captured at asked_turn+1, follow-up answer arrives at asked_turn+2.
+          const { error: fuErr } = await service
+            .from('agent_probe_responses')
+            .update({ followup_text: userAnswerText })
+            .eq('agent_id', bot.id).eq('org_id', bot.org_id)
+            .eq('session_id', session_id).eq('probe_id', assignedProbe.id)
+            .is('followup_text', null)
+          if (fuErr) void logError('chatCore.probeFollowup', fuErr, { orgId: bot.org_id })
+          if (debugMode) _debug.push('Probe ' + assignedProbe.id + ': follow-up captured')
+        } else if (!probeRow) {
+          // Rolling-sentiment gate covers the CURRENT message too (scored
+          // inline with the same lexicon used at storage) — an angry opener
+          // must gate the ask even before any turn is stored.
+          const curSentScore = userAnswerText ? scoreSentimentFull(userAnswerText).score : null
+          const eligible = isEligibleNow(assignedProbe, {
+            userTurnCount,
+            lastSentimentNegative:
+              (lastSentimentScore != null && lastSentimentScore < 0) ||
+              (curSentScore != null && curSentScore < 0),
+            topics: topicSlugs,
+            channel: (deploymentSite as string) || 'web',
+          })
+          if (eligible) {
+            // Quota gate — read the O(1) counter, never re-count responses.
+            const targetN = assignedProbe.sampling?.target_n
+            let quotaClosed = false
+            if (targetN && targetN > 0) {
+              const { data: quotaRow, error: quotaReadErr } = await service
+                .from('agent_probe_quota')
+                .select('answered_count')
+                .eq('agent_id', bot.id).eq('probe_id', assignedProbe.id).eq('probe_version', probeVersion)
+                .maybeSingle()
+              if (quotaReadErr) void logError('chatCore.probeQuotaRead', quotaReadErr, { orgId: bot.org_id })
+              quotaClosed = (quotaRow?.answered_count ?? 0) >= targetN
+            }
+            if (quotaClosed) {
+              // The assignment still resolves to an outcome (§14.2 rule 5).
+              void service.from('agent_probe_responses')
+                .upsert({
+                  org_id: bot.org_id, agent_id: bot.id, session_id,
+                  probe_id: assignedProbe.id, probe_version: probeVersion, outcome: 'quota_closed',
+                }, { onConflict: 'agent_id,session_id,probe_id', ignoreDuplicates: true })
+                .then(({ error }) => { if (error) void logError('chatCore.probeQuotaClosed', error, { orgId: bot.org_id }) })
+            } else {
+              systemParts.push('\n\n--- ' + buildProbeInstruction(assignedProbe) + ' ---')
+              probeToDetect = assignedProbe
+              probeAskTurn = userTurnCount
+              probeAskContext = {
+                preceding_topic: [...topicSlugs].pop() ?? null,
+                rolling_sentiment_score: lastSentimentScore,
+                channel: (deploymentSite as string) || 'web',
+              }
+              if (debugMode) _debug.push('Probe ' + assignedProbe.id + ': instruction injected (turn ' + userTurnCount + ')')
+            }
+          }
+        }
+      }
+    } catch (e) {
+      void logError('chatCore.probes', e, { orgId: bot.org_id })
+    }
+  }
+
   if (debugMode) {
     var guardrailCount = Array.isArray((bot as any).guardrails) ? (bot as any).guardrails.length : 0
     _debug.push('Guardrails: ' + guardrailCount + ' rules')
@@ -1501,6 +1663,24 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
         }
         turnsToInsert.push(userTurn)
         var assistantTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: pulseiqAssistantSource || 'normal' }
+        // Research-probe delivery (§14.5) — verbatim mode is detected
+        // synchronously (normalized containment): the diagnostic flag lands
+        // atomically with the insert and the PROVISIONAL outcome row
+        // ('asked_ignored' — the correct terminal state if the participant
+        // never engages) is written now. Concept mode resolves via the async
+        // AI check after the insert. State reads go through the row, never
+        // the flag, so the focus-classifier's later flag overwrite is benign.
+        if (probeToDetect && probeToDetect.mode === 'verbatim' && detectVerbatimDelivery(result.text, probeToDetect.question)) {
+          assistantTurn.content_flags = [PROBE_FLAG_PREFIX + probeToDetect.id]
+          void service.from('agent_probe_responses')
+            .upsert({
+              org_id: bot.org_id, agent_id: bot.id, session_id,
+              probe_id: probeToDetect.id, probe_version: probeToDetect.version ?? 1,
+              outcome: 'asked_ignored', asked_wording: probeToDetect.question,
+              asked_turn: probeAskTurn, ask_context: probeAskContext,
+            }, { onConflict: 'agent_id,session_id,probe_id', ignoreDuplicates: true })
+            .then(({ error }) => { if (error) void logError('chatCore.probeAskRow', error, { orgId: bot.org_id }) })
+        }
         turnsToInsert.push(assistantTurn)
 
         const { data: insertedRows, error: insertErr } = await service
@@ -1563,6 +1743,30 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
               }
             }).catch(function(e: any) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: e?.message }) })
           }
+        }
+
+        // Concept-probe delivery resolves via the async AI check (wording is
+        // adapted, containment can't work). Best-effort fire-and-forget: on a
+        // missed/failed check the instruction simply re-injects next turn and
+        // the row upsert's ignoreDuplicates absorbs any repeat. asked_wording
+        // records the sentence actually used (§14.2: wording variance is a
+        // measured column).
+        if (probeToDetect && probeToDetect.mode === 'concept' && !insertErr) {
+          const conceptProbe = probeToDetect
+          const conceptAskTurn = probeAskTurn
+          const conceptAskContext = probeAskContext
+          classifyConceptDelivery(conceptProbe, result.text).then(function(check) {
+            if (check?.usage) logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'probe_detect' }, check.usage)
+            if (!check?.asked) return
+            void service.from('agent_probe_responses')
+              .upsert({
+                org_id: bot.org_id, agent_id: bot.id, session_id,
+                probe_id: conceptProbe.id, probe_version: conceptProbe.version ?? 1,
+                outcome: 'asked_ignored', asked_wording: check.wording || conceptProbe.question,
+                asked_turn: conceptAskTurn, ask_context: conceptAskContext,
+              }, { onConflict: 'agent_id,session_id,probe_id', ignoreDuplicates: true })
+              .then(({ error }) => { if (error) void logError('chatCore.probeAskRow', error, { orgId: bot.org_id }) })
+          }).catch(function(e: unknown) { console.error({ at: 'bot-chat', msg: 'probe concept detect failed', err: e instanceof Error ? e.message : String(e) }) })
         }
 
         // Name capture — two sources, in priority order:

@@ -10,6 +10,9 @@ import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import { enabledProbes, assignProbe } from '@/lib/researchProbes'
+import { fetchAllRows } from '@/lib/townHallAdapter'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -21,6 +24,15 @@ export async function GET(req: NextRequest) {
   const service = createServiceRoleClient()
   const now = new Date().toISOString()
 
+  // ── Research-probe never_fit sweep (BOTS.md §14.5 step 4) ──────────────
+  // Every probe ASSIGNMENT must resolve to exactly one outcome. Assignment
+  // is a deterministic hash, so this sweep can RECOMPUTE it after the fact:
+  // for each ended session (last turn 2h–7d old) on a probe-carrying agent,
+  // a hash-winning probe with no response row means the conversation ended
+  // before a natural moment → 'never_fit'. Runs before (and independent of)
+  // the review-interval gate below.
+  const probeSweep = await sweepNeverFit(service)
+
   // Find active bots due for review
   const { data: dueBots } = await service
     .from('agents')
@@ -31,7 +43,7 @@ export async function GET(req: NextRequest) {
     .limit(5)
 
   if (!dueBots || dueBots.length === 0) {
-    return NextResponse.json({ message: 'No bots due for review', processed: 0 })
+    return NextResponse.json({ message: 'No bots due for review', processed: 0, probeSweep })
   }
 
   const results: { botId: string; name: string; sessions: number; drift: boolean }[] = []
@@ -157,5 +169,69 @@ Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, 
     }
   }
 
-  return NextResponse.json({ processed: results.length, results })
+  return NextResponse.json({ processed: results.length, results, probeSweep })
+}
+
+// Recompute deterministic probe assignments for ended sessions and record
+// 'never_fit' where no outcome row exists. Best-effort: any error logs and
+// moves on; un-swept sessions stay inside the 7-day window for the next run.
+async function sweepNeverFit(service: ReturnType<typeof createServiceRoleClient>): Promise<{ agents: number; neverFit: number }> {
+  let agentsSwept = 0
+  let neverFit = 0
+  try {
+    const { data: probeBots, error: botsErr } = await service
+      .from('agents')
+      .select('id, org_id, research_probes')
+      .neq('research_probes', '[]')
+    if (botsErr) { void logError('probeSweep.bots', botsErr); return { agents: 0, neverFit: 0 } }
+    const twoHoursAgo = Date.now() - 2 * 3600_000
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString()
+    for (const pb of probeBots || []) {
+      const probes = enabledProbes(pb as { research_probes?: unknown })
+      if (probes.length === 0) continue
+      agentsSwept++
+      // Last-activity per session over the window (paged past the 1000-row
+      // PostgREST cap; 50K turns/week/agent is far above current traffic).
+      const turns = await fetchAllRows<{ session_id: string; created_at: string }>((from, to) =>
+        service
+          .from('bot_conversation_turns')
+          .select('session_id, created_at')
+          .eq('bot_id', pb.id)
+          .gte('created_at', sevenDaysAgo)
+          .order('created_at', { ascending: true })
+          .range(from, to),
+      )
+      const lastActivity = new Map<string, string>()
+      for (const t of turns) {
+        const prev = lastActivity.get(t.session_id)
+        if (!prev || t.created_at > prev) lastActivity.set(t.session_id, t.created_at)
+      }
+      const candidates: { session_id: string; probe_id: string; probe_version: number }[] = []
+      for (const [sid, last] of lastActivity) {
+        if (new Date(last).getTime() > twoHoursAgo) continue  // still live-ish
+        const assigned = assignProbe(probes, sid, new Date(last))
+        if (assigned) candidates.push({ session_id: sid, probe_id: assigned.id, probe_version: assigned.version ?? 1 })
+      }
+      if (candidates.length === 0) continue
+      const { data: existing, error: exErr } = await service
+        .from('agent_probe_responses')
+        .select('session_id')
+        .eq('agent_id', pb.id)
+        .in('session_id', candidates.map(c => c.session_id))
+      if (exErr) { void logError('probeSweep.existing', exErr, { orgId: (pb as { org_id: string }).org_id }); continue }
+      const have = new Set((existing || []).map(r => r.session_id))
+      const rows = candidates
+        .filter(c => !have.has(c.session_id))
+        .map(c => ({ org_id: (pb as { org_id: string }).org_id, agent_id: pb.id, ...c, outcome: 'never_fit' }))
+      if (rows.length === 0) continue
+      const { error: insErr } = await service
+        .from('agent_probe_responses')
+        .upsert(rows, { onConflict: 'agent_id,session_id,probe_id', ignoreDuplicates: true })
+      if (insErr) { void logError('probeSweep.insert', insErr, { orgId: (pb as { org_id: string }).org_id }); continue }
+      neverFit += rows.length
+    }
+  } catch (e) {
+    void logError('probeSweep', e)
+  }
+  return { agents: agentsSwept, neverFit }
 }

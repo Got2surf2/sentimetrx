@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, props: Params) {
   // read; knowledge_base stays (RAG fallback context injection).
   const { data: agent, error } = await service
     .from('agents')
-    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled')
+    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled, research_probes')
     .eq('id', params.id)
     .single()
 

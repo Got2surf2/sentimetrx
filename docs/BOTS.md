@@ -1435,15 +1435,50 @@ End-to-end verification with both flags on: sent two messages to a fresh Sarina 
 
 ---
 
-## 14. Research Probes — in-conversation market research (SPEC — NOT BUILT, 2026-07-05)
+## 14. Research Probes — in-conversation market research (RUNTIME BUILT 2026-07-06)
 
-> **Status: design spec only.** Nothing in this section exists in code. Written
-> 2026-07-05 while the methodology was validated (emotion-flags probe work,
-> EA parallel-surveys design). Sibling spec: **Anchors** (builder-declared
-> required data points per session — full draft lives in project memory
-> `project_anchors_spec`, also not built). Anchors capture *who the
-> participant is*; probes capture *what a sampled subset thinks*. They share
-> the ask/capture machinery and should be built against the same substrate.
+> **Status: substrate + runtime + disclosure BUILT (2026-07-06); admin setup
+> UI and results dashboard pending.** Built: `sql/159` (probe library column,
+> outcome-accounted `agent_probe_responses`, `agent_probe_quota` + atomic
+> counter RPC — applied to TEST; prod apply rides the next migration batch),
+> `lib/researchProbes.ts` (pure scheduler/eligibility/delivery/coding
+> helpers), the `handleChatTurn` wiring (§14.5 as-built notes below), the
+> §14.3 disclosure line in the widget chrome, and the `never_fit` sweep in
+> the conversation-review cron. Live-verified end-to-end on the TEST project
+> (13-check harness, untracked `scripts/_verify_probes.ts`): ask → provisional
+> row → answer capture w/ yes_no + emotion coding → quota counter → decline →
+> quota_closed → sentiment-gated skip → sweep never_fit. Probes are
+> configured by editing `agents.research_probes` directly until the setup UI
+> lands. Sibling spec: **Anchors** (builder-declared required data points per
+> session — full draft lives in project memory `project_anchors_spec`, not
+> built). Anchors capture *who the participant is*; probes capture *what a
+> sampled subset thinks*; they share the ask/capture machinery.
+>
+> **As-built deltas from the original design (2026-07-06):**
+> - **State lives in the response row, not turn flags.** The row is written
+>   PROVISIONALLY as `asked_ignored` at delivery time (a valid terminal state
+>   if the participant walks away) and upgraded to answered/declined when the
+>   next user turn arrives (`asked_turn` arithmetic: answer at asked_turn+1,
+>   follow-up answer at asked_turn+2). The `probe:<id>` content_flag on the
+>   assistant turn is diagnostic only — the focus classifier may overwrite
+>   flags, so nothing reads them.
+> - **Verbatim delivery** is detected synchronously (normalized containment)
+>   so the row lands atomically with turn storage; **concept delivery** is an
+>   async fast-tier AI check (`usage: probe_detect`) that extracts the wording
+>   actually used into `asked_wording`.
+> - **Sentiment gate covers the current message** (scored inline with the
+>   storage lexicon), not just prior stored turns — an angry opener gates the
+>   ask on turn 1.
+> - **`cooldown_days` is NOT enforced in v1** — 1:1 agent sessions carry no
+>   stable cross-session participant identity to key it on. Recorded here so
+>   the field isn't mistaken for live behavior; enforce when a durable
+>   participant hash exists.
+> - **`never_fit` needs no in-flight state**: assignment is a deterministic
+>   hash, so the cron RECOMPUTES it for ended sessions (last turn 2h–7d old)
+>   and records `never_fit` where no row exists.
+> - AI answer-coding is keyword-tier only in v1 (yes/no heuristic +
+>   emotion-flag hooks via `detectEmotionAssertions`); the async `probe_code`
+>   AI pass is deferred to the results-dashboard unit.
 
 ### 14.1 Concept
 

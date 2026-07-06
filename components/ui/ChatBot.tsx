@@ -106,6 +106,10 @@ export interface ChatBotConfig {
   // from the URL ?site= param so the chat handler can bias retrieval and
   // the system prompt to the deploying site.
   extraBody?: Record<string, any>
+  // Research-probe disclosure (BOTS.md §14.3) — REQUIRED whenever any research
+  // probe is enabled on the agent; not removable while one is active. Renders
+  // a one-line notice in the composer footer.
+  researchDisclosure?: boolean
 }
 
 const LANG_LABELS: Record<string, { name: string; native: string }> = {
@@ -900,6 +904,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             Powered by <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
               style={{ color: '#E8632A', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>Datanautix</a>
           </span>
+          {config.researchDisclosure && (
+            <div style={{ color: '#9ca3af', fontSize: '0.625rem', marginTop: 3 }}>
+              Chats may include occasional feedback questions; responses are analyzed in aggregate.
+            </div>
+          )}
         </div>
       </div>}
 

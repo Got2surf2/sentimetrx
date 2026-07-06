@@ -5,6 +5,7 @@
 import type { Metadata } from 'next'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { enabledProbes } from '@/lib/researchProbes'
 import BotClient from './BotClient'
 
 // Public bot pages are read by share-link unfurls (iMessage / Slack / Twitter)
@@ -22,16 +23,22 @@ export default async function BotPage(props: Props) {
   const service = createServiceRoleClient()
   const { data: bot } = await service
     .from('agents')
-    .select('id, name, slug, status, config')
+    .select('id, name, slug, status, config, research_probes')
     .eq('slug', params.slug)
     .eq('status', 'active')
     .single()
 
   if (!bot) notFound()
 
+  // §14.3: any enabled research probe forces the disclosure line in the
+  // widget chrome. Computed server-side; the probe definitions themselves
+  // never reach the client.
+  const { research_probes: _probes, ...botForClient } = bot
+  const researchDisclosure = enabledProbes(bot).length > 0
+
   return (
     <main style={{ height: '100dvh', background: '#f8fafc', overflow: 'hidden' }}>
-      <BotClient bot={bot} />
+      <BotClient bot={{ ...botForClient, researchDisclosure }} />
     </main>
   )
 }

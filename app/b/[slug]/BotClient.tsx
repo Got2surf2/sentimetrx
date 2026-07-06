@@ -11,6 +11,9 @@ interface Bot {
   name: string
   slug: string
   config: Partial<ChatBotConfig> & { initialMessage?: string; suggestions?: string[] }
+  // True when any research probe is enabled (server-computed) — forces the
+  // §14.3 disclosure line in the widget chrome, not removable while active.
+  researchDisclosure?: boolean
 }
 
 const ALLOWED_SITES = new Set(['foundations', 'coalition'])
@@ -43,6 +46,7 @@ export default function BotClient({ bot }: { bot: Bot }) {
     languages: Array.isArray((c as any).languages) ? (c as any).languages : undefined,
     language: (c as any).language,
     extraBody: site ? { site } : undefined,
+    researchDisclosure: bot.researchDisclosure === true,
   }
 
   return <ChatBot config={config} />
