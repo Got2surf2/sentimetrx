@@ -569,6 +569,7 @@ Major AI features by module:
 - Persona / opinion mining (`lib/personaExtractor.ts`, `lib/opinionMining.ts`)
 - Sentiment scoring (`lib/scoreSentimentFull`)
 - AI deck generation (entity analysis, brand rollups, restaurant expansion)
+- **Sales-pitch deck template** (`lib/pptx/salesPitchDeck.ts`, admin `/api/sales-pitch-deck?client=<slug>`): one reusable client-agnostic capability deck in the Sentimetrx-forward house style. Fixed universal spine (two-ways-to-hear · why-conversational/40–50% data-loss · conversational advantage · try-it QR · the ask) + optional data-driven restaurant modules (stars-&-dogs leaderboard, score decomposition, Dimensions↔Themes coin, mined themes, food-safety early-warning). New client = a new `SalesPitchConfig` (seeds: `SAMPLE_BAREBURGER` restaurant, `SAMPLE_GENERIC` non-restaurant). Surfaced on `/admin/decks`.
 
 **PulseIQ**
 - Discussion-guide generation (4–8 topics from event description)

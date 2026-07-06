@@ -23,6 +23,28 @@ type Deck = {
 
 const DECKS: Deck[] = [
   {
+    href: '/api/sales-pitch-deck?client=bareburger',
+    filename: 'Bareburger-Sentimetrx-Capabilities.pptx',
+    title: 'Sales Pitch Template — Restaurant (Bareburger sample)',
+    subtitle: 'The standard client-pitch template. Universal spine (two ways to hear → why conversational → the advantage → the ask) + restaurant evidence modules (Stars & Dogs, dimensions/themes coin, food-safety early-warning) filled from Bareburger’s real reviews. Copy the config to start any new restaurant pitch.',
+    audience: 'Prospective clients · first capability meeting',
+    slides: '13 slides',
+    accent: '#00B4D8',
+    badge: 'TEMPLATE · RESTAURANT',
+    logKey: 'sales-pitch-deck:bareburger',
+  },
+  {
+    href: '/api/sales-pitch-deck?client=generic',
+    filename: 'Sentimetrx-Capabilities.pptx',
+    title: 'Sales Pitch Template — Generic (non-restaurant)',
+    subtitle: 'Same template, restaurant modules omitted — the universal spine + a KPI grid, for membership / hospitality / SaaS / healthcare prospects. The non-restaurant starting point; swap in the client’s data and labels.',
+    audience: 'Prospective clients · first capability meeting',
+    slides: '~7 slides',
+    accent: '#0F7173',
+    badge: 'TEMPLATE · GENERIC',
+    logKey: 'sales-pitch-deck:generic',
+  },
+  {
     href: '/api/pitch-deck',
     filename: 'Sentimetrx-Pitch-Deck.pptx',
     title: 'Sentimetrx Investor Pitch',
