@@ -16,6 +16,7 @@
 // Async because it embeds a scannable QR (survey.url) via qrcode.
 
 import QRCode from 'qrcode'
+import type PptxGenJS from 'pptxgenjs'
 
 // ── Brand palette (Sentimetrx-forward) ───────────────────────────────────────
 const DN = {
@@ -75,30 +76,30 @@ export interface SalesPitchConfig {
 }
 
 // ── Primitives ───────────────────────────────────────────────────────────────
-function header(s: any, title: string) {
+function header(s: PptxGenJS.Slide, title: string) {
   s.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   s.addText(title, { x: 0.6, y: 0.15, w: 9.8, h: 0.7, fontSize: 27, fontFace: AF, color: DN.white, bold: true, valign: 'middle' })
   s.addText('Sentimetrx', { x: W - 3.0, y: 0.15, w: 2.7, h: 0.7, fontSize: 16, fontFace: AF, color: DN.sarina, bold: true, align: 'right', valign: 'middle' })
   s.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarina } })
 }
-function footer(s: any, client: string, pg: number) {
+function footer(s: PptxGenJS.Slide, client: string, pg: number) {
   s.addText('sentimetrx.ai  ·  powered by Datanautix', { x: 0.5, y: H - 0.4, w: 6, h: 0.3, fontSize: 9, color: DN.slate, fontFace: AF })
   s.addText(`Prepared for ${client}  ·  Confidential`, { x: W - 5.2, y: H - 0.4, w: 3.9, h: 0.3, fontSize: 9, color: DN.slate, fontFace: AF, align: 'right' })
   s.addText(`${pg}`, { x: W - 1.0, y: H - 0.4, w: 0.5, h: 0.3, fontSize: 9, color: DN.slate, fontFace: AF, align: 'right' })
 }
-function kicker(s: any, text: string, color = DN.orange) {
+function kicker(s: PptxGenJS.Slide, text: string, color = DN.orange) {
   s.addText(text, { x: 0.6, y: 1.22, w: 12.1, h: 0.55, fontSize: 21, fontFace: AF, color, bold: true, valign: 'middle' })
 }
-function takeaway(s: any, text: string, color = DN.navy) {
+function takeaway(s: PptxGenJS.Slide, text: string, color = DN.navy) {
   s.addText(text, { x: 0.6, y: 6.55, w: 12.1, h: 0.5, fontSize: 15, fontFace: AF, color, bold: true, italic: true, align: 'center', valign: 'middle' })
 }
-function panel(s: any, x: number, y: number, w: number, h: number, topStrip: string, heading: string, headingColor: string, bullets: string[], bodyColor = DN.ink, fontSize = 14) {
+function panel(s: PptxGenJS.Slide, x: number, y: number, w: number, h: number, topStrip: string, heading: string, headingColor: string, bullets: string[], bodyColor = DN.ink, fontSize = 14) {
   s.addShape('rect', { x, y, w, h, fill: { color: DN.slateLight }, rectRadius: 0.12 })
   s.addShape('rect', { x, y, w, h: 0.1, fill: { color: topStrip } })
   s.addText(heading, { x: x + 0.2, y: y + 0.2, w: w - 0.4, h: 0.45, fontSize: 16, fontFace: AF, color: headingColor, bold: true, align: 'center' })
   s.addText(bullets.join('\n'), { x: x + 0.35, y: y + 0.8, w: w - 0.6, h: h - 0.95, fontSize, fontFace: AF, color: bodyColor, bullet: { code: '2022', indent: 16 }, lineSpacing: 22, paraSpaceAfter: 10, valign: 'top' })
 }
-function statTile(s: any, x: number, y: number, w: number, h: number, t: StatTile) {
+function statTile(s: PptxGenJS.Slide, x: number, y: number, w: number, h: number, t: StatTile) {
   const num = t.color || DN.sarina
   s.addShape('rect', { x, y, w, h, fill: { color: DN.slateLight }, rectRadius: 0.1 })
   s.addShape('rect', { x, y, w, h: 0.09, fill: { color: num } })
@@ -106,7 +107,7 @@ function statTile(s: any, x: number, y: number, w: number, h: number, t: StatTil
   s.addText(t.label, { x: x + 0.15, y: y + 0.95, w: w - 0.3, h: 0.35, fontSize: 13.5, fontFace: AF, color: DN.navy, bold: true, align: 'center' })
   if (t.sub) s.addText(t.sub, { x: x + 0.12, y: y + 1.28, w: w - 0.24, h: 0.35, fontSize: 10, fontFace: AF, color: DN.slate, align: 'center', italic: true })
 }
-function statGrid(s: any, tiles: StatTile[]) {
+function statGrid(s: PptxGenJS.Slide, tiles: StatTile[]) {
   tiles.slice(0, 6).forEach((t, i) => statTile(s, 0.6 + (i % 3) * 4.06, 2.05 + Math.floor(i / 3) * 1.95, 3.86, 1.75, t))
 }
 
@@ -122,13 +123,13 @@ const DEFAULT_WHY = {
 }
 
 // ── Builder ──────────────────────────────────────────────────────────────────
-export async function buildSalesPitchDeck(pptx: any, cfg: SalesPitchConfig) {
+export async function buildSalesPitchDeck(pptx: PptxGenJS, cfg: SalesPitchConfig) {
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'; pptx.company = 'Datanautix'
   pptx.title = `${cfg.client} — Sentimetrx Capability Overview`
   const tx = 0.6, tw = 12.13
   let pg = 0
-  const foot = (s: any) => footer(s, cfg.client, pg)
+  const foot = (s: PptxGenJS.Slide) => footer(s, cfg.client, pg)
 
   // 1 · COVER
   const c = pptx.addSlide(); pg++
