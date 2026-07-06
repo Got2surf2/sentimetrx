@@ -1432,3 +1432,210 @@ End-to-end verification with both flags on: sent two messages to a fresh Sarina 
 9. Build admin UIs: `/bots`, `/bots/[id]/knowledge`, `/bots/[id]/intents`, `/bots/[id]/conversations` (§ 11).
 10. Build `/b/[slug]` public page + BotClient embed.
 11. Verify CORS headers on `/api/bots/[id]/chat` so customers can iframe-embed.
+
+---
+
+## 14. Research Probes — in-conversation market research (SPEC — NOT BUILT, 2026-07-05)
+
+> **Status: design spec only.** Nothing in this section exists in code. Written
+> 2026-07-05 while the methodology was validated (emotion-flags probe work,
+> EA parallel-surveys design). Sibling spec: **Anchors** (builder-declared
+> required data points per session — full draft lives in project memory
+> `project_anchors_spec`, also not built). Anchors capture *who the
+> participant is*; probes capture *what a sampled subset thinks*. They share
+> the ask/capture machinery and should be built against the same substrate.
+
+### 14.1 Concept
+
+A **research probe** is a builder-declared market-research question that the
+agent weaves into ordinary service conversations — conversationally delivered,
+but sampled, worded, logged, and quota'd rigorously enough to stand as real
+research. The product ladder it completes: passive emotion/taxonomy flags on
+found text (reviews) → dedicated adaptive surveys (EA parallel-surveys
+design) → **ambient elicitation inside service conversations** (this).
+
+Everything runs through `lib/chatCore.handleChatTurn`, so one implementation
+serves agents (`/b/[slug]`) and PulseIQ sessions (`/pi/[guid]`) — though v1
+targets agents only (PulseIQ sessions are already structured research).
+
+### 14.2 Methodological requirements (what makes it defensible research)
+
+1. **Two probe classes.**
+   - `verbatim` — the question text is delivered word-for-word. The model may
+     add a short neutral lead-in but MUST NOT alter the question sentence.
+     Comparable across participants and time (the EA shared-core rule).
+   - `concept` — the model may adapt wording to fit the conversation;
+     comparability comes from coding the *answer* against the construct, not
+     from identical stimulus.
+   Either way, the runtime records the **exact wording actually asked** per
+   instance (`asked_wording`), so wording variance is a measured column, not
+   an invisible confound.
+2. **Deterministic sampling.** Assignment happens at session start via hash
+   (e.g. `hash(session_id + probe.id) mod 100 < sample_pct`) — reproducible,
+   no model discretion over *who* gets asked. The model only chooses *when*
+   within the eligibility rules (or never, if no natural moment occurs).
+3. **Hard caps.** Max **one probe asked per conversation** (v1 constant, not
+   configurable). Per-probe quota (`target_n`) stops assignment once met.
+   Returning-participant cooldown (don't re-probe the same participant hash
+   within `cooldown_days`).
+4. **Context gating + context logging.** Probes fire only after the user's
+   actual need is addressed (min turn threshold + not-mid-frustration
+   sentiment gate) and optionally on topic triggers/exclusions. The runtime
+   logs context-of-ask: turn number, preceding topic, rolling sentiment at
+   ask time. Ask-context biases answers; logged bias is analyzable.
+5. **Non-response is data.** Every *assignment* resolves to exactly one
+   outcome: `asked_answered` / `asked_declined` / `asked_ignored` /
+   `never_fit` (conversation ended before a natural moment) /
+   `quota_closed`. Response-rate per probe and decline patterns are part of
+   the deliverable — otherwise this is a self-selection machine.
+6. **One bounded follow-up.** `follow_up: 0 | 1`. The follow-up may clarify
+   ("what makes you say that?") but MUST NOT introduce valence or examples.
+   Sarina-style adaptive elicitation, capped so it stays innocuous.
+7. **Versioning.** Any change to `question` mints a new `version`; analysis
+   and trend lines only run within a version. Same rule as deck-number
+   credibility: one wording, one denominator.
+
+### 14.3 Ethics / disclosure line (non-negotiable)
+
+"Innocuous" means *conversationally delivered*, never *concealed purpose*.
+Covert research on service users fails ESOMAR-class industry codes and
+creates GDPR purpose-limitation problems (COMPLIANCE.md T2) the moment an EU
+respondent answers. Requirements:
+
+- Enabling probes on an agent **auto-adds a disclosure line** to the public
+  widget chrome (alongside the existing privacy-notice link): *"Chats may
+  include occasional feedback questions; responses are analyzed in
+  aggregate."* Not removable while any probe is active.
+- Any probe answer can be declined or ignored with zero pushback — the agent
+  moves on (existing skip semantics). Declines are recorded as outcomes, not
+  retried.
+- Probe answers live under the same retention/PII posture as conversation
+  turns (SECURITY.md §7) and surface only in aggregate + anonymized verbatim
+  form in analytics.
+
+### 14.4 Data model
+
+`agents.research_probes JSONB NOT NULL DEFAULT '[]'` — the probe library:
+
+```json
+[
+  {
+    "id": "renewal_feeling",            // stable slug
+    "version": 1,                        // bump on any wording change
+    "construct": "latent regret about auto-renewal",
+    "mode": "verbatim",                 // 'verbatim' | 'concept'
+    "question": "If you were starting this season over today, would you get the games the same way?",
+    "answer_schema": "open",            // 'open' | 'yes_no' | 'scale_extract'
+    "follow_up": 1,                      // 0 | 1
+    "tag_hooks": ["regret", "disappointment"],  // emotion-flag coding applied to the answer
+    "eligibility": {
+      "min_user_turns": 3,
+      "sentiment_gate": true,            // skip if rolling sentiment negative at the moment of ask
+      "topic_triggers": [],              // fire only if one of these topics arose (empty = any)
+      "topic_exclusions": ["complaint"],
+      "channels": ["web", "kiosk"]
+    },
+    "sampling": {
+      "sample_pct": 25,                  // deterministic hash assignment
+      "target_n": 200,                   // stop assigning once answered-count reached
+      "cooldown_days": 30,
+      "field_start": "2026-08-01",
+      "field_end": null
+    },
+    "enabled": true
+  }
+]
+```
+
+`agent_probe_responses` (new table — RLS + org-scoped SELECT day one, per the
+multi-tenancy invariants; service-role writes pair `agent_id` with `org_id`):
+
+```sql
+CREATE TABLE agent_probe_responses (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id         UUID NOT NULL,
+  agent_id       UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  session_id     TEXT NOT NULL,
+  probe_id       TEXT NOT NULL,
+  probe_version  INTEGER NOT NULL,
+  outcome        TEXT NOT NULL CHECK (outcome IN
+                   ('asked_answered','asked_declined','asked_ignored','never_fit','quota_closed')),
+  asked_wording  TEXT,                -- exact question text as delivered (null unless asked)
+  asked_turn     INTEGER,             -- user-turn count at ask time
+  ask_context    JSONB,               -- { preceding_topic, rolling_sentiment, channel }
+  answer_text    TEXT,                -- verbatim user answer (null unless answered)
+  followup_text  TEXT,                -- the one allowed follow-up's answer, if used
+  coded          JSONB,               -- { yes_no?, scale?, emotion_flags?, confidence } — Ana coding
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (agent_id, session_id, probe_id)
+);
+ALTER TABLE agent_probe_responses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY apr_org_read ON agent_probe_responses
+  FOR SELECT USING (org_id = (SELECT org_id FROM users WHERE id = auth.uid()));
+CREATE INDEX idx_apr_analytics ON agent_probe_responses (org_id, agent_id, probe_id, probe_version, outcome);
+```
+
+Quota enforcement: keep an answered-count per `(probe_id, version)` via an
+atomic increment RPC (the sql/154 counter pattern) — do NOT re-count the
+responses table per turn.
+
+### 14.5 Runtime (chatCore hook points)
+
+Decision-Study state-injection pattern: all state computed deterministically
+in code; the model receives instructions, never bookkeeping duties.
+
+1. **Session start** — resolve assignments: for each enabled probe in field
+   window with quota open, hash-assign. At most one probe wins per session
+   (first by config order among assigned). Store in-session state; write
+   nothing yet.
+2. **Per turn (pre-response)** — if an assigned probe is unfired, evaluate
+   eligibility (min turns, sentiment gate, topic triggers). When eligible,
+   inject a system block:
+   `RESEARCH PROBE (when a natural pause occurs, not mid-issue): ask exactly: "…"` (verbatim mode)
+   or the construct + adaptation rules (concept mode). Include the
+   no-valence follow-up rule iff `follow_up: 1`.
+3. **Per turn (post-response)** — detect whether the probe question was
+   delivered (substring/AI check, the anchors §3 pattern); record
+   `asked_wording` + `ask_context`. On the next user turn, capture the
+   answer; run coding (keyword tier inline; AI coding async via `waitUntil`,
+   `usage: { event_type: 'probe_code' }`).
+4. **Session end / auto-close** — resolve any assigned-but-unfired probe to
+   `never_fit`. All writes fire-and-forget; never block the chat response.
+
+### 14.6 Admin surfaces
+
+- **Setup**: "Research Probes" section in the agent editor (Conversation
+  Controls step, beside where Anchors will live). Per-probe editor mirrors
+  the JSONB fields. Master toggle wires the §14.3 disclosure line.
+- **Results**: per-probe dashboard — funnel (assigned → asked → answered),
+  response + decline rates, coded distribution with verbatim drill-down,
+  wording-variance list for concept probes, quota progress. Lives with the
+  agent's Conversations/analytics tabs; exports join the existing agent
+  export family (personified filenames per content rules).
+
+### 14.7 Cross-references & build order
+
+- Anchors (memory spec) — shared ask-detection machinery; if both get built,
+  build the detection/capture layer once.
+- Emotion flags (`project_emotion_flags_framework` memory) — coding layer
+  for `tag_hooks`; expressed-language framing rules apply to all probe
+  reporting.
+- EA parallel surveys — first candidate probe library (MVP+ perks/awareness
+  items); PulseIQ cohort_config — precedent for coverage/quota semantics.
+- Build order: (1) migration (table + column + counter RPC), (2) chatCore
+  scheduler + capture, (3) setup UI + disclosure wiring, (4) results
+  dashboard + coding, (5) pilot on a low-stakes agent before any client use.
+- Spec updates on build: this section becomes authoritative; update
+  ANALYTICS.md (probe aggregates), TESTING.md (scheduler determinism +
+  outcome-accounting tests), SECURITY.md §7 if retention posture changes.
+
+### 14.8 Open questions (decide at build time)
+
+1. Kiosk contexts: is one probe per conversation still right where sessions
+   are 2–3 turns? (Probably needs `min_user_turns: 1` + higher sample_pct.)
+2. Concept-probe wording drift: cap adaptation via a similarity floor to the
+   canonical wording, or trust coding + the wording log? (Lean: log only in
+   v1; add the floor if drift proves material.)
+3. Cross-agent probes (same question fielded on several agents of one org)
+   — v1 answer: duplicate the probe per agent, align on `id`+`version`;
+   revisit if orgs run 3+ agents.
