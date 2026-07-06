@@ -125,7 +125,14 @@ corner: the mine-themes `foodService` auto-detect on an UPLOAD in a
 non-restaurant org sets `taxonomy_enabled` but the classify still runs
 emotion-only (the flag no longer implies full) — a restaurant client org
 should carry restaurant `primaryIndustries` (org-setup norm) or be granted
-the `taxonomy` feature (existing admin lever), which restores full. Live-verified
+the `taxonomy` feature (existing admin lever), which restores full.
+
+**New datasets get emotion automatically (2026-07-06):** at theme-mining
+time, a `foodService: false` judgment now triggers `autoTagEmotion`
+(`TextMineModule`) — background emotion-only classify of the analyzed
+field(s), then `taxonomy_enabled` flips ONLY if emotion language fired (the
+genre gate). Existing datasets are covered by the one-time backfill
+(`scripts/_backfill-emotion-all.ts`, run in a parallel session). Live-verified
 2026-07-06 on a TEST survey dataset ("liked LEAST" field, 11,420 rows):
 rollup contains ONLY the emotion axis — disappointment 5.4% of negative rows
 / churn-intent 0.8% / blame 0.6%, avg rating ~2.1 on flagged rows.

@@ -541,7 +541,12 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   (`casual_dining`/`fine_dining`/`fast_food` ∈ `RESTAURANT_INDUSTRIES`) triggers the same. (3) The inverse — when the
   AI judges the data is **NOT** food-service — sets `datasets.taxonomy_suppressed=true` (sql/139), which
   **hides** the restaurant Dimensions for that dataset even though it's `google_reviews` (a hotel's /
-  clinic's reviews). Suppression overrides **only** the source proxy: an explicit `taxonomy_enabled`
+  clinic's reviews) — **and (2026-07-06) auto-runs the universal emotion tier instead**: `autoTagEmotion`
+  in `TextMineModule` loops the pendingOnly classifier (the route picks emotion mode since suppression
+  was just stamped), then flips `taxonomy_enabled` ONLY if emotion language actually fired (genre gate —
+  an ideation survey never grows a "0% emotion" tab), with a "Tagging emotion language…" banner. So
+  every NEW dataset gets emotion at theme-mining time with zero clicks; existing datasets ride the
+  one-time backfill. Suppression overrides **only** the source proxy: an explicit `taxonomy_enabled`
   (manual Schema toggle) or a restaurant-org capability still wins, so intentional opt-in is never undone.
   The gate is now `taxonomyEnabled || (datasetSource==='google_reviews' && !taxonomySuppressed)` in all
   three places (`textmineNav.availableSections`, `TextMineModule`, `ChartsModule`), threaded from both

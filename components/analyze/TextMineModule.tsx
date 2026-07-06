@@ -1114,6 +1114,45 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
   }, [datasetId, router])
 
+  // NON-restaurant data at theme-generation time → run the universal emotion
+  // tier automatically (TAXONOMY.md §2a.0). Order matters vs autoEnableDimensions:
+  // classify FIRST (the route picks emotion mode — mine-themes just stamped
+  // taxonomy_suppressed), then reveal the Dimensions section ONLY if emotion
+  // language actually fired (the genre gate: an ideation survey never grows a
+  // "0% emotion" tab). Best-effort; failures are silent.
+  const autoTagEmotion = useCallback(async function (fields: string[]) {
+    if (!fields.length) return
+    setDimAutoNotice('Tagging emotion language (disappointment · blame · churn intent)…')
+    try {
+      for (var guard = 0; guard < 300; guard++) {
+        var r = await fetch('/api/datasets/' + datasetId + '/taxonomy', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingOnly: true, textFields: fields }),
+        })
+        if (!r.ok) break
+        var j = await r.json()
+        if (j.done) break
+      }
+      var qs = fields.map(function (f) { return 'fields=' + encodeURIComponent(f) }).join('&')
+      var rollupRes = await fetch('/api/datasets/' + datasetId + '/taxonomy?' + qs)
+      var rollup = rollupRes.ok ? await rollupRes.json() : null
+      var emotionFired = Array.isArray(rollup?.axes) && rollup.axes.some(function (a: { axis?: string; count?: number }) { return a.axis === 'emotion' && (a.count || 0) > 0 })
+      if (emotionFired) {
+        await fetch('/api/datasets/' + datasetId, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taxonomy_enabled: true }),
+        })
+        setDimAutoNotice('Emotion language tagged ✓')
+        setTimeout(function () { setDimAutoNotice(null) }, 4000)
+      } else {
+        setDimAutoNotice(null)
+      }
+      router.refresh()
+    } catch {
+      setDimAutoNotice(null)
+    }
+  }, [datasetId, router])
+
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
   // render produce identical HTML — otherwise a hydration mismatch fires on
@@ -1819,10 +1858,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         void enrichSearchInterest(tm2)
         // Smart Dimensions: the AI flagged this as restaurant/food-service data →
         // enable + classify Dimensions automatically (the route also set the flag).
-        // Not food-service → the route suppressed it; refresh so the (irrelevant)
-        // restaurant Dimensions tab hides for this otherwise-proxied dataset.
+        // Not food-service → the route suppressed the restaurant taxonomy; run the
+        // universal emotion tier instead (classifies emotion-only, reveals the
+        // Dimensions section only if emotion language fired, and refreshes — which
+        // also hides the irrelevant restaurant tab on an otherwise-proxied
+        // google_reviews dataset).
         if (data.foodService === true) void autoEnableDimensions(effectiveFields)
-        else if (data.foodService === false && datasetSource === 'google_reviews' && !taxonomyEnabled) router.refresh()
+        else if (data.foodService === false) void autoTagEmotion(effectiveFields)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
