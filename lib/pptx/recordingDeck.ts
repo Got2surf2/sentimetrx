@@ -17,6 +17,7 @@
 //
 // Brand: Datanautix (NOT Sentimetrx) per CLAUDE.md — this is a deck export.
 
+import type PGJS from 'pptxgenjs'
 import 'server-only'
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill, trunc } from '@/lib/pptx/shared'
 import { buildTimelineModel } from '@/lib/recordings/timeline'
@@ -67,14 +68,14 @@ export interface RecordingDeckInput {
 
 // ── Local slide helpers (copied from the townhall export pattern) ────────────
 
-function hdr(slide: any, pptx: any, title: string) {
+function hdr(slide: PGJS.Slide, pptx: PGJS, title: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, { x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18, fontSize: 20, bold: true, color: DN.white, valign: 'middle', autoFit: true })
 }
 
-function logoRight(slide: any) {
+function logoRight(slide: PGJS.Slide) {
   slide.addText(
     [
       { text: 'data',   options: { color: DN.tealLight, bold: true, italic: true } },
@@ -84,13 +85,13 @@ function logoRight(slide: any) {
   )
 }
 
-function footer(slide: any, pptx: any, name: string, classification = 'Proprietary and Confidential') {
+function footer(slide: PGJS.Slide, pptx: PGJS, name: string, classification = 'Proprietary and Confidential') {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal, transparency: 62 }, line: { width: 0 } })
   slide.addText('datanautix.com  ·  ' + name, { x: PAD, y: FY - 0.04, w: W * 0.5, h: 0.3, fontSize: 12, color: DN.slate, valign: 'middle', wrap: false })
   slide.addText(classification, { x: W * 0.5 - PAD, y: FY - 0.04, w: W * 0.5, h: 0.3, fontSize: 12, color: DN.slate, valign: 'middle', align: 'right', wrap: false })
 }
 
-function kpiCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, valColor = DN.navy) {
+function kpiCard(slide: PGJS.Slide, pptx: PGJS, x: number, y: number, w: number, h: number, value: string, label: string, valColor = DN.navy) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: DN.slateLight }, line: { color: DN.divider, width: 1 }, rectRadius: 0.08 })
   slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: h * 0.52, fontSize: 22, bold: true, color: valColor, valign: 'middle', autoFit: true })
   slide.addText(label, { x: x + 0.14, y: y + h * 0.52 + 0.06, w: w - 0.28, h: 0.22, fontSize: 10, bold: true, color: DN.slateDark, autoFit: true })
@@ -135,7 +136,7 @@ function truncBoundary(s: string, max: number): string {
   return base.trim().replace(/[,;:]+$/, '') + '…'
 }
 
-function badge(slide: any, pptx: any, x: number, y: number, w: number, label: string, fg: string, bg: string) {
+function badge(slide: PGJS.Slide, pptx: PGJS, x: number, y: number, w: number, label: string, fg: string, bg: string) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h: 0.28, fill: { color: bg }, line: { width: 0 }, rectRadius: 0.14 })
   slide.addText(label, { x, y, w, h: 0.3, fontSize: 12, bold: true, color: fg, valign: 'middle', align: 'center' })
 }

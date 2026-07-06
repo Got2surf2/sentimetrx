@@ -30,26 +30,26 @@ export function buildReviewIntelligenceDeck(pptx: PptxGenJS, mode: DeckMode = 'f
   const isCap = mode === 'capability'
   const possessive = isCap ? 'your' : `${clientName}’s`
 
-  const dnWordmark = (s: any, x: number, y: number, size: number) =>
+  const dnWordmark = (s: PptxGenJS.Slide, x: number, y: number, size: number) =>
     s.addText(
       [{ text: 'data', options: { color: C.teal, bold: true } },
        { text: '·', options: { color: C.slate, bold: true } },
        { text: 'nautix', options: { color: C.orange, bold: true } }],
       { x, y, w: 3.0, h: 0.4, fontSize: size, align: 'right', fontFace: 'Arial' })
 
-  const header = (s: any, kicker: string, title: string) => {
+  const header = (s: PptxGenJS.Slide, kicker: string, title: string) => {
     s.addShape(shape.rect, { x: 0, y: 0, w: W, h: H, fill: { color: C.card }, line: { width: 0 } })
     s.addText(kicker.toUpperCase(), { x: PAD, y: 0.42, w: 9.5, h: 0.3, fontSize: 11, color: C.teal, bold: true, charSpacing: 2, fontFace: 'Arial' })
     s.addText(title, { x: PAD, y: 0.7, w: 10.3, h: 0.8, fontSize: 24, color: C.navy, bold: true, fontFace: 'Arial' })
     s.addShape(shape.rect, { x: PAD, y: 1.52, w: 1.1, h: 0.06, fill: { color: C.orange }, line: { width: 0 } })
     dnWordmark(s, W - 3.3, 0.45, 14)
   }
-  const footer = (s: any) => {
+  const footer = (s: PptxGenJS.Slide) => {
     pageNo += 1
     s.addText(`Datanautix  ·  datanautix.com${isCap ? '' : '  ·  Prepared for ' + clientName}`, { x: PAD, y: H - 0.42, w: 11, h: 0.3, fontSize: 9, color: C.slate, fontFace: 'Arial' })
     s.addText(String(pageNo), { x: W - 1.0, y: H - 0.42, w: 0.5, h: 0.3, fontSize: 9, color: C.slate, align: 'right', fontFace: 'Arial' })
   }
-  const note = (s: any, t: string) => s.addNotes(t)
+  const note = (s: PptxGenJS.Slide, t: string) => s.addNotes(t)
 
   // ── Title ─────────────────────────────────────────────────────────────────
   {

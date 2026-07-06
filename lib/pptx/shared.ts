@@ -2,6 +2,8 @@
 // Shared PPTX generation utilities used across signal-tiers-deck,
 // townhall export, and datasets export routes.
 
+import type PptxGenJS from 'pptxgenjs'
+
 // ── Datanautix brand palette ─────────────────────────────────────────────────
 // Core colors shared by all PPTX routes.
 export const DN = {
@@ -35,12 +37,12 @@ export const FY  = H - 0.28 // footer Y position
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Full-slide background fill */
-export function bgFill(slide: any, pptx: any, color = DN.slateCard) {
+export function bgFill(slide: PptxGenJS.Slide, pptx: PptxGenJS, color = DN.slateCard) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
 }
 
 /** Datanautix wordmark logo in top-right of header (data = Sarina teal, nautix = Ana orange) */
-export function logo(slide: any) {
+export function logo(slide: PptxGenJS.Slide) {
   slide.addText(
     [
       { text: 'data',   options: { color: DN.tealLight, bold: true, italic: true } },

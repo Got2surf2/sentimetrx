@@ -47,7 +47,7 @@ const C = {
 
 /** White co-brand chip with the MCO mark, sized to the logo aspect ratio.
  *  The mark PNG has a white background, so it must sit on a white surface. */
-function mcoMark(slide: any, x: number, y: number, logoW: number, pad = 0.1) {
+function mcoMark(slide: PptxGenJS.Slide, x: number, y: number, logoW: number, pad = 0.1) {
   const logoH = logoW * LOGO_AR
   const chipW = logoW + pad * 2
   const chipH = logoH + pad * 2
@@ -56,7 +56,7 @@ function mcoMark(slide: any, x: number, y: number, logoW: number, pad = 0.1) {
   return { chipW, chipH }
 }
 
-function wordmark(slide: any) {
+function wordmark(slide: PptxGenJS.Slide) {
   slide.addText(
     [
       { text: 'data',   options: { color: '4DBFC1', bold: true, italic: true } },
@@ -66,7 +66,7 @@ function wordmark(slide: any) {
   )
 }
 
-function hdr(slide: any, title: string, sub?: string) {
+function hdr(slide: PptxGenJS.Slide, title: string, sub?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.1, fill: { color: C.navy } })
   // Co-brand MCO mark, far left on a white chip
   mcoMark(slide, 0.34, 0.3, 0.62)
@@ -76,13 +76,13 @@ function hdr(slide: any, title: string, sub?: string) {
   wordmark(slide)
 }
 
-function ftr(slide: any, n: number) {
+function ftr(slide: PptxGenJS.Slide, n: number) {
   slide.addText('datanautix.com  ·  Prepared for Orlando International Airport (MCO)', { x: 0.5, y: H - 0.36, w: 8, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial' })
   slide.addText('Confidential', { x: W / 2 - 1.5, y: H - 0.36, w: 3, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial', align: 'center' })
   slide.addText(String(n), { x: W - 0.9, y: H - 0.36, w: 0.4, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial', align: 'right' })
 }
 
-function card(slide: any, x: number, y: number, w: number, h: number, title: string, body: string, accent = C.teal) {
+function card(slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number, title: string, body: string, accent = C.teal) {
   slide.addShape('roundRect', { x, y, w, h, rectRadius: 0.1, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
   slide.addShape('rect', { x, y, w: 0.06, h, fill: { color: accent } })
   slide.addText(title, { x: x + 0.22, y: y + 0.12, w: w - 0.38, h: 0.42, fontSize: 15, fontFace: 'Arial', color: C.navy, bold: true })
@@ -90,7 +90,7 @@ function card(slide: any, x: number, y: number, w: number, h: number, title: str
 }
 
 /** Small amber "illustrative" badge for appendix sample slides. */
-function illuBadge(slide: any, x = 0.5, y = 1.22) {
+function illuBadge(slide: PptxGenJS.Slide, x = 0.5, y = 1.22) {
   slide.addShape('roundRect', { x, y, w: 5.7, h: 0.34, rectRadius: 0.05, fill: { color: C.amberTint }, line: { color: C.amber, width: 0.6 } })
   slide.addText('ILLUSTRATIVE EXAMPLE — sample output format, not MCO data', {
     x: x + 0.1, y, w: 5.5, h: 0.34, fontSize: 9.5, fontFace: 'Arial', color: 'B45309', bold: true, valign: 'middle', charSpacing: 0.5,
@@ -98,7 +98,7 @@ function illuBadge(slide: any, x = 0.5, y = 1.22) {
 }
 
 /** Horizontal sentiment bar: positive (green) / neutral (slate) / negative (red) split. */
-function sentimentRow(slide: any, x: number, y: number, w: number, label: string, pos: number, neu: number, neg: number, mention: string) {
+function sentimentRow(slide: PptxGenJS.Slide, x: number, y: number, w: number, label: string, pos: number, neu: number, neg: number, mention: string) {
   slide.addText(label, { x, y, w: 2.55, h: 0.34, fontSize: 11, fontFace: 'Arial', color: C.navy, bold: true, valign: 'middle' })
   const barX = x + 2.65
   const barW = w - 2.65 - 0.95
@@ -109,7 +109,7 @@ function sentimentRow(slide: any, x: number, y: number, w: number, label: string
 }
 
 /** Grouped comparison bar (MCO vs peer set) for the benchmarking appendix. */
-function compareRow(slide: any, x: number, y: number, w: number, label: string, mco: number, peer: number) {
+function compareRow(slide: PptxGenJS.Slide, x: number, y: number, w: number, label: string, mco: number, peer: number) {
   slide.addText(label, { x, y, w: 2.9, h: 0.5, fontSize: 11, fontFace: 'Arial', color: C.navy, bold: true, valign: 'middle' })
   const barX = x + 3.0
   const barW = w - 3.0 - 0.05

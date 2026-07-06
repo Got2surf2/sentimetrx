@@ -46,7 +46,7 @@ const H = 7.5
 const FOOTER = 'datanautix.com  ·  Project Insight  ·  Confidential — for discussion only'
 
 // ── Shared layout primitives ───────────────────────────────────────────────
-function addHeader(slide: any, title: string, subtitle?: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, {
     x: 0.6, y: subtitle ? 0.1 : 0.15, w: 9.5, h: subtitle ? 0.5 : 0.7,
@@ -65,7 +65,7 @@ function addHeader(slide: any, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText(FOOTER, {
     x: 0.5, y: H - 0.4, w: 11, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
   })
@@ -85,7 +85,7 @@ function bullet(text: string, opts: any = {}) {
   }
 }
 
-function caveat(slide: any, text: string) {
+function caveat(slide: PptxGenJS.Slide, text: string) {
   slide.addText(text, {
     x: 0.6, y: 6.55, w: 12.1, h: 0.4, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true,
   })
@@ -103,7 +103,7 @@ function getDeckDates() {
 }
 
 // Two-column "card grid" — title chip + body, with a colored spine.
-function cardGrid(slide: any, items: { t: string; b: string; c: string }[], yTop: number, rowH = 1.55) {
+function cardGrid(slide: PptxGenJS.Slide, items: { t: string; b: string; c: string }[], yTop: number, rowH = 1.55) {
   items.forEach((it, i) => {
     const col = i % 2
     const row = Math.floor(i / 2)
@@ -119,7 +119,7 @@ function cardGrid(slide: any, items: { t: string; b: string; c: string }[], yTop
 // ── Slides ───────────────────────────────────────────────────────────────
 
 // 1 — Cover
-function slideCover(pptx: any) {
+function slideCover(pptx: PptxGenJS) {
   const s = pptx.addSlide()
   const { lastUpdated, downloaded } = getDeckDates()
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
@@ -156,7 +156,7 @@ Keep it to ~15 minutes. The deck is deliberately number-light — every dollar f
 }
 
 // 2 — Executive summary
-function slideExecSummary(pptx: any, pg: number) {
+function slideExecSummary(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Executive summary')
   addFooter(s, pg)
@@ -182,7 +182,7 @@ Deal count and hold period (a focused cluster over 3–5 years) are operating pl
 }
 
 // 3 — Market problem
-function slideProblem(pptx: any, pg: number) {
+function slideProblem(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'The market problem', 'A market that evolved as hundreds of point solutions')
   addFooter(s, pg)
@@ -217,7 +217,7 @@ Don't pile on. The four cards are the shared profile of the acquisition universe
 }
 
 // 4 — Why now
-function slideWhyNow(pptx: any, pg: number) {
+function slideWhyNow(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Why now', 'Three forces are reshaping the industry at the same time')
   addFooter(s, pg)
@@ -247,7 +247,7 @@ AI transformation = product tailwind. Founder liquidity = supply of targets. Ent
 }
 
 // 5 — The thesis (Option B core)
-function slideThesis(pptx: any, pg: number) {
+function slideThesis(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'The thesis: AI as the system of interpretation', 'Survey software is the vehicle. The insight layer is the product.')
   addFooter(s, pg)
@@ -279,7 +279,7 @@ The compounding point matters: in a normal roll-up, value adds. Here, because ev
 }
 
 // 6 — Acquisition strategy / buy box
-function slideBuyBox(pptx: any, pg: number) {
+function slideBuyBox(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Acquisition strategy', 'A disciplined, repeatable buy box')
   addFooter(s, pg)
@@ -309,7 +309,7 @@ Specific thresholds (the "$3–15M ARR / 80%+ / 70%+" numbers from the draft) li
 }
 
 // 7 — Illustrative pipeline
-function slidePipeline(pptx: any, pg: number) {
+function slidePipeline(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Illustrative acquisition pipeline', 'Representative of the universe — not a target list')
   addFooter(s, pg)
@@ -342,7 +342,7 @@ If the partner pushes on it, that is the cue to talk sourcing process, not to de
 }
 
 // 8 — Value creation plan
-function slideValueCreation(pptx: any, pg: number) {
+function slideValueCreation(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Value creation plan', 'Centralize what scales; keep what customers love')
   addFooter(s, pg)
@@ -375,7 +375,7 @@ I deliberately did not put a "300–800 bps" number on the slide — that was an
 }
 
 // 9 — Value creation logic / economics (qualitative)
-function slideEconomics(pptx: any, pg: number) {
+function slideEconomics(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'How value compounds', 'The re-rating logic, without the spreadsheet')
   addFooter(s, pg)
@@ -413,7 +413,7 @@ When they ask for the model — and they will — that is the diligence conversa
 }
 
 // 10 — Exit opportunities
-function slideExits(pptx: any, pg: number) {
+function slideExits(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Exit opportunities', 'Multiple credible paths to liquidity')
   addFooter(s, pg)

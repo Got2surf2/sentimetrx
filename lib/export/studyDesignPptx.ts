@@ -45,11 +45,11 @@ const MAX_Y = FY - 0.15  // max content y before footer
 
 // ── Shared slide helpers ──────────────────────────────────────────────────────
 
-function bg(slide: any, pptx: PptxGenJS, color = DN.slateCard) {
+function bg(slide: PptxGenJS.Slide, pptx: PptxGenJS, color = DN.slateCard) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
 }
 
-function hdr(slide: any, pptx: PptxGenJS, title: string, subtitle?: string) {
+function hdr(slide: PptxGenJS.Slide, pptx: PptxGenJS, title: string, subtitle?: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
@@ -65,7 +65,7 @@ function hdr(slide: any, pptx: PptxGenJS, title: string, subtitle?: string) {
   }
 }
 
-function logo(slide: any) {
+function logo(slide: PptxGenJS.Slide) {
   slide.addText(
     [
       { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
@@ -75,7 +75,7 @@ function logo(slide: any) {
   )
 }
 
-function footer(slide: any, pptx: PptxGenJS, studyName: string) {
+function footer(slide: PptxGenJS.Slide, pptx: PptxGenJS, studyName: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal }, line: { width: 0 }, rectRadius: 0 })
   slide.addText('datanautix.com  ·  ' + studyName, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,

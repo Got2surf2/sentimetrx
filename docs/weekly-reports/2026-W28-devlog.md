@@ -91,3 +91,7 @@ New opt-in `config.forceClarify` (default off — no change to any existing stud
 ## CI fix: forceClarify push went red — floating-promise error + lint ceiling (Jul 6)
 
 WHY: The forceClarify push failed CI (deploy-behind-CI → nothing deployed). Two causes: (1) `scripts/seed-bareburger-demo.ts` had a hard `no-floating-promises` error on the bare `main()` call → wrapped `.catch(e => { console.error(e); process.exit(1) })`; (2) the parallel-session sales-pitch deck template (`194baea1`) shipped `lib/pptx/salesPitchDeck.ts` with ~9 `no-explicit-any` warnings, pushing the total 3061→3069 over the ratchet ceiling. Typed the deck's pptxgenjs params properly (`import type PptxGenJS` → `PptxGenJS.Slide` / `PptxGenJS`, matching sibling deck builders). Total now 3060; lowered `lint:ci` ceiling 3061→3060. tsc clean.
+
+## ESLint burn-down batch 1 — pptx Slide/instance params (Jul 6)
+
+WHY: Owner wants the ~3000 `no-explicit-any` warnings driven down. Batch 1 = the mechanical pptx cluster: typed `slide`/`s`/`pptx` params across 7 deck/export builders (`projectInsightDeck`, `reviewIntelligenceDeck`, `mcoListeningDeck`, `eaMembershipDeck`, `shared`, `recordingDeck` [aliased `PGJS` — runtime const collision], `studyDesignPptx`) as `PptxGenJS.Slide`/`PptxGenJS`. Type-annotation-only (no runtime change). Deliberately EXCLUDED `slideRenderer.ts` — it augments `pptx` with `_deckPalette`, so a plain `PptxGenJS` type is wrong there (left for a later, careful pass). 3060→3015 warnings; ceiling lowered to 3015. tsc clean, 1238 tests pass.

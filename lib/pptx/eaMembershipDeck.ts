@@ -4,6 +4,8 @@
 // Exported builder so it can be pixel-QC'd via scripts/_ea_membership_deck_qc.ts
 // without going through the auth'd route.
 
+import type PptxGenJS from 'pptxgenjs'
+
 // Brand palette (mirrors app/api/pitch-deck/route.ts — Sentimetrx-forward accents)
 const DN = {
   teal: '0F7173',
@@ -22,7 +24,7 @@ const DN = {
 const W = 13.33
 const H = 7.5
 
-function addHeader(slide: any, title: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, { x: 0.6, y: 0.15, w: 9.5, h: 0.7, fontSize: 28, fontFace: 'Arial', color: DN.white, bold: true })
   // Sentimetrx-forward wordmark, top-right
@@ -30,13 +32,13 @@ function addHeader(slide: any, title: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('sentimetrx.ai  ·  powered by Datanautix', { x: 0.5, y: H - 0.4, w: 6, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial' })
   slide.addText('Prepared for EA  ·  Confidential', { x: W - 4.5, y: H - 0.4, w: 3.2, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial', align: 'right' })
   slide.addText(`${pageNum}`, { x: W - 1.0, y: H - 0.4, w: 0.5, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial', align: 'right' })
 }
 
-export function buildEaMembershipDeck(pptx: any) {
+export function buildEaMembershipDeck(pptx: PptxGenJS) {
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'
   pptx.company = 'Datanautix'
