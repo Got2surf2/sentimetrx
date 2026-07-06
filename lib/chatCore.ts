@@ -16,7 +16,7 @@ import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { evaluateDeflection } from '@/lib/deflectionRouter'
 import { SUBTLE_DISENGAGE } from '@/lib/engagementSignals'
 import { generateEmbedding } from '@/lib/embeddings'
-import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
+import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { classifyResponseFocuses, type BotFocus } from '@/lib/focusClassifier'
@@ -67,8 +67,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
 
   const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger, site: deploymentSite } = body
 
-  // Set usage context for persona/demographic extraction
-  setPersonaUsageCtx({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'persona' })
+  // Usage context for persona/demographic extraction (passed per-call — no module global)
+  const personaUsageCtx = { org_id: bot.org_id, resource_type: 'bot' as const, resource_id: bot.id, event_type: 'persona' }
 
   // ── Silence-triggered probe (fast path, no AI call) ───────────────
   // The widget detects user inactivity (~25s) and POSTs { trigger: 'silence' }
@@ -528,7 +528,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       if (userTurnCount > 0 && userTurnCount % 5 === 0) {
         var currentPersona = existingPersona.persona as Persona
         var userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
-        extractPersona(userMsgs).then(function(update) {
+        extractPersona(userMsgs, personaUsageCtx).then(function(update) {
           if (Object.keys(update).length > 0) {
             var merged = mergePersona(currentPersona, update)
             service.from('agent_session_personas')
@@ -543,7 +543,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
       // Early turns after name — extract persona from what we have so far
       var userMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
       try {
-        var persona = await extractPersona(userMsgs)
+        var persona = await extractPersona(userMsgs, personaUsageCtx)
         if (Object.keys(persona).length > 0) {
           personaContext = personaToPromptContext(persona)
           // Upsert to DB (fire-and-forget)
@@ -575,7 +575,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     // Extract/re-extract every 5th turn (same cadence as persona)
     if (userTurnCount <= 5 || (userTurnCount % 5 === 0)) {
       var demoMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
-      extractDemographics(demoMsgs).then(function(update) {
+      extractDemographics(demoMsgs, personaUsageCtx).then(function(update) {
         if (Object.keys(update).length > 0) {
           var merged = Object.keys(existingDemographics).length > 0 ? mergeDemographics(existingDemographics, update) : update
           service.from('agent_session_personas')

@@ -7,7 +7,6 @@
 // with skipAI=true).
 
 import { callAI } from '@/lib/ai'
-import { logUsage } from '@/lib/usageLog'
 
 export interface ThemeInfo {
   name: string
@@ -80,8 +79,7 @@ No explanation, no markdown, just the array.`
       messages: [{ role: 'user', content: prompt }],
       usage: { org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' },
     })
-
-    logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
+    // callAI auto-logs usage (usage:{…} above); no manual logUsage — that double-counted.
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     const scores: number[] = JSON.parse(clean)
@@ -202,8 +200,7 @@ One inner array per comment, in order. No markdown, no explanation, just the JSO
       messages: [{ role: 'user', content: prompt }],
       usage: { org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' },
     })
-
-    logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
+    // callAI auto-logs usage (usage:{…} above); no manual logUsage — that double-counted.
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     const parsed: string[][] = JSON.parse(clean)

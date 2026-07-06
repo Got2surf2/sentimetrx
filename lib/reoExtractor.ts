@@ -66,12 +66,12 @@ export function parseReoOutput(raw: string): ReoObservation[] {
   return out
 }
 
-export async function classifyReviewReo(text: string, rating?: number | null): Promise<ReoObservation[]> {
+export async function classifyReviewReo(text: string, rating?: number | null, orgId?: string): Promise<ReoObservation[]> {
   // dynamic import so script callers don't pull lib/ai.ts ('server-only') into the static graph
   const { callAI } = await import('./ai')
   const ai = await callAI({
     tier: 'fast',                                            // Haiku 4.5
-    usage: { resource_type: 'dataset', event_type: 'reo_classify' },
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'reo_classify' },
     system: [{ type: 'text', text: buildReoSystemPrompt(), cache: true }],
     messages: [{ role: 'user', content: buildReoUserMessage(text, rating) }],
     maxTokens: 1200,

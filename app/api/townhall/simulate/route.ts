@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { looksLikeAIRefusal } from '@/lib/guardrails'
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId } = await getCallerOrgContext(supabase)
 
   const body = await req.json().catch(() => ({}))
   const { persona, bot_message, session_context, turn_number, language } = body
@@ -68,7 +70,7 @@ RULES:
       system: 'You are a role-play actor. Stay in character. Output ONLY the character\'s spoken response.',
       messages: [{ role: 'user', content: prompt }],
     })
-    logUsage({ resource_type: 'townhall', event_type: 'simulate' }, result.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'simulate' }, result.usage)
     const cleaned = result.text.trim().replace(/^["']|["']$/g, '')
     if (looksLikeAIRefusal(cleaned)) {
       console.warn({

@@ -227,7 +227,7 @@ export async function POST(req: Request, props: Params) {
       messages: [{ role: 'user', content: 'Dataset: ' + dataset.name + '\nDistribution: ' + tierSummary + '\n\nSample comments:\n' + aiSamples }],
     })
 
-    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'signals_pptx' }, aiResult.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'signals_pptx' }, aiResult.usage)
 
     const bullets = aiResult.text.split('\n')
       .map(l => l.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim())

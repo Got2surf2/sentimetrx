@@ -597,3 +597,26 @@ AI-emitting crons need authoritative `org_id` set on every log row so usage is a
 
 
 > **`trending_extract` (2026-07-03):** the PulseIQ live screen's Trending Now strip runs a fast AI extraction of emerging-interest phrases, cached 60s per session — logged as `event_type='trending_extract'`, `resource_type='townhall'`.
+
+---
+
+## Org-attribution hardening (2026-07-06)
+
+A full audit of every AI/ML call site (all 100+ `callAI` sites + every direct-fetch vendor path) found spend that was unmetered, orphaned (`org_id=null`), or double-counted. `usage_logs.org_id` is nullable by design (system rows), so nothing at the DB layer enforced attribution — this pass fixed it at every call site and added a guard.
+
+**Now metered that previously wasn't (was zero rows):**
+- **`ask-ana`** (`app/api/ask-ana/route.ts`) — the direct Anthropic **streaming** endpoint never logged. It now captures token `usage` from the SSE `message_start` / `message_delta` events and `logUsage`s on stream end, attributed to `dataset.org_id` (`event_type='ana'`, `resource_type='dataset'`).
+- **Browser live Deepgram captions** — an in-person live capture streams mic audio browser→Deepgram (never transits our server), a separate real-time charge on top of the batch transcription. `lib/recordings/transcribe.ts` now emits a **`recording_live_stream`** flat cost (new event_type) for live-captured recordings, metered from the recorded `duration_sec` at Deepgram's per-minute rate and booked to `recording.org_id`. (Approximation: excludes the short mic-test/auto-tune streams.)
+- **`entityDiscovery`** — the NER / canonicalise calls set `usage:undefined` when the scope org was null, dropping the row entirely; they now always log (org attributed when available).
+
+**Orphaned → org-attributed** (`org_id` was omitted though resolvable): `agentReadout` (3 events) + `agentStudy` (3) now thread `bot.org_id`; `bots/[id]/conversations/{report,insights-deck}` + `cron/bot-conversation-review` thread `bot.org_id`; `datasets/{insights,expand-keywords}` + `export/signals-pptx` resolve the caller/dataset org; the town-hall setup helpers (`suggest-topic/guide/sensitive`, `expand-terms`, `simulate`) + participant `join` translate resolve the caller/session org; `deflect` now takes a `studyGuid` from the survey widget and resolves the study's org (mirrors `clarify`); `cron/temple-events-refresh` looks up the Guru agent's org (was `org_id:''`); `reoExtractor` / `townhallActivationGate.gradeEventDescription` gained an `orgId` param.
+
+**Double-logging removed** (tokens were counted twice — `callAI({usage})` auto-logs AND a manual `logUsage` fired): `export/scoreComments`, `export/pptx`, `export/html`. Kept the `callAI` auto-log, dropped the manual call.
+
+**Concurrency correctness:** `personaExtractor` (`persona`/`demographics`) and the legacy `townhall/chat` language-switch path both attributed via a **mutable module-global** usage context — a cross-request org-misattribution hazard on Fluid Compute. Both now pass the context per call.
+
+**Guard against regressions:** `logUsage` / `logFlatCost` now `console.warn` when a **customer** resource type (`bot|townhall|social|dataset|study|recording`) is logged with a null `org_id`. `system` is the one legitimately org-less bucket.
+
+**Intentionally `system` / org-less (by design, not gaps):** the platform-hosted single-tenant assistants `nora-chat` (Tabla) and `clara-chat` (Craniometrix) and the `bot-chat` marketing assistant have **no** dataset/org binding in code — reclassified from a mislabeled `dataset`+null to honest `resource_type='system'`. If any should bill to a specific client org, hardcode its `org_id` (as `cron/temple-events-refresh` does). OpenAI moderation (`lib/moderation.ts`, `contentGuard`) and the Anthropic/Deepgram **health probes** (`lib/modelHealth.ts`, `lib/serviceHealth.ts`) are free/metadata endpoints — left unlogged. Admin-only internal tools (`reo_classify`, entity-analysis-deck) remain platform-scoped when no org is passed.
+
+**Doc reconciliation:** ~19 event types added since the § 9 table was last refreshed are now in code and logging (agent-readout, agent-study, recordings sub-passes `recording_{extract,curate,scope,polish,entity_extract,regenerate,live_summary}`, `probe_detect`, `topic_match`, `question_extract`, `question_answer_draft`, `focus_suggest`, `ui_hint_extract`, `adhoc_report`, `cron_events_extract`, plus the new `recording_live_stream`). § 11 note that embeddings are "not logged" is stale — they log as `event_type='embedding'` since 2026-07-02.

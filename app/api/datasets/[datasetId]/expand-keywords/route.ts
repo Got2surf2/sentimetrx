@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
@@ -15,6 +16,7 @@ export async function POST(request: Request, props: Props) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId } = await getCallerOrgContext(supabase)
 
   let body: { apiKey?: string; themeName?: string; keywords?: string[]; context?: string }
   try {
@@ -65,7 +67,7 @@ Return a flat JSON array: ["term1", "term2", ...]`
       return NextResponse.json({ error: e.message || 'API error' }, { status: e.status || 500 })
     }
 
-    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'expand_keywords' }, aiResult.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'expand_keywords' }, aiResult.usage)
 
     const rawText = aiResult.text
     const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()

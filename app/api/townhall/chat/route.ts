@@ -207,9 +207,11 @@ export async function POST(req: NextRequest) {
         // and return the localized skip/done labels. Subsequent requests
         // carry language=<target>, which chatCore already honors.
         if (message && !skipped) {
-          _usageCtx = { org_id: townHall.org_id, resource_type: 'townhall', resource_id: townHall.id, event_type: 'chat' }
+          // Per-call usage attribution (was a mutable module-global that raced
+          // across concurrent requests). townHall.org_id is the paying org.
+          const langUsageCtx = { org_id: townHall.org_id, resource_type: 'townhall' as const, resource_id: townHall.id, event_type: 'chat' }
           const langSwitch = await detectLanguageSwitch(message.trim(), async (m) => {
-            const r = await callClaude(LANGUAGE_SWITCH_CLASSIFIER_PROMPT, m, 3000)
+            const r = await callClaude(LANGUAGE_SWITCH_CLASSIFIER_PROMPT, m, 3000, false, langUsageCtx)
             return r.text || null
           })
           if (langSwitch) {
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
             let translatedMsg = lastBotMsg
             if (targetLang !== 'en') {
               try {
-                const tr = await callClaude('Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone.', lastBotMsg, 3000)
+                const tr = await callClaude('Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone.', lastBotMsg, 3000, false, langUsageCtx)
                 if (tr.text) translatedMsg = tr.text
               } catch { /* keep original */ }
             }
@@ -281,8 +283,6 @@ export async function POST(req: NextRequest) {
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 
-// Set by POST handler so callClaude can log usage without threading context
-var _usageCtx: UsageContext | null = null
 
 // system can be a plain string OR { base, suffix? } where `base` is marked
 // for prompt caching (static across calls — e.g. baseSystemPrompt + topic
@@ -295,6 +295,7 @@ async function callClaude(
   user: string,
   timeoutMs = 3000,
   verbose = false,
+  usage?: UsageContext,
 ): Promise<{ text: string; thinking: string[] }> {
   const debugTail = '\n\nDEBUG MODE — Think step by step. Before your response, write your reasoning process (what you noticed, what you considered, why you chose this response). Then write a line containing exactly "---RESPONSE---" and your actual message after it.'
 
@@ -318,7 +319,7 @@ async function callClaude(
       system: systemPayload,
       messages: [{ role: 'user', content: user }],
     })
-    if (_usageCtx) logUsage(_usageCtx, result.usage)
+    if (usage) logUsage(usage, result.usage)
     const raw = result.text?.trim() || ''
     let outText: string
     let thinking: string[] = []

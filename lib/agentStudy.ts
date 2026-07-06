@@ -141,7 +141,7 @@ interface KbChunk { title: string; content: string }
 // agent's equivalent of the Town Hall presentation. One AI pass; runs only on a
 // study cache miss (the cache key folds in a KB content hash). Returns null when
 // there's nothing meaningful to summarize.
-async function summarizeAgentKb(botId: string, botName: string, systemPrompt: string | null, chunks: KbChunk[]): Promise<SourceSummary | null> {
+async function summarizeAgentKb(botId: string, orgId: string, botName: string, systemPrompt: string | null, chunks: KbChunk[]): Promise<SourceSummary | null> {
   const sp = (systemPrompt || '').trim()
   const usableChunks = chunks.filter(c => (c.content || '').trim().length > 0)
   if (sp.length < 40 && usableChunks.length === 0) return null
@@ -163,7 +163,7 @@ Return ONLY JSON, no markdown:
 5-8 items max, each a distinct topic area the KB covers. Omit the items array if the material is too thin for topics.`,
     messages: [{ role: 'user', content: corpus }],
   })
-  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_kb_summary' }, res.usage)
+  logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_study_kb_summary' }, res.usage)
   try {
     const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
     const overview = typeof parsed.overview === 'string' ? parsed.overview.trim() : ''
@@ -388,7 +388,7 @@ export async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: 
 
 interface ExchangeTag { focus: string | null; entities: string[]; comment: string | null }
 
-async function classifyExchanges(botId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ExchangeTag[]> {
+async function classifyExchanges(botId: string, orgId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ExchangeTag[]> {
   const enabled = focuses.filter(f => f.enabled !== false)
   const catalog = enabled.map(f => `- ${f.slug}: ${f.label}${f.description ? ' — ' + f.description : ''}`).join('\n')
   const BATCH = 12
@@ -407,7 +407,7 @@ Also, if the USER's message states a substantive PUBLIC COMMENT — a first-hand
 Return ONLY a JSON array, one object per exchange index, no markdown:
 [{"i":0,"focus":"slug_or_null","entities":["Name","Name"],"comment":"verbatim_or_null"}, ...]`
     const res = await callAI({ tier: 'fast', maxTokens: 1500, timeoutMs: 40000, system, messages: [{ role: 'user', content: lines }] })
-    logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_classify' }, res.usage)
+    logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_study_classify' }, res.usage)
     let parsed: any[] = []
     try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
     // Drop URLs/domains and the agent's own name — these come from the agent's
@@ -426,7 +426,7 @@ Return ONLY a JSON array, one object per exchange index, no markdown:
 }
 
 // ── Narrative insights (AI) — folds in the old "Mine Conversations" report ───
-async function computeInsights(botId: string, botName: string, sessions: Map<string, Turn[]>): Promise<AgentStudy['insights']> {
+async function computeInsights(botId: string, orgId: string, botName: string, sessions: Map<string, Turn[]>): Promise<AgentStudy['insights']> {
   let transcript = ''
   for (const [sid, ts] of sessions) {
     const block = `\n--- ${sid.slice(0, 8)} ---\n` + ts.filter(t => t.source !== 'greeting').map(t => `${t.role}: ${text(t).slice(0, 220)}`).join('\n') + '\n'
@@ -442,7 +442,7 @@ Return ONLY JSON, no markdown:
 {"common_questions":["top 5 things users ask/raise"],"conversation_patterns":["5 bullets on how users engage"],"drop_off_insights":"2-3 sentences on where/why conversations end","knowledge_gaps":["3-5 topics the agent answers poorly"],"recommendations":["4-5 actionable improvements"],"top_quotes":["6 verbatim USER quotes, >=15 words, from 'user:' lines only"]}`,
     messages: [{ role: 'user', content: transcript }],
   })
-  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_study_insights' }, res.usage)
+  logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_study_insights' }, res.usage)
   try {
     const a = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
     return {
@@ -580,7 +580,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const openCount = openCountRes.count || 0
 
   // ── classify exchanges (AI) ──
-  const tags = await classifyExchanges(botId, bot.name, bot.focuses, allExchanges)
+  const tags = await classifyExchanges(botId, bot.org_id, bot.name, bot.focuses, allExchanges)
 
   // ── aggregate focuses + entities + cross-tab ──
   const focusMap = new Map<string, FocusSummary>()
@@ -714,8 +714,8 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   // The KB summary is the agent's "presentation" — what it's equipped to convey.
   // Run alongside insights; only reached on a cache miss.
   const [insights, presentation] = await Promise.all([
-    computeInsights(botId, bot.name, sessions),
-    summarizeAgentKb(botId, bot.name, bot.system_prompt, kbChunks),
+    computeInsights(botId, bot.org_id, bot.name, sessions),
+    summarizeAgentKb(botId, bot.org_id, bot.name, bot.system_prompt, kbChunks),
   ])
 
   // ── depth distribution ──

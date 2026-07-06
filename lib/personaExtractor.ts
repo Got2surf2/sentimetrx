@@ -5,9 +5,8 @@
 import { callAI } from '@/lib/ai'
 import { logUsage, type UsageContext } from '@/lib/usageLog'
 
-// Set externally by callers who know the org/resource context
-var _personaUsageCtx: UsageContext | null = null
-export function setPersonaUsageCtx(ctx: UsageContext | null) { _personaUsageCtx = ctx }
+// Usage attribution is passed per-call (was a mutable module-global, which
+// misattributed cost across concurrent requests on Fluid Compute).
 
 export interface PersonaField {
   value: string
@@ -35,7 +34,7 @@ export interface Demographics {
  * Extract persona fields from user messages using a fast AI call.
  * Only extracts what the user actually shared — does NOT infer race, ethnicity, or income.
  */
-export async function extractPersona(userMessages: string[]): Promise<Persona> {
+export async function extractPersona(userMessages: string[], usageCtx?: UsageContext): Promise<Persona> {
   if (userMessages.length === 0) return {}
 
   var combined = userMessages.join('\n---\n')
@@ -63,7 +62,7 @@ export async function extractPersona(userMessages: string[]): Promise<Persona> {
         'ONLY output the JSON object. No explanation.',
     })
 
-    if (_personaUsageCtx) logUsage({ ..._personaUsageCtx, event_type: 'persona' }, result.usage)
+    if (usageCtx) logUsage({ ...usageCtx, event_type: 'persona' }, result.usage)
     var text = (result.text || '').trim()
     // Extract JSON from response (handle markdown code blocks)
     var jsonMatch = text.match(/\{[\s\S]*\}/)
@@ -143,7 +142,7 @@ export function personaToPromptContext(persona: Persona): string {
  * Only runs when demographic_inference is enabled on the bot.
  * Designed to piggyback on existing AI calls — lightweight prompt, fast tier.
  */
-export async function extractDemographics(userMessages: string[]): Promise<Demographics> {
+export async function extractDemographics(userMessages: string[], usageCtx?: UsageContext): Promise<Demographics> {
   if (userMessages.length < 3) return {} // need enough signal
 
   var combined = userMessages.join('\n---\n')
@@ -169,7 +168,7 @@ export async function extractDemographics(userMessages: string[]): Promise<Demog
         'ONLY output the JSON object. No explanation.',
     })
 
-    if (_personaUsageCtx) logUsage({ ..._personaUsageCtx, event_type: 'demographics' }, result.usage)
+    if (usageCtx) logUsage({ ...usageCtx, event_type: 'demographics' }, result.usage)
     var text = (result.text || '').trim()
     var jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return {}

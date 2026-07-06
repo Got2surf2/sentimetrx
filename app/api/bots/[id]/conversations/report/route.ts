@@ -114,7 +114,7 @@ Be concise. Use bullet points. This is for a dashboard display.`,
     messages: [{ role: 'user', content: `Here are ${sessionCount} recent conversations (${totalTurns} total turns) since ${since}:\n${transcript}\n\nPlease analyze these conversations.` }],
   })
 
-  logUsage({ resource_type: 'bot', resource_id: params.id, event_type: 'report' }, result.usage)
+  logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: params.id, event_type: 'report' }, result.usage)
 
   // Extract actionable items if requested
   if (body.extract_actions && body.report_text) {
@@ -126,7 +126,7 @@ Be concise. Use bullet points. This is for a dashboard display.`,
         system: 'Extract actionable improvement items from this AI agent report. For each item, decide if it should be a "fact" (knowledge to add), "faq" (question + answer pair), or "guardrail" (rule the agent must follow).\n\nReturn a JSON array of objects:\n[{"type":"fact|faq|guardrail","title":"short title","content":"the content to add"}]\n\nOnly include items that are specific and actionable — skip vague suggestions. Max 5 items. Return ONLY the JSON array, no explanation.',
         messages: [{ role: 'user', content: body.report_text }],
       })
-      logUsage({ resource_type: 'bot', resource_id: params.id, event_type: 'report' }, actionResult.usage)
+      logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: params.id, event_type: 'report' }, actionResult.usage)
       var actionsText = (actionResult.text || '').trim()
       var jsonMatch = actionsText.match(/\[[\s\S]*\]/)
       if (jsonMatch) {

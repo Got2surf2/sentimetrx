@@ -9,7 +9,7 @@ import { resolveTownHall, projectHallAsSession } from '@/lib/townHallAdapter'
 export const dynamic = 'force-dynamic'
 
 // Translate text to a target language (for non-English participants)
-async function translateText(text: string, targetLang: string): Promise<string> {
+async function translateText(text: string, targetLang: string, orgId?: string): Promise<string> {
   if (!text || targetLang === 'en') return text
   try {
     const result = await callAI({
@@ -19,7 +19,7 @@ async function translateText(text: string, targetLang: string): Promise<string> 
       system: 'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone and formatting.',
       messages: [{ role: 'user', content: text }],
     })
-    logUsage({ resource_type: 'townhall', event_type: 'translate' }, result.usage)
+    logUsage({ org_id: orgId, resource_type: 'townhall', event_type: 'translate' }, result.usage)
     return result.text?.trim() || text
   } catch { return text }
 }
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     || ((config?.display?.welcome_message || 'Welcome! Share your thoughts anonymously.') + '\n\n' + (config?.opening_question || 'What\'s on your mind?'))
 
   // Translate opening + canned messages for non-English participants
-  const botMessage = language !== 'en' ? await translateText(openingEn, language) : openingEn
+  const botMessage = language !== 'en' ? await translateText(openingEn, language, session.org_id) : openingEn
 
   // Translate canned post-session messages
   const msgs = config?.messages || {}
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     // Batch translate canned messages
     const batch = [introEn, demoEn, thanksEn, closingEn]
     const batchText = batch.map((t, i) => '[' + (i + 1) + '] ' + t).join('\n')
-    const translated = await translateText(batchText, language)
+    const translated = await translateText(batchText, language, session.org_id)
     const lines = translated.split('\n').map(l => l.replace(/^\[\d+\]\s*/, '').trim()).filter(Boolean)
     if (lines.length >= 4) {
       translatedMessages = { post_session_intro: lines[0], post_session_demo: lines[1], post_session_thanks: lines[2] }
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
         '[Q' + (i + 1) + '] ' + pq.q + '\n' + (pq.opts || []).map((o: string, j: number) => '[Q' + (i + 1) + 'O' + (j + 1) + '] ' + o).join('\n')
       ).join('\n')
       try {
-        const tPsycho = await translateText(psychoText, language)
+        const tPsycho = await translateText(psychoText, language, session.org_id)
         const tLines = tPsycho.split('\n').map(l => l.trim()).filter(Boolean)
         translatedPsychoBank = psychoBank.map((pq: any, i: number) => {
           const qLine = tLines.find(l => l.startsWith('[Q' + (i + 1) + ']'))
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     if (demoFields.length > 0) {
       const demoText = demoFields.map((f: any, i: number) => '[D' + (i + 1) + '] ' + f.label).join('\n')
       try {
-        const tDemo = await translateText(demoText, language)
+        const tDemo = await translateText(demoText, language, session.org_id)
         const tLines = tDemo.split('\n').map(l => l.trim()).filter(Boolean)
         translatedDemoFields = demoFields.map((f: any, i: number) => {
           const dLine = tLines.find(l => l.startsWith('[D' + (i + 1) + ']'))

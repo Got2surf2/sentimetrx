@@ -31,12 +31,25 @@ export interface UsageContext {
   event_type: string   // 'chat', 'persona', 'demographics', 'intent', 'deflect', 'summary', 'theme_detect', 'knowledge_classify', 'ai_reply', 'report', 'translate', 'research', 'ana', 'study_suggest', 'clarify', 'recording_extract', 'recording_curate', 'recording_transcribe'
 }
 
+// Customer-owned resource types MUST carry an org_id for cost attribution.
+// 'system' is the one legitimately org-less bucket (platform-hosted assistants,
+// health probes, admin-only internal tools). A customer-type row with a null
+// org_id is an accounting gap — warn so regressions surface in logs instead of
+// silently under-attributing spend.
+const CUSTOMER_RESOURCE_TYPES = new Set(['bot', 'townhall', 'social', 'dataset', 'study', 'recording'])
+function warnIfUnattributed(context: UsageContext): void {
+  if (!context.org_id && CUSTOMER_RESOURCE_TYPES.has(context.resource_type)) {
+    console.warn(`[usage] unattributed ${context.resource_type}/${context.event_type} logged with null org_id — org attribution gap`)
+  }
+}
+
 /**
  * Log AI token usage. Fire-and-forget — never blocks or throws.
  */
 export function logUsage(context: UsageContext, usage: AIUsage | undefined): void {
   if (!usage) return
   if (usage.input_tokens === 0 && usage.output_tokens === 0) return
+  warnIfUnattributed(context)
 
   try {
     var service = createServiceRoleClient()
@@ -74,6 +87,7 @@ export function logFlatCost(
   opts: { model?: string; provider?: string } = {},
 ): void {
   if (!costCents || costCents <= 0) return
+  warnIfUnattributed(context)
 
   try {
     var service = createServiceRoleClient()

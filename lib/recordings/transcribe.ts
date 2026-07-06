@@ -87,7 +87,7 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
   // Stage-serialized by the queue, so read-modify-write is safe here.
   const { data: rRow, error: rRowErr } = await service
     .from('recordings')
-    .select('cost_cents')
+    .select('cost_cents, live_transcript')
     .eq('id', recording.id)
     .eq('org_id', recording.org_id)
     .single()
@@ -117,6 +117,24 @@ export async function transcribeRecording(input: TranscribeInput): Promise<Trans
     dispatched.cost_cents,
     { model: `asr:${vendor}`, provider: vendor },
   )
+
+  // Live-captured meetings ALSO streamed the mic straight to Deepgram's live WS
+  // for real-time captions (app/recordings/[id]/live/*) — a separate Deepgram
+  // charge that never transits our server, so it was previously unaccounted.
+  // Meter it from the recorded duration (≈ streamed minutes; excludes the short
+  // mic-test/auto-tune streams) at Deepgram's per-minute rate — same figure the
+  // batch path uses (lib/asr/deepgram DEEPGRAM_USD_PER_MINUTE), a defensible
+  // approximation for the live stream of the same model family.
+  const liveCaptured = typeof rRow?.live_transcript === 'string' && rRow.live_transcript.trim().length > 0
+  if (liveCaptured && dispatched.duration_sec && dispatched.duration_sec > 0) {
+    const DEEPGRAM_STREAMING_USD_PER_MIN = 0.0073
+    const liveCents = Math.round((dispatched.duration_sec / 60) * DEEPGRAM_STREAMING_USD_PER_MIN * 100)
+    logFlatCost(
+      { org_id: recording.org_id, resource_type: 'recording', resource_id: recording.id, event_type: 'recording_live_stream' },
+      liveCents,
+      { model: 'asr:deepgram-live', provider: 'deepgram' },
+    )
+  }
 
   return {
     transcript_id: tRow.id as string,

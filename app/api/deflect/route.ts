@@ -4,6 +4,7 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { cleanDeflectResponse } from '@/lib/guardrails'
@@ -13,6 +14,7 @@ export const dynamic = 'force-dynamic'
 interface DeflectRequest {
   studyName:    string
   orgName?:     string
+  studyGuid?:   string    // survey guid — resolves usage attribution to the study's org
   questionAsked: string   // the bot's question the respondent was answering
   answer:       string    // the respondent's answer (may be a question or off-topic)
   linkText?:    string    // e.g. "our website" — optional
@@ -39,6 +41,19 @@ export async function POST(req: NextRequest) {
 
   if (!answer || answer.trim().length < 3) {
     return NextResponse.json({ deflection: null })
+  }
+
+  // Resolve the study by guid (best-effort) so the deflection cost attributes to
+  // the study's org rather than logging orphaned (org_id null).
+  let studyOrgId: string | undefined
+  let studyId: string | undefined
+  if (body.studyGuid && typeof body.studyGuid === 'string') {
+    try {
+      const svc = createServiceRoleClient()
+      const { data: studyRow } = await svc
+        .from('studies').select('id, org_id').eq('guid', body.studyGuid).maybeSingle()
+      if (studyRow) { studyId = studyRow.id as string; studyOrgId = studyRow.org_id as string }
+    } catch { /* swallow; usage logging is best-effort */ }
   }
 
   // If the user provided a custom message, use it directly (still need AI to detect if deflection is needed)
@@ -84,7 +99,7 @@ ${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, exp
       messages: [{ role: 'user', content: 'Analyze the respondent\'s reply and respond accordingly.' }],
     })
 
-    logUsage({ resource_type: 'system', event_type: 'deflect' }, result.usage)
+    logUsage({ org_id: studyOrgId, resource_type: studyId ? 'study' : 'system', resource_id: studyId, event_type: 'deflect' }, result.usage)
 
     const cleaned = cleanDeflectResponse(result.text || '', !!body.testing)
 

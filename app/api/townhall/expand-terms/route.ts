@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId } = await getCallerOrgContext(supabase)
 
   const body = await req.json().catch(() => ({}))
   const { term, mode, context } = body
@@ -46,7 +48,7 @@ All lowercase. Return ONLY a JSON array:
       system: 'Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
-    logUsage({ resource_type: 'townhall', event_type: 'expand_terms' }, result.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'expand_terms' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const terms = JSON.parse(raw)
     return NextResponse.json({

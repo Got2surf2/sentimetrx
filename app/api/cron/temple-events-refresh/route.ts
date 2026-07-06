@@ -84,7 +84,10 @@ export async function GET(req: NextRequest) {
       'Skip past months. Skip navigation/UI text. If you find no events, return [].',
     messages: [{ role: 'user', content: stripped }],
   })
-  logUsage({ org_id: '', resource_type: 'bot', resource_id: GURU_BOT_ID, event_type: 'cron_events_extract' }, result.usage)
+  // Attribute the extraction cost to the Guru agent's org (was org_id:'' — an
+  // invalid uuid that orphaned/dropped the row).
+  const { data: guruBot } = await service.from('agents').select('org_id').eq('id', GURU_BOT_ID).maybeSingle()
+  logUsage({ org_id: (guruBot?.org_id as string | undefined), resource_type: 'bot', resource_id: GURU_BOT_ID, event_type: 'cron_events_extract' }, result.usage)
 
   let events: Event[] = []
   try {

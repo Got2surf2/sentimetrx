@@ -272,9 +272,9 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
       messages: [{ role: 'user', content: nerPrompt(texts, ctx, excludeCategories) }],
       maxTokens: 1500,
       timeoutMs: 30_000,
-      usage: orgId
-        ? { org_id: orgId, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' }
-        : undefined,
+      // Always log (org_id attributed when available). A null org still records
+      // the spend rather than dropping the row entirely (was usage:undefined).
+      usage: { org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' },
     })
     const text = (res.text || '').trim()
     const start = text.indexOf('{')
@@ -371,9 +371,8 @@ async function canonicaliseDiscovered(
         messages: [{ role: 'user', content: canonicalisePrompt(batch) }],
         maxTokens: 8000,
         timeoutMs: 45_000,
-        usage: orgId
-          ? { org_id: orgId, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' }
-          : undefined,
+        // Always log (org_id attributed when available) rather than dropping the row.
+        usage: { org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' },
       })
       inputTokens += res.usage?.input_tokens || 0
       outputTokens += res.usage?.output_tokens || 0

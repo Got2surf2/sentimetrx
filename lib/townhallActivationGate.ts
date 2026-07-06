@@ -41,7 +41,7 @@ export function checkTopicsReady(guide: unknown): boolean {
   })
 }
 
-export async function gradeEventDescription(description: string, industry?: string): Promise<DescriptionGrade> {
+export async function gradeEventDescription(description: string, industry?: string, orgId?: string): Promise<DescriptionGrade> {
   if (!description?.trim()) {
     return { score: 0, suggestion: 'Add a description to help the AI moderate effectively.' }
   }
@@ -76,7 +76,7 @@ Return ONLY valid JSON:
       system: 'Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
-    logUsage({ resource_type: 'townhall', event_type: 'grade_description' }, result.usage)
+    logUsage({ org_id: orgId, resource_type: 'townhall', event_type: 'grade_description' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     return {

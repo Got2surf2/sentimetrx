@@ -4,7 +4,6 @@
 
 import { NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
-import { logUsage } from '@/lib/usageLog'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { pickBestComments } from '@/lib/export/scoreComments'
@@ -109,7 +108,7 @@ ${fields.map(f => {
     messages: [{ role: 'user', content: prompt }],
     usage: { org_id: orgId, resource_type: 'dataset', event_type: 'html_export' },
   })
-  logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'html_export' }, result.usage)
+  // callAI auto-logs usage (usage:{…} above); no manual logUsage — that double-counted.
   const raw = result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
   try { return JSON.parse(raw) }
   catch { return { reportTitle: '', executiveSummary: [], keyTakeaways: [], fieldInsights: Object.fromEntries(fields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])) } }

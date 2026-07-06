@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
@@ -16,6 +17,7 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const { orgId } = await getCallerOrgContext(supabase)
 
   let body: any
   try {
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: e.message }, { status })
     }
 
-    logUsage({ resource_type: 'dataset', event_type: 'insights' }, result.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', event_type: 'insights' }, result.usage)
 
     return NextResponse.json({ text: result.text })
   } catch (e: unknown) {

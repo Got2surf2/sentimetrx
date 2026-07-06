@@ -156,7 +156,7 @@ Return ONLY valid JSON, no markdown.`,
     messages: [{ role: 'user', content: transcript }],
   })
 
-  logUsage({ resource_type: 'bot', resource_id: params.id, event_type: 'insights_deck' }, aiResult.usage)
+  logUsage({ org_id: (bot as { org_id: string }).org_id, resource_type: 'bot', resource_id: params.id, event_type: 'insights_deck' }, aiResult.usage)
 
   // Parse AI response
   let analysis: any = {}

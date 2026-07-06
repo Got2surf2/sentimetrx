@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   // Find active bots due for review
   const { data: dueBots } = await service
     .from('agents')
-    .select('id, name, system_prompt')
+    .select('id, name, system_prompt, org_id')
     .eq('status', 'active')
     .not('review_interval_hours', 'is', null)
     .lte('next_review_at', now)
@@ -141,7 +141,7 @@ Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, 
         messages: [{ role: 'user', content: `${sessionCount} conversations (${turns.length} turns) since ${since}:\n${transcript}` }],
       })
 
-      logUsage({ resource_type: 'bot', resource_id: bot.id, event_type: 'review' }, aiResult.usage)
+      logUsage({ org_id: (bot as { org_id: string }).org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'review' }, aiResult.usage)
 
       const themeDrift = /^DRIFT:\s*YES/i.test(aiResult.text)
 

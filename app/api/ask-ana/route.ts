@@ -12,6 +12,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { checkMessage } from '@/lib/contentGuard'
 import { getEntitiesWithCounts } from '@/lib/entityFilter'
 import { TIER_DEFAULT_MODEL } from '@/lib/usageRates'
+import { logUsage } from '@/lib/usageLog'
 import { getSourceLabel } from '@/lib/anaContext'
 import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 import { serverError } from '@/lib/apiError'
@@ -432,6 +433,10 @@ async function streamAnthropicResponse(
       let currentToolId = ''
       let currentToolName = ''
       let toolInputJson = ''
+      // Token accounting for the direct (non-callAI) Anthropic stream — captured
+      // from the SSE usage fields and logged to usage_logs on stream end so this
+      // spend is attributed to the dataset's org like every other AI call.
+      let inTok = 0, outTok = 0, cacheRead = 0, cacheCreate = 0
 
       try {
         while (true) {
@@ -449,6 +454,16 @@ async function streamAnthropicResponse(
 
             try {
               const event = JSON.parse(payload)
+              if (event.type === 'message_start' && event.message?.usage) {
+                const u = event.message.usage
+                inTok = u.input_tokens || 0
+                cacheRead = u.cache_read_input_tokens || 0
+                cacheCreate = u.cache_creation_input_tokens || 0
+                outTok = u.output_tokens || 0
+              }
+              else if (event.type === 'message_delta' && event.usage?.output_tokens != null) {
+                outTok = event.usage.output_tokens
+              }
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
                 controller.enqueue(encoder.encode('data: ' + JSON.stringify({ text: event.delta.text }) + '\n\n'))
               }
@@ -485,6 +500,11 @@ async function streamAnthropicResponse(
         controller.enqueue(encoder.encode('data: ' + JSON.stringify({ error: 'Stream interrupted' }) + '\n\n'))
       } finally {
         controller.close()
+        logUsage(
+          { org_id: orgId, resource_type: 'dataset', event_type: 'ana' },
+          { model: TIER_DEFAULT_MODEL.standard, provider: 'anthropic', tier: 'standard',
+            input_tokens: inTok, output_tokens: outTok, cache_read_tokens: cacheRead, cache_creation_tokens: cacheCreate },
+        )
       }
     }
   })

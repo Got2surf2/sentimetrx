@@ -97,7 +97,7 @@ function tallySentiment(s: Sentiment, sent: string | null) {
 }
 
 // ── Pass A: classify each exchange (AI, batched — mirrors agentStudy) ─────────
-async function classifyExchanges(botId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ReadoutTag[]> {
+async function classifyExchanges(botId: string, orgId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ReadoutTag[]> {
   const enabled = focuses.filter(f => f.enabled !== false)
   const catalog = enabled.map(f => `- ${f.slug}: ${f.label}${f.description ? ' — ' + f.description : ''}`).join('\n')
   const BATCH = 12
@@ -121,7 +121,7 @@ For each USER message, return four fields:
 Return ONLY a JSON array, one object per index, no markdown:
 [{"i":0,"focus":"slug_or_null","q_label":"Topic_or_null","comment":"verbatim_or_null","c_label":"Topic_or_null"}, ...]`
     const res = await callAI({ tier: 'fast', maxTokens: 1800, timeoutMs: 40000, system, messages: [{ role: 'user', content: lines }] })
-    logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_classify' }, res.usage)
+    logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_classify' }, res.usage)
     let parsed: any[] = []
     try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
     return batch.map((_e, i) => {
@@ -146,7 +146,7 @@ Return ONLY a JSON array, one object per index, no markdown:
 // speed (Haiku under-merged). Question labels and comment labels are
 // consolidated separately so each gets a focused taxonomy. `kind` only shapes
 // the example in the prompt.
-async function consolidateLabels(botId: string, botName: string, kind: 'question' | 'comment', counts: Map<string, number>): Promise<Map<string, string>> {
+async function consolidateLabels(botId: string, orgId: string, botName: string, kind: 'question' | 'comment', counts: Map<string, number>): Promise<Map<string, string>> {
   const distinct = [...counts.keys()].map(l => l.trim()).filter(Boolean)
   const map = new Map<string, string>(distinct.map(l => [l, l]))   // identity fallback
   if (distinct.length < 2) return map
@@ -164,7 +164,7 @@ Return ONLY a JSON object mapping EVERY input label (without its count) to its c
 {"Traffic Operations":"Traffic & Congestion","Congestion Patterns":"Traffic & Congestion", ...}`,
     messages: [{ role: 'user', content: listing }],
   })
-  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_consolidate' }, res.usage)
+  logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_consolidate' }, res.usage)
   try {
     const obj = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
     for (const raw of distinct) {
@@ -182,7 +182,7 @@ function countLabels(labels: string[]): Map<string, number> {
 }
 
 // ── Pass C: executive summary over the themed structure (AI, one call) ────────
-async function summarize(botId: string, botName: string, questionThemes: QuestionTheme[], beyondThemes: BeyondTheme[], conversations: number): Promise<AgentReadout['summary']> {
+async function summarize(botId: string, orgId: string, botName: string, questionThemes: QuestionTheme[], beyondThemes: BeyondTheme[], conversations: number): Promise<AgentReadout['summary']> {
   const empty = { overview: '', takeaways: [] as string[] }
   if (!questionThemes.length && !beyondThemes.length) return empty
   const qBlock = questionThemes.map(t => `- ${t.label} (${t.questions} questions): ${t.samples.slice(0, 2).map(s => '"' + s.text.slice(0, 140) + '"').join('; ')}`).join('\n')
@@ -195,7 +195,7 @@ Return ONLY JSON, no markdown:
 {"overview":"2–3 sentence plain-English summary of what people asked and raised","takeaways":["4–6 specific, evidence-grounded bullets a decision-maker should note"]}`,
     messages: [{ role: 'user', content: `QUESTIONS BY THEME:\n${qBlock || '(none)'}\n\nRAISED BEYOND THE QUESTIONS:\n${bBlock || '(none)'}` }],
   })
-  logUsage({ resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_summary' }, res.usage)
+  logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_summary' }, res.usage)
   try {
     const a = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
     return { overview: typeof a.overview === 'string' ? a.overview : '', takeaways: Array.isArray(a.takeaways) ? a.takeaways.filter((s: any) => typeof s === 'string') : [] }
@@ -259,7 +259,7 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   }
 
   // Pass A: classify every exchange.
-  const tags = await classifyExchanges(botId, bot.name, bot.focuses, allExchanges)
+  const tags = await classifyExchanges(botId, bot.org_id, bot.name, bot.focuses, allExchanges)
 
   // Pass B: consolidate the EMERGENT labels (questions with no focus, and all
   // comment labels) into canonical themes. Focus-matched questions keep their
@@ -268,8 +268,8 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   const emergentQ = allExchanges.map((_e, i) => (!tags[i].focus && tags[i].qLabel) ? tags[i].qLabel! : null).filter(Boolean) as string[]
   const emergentC = tags.map(t => t.cLabel).filter(Boolean) as string[]
   const [qCanon, cCanon] = await Promise.all([
-    consolidateLabels(botId, bot.name, 'question', countLabels(emergentQ)),
-    consolidateLabels(botId, bot.name, 'comment', countLabels(emergentC)),
+    consolidateLabels(botId, bot.org_id, bot.name, 'question', countLabels(emergentQ)),
+    consolidateLabels(botId, bot.org_id, bot.name, 'comment', countLabels(emergentC)),
   ])
   const qCanonOf = (raw: string) => qCanon.get(raw.trim()) || raw.trim()
   const cCanonOf = (raw: string) => cCanon.get(raw.trim()) || raw.trim()
@@ -343,7 +343,7 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   }
 
   // Pass C: executive summary over the (now polished) themed structure.
-  const summary = await summarize(botId, bot.name, questionThemes, beyondThemes, conversations)
+  const summary = await summarize(botId, bot.org_id, bot.name, questionThemes, beyondThemes, conversations)
 
   const allDates = turns.map(t => new Date(t.created_at).getTime()).sort((a, b) => a - b)
   const activeDays = new Set(turns.map(t => t.created_at.slice(0, 10))).size

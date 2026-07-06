@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { gradeEventDescription } from '@/lib/townhallActivationGate'
 
 export const dynamic = 'force-dynamic'
@@ -14,9 +15,10 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId } = await getCallerOrgContext(supabase)
 
   const body = await req.json().catch(() => ({}))
   const { description, industry } = body
-  const grade = await gradeEventDescription(description || '', industry)
+  const grade = await gradeEventDescription(description || '', industry, orgId ?? undefined)
   return NextResponse.json(grade)
 }

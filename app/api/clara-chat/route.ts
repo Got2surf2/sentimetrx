@@ -206,7 +206,10 @@ ACCURACY: Don't invent facts about Craniometrix. Point unknowns to craniometrix.
 ${KNOWLEDGE_BASE}`,
     })
 
-    logUsage({ resource_type: 'dataset', event_type: 'ana' }, result.usage)
+    // Platform-hosted single-tenant assistant (hardcoded KB, no dataset/org binding
+    // in code) — attributed to 'system', not a fabricated dataset/org. If this should
+    // bill to Craniometrix's org, hardcode its org_id here like the temple-events cron.
+    logUsage({ resource_type: 'system', event_type: 'ana' }, result.usage)
 
     let text = result.text || 'Sorry, I had trouble generating a response. Please try again.'
     if (result.stopReason === 'max_tokens') text = trimIncomplete(text)

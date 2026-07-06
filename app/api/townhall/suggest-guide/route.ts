@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId } = await getCallerOrgContext(supabase)
 
   const body = await req.json().catch(() => ({}))
   const { description, industry, org_name, topic_count } = body
@@ -47,7 +49,7 @@ Return ONLY valid JSON:
       system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
-    logUsage({ resource_type: 'townhall', event_type: 'suggest_guide' }, result.usage)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'suggest_guide' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     const topics = Array.isArray(parsed.topics) ? parsed.topics.map((t: any) => ({

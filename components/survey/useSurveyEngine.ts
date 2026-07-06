@@ -459,6 +459,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           body: JSON.stringify({
             studyName:     orgName || study.name,
             orgName:       orgName || study.name,
+            studyGuid:     study.guid,
             questionAsked,
             answer:        text,
             linkText:      qr.linkText || '',
