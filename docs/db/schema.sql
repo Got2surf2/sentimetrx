@@ -936,6 +936,30 @@ $_$;
 ALTER FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer DEFAULT 1) RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  INSERT INTO agent_probe_quota (agent_id, probe_id, probe_version, answered_count)
+  VALUES (p_agent_id, p_probe_id, p_probe_version, p_delta)
+  ON CONFLICT (agent_id, probe_id, probe_version)
+  DO UPDATE SET answered_count = agent_probe_quota.answered_count + p_delta
+  RETURNING answered_count INTO v_count;
+
+  RETURN v_count;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer) IS 'Atomically bumps the answered-quota counter for a research probe version and returns the new count. chatCore assignment reads agent_probe_quota vs sampling.target_n; this keeps quota O(1) per answer (sql/154 counter pattern).';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid" DEFAULT NULL::"uuid", "p_delta" integer DEFAULT 1) RETURNS integer
     LANGUAGE "plpgsql"
     AS $$
@@ -2001,6 +2025,39 @@ CREATE TABLE IF NOT EXISTS "public"."agent_knowledge_chunks" (
 ALTER TABLE "public"."agent_knowledge_chunks" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."agent_probe_quota" (
+    "agent_id" "uuid" NOT NULL,
+    "probe_id" "text" NOT NULL,
+    "probe_version" integer NOT NULL,
+    "answered_count" integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE "public"."agent_probe_quota" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."agent_probe_responses" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "agent_id" "uuid" NOT NULL,
+    "session_id" "text" NOT NULL,
+    "probe_id" "text" NOT NULL,
+    "probe_version" integer NOT NULL,
+    "outcome" "text" NOT NULL,
+    "asked_wording" "text",
+    "asked_turn" integer,
+    "ask_context" "jsonb",
+    "answer_text" "text",
+    "followup_text" "text",
+    "coded" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "agent_probe_responses_outcome_check" CHECK (("outcome" = ANY (ARRAY['asked_answered'::"text", 'asked_declined'::"text", 'asked_ignored'::"text", 'never_fit'::"text", 'quota_closed'::"text"])))
+);
+
+
+ALTER TABLE "public"."agent_probe_responses" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."agent_readout_cache" (
     "bot_id" "uuid" NOT NULL,
     "org_id" "uuid" NOT NULL,
@@ -2099,6 +2156,7 @@ CREATE TABLE IF NOT EXISTS "public"."agents" (
     "focuses" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "probe_focus_enabled" boolean DEFAULT false NOT NULL,
     "brand_tag" "text",
+    "research_probes" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     CONSTRAINT "bots_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'active'::"text", 'paused'::"text"])))
 );
 
@@ -2115,6 +2173,10 @@ COMMENT ON COLUMN "public"."agents"."probe_focus_enabled" IS 'When true, lib/cha
 
 
 COMMENT ON COLUMN "public"."agents"."brand_tag" IS 'Free-text brand label. Resolves (via find_or_create_brand_collection) to the brand collection whose entity_catalog this agent''s curated entities roll up into. Phase 3 of the shared brand-correction layer.';
+
+
+
+COMMENT ON COLUMN "public"."agents"."research_probes" IS 'Research-probe library (BOTS.md §14.4): [{id, version, construct, mode: verbatim|concept, question, answer_schema, follow_up, tag_hooks, eligibility{min_user_turns, sentiment_gate, topic_triggers, topic_exclusions, channels}, sampling{sample_pct, target_n, cooldown_days, field_start, field_end}, enabled}]. Any wording change MUST bump version. While any probe is enabled the public widget shows the §14.3 disclosure line.';
 
 
 
@@ -3928,6 +3990,21 @@ ALTER TABLE ONLY "public"."agent_impressions"
 
 
 
+ALTER TABLE ONLY "public"."agent_probe_quota"
+    ADD CONSTRAINT "agent_probe_quota_pkey" PRIMARY KEY ("agent_id", "probe_id", "probe_version");
+
+
+
+ALTER TABLE ONLY "public"."agent_probe_responses"
+    ADD CONSTRAINT "agent_probe_responses_agent_id_session_id_probe_id_key" UNIQUE ("agent_id", "session_id", "probe_id");
+
+
+
+ALTER TABLE ONLY "public"."agent_probe_responses"
+    ADD CONSTRAINT "agent_probe_responses_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."agent_readout_cache"
     ADD CONSTRAINT "agent_readout_cache_pkey" PRIMARY KEY ("bot_id");
 
@@ -4493,6 +4570,10 @@ CREATE INDEX "idx_adr_dataset" ON "public"."archived_dataset_rows" USING "btree"
 
 
 CREATE INDEX "idx_adrf_dataset" ON "public"."archived_dataset_rows_flat" USING "btree" ("dataset_id");
+
+
+
+CREATE INDEX "idx_apr_analytics" ON "public"."agent_probe_responses" USING "btree" ("org_id", "agent_id", "probe_id", "probe_version", "outcome");
 
 
 
@@ -5135,6 +5216,16 @@ ALTER TABLE ONLY "public"."agent_impressions"
 
 
 
+ALTER TABLE ONLY "public"."agent_probe_quota"
+    ADD CONSTRAINT "agent_probe_quota_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."agent_probe_responses"
+    ADD CONSTRAINT "agent_probe_responses_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."agent_readout_cache"
     ADD CONSTRAINT "agent_readout_cache_bot_id_fkey" FOREIGN KEY ("bot_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
 
@@ -5757,6 +5848,12 @@ CREATE POLICY "agent_impressions_org_read" ON "public"."agent_impressions" FOR S
 ALTER TABLE "public"."agent_knowledge_chunks" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."agent_probe_quota" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."agent_probe_responses" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."agent_readout_cache" ENABLE ROW LEVEL SECURITY;
 
 
@@ -5785,6 +5882,20 @@ ALTER TABLE "public"."ai_consent_audit" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "ai_consent_audit_self_read" ON "public"."ai_consent_audit" FOR SELECT USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "apq_org_read" ON "public"."agent_probe_quota" FOR SELECT USING (("agent_id" IN ( SELECT "agents"."id"
+   FROM "public"."agents"
+  WHERE ("agents"."org_id" = ( SELECT "users"."org_id"
+           FROM "public"."users"
+          WHERE ("users"."id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "apr_org_read" ON "public"."agent_probe_responses" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
 
 
 
@@ -6689,6 +6800,12 @@ GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_g
 
 
 
+GRANT ALL ON FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."increment_pulseiq_response_counter"("p_session_id" "uuid", "p_topic_id" "uuid", "p_delta" integer) TO "service_role";
@@ -6940,6 +7057,18 @@ GRANT ALL ON TABLE "public"."agent_impressions" TO "service_role";
 GRANT ALL ON TABLE "public"."agent_knowledge_chunks" TO "anon";
 GRANT ALL ON TABLE "public"."agent_knowledge_chunks" TO "authenticated";
 GRANT ALL ON TABLE "public"."agent_knowledge_chunks" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."agent_probe_quota" TO "anon";
+GRANT ALL ON TABLE "public"."agent_probe_quota" TO "authenticated";
+GRANT ALL ON TABLE "public"."agent_probe_quota" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."agent_probe_responses" TO "anon";
+GRANT ALL ON TABLE "public"."agent_probe_responses" TO "authenticated";
+GRANT ALL ON TABLE "public"."agent_probe_responses" TO "service_role";
 
 
 
