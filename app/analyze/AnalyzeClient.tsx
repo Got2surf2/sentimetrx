@@ -134,7 +134,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   function sortKey(d: DatasetWithState): string | number {
     if (sortMode === 'name')    return (d.name || '').toLowerCase()
     if (sortMode === 'created') return -new Date(d.created_at).getTime()
-    const last = (d as any).last_sync_at as string | undefined
+    const last = (d as { last_sync_at?: string }).last_sync_at
     return -new Date(last || d.created_at).getTime()
   }
   const nameQ = query.trim().toLowerCase()

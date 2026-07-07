@@ -16,7 +16,7 @@ export default async function TestingPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   const isAdmin = !!orgData?.is_admin_org
   if (!isAdmin) redirect('/dashboard')
 

@@ -67,8 +67,8 @@ export default function PosPreviewClient({ datasets }: { datasets: Dataset[] }) 
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Run failed')
       setResult(data)
-    } catch (err: any) {
-      setError(err?.message || 'Run failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Run failed')
     } finally {
       setLoading(false)
     }

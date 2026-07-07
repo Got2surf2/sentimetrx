@@ -110,8 +110,8 @@ async function runOneTest(botId: string, test: SarinaTest): Promise<TestRun> {
       intentDebug,
       elapsedMs: Date.now() - started,
     }
-  } catch (e: any) {
-    return { ...emptyRun(test.id), status: 'error', error: e?.message || String(e), elapsedMs: Date.now() - started }
+  } catch (e: unknown) {
+    return { ...emptyRun(test.id), status: 'error', error: e instanceof Error ? e.message : String(e), elapsedMs: Date.now() - started }
   }
 }
 

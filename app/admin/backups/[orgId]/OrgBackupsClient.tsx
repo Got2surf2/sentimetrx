@@ -88,8 +88,8 @@ export default function OrgBackupsClient({ orgId, targetOrgName, targetOrgSlug, 
       setResult(data as RestoreResult)
       setConfirmKey(null)
       setTypedOrgSlug('')
-    } catch (e: any) {
-      setError(e?.message || 'Restore failed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Restore failed')
     } finally {
       setRestoring(null)
     }

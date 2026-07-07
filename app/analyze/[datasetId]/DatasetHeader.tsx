@@ -147,7 +147,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     try {
       var srcRes = await fetch('/api/review-sources')
       var srcData = await srcRes.json()
-      var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
+      var source = (srcData.sources || []).find(function(s: { id: string; dataset_id: string }) { return s.dataset_id === dataset.id })
       if (!source) return
       var res = await fetch('/api/review-sources/' + source.id + '/sync', { method: 'POST' })
       var data = await res.json()

@@ -187,3 +187,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 46 files (−44): mostly API routes (mco, invite, orgs, datasets, cron, bots, admin, recordings) + taxonomy page — largely catch(e:any)→unknown and org-relation/body casts. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 418→374. Ceiling → 374. Not pushed.
+
+## ESLint burn-down wave 16 — 15 files (Jul 7)
+
+WHY: Last unprocessed no-explicit-any files.
+
+15 files (−16): analyze/admin pages + clients. Reconciled the last resolveOrg-as-any→OrgFeatures cascade (widened TestingClient features → ModuleFeatures). Global tsc 0 errors, 1238 tests pass, 374→358. Ceiling → 358. Every file with a real no-explicit-any is now processed; the ~358 remaining are react-hooks warnings (never targeted by this pass) + the handful of genuinely-untypeable anys agents deliberately left. Not pushed.

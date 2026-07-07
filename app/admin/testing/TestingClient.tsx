@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
+import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import type { StudyConfig, SurveyQuestion, OpeningFlowItem } from '@/lib/types'
@@ -13,7 +14,7 @@ interface StudyQuestion { id: string; label: string; prompt: string }
 
 interface Props {
   logoUrl?: string; orgName?: string; fullName?: string; userEmail: string
-  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: ModuleFeatures
 }
 
 // Minimal rating-scale entry — shared by config.ratingScale and the inline fallback (which omits emoji)

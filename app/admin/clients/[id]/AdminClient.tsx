@@ -89,8 +89,8 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: P
       setNewPlan('trial')
       setNewIsAdmin(false)
       router.push('/admin/clients/' + created.id)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
       setCreating(false)
     }
   }

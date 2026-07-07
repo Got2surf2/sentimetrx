@@ -16,6 +16,10 @@ interface Stats {
   total: number; flagged: number; deleted: number; hidden: number; review: number; missed: number; falsePositive: number
 }
 
+interface LabelBreakdown {
+  total: number; flagged: number; deleted: number; hidden: number; review: number; missed: number
+}
+
 const ACTION_COLORS: Record<string, string> = {
   auto_delete: '#DC2626',
   auto_hide: '#F59E0B',
@@ -41,7 +45,7 @@ export default function ContentGuardClient() {
   var [inputText, setInputText] = useState('')
   var [results, setResults] = useState<TestResult[]>([])
   var [stats, setStats] = useState<Stats | null>(null)
-  var [byLabel, setByLabel] = useState<Record<string, any>>({})
+  var [byLabel, setByLabel] = useState<Record<string, LabelBreakdown>>({})
   var [loading, setLoading] = useState(false)
   var [useModeration, setUseModeration] = useState(false)
   var [filter, setFilter] = useState<string>('all')
@@ -204,7 +208,7 @@ export default function ContentGuardClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(byLabel).map(function([label, lb]: [string, any]) {
+                  {Object.entries(byLabel).map(function([label, lb]: [string, LabelBreakdown]) {
                     var recall = lb.total > 0 && label !== 'clean' ? Math.round(lb.flagged / lb.total * 100) : null
                     return <tr key={label} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '6px 8px', fontWeight: 600, textTransform: 'capitalize' }}>{label}</td>

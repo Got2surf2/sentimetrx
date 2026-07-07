@@ -17,7 +17,7 @@ export default async function ReoGoldSetPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
 
   return (

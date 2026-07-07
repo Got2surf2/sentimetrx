@@ -22,7 +22,7 @@ export default async function StatsPage(props: Props) {
     .eq('id', user.id)
     .single()
 
-  var orgData = resolveOrg(userData?.organizations) as any
+  var orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   var service = createServiceRoleClient()
