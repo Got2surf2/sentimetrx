@@ -21,6 +21,14 @@ export const maxDuration = 120
 
 interface Props { params: Promise<{ datasetId: string }> }
 
+interface DatasetRow {
+  id: string
+  name: string
+  source: string
+  row_count: number | null
+  org_id: string
+}
+
 const REPORT_CSS =
   '.report-body h2{font-size:20px;margin:0 0 8px}.report-body h3{font-size:15px;margin:18px 0 6px}' +
   '.report-body p,.report-body li{font-size:12px;line-height:1.55}' +
@@ -35,7 +43,7 @@ export async function POST(req: Request, props: Props) {
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({})) as { prompt?: string; format?: 'pdf' | 'html'; filters?: Record<string, any>; sampleSize?: number }
+  const body = await req.json().catch(() => ({})) as { prompt?: string; format?: 'pdf' | 'html'; filters?: Record<string, unknown>; sampleSize?: number }
   const prompt = (body.prompt || '').trim()
   const format = body.format === 'html' ? 'html' : 'pdf'
   if (!prompt) return NextResponse.json({ error: 'Describe what you want the report to cover.' }, { status: 400 })
@@ -45,9 +53,9 @@ export async function POST(req: Request, props: Props) {
 
   const service = createServiceRoleClient()
   const { data: dataset } = await service
-    .from('datasets').select('id, name, source, row_count, org_id').eq('id', datasetId).single()
+    .from('datasets').select('id, name, source, row_count, org_id').eq('id', datasetId).single<DatasetRow>()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const sample = await loadAnaSample({ service, dataset, filters: body.filters, sampleSize: body.sampleSize })
   if (sample.rows.length === 0) return NextResponse.json({ error: 'No analyzable rows in this dataset.' }, { status: 400 })
@@ -76,10 +84,10 @@ ${sample.dataContext}`
       messages: [{ role: 'user', content: `Write the report. The request: ${prompt}` }],
       maxTokens: 4000,
       timeoutMs: 110_000,   // large context + full report — generous within maxDuration 120
-      usage: { org_id: (dataset as any).org_id, resource_type: 'dataset', resource_id: dataset.id, event_type: 'adhoc_report' },
+      usage: { org_id: dataset.org_id, resource_type: 'dataset', resource_id: dataset.id, event_type: 'adhoc_report' },
     })
     bodyHtml = (res.text || '').trim()
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'datasets.adHocReport', { orgId })
   }
   if (!bodyHtml) return NextResponse.json({ error: 'The model returned an empty report.' }, { status: 502 })

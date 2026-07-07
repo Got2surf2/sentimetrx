@@ -13,8 +13,24 @@ interface Props {
   description: string
 }
 
+interface RegulationsMeta {
+  download_status?: string
+  docket_id?: string
+  next_page?: number
+  comment_count?: number
+  use_search?: boolean
+}
+
+interface DownloadResponse {
+  error?: string
+  inserted?: number
+  usedSearch?: boolean
+  lastPage?: number
+  fetched?: number
+}
+
 export default function RegulationsDownloadBanner({ datasetId, description }: Props) {
-  var meta: any = null
+  var meta: RegulationsMeta | null = null
   try { meta = JSON.parse(description) } catch {}
 
   var [status, setStatus] = useState((meta?.download_status) || 'downloading')
@@ -39,10 +55,10 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
           var res = await fetch('/api/regulations-sources/download-comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataset_id: datasetId, docket_id: meta.docket_id, page: p, use_search: useSearch }),
+            body: JSON.stringify({ dataset_id: datasetId, docket_id: meta!.docket_id, page: p, use_search: useSearch }),
           })
           var text = await res.text()
-          var data: any
+          var data: DownloadResponse
           try { data = JSON.parse(text) } catch { throw new Error('Server error: ' + text.slice(0, 200)) }
           if (!res.ok) throw new Error(data.error || 'Download failed')
 
@@ -57,8 +73,8 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
           if ((data.fetched || 0) === 0) break
           p++
           setPage(p)
-        } catch (err: any) {
-          setError(err.message || 'Download failed')
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Download failed')
           running.current = false
           return
         }
@@ -69,7 +85,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
         await fetch('/api/regulations-sources/download-comments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataset_id: datasetId, docket_id: meta.docket_id, finalize: true }),
+          body: JSON.stringify({ dataset_id: datasetId, docket_id: meta!.docket_id, finalize: true }),
         })
       } catch {}
 

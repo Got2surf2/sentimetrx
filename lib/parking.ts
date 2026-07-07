@@ -35,19 +35,39 @@ export interface ParkingLot {
   rate: { hourly?: string; daily?: string } | null   // joined from /rates
 }
 
+// Raw GOAA payload rows — every field is read defensively (typeof/String
+// guards) in load()/fetchRates(), so `unknown` is the honest type here.
+interface GoaaAvailabilityRow {
+  id?: unknown
+  name?: unknown
+  category?: unknown
+  status?: unknown
+  available?: unknown
+  occupied?: unknown
+  total?: unknown
+  terminalId?: unknown
+  terminalName?: unknown
+  lastUpdatedTimestamp?: unknown
+}
+interface GoaaRateRow {
+  id: string
+  tier?: unknown
+  rate?: unknown
+}
+
 interface GoaaAvailabilityResponse {
-  data?: { parkingAvailability?: any[] }
+  data?: { parkingAvailability?: GoaaAvailabilityRow[] }
   status?: { code: number; message: string }
 }
 interface GoaaRatesResponse {
-  data?: { rates?: any[] }
+  data?: { rates?: GoaaRateRow[] }
   status?: { code: number; message: string }
 }
 
 let cache: { at: number; lots: ParkingLot[] } | null = null
 let inFlight: Promise<ParkingLot[]> | null = null
 
-async function fetchAvailability(): Promise<any[]> {
+async function fetchAvailability(): Promise<GoaaAvailabilityRow[]> {
   const key = process.env.GOAA_API_KEY || PUBLIC_GOAA_KEY
   const res = await fetch(AVAILABILITY_URL, {
     headers: {

@@ -26,7 +26,7 @@ const DN = {
 const W = 13.33
 const H = 7.5
 
-function addHeader(slide: any, title: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string) {
   // Dark navy bar at top
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, { x: 0.6, y: 0.15, w: 8, h: 0.7, fontSize: 28, fontFace: 'Arial', color: DN.white, bold: true })
@@ -34,12 +34,12 @@ function addHeader(slide: any, title: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('sentimetrx.ai', { x: 0.5, y: H - 0.4, w: 3, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial' })
   slide.addText(`${pageNum}`, { x: W - 1, y: H - 0.4, w: 0.5, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial', align: 'right' })
 }
 
-function bullet(text: string, opts?: any) {
+function bullet(text: string, opts?: PptxGenJS.TextPropsOptions) {
   return { text, options: { fontSize: 14, fontFace: 'Arial', color: DN.ink, lineSpacing: 24, bullet: { code: '2022' }, ...opts } }
 }
 
@@ -346,7 +346,7 @@ This is the slide that makes researchers and CX leaders perk up.`
     text: c,
     options: { fontSize: 10, fontFace: 'Arial', color: i === 3 ? DN.teal : DN.ink, bold: i === 0, fill: { color: i === 3 ? 'E0F7FA' : DN.white } }
   })))]
-  s7.addTable(tableRows as any, { x: 0.6, y: 2.0, w: 12, colW: [2.2, 3, 3, 3.8], border: { pt: 0.5, color: DN.slateLight } })
+  s7.addTable(tableRows as PptxGenJS.TableRow[], { x: 0.6, y: 2.0, w: 12, colW: [2.2, 3, 3, 3.8], border: { pt: 0.5, color: DN.slateLight } })
 
   s7.addNotes(
 `The competitive grid. Walk the diagonal — don't read every cell.

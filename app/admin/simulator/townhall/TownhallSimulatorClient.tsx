@@ -266,7 +266,9 @@ const PACKS: Record<string, { label: string; personas: Persona[]; group?: string
 
 // ── Simulator ──────────────────────────────────────────────────────────
 
-interface Session { id: string; name: string; status: string; config: any; discussion_guide: any[]; participants: number; turns: number }
+interface DiscussionGuideItem { label: string; enabled?: boolean }
+interface SessionConfig { session_type?: string; context?: { org_name?: string; event_description?: string } }
+interface Session { id: string; name: string; status: string; config: SessionConfig; discussion_guide: DiscussionGuideItem[]; participants: number; turns: number }
 interface LogEntry { text: string; type: 'ok' | 'err' | 'info' | 'dim' }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -332,7 +334,7 @@ export default function TownhallSimulatorClient() {
     const participantCount = shuffled.length
 
     const cfg = session.config || {}
-    const topics = (session.discussion_guide || []).filter((t: any) => t.enabled !== false).map((t: any) => t.label)
+    const topics = (session.discussion_guide || []).filter((t) => t.enabled !== false).map((t) => t.label)
     const sessionContext = {
       org_name: cfg.context?.org_name || '',
       event_description: cfg.context?.event_description || '',

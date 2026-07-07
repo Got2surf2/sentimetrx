@@ -22,9 +22,11 @@ export async function GET(req: NextRequest) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type OrgRel = { is_admin_org: boolean | null }
+  type UserOrgRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
+  const orgRel = (userData as UserOrgRow | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
+  const userOrgId = (userData as UserOrgRow | null)?.org_id ?? null
 
   const orgFilter = validateOrgFilter(req.nextUrl.searchParams.get('org'))
   const scopeOrgId = isAdmin ? orgFilter : userOrgId
@@ -103,7 +105,7 @@ export async function POST(req: NextRequest) {
   // ignores agent status (the SESSION status governs). The marker lets
   // session DELETE distinguish a dedicated agent (safe to remove) from a
   // real linked agent like Sarina (never removed).
-  const cfg = config as any
+  const cfg = config
   const eventDesc = cfg?.context?.event_description || ''
   const agentInsert: Record<string, unknown> = {
     org_id: orgId,
@@ -136,7 +138,7 @@ export async function POST(req: NextRequest) {
   // cohort_config = the wizard config with the keys the unified engine
   // reads lifted to top level (legacy nested them under engine.*). The
   // adapter's spread-projection keeps every legacy reader working.
-  const engine = cfg?.engine || {}
+  const engine = (cfg?.engine || {}) as TownHallConfig['engine'] & { standby_message?: string; chill_message?: string }
   const cohortConfig: Record<string, unknown> = {
     ...cfg,
     max_turns_per_participant: engine.max_turns_per_participant ?? 20,

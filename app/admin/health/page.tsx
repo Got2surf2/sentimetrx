@@ -17,7 +17,7 @@ export default async function HealthPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   const isAdmin = !!orgData?.is_admin_org
   if (!isAdmin) redirect('/dashboard')
 
@@ -46,7 +46,12 @@ export default async function HealthPage() {
     .limit(50)
 
   // Per-study response stats (last 24h)
-  const studyHealth = await Promise.all((activeStudies || []).map(async (s: any) => {
+  type ActiveStudy = {
+    id: string
+    name: string
+    organizations?: { name?: string | null } | { name?: string | null }[] | null
+  }
+  const studyHealth = await Promise.all((activeStudies || []).map(async (s: ActiveStudy) => {
     const [total24h, complete24h, partial24h, total1h] = await Promise.all([
       service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', s.id).gte('completed_at', h24),
       service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', s.id).eq('status', 'complete').gte('completed_at', h24),
@@ -101,7 +106,15 @@ export default async function HealthPage() {
         { headers: { Authorization: `Bearer ${sentryToken}` }, cache: 'no-store' }
       )
       if (r.ok) {
-        const data = await r.json() as any[]
+        type SentryIssueRaw = {
+          id: string
+          title?: string
+          metadata?: { value?: string }
+          lastSeen: string
+          count: string
+          permalink?: string
+        }
+        const data = await r.json() as SentryIssueRaw[]
         sentryIssues = data.map(d => ({
           id: d.id,
           title: d.title || d.metadata?.value || '(no title)',
@@ -114,8 +127,8 @@ export default async function HealthPage() {
       } else {
         sentryError = `Sentry API ${r.status}`
       }
-    } catch (e: any) {
-      sentryError = e?.message || 'Sentry API unreachable'
+    } catch (e) {
+      sentryError = (e instanceof Error && e.message) || 'Sentry API unreachable'
     }
   }
 

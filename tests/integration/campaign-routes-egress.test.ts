@@ -201,7 +201,7 @@ describeMaybe('Campaign route cross-org egress (env-gated)', () => {
     const req = new NextRequest(
       'http://test.local/api/campaigns/' + ids.campaignA + '/export',
     )
-    const res = await GET(req as any, { params: Promise.resolve({ id: ids.campaignA! }) })
+    const res = await GET(req, { params: Promise.resolve({ id: ids.campaignA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -210,7 +210,7 @@ describeMaybe('Campaign route cross-org egress (env-gated)', () => {
     const req = new NextRequest(
       'http://test.local/api/campaigns/' + ids.campaignA + '/respondents',
     )
-    const res = await GET(req as any, { params: Promise.resolve({ id: ids.campaignA! }) })
+    const res = await GET(req, { params: Promise.resolve({ id: ids.campaignA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -230,7 +230,7 @@ describeMaybe('Campaign route cross-org egress (env-gated)', () => {
       const req = new NextRequest(
         'http://test.local/api/campaigns/' + ids.campaignA + '/export',
       )
-      const res = await GET(req as any, { params: Promise.resolve({ id: ids.campaignA! }) })
+      const res = await GET(req, { params: Promise.resolve({ id: ids.campaignA! }) })
       expect(res.status).toBe(200)
     } finally {
       ctx.signedIn = prev

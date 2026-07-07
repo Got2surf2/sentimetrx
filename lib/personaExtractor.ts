@@ -82,19 +82,20 @@ export async function extractPersona(userMessages: string[], usageCtx?: UsageCon
  */
 export function mergePersona(existing: Persona, update: Persona): Persona {
   var merged = { ...existing }
-  var simpleFields: (keyof Persona)[] = ['life_stage', 'occupation', 'industry', 'location_type', 'communication_style']
+  type SimplePersonaKey = 'life_stage' | 'occupation' | 'industry' | 'location_type' | 'communication_style'
+  var simpleFields: SimplePersonaKey[] = ['life_stage', 'occupation', 'industry', 'location_type', 'communication_style']
 
   for (var i = 0; i < simpleFields.length; i++) {
     var key = simpleFields[i]
-    var newVal = update[key] as PersonaField | undefined
-    var oldVal = merged[key] as PersonaField | undefined
+    var newVal = update[key]
+    var oldVal = merged[key]
     if (!newVal) continue
     if (!oldVal) {
-      (merged as any)[key] = newVal
+      merged[key] = newVal
     } else if (newVal.source === 'explicit' && oldVal.source === 'inferred') {
-      (merged as any)[key] = newVal
+      merged[key] = newVal
     } else if (confRank(newVal.confidence) > confRank(oldVal.confidence)) {
-      (merged as any)[key] = newVal
+      merged[key] = newVal
     }
   }
 

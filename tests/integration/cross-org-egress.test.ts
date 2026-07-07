@@ -253,12 +253,15 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
     // the org, and surface any cleanup error so we notice immediately
     // instead of letting the prod-linked DB accumulate test cruft.
     const errors: string[] = []
-    const tryDelete = async (label: string, fn: () => any) => {
+    const tryDelete = async (
+      label: string,
+      fn: () => PromiseLike<{ error: { message: string } | null }>,
+    ) => {
       try {
         const { error } = await fn()
         if (error) errors.push(`${label}: ${error.message}`)
-      } catch (e: any) {
-        errors.push(`${label}: ${e?.message || String(e)}`)
+      } catch (e: unknown) {
+        errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
 
@@ -305,11 +308,11 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
 
     if (ids.userA) {
       try { await admin.auth.admin.deleteUser(ids.userA as string) }
-      catch (e: any) { errors.push(`auth.users.userA: ${e?.message || String(e)}`) }
+      catch (e: unknown) { errors.push(`auth.users.userA: ${e instanceof Error ? e.message : String(e)}`) }
     }
     if (ids.userB) {
       try { await admin.auth.admin.deleteUser(ids.userB as string) }
-      catch (e: any) { errors.push(`auth.users.userB: ${e?.message || String(e)}`) }
+      catch (e: unknown) { errors.push(`auth.users.userB: ${e instanceof Error ? e.message : String(e)}`) }
     }
 
     if (errors.length) {

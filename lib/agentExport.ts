@@ -6,6 +6,7 @@
 // turn-loading, the review-gated Q&A pairing, and the PII redaction never drift
 // between the two routes.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Sheet } from '@/lib/xlsxExport'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { logError } from '@/lib/log'
@@ -34,7 +35,20 @@ export interface ExportTurn {
 // lib/agentStudy.loadTurns but keeps the export column set + ordering. Paged
 // (PostgREST caps a single request at 1000 rows) — no cap, so large agents
 // export every turn. Secondary `id` order keeps the pages deterministic.
-export async function loadExportTurns(service: any, botId: string): Promise<ExportTurn[]> {
+// Phase-3 turn row shape returned by the joined `conversation_turns` select.
+interface P3TurnRow {
+  turn_number: number
+  role: string
+  content: string
+  content_en: string | null
+  language: string | null
+  created_at: string
+  source: string | null
+  content_flags: string[] | null
+  conversations: { session_id: string; bot_id: string }
+}
+
+export async function loadExportTurns(service: SupabaseClient, botId: string): Promise<ExportTurn[]> {
   const PAGE = 1000
   if (isPhase3ReadSafe()) {
     const out: ExportTurn[] = []
@@ -49,7 +63,7 @@ export async function loadExportTurns(service: any, botId: string): Promise<Expo
         .range(offset, offset + PAGE - 1)
       if (p3TurnsErr) { void logError('agentExport.loadExportTurns', p3TurnsErr); break }
       const batch = data || []
-      for (const r of batch as any[]) {
+      for (const r of batch as unknown as P3TurnRow[]) {
         out.push({
           session_id: r.conversations?.session_id,
           turn_number: r.turn_number,
@@ -107,7 +121,7 @@ const isLeak = (t: string) => /^greet the user warmly\b/i.test((t || '').trim())
 // human-excluded sessions and auto-flagged troll/bot/duplicate/off-topic ones a
 // human hasn't approved. So this is "every Q&A from the conversations we count
 // as good" — not the raw dump.
-export async function pairsSheet(service: any, botId: string, turns: ExportTurn[], agentName: string, name = 'Q&A Pairs'): Promise<Sheet> {
+export async function pairsSheet(service: SupabaseClient, botId: string, turns: ExportTurn[], agentName: string, name = 'Q&A Pairs'): Promise<Sheet> {
   // Personify the response columns with the agent's name (e.g. "Sarina's
   // answer") rather than the generic "agent" — the agents are presented to
   // users as named people, and exports should keep that voice.

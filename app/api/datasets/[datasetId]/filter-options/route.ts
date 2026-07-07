@@ -73,7 +73,7 @@ export async function GET(_req: Request, props: Props) {
           p_field_key: f.field,
           p_limit: 200,
         })
-        if (data) opt.values = data.map((r: any) => r.value).sort()
+        if (data) opt.values = data.map((r: { value: string }) => r.value).sort()
       }
 
       if (f.type === 'numeric') {
@@ -110,15 +110,15 @@ export async function GET(_req: Request, props: Props) {
           .neq('data->>' + f.field, '')
           .order('data->>' + f.field, { ascending: false })
           .limit(1)
-        if (data?.[0]) opt.dateMin = String((data[0] as any).data[f.field] || '')
-        if (dataMax?.[0]) opt.dateMax = String((dataMax[0] as any).data[f.field] || '')
+        if (data?.[0]) opt.dateMin = String((data[0] as { data: Record<string, unknown> }).data[f.field] || '')
+        if (dataMax?.[0]) opt.dateMax = String((dataMax[0] as { data: Record<string, unknown> }).data[f.field] || '')
       }
 
       options[f.field] = opt
     }
   } else {
     // Fallback: use pre-computed analytics (same as before)
-    const analytics = stateRow.analytics as { fieldSummaries?: Record<string, any> } | null
+    const analytics = stateRow.analytics as { fieldSummaries?: Record<string, { counts?: Record<string, number>; min?: number; max?: number }> } | null
     const summaries = analytics?.fieldSummaries || {}
 
     for (const f of fields) {

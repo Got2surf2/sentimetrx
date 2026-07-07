@@ -4,7 +4,7 @@
 // Covers the a11y state contract, the optimistic toggle + POST /api/favorites
 // wiring, and the re-sync when the parent hydrates initialFavorited late.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 
@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
     json: async () => ({ favorited: true }),
-  })) as any)
+  })) as unknown as typeof fetch)
 })
 
 describe('FavoriteStar', () => {
@@ -24,7 +24,7 @@ describe('FavoriteStar', () => {
   })
 
   it('optimistically toggles and POSTs to /api/favorites on click', async () => {
-    const fetchMock = global.fetch as any
+    const fetchMock = global.fetch as unknown as Mock
     render(<FavoriteStar resourceType="dataset" resourceId="ds9" initialFavorited={false} />)
     const btn = screen.getByRole('button')
     fireEvent.click(btn)
@@ -37,7 +37,7 @@ describe('FavoriteStar', () => {
   })
 
   it('reverts the optimistic state when the request fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })) as any)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch)
     render(<FavoriteStar resourceType="bot" resourceId="b2" initialFavorited={false} />)
     const btn = screen.getByRole('button')
     fireEvent.click(btn)

@@ -120,29 +120,30 @@ function shouldDrop(event: Record<string, unknown>): boolean {
 // `TransactionEvent`, and the shape varies by runtime. We treat the
 // event as a free-form object — Sentry's `beforeSend` contract permits
 // returning either the (possibly-mutated) event or `null` to drop it.
-export function scrubSentryEvent(event: any): any {
+export function scrubSentryEvent<T>(event: T): T | null {
   if (event == null || typeof event !== 'object') return event
-  if (shouldDrop(event)) return null
+  const ev = event as unknown as Record<string, unknown>
+  if (shouldDrop(ev)) return null
 
-  scrubRequest(event.request)
+  scrubRequest(ev.request as Record<string, unknown> | undefined)
 
-  if (event.extra) event.extra = scrubValue(event.extra)
-  if (event.contexts) event.contexts = scrubValue(event.contexts)
-  if (event.tags) event.tags = scrubValue(event.tags)
+  if (ev.extra) ev.extra = scrubValue(ev.extra)
+  if (ev.contexts) ev.contexts = scrubValue(ev.contexts)
+  if (ev.tags) ev.tags = scrubValue(ev.tags)
 
   // user: keep id only. Drop email, ip_address, username, anything else
   // that could carry PII.
-  const user = event.user
+  const user = ev.user
   if (user && typeof user === 'object') {
-    const id = user.id
-    event.user = id != null ? { id } : {}
+    const id = (user as Record<string, unknown>).id
+    ev.user = id != null ? { id } : {}
   }
 
-  const breadcrumbs = event.breadcrumbs
+  const breadcrumbs = ev.breadcrumbs
   if (Array.isArray(breadcrumbs)) {
-    event.breadcrumbs = breadcrumbs.map((b: any) => {
+    ev.breadcrumbs = breadcrumbs.map((b: unknown) => {
       if (b == null || typeof b !== 'object') return b
-      const copy: Record<string, unknown> = { ...b }
+      const copy: Record<string, unknown> = { ...(b as Record<string, unknown>) }
       if (typeof copy.message === 'string') copy.message = scrubString(copy.message)
       if (copy.data) copy.data = scrubValue(copy.data)
       return copy

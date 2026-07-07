@@ -27,6 +27,17 @@ interface Bot {
   org_name?: string | null
 }
 
+// Presentation fields read off a bot's free-form `config` blob when rendering a card.
+interface BotCardConfig {
+  headerGradient?: string
+  avatarGradient?: string
+  avatarTextColor?: string
+  avatarLetter?: string
+  accentColor?: string
+  websiteLabel?: string
+  subtitle?: string
+}
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   draft:  { bg: '#f3f4f6', text: '#6b7280', border: '#e5e7eb', label: 'Draft' },
   active: { bg: '#d1fae5', text: '#059669', border: '#a7f3d0', label: 'Active' },
@@ -232,7 +243,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           // but only if there's at least one favorite above it.
           var showDivider = i === divIdx && divIdx > 0
           var sc = STATUS_COLORS[bot.status] || STATUS_COLORS.draft
-          var cfg = bot.config as any || {}
+          var cfg = (bot.config as BotCardConfig) || {}
           var headerGrad = cfg.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
           var avatarGrad = cfg.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
           var avatarText = cfg.avatarTextColor || 'white'
@@ -503,7 +514,7 @@ function relativeTime(iso: string | null | undefined): string {
 function ImportBotButton({ onImported }: { onImported: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string>('')
-  const inputRef = (typeof window !== 'undefined' ? null : null) as any
+  const inputRef = (typeof window !== 'undefined' ? null : null)
   return (
     <label
       style={{
@@ -524,7 +535,7 @@ function ImportBotButton({ onImported }: { onImported: () => void }) {
           setBusy(true); setErr('')
           try {
             const text = await file.text()
-            let json: any
+            let json: unknown
             try { json = JSON.parse(text) } catch { setErr('Not valid JSON'); setBusy(false); return }
             const res = await fetch('/api/bots/import', {
               method: 'POST',
@@ -534,8 +545,8 @@ function ImportBotButton({ onImported }: { onImported: () => void }) {
             const data = await res.json()
             if (!res.ok) { setErr(data?.error || ('HTTP ' + res.status)); setBusy(false); return }
             onImported()
-          } catch (e: any) {
-            setErr(e?.message || 'Import failed')
+          } catch (e: unknown) {
+            setErr(e instanceof Error ? e.message : 'Import failed')
           } finally {
             setBusy(false)
             ;(e.target as HTMLInputElement).value = ''

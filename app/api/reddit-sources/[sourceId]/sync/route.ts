@@ -12,6 +12,8 @@ export const maxDuration = 60
 
 interface Params { params: Promise<{ sourceId: string }> }
 
+interface ThreadRow { total_pulled: number; error_message: string | null }
+
 export async function POST(_req: Request, props: Params) {
   const params = await props.params;
   try {
@@ -44,7 +46,7 @@ export async function POST(_req: Request, props: Params) {
       .eq('reddit_source_id', source.id)
     var totalComments = 0
     var errored = 0
-    ;(threads || []).forEach(function(t: any) {
+    ;(threads || []).forEach(function(t: ThreadRow) {
       totalComments += t.total_pulled || 0
       if (t.error_message) errored++
     })
@@ -53,7 +55,7 @@ export async function POST(_req: Request, props: Params) {
     await service.from('reddit_sources').update({
       status: errored > 0 && totalComments === 0 ? 'error' : 'done',
       total_comments: totalComments,
-      total_posts: (threads || []).filter(function(t: any) { return t.total_pulled > 0 }).length,
+      total_posts: (threads || []).filter(function(t: ThreadRow) { return t.total_pulled > 0 }).length,
       updated_at: new Date().toISOString(),
     }).eq('id', source.id)
 
@@ -68,7 +70,7 @@ export async function POST(_req: Request, props: Params) {
         .select('data')
         .eq('dataset_id', datasetId)
         .limit(100)
-      var sampleRows = (sampleFlat || []).map(function(r: any) { return r.data })
+      var sampleRows = (sampleFlat || []).map(function(r: { data: Record<string, unknown> }) { return r.data })
       schema = buildRedditSchema()
       schema = enrichSchemaWithStats(schema, sampleRows)
       await service.from('dataset_state').update({
@@ -91,7 +93,7 @@ export async function POST(_req: Request, props: Params) {
       total_threads: (threads || []).length,
       errored: errored,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'redditSources.sync', { orgId })
   }
 }

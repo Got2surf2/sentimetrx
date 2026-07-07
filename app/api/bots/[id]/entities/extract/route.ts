@@ -22,6 +22,8 @@ export const maxDuration = 120
 
 interface Params { params: Promise<{ id: string }> }
 
+interface AgentRow { id: string; org_id: string }
+
 export async function POST(_req: NextRequest, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -30,14 +32,14 @@ export async function POST(_req: NextRequest, props: Params) {
 
   const service = createServiceRoleClient()
 
-  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single<AgentRow>()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {
     const result = await extractBotEntities(service, {
       botId: params.id,
-      orgId: (bot as any).org_id,
+      orgId: bot.org_id,
       triggeredByUser: userId,
     })
     invalidateEntityCache(params.id)
@@ -49,7 +51,7 @@ export async function POST(_req: NextRequest, props: Params) {
       duration_ms: result.durationMs,
       brand_pushed: result.brandPushed,
     })
-  } catch (e: any) {
-    return serverError(e, 'bots.entities.extract', { orgId: (bot as any).org_id })
+  } catch (e: unknown) {
+    return serverError(e, 'bots.entities.extract', { orgId: bot.org_id })
   }
 }

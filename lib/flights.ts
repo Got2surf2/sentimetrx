@@ -63,11 +63,11 @@ async function load(): Promise<Flight[]> {
   const url = `${ENDPOINT}?scheduledTimestamp=${now}..${end}`
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })
   if (!res.ok) throw new Error('flights ' + res.status)
-  const json = await res.json() as any
+  const json = await res.json() as { data?: { flights?: Record<string, unknown>[] } }
   const list = Array.isArray(json?.data?.flights) ? json.data.flights : []
   return list
-    .filter((f: any) => f && f.isVisible !== false && !f.isDeleted)
-    .map((f: any): Flight => ({
+    .filter((f) => f && f.isVisible !== false && !f.isDeleted)
+    .map((f): Flight => ({
       iataOperatingAirline: String(f.iataOperatingAirline || ''),
       operatingAirlineFlightNumber: String(f.operatingAirlineFlightNumber || ''),
       arrival: !!f.arrival,

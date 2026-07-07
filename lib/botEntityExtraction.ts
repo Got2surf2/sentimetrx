@@ -79,15 +79,16 @@ function parseEntities(raw: string): ExtractedEntity[] {
   if (!text) return []
   const match = text.match(/\[[\s\S]*\]/)
   if (!match) return []
-  let parsed: any
+  let parsed: unknown
   try { parsed = JSON.parse(match[0]) } catch { return [] }
   if (!Array.isArray(parsed)) return []
   const out: ExtractedEntity[] = []
   for (const item of parsed) {
     if (!item || typeof item !== 'object') continue
-    const canonical = String(item.canonical || '').trim()
+    const rec = item as Record<string, unknown>
+    const canonical = String(rec.canonical || '').trim()
     if (!canonical || canonical.length > 80) continue
-    out.push({ canonical, category: normalizeCategory(item.category) })
+    out.push({ canonical, category: normalizeCategory(rec.category) })
   }
   return out
 }
@@ -240,7 +241,7 @@ export async function extractBotEntities(
 
   const chunks = (chunkRows || [])
     .filter(c => typeof c.content === 'string' && c.content.trim().length > 0)
-    .map(c => ({ title: c.title as string | null, content: c.content as string, ...classifyChunkSource((c as any).metadata) }))
+    .map(c => ({ title: c.title as string | null, content: c.content as string, ...classifyChunkSource((c as { metadata?: unknown }).metadata) }))
   const batches = batchChunksForExtraction(chunks)
 
   let totalCostCents = 0
@@ -285,7 +286,7 @@ export async function extractBotEntities(
       aliases: Array.isArray(r.aliases) ? r.aliases as string[] : [],
       source: (r.source as string) || 'discovered',
       hidden: !!r.hidden,
-      provenance: ((r as any).provenance ?? {}) as Provenance,
+      provenance: ((r as { provenance?: unknown }).provenance ?? {}) as Provenance,
     }]),
   )
 

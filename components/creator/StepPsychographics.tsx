@@ -126,7 +126,7 @@ function CustomQuestionCard({ q, idx, total, onChange, onRemove, onMoveUp, onMov
           <input type="text" value={q.q} onChange={e => onChange({ ...q, q: e.target.value })}
             placeholder="e.g. Which best describes your relationship with us?"
             className={inputCls} />
-          <input type="text" value={(q as any).exportLabel || ''} onChange={e => onChange({ ...q, exportLabel: e.target.value } as any)}
+          <input type="text" value={q.exportLabel || ''} onChange={e => onChange({ ...q, exportLabel: e.target.value })}
             placeholder="CSV column name (optional)"
             className={inputCls + ' text-xs'} />
         </div>
@@ -471,7 +471,7 @@ export default function StepPsychographics({ draft, updateConfig, onNext, onBack
             {/* Category tabs */}
             <div className="flex gap-1.5 flex-wrap">
               {CATEGORIES.map(cat => (
-                <button key={cat.id} type="button" onClick={() => setActiveCategory(cat.id as any)}
+                <button key={cat.id} type="button" onClick={() => setActiveCategory(cat.id)}
                   className={'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ' +
                     (activeCategory === cat.id
                       ? 'bg-orange-500 text-white border-orange-500'

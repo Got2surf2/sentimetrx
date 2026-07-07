@@ -74,7 +74,7 @@ function seedFromString(s: string): number {
 }
 async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
-  return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
+  return { user: ctx.userId ? { id: ctx.userId } : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 // Project a row down to only the requested fields. Unprojected rows are
@@ -99,7 +99,7 @@ export async function GET(req: Request, props: Params) {
   if (!auth.isAdmin && dataset.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   // ── COLLECTION: union rows from all member datasets ─────────────────────
-  if ((dataset as any).source === 'collection') {
+  if (dataset.source === 'collection') {
     return handleCollectionRows(req, params.datasetId, auth.orgId)
   }
 
@@ -189,8 +189,9 @@ export async function GET(req: Request, props: Params) {
       if (flatErr) return serverError(flatErr, 'datasets.rows.bulk', { orgId: auth.orgId })
       if (!flatRows || flatRows.length === 0) break
       for (let i = 0; i < flatRows.length; i++) {
-        const r = projectRow((flatRows[i] as any).data, fieldSet)
-        if (withRowIds) r._rowId = (flatRows[i] as any).id
+        const fr = flatRows[i] as unknown as { id?: number; data: Record<string, unknown> }
+        const r = projectRow(fr.data, fieldSet)
+        if (withRowIds) r._rowId = fr.id
         reservoir.push(r)
       }
       if (flatRows.length < FLAT_PAGE) fetchMore = false

@@ -3,7 +3,9 @@
 // Client-safe — works in both browser (ChartsModule) and server (PPTX export).
 
 import { buildKwRegex } from './themeUtils'
-import { olsRegression } from './statsUtils'
+import { olsRegression, type RegressionResult } from './statsUtils'
+
+type RegressionCoef = RegressionResult['coefs'][number]
 
 export interface ThemeImpactInput {
   themes: { id: string; name: string; keywords: string[] }[]
@@ -113,11 +115,11 @@ export function computeThemeImpact(input: ThemeImpactInput, fieldLabel?: string)
   const result = olsRegression(yVals, filteredX, tNames)
   if (!result || !result.coefs) return null
 
-  const interceptCoef = result.coefs.find((c: any) => c.name === 'Intercept')
+  const interceptCoef = result.coefs.find((c: RegressionCoef) => c.name === 'Intercept')
 
   const impacts: ThemeImpactResult[] = result.coefs
-    .filter((c: any) => c.name !== 'Intercept')
-    .map((c: any, idx: number) => {
+    .filter((c: RegressionCoef) => c.name !== 'Intercept')
+    .map((c: RegressionCoef, idx: number) => {
       const ti = validIdx[idx]
       const avgWhenPresent = tCounts[ti] > 0 ? tScoreSums[ti] / tCounts[ti] : overallAvg
       return {

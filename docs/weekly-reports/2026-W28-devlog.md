@@ -139,3 +139,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 32 files (−147): townhall/chat (frozen legacy — annotation-only, allowed), studies/reviews/recordings/deck/datasets/bots/campaigns routes, usageLog, taxonomyExtractor, phase3DualWrite, entityMentionDetector, analyticsCompute, wizards. No cross-file conflicts in committed code (one incidental break in the untracked scripts/_llm-tier-prototype.ts fixed locally, gitignored/not in CI). Global tsc 0 errors, 1238 tests pass, 1099→952. Ceiling → 952. Not pushed.
+
+## ESLint burn-down wave 8 — 34 files (Jul 7)
+
+WHY: Continue to zero.
+
+34 files (−120): bots/reddit/datasets/pitch-deck routes, themeImpact, sentryScrub, projectReport, personaExtractor, flights, parking, botEntityExtraction, agentExport, creator steps, edit-study client, egress tests. Reconciled one cross-file (both in-wave, separate worktrees): sentryScrub.ts scrubSentryEvent now returns `T | null` (it genuinely drops events) → its test's `ev.x` accesses needed non-null assertions at the 6 call sites. Global tsc 0 errors, 1238 tests pass, 952→832. Ceiling → 832. Not pushed.

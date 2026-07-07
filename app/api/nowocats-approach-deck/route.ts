@@ -37,7 +37,7 @@ const C = {
   purpleLine:  'B59BE5',  // purple at ~38% opacity
 }
 
-function hdr(slide: any, title: string, sub?: string) {
+function hdr(slide: PptxGenJS.Slide, title: string, sub?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.1, fill: { color: C.navy } })
   slide.addShape('rect', { x: 0, y: 0, w: 0.07, h: 1.1, fill: { color: C.teal } })
   slide.addShape('rect', { x: 0, y: 1.1, w: W, h: 0.04, fill: { color: C.gold } })
@@ -46,7 +46,7 @@ function hdr(slide: any, title: string, sub?: string) {
   wordmark(slide)
 }
 
-function wordmark(slide: any) {
+function wordmark(slide: PptxGenJS.Slide) {
   slide.addText(
     [
       { text: 'data', options: { color: 'F07040', bold: true, italic: true } },
@@ -56,13 +56,13 @@ function wordmark(slide: any) {
   )
 }
 
-function ftr(slide: any, n: number) {
+function ftr(slide: PptxGenJS.Slide, n: number) {
   slide.addText('datanautix.com  ·  Prepared for VHB & Orange County Public Works', { x: 0.5, y: H - 0.36, w: 7, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial' })
   slide.addText('Confidential', { x: W / 2 - 1.5, y: H - 0.36, w: 3, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial', align: 'center' })
   slide.addText(String(n), { x: W - 0.9, y: H - 0.36, w: 0.4, h: 0.26, fontSize: 8, color: C.faint, fontFace: 'Arial', align: 'right' })
 }
 
-function card(slide: any, x: number, y: number, w: number, h: number, title: string, body: string, accent = C.teal) {
+function card(slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number, title: string, body: string, accent = C.teal) {
   slide.addShape('roundRect', { x, y, w, h, rectRadius: 0.1, fill: { color: C.white }, line: { color: 'E5E7EB', width: 0.5 } })
   slide.addShape('rect', { x, y, w: 0.06, h, fill: { color: accent } })
   slide.addText(title, { x: x + 0.22, y: y + 0.12, w: w - 0.38, h: 0.42, fontSize: 15, fontFace: 'Arial', color: C.navy, bold: true })

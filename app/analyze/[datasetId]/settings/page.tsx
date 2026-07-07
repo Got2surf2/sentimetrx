@@ -5,6 +5,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import SettingsClient from './SettingsClient'
+import type { Dataset } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,7 @@ export default async function SettingsPage(props: Props) {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   const isAdmin = !!orgData?.is_admin_org
@@ -67,7 +68,7 @@ export default async function SettingsPage(props: Props) {
     const { data: orgs } = await (service || (await import('@/lib/supabase/server')).createServiceRoleClient())
       .from('organizations')
       .select('id, name')
-      .neq('id', (dataset as any).org_id)
+      .neq('id', dataset.org_id)
       .neq('plan', 'suspended')
       .neq('status', 'suspended')
       .order('name')
@@ -76,7 +77,7 @@ export default async function SettingsPage(props: Props) {
 
   // Enrich schema fields with values from analytics (so SchemaEditor can show value aliases)
   const rawSchema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
-  const analytics = stateRow.analytics as any
+  const analytics = stateRow.analytics as { fieldSummaries?: Record<string, { values?: string[]; topN?: string[] }> } | null
   if (analytics?.fieldSummaries && rawSchema.fields) {
     for (const f of rawSchema.fields) {
       if (!f.values || f.values.length === 0) {
@@ -89,7 +90,7 @@ export default async function SettingsPage(props: Props) {
 
   return (
     <SettingsClient
-      dataset={dataset as any}
+      dataset={dataset as Dataset}
       schema={rawSchema}
       isOwner={isOwner}
       isAdmin={isAdmin}

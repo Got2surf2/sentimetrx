@@ -13,6 +13,7 @@
 // collection so the aggregates self-heal immediately.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SchemaConfig, DatasetAnalytics } from '@/lib/analyzeTypes'
 import { createAnalyticsAccumulator } from '@/lib/analyticsCompute'
 import { invalidateSignalStats } from '@/lib/signalStats'
 import { logError } from '@/lib/log'
@@ -32,13 +33,13 @@ export async function recomputeCollectionAnalytics(
   service: SupabaseClient,
   collectionDatasetId: string,
   updatedBy?: string,
-): Promise<{ analytics: any; rowCount: number } | null> {
+): Promise<{ analytics: DatasetAnalytics; rowCount: number } | null> {
   const { data: stateRow, error: stateErr } = await service
     .from('dataset_state').select('schema_config').eq('dataset_id', collectionDatasetId).single()
   if (stateErr) void logError('collectionRecompute.recomputeCollectionAnalytics', stateErr)
   // schema_config is the untyped JSON blob persisted in dataset_state; pass it
   // straight through to computeAnalyticsFromRows as the compute route does.
-  const schema = (stateRow as { schema_config?: any } | null)?.schema_config
+  const schema = (stateRow as { schema_config?: SchemaConfig } | null)?.schema_config
   if (!schema?.fields?.length) return null
 
   const { data: col, error: colErr } = await service
@@ -99,7 +100,7 @@ export async function refreshCollection(
   service: SupabaseClient,
   collectionDatasetId: string,
   updatedBy?: string,
-): Promise<{ analytics: any; rowCount: number } | null> {
+): Promise<{ analytics: DatasetAnalytics; rowCount: number } | null> {
   const { data: col, error: colErr } = await service
     .from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
   if (colErr) void logError('collectionRecompute.refreshCollection', colErr)

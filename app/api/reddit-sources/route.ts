@@ -10,6 +10,17 @@ import { resolveOrg } from '@/lib/resolveOrg'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+interface RedditThreadInput {
+  thread_id: string
+  subreddit: string
+  title?: string
+  author?: string | null
+  score?: number
+  comment_count?: number
+  permalink?: string | null
+  created_utc?: number | null
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient()
@@ -22,7 +33,7 @@ export async function POST(req: Request) {
       .eq('id', user.id)
       .single()
 
-    const orgData = resolveOrg(userData?.organizations) as any
+    const orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -40,7 +51,7 @@ export async function POST(req: Request) {
 
     // 1. Create dataset
     const dsName = (dataset_name || `Reddit: ${search_query.trim()}`).trim()
-    const subreddits = Array.from(new Set(threads.map(function(t: any) { return t.subreddit })))
+    const subreddits = Array.from(new Set((threads as RedditThreadInput[]).map(function(t) { return t.subreddit })))
     const { data: dataset, error: dsErr } = await service
       .from('datasets')
       .insert({
@@ -87,7 +98,7 @@ export async function POST(req: Request) {
     if (srcErr) return serverError(srcErr, 'redditSources.create.source', { orgId })
 
     // 4. Insert all selected threads
-    const threadRows = threads.map(function(t: any) {
+    const threadRows = (threads as RedditThreadInput[]).map(function(t) {
       return {
         reddit_source_id: source.id,
         thread_id:        t.thread_id,
@@ -114,7 +125,7 @@ export async function POST(req: Request) {
       threads:    threads.length,
       status:     'created',
     }, { status: 201 })
-  } catch (err: any) {
+  } catch (err) {
     return serverError(err, 'redditSources.create')
   }
 }

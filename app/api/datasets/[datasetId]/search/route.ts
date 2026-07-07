@@ -99,7 +99,7 @@ export async function GET(req: NextRequest, props: Params) {
   // Resolve dataset IDs to search across. For collections, union member datasets;
   // each member's row gets a `_collection_label` to identify which dataset it came from.
   var targets: Array<{ datasetId: string; label: string | null }> = [{ datasetId: params.datasetId, label: null }]
-  if ((dataset as any).source === 'collection') {
+  if (dataset.source === 'collection') {
     const { data: collection } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
     if (collection) {
       const { data: members } = await service
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest, props: Params) {
         .eq('collection_id', collection.id)
         .order('sort_order', { ascending: true })
       if (members && members.length > 0) {
-        targets = members.map(function(m: any) { return { datasetId: m.dataset_id, label: m.label } })
+        targets = members.map(function(m: { dataset_id: string; label: string | null }) { return { datasetId: m.dataset_id, label: m.label } })
       } else {
         targets = []
       }
@@ -121,6 +121,7 @@ export async function GET(req: NextRequest, props: Params) {
   // the RPC isn't available or returns zero (e.g. stale function still using
   // plainto_tsquery on an OR-expanded query).
   type Hit = { id: number; row_index: number; data: Record<string, unknown>; rank: number; headline: string }
+  type RawSearchRow = { id: number; row_index: number; data: Record<string, unknown> | null }
   const candidatePool = useAI ? AI_CANDIDATE_POOL : limit
   const perTargetCap = targets.length > 0 ? Math.ceil(candidatePool / targets.length) : candidatePool
   var results: Hit[] = []
@@ -138,7 +139,7 @@ export async function GET(req: NextRequest, props: Params) {
       p_offset: 0,
     })
     if (!rpcResult.error && rpcResult.data && rpcResult.data.length > 0) {
-      matched = rpcResult.data.map(function(r: any) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
+      matched = rpcResult.data.map(function(r: RawSearchRow) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
     } else {
       // Fall back to .textSearch (no rank ordering, but works without the RPC update)
       const fb = await service
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest, props: Params) {
         .order('row_index', { ascending: true })
         .range(0, perTargetCap - 1)
       if (fb.error) return serverError(fb.error, 'datasets.search', { orgId })
-      matched = (fb.data || []).map(function(r: any) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
+      matched = (fb.data || []).map(function(r: RawSearchRow) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
     }
 
     for (var ri = 0; ri < (matched || []).length; ri++) {

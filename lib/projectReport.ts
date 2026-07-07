@@ -174,13 +174,19 @@ Every raw label must appear in exactly one theme's memberTopics. Order themes by
     messages: [{ role: 'user', content: `Raw topics:\n${list}` }],
   })
   try {
-    const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
-    const themes = Array.isArray(parsed.themes) ? parsed.themes : []
-    return themes
-      .filter((t: any) => t && typeof t.theme === 'string' && Array.isArray(t.memberTopics))
-      .map((t: any) => ({
+    const parsed: unknown = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+    const rawThemes = (parsed && typeof parsed === 'object' && Array.isArray((parsed as { themes?: unknown }).themes))
+      ? (parsed as { themes: unknown[] }).themes
+      : []
+    const isMergeCandidate = (t: unknown): t is { theme: string; memberTopics: unknown[]; summary?: unknown; sentiment?: unknown } =>
+      !!t && typeof t === 'object'
+      && typeof (t as { theme?: unknown }).theme === 'string'
+      && Array.isArray((t as { memberTopics?: unknown }).memberTopics)
+    return rawThemes
+      .filter(isMergeCandidate)
+      .map((t) => ({
         theme: String(t.theme).trim(),
-        memberTopics: t.memberTopics.map((s: any) => String(s)),
+        memberTopics: t.memberTopics.map((s) => String(s)),
         summary: typeof t.summary === 'string' ? t.summary.trim() : '',
         sentiment: typeof t.sentiment === 'string' ? t.sentiment : 'neutral',
       }))

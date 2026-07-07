@@ -34,10 +34,11 @@ const MIN_GRADE = 3
 
 export function checkTopicsReady(guide: unknown): boolean {
   if (!Array.isArray(guide) || guide.length === 0) return false
-  return guide.some((t: any) => {
-    if (!t || t.enabled === false) return false
-    return typeof t.label === 'string' && t.label.trim().length > 0
-        && typeof t.opening_question === 'string' && t.opening_question.trim().length > 0
+  return guide.some((t: unknown) => {
+    const topic = t as Partial<TownHallGuideTopic> | null | undefined
+    if (!topic || topic.enabled === false) return false
+    return typeof topic.label === 'string' && topic.label.trim().length > 0
+        && typeof topic.opening_question === 'string' && topic.opening_question.trim().length > 0
   })
 }
 
@@ -96,8 +97,14 @@ Return ONLY valid JSON:
  * since it was graded (avoids an AI call on every activation attempt).
  * Falls back to a fresh grader call when the snapshot is missing or stale.
  */
+interface ActivationConfig {
+  context?: { event_description?: string }
+  industry?: string
+  event_description_grade?: { score?: number; graded_text?: string }
+}
+
 export async function checkActivationReadiness(input: {
-  config: TownHallConfig | Record<string, any>
+  config: TownHallConfig | Record<string, unknown>
   discussion_guide: TownHallGuideTopic[] | unknown
 }): Promise<ActivationReadiness> {
   const missing: string[] = []
@@ -106,7 +113,7 @@ export async function checkActivationReadiness(input: {
     missing.push('Add at least one enabled discussion topic with a label and opening question.')
   }
 
-  const cfg = (input.config || {}) as any
+  const cfg = (input.config || {}) as ActivationConfig
   const description: string = cfg?.context?.event_description || ''
   const industry: string | undefined = cfg?.industry
 

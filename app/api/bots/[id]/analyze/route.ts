@@ -20,6 +20,37 @@ export const maxDuration = 30
 
 interface Params { params: Promise<{ id: string }> }
 
+// Row shape returned by the Phase-3 conversation_turns query with the
+// conversations!inner join. Supabase types the joined relation loosely, so
+// pin the fields this route actually reads.
+interface Phase3TurnRow {
+  id: string
+  turn_number: number
+  role: string
+  content: string
+  content_en: string | null
+  language: string | null
+  sentiment: string | null
+  sentiment_score: number | null
+  created_at: string
+  conversations: { session_id: string }
+}
+interface Phase3PriorTurnRow {
+  turn_number: number
+  role: string
+  content: string
+  content_en: string | null
+  conversations: { session_id: string }
+}
+// conversations → pulseiq_session_conversations → pulseiq_sessions chain.
+// Each nested relation may come back as an object or a single-element array.
+type PulseiqSession = { slug: string; name: string | null }
+type PulseiqSessionConversation = { pulseiq_sessions?: PulseiqSession | PulseiqSession[] | null }
+interface ConvLinkRow {
+  session_id: string
+  pulseiq_session_conversations?: PulseiqSessionConversation | PulseiqSessionConversation[] | null
+}
+
 export async function POST(_req: Request, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -102,7 +133,7 @@ export async function POST(_req: Request, props: Params) {
     if (lastSynced) q = q.gt('created_at', lastSynced)
     const { data, error } = await q
     if (error) turnsErr = error
-    turns = (data || []).map((r: any) => ({
+    turns = ((data || []) as unknown as Phase3TurnRow[]).map((r) => ({
       id: r.id,
       session_id: r.conversations?.session_id,
       turn_number: r.turn_number,
@@ -153,7 +184,7 @@ export async function POST(_req: Request, props: Params) {
         .in('conversations.session_id', affectedSessions)
         .lte('created_at', lastSynced)
         .order('turn_number', { ascending: true })
-      priorTurns = (data || []).map((r: any) => ({
+      priorTurns = ((data || []) as unknown as Phase3PriorTurnRow[]).map((r) => ({
         session_id: r.conversations?.session_id,
         turn_number: r.turn_number,
         role: r.role,
@@ -193,7 +224,7 @@ export async function POST(_req: Request, props: Params) {
       .select('session_id, pulseiq_session_conversations!inner(pulseiq_sessions!inner(slug, name))')
       .eq('bot_id', botId)
       .in('session_id', affectedSessionIds)
-    for (const c of (convLinks || []) as any[]) {
+    for (const c of (convLinks || []) as ConvLinkRow[]) {
       const thc = Array.isArray(c.pulseiq_session_conversations) ? c.pulseiq_session_conversations[0] : c.pulseiq_session_conversations
       const th = thc && (Array.isArray(thc.pulseiq_sessions) ? thc.pulseiq_sessions[0] : thc.pulseiq_sessions)
       if (th?.slug) townHallBySession[c.session_id] = { slug: th.slug, name: th.name || th.slug }
@@ -209,7 +240,7 @@ export async function POST(_req: Request, props: Params) {
   // Seed with priors (so first user turns past the cutoff still pair).
   for (const sid of Object.keys(priorByKey)) pendingBySession[sid] = priorByKey[sid]
 
-  const rows: any[] = []
+  const rows: Record<string, unknown>[] = []
   for (const t of turns) {
     if (t.role === 'assistant') {
       const cur = pendingBySession[t.session_id]

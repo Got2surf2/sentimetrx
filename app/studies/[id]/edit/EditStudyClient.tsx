@@ -15,6 +15,7 @@ import StepClosing from '@/components/creator/StepClosing'
 import StepReview from '@/components/creator/StepReview'
 import MigrationBanner from '@/components/creator/MigrationBanner'
 import type { StudyDraft } from '@/lib/studyDraft'
+import type { Study } from '@/lib/types'
 import { getStaleLanguages, autoTranslateStale } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
 import CreatorNav from '@/components/creator/CreatorNav'
@@ -22,7 +23,7 @@ import SubHeader from '@/components/nav/SubHeader'
 
 
 interface OrgOption { id: string; name: string }
-interface Props { study: any; logoUrl?: string; orgName?: string; isAdmin?: boolean; allOrgs?: OrgOption[]; userEmail?: string; fullName?: string }
+interface Props { study: Study; logoUrl?: string; orgName?: string; isAdmin?: boolean; allOrgs?: OrgOption[]; userEmail?: string; fullName?: string }
 
 export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin=false, allOrgs=[], userEmail='', fullName='' }: Props) {
   const [step,   setStep]   = useState(0)
@@ -79,8 +80,8 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
       }
       router.refresh() // invalidate Next.js cache so re-edit loads fresh data
       router.push(status === 'active' ? `/studies/${study.id}/deploy` : '/dashboard')
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
       setSaving(false)
     }
   }
@@ -153,7 +154,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             resourceName={draft.name || 'Study'}
             resourceLabel="study"
             apiUrl={'/api/studies/' + study.id}
-            currentOrgId={(study as any).org_id}
+            currentOrgId={study.org_id}
             onTransferred={() => router.push('/dashboard')}
           />
         )}

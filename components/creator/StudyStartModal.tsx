@@ -6,6 +6,7 @@
 
 import { useState, useRef } from 'react'
 import type { StudyDraft } from '@/lib/studyDraft'
+import type { StudyConfig } from '@/lib/types'
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 const HERMES    = '#e8622a'
@@ -61,8 +62,8 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
       const data = await res.json()
       if (!res.ok || !data.suggestion) throw new Error(data.error || 'Generation failed')
       setPreview(data.suggestion)
-    } catch (e: any) {
-      setError(e.message || 'Something went wrong — try again or start from scratch.')
+    } catch (e: unknown) {
+      setError((e instanceof Error && e.message) || 'Something went wrong — try again or start from scratch.')
     } finally {
       setLoading(false)
     }
@@ -74,7 +75,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
       name:      preview.name,
       bot_name:  preview.bot_name,
       bot_emoji: preview.bot_emoji,
-      industry:  preview.industry as any,
+      industry:  preview.industry as Industry,
       config: {
         // Spread defaults that the wizard would normally provide
         ratingScale: [
@@ -108,7 +109,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
         q4:           preview.q4Enabled ? preview.q4 : '',
         q4Enabled:    preview.q4Enabled,
         industry:     preview.industry,
-      } as any,
+      } as StudyConfig,
     }
     onApply(partial)
   }
