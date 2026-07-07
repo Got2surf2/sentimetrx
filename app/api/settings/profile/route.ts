@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var body: any
+  var body: { full_name?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   var updates: Record<string, unknown> = {}

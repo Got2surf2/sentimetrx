@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ guid: st
     if (org) orgName = org.name
   }
 
-  const cfg = study.config as any
+  const cfg = study.config as Record<string, unknown>
   const safeConfig = { ...cfg }
 
   return NextResponse.json({

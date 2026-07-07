@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
   let state: string
   try {
     state = signOauthState({ userId: user.id })
-  } catch (e: any) {
-    console.error({ at: 'social/connect', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'social/connect', err: e instanceof Error ? e.message : String(e) })
     return NextResponse.json({ error: 'OAuth not configured' }, { status: 500 })
   }
 

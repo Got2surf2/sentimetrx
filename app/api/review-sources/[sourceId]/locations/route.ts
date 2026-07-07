@@ -38,7 +38,7 @@ export async function PATCH(req: Request, props: Params) {
     }
 
     return NextResponse.json({ error: 'No action specified' }, { status: 400 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.locations.update')
   }
 }

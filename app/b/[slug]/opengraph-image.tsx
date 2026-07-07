@@ -14,6 +14,15 @@ export const alt = 'Chat with this AI assistant'
 
 interface Props { params: { slug: string } }
 
+interface BotOgConfig {
+  subtitle?: string
+  websiteLabel?: string
+  headerGradient?: string
+  avatarGradient?: string
+  accentColor?: string
+  avatarLetter?: string
+}
+
 export default async function OG({ params }: Props) {
   const service = createServiceRoleClient()
   const { data: bot } = await service
@@ -24,7 +33,7 @@ export default async function OG({ params }: Props) {
     .single()
 
   const name = bot?.name || 'Chat'
-  const cfg = (bot?.config || {}) as Record<string, any>
+  const cfg = (bot?.config || {}) as BotOgConfig
   const subtitle = cfg.subtitle || cfg.websiteLabel || 'AI assistant'
   // CSS gradients are stored as full strings in config; default matches BotClient.
   const headerGradient = cfg.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'

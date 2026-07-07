@@ -22,7 +22,7 @@ export default async function KbHealthPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

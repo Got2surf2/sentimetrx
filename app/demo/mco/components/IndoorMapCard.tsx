@@ -171,7 +171,7 @@ export default function IndoorMapCard({ hint }: { hint: IndoorMapHint }) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 terminal: hint.terminal,
-                level: (sibling as any).levelLabel,
+                level: sibling.levelLabel,
                 category: hint.category,
               }),
             }).then(r => r.json()).then((d2: ApiResponse) => { if (!aborted) setData(d2) })

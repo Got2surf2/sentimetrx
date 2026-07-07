@@ -43,7 +43,7 @@ export default async function Icon({ params }: Props) {
     .eq('status', 'active')
     .single()
 
-  const cfg = (bot?.config || {}) as Record<string, any>
+  const cfg = (bot?.config || {}) as { avatarLetter?: string; avatarGradient?: string }
   const avatarLetter   = cfg.avatarLetter || (bot?.name?.charAt(0) || 'A').toUpperCase()
   const avatarGradient = cfg.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
 

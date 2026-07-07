@@ -178,7 +178,7 @@ export default function KnowledgeClient() {
             <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>Add Knowledge</span>
             <div style={{ display: 'flex', gap: 4 }}>
               {[{ val: 'general', label: 'General' }, { val: 'fact', label: 'Fact' }, { val: 'faq', label: 'FAQ' }].map(function(opt) {
-                return <button key={opt.val} onClick={function() { setAddType(opt.val as any) }}
+                return <button key={opt.val} onClick={function() { setAddType(opt.val as 'fact' | 'faq' | 'general') }}
                   style={{ padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer', background: addType === opt.val ? HERMES : '#F3F4F6', color: addType === opt.val ? 'white' : '#6b7280' }}>
                   {opt.label}
                 </button>

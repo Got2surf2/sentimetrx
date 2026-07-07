@@ -48,7 +48,7 @@ export default function IntentsClient() {
       // Fetch current intents, toggle the one, save back
       var r = await fetch('/api/bots/' + botId)
       var bot = await r.json()
-      var updated = (bot.intents || []).map(function(i: any) {
+      var updated = (bot.intents || []).map(function(i: Record<string, unknown>) {
         if (i.label === label) return { ...i, enabled: enabled }
         return i
       })

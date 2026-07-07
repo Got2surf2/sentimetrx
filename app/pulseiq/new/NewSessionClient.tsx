@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic, TownHallRound, TownHallSessionType, PsychoQuestion } from '@/lib/types'
@@ -24,7 +25,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: Record<string, boolean>
+  features?: ModuleFeatures
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
 }
 

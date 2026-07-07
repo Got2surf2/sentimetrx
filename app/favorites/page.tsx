@@ -7,7 +7,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
-import FavoritesClient from './FavoritesClient'
+import FavoritesClient, { type EnrichedFav as ClientFav } from './FavoritesClient'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Sentimetrx — Favorites' }
@@ -112,7 +112,7 @@ export default async function FavoritesPage() {
         currentPage="favorites"
       />
       <div style={{ paddingTop: 56 }}>
-        <FavoritesClient favorites={enriched} />
+        <FavoritesClient favorites={enriched as unknown as ClientFav[]} />
       </div>
     </div>
   )

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const rawBuffer = await pptx.write({ outputType: 'nodebuffer' })
   const fileName = study.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_design.pptx'
 
-  return new NextResponse(rawBuffer as any, {
+  return new NextResponse(rawBuffer as BodyInit, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'Content-Disposition': `attachment; filename="${fileName}"`,

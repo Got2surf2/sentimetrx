@@ -87,7 +87,7 @@ export default function CommentImportModal({ botId, onClose, onImported }: {
       const d = await res.json()
       if (!res.ok) { setErr(d?.error || 'Import failed'); return }
       onImported(d.imported || payload.length)
-    } catch (e: any) { setErr(e?.message || 'Network error') }
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Network error') }
     finally { setBusy(false) }
   }
 

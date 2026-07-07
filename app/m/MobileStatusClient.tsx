@@ -78,7 +78,7 @@ export default function MobileStatusClient({ user, org, sections }: Props) {
     // enough and the alternative is no hint at all.
     const isAndroid = /Android/.test(ua)
     const standalone =
-      (navigator as any).standalone === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true ||
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     if (standalone)        setInstallHint('none')
     else if (isIOSSafari)  setInstallHint('ios-safari')

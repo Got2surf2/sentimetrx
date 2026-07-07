@@ -73,7 +73,7 @@ export async function POST(req: Request) {
       comments: comments.length,
       rows_inserted: rows.length,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'substackSources.downloadComments', { orgId })
   }
 }

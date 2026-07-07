@@ -72,7 +72,7 @@ export async function PATCH(req: NextRequest) {
   const ALLOWED = ['rule_type', 'config', 'channels', 'enabled'] as const
   const updates: Record<string, unknown> = {}
   for (const key of ALLOWED) {
-    if (key in body) updates[key] = (body as any)[key]
+    if (key in body) updates[key] = (body as Record<string, unknown>)[key]
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })

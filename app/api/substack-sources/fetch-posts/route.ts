@@ -35,7 +35,8 @@ export async function POST(req: Request) {
       base_url: baseUrl,
       has_more: posts.length >= 50,
     })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Failed to fetch posts' }, { status: 500 })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : undefined
+    return NextResponse.json({ error: message || 'Failed to fetch posts' }, { status: 500 })
   }
 }

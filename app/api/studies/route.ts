@@ -38,7 +38,14 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  let body: any
+  let body: {
+    name?: string
+    bot_name?: string
+    bot_emoji?: string
+    config?: StudyConfig
+    slug?: string
+    status?: string
+  }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { name, bot_name, bot_emoji, config, slug: rawSlug } = body
 

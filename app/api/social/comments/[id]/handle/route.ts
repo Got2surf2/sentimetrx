@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
   // Accept explicit value or toggle
-  var body: any = {}
+  var body: { handled?: unknown } = {}
   try { body = await req.json() } catch (e) { /* no body = toggle */ }
   const newHandled = body.handled !== undefined ? !!body.handled : !comment.is_handled
 

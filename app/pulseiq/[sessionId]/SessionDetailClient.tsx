@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import type { ModuleFeatures } from '@/lib/types'
 import { useSearchParams } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
@@ -21,7 +22,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: Record<string, boolean>
+  features?: ModuleFeatures
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
 }
 
@@ -2315,7 +2316,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
 }
 
 function Shell({ logoUrl, analyzeEnabled, campaignsEnabled, features, user, children }: {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: ModuleFeatures
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
   children: React.ReactNode
 }) {

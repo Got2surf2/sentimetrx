@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
   // Call Meta API to delete (skip for demo comments with no real platform ID)
-  const token = (comment as any).social_connections?.access_token
+  const token = (comment as { social_connections?: { access_token?: string } | null }).social_connections?.access_token
   const isDemo = comment.comment_id.startsWith('demo_') || comment.comment_id.startsWith('test_comment_')
   if (!isDemo) {
     if (!token) return NextResponse.json({ error: 'No access token' }, { status: 400 })

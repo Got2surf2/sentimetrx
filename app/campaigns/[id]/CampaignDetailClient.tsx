@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import type { ModuleFeatures } from '@/lib/types'
 import DOMPurify from 'isomorphic-dompurify'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
@@ -19,7 +20,7 @@ interface CampaignData {
   created_at: string
 }
 interface Props {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: ModuleFeatures
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean; userId: string }
   campaign: CampaignData
   emails: CampaignEmail[]

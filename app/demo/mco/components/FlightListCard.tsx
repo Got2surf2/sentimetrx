@@ -32,7 +32,14 @@ interface FlightRow {
 interface ApiResponse {
   flights: FlightRow[]
   count: number
-  filters: any
+  filters: {
+    airline?: string
+    destination?: string
+    origin?: string
+    terminal?: string
+    arrivals: boolean
+    time_window: string
+  }
   range_unix: { start: number; end: number }
 }
 

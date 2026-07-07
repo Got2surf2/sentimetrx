@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   let failed = 0
 
   for (const c of comments) {
-    const token = (c as any).social_connections?.access_token
+    const token = (c as { social_connections?: { access_token?: string } | null }).social_connections?.access_token
     if (!token) { failed++; continue }
 
     try {

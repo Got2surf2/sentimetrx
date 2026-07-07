@@ -46,7 +46,7 @@ export async function POST(_req: Request, props: Params) {
     const result = await syncReviewSource(params.sourceId, service)
 
     return NextResponse.json(result)
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.sync')
   }
 }

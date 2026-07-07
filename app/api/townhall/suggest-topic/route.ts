@@ -68,7 +68,7 @@ Return ONLY valid JSON:
       follow_up_angles: Array.isArray(parsed.follow_up_angles) ? parsed.follow_up_angles : [],
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map((k: string) => k.toLowerCase().trim()).filter(Boolean) : [],
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'townhall.suggestTopic')
   }
 }

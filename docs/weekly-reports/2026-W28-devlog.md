@@ -175,3 +175,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 38 files (−39): lib tail (rateLimit, places, pdf, oauthState, nameExtractor, moderation, focusClassifier, entityAnalysis, auth/*, auditLog, anaReportContext, recordings), ui/analyze/creator/admin components, studies/settings pages. Reconciled anaReportContext loadAnaSample filters→SerializedFilters vs its ask-ana/ad-hoc-report callers (cast body.filters). Global tsc 0 errors, 1238 tests pass, 498→459. Ceiling → 459. Not pushed.
+
+## ESLint burn-down wave 14 — 41 files (Jul 7)
+
+WHY: Continue to zero.
+
+41 files (−41): s/[guid], pulseiq/mco-demo/bots/social pages+clients, studies/study/social/review-sources routes. Reconciled the `resolveOrg as any` removals cascading OrgFeatures into `Record<string,boolean>` client props (widened NewSessionClient/SessionDetailClient+its local Shell/CampaignDetailClient features props → ModuleFeatures) + dedup'd favorites EnrichedFav (exported client type, boundary-cast page's ResourceRow-backed array). Global tsc 0 errors, 1238 tests pass, 459→418. Ceiling → 418. Not pushed.

@@ -163,7 +163,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
       }
       // Otherwise empty + no revert → keep the existing card.
       const nextChips: string[] = Array.isArray(data?.next_chips)
-        ? data.next_chips.filter((s: any) => typeof s === 'string' && s.length > 0 && s.length <= 80).slice(0, 4)
+        ? data.next_chips.filter((s: unknown) => typeof s === 'string' && s.length > 0 && s.length <= 80).slice(0, 4)
         : []
       if (nextChips.length > 0) setLiveChips(nextChips)
     } catch {

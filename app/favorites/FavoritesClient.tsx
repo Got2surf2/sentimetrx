@@ -8,7 +8,18 @@
 
 import Link from 'next/link'
 
-interface EnrichedFav {
+interface FavRaw {
+  conversation_count?: number
+  response_count?:     number
+  row_count?:          number
+  status?:             string
+  bot_emoji?:          string
+  name?:               string
+  config?:             { avatarLetter?: string; avatarGradient?: string }
+  [key: string]:       unknown
+}
+
+export interface EnrichedFav {
   resource_type: 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session'
   resource_id:   string
   name:          string
@@ -16,7 +27,7 @@ interface EnrichedFav {
   href:          string
   ts:            string | null
   created_at:    string
-  raw:           Record<string, any>
+  raw:           FavRaw
 }
 
 interface Props {

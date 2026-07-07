@@ -16,7 +16,7 @@ export default async function NewTownHallPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (orgData?.features?.townhall === false) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
   const features = orgData?.features || {}

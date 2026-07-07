@@ -175,7 +175,7 @@ export default function KbHealthClient() {
               <option value="all">All sources</option>
               {sources.map(st => <option key={st} value={st}>{sourceLabel(st)}</option>)}
             </select>
-            <select value={sort} onChange={e => setSort(e.target.value as any)} className="border border-gray-200 rounded-md px-2 py-1.5 text-sm">
+            <select value={sort} onChange={e => setSort(e.target.value as 'oldest' | 'newest' | 'largest')} className="border border-gray-200 rounded-md px-2 py-1.5 text-sm">
               <option value="oldest">Oldest first</option>
               <option value="newest">Newest first</option>
               <option value="largest">Largest first</option>

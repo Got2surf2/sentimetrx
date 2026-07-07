@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   // analytics-compute / metadata writes on another tenant's dataset.
   const { data: userData } = await supabase
     .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
-  const orgRel = (userData as any)?.organizations
+  type OrgRel = { is_admin_org?: boolean }
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] } | null)?.organizations
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
   const { data: dsCheck } = await service.from('datasets').select('org_id').eq('id', dataset_id).single()
   if (!dsCheck || (!isAdmin && dsCheck.org_id !== userData?.org_id)) {

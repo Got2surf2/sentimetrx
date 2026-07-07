@@ -15,7 +15,7 @@ async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(features, is_admin_org)').eq('id', user.id).single()
-  const org = resolveOrg(data?.organizations) as any
+  const org = resolveOrg(data?.organizations)
   return { userId: user.id, orgId: data?.org_id as string | null, features: org?.features || {} }
 }
 

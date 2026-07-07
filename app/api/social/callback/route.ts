@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.redirect(`${siteUrl}/social?connected=true`)
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error({ at: 'social/callback', msg: "OAuth error", err: err })
     return NextResponse.redirect(`${siteUrl}/social?error=oauth_failed`)
   }

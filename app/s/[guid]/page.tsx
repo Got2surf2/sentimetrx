@@ -6,7 +6,7 @@ interface Props { params: Promise<{ guid: string }> }
 export const dynamic = 'force-dynamic'
 
 // Look up study by slug first, then by guid
-async function findStudy(supabase: any, identifier: string) {
+async function findStudy(supabase: ReturnType<typeof createServiceRoleClient>, identifier: string) {
   // If it looks like a UUID, try guid first
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 

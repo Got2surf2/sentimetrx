@@ -63,10 +63,10 @@ export default function QRHandoffModal({ botId, sessionId, messages, onClose }: 
         if (aborted) return
         setQrDataUrl(png)
         setState('ready')
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (aborted) return
         setState('error')
-        setErrorMsg(String(e?.message || e))
+        setErrorMsg(String((e instanceof Error && e.message) || e))
       }
     })()
     return () => { aborted = true }

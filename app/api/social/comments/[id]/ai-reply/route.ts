@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   // Optionally post to platform
   if (autoPost) {
-    const token = (comment as any).social_connections?.access_token
+    const token = (comment as { social_connections?: { access_token?: string | null } | null }).social_connections?.access_token
     if (token) {
       const res = await fetch(`https://graph.facebook.com/v19.0/${comment.comment_id}/replies`, {
         method: 'POST',

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
-  const token = (comment as any).social_connections?.access_token
+  const token = (comment as { social_connections?: { access_token?: string | null } | null }).social_connections?.access_token
   if (!token) return NextResponse.json({ error: 'No access token' }, { status: 400 })
 
   // Post reply via Meta Graph API

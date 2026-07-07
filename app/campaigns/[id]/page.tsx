@@ -17,7 +17,7 @@ export default async function CampaignDetailPage(props: { params: Promise<{ id: 
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
   // Use service role for campaign data reads — RLS on campaign tables
   // uses current_org_id() which may not resolve for all user roles
