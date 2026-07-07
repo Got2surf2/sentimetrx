@@ -111,8 +111,8 @@ export default function BrandGlossaryClient({
       setAddCanonical(''); setAddAliases(''); setAddOpen(false)
       setMessage(d.merged ? `Merged into existing "${d.entity.canonical}".` : `Added "${d.entity.canonical}".`)
       await reload({ includeHidden: showHidden })
-    } catch (e: any) {
-      setAddError(e?.message || 'network error')
+    } catch (e: unknown) {
+      setAddError((e instanceof Error ? e.message : '') || 'network error')
     } finally { setAddSaving(false) }
   }
 
@@ -158,8 +158,8 @@ export default function BrandGlossaryClient({
       if (d?.error) { setMessage('Pull failed: ' + d.error); return }
       setMessage(`Pulled from ${d.agents} linked agent${d.agents === 1 ? '' : 's'} (${d.pushed} entities synced).`)
       await reload({ includeHidden: showHidden })
-    } catch (e: any) {
-      setMessage('Pull failed: ' + (e?.message || 'network error'))
+    } catch (e: unknown) {
+      setMessage('Pull failed: ' + ((e instanceof Error ? e.message : '') || 'network error'))
     } finally { setPulling(false) }
   }
 

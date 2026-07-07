@@ -59,7 +59,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 
   if (!bot) return { title: 'Chat' }
 
-  const cfg = (bot.config || {}) as Record<string, any>
+  const cfg = (bot.config || {}) as { subtitle?: string; websiteLabel?: string }
   const subtitle = cfg.subtitle || ''
   const websiteLabel = cfg.websiteLabel || ''
   const title = `Chat with ${bot.name}`

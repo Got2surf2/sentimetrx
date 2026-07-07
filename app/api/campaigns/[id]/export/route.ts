@@ -22,8 +22,9 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  type OrgRel = { is_admin_org?: boolean | null }
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
 

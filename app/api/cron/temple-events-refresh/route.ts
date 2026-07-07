@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `fetch failed: ${res.status}` }, { status: 502 })
     }
     html = await res.text()
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'cron.templeEvents.fetch')
   }
 
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     if (start === -1 || end === -1) throw new Error('no JSON array found in response')
     events = JSON.parse(text.slice(start, end + 1))
     if (!Array.isArray(events)) throw new Error('parsed JSON was not an array')
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'cron.templeEvents.parse', { raw_response: result.text.slice(0, 500) })
   }
 

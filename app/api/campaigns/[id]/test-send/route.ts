@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, props: Params) {
     .single()
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
-  let body: any = {}
+  let body: { sequence?: number } = {}
   try { body = await req.json() } catch {}
 
   const sequence = body.sequence ?? 0
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, props: Params) {
   try {
     await provider.send({ to: user.email!, subject, html })
     return NextResponse.json({ ok: true, sent_to: user.email })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'campaigns.test_send', { orgId: campaign.org_id })
   }
 }

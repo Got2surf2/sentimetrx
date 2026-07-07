@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       .eq('id', user.id)
       .single()
 
-    const orgData = resolveOrg(userData?.organizations) as any
+    const orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       count: locations.length,
       locations,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.search')
   }
 }

@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: { user_id?: string; disabled?: boolean }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { user_id, disabled } = body
   if (!user_id || typeof disabled !== 'boolean') {
@@ -52,10 +52,10 @@ export async function PATCH(req: NextRequest) {
     } else {
       await service.auth.admin.updateUserById(user_id, { ban_duration: 'none' })
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Non-fatal: even if the admin call fails, the public.users.disabled flag
     // means the app will reject the user (in pages that check). Log only.
-    console.error({ at: 'team/disable', msg: "admin updateUserById failed", err: e?.message || e })
+    console.error({ at: 'team/disable', msg: "admin updateUserById failed", err: e instanceof Error ? e.message : e })
   }
 
   return NextResponse.json({ success: true, disabled })

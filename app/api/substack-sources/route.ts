@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       .from('users').select('org_id, organizations(features, is_admin_org)')
       .eq('id', user.id).single()
 
-    var orgData = resolveOrg(userData?.organizations) as any
+    var orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       dataset_id: dataset.id,
       status: 'created',
     }, { status: 201 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'substackSources.create', { orgId })
   }
 }

@@ -35,8 +35,12 @@ async function resolveCaller(recording_id: string) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgId = (userRow as any)?.org_id as string | undefined
-  const orgRel = (userRow as any)?.organizations
+  const typedUserRow = userRow as {
+    org_id?: string | null
+    organizations?: { is_admin_org?: boolean } | Array<{ is_admin_org?: boolean }> | null
+  } | null
+  const orgId = typedUserRow?.org_id as string | undefined
+  const orgRel = typedUserRow?.organizations
   const isAdminOrg = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
   if (!orgId) return { error: NextResponse.json({ error: 'org not found' }, { status: 403 }) }
 

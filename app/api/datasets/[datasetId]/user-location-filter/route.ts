@@ -52,7 +52,9 @@ export async function GET(_req: Request, props: Params) {
     }
 
     // Build location labels matching the format used in review rows
-    const locationNames = assignments.map(function(a: any) {
+    type LocRow = { name: string | null; city: string | null; state: string | null }
+    type Assignment = { location_id: string | null; review_source_locations: LocRow | LocRow[] | null }
+    const locationNames = assignments.map(function(a: Assignment) {
       const loc = Array.isArray(a.review_source_locations)
         ? a.review_source_locations[0]
         : a.review_source_locations
@@ -65,7 +67,7 @@ export async function GET(_req: Request, props: Params) {
     }).filter(Boolean)
 
     return NextResponse.json({ locations: locationNames })
-  } catch (err: any) {
+  } catch (err) {
     return serverError(err, 'datasets.userLocationFilter')
   }
 }

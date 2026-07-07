@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : (orgData as any)?.is_admin_org
+  const orgData = userData?.organizations as { is_admin_org?: boolean } | { is_admin_org?: boolean }[] | null | undefined
+  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : orgData?.is_admin_org
   const isOwner = userData?.org_id === org_id
 
   if (!isAdmin && !isOwner) {
@@ -85,8 +85,8 @@ export async function DELETE(req: NextRequest) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : (orgData as any)?.is_admin_org
+  const orgData = userData?.organizations as { is_admin_org?: boolean } | { is_admin_org?: boolean }[] | null | undefined
+  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : orgData?.is_admin_org
   const isOwner = userData?.org_id === org_id
   if (!isAdmin && !isOwner) {
     return NextResponse.json({ error: 'Permission denied' }, { status: 403 })

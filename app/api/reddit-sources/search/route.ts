@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       .eq('id', user.id)
       .single()
 
-    const orgData = resolveOrg(userData?.organizations) as any
+    const orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -46,15 +46,16 @@ export async function POST(req: Request) {
       subreddit: subName,
       posts,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error({ at: 'reddit-sources/search', msg: "error", err: err })
-    if (err?.message?.includes('404')) {
+    const errMessage = err instanceof Error ? err.message : undefined
+    if (errMessage?.includes('404')) {
       return NextResponse.json({ error: 'Subreddit "r/' + subName + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
     }
-    if (err?.message?.includes('403')) {
+    if (errMessage?.includes('403')) {
       return NextResponse.json({ error: 'Reddit is temporarily blocking requests. Please wait a minute and try again.' }, { status: 429 })
     }
-    var msg = err?.message || 'Failed to load subreddit'
+    var msg = errMessage || 'Failed to load subreddit'
     if (msg.includes('non-JSON')) return NextResponse.json({ error: 'Reddit is temporarily unavailable. Please wait a moment and try again.' }, { status: 429 })
     return serverError(err, 'redditSources.search')
   }

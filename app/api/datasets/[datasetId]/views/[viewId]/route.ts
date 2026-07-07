@@ -42,7 +42,7 @@ export async function PATCH(req: Request, props: Params) {
   const gate = await gateDataset(supabase, params.datasetId)
   if (gate instanceof NextResponse) return gate
 
-  let body: Record<string, any>
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
 
   const service = createServiceRoleClient()
@@ -56,7 +56,7 @@ export async function PATCH(req: Request, props: Params) {
   if (!row) return NextResponse.json({ error: NOT_AVAILABLE }, { status: 404 })
   if (!gate.isAdmin && row.created_by !== gate.userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const patch: Record<string, any> = {}
+  const patch: Record<string, unknown> = {}
   if (row.kind === 'snapshot') {
     // Content (name / filter_config / frozen) is frozen; reject any such edit.
     if (body.name !== undefined || body.filter_config !== undefined || body.frozen !== undefined || body.visibility !== undefined) {

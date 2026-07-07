@@ -52,7 +52,13 @@ Return ONLY valid JSON:
     logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'suggest_guide' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
-    const topics = Array.isArray(parsed.topics) ? parsed.topics.map((t: any) => ({
+    const topics = Array.isArray(parsed.topics) ? parsed.topics.map((t: {
+      label?: unknown
+      description?: unknown
+      opening_question?: unknown
+      follow_up_angles?: unknown
+      keywords?: unknown
+    }) => ({
       label: t.label || '',
       description: t.description || '',
       opening_question: t.opening_question || '',
@@ -60,7 +66,7 @@ Return ONLY valid JSON:
       keywords: Array.isArray(t.keywords) ? t.keywords.map((k: string) => k.toLowerCase().trim()).filter(Boolean) : [],
     })) : []
     return NextResponse.json({ topics })
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'townhall.suggestGuide')
   }
 }

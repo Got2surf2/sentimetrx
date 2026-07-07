@@ -11,6 +11,21 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+interface EmailCreateBody {
+  sequence?: number
+  subject?: string
+  body_html?: string
+  body_text?: string
+  send_delay_hours?: number
+  send_to?: string
+  is_thank_you?: boolean
+}
+
+interface EmailPatchBody {
+  email_id?: string
+  [key: string]: unknown
+}
+
 export async function GET(_req: NextRequest, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -41,7 +56,7 @@ export async function POST(req: NextRequest, props: Params) {
     .single()
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
-  let body: any
+  let body: EmailCreateBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { sequence, subject, body_html, body_text, send_delay_hours, send_to, is_thank_you } = body
@@ -74,7 +89,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: EmailPatchBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { email_id, ...updates } = body

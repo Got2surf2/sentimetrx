@@ -11,6 +11,27 @@ import { createHmac, timingSafeEqual } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
+// Minimal shapes of the Meta webhook payload fields this route reads.
+interface WebhookCommentValue {
+  item?: string
+  comment_id?: string
+  id?: string
+  post_id?: string
+  media_id?: string
+}
+interface WebhookChange {
+  field?: string
+  value?: WebhookCommentValue
+}
+interface WebhookEntry {
+  id: string
+  changes?: WebhookChange[]
+}
+interface WebhookBody {
+  object?: string
+  entry?: WebhookEntry[]
+}
+
 // Verifies Meta's `x-hub-signature-256` header (`sha256=<hex>`) against the
 // raw request body. Without this an attacker can POST forged comment events
 // that get inserted into social_comments and trigger Graph API calls with
@@ -60,7 +81,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
-  let body: any
+  let body: WebhookBody
   try { body = JSON.parse(rawBody) } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -99,7 +120,7 @@ export async function POST(req: NextRequest) {
     if (body.object === 'instagram') {
       for (const change of (entry.changes || [])) {
         if (change.field === 'comments') {
-          await processComment(service, connection, change.value, 'instagram')
+          await processComment(service, connection, change.value as WebhookCommentValue, 'instagram')
         }
       }
     }
@@ -112,7 +133,7 @@ export async function POST(req: NextRequest) {
 async function processComment(
   service: ReturnType<typeof createServiceRoleClient>,
   connection: { id: string; org_id: string; platform: string; access_token: string },
-  value: any,
+  value: WebhookCommentValue,
   platform: string
 ) {
   const commentId = value.comment_id || value.id

@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
     try {
       const comments = await listComments(docketId, 1, 1)
       return NextResponse.json({ commentCount: comments.totalElements })
-    } catch (err: any) {
-      return NextResponse.json({ commentCount: 0, error: err.message })
+    } catch (err: unknown) {
+      return NextResponse.json({ commentCount: 0, error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       dockets,
       totalElements: result.totalElements,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'regulationsSources.search')
   }
 }

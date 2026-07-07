@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { UserFeatures } from '@/lib/types'
 import { validateOrgFilter } from '@/lib/orgValidate'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
@@ -23,8 +24,8 @@ export default async function BotsPage(props: { searchParams: Promise<{ org?: st
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const orgData = resolveOrg(userData?.organizations)
+  const features = effectiveFeatures(orgData?.features, userData?.features as UserFeatures | null | undefined)
   if (!features.bots) redirect('/dashboard')
 
   const isAdmin = !!orgData?.is_admin_org

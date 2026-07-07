@@ -38,11 +38,11 @@ export async function POST(req: Request) {
     .from('pulseiq_sessions')
     .select('id, bot_id')
     .eq('id', session_id)
-    .maybeSingle()
+    .maybeSingle<{ id: string; bot_id: string }>()
   if (!hall) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
-  const townHallId: string = (hall as any).id
+  const townHallId: string = hall.id
 
   // Validate the participant against the SYNCHRONOUS turn store (D5): the
   // conversations/link mirror is async best-effort and can be missing for a
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
   const { data: turns } = await service
     .from('bot_conversation_turns')
     .select('id')
-    .eq('bot_id', (hall as any).bot_id)
+    .eq('bot_id', hall.bot_id)
     .eq('session_id', townHallId + ':' + participant_id)
     .limit(1)
   if (!turns || turns.length === 0) {

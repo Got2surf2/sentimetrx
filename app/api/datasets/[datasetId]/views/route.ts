@@ -37,7 +37,7 @@ export async function POST(req: Request, props: Params) {
   const gate = await gateDataset(supabase, params.datasetId)
   if (gate instanceof NextResponse) return gate
 
-  let body: Record<string, any>
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
 
   const kind = body.kind === 'snapshot' ? 'snapshot' : 'view'
@@ -45,7 +45,7 @@ export async function POST(req: Request, props: Params) {
   if (!name) return NextResponse.json({ error: 'A name is required' }, { status: 400 })
   const visibility = body.visibility === 'org' ? 'org' : 'private'
 
-  const row: Record<string, any> = {
+  const row: Record<string, unknown> = {
     dataset_id:    params.datasetId,
     org_id:        gate.datasetOrgId,
     created_by:    gate.userId,

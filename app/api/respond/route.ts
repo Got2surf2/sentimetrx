@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   const nps_score        = payload.npsRecommend?.score ?? null
 
   // Build fingerprint hash if provided
-  const deviceFp = (payload as any).deviceFingerprint as string | undefined
+  const deviceFp = (payload as Record<string, unknown>).deviceFingerprint as string | undefined
   const fp_hash  = deviceFp ? createHash('sha256').update(deviceFp).digest('hex') : null
 
   const rowData: Record<string, unknown> = {
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (session_id) rowData.session_id = session_id
 
   // ── Content safety flagging (when enabled on the study) ────────────────────
-  const studyConfig = study.config as Record<string, any> | null
+  const studyConfig = study.config as Record<string, unknown> | null
   if (studyConfig?.contentSafety) {
     const flagSet: Record<string, boolean> = {}
 

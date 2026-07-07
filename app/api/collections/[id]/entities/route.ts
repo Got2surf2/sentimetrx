@@ -32,7 +32,7 @@ interface Params { params: Promise<{ id: string }> }
 async function gateCollection(service: ReturnType<typeof createServiceRoleClient>, id: string, orgId: string | null, isAdmin: boolean) {
   const { data: col } = await service.from('collections').select('id, org_id, kind').eq('id', id).single()
   if (!col) return { error: NextResponse.json({ error: 'Collection not found' }, { status: 404 }) }
-  if (!isAdmin && (col as any).org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
+  if (!isAdmin && (col as { org_id: string }).org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
   return { col: col as { id: string; org_id: string; kind: string } }
 }
 
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest, props: Params) {
 
   if (existing) {
     const merged = Array.from(new Set([...((existing as { aliases: string[] }).aliases ?? []), ...aliases]))
-    const provenance = { ...(((existing as any).provenance ?? {}) as Provenance) }
+    const provenance = { ...(((existing as { provenance?: Provenance }).provenance ?? {}) as Provenance) }
     provenance.manual = { count: (provenance.manual?.count ?? 0) + 1, refs: provenance.manual?.refs ?? [] }
     const { data: updated, error } = await service
       .from('entity_catalog')

@@ -6,15 +6,17 @@ import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DownloadButton from '@/components/ui/DownloadButton'
-import type { ModuleFeatures } from '@/lib/types'
+import type { ModuleFeatures, TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+
+type SessionConfig = Partial<TownHallConfig> & { archived?: boolean }
 
 interface Session {
   id: string
   name: string
   slug: string | null
   status: string
-  config: any
-  discussion_guide: any[]
+  config: SessionConfig
+  discussion_guide: TownHallGuideTopic[]
   response_counter: number
   participants: number
   turns: number

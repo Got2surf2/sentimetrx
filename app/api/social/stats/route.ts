@@ -38,19 +38,30 @@ export async function GET(req: NextRequest) {
 
   const { data: comments } = await query
 
-  const rows = comments || []
+  type SocialStatsRow = {
+    id: string
+    sentiment: string | null
+    flags: unknown
+    is_hidden: boolean | null
+    is_deleted: boolean | null
+    is_handled: boolean | null
+    our_reply: string | null
+    platform: string
+  }
+
+  const rows = (comments || []) as SocialStatsRow[]
   const total = rows.length
   const positive = rows.filter(c => c.sentiment === 'positive').length
   const negative = rows.filter(c => c.sentiment === 'negative').length
   const neutral = rows.filter(c => c.sentiment === 'neutral').length
   const flagged = rows.filter(c => {
-    const f = c.flags as any
+    const f = c.flags
     return Array.isArray(f) && f.length > 0
   }).length
   const hidden = rows.filter(c => c.is_hidden && !c.is_deleted).length
   const deleted = rows.filter(c => c.is_deleted).length
   const replied = rows.filter(c => !!c.our_reply).length
-  const handled = rows.filter(c => !!(c as any).is_handled).length
+  const handled = rows.filter(c => !!c.is_handled).length
   const needsAttention = total - handled
 
   const byPlatform: Record<string, number> = {}

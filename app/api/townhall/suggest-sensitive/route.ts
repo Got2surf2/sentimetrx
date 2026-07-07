@@ -77,12 +77,12 @@ Return ONLY valid JSON:
     logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'suggest_sensitive' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
-    const categories = Array.isArray(parsed.categories) ? parsed.categories.map((c: any) => ({
+    const categories = Array.isArray(parsed.categories) ? parsed.categories.map((c: { name?: unknown; terms?: unknown }) => ({
       name: c.name || 'Other',
       terms: Array.isArray(c.terms) ? c.terms.map((t: string) => t.toLowerCase().trim()).filter(Boolean) : [],
     })) : []
     return NextResponse.json({ categories })
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'townhall.suggestSensitive')
   }
 }

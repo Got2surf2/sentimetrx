@@ -20,8 +20,8 @@ export default async function ConversationsPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const isSuperadmin = (userData as any)?.role === 'platform_admin'
+  const orgData = resolveOrg(userData?.organizations)
+  const isSuperadmin = (userData as { role?: string } | null)?.role === 'platform_admin'
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

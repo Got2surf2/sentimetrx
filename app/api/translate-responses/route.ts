@@ -18,7 +18,12 @@ export async function POST(req: NextRequest) {
   const rl = await checkRateLimit('translate-resp:' + ip, 10, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
 
-  let body: any
+  let body: {
+    texts?: Record<string, string>
+    customTexts?: Record<string, string>
+    fromLanguage?: string
+    studyGuid?: string
+  }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { texts, customTexts, fromLanguage, studyGuid } = body
@@ -96,7 +101,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
     }
 
     return NextResponse.json({ texts: resultTexts, customTexts: resultCustom })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Response translation error:', err)
     return NextResponse.json({ texts: {}, customTexts: {} })
   }

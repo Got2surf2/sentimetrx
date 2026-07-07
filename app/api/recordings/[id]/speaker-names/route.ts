@@ -28,8 +28,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgId = (userRow as any)?.org_id as string | undefined
-  const orgRel = (userRow as any)?.organizations
+  type OrgRel = { is_admin_org?: boolean | null }
+  const typedUserRow = userRow as { org_id?: string | null; organizations?: OrgRel | OrgRel[] | null } | null
+  const orgId = typedUserRow?.org_id ?? undefined
+  const orgRel = typedUserRow?.organizations
   const isAdminOrg = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
   if (!orgId) return NextResponse.json({ error: 'org not found' }, { status: 403 })
 

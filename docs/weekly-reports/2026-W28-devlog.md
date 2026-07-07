@@ -157,3 +157,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 38 files (−82): admin routes/pages, resolveOrg, regulations, orgDelete, correction libs, aiKey, email/provider, survey widget, creator/analyze/analytics components, recordings/social/pulseiq pages. Reconciled resolveOrg tightening (features → OrgFeatures) surfacing 3 consumer breaks: added `social_auto_config` to OrgFeatures (real feature social-sync reads) + widened NewCampaignClient `features` prop Record<string,boolean>→ModuleFeatures. Global tsc 0 errors, 1238 tests pass, 726→644. Ceiling → 644. Not pushed.
+
+## ESLint burn-down wave 11 — 40 files (Jul 7)
+
+WHY: Continue to zero.
+
+40 files (−77): pulseiq/pi clients, bots/glossary pages, townhall/social/settings/recordings/datasets/campaigns/collections routes, respond, cron. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 644→565. Ceiling → 565. Not pushed.

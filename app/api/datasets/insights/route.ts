@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   }
   const { orgId } = await getCallerOrgContext(supabase)
 
-  let body: any
+  let body: { apiKey?: string; prompt?: string }
   try {
     body = await req.json()
   } catch {
@@ -47,11 +47,12 @@ export async function POST(req: Request) {
         messages: [{ role: 'user', content: prompt }],
         apiKey,
       })
-    } catch (e: any) {
-      const status = e.status || 500
-      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + e.message }, { status: 401 })
-      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + e.message }, { status: 429 })
-      return NextResponse.json({ error: e.message }, { status })
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string }
+      const status = err.status || 500
+      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + err.message }, { status: 401 })
+      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + err.message }, { status: 429 })
+      return NextResponse.json({ error: err.message }, { status })
     }
 
     logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', event_type: 'insights' }, result.usage)

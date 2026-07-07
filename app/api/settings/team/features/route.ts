@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: { user_id?: string; features?: Record<string, boolean> }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   const { user_id, features } = body
@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest) {
 
   // Sanitize: only allow module keys that the org has enabled
   const orgRaw = Array.isArray(actor.organizations) ? actor.organizations[0] : actor.organizations
-  const orgFeatures: ModuleFeatures = (resolveOrg(orgRaw) as any)?.features || {}
+  const orgFeatures: ModuleFeatures = resolveOrg(orgRaw)?.features || {}
   const sanitized: ModuleFeatures = {}
   for (const key of MODULE_KEYS) {
     if (orgFeatures[key] && features[key]) {

@@ -61,7 +61,7 @@ export async function PATCH(req: Request, props: Params) {
   if ('error' in auth) return auth.error
   const { service, scope } = auth
 
-  let body: any
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   const patch: Record<string, unknown> = {}
@@ -112,7 +112,7 @@ export async function DELETE(req: Request, props: Params) {
     .eq('slug', params.slug)
     .single()
   if (!row) return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
-  if ((row as any).source !== 'manual') {
+  if ((row as { source?: string | null }).source !== 'manual') {
     return NextResponse.json({ error: 'Hide discovered entries via PATCH {hidden:true} instead of deleting — hard-delete only applies to manual entries.' }, { status: 400 })
   }
 

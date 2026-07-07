@@ -10,6 +10,21 @@ import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
+interface CampaignRow {
+  studies?: { name?: string; status?: string } | null
+  [key: string]: unknown
+}
+
+interface CreateCampaignBody {
+  name?: string
+  study_id?: string
+  study_url?: string
+  hidden_fields?: unknown
+  target_responses?: number | null
+  email_provider?: string
+  email_config?: unknown
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
@@ -27,7 +42,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return serverError(error, 'campaigns.list')
 
-  const campaigns = (data || []).map((c: any) => ({
+  const campaigns = (data || []).map((c: CampaignRow) => ({
     ...c,
     study_name: c.studies?.name,
     study_status: c.studies?.status,
@@ -50,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   if (!userData?.org_id) return NextResponse.json({ error: 'No organization' }, { status: 400 })
 
-  let body: any
+  let body: CreateCampaignBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { name, study_id, study_url, hidden_fields, target_responses, email_provider, email_config } = body

@@ -9,6 +9,12 @@ import type { DemoField, PsychoQuestion } from '@/lib/types'
 type Phase = 'pre-psycho' | 'pre-demo' | 'pre-submitting' | 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
 interface Message { who: 'bot' | 'user'; text: string; italic?: boolean; _debug?: string[] }
 interface Props { sessionId: string }
+interface DisplayConfig {
+  skip_label?: string
+  done_label?: string
+  thank_you_message?: string
+  opening_message?: string
+}
 
 const IMSG_BLUE = '#007AFF'
 const IMSG_GRAY = '#E9E9EB'
@@ -65,7 +71,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
   const [headerColor, setHeaderColor] = useState('#00b4d8')
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'paused' | 'ended' | 'notfound'>('loading')
-  const [display, setDisplay] = useState<any>({})
+  const [display, setDisplay] = useState<DisplayConfig>({})
   const [closingMsg, setClosingMsg] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
   const [selectedLang, setSelectedLang] = useState<string | null>(null)
@@ -141,7 +147,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setLanguages(d.languages || [])
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
-      if (d.opening_message) setDisplay((prev: any) => ({ ...prev, opening_message: d.opening_message }))
+      if (d.opening_message) setDisplay((prev) => ({ ...prev, opening_message: d.opening_message }))
       if (d.bot_messages) setBotMessages(d.bot_messages)
       if (d.questionPosition) setQuestionPosition(d.questionPosition)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))

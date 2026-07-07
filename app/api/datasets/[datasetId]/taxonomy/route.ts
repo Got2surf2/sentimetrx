@@ -89,10 +89,10 @@ async function gateDataset(datasetId: string, select: string) {
   const { data: dataset } = await supabase
     .from('datasets').select(select).eq('id', datasetId).single()
   if (!dataset) return { error: NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 }) }
-  if (!isAdmin && (dataset as any).org_id !== orgId) {
+  if (!isAdmin && (dataset as unknown as Record<string, unknown>).org_id !== orgId) {
     return { error: NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 }) }
   }
-  return { dataset: dataset as any }
+  return { dataset: dataset as unknown as Record<string, unknown> }
 }
 
 export async function GET(req: Request, props: Params) {

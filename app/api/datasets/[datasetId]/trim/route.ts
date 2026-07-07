@@ -72,7 +72,7 @@ export async function POST(req: Request, props: Params) {
     })
 
     // Delete from flat table
-    const deleteIds = rowsToDelete!.map(function(r: any) { return r.id })
+    const deleteIds = rowsToDelete!.map(function(r) { return r.id })
     for (let i = 0; i < deleteIds.length; i += 500) {
       const chunk = deleteIds.slice(i, i + 500)
       await service.from('dataset_rows_flat').delete().in('id', chunk)
@@ -109,7 +109,7 @@ export async function POST(req: Request, props: Params) {
       deleted: deleteCount,
       remaining: totalRemaining || (dataset.row_count - deleteCount),
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'datasets.trim')
   }
 }

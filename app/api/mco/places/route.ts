@@ -24,13 +24,13 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  let body: any
+  let body: { place_ids?: unknown; context?: unknown }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors })
   }
 
   const place_ids: string[] = Array.isArray(body?.place_ids)
-    ? body.place_ids.filter((s: any) => typeof s === 'string' && s.length <= 96).slice(0, 12)
+    ? body.place_ids.filter((s: unknown) => typeof s === 'string' && s.length <= 96).slice(0, 12)
     : []
   const context: string | undefined =
     typeof body?.context === 'string' && body.context.length <= 64 ? body.context : undefined
