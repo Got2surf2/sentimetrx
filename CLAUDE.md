@@ -85,7 +85,13 @@ CI runs `typecheck` + `npm test` on every push and PR. Env-gated suites run agai
 
 After multi-file sweeps, run `rm tsconfig.tsbuildinfo && npx tsc --noEmit` — incremental tsc cache can mask stale-import bugs.
 
-**Lint ratchet + touch-it-fix-it:** CI runs `npm run lint:ci` (`eslint .` with a `--max-warnings` ceiling in `package.json`) — warnings can never increase. Write no new `any`; when you substantively edit a file, fix the `no-explicit-any` warnings in the parts you touch in the same commit, and lower the ceiling when the total drops. Once a rule hits 0, promote it to `error` in `eslint.config.mjs`.
+**Lint ratchet + touch-it-fix-it — the permanent anti-drift guard.** CI runs `npm run lint:ci` (`eslint .` with a `--max-warnings` ceiling in `package.json`); **the count can only ever go DOWN, never up.** This ratchet exists because the codebase once drifted to **3,000+ warnings** (mostly `no-explicit-any`) — a 16-wave sweep on **2026-07-07** cut it to **358** (`no-explicit-any` 2,787 → 83, −97%). Do not let that recur:
+
+- **Never write a new `any`.** Use `unknown` + a narrowing guard (`instanceof`, `typeof`, a property check), a real interface / imported type, or — only at a true external boundary (an untyped Supabase row, `res.json()`, a pptx slide) — `as unknown as T`. A bare `any` or `as any` is not acceptable in new code.
+- **Touch-it-fix-it:** when you substantively edit a file, clear the `no-explicit-any` (and other) warnings in the parts you touch in the same commit, then **lower the `lint:ci` ceiling** if the total dropped (the number in `package.json` must track the real count — never leave it slack, or drift creeps back under a loose ceiling).
+- Once a rule's warnings hit 0, promote it to `error` in `eslint.config.mjs`.
+- **Bulk burn-downs** (when a batch of warnings accumulates) use the proven harness `scripts/_wf-eslint-burndown.js` (untracked): one agent per file in an isolated git worktree, annotation-only typing, `tsc`-verified in isolation, then a consolidation pass runs global `tsc` + the full test suite and reconciles cross-file conflicts before committing. Method + baseline are documented in `docs/ENGINEERING.md`.
+- The **~83 residual `no-explicit-any`** are deliberate (discriminated-unions accessed before narrowing, dynamic payloads, untracked scripts) and the **~236 `react-hooks/*`** warnings are a separate behavior-sensitive effort — both ride the ratchet; don't churn them without intent.
 
 ## Content rules for shipped UI
 

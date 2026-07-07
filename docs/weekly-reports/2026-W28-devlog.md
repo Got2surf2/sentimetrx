@@ -193,3 +193,9 @@ WHY: Continue to zero.
 WHY: Last unprocessed no-explicit-any files.
 
 15 files (−16): analyze/admin pages + clients. Reconciled the last resolveOrg-as-any→OrgFeatures cascade (widened TestingClient features → ModuleFeatures). Global tsc 0 errors, 1238 tests pass, 374→358. Ceiling → 358. Every file with a real no-explicit-any is now processed; the ~358 remaining are react-hooks warnings (never targeted by this pass) + the handful of genuinely-untypeable anys agents deliberately left. Not pushed.
+
+## ESLint burn-down COMPLETE + anti-drift codified (Jul 7)
+
+WHY: Owner: "make sure this type of drift doesn't happen again" — sync specs/memory and make the anti-drift rule permanent.
+
+The 16-wave no-explicit-any burn-down is done at the safe floor: total warnings 3,060 → 358, no-explicit-any 2,787 → 83 (−97%), all annotation-only, every wave tsc-clean + 1,238 tests green, ceiling ratcheted down each wave (now 358). Owner chose STOP at the floor (the 83 residual anys need behavior-risky union/narrowing refactors; the ~236 react-hooks warnings are a separate effort). Spec-drift check: the tool flagged 13 specs but all were annotation-only touches (no behavioral drift — the legitimate SKIP_SPEC_CHECK case); the one genuine content drift was docs/ENGINEERING.md's stale lint stats (--max-warnings 3900 / ~2,900 anys), now updated to 358 / 83 + the burn-down method recorded. CLAUDE.md's lint-ratchet rule rewritten as the permanent anti-drift guard (no new any → unknown+guard/real type/boundary cast only; ratchet only goes down; harness reference). 18 commits total ahead of origin, all LOCAL/unpushed.

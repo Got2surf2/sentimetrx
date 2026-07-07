@@ -46,11 +46,25 @@ Last reviewed: 2026-05-15.
   rules as before at `warn` (`no-floating-promises`, `no-misused-
   promises`, `no-explicit-any`, `consistent-type-imports`). `next lint`
   is gone; `npm run lint` = `eslint .`. **CI runs `npm run lint:ci`
-  (`eslint . --max-warnings 3900`)** — a **warn-only ratchet**: 0 errors
-  today, ~3870 warnings over the existing backlog, and the ceiling fails
-  CI only if new code pushes the count UP. Burn the number down (edit the
-  `lint:ci` ceiling in `package.json` as warnings are fixed), same as the
-  coverage floor; once a rule's warnings hit 0, promote it to `error`.
+  (`eslint . --max-warnings 358` as of 2026-07-07)** — a **warn-only
+  ratchet**: 0 errors, and the ceiling fails CI only if new code pushes
+  the count UP. Burn the number down (edit the `lint:ci` ceiling in
+  `package.json` as warnings are fixed), same as the coverage floor; once
+  a rule's warnings hit 0, promote it to `error`.
+  **`no-explicit-any` burn-down — DONE to the safe floor (2026-07-07).**
+  A 16-wave multi-agent sweep took total warnings **3,060 → 358** and
+  `no-explicit-any` specifically **2,787 → 83** (−97%), all annotation-only
+  (no runtime change), each wave `tsc`-clean + 1,238 tests green, ceiling
+  lowered every wave. Method (reusable — `scripts/_wf-eslint-burndown.js`,
+  untracked): one agent per file in an isolated git worktree types the
+  file with real interfaces/imports, verifies `tsc` in isolation, returns
+  the file; a consolidation pass applies them, runs global `tsc` + tests,
+  and reconciles the cross-file conflicts the isolated agents can't see
+  (prop-type cascades, index-signature mismatches). The **83 residual
+  `any`s are deliberate** — discriminated-union results accessed before
+  narrowing, dynamic payloads (chatCore `agent`/`body`), and untracked
+  scripts — left rather than risk behavior. The other ~275 remaining
+  warnings are `react-hooks/*` (a separate, behavior-sensitive effort).
   Note: `eslint-plugin-react-hooks@6` (bundled with next 16) ships new
   ERROR-level rules (`set-state-in-effect`, `purity`, …) — demoted to
   `warn` in the flat config so they ride the ratchet rather than hard-
@@ -60,13 +74,15 @@ Last reviewed: 2026-05-15.
   scratch scripts, untracked convention) and `scripts/oneoff/**` (the
   committed one-off provenance archive — see its README; not operating
   code, so it doesn't gate the promoted-to-error rules).
-  **Touch-it-fix-it rule for `no-explicit-any` (2026-07-02):** the
-  ~2,900 `any` warnings are burned down opportunistically — when a
-  commit substantively edits a file, replace the `any`s in the parts
-  you touched (whole file if small) in the same commit, then lower the
-  `lint:ci` ceiling if the total dropped. No new `any` in new code.
-  The ceiling is the enforcement; this rule is the convention that
-  drives it downward.
+  **Touch-it-fix-it rule for `no-explicit-any` (2026-07-02; bulk
+  burn-down done 2026-07-07, ~83 residual):** when a commit substantively
+  edits a file, replace the `any`s in the parts you touched (whole file
+  if small) in the same commit, then lower the `lint:ci` ceiling if the
+  total dropped. **No new `any` in new code — use `unknown` + a narrowing
+  guard, a real interface/imported type, or `as unknown as T` only at a
+  genuine external boundary (untyped DB row, `res.json()`).** The ceiling
+  is the enforcement; this rule is the convention that keeps it from ever
+  drifting back up.
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.
